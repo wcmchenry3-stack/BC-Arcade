@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "أسقط الفواكه، دمج المتشابهة، لا تدعها تفيض.",
-  "game.playLabel": "العب Fruit Merge",
-  "game.canvasLabel": "لعبة Fruit Merge — أسقط الفواكه على الكومة لدمج المتشابهة. اضغط أو انقر للإسقاط.",
+  "game.playLabel": "العب Cascade",
+  "game.canvasLabel": "لعبة Cascade — أسقط الفواكه على الكومة لدمج المتشابهة. اضغط أو انقر للإسقاط.",
   "score.label": "النقاط",
   "score.display": "النقاط: {{score}}",
   "preview.dropLabel": "إسقاط",

@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Laat fruit vallen, match en vermijd overflow.",
-  "game.playLabel": "Speel Fruit Merge",
-  "game.canvasLabel": "Fruit Merge spel — laat fruit vallen om te matchen. Tik of klik om te laten vallen.",
+  "game.playLabel": "Speel Cascade",
+  "game.canvasLabel": "Cascade spel — laat fruit vallen om te matchen. Tik of klik om te laten vallen.",
   "score.label": "Score",
   "score.display": "Score: {{score}}",
   "preview.dropLabel": "Laat vallen",

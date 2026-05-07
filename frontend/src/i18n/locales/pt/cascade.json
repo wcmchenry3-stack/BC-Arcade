@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Solte frutas, combine e não deixe transbordar.",
-  "game.playLabel": "Jogar Fruit Merge",
-  "game.canvasLabel": "Jogo Fruit Merge — solte frutas na pilha para combinar. Toque ou clique para soltar.",
+  "game.playLabel": "Jogar Cascade",
+  "game.canvasLabel": "Jogo Cascade — solte frutas na pilha para combinar. Toque ou clique para soltar.",
   "score.label": "Pontos",
   "score.display": "Pontos: {{score}}",
   "preview.dropLabel": "Soltar",

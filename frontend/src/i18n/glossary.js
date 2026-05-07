@@ -30,12 +30,12 @@ export const glossary = {
     notes: "Includes the exclamation mark. Keep as-is in all locales.",
   },
 
-  "Fruit Merge": {
+  "Cascade": {
     category: "brand",
     doNotTranslate: true,
-    reason: "The name of the second game in the app. Used as a proper noun.",
+    reason: "The name of the Cascade game. Used as a proper noun.",
     definition: "A physics-based fruit dropping and merging game.",
-    notes: "Two words, both capitalized.",
+    notes: "One word, capitalized.",
   },
 
   "BC Arcade": {
@@ -52,7 +52,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier in engine events.",
-    definition: "The smallest fruit tier in Fruit Merge.",
+    definition: "The smallest fruit tier in Cascade.",
     notes: null,
   },
 
@@ -60,7 +60,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 2 fruit in Fruit Merge.",
+    definition: "Tier 2 fruit in Cascade.",
     notes: null,
   },
 
@@ -68,7 +68,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 3 fruit in Fruit Merge.",
+    definition: "Tier 3 fruit in Cascade.",
     notes: null,
   },
 
@@ -76,7 +76,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 4 fruit in Fruit Merge.",
+    definition: "Tier 4 fruit in Cascade.",
     notes: null,
   },
 
@@ -84,7 +84,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 5 fruit in Fruit Merge.",
+    definition: "Tier 5 fruit in Cascade.",
     notes: null,
   },
 
@@ -92,7 +92,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 6 fruit in Fruit Merge.",
+    definition: "Tier 6 fruit in Cascade.",
     notes: null,
   },
 
@@ -100,7 +100,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 7 fruit in Fruit Merge.",
+    definition: "Tier 7 fruit in Cascade.",
     notes: null,
   },
 
@@ -108,7 +108,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 8 fruit in Fruit Merge.",
+    definition: "Tier 8 fruit in Cascade.",
     notes: null,
   },
 
@@ -116,7 +116,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 9 fruit in Fruit Merge.",
+    definition: "Tier 9 fruit in Cascade.",
     notes: null,
   },
 
@@ -124,7 +124,7 @@ export const glossary = {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier. Also the highest-tier merge goal.",
-    definition: "Tier 10 (max) fruit in Fruit Merge.",
+    definition: "Tier 10 (max) fruit in Cascade.",
     notes: null,
   },
 };

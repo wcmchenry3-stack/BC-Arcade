@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Lâche des fruits, fusionne-les, évite le débordement.",
-  "game.playLabel": "Jouer à Fruit Merge",
-  "game.canvasLabel": "Jeu Fruit Merge — lâchez des fruits pour fusionner les identiques. Tapez ou cliquez pour lâcher.",
+  "game.playLabel": "Jouer à Cascade",
+  "game.canvasLabel": "Jeu Cascade — lâchez des fruits pour fusionner les identiques. Tapez ou cliquez pour lâcher.",
   "score.label": "Points",
   "score.display": "Points : {{score}}",
   "preview.dropLabel": "Lâcher",
