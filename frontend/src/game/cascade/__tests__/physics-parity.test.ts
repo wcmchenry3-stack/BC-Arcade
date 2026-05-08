@@ -68,7 +68,7 @@ function getRapierWorld(): MockWorld {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Gravity: fruits fall on both engines
+// 1. Gravity: fruits fall on both engines — GH #203
 // ---------------------------------------------------------------------------
 
 describe("gravity — both engines pull fruits downward", () => {
@@ -95,7 +95,7 @@ describe("gravity — both engines pull fruits downward", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Fruit count: N well-separated drops → N fruits, no auto-merges
+// 2. Fruit count: N well-separated drops → N fruits, no auto-merges — GH #203
 // ---------------------------------------------------------------------------
 
 describe("fruit count — N drops at distinct x positions → N snapshots", () => {
@@ -120,7 +120,7 @@ describe("fruit count — N drops at distinct x positions → N snapshots", () =
 });
 
 // ---------------------------------------------------------------------------
-// 3 & 4. Merge semantics: same-tier collision produces fruitMerge on both engines
+// 3 & 4. Merge semantics: same-tier collision produces fruitMerge on both engines — GH #203
 // ---------------------------------------------------------------------------
 
 describe("merge semantics — same-tier collision fires fruitMerge on both engines", () => {
@@ -162,7 +162,7 @@ describe("merge semantics — same-tier collision fires fruitMerge on both engin
 });
 
 // ---------------------------------------------------------------------------
-// 5. Velocity clamp parity: both engines cap at the same constant
+// 5. Velocity clamp parity: both engines cap at the same constant — CASCADE-PHYS-08
 // ---------------------------------------------------------------------------
 
 describe("velocity clamp parity", () => {
@@ -270,7 +270,7 @@ describe("body sleeping parity — sleeping is enabled on both engines", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. Different-tier fruits never merge on either engine
+// 6. Different-tier fruits never merge on either engine — GH #203
 // ---------------------------------------------------------------------------
 
 describe("no cross-tier merges", () => {
@@ -495,5 +495,85 @@ describe("wall containment parity — no fruit escapes through left or right wal
       }
     }
     handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. Neighbor-wake parity — GH #1277
+// ---------------------------------------------------------------------------
+
+describe("neighbor-wake parity — both engines wake sleeping neighbors after a merge", () => {
+  it("Matter.js: Matter.Sleeping.set is called for neighbors when a merge fires", async () => {
+    // The neighbor-wake loop was changed from iterating Matter.Composite.allBodies
+    // (which includes static walls) to iterating fruitMap (live fruits only).
+    // Verify the wake call fires — if the loop never ran, no sleeping.set calls
+    // for non-static bodies would occur.
+    const sleepSpy = jest.spyOn(Matter.Sleeping, "set");
+    const handle = await createNativeEngine(W, H, fruitSet);
+
+    const tier1 = fruit(1);
+    handle.drop(tier1, fruitSet.id, W / 2 - 5, 30);
+    handle.drop(tier1, fruitSet.id, W / 2 + 5, 30);
+
+    let mergeFired = false;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        mergeFired = true;
+        break;
+      }
+    }
+    expect(mergeFired).toBe(true);
+
+    // At least one sleeping.set(body, false) call should have happened for the
+    // neighbor-wake pass on the spawned tier-2 body's neighbors.
+    const wakeCallsOnDynamic = sleepSpy.mock.calls.filter(([body, flag]) => !body.isStatic && flag === false);
+    expect(wakeCallsOnDynamic.length).toBeGreaterThan(0);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. Determinism parity — CASCADE-PHYS-10 (GH #1240)
+// ---------------------------------------------------------------------------
+
+describe("determinism parity — nowProvider injection makes runs reproducible", () => {
+  it("Rapier: 50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function runRapier() {
+      const handle = await createRapierEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step().snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step().snapshots;
+      return last.map((s) => ({ x: Math.round(s.x * 10), y: Math.round(s.y * 10), tier: s.tier }));
+    }
+
+    const run1 = await runRapier();
+    const run2 = await runRapier();
+    expect(run1).toEqual(run2);
+  });
+
+  it("Matter.js: 50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function runNative() {
+      const handle = await createNativeEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step(1 / 60).snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step(1 / 60).snapshots;
+      handle.cleanup();
+      return last.map((s) => ({ x: Math.round(s.x * 10), y: Math.round(s.y * 10), tier: s.tier }));
+    }
+
+    const run1 = await runNative();
+    const run2 = await runNative();
+    expect(run1).toEqual(run2);
   });
 });

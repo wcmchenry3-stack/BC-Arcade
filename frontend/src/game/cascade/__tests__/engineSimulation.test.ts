@@ -480,12 +480,14 @@ describe("fixed-step accumulator — sub-step counts", () => {
     expect(stepSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("a huge frame delta is capped — no more than 10 sub-steps regardless of dt", async () => {
+  it("a huge frame delta is capped — no more than round((1000/6) / FIXED_STEP_MS) sub-steps", async () => {
     const handle = await buildEngine();
     const world = getWorld();
     const stepSpy = jest.spyOn(world, "step");
-    handle.step(10); // 10 seconds — clamped to 1/6 s → ≤ 10 sub-steps
-    expect(stepSpy.mock.calls.length).toBeLessThanOrEqual(10);
+    // Math.round because 1000/6 / FIXED_STEP_MS = 9.9999... in IEEE 754.
+    const maxSubSteps = Math.round(1000 / 6 / FIXED_STEP_MS);
+    handle.step(10); // 10 seconds — clamped to 1/6 s
+    expect(stepSpy.mock.calls.length).toBeLessThanOrEqual(maxSubSteps);
   });
 
   it("total simulated time never exceeds total wall time across a mixed sequence", async () => {
@@ -502,5 +504,39 @@ describe("fixed-step accumulator — sub-step counts", () => {
 
     const totalSimMs = stepSpy.mock.calls.length * FIXED_STEP_MS;
     expect(totalSimMs).toBeLessThanOrEqual(totalWallMs + 0.1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism — CASCADE-PHYS-10 (#1240)
+// ---------------------------------------------------------------------------
+
+describe("determinism — Rapier nowProvider injection removes Date.now() non-determinism", () => {
+  it("50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function run() {
+      const handle = await createEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(
+          fruit(i % 5),
+          fruitSet.id,
+          50 + (i % 5) * 40,
+          30 + (i % 3) * 10
+        );
+      }
+      let last = handle.step().snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step().snapshots;
+      return last.map((s) => ({
+        x: Math.round(s.x * 10),
+        y: Math.round(s.y * 10),
+        tier: s.tier,
+      }));
+    }
+
+    const run1 = await run();
+    const run2 = await run();
+    expect(run1).toEqual(run2);
   });
 });
