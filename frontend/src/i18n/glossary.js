@@ -30,7 +30,7 @@ export const glossary = {
     notes: "Includes the exclamation mark. Keep as-is in all locales.",
   },
 
-  "Cascade": {
+  Cascade: {
     category: "brand",
     doNotTranslate: true,
     reason: "The name of the Cascade game. Used as a proper noun.",
