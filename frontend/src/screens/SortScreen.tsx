@@ -37,6 +37,7 @@ import SortBoard, {
   TILT_OUT_MS,
   TILT_HOLD_MS_PER_UNIT,
 } from "../game/sort/components/SortBoard";
+import { TILT_HOLD_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
 import { loadProgress, saveProgress, type SortProgress } from "../game/sort/storage";
@@ -204,7 +205,7 @@ export default function SortScreen() {
       const holdMs = TILT_HOLD_MS_PER_UNIT * units;
       // Reduce-motion skips the ghost; BottleView does a fixed tilt-only animation (no scaling).
       const totalMs = reduceMotion
-        ? TILT_IN_MS + TILT_HOLD_MS_PER_UNIT + TILT_OUT_MS + 50
+        ? TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50
         : LIFT_MS + TRAVEL_MS + TILT_IN_MS + holdMs + TILT_OUT_MS + TRAVEL_MS + LIFT_MS + 50;
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
