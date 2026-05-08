@@ -252,9 +252,7 @@ export async function createEngine(
           // Iterate fruitMap (only live fruits) to mirror Rapier's neighbor-wake logic.
           // Build an id→body map first (O(M)) so fruitMap lookups are O(1), not O(M) each.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
-          const bodyById = new Map(
-            Matter.Composite.allBodies(world).map((b) => [b.id, b])
-          );
+          const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
           fruitMap.forEach((_fb2, neighborId) => {
             if (neighborId === newFb.handle) return;
             const b = bodyById.get(neighborId);

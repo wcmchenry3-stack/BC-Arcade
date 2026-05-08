@@ -519,12 +519,7 @@ describe("determinism — Rapier nowProvider injection removes Date.now() non-de
     async function run() {
       const handle = await createEngine(W, H, fruitSet, nowFn);
       for (let i = 0; i < 50; i++) {
-        handle.drop(
-          fruit(i % 5),
-          fruitSet.id,
-          50 + (i % 5) * 40,
-          30 + (i % 3) * 10
-        );
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
       }
       let last = handle.step().snapshots;
       for (let i = 1; i < 300; i++) last = handle.step().snapshots;
