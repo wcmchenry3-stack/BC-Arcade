@@ -226,13 +226,15 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
 
   // 5. Fill remaining slots with highest safe cards
   if (selected.length < 3) {
-    const candidates = hand.filter((c) => safe(c) && notSelected(c)).sort((a, b) => {
-      const diff = aceHigh(b.rank) - aceHigh(a.rank);
-      if (diff !== 0) return diff;
-      if (a.suit === "clubs" && b.suit !== "clubs") return 1;
-      if (b.suit === "clubs" && a.suit !== "clubs") return -1;
-      return 0;
-    });
+    const candidates = hand
+      .filter((c) => safe(c) && notSelected(c))
+      .sort((a, b) => {
+        const diff = aceHigh(b.rank) - aceHigh(a.rank);
+        if (diff !== 0) return diff;
+        if (a.suit === "clubs" && b.suit !== "clubs") return 1;
+        if (b.suit === "clubs" && a.suit !== "clubs") return -1;
+        return 0;
+      });
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
