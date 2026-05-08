@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   AppState,
   AppStateStatus,
@@ -84,6 +85,7 @@ export default function SortScreen() {
   const [isPouring, setIsPouring] = useState(false);
   const [boardHeight, setBoardHeight] = useState(0);
   const pourTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   // Win modal
   const [showWinModal, setShowWinModal] = useState(false);
@@ -101,6 +103,10 @@ export default function SortScreen() {
     return () => {
       if (pourTimerRef.current !== null) clearTimeout(pourTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -196,8 +202,10 @@ export default function SortScreen() {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       const holdMs = TILT_HOLD_MS_PER_UNIT * units;
-      const totalMs =
-        LIFT_MS + TRAVEL_MS + TILT_IN_MS + holdMs + TILT_OUT_MS + TRAVEL_MS + LIFT_MS + 50;
+      // Reduce-motion skips the ghost; BottleView does a fixed tilt-only animation (no scaling).
+      const totalMs = reduceMotion
+        ? TILT_IN_MS + TILT_HOLD_MS_PER_UNIT + TILT_OUT_MS + 50
+        : LIFT_MS + TRAVEL_MS + TILT_IN_MS + holdMs + TILT_OUT_MS + TRAVEL_MS + LIFT_MS + 50;
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
       setPouringFrom(selectedBottleIndex);

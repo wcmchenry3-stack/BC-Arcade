@@ -53,8 +53,8 @@ export const TILT_HOLD_MS_PER_UNIT = 150; // scaled by # of sections poured
 // Ghost rises just enough to clear the target bottle's opening
 const LIFT_HEIGHT = 40;
 
-// Stream dimensions
-const STREAM_WIDTH = 5;
+// Stream dimensions — 7px renders reliably on iOS at all display densities
+const STREAM_WIDTH = 7;
 
 export default function SortBoard({
   state,
