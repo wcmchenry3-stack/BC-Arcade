@@ -24,7 +24,7 @@ const _engine: typeof import("../engine") = require(
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const { createEngine } = _engine;
 import type { EngineHandle } from "../engine.shared";
-import { FIXED_STEP_MS } from "../engine.shared";
+import { FIXED_STEP_MS, GAME_OVER_CONSECUTIVE_TICKS } from "../engine.shared";
 import { scoreForMerge } from "../scoring";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 import { MockWorld } from "../../../../__mocks__/@dimforge/rapier2d-compat";
@@ -300,10 +300,17 @@ describe("game-over with multiple fruits above the danger line", () => {
 
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3001);
-    const { events } = handle.step();
+
+    // Hysteresis requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger
+    // line — advance enough steps to satisfy it, then verify exactly one gameOver fires.
+    const gameOverEvents: ReturnType<typeof handle.step>["events"] = [];
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      const { events } = handle.step();
+      gameOverEvents.push(...events.filter((e) => e.type === "gameOver"));
+    }
     jest.useRealTimers();
 
-    expect(events.filter((e) => e.type === "gameOver")).toHaveLength(1);
+    expect(gameOverEvents).toHaveLength(1);
   });
 
   it("emits gameOver only once even after additional steps", async () => {
@@ -314,7 +321,8 @@ describe("game-over with multiple fruits above the danger line", () => {
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3001);
     let totalGameOver = 0;
-    for (let i = 0; i < 5; i++) {
+    // Run well past the 30-tick threshold; gameOver must fire exactly once.
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
       totalGameOver += handle.step().events.filter((e) => e.type === "gameOver").length;
     }
     jest.useRealTimers();
