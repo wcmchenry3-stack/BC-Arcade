@@ -33,6 +33,8 @@ import {
   SPAWN_GRACE_TICKS,
   COLLISION_GROUP_DYNAMIC,
   COLLISION_GROUP_WALL,
+  WALL_THICKNESS,
+  GAME_OVER_CONSECUTIVE_TICKS,
 } from "../engine.shared";
 
 const RAPIER_MOCK = require("@dimforge/rapier2d-compat").default; // eslint-disable-line @typescript-eslint/no-require-imports
@@ -419,6 +421,79 @@ describe("spawn grace parity — both engines apply and expire grace on the same
     expect(restoredBody).toBeDefined();
     expect(restoredBody!.collisionFilter.mask & COLLISION_GROUP_DYNAMIC).not.toBe(0);
 
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game-over hysteresis parity (CASCADE-PHYS-07)
+// ---------------------------------------------------------------------------
+
+describe("game-over hysteresis parity — both engines fire gameOver on same tick", () => {
+  it("both engines fire gameOver on tick 30 after 30 consecutive ticks above danger line", async () => {
+    const rapierHandle = await createRapierEngine(W, H, fruitSet);
+    const nativeHandle = await createNativeEngine(W, H, fruitSet);
+
+    // Drop tier-0 at y=50; top = 50-18 = 32 < dangerY (108) → above danger line
+    rapierHandle.drop(fruit(0), fruitSet.id, W / 2, 50);
+    nativeHandle.drop(fruit(0), fruitSet.id, W / 2, 50);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000); // past grace for both engines
+
+    let rapierFiredAt = -1;
+    let nativeFiredAt = -1;
+
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (rapierFiredAt === -1) {
+        if (rapierHandle.step().events.some((e) => e.type === "gameOver")) rapierFiredAt = i;
+      }
+      if (nativeFiredAt === -1) {
+        // Tiny dt keeps Matter.js body frozen at y=50 (no physics advancement)
+        if (nativeHandle.step(1e-7).events.some((e) => e.type === "gameOver")) nativeFiredAt = i;
+      }
+    }
+
+    jest.useRealTimers();
+    nativeHandle.cleanup();
+
+    expect(rapierFiredAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    expect(nativeFiredAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    expect(rapierFiredAt).toBe(nativeFiredAt);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wall containment parity (CASCADE-PHYS-08)
+// ---------------------------------------------------------------------------
+
+describe("wall containment parity — no fruit escapes through left or right wall in 600 frames", () => {
+  const tier0Radius = fruit(0).radius;
+  const innerLeft = WALL_THICKNESS + tier0Radius;
+  const innerRight = W - WALL_THICKNESS - tier0Radius;
+
+  it("Rapier: x stays within wall bounds", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 600; i++) {
+      const { snapshots } = handle.step();
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
+  });
+
+  it("Matter.js: x stays within wall bounds", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 600; i++) {
+      const { snapshots } = handle.step(1 / 60);
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
     handle.cleanup();
   });
 });

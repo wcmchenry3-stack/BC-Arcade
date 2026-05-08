@@ -9,6 +9,8 @@ export {
   WALL_THICKNESS,
   DANGER_LINE_RATIO,
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   FRUIT_DENSITY,
@@ -36,6 +38,8 @@ import {
   WALL_THICKNESS,
   DANGER_LINE_RATIO,
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   FIXED_STEP_MS,
@@ -104,6 +108,8 @@ export async function createEngine(
 
   const dangerY = H * DANGER_LINE_RATIO;
   let gameOverFired = false;
+  let dangerTicksAbove = 0;
+  let ticksSinceLastMerge = GAME_OVER_MERGE_COOLDOWN_TICKS;
 
   // mergeQueue carries [idA, idB, snapshotTier] — tier is snapshotted at enqueue time
   // so processMerges can re-verify it (mirrors the Rapier engine's guard).
@@ -228,9 +234,11 @@ export async function createEngine(
       if (tier < 10) {
         const nextDef = fruitSet.fruits[(tier + 1) as FruitTier];
         if (nextDef !== undefined) {
-          // Clamp spawn to valid physics bounds so the merged body never
-          // starts inside a wall (which causes Matter.js corrective impulses
-          // that can shoot the fruit through the wall — no CCD for dynamic bodies).
+          // Clamp spawn to valid physics bounds so the merged body never starts inside a wall.
+          // CASCADE-PHYS-08 analysis: Matter.js has no CCD for dynamic bodies.
+          //   tier-0 radius=18 px, MAX_FRUIT_SPEED_PX_S=900 px/s → max travel per 1/60 sub-step = 15 px
+          //   WALL_THICKNESS=16 px → 15 px < 16 px → sub-stepping alone is geometrically sufficient.
+          // Outcome C chosen: MAX_FRUIT_SPEED_PX_S lowered 1200→900 to keep max travel below wall thickness.
           const innerLeft = WALL_THICKNESS + nextDef.radius;
           const innerRight = W - WALL_THICKNESS - nextDef.radius;
           const spawnX = Math.max(innerLeft, Math.min(innerRight, midX));
@@ -273,15 +281,18 @@ export async function createEngine(
       const mergesThisStep = mergeQueue.length;
       processMerges(events);
 
+      // Cascade combo and merge-cooldown tracking.
       if (mergesThisStep > 0) {
         comboMergeCount += mergesThisStep;
         if (!comboFired && comboMergeCount >= COMBO_THRESHOLD) {
           events.push({ type: "cascadeCombo", count: comboMergeCount });
           comboFired = true;
         }
+        ticksSinceLastMerge = 0;
       } else {
         comboMergeCount = 0;
         comboFired = false;
+        ticksSinceLastMerge++;
       }
 
       // Single allBodies snapshot shared by grace-tick, velocity-clamp, and wall-clamp below.
@@ -362,21 +373,28 @@ export async function createEngine(
         });
       }
 
-      // Game-over detection
+      // Game-over: requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger line
+      // AND no merge in the last GAME_OVER_MERGE_COOLDOWN_TICKS ticks.
       if (!gameOverFired) {
         const now = Date.now();
+        let anyAbove = false;
         fruitMap.forEach((fb, bodyId) => {
-          if (gameOverFired || fb.isMerging) return;
+          if (anyAbove || fb.isMerging) return;
           if (now - fb.createdAt < GAME_OVER_GRACE_MS) return;
-          const bodies = Matter.Composite.allBodies(world);
-          const body = bodies.find((b) => b.id === bodyId);
+          const body = allBodiesPostMerge.find((b) => b.id === bodyId);
           if (!body) return;
           const topY = body.position.y - fb.fruitRadius;
-          if (topY < dangerY) {
-            gameOverFired = true;
-            events.push({ type: "gameOver" });
-          }
+          if (topY < dangerY) anyAbove = true;
         });
+        if (anyAbove) dangerTicksAbove++;
+        else dangerTicksAbove = 0;
+        if (
+          dangerTicksAbove >= GAME_OVER_CONSECUTIVE_TICKS &&
+          ticksSinceLastMerge >= GAME_OVER_MERGE_COOLDOWN_TICKS
+        ) {
+          gameOverFired = true;
+          events.push({ type: "gameOver" });
+        }
       }
 
       // Collect snapshots and detect boundary escapes

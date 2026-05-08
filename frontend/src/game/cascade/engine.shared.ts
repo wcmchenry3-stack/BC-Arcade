@@ -12,6 +12,10 @@ export const WALL_THICKNESS = 16;
 /** 18% from top — game over if settled fruit crosses this */
 export const DANGER_LINE_RATIO = 0.18;
 export const GAME_OVER_GRACE_MS = 3000;
+/** Consecutive ticks a settled fruit must be above the danger line before game-over fires. */
+export const GAME_OVER_CONSECUTIVE_TICKS = 30;
+/** Ticks after the last merge before game-over can fire — suppresses spurious loss mid-cascade. */
+export const GAME_OVER_MERGE_COOLDOWN_TICKS = 90;
 
 // --- Physics tuning constants ---
 /** Low restitution = THUD feel (original Suika); fruits barely bounce. */
@@ -44,8 +48,10 @@ export const MATTER_VELOCITY_ITERATIONS = 6;
 export const MATTER_SLEEP_THRESHOLD = 60;
 
 // --- Terminal velocity guard ---
-/** Max fruit speed in px/s. Tier-0 at 1200 px/s travels 20 px per 1/60s frame — within CCD range. */
-export const MAX_FRUIT_SPEED_PX_S = 1200;
+// CASCADE-PHYS-08 (Outcome C): tier-0 at 1200 px/s travels 20 px per 1/60s frame > WALL_THICKNESS (16 px).
+// Lowering to 900 px/s caps travel at 15 px, making sub-stepping alone geometrically sufficient.
+/** Max fruit speed in px/s. Capped so max travel per 1/60s sub-step (15 px) stays below WALL_THICKNESS (16 px). */
+export const MAX_FRUIT_SPEED_PX_S = 900;
 
 // --- Spawn grace period ---
 /** Number of physics ticks a merge-spawned body is immune to dynamic-vs-dynamic collisions. */

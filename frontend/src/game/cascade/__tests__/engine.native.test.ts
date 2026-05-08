@@ -11,9 +11,13 @@ import {
   MATTER_POSITION_ITERATIONS,
   MATTER_VELOCITY_ITERATIONS,
   MAX_FRUIT_SPEED_PX_S,
+  FIXED_STEP_MS,
+  WALL_THICKNESS,
   SPAWN_GRACE_TICKS,
   COLLISION_GROUP_DYNAMIC,
   COLLISION_GROUP_WALL,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
 } from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 
@@ -212,16 +216,20 @@ describe("game over", () => {
     const tier0 = fruit(0);
     handle.drop(tier0, "fruits", W / 2, 50);
 
-    // Step once so the fruit exists in the world
-    handle.step(1 / 60);
-
     // Advance time past the grace period (3000ms)
     (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
 
-    // Step again — game over should fire since the fruit is above the danger line
-    const { events } = handle.step(1 / 60);
+    // Hysteresis requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the line.
+    // Use tiny dt so physics doesn't advance (fruit stays at y=50 throughout).
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
 
-    expect(events.some((e) => e.type === "gameOver")).toBe(true);
+    expect(fired).toBe(true);
     handle.cleanup();
   });
 });
@@ -341,15 +349,187 @@ describe("game-over detection — extended", () => {
 
     const handle = await buildEngine();
     handle.drop(fruit(0), "fruits", W / 2, 50);
-    handle.step(1 / 60);
 
     (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
     let gameOverCount = 0;
-    gameOverCount += handle.step(1 / 60).events.filter((e) => e.type === "gameOver").length;
-    gameOverCount += handle.step(1 / 60).events.filter((e) => e.type === "gameOver").length;
-    gameOverCount += handle.step(1 / 60).events.filter((e) => e.type === "gameOver").length;
+    // Run well past the 30-tick threshold with frozen physics; gameOver must fire exactly once.
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 30; i++) {
+      gameOverCount += handle.step(1e-7).events.filter((e) => e.type === "gameOver").length;
+    }
 
     expect(gameOverCount).toBe(1);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game-over hysteresis (CASCADE-PHYS-07) — Matter.js engine
+// ---------------------------------------------------------------------------
+// Tiny dt (1e-7 s) is used so physics sub-steps don't execute
+// (remainingMs < 0.01 ms threshold), keeping body positions frozen
+// while still advancing game-tick counters.
+
+describe("game-over hysteresis", () => {
+  // dangerY = H * 0.18 = 108px; tier-0 top = y - 18; above line when y < 126.
+
+  it("single tick above danger does not fire gameOver", async () => {
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+    const handle = await buildEngine();
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+    const { events } = handle.step(1e-7); // physics frozen
+
+    expect(events.some((e) => e.type === "gameOver")).toBe(false);
+    handle.cleanup();
+  });
+
+  it("30 consecutive ticks above danger fires gameOver on the 30th", async () => {
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+    const handle = await buildEngine();
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    handle.cleanup();
+  });
+
+  it("counter resets when fruit drops below danger line", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    const getDynamic = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+
+    // 15 ticks above danger — dangerTicksAbove=15; not enough to fire (need 30)
+    const halfThreshold = 15;
+    for (let i = 0; i < halfThreshold; i++) {
+      expect(handle.step(1e-7).events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Move below danger line (y=400, top=382 > 108) — counter resets to 0
+    const fruitBody = getDynamic()[0]!;
+    Matter.Body.setPosition(fruitBody, { x: W / 2, y: 400 });
+    handle.step(1e-7);
+
+    // Move back above danger line
+    Matter.Body.setPosition(fruitBody, { x: W / 2, y: 50 });
+
+    // Needs a full 30 consecutive ticks from the reset (not just 15 more)
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    handle.cleanup();
+  });
+
+  it("merge in last 90 ticks suppresses gameOver even after 30 consecutive ticks above", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Dangerous fruit above danger line
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    // Merge pair — same tier, positioned away from danger zone
+    handle.drop(fruit(0), "fruits", W / 4, 300);
+    handle.drop(fruit(0), "fruits", W / 4 + 1, 300);
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    const getDynamic = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+
+    // 29 ticks above danger — dangerTicksAbove=29
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS - 1; i++) handle.step(1e-7);
+
+    // Inject a synthetic merge between the pair → resets ticksSinceLastMerge to 0
+    const allDynamic = getDynamic();
+    const mergeBodyA = allDynamic.find((b) => Math.abs(b.position.y - 300) < 20)!;
+    const mergeBodyB = allDynamic.find(
+      (b) => b !== mergeBodyA && Math.abs(b.position.y - 300) < 20
+    )!;
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: mergeBodyA, bodyB: mergeBodyB }],
+    });
+
+    // This step processes the merge: dangerTicksAbove=30, ticksSinceLastMerge=0
+    // 30 >= 30 but 0 < 90 → must NOT fire
+    const { events: mergeStep } = handle.step(1e-7);
+    expect(mergeStep.some((e) => e.type === "gameOver")).toBe(false);
+    expect(mergeStep.some((e) => e.type === "fruitMerge")).toBe(true);
+
+    // 89 more steps — ticksSinceLastMerge climbs to 89; still suppressed
+    for (let i = 0; i < GAME_OVER_MERGE_COOLDOWN_TICKS - 1; i++) {
+      expect(handle.step(1e-7).events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Final step: ticksSinceLastMerge=90 >= cooldown → fires
+    const { events: finalStep } = handle.step(1e-7);
+    expect(finalStep.some((e) => e.type === "gameOver")).toBe(true);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CCD analysis (CASCADE-PHYS-08)
+// ---------------------------------------------------------------------------
+
+describe("CCD analysis", () => {
+  it("tier-0 fruit cannot tunnel wall in one sub-step at MAX_FRUIT_SPEED_PX_S", () => {
+    // Arithmetic assertion: max travel per 1/60 sub-step must be < WALL_THICKNESS.
+    // tier-0 radius = 18px (smallest fruit); WALL_THICKNESS = 16px.
+    const maxTravelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000;
+    expect(maxTravelPerStep).toBeLessThan(WALL_THICKNESS);
+  });
+
+  it("fruit at terminal velocity does not escape through floor in one step", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    const tier0 = fruit(0);
+    // Place fruit just above the floor boundary
+    const innerBottom = H - WALL_THICKNESS - tier0.radius;
+    handle.drop(tier0, "fruits", W / 2, innerBottom - 1);
+    handle.step(1 / 60); // register body
+
+    const fruitBody = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    )[0];
+    if (!fruitBody) throw new Error("Expected fruit body");
+
+    // Set velocity to exactly terminal speed downward
+    const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000;
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: maxVelPerStep });
+    Matter.Body.setPosition(fruitBody, { x: W / 2, y: innerBottom - 1 });
+
+    handle.step(1 / 60);
+
+    // Fruit must remain within the floor boundary (velocity clamp + wall clamp ensure this)
+    expect(fruitBody.position.y).toBeLessThanOrEqual(innerBottom + 1); // 1px float tolerance
     handle.cleanup();
   });
 });

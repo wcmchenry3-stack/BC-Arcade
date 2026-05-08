@@ -23,6 +23,8 @@ import {
   RAPIER_SOLVER_ITERATIONS,
   MAX_FRUIT_SPEED_PX_S,
   SCALE,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
 } from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 import { MockWorld } from "../../../../__mocks__/@dimforge/rapier2d-compat";
@@ -289,10 +291,17 @@ describe("game-over detection", () => {
     // Advance time past the 3-second grace period
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3000);
-    const { events } = handle.step();
+    // Hysteresis requires GAME_OVER_CONSECUTIVE_TICKS (30) above the line before firing.
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
     jest.useRealTimers();
 
-    expect(events.some((e) => e.type === "gameOver")).toBe(true);
+    expect(fired).toBe(true);
   });
 
   it("does NOT emit gameOver during the grace period", async () => {
@@ -325,14 +334,124 @@ describe("game-over detection", () => {
 
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3000);
-    const step1 = handle.step();
-    const step2 = handle.step(); // second step should not re-fire
+    let gameOverCount = 0;
+    // Run well past the 30-tick threshold; gameOver must fire exactly once.
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 30; i++) {
+      gameOverCount += handle.step().events.filter((e) => e.type === "gameOver").length;
+    }
     jest.useRealTimers();
 
-    const totalGameOverEvents =
-      step1.events.filter((e) => e.type === "gameOver").length +
-      step2.events.filter((e) => e.type === "gameOver").length;
-    expect(totalGameOverEvents).toBe(1);
+    expect(gameOverCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game-over hysteresis (CASCADE-PHYS-07)
+// ---------------------------------------------------------------------------
+
+describe("game-over hysteresis", () => {
+  // dangerY = H * DANGER_LINE_RATIO = 108px. tier-0 top = y - 18; safe when y < 126.
+
+  it("single tick above danger does not fire gameOver", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50); // top = 32 < 108
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000); // past grace immediately
+    const { events } = handle.step();
+    jest.useRealTimers();
+
+    expect(events.some((e) => e.type === "gameOver")).toBe(false);
+  });
+
+  it("30 consecutive ticks above danger fires gameOver on the 30th", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+    jest.useRealTimers();
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+  });
+
+  it("counter resets when fruit drops below danger line", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50); // body handle 0
+    const world = getWorld();
+    const body = world._bodies.get(0)!;
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+
+    // 15 ticks above — dangerTicksAbove=15; not enough to fire (need 30)
+    const halfThreshold = 15;
+    for (let i = 0; i < halfThreshold; i++) {
+      expect(handle.step().events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Move below danger line (top = 282 > 108) — counter resets to 0
+    body._y = 3.0; // 300 px in physics units → 300/SCALE px
+    handle.step();
+
+    // Move back above danger line
+    body._y = 0.5; // 50 px
+
+    // Needs a full 30 consecutive ticks from the reset (not just 15 more)
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+    jest.useRealTimers();
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+  });
+
+  it("merge in last 90 ticks suppresses gameOver even after 30 consecutive ticks above", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    // Dangerous fruit above danger line (body 0, collider 1003)
+    handle.drop(fruit(0), fruitSet.id, 150, 50);
+    // Merge pair — same tier, positioned away from danger zone (bodies 1-2, colliders 1004-1005)
+    handle.drop(fruit(0), fruitSet.id, 100, 300);
+    handle.drop(fruit(0), fruitSet.id, 110, 300);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+
+    // 29 ticks above danger — dangerTicksAbove=29, ticksSinceLastMerge well above cooldown
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS - 1; i++) handle.step();
+
+    // Trigger a merge between the pair → resets ticksSinceLastMerge to 0
+    world._fireCollision(1004, 1005);
+
+    // This step processes the merge: dangerTicksAbove=30, ticksSinceLastMerge=0
+    // 30 >= 30 but 0 < 90 → must NOT fire
+    const { events: mergeStep } = handle.step();
+    expect(mergeStep.some((e) => e.type === "gameOver")).toBe(false);
+    expect(mergeStep.some((e) => e.type === "fruitMerge")).toBe(true);
+
+    // 89 more steps — ticksSinceLastMerge climbs to 89; still suppressed
+    for (let i = 0; i < GAME_OVER_MERGE_COOLDOWN_TICKS - 1; i++) {
+      expect(handle.step().events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Final step: ticksSinceLastMerge=90 >= cooldown → fires
+    const { events: finalStep } = handle.step();
+    jest.useRealTimers();
+
+    expect(finalStep.some((e) => e.type === "gameOver")).toBe(true);
   });
 });
 

@@ -8,6 +8,8 @@ export {
   WALL_THICKNESS,
   DANGER_LINE_RATIO,
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   FRUIT_DENSITY,
@@ -34,6 +36,8 @@ export type { GameEvent } from "./types";
 
 import {
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   FRUIT_DENSITY,
@@ -145,6 +149,8 @@ export async function createEngine(
 
   const dangerY = H * DANGER_LINE_RATIO; // pixels
   let gameOverFired = false;
+  let dangerTicksAbove = 0;
+  let ticksSinceLastMerge = GAME_OVER_MERGE_COOLDOWN_TICKS;
   let comboMergeCount = 0;
   let comboFired = false;
   // Accumulator for the fixed-step loop; carries leftover ms across frames.
@@ -357,16 +363,18 @@ export async function createEngine(
         }
       });
 
-      // Cascade combo: fire when a chain of consecutive-step merges reaches COMBO_THRESHOLD.
+      // Cascade combo and merge-cooldown tracking.
       if (mergesThisStep > 0) {
         comboMergeCount += mergesThisStep;
         if (!comboFired && comboMergeCount >= COMBO_THRESHOLD) {
           events.push({ type: "cascadeCombo", count: comboMergeCount });
           comboFired = true;
         }
+        ticksSinceLastMerge = 0;
       } else {
         comboMergeCount = 0;
         comboFired = false;
+        ticksSinceLastMerge++;
       }
 
       // Velocity clamp: prevent unbounded free-fall from producing tunneling speeds.
@@ -386,21 +394,29 @@ export async function createEngine(
         });
       }
 
-      // Game-over: a settled fruit (past grace period) with its top above the danger line
+      // Game-over: requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger line
+      // AND no merge in the last GAME_OVER_MERGE_COOLDOWN_TICKS ticks.
       if (!gameOverFired) {
         const now = Date.now();
+        let anyAbove = false;
         fruitMap.forEach((fb, handle) => {
-          if (gameOverFired || fb.isMerging) return;
+          if (anyAbove || fb.isMerging) return;
           if (now - fb.createdAt < GAME_OVER_GRACE_MS) return;
           const rb = world.getRigidBody(handle);
           if (!rb) return;
           const pos = rb.translation();
-          const topY = pos.y / SCALE - fb.fruitRadius; // top edge in pixels
-          if (topY < dangerY) {
-            gameOverFired = true;
-            events.push({ type: "gameOver" });
-          }
+          const topY = pos.y / SCALE - fb.fruitRadius;
+          if (topY < dangerY) anyAbove = true;
         });
+        if (anyAbove) dangerTicksAbove++;
+        else dangerTicksAbove = 0;
+        if (
+          dangerTicksAbove >= GAME_OVER_CONSECUTIVE_TICKS &&
+          ticksSinceLastMerge >= GAME_OVER_MERGE_COOLDOWN_TICKS
+        ) {
+          gameOverFired = true;
+          events.push({ type: "gameOver" });
+        }
       }
 
       // Per-step fruit-count delta check
