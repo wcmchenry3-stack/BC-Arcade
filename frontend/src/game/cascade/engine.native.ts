@@ -250,11 +250,14 @@ export async function createEngine(
           const newFb = spawnAt(nextDef, fruitSet.id, spawnX, spawnY, SPAWN_GRACE_TICKS);
           // Wake sleeping neighbors within 2× spawn radius so they react to the new body.
           // Iterate fruitMap (only live fruits) to mirror Rapier's neighbor-wake logic.
+          // Build an id→body map first (O(M)) so fruitMap lookups are O(1), not O(M) each.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
-          const allBodiesForWake = Matter.Composite.allBodies(world);
+          const bodyById = new Map(
+            Matter.Composite.allBodies(world).map((b) => [b.id, b])
+          );
           fruitMap.forEach((_fb2, neighborId) => {
             if (neighborId === newFb.handle) return;
-            const b = allBodiesForWake.find((body) => body.id === neighborId);
+            const b = bodyById.get(neighborId);
             if (!b) return;
             const dx = b.position.x - midX;
             const dy = b.position.y - midY;

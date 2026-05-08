@@ -527,6 +527,8 @@ describe("neighbor-wake parity — both engines wake sleeping neighbors after a 
 
     // At least one sleeping.set(body, false) call should have happened for the
     // neighbor-wake pass on the spawned tier-2 body's neighbors.
+    // fruitMap iterates only dynamic fruit bodies; verify at least one dynamic body was woken.
+    // (Matter.js may also call Sleeping.set on static walls internally — we scope to dynamic only.)
     const wakeCallsOnDynamic = sleepSpy.mock.calls.filter(([body, flag]) => !body.isStatic && flag === false);
     expect(wakeCallsOnDynamic.length).toBeGreaterThan(0);
     handle.cleanup();

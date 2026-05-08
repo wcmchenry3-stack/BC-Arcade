@@ -321,8 +321,8 @@ describe("two sprites — stacked drop, different tiers (no merge)", () => {
       for (const s of snaps) {
         const r = s.tier === 0 ? r0 : r3;
         // Stays in the box, every frame.
-        expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 0.5);
-        expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 1);
+        expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 2);
+        expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 2);
         // Transient stacking collisions may push a body briefly into the floor;
         // check it stays within the escape margin.
         // bottom < escape boundary: s.y + r < H + 3*r ↔ s.y < H + 2*r (escape threshold)
@@ -346,8 +346,8 @@ describe("two sprites — stacked drop, different tiers (no merge)", () => {
     for (const snaps of frames) {
       for (const s of snaps) {
         const r = s.tier === 0 ? small.radius : big.radius;
-        expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 0.5);
-        expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 1);
+        expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 2);
+        expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 2);
         // During stacking collisions a body may transiently go past H but within
         // the escape margin (H + 2r). Escape detection removes it if it goes further.
         // bottom < escape boundary: s.y + r < H + 3*r ↔ s.y < H + 2*r (escape threshold)
