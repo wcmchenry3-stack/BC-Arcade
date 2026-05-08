@@ -74,7 +74,7 @@ export const BOTTLE_HEIGHT = DEFAULT_BOTTLE_HEIGHT;
 
 // Pour animation timing (ms)
 const TILT_IN_MS = 250;
-const TILT_HOLD_MS = 150;
+export const TILT_HOLD_MS = 150;
 const TILT_OUT_MS = 200;
 export const TILT_DEG = 62;
 
