@@ -1,9 +1,8 @@
 /**
  * Hearts AI difficulty simulation (#1273).
  *
- * Runs 3 batches of 3,000 games each. Player 0 always uses Easy AI;
- * opponents (seats 1-3) use the batch difficulty (Easy / Medium / Hard).
- * Prints a stats table with win rates, scores, moon shots, and Q♠ frequency.
+ * Runs batches of 3,000 games. Each batch specifies all 4 player difficulties
+ * individually. Player 0's stats are tracked and reported.
  *
  * Usage: npx tsx scripts/simulate-hearts.ts
  */
@@ -24,6 +23,8 @@ import type { AiDifficulty, HeartsState } from "../frontend/src/game/hearts/type
 // Simulation
 // ---------------------------------------------------------------------------
 
+type Difficulties = [AiDifficulty, AiDifficulty, AiDifficulty, AiDifficulty];
+
 interface GameResult {
   win: number;
   player0Score: number;
@@ -33,18 +34,14 @@ interface GameResult {
   qSpadeOnHuman: number;
 }
 
-function simulateGame(
-  batchDifficulty: AiDifficulty,
-  seed: number,
-  player0Difficulty: AiDifficulty = "easy"
-): GameResult {
+function simulateGame(difficulties: Difficulties, seed: number): GameResult {
   setRng(createSeededRng(seed));
-  let state: HeartsState = dealGame(batchDifficulty);
+  let state: HeartsState = dealGame(difficulties[1]); // aiDifficulty field is informational
 
   while (state.phase !== "game_over") {
     if (state.phase === "passing") {
       for (let i = 0; i < 4; i++) {
-        const diff: AiDifficulty = i === 0 ? player0Difficulty : batchDifficulty;
+        const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
         const cards = selectCardsToPass(hand, state.passDirection, diff);
         for (const card of cards) {
@@ -54,7 +51,7 @@ function simulateGame(
       state = commitPass(state);
     } else if (state.phase === "playing") {
       const playerIndex = state.currentPlayerIndex;
-      const diff: AiDifficulty = playerIndex === 0 ? player0Difficulty : batchDifficulty;
+      const diff = difficulties[playerIndex]!;
       const hand = [...(state.playerHands[playerIndex] ?? [])];
       const trick = [...state.currentTrick];
       const card = selectCardToPlay(hand, trick, state, playerIndex, diff);
@@ -115,11 +112,35 @@ function sigLabel(z: number): string {
 
 const GAMES_PER_BATCH = 3000;
 
-const batches: Array<{ label: string; difficulty: AiDifficulty; player0: AiDifficulty }> = [
-  { label: "Easy vs Easy vs Easy (baseline)", difficulty: "easy", player0: "easy" },
-  { label: "Easy vs Medium vs Medium vs Medium", difficulty: "medium", player0: "easy" },
-  { label: "Easy vs Hard vs Hard vs Hard", difficulty: "hard", player0: "easy" },
-  { label: "Medium vs Hard vs Hard vs Hard", difficulty: "hard", player0: "medium" },
+const batches: Array<{ label: string; difficulties: Difficulties }> = [
+  {
+    label: "Easy vs Easy vs Easy (baseline)",
+    difficulties: ["easy", "easy", "easy", "easy"],
+  },
+  {
+    label: "Easy vs Medium vs Medium vs Medium",
+    difficulties: ["easy", "medium", "medium", "medium"],
+  },
+  {
+    label: "Easy vs Hard vs Hard vs Hard",
+    difficulties: ["easy", "hard", "hard", "hard"],
+  },
+  {
+    label: "Medium vs Hard vs Hard vs Hard",
+    difficulties: ["medium", "hard", "hard", "hard"],
+  },
+  {
+    // Hard vs Medium, with 2 Easy neutrals to reduce field noise.
+    // If Hard beats Medium, player 0 (Hard) should win > player 1 (Medium).
+    label: "Hard vs Medium + 2 Easy neutrals (player 0 = Hard)",
+    difficulties: ["hard", "medium", "easy", "easy"],
+  },
+  {
+    // Mirror of the above — player 0 is now Medium.
+    // Comparing batch 5 win rate vs batch 6 win rate isolates Hard vs Medium.
+    label: "Medium vs Hard + 2 Easy neutrals (player 0 = Medium)",
+    difficulties: ["medium", "hard", "easy", "easy"],
+  },
 ];
 
 console.log("Hearts AI Difficulty Simulation Results");
@@ -128,11 +149,11 @@ console.log("=======================================\n");
 const batchWinRates: number[] = [];
 
 for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-  const { label, difficulty, player0 } = batches[batchIndex]!;
+  const { label, difficulties } = batches[batchIndex]!;
   const results: GameResult[] = [];
 
   for (let gameIndex = 0; gameIndex < GAMES_PER_BATCH; gameIndex++) {
-    results.push(simulateGame(difficulty, batchIndex * 100000 + gameIndex, player0));
+    results.push(simulateGame(difficulties, batchIndex * 100000 + gameIndex));
   }
 
   const n = results.length;
@@ -169,17 +190,14 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 // Interpretation
 // ---------------------------------------------------------------------------
 
-const [easyWr, easyVsMedWr, easyVsHardWr, medVsHardWr] = batchWinRates as [
-  number,
-  number,
-  number,
-  number,
-];
+const [easyWr, easyVsMedWr, easyVsHardWr, medVs3HardWr, hardVsMedNeutralWr, medVsHardNeutralWr] =
+  batchWinRates as [number, number, number, number, number, number];
+
 const zEM = zTest(easyWr, easyVsMedWr, GAMES_PER_BATCH);
 const zEH = zTest(easyWr, easyVsHardWr, GAMES_PER_BATCH);
-const zMH = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
-// Medium vs Hard direct comparison: medVsHardWr is the Medium player's win rate against Hard
-const medDirectWr = medVsHardWr;
+const zMH_full = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
+// Direct Hard vs Medium comparison: Hard (batch 5) vs Medium (batch 6) — same game, seat swapped.
+const zHvM_direct = zTest(hardVsMedNeutralWr, medVsHardNeutralWr, GAMES_PER_BATCH);
 const check = (cond: boolean) => (cond ? "✓" : "✗");
 
 console.log("Interpretation:");
@@ -191,5 +209,8 @@ console.log(
   `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`
 );
 console.log(
-  `  ${check(zMH > 1.96 || medDirectWr < 0.25)} Medium vs Hard direct: Medium wins ${(medDirectWr * 100).toFixed(1)}% (${sigLabel(zMH)} vs Easy batches)`
+  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMH_full)} vs Easy batches)`
+);
+console.log(
+  `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`
 );
