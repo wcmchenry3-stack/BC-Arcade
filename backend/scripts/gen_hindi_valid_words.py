@@ -70,7 +70,12 @@ def is_devanagari_5cp(word: str) -> bool:
 
 
 def fetch(url: str) -> bytes:
-    """Fetch URL with exponential backoff retry (Wikimedia rate-limiting compliance)."""
+    """Fetch URL with exponential backoff retry for transient network errors.
+
+    Retries are for connection resets, timeouts, and 5xx responses — not
+    for SSL certificate failures or permanent 4xx errors, which are re-raised
+    immediately after the retry budget is exhausted.
+    """
     max_retries = 3
     base_delay = 1.0  # seconds
 
@@ -109,6 +114,8 @@ def load_existing(path: Path) -> set[str]:
 
 def main() -> None:
     answers = load_existing(ANSWERS_FILE)
+    # Seed from the current file so hand-curated entries are preserved across runs.
+    # To rebuild from scratch (discarding previous entries), delete valid_hi.txt first.
     existing_valid = load_existing(VALID_FILE)
     print(f"Loaded {len(answers)} answers, {len(existing_valid)} existing valid words")
 

@@ -185,3 +185,14 @@ def test_valid_hi_all_devanagari():
     DEVA_START, DEVA_END = 0x0900, 0x097F
     bad = [w for w in _VALID_HI if not all(DEVA_START <= ord(c) <= DEVA_END for c in w)]
     assert not bad, f"Non-Devanagari words in valid_hi: {bad[:5]}"
+
+
+def test_valid_hi_no_duplicates():
+    """valid_hi.txt must have no duplicate lines (frozenset would silently hide them)."""
+    from daily_word.puzzle import _WORDS_DIR
+
+    lines = (_WORDS_DIR / "valid_hi.txt").read_text("utf-8").splitlines()
+    lines = [l for l in lines if l.strip()]
+    assert len(lines) == len(set(lines)), (
+        f"valid_hi.txt contains {len(lines) - len(set(lines))} duplicate entries"
+    )

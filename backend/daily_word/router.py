@@ -87,9 +87,10 @@ def _grapheme_clusters(word: str) -> list[list[int]]:
 def _cluster_len(word: str, lang: str) -> int:
     """Visual length: grapheme-cluster count for Hindi, code-point count for English.
 
-    Using clusters for Hindi prevents wrong_guess_length when a user's input
-    method produces a different Unicode decomposition than the stored NFC form
-    but the same number of visible syllables.
+    Comparing cluster counts ties the length check to visible syllables rather
+    than Unicode storage size. The caller must NFC-normalise word before calling;
+    the router does this at line 133 for guesses, and answers are normalised on
+    load in puzzle.py.
     """
     return len(_grapheme_clusters(word)) if lang == "hi" else len(word)
 
