@@ -141,7 +141,8 @@ export function DragPrototypeScreen() {
           <DragContainer style={styles.board}>
             <View style={styles.pilesRow}>
               {piles.map((pile, pileIdx) => {
-                const containerH = CARD_H + (pile.length > 1 ? (pile.length - 1) * STACK_OFFSET : 0);
+                const containerH =
+                  CARD_H + (pile.length > 1 ? (pile.length - 1) * STACK_OFFSET : 0);
                 const pileContent = (
                   <View style={[styles.pileContainer, { width: CARD_W, height: containerH }]}>
                     {pile.length === 0 ? (
