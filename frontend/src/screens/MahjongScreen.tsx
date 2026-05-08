@@ -18,11 +18,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -49,17 +47,9 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
-import GameCanvas, {
-  BOARD_W,
-  BOARD_H,
-  TILE_W,
-  TILE_H,
-  PAD_X,
-  PAD_Y,
-  LAYER_DX,
-  LAYER_DY,
-  SIDE_W,
-} from "../components/mahjong/GameCanvas";
+import GameCanvas from "../components/mahjong/GameCanvas";
+import { useMahjongCanvasLayout } from "../game/mahjong/layout";
+import type { MahjongLayout } from "../game/mahjong/layout";
 import { createGame, elapsedMs, selectTile, shuffleBoard, undoMove } from "../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
@@ -80,15 +70,16 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 const MAX_NAME_LENGTH = 32;
 
 // ---------------------------------------------------------------------------
-// Tile layout constants — all imported from GameCanvas (single source of truth)
+// Tile center — used by FlyingPair to compute animation start/end positions
 // ---------------------------------------------------------------------------
 
-const MAX_TILE_W = 72;
-
-function tileCenter(tile: SlotTile): { cx: number; cy: number } {
+function tileCenter(
+  tile: SlotTile,
+  l: MahjongLayout
+): { cx: number; cy: number } {
   return {
-    cx: PAD_X + (tile.col / 2) * TILE_W + tile.layer * LAYER_DX + TILE_W / 2,
-    cy: PAD_Y + tile.row * TILE_H - tile.layer * LAYER_DY + TILE_H / 2,
+    cx: l.padX + (tile.col / 2) * l.tileWidth + tile.layer * l.layerDx + l.tileWidth / 2,
+    cy: l.padY + tile.row * l.tileHeight - tile.layer * l.layerDy + l.tileHeight / 2,
   };
 }
 
@@ -107,19 +98,19 @@ const BURST_R = 22;
 function FlyingPair({
   tile1,
   tile2,
-  scale,
+  layout,
   color,
   onDone,
-}: FlyingPairData & { scale: number; color: string; onDone: () => void }) {
-  const { cx: c1x, cy: c1y } = tileCenter(tile1);
-  const { cx: c2x, cy: c2y } = tileCenter(tile2);
-  const midX = ((c1x + c2x) / 2) * scale;
-  const midY = ((c1y + c2y) / 2) * scale;
+}: FlyingPairData & { layout: MahjongLayout; color: string; onDone: () => void }) {
+  const { cx: c1x, cy: c1y } = tileCenter(tile1, layout);
+  const { cx: c2x, cy: c2y } = tileCenter(tile2, layout);
+  const midX = (c1x + c2x) / 2;
+  const midY = (c1y + c2y) / 2;
 
-  const t1cx = useSharedValue(c1x * scale);
-  const t1cy = useSharedValue(c1y * scale);
-  const t2cx = useSharedValue(c2x * scale);
-  const t2cy = useSharedValue(c2y * scale);
+  const t1cx = useSharedValue(c1x);
+  const t1cy = useSharedValue(c1y);
+  const t2cx = useSharedValue(c2x);
+  const t2cy = useSharedValue(c2y);
   const pairOpacity = useSharedValue(1);
   const burstScaleVal = useSharedValue(0);
   const burstOpacity = useSharedValue(0);
@@ -144,8 +135,8 @@ function FlyingPair({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tw = (TILE_W - SIDE_W) * scale;
-  const th = (TILE_H - SIDE_W) * scale;
+  const tw = layout.tileWidth - layout.sideWidth;
+  const th = layout.tileHeight - layout.sideWidth;
 
   const tile1Style = useAnimatedStyle(() => ({
     position: "absolute",
@@ -203,11 +194,10 @@ export default function MahjongScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const layout = useMahjongCanvasLayout();
 
   const [state, setState] = useState<MahjongState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [outerWidth, setOuterWidth] = useState(0);
-  const [outerHeight, setOuterHeight] = useState(0);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -503,16 +493,6 @@ export default function MahjongScreen() {
     syncMarkStarted();
   }, [syncGetGameId, syncComplete, syncStart, syncMarkStarted]);
 
-  const scale =
-    outerWidth > 0 && outerHeight > 0
-      ? Math.min(MAX_TILE_W / TILE_W, outerWidth / BOARD_W, outerHeight / BOARD_H)
-      : 1;
-
-  const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
-    setOuterWidth(Math.floor(e.nativeEvent.layout.width));
-    setOuterHeight(Math.floor(e.nativeEvent.layout.height));
-  }, []);
-
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 
   return (
@@ -544,63 +524,52 @@ export default function MahjongScreen() {
         </Pressable>
       }
     >
-      <ScrollView
-        style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
-        onLayout={onOuterLayout}
-        showsVerticalScrollIndicator={false}
-      >
-        {state !== null && (
-          <>
-            <View style={styles.hudRow} accessibilityRole="summary">
-              <Text style={[styles.hudText, { color: colors.text }]}>
-                {t("hud.score")} {state.score}
-              </Text>
-              <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("hud.pairs")} {state.pairsRemoved}/72
-              </Text>
-              <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("action.shuffle")} {state.shufflesLeft}
-              </Text>
-              <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
-                {t("hud.deal")} #{state.dealId}
-              </Text>
-            </View>
+      {state !== null && (
+        <>
+          <View style={styles.hudRow} accessibilityRole="summary">
+            <Text style={[styles.hudText, { color: colors.text }]}>
+              {t("hud.score")} {state.score}
+            </Text>
+            <Text style={[styles.hudText, { color: colors.textMuted }]}>
+              {t("hud.pairs")} {state.pairsRemoved}/72
+            </Text>
+            <Text style={[styles.hudText, { color: colors.textMuted }]}>
+              {t("action.shuffle")} {state.shufflesLeft}
+            </Text>
+            <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
+              {t("hud.deal")} #{state.dealId}
+            </Text>
+          </View>
 
-            <View
-              style={{
-                width: BOARD_W * scale,
-                height: BOARD_H * scale,
-                overflow: "hidden",
-                alignSelf: "center",
-              }}
-            >
-              {/* boardAnimWrap handles shake + pulse; inner board View applies scale transform */}
-              <Animated.View style={[styles.boardAnimWrap, boardAnimStyle]}>
-                <View
-                  style={[styles.board, { width: BOARD_W, transform: [{ scale }] } as ViewStyle]}
-                >
-                  <GameCanvas
-                    state={state}
-                    onTilePress={handleTilePress}
-                    onShufflePress={handleShuffle}
-                    onNewGamePress={startNewGame}
-                  />
-                </View>
-              </Animated.View>
-              {flyingPairs.map((pair) => (
-                <FlyingPair
-                  key={pair.id}
-                  {...pair}
-                  scale={scale}
-                  color={colors.accent + "99"}
-                  onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
-                />
-              ))}
-            </View>
-          </>
-        )}
-      </ScrollView>
+          {/* Board container — overflow:hidden clips FlyingPair animations */}
+          <View
+            style={{
+              width: layout.boardWidth,
+              height: layout.boardHeight,
+              overflow: "hidden",
+              alignSelf: "center",
+            }}
+          >
+            <Animated.View style={boardAnimStyle}>
+              <GameCanvas
+                state={state}
+                onTilePress={handleTilePress}
+                onShufflePress={handleShuffle}
+                onNewGamePress={startNewGame}
+              />
+            </Animated.View>
+            {flyingPairs.map((pair) => (
+              <FlyingPair
+                key={pair.id}
+                {...pair}
+                layout={layout}
+                color={colors.accent + "99"}
+                onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
+              />
+            ))}
+          </View>
+        </>
+      )}
 
       {state?.isComplete && (
         <WinModal
@@ -777,12 +746,6 @@ function WinModal({
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  scrollArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
   headerBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -812,13 +775,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     opacity: 0.6,
   },
-  boardAnimWrap: {
-    alignSelf: "flex-start",
-  },
-  board: {
-    alignSelf: "flex-start",
-    transformOrigin: "top left",
-  } as ViewStyle,
   modalOverlay: {
     flex: 1,
     alignItems: "center",

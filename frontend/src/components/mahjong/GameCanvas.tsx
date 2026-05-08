@@ -5,8 +5,8 @@
  * Metro automatically uses GameCanvas.web.tsx on the web platform.
  *
  * Tile geometry (grid → pixels):
- *   pixel_x = PAD_X + (col / 2) * TILE_W + layer * LAYER_DX
- *   pixel_y = PAD_Y + row * TILE_H − layer * LAYER_DY
+ *   pixel_x = padX + (col / 2) * tileWidth + layer * layerDx
+ *   pixel_y = padY + row * tileHeight − layer * layerDy
  *
  * Rendering order: layer ASC so higher layers appear on top.
  * Hit-testing: topmost tile (highest layer) at touch point wins.
@@ -20,29 +20,18 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_BG } from "../../theme/theme.constants";
+import { useMahjongCanvasLayout } from "../../game/mahjong/layout";
+import type { MahjongLayout } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
-// Layout constants
+// Geometry helpers — accept layout so they stay pure functions
 // ---------------------------------------------------------------------------
 
-export const TILE_W = 44; // face width
-export const TILE_H = 56; // face height
-export const SIDE_W = 5; // 3-D side strip width (right + bottom)
-export const LAYER_DX = 6; // rightward offset per layer
-export const LAYER_DY = 5; // upward offset per layer
-export const PAD_X = 6;
-// Layer-0 top-feet tiles sit at row=0 and need PAD_Y > 0 to clear the canvas edge.
-// Higher layers only appear at row≥2, so no stacking offset reaches row 0.
-export const PAD_Y = 10;
-
-export const BOARD_W = PAD_X + 12 * TILE_W + 4 * LAYER_DX + PAD_X; // 548
-export const BOARD_H = PAD_Y + 8 * TILE_H + 4 * LAYER_DY + PAD_Y; // 468
-
-function tileX(col: number, layer: number): number {
-  return PAD_X + (col / 2) * TILE_W + layer * LAYER_DX;
+function tileX(col: number, layer: number, l: MahjongLayout): number {
+  return l.padX + (col / 2) * l.tileWidth + layer * l.layerDx;
 }
-function tileY(row: number, layer: number): number {
-  return PAD_Y + row * TILE_H - layer * LAYER_DY;
+function tileY(row: number, layer: number, l: MahjongLayout): number {
+  return l.padY + row * l.tileHeight - layer * l.layerDy;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,48 +111,11 @@ function useAllTileSVGs(): ReadonlyArray<TileSVG> {
   const s40 = useSVG(TILE_REQUIRES[40]);
   const s41 = useSVG(TILE_REQUIRES[41]);
   return [
-    s00,
-    s01,
-    s02,
-    s03,
-    s04,
-    s05,
-    s06,
-    s07,
-    s08,
-    s09,
-    s10,
-    s11,
-    s12,
-    s13,
-    s14,
-    s15,
-    s16,
-    s17,
-    s18,
-    s19,
-    s20,
-    s21,
-    s22,
-    s23,
-    s24,
-    s25,
-    s26,
-    s27,
-    s28,
-    s29,
-    s30,
-    s31,
-    s32,
-    s33,
-    s34,
-    s35,
-    s36,
-    s37,
-    s38,
-    s39,
-    s40,
-    s41,
+    s00, s01, s02, s03, s04, s05, s06, s07, s08, s09,
+    s10, s11, s12, s13, s14, s15, s16, s17, s18, s19,
+    s20, s21, s22, s23, s24, s25, s26, s27, s28, s29,
+    s30, s31, s32, s33, s34, s35, s36, s37, s38, s39,
+    s40, s41,
   ];
 }
 
@@ -211,14 +163,19 @@ function TileFaceLayer({
 // Hit-testing
 // ---------------------------------------------------------------------------
 
-function hitTest(tiles: readonly SlotTile[], tapX: number, tapY: number): number | null {
-  const fw = TILE_W - SIDE_W;
-  const fh = TILE_H - SIDE_W;
+function hitTest(
+  tiles: readonly SlotTile[],
+  tapX: number,
+  tapY: number,
+  l: MahjongLayout
+): number | null {
+  const fw = l.tileWidth - l.sideWidth;
+  const fh = l.tileHeight - l.sideWidth;
   // Iterate from highest layer down so the topmost tile wins.
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const x = tileX(tile.col, tile.layer, l);
+    const y = tileY(tile.row, tile.layer, l);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -240,6 +197,9 @@ interface Props {
 export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
   const { t } = useTranslation("mahjong");
   const tileSvgs = useAllTileSVGs();
+  const layout = useMahjongCanvasLayout();
+  const { tileWidth, tileHeight, sideWidth, layerDx, layerDy, padX, padY, boardWidth, boardHeight } =
+    layout;
 
   const freeTiles = useMemo(() => {
     const s = new Set<number>();
@@ -277,25 +237,25 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
     if (!gameActive) return;
     const { locationX, locationY } = e.nativeEvent;
-    const tileId = hitTest(state.tiles, locationX, locationY);
+    const tileId = hitTest(state.tiles, locationX, locationY, layout);
     if (tileId !== null) onTilePress(tileId);
   }
 
   return (
-    <View style={{ width: BOARD_W, height: BOARD_H }}>
+    <View style={{ width: boardWidth, height: boardHeight }}>
       <Canvas
-        style={{ width: BOARD_W, height: BOARD_H }}
+        style={{ width: boardWidth, height: boardHeight }}
         accessibilityLabel={t("game.canvasLabel")}
         accessibilityRole="none"
       >
         <Fill color={BG} />
         {sortedTiles.map((tile) => {
-          const x = tileX(tile.col, tile.layer);
-          const y = tileY(tile.row, tile.layer);
+          const x = tileX(tile.col, tile.layer, layout);
+          const y = tileY(tile.row, tile.layer, layout);
           const isSelected = tile.id === selectedId;
           const isFree = freeTiles.has(tile.id);
-          const fw = TILE_W - SIDE_W;
-          const fh = TILE_H - SIDE_W;
+          const fw = tileWidth - sideWidth;
+          const fh = tileHeight - sideWidth;
 
           // Lift selected tile upward/outward for a "picked up" cue.
           const liftX = isSelected ? 4 : 0;
@@ -313,8 +273,8 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
             <Group key={tile.id}>
               {/* Drop shadow */}
               <Rect
-                x={x + SIDE_W + 2 + liftX}
-                y={y + SIDE_W + 2 + liftY}
+                x={x + sideWidth + 2 + liftX}
+                y={y + sideWidth + 2 + liftY}
                 width={fw}
                 height={fh}
                 color={SHADOW}
@@ -332,17 +292,17 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
               {/* Right 3-D side */}
               <Rect
                 x={x + fw + liftX}
-                y={y + SIDE_W + liftY}
-                width={SIDE_W}
+                y={y + sideWidth + liftY}
+                width={sideWidth}
                 height={fh}
                 color={SIDE_R}
               />
               {/* Bottom 3-D side */}
               <Rect
-                x={x + SIDE_W + liftX}
+                x={x + sideWidth + liftX}
                 y={y + fh + liftY}
                 width={fw}
-                height={SIDE_W}
+                height={sideWidth}
                 color={SIDE_B}
               />
               {/* Border */}
