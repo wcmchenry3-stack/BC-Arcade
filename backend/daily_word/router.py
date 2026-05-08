@@ -84,6 +84,17 @@ def _grapheme_clusters(word: str) -> list[list[int]]:
     return clusters
 
 
+def _cluster_len(word: str, lang: str) -> int:
+    """Visual length: grapheme-cluster count for Hindi, code-point count for English.
+
+    Comparing cluster counts ties the length check to visible syllables rather
+    than Unicode storage size. The caller must NFC-normalise word before calling;
+    the router does this at line 133 for guesses, and answers are normalised on
+    load in puzzle.py.
+    """
+    return len(_grapheme_clusters(word)) if lang == "hi" else len(word)
+
+
 class GuessRequest(BaseModel):
     puzzle_id: str
     guess: str
@@ -132,7 +143,7 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
     if lang == "hi":
         guess = unicodedata.normalize("NFC", guess)
 
-    if len(guess) != len(answer):
+    if _cluster_len(guess, lang) != _cluster_len(answer, lang):
         raise HTTPException(status_code=422, detail="wrong_guess_length")
 
     if not is_valid_guess(guess, lang):
