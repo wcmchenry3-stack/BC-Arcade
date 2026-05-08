@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "과일 떨어뜨리고 합치기! 넘치지 않게 조심!",
-  "game.playLabel": "Fruit Merge 플레이",
-  "game.canvasLabel": "Fruit Merge 게임 — 과일을 쌓아 같은 과일을 합치세요. 탭하거나 클릭하여 떨어뜨리세요.",
+  "game.playLabel": "Cascade 플레이",
+  "game.canvasLabel": "Cascade 게임 — 과일을 쌓아 같은 과일을 합치세요. 탭하거나 클릭하여 떨어뜨리세요.",
   "score.label": "점수",
   "score.display": "점수: {{score}}",
   "preview.dropLabel": "떨어뜨리기",

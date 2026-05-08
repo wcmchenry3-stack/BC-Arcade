@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Lass Früchte fallen, kombiniere und vermeide Überlauf!",
-  "game.playLabel": "Fruit Merge spielen",
-  "game.canvasLabel": "Fruit Merge Spiel — Früchte stapeln und kombinieren. Tippen oder klicken zum Fallenlassen.",
+  "game.playLabel": "Cascade spielen",
+  "game.canvasLabel": "Cascade Spiel — Früchte stapeln und kombinieren. Tippen oder klicken zum Fallenlassen.",
   "score.label": "Punkte",
   "score.display": "Punkte: {{score}}",
   "preview.dropLabel": "Fallen",

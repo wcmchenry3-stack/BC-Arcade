@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Deja caer frutas, únelas, ¡no te desbordes!",
-  "game.playLabel": "Jugar Fruit Merge",
-  "game.canvasLabel": "Juego Fruit Merge — deja caer frutas para unirlas. Toca o haz clic para soltar.",
+  "game.playLabel": "Jugar Cascade",
+  "game.canvasLabel": "Juego Cascade — deja caer frutas para unirlas. Toca o haz clic para soltar.",
   "score.label": "Puntos",
   "score.display": "Puntos: {{score}}",
   "preview.dropLabel": "Soltar",

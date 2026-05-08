@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "Собирай фрукты, объединяй, не дай переполниться!",
-  "game.playLabel": "Играть в Fruit Merge",
-  "game.canvasLabel": "Игра Fruit Merge — сбрасывай фрукты на стопку, чтобы объединять одинаковые. Нажми, чтобы сбросить.",
+  "game.playLabel": "Играть в Cascade",
+  "game.canvasLabel": "Игра Cascade — сбрасывай фрукты на стопку, чтобы объединять одинаковые. Нажми, чтобы сбросить.",
   "score.label": "Очки",
   "score.display": "Очки: {{score}}",
   "preview.dropLabel": "Сброс",

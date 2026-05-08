@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "फलों को गिराएं, मैच करें, ओवरफ्लो न होने दें।",
-  "game.playLabel": "Fruit Merge खेलें",
-  "game.canvasLabel": "Fruit Merge गेम — मिलते-जुलते फलों को मिलाने के लिए स्टैक पर गिराएं। गिराने के लिए टैप या क्लिक करें।",
+  "game.playLabel": "Cascade खेलें",
+  "game.canvasLabel": "Cascade गेम — मिलते-जुलते फलों को मिलाने के लिए स्टैक पर गिराएं। गिराने के लिए टैप या क्लिक करें।",
   "score.label": "स्कोर",
   "score.display": "स्कोर: {{score}}",
   "preview.dropLabel": "गिराएं",
