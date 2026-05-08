@@ -17,7 +17,6 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_SHADOW } from "../../theme/theme.constants";
-import { useMahjongCanvasLayout } from "../../game/mahjong/layout";
 import type { MahjongLayout } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -113,9 +112,9 @@ function drawBoard(
     const fw = tileWidth - sideWidth;
     const fh = tileHeight - sideWidth;
 
-    // Lift selected tile upward/outward for a "picked up" cue.
-    const liftX = isSelected ? 4 : 0;
-    const liftY = isSelected ? -5 : 0;
+    // Lift selected tile upward/outward — scale with tile size.
+    const liftX = isSelected ? Math.round(l.tileWidth * (4 / 44)) : 0;
+    const liftY = isSelected ? -Math.round(l.tileHeight * (5 / 56)) : 0;
     // 2 px border on selected for visibility at small tile sizes.
     const borderInset = isSelected ? 2 : 1;
 
@@ -182,14 +181,14 @@ function drawBoard(
 
 interface Props {
   state: MahjongState;
+  layout: MahjongLayout;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
+export default function GameCanvas({ state, layout, onTilePress, onShufflePress, onNewGamePress }: Props) {
   const { t } = useTranslation("mahjong");
-  const layout = useMahjongCanvasLayout();
   const { boardWidth, boardHeight } = layout;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -275,14 +274,14 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
       const rect = canvas.getBoundingClientRect();
       // getBoundingClientRect reflects the parent's CSS scale transform, so
       // divide by the visual/native ratio to get canvas drawing coordinates.
-      const scaleX = rect.width / boardWidth;
-      const scaleY = rect.height / boardHeight;
+      const scaleX = rect.width / layout.boardWidth;
+      const scaleY = rect.height / layout.boardHeight;
       const tapX = (e.clientX - rect.left) / scaleX;
       const tapY = (e.clientY - rect.top) / scaleY;
       const tileId = hitTest(state.tiles, tapX, tapY, layout);
       if (tileId !== null) onTilePress(tileId);
     },
-    [state.tiles, onTilePress, gameActive, layout, boardWidth, boardHeight]
+    [state.tiles, onTilePress, gameActive, layout]
   );
 
   return (

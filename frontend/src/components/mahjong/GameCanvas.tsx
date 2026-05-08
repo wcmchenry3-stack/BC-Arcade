@@ -20,7 +20,6 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_BG } from "../../theme/theme.constants";
-import { useMahjongCanvasLayout } from "../../game/mahjong/layout";
 import type { MahjongLayout } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -189,15 +188,15 @@ function hitTest(
 
 interface Props {
   state: MahjongState;
+  layout: MahjongLayout;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
+export default function GameCanvas({ state, layout, onTilePress, onShufflePress, onNewGamePress }: Props) {
   const { t } = useTranslation("mahjong");
   const tileSvgs = useAllTileSVGs();
-  const layout = useMahjongCanvasLayout();
   const { tileWidth, tileHeight, sideWidth, layerDx, layerDy, padX, padY, boardWidth, boardHeight } =
     layout;
 
@@ -257,9 +256,9 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
           const fw = tileWidth - sideWidth;
           const fh = tileHeight - sideWidth;
 
-          // Lift selected tile upward/outward for a "picked up" cue.
-          const liftX = isSelected ? 4 : 0;
-          const liftY = isSelected ? -5 : 0;
+          // Lift selected tile upward/outward — scale with tile size.
+          const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
+          const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
           // 2 px border on selected for visibility at small tile sizes.
           const borderInset = isSelected ? 2 : 1;
 

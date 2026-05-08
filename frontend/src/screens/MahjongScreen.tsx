@@ -21,6 +21,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -525,7 +526,11 @@ export default function MahjongScreen() {
       }
     >
       {state !== null && (
-        <>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.hudRow} accessibilityRole="summary">
             <Text style={[styles.hudText, { color: colors.text }]}>
               {t("hud.score")} {state.score}
@@ -553,6 +558,7 @@ export default function MahjongScreen() {
             <Animated.View style={boardAnimStyle}>
               <GameCanvas
                 state={state}
+                layout={layout}
                 onTilePress={handleTilePress}
                 onShufflePress={handleShuffle}
                 onNewGamePress={startNewGame}
@@ -568,7 +574,7 @@ export default function MahjongScreen() {
               />
             ))}
           </View>
-        </>
+        </ScrollView>
       )}
 
       {state?.isComplete && (
@@ -759,6 +765,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   hudRow: {
     flexDirection: "row",

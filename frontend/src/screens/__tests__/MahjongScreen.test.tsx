@@ -28,6 +28,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     onTilePress: (id: number) => void;
     onShufflePress: () => void;
     onNewGamePress: () => void;
+    layout: object;
   }) {
     return (
       <View testID="game-canvas">
