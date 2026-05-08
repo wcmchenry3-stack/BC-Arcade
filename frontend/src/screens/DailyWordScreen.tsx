@@ -6,7 +6,7 @@
  *   2. Persistence: AsyncStorage via game/daily_word/storage.ts; state loaded
  *      on mount and saved after every mutation.
  *   3. API: GET /daily-word/today, POST /daily-word/guess, GET /daily-word/answer
- *   4. Animation: Reanimated Y-axis tile flip on each guess submission.
+ *   4. Animation: Reanimated scaleX tile flip on each guess submission.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -137,7 +137,9 @@ function WordTile({
   readonly testID?: string;
 }) {
   const { colors } = useTheme();
-  const rotation = useSharedValue(0);
+  // scaleX 1→0→1 gives the same visual flip as rotateY without 3D compositing
+  // artifacts that cause black-screen flicker on web and some iOS renderers.
+  const scale = useSharedValue(1);
   const [visibleStatus, setVisibleStatus] = useState<TileStatus>(isFlipping ? "tbd" : status);
 
   useEffect(() => {
@@ -145,12 +147,12 @@ function WordTile({
       setVisibleStatus(status);
       return;
     }
-    rotation.value = 0;
-    rotation.value = withDelay(
+    scale.value = 1;
+    scale.value = withDelay(
       flipDelay,
       withSequence(
-        withTiming(90, { duration: FLIP_HALF_MS }),
-        withTiming(0, { duration: FLIP_HALF_MS })
+        withTiming(0, { duration: FLIP_HALF_MS }),
+        withTiming(1, { duration: FLIP_HALF_MS })
       )
     );
     const timer = setTimeout(() => setVisibleStatus(status), flipDelay + FLIP_HALF_MS);
@@ -160,14 +162,11 @@ function WordTile({
   }, [isFlipping, status]);
 
   const animStyle = useAnimatedStyle(() => ({
-    transform: [{ rotateY: `${rotation.value}deg` }],
+    transform: [{ scaleX: scale.value }],
   }));
 
-  // During the first half of the flip, visibleStatus is still "tbd" (transparent).
-  // A transparent background rotates against the dark screen and causes a black
-  // compositing artifact on web. Use a solid surface color while flipping instead.
   const bg =
-    isFlipping && (visibleStatus === "tbd" || visibleStatus === "empty")
+    visibleStatus === "tbd" || visibleStatus === "empty"
       ? (colors.surface ?? "#1a1a1b")
       : TILE_STATUS_COLORS[visibleStatus];
   const hasBorder = visibleStatus === "empty" || visibleStatus === "tbd";
