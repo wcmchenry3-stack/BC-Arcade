@@ -28,6 +28,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     onTilePress: (id: number) => void;
     onShufflePress: () => void;
     onNewGamePress: () => void;
+    layout: object;
   }) {
     return (
       <View testID="game-canvas">
@@ -36,19 +37,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     );
   }
   MockGameCanvas.displayName = "MockGameCanvas";
-  return {
-    __esModule: true,
-    default: MockGameCanvas,
-    BOARD_W: 548,
-    BOARD_H: 468,
-    TILE_W: 44,
-    TILE_H: 56,
-    PAD_X: 6,
-    PAD_Y: 10,
-    LAYER_DX: 6,
-    LAYER_DY: 5,
-    SIDE_W: 5,
-  };
+  return { __esModule: true, default: MockGameCanvas };
 });
 
 const mockNavListeners = new Map<string, Array<() => void>>();

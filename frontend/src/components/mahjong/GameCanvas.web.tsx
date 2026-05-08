@@ -5,8 +5,8 @@
  * Metro uses this file automatically on the web platform.
  *
  * Tile geometry (grid → pixels):
- *   pixel_x = PAD_X + (col / 2) * TILE_W + layer * LAYER_DX
- *   pixel_y = PAD_Y + row * TILE_H − layer * LAYER_DY
+ *   pixel_x = padX + (col / 2) * tileWidth + layer * layerDx
+ *   pixel_y = padY + row * tileHeight − layer * layerDy
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,29 +17,17 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_SHADOW } from "../../theme/theme.constants";
+import type { MahjongLayout } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
-// Layout constants (mirror GameCanvas.tsx exactly)
+// Geometry helpers
 // ---------------------------------------------------------------------------
 
-export const TILE_W = 44;
-export const TILE_H = 56;
-export const SIDE_W = 5;
-export const LAYER_DX = 6;
-export const LAYER_DY = 5;
-export const PAD_X = 6;
-// Layer-0 top-feet tiles sit at row=0 and need PAD_Y > 0 to clear the canvas edge.
-// Higher layers only appear at row≥2, so no stacking offset reaches row 0.
-export const PAD_Y = 10;
-
-export const BOARD_W = PAD_X + 12 * TILE_W + 4 * LAYER_DX + PAD_X; // 548
-export const BOARD_H = PAD_Y + 8 * TILE_H + 4 * LAYER_DY + PAD_Y; // 468
-
-function tileX(col: number, layer: number): number {
-  return PAD_X + (col / 2) * TILE_W + layer * LAYER_DX;
+function tileX(col: number, layer: number, l: MahjongLayout): number {
+  return l.padX + (col / 2) * l.tileWidth + layer * l.layerDx;
 }
-function tileY(row: number, layer: number): number {
-  return PAD_Y + row * TILE_H - layer * LAYER_DY;
+function tileY(row: number, layer: number, l: MahjongLayout): number {
+  return l.padY + row * l.tileHeight - layer * l.layerDy;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,13 +58,18 @@ const SUIT_COLOR: Record<string, string> = {
 // Hit-testing
 // ---------------------------------------------------------------------------
 
-function hitTest(tiles: readonly SlotTile[], tapX: number, tapY: number): number | null {
-  const fw = TILE_W - SIDE_W;
-  const fh = TILE_H - SIDE_W;
+function hitTest(
+  tiles: readonly SlotTile[],
+  tapX: number,
+  tapY: number,
+  l: MahjongLayout
+): number | null {
+  const fw = l.tileWidth - l.sideWidth;
+  const fh = l.tileHeight - l.sideWidth;
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const x = tileX(tile.col, tile.layer, l);
+    const y = tileY(tile.row, tile.layer, l);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -92,13 +85,16 @@ function drawBoard(
   ctx: CanvasRenderingContext2D,
   state: MahjongState,
   freeTiles: ReadonlySet<number>,
-  tileImages: readonly (HTMLImageElement | null)[]
+  tileImages: readonly (HTMLImageElement | null)[],
+  l: MahjongLayout
 ): void {
-  ctx.clearRect(0, 0, BOARD_W, BOARD_H);
+  const { tileWidth, tileHeight, sideWidth, boardWidth, boardHeight } = l;
+
+  ctx.clearRect(0, 0, boardWidth, boardHeight);
 
   // Background
   ctx.fillStyle = BG;
-  ctx.fillRect(0, 0, BOARD_W, BOARD_H);
+  ctx.fillRect(0, 0, boardWidth, boardHeight);
 
   const selectedId = state.selected?.id ?? null;
   const hasSelection = selectedId !== null;
@@ -109,16 +105,16 @@ function drawBoard(
   for (const tile of sorted) {
     ctx.save();
 
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const x = tileX(tile.col, tile.layer, l);
+    const y = tileY(tile.row, tile.layer, l);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
-    const fw = TILE_W - SIDE_W;
-    const fh = TILE_H - SIDE_W;
+    const fw = tileWidth - sideWidth;
+    const fh = tileHeight - sideWidth;
 
-    // Lift selected tile upward/outward for a "picked up" cue.
-    const liftX = isSelected ? 4 : 0;
-    const liftY = isSelected ? -5 : 0;
+    // Lift selected tile upward/outward — scale with tile size.
+    const liftX = isSelected ? Math.round(l.tileWidth * (4 / 44)) : 0;
+    const liftY = isSelected ? -Math.round(l.tileHeight * (5 / 56)) : 0;
     // 2 px border on selected for visibility at small tile sizes.
     const borderInset = isSelected ? 2 : 1;
 
@@ -131,15 +127,15 @@ function drawBoard(
 
     // Drop shadow
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(x + SIDE_W + 2 + liftX, y + SIDE_W + 2 + liftY, fw, fh);
+    ctx.fillRect(x + sideWidth + 2 + liftX, y + sideWidth + 2 + liftY, fw, fh);
 
     // Right 3-D side
     ctx.fillStyle = SIDE_R;
-    ctx.fillRect(x + fw + liftX, y + SIDE_W + liftY, SIDE_W, fh);
+    ctx.fillRect(x + fw + liftX, y + sideWidth + liftY, sideWidth, fh);
 
     // Bottom 3-D side
     ctx.fillStyle = SIDE_B;
-    ctx.fillRect(x + SIDE_W + liftX, y + fh + liftY, fw, SIDE_W);
+    ctx.fillRect(x + sideWidth + liftX, y + fh + liftY, fw, sideWidth);
 
     // Gold glow behind selected tile — applied to the border rect only.
     if (isSelected) {
@@ -185,13 +181,22 @@ function drawBoard(
 
 interface Props {
   state: MahjongState;
+  layout: MahjongLayout;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
+export default function GameCanvas({
+  state,
+  layout,
+  onTilePress,
+  onShufflePress,
+  onNewGamePress,
+}: Props) {
   const { t } = useTranslation("mahjong");
+  const { boardWidth, boardHeight } = layout;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
   const [imagesVersion, setImagesVersion] = useState(0);
@@ -258,14 +263,14 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
     };
   }, []);
 
-  // Redraw whenever state or tile images change.
+  // Redraw whenever state, tile images, or layout changes.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawBoard(ctx, state, freeTiles, tileImagesRef.current);
-  }, [state, freeTiles, imagesVersion]);
+    drawBoard(ctx, state, freeTiles, tileImagesRef.current, layout);
+  }, [state, freeTiles, imagesVersion, layout]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -275,22 +280,22 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
       const rect = canvas.getBoundingClientRect();
       // getBoundingClientRect reflects the parent's CSS scale transform, so
       // divide by the visual/native ratio to get canvas drawing coordinates.
-      const scaleX = rect.width / BOARD_W;
-      const scaleY = rect.height / BOARD_H;
+      const scaleX = rect.width / layout.boardWidth;
+      const scaleY = rect.height / layout.boardHeight;
       const tapX = (e.clientX - rect.left) / scaleX;
       const tapY = (e.clientY - rect.top) / scaleY;
-      const tileId = hitTest(state.tiles, tapX, tapY);
+      const tileId = hitTest(state.tiles, tapX, tapY, layout);
       if (tileId !== null) onTilePress(tileId);
     },
-    [state.tiles, onTilePress, gameActive]
+    [state.tiles, onTilePress, gameActive, layout]
   );
 
   return (
-    <View style={{ width: BOARD_W, height: BOARD_H }}>
+    <View style={{ width: boardWidth, height: boardHeight }}>
       <canvas
         ref={canvasRef}
-        width={BOARD_W}
-        height={BOARD_H}
+        width={boardWidth}
+        height={boardHeight}
         onClick={handleClick}
         style={{ display: "block", cursor: gameActive ? "pointer" : "default" }}
         aria-label={t("game.canvasLabel")}
