@@ -67,7 +67,6 @@ export function DraggableCard({
 
   const pan = Gesture.Pan()
     .minPointers(1)
-    .maxPointers(1)
     .activeOffsetX([-12, 12])
     .activeOffsetY([-12, 12])
     .enabled(draggable)

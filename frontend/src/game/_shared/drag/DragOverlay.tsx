@@ -5,7 +5,9 @@ import SharedPlayingCard from "../../../components/shared/PlayingCard";
 import { useDragContext } from "./DragContext";
 import { useCardSize } from "../CardSizeContext";
 
-// 52 = CardSizeContext default card width (reference for scale factor)
+// 52 = CardSizeContext default (= Solitaire natural width). FreeCell's natural
+// width is 40 — at FreeCell scale the ghost offset is ~18 px vs ~22 px actual
+// pile offset, which is close enough for a single-card drag visual.
 const STACK_OFFSET = 24;
 const REFERENCE_CARD_WIDTH = 52;
 

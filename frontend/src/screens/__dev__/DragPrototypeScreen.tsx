@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { CardSizeContext } from "../../game/_shared/CardSizeContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
 import { DragProvider } from "../../game/_shared/drag/DragContext";
@@ -54,6 +54,9 @@ const CARD_H = 90;
 const PILE_GAP = 10;
 const STACK_OFFSET = 28;
 const MAX_LOG_LINES = 40;
+
+// Stable constant — avoids re-rendering all CardSizeContext consumers on every state change.
+const CARD_SIZE = { cardWidth: CARD_W, cardHeight: CARD_H };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -129,10 +132,8 @@ export function DragPrototypeScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const cardSize = { cardWidth: CARD_W, cardHeight: CARD_H };
-
   return (
-    <CardSizeContext.Provider value={cardSize}>
+    <CardSizeContext.Provider value={CARD_SIZE}>
       <DragProvider getLegalDropIds={getLegalDropIds}>
         <View style={styles.root}>
           <Text style={styles.header}>Drag Prototype {Platform.OS}</Text>
@@ -158,7 +159,7 @@ export function DragPrototypeScreen() {
                         }));
                         return (
                           <DraggableCard
-                            key={cardIdx}
+                            key={`${card.suit}-${card.rank}`}
                             style={[styles.cardSlot, { top: cardIdx * STACK_OFFSET }]}
                             onTap={() => handleTap(pileIdx, cardIdx)}
                             dragCards={dragCards}
@@ -170,7 +171,8 @@ export function DragPrototypeScreen() {
                             }}
                             draggable
                           >
-                            <View
+                            {/* Pressable child is required — DraggableCard clones onPress onto it for tap fallback */}
+                            <Pressable
                               style={[
                                 styles.cardWrap,
                                 isSelected && styles.cardSelected,
@@ -184,7 +186,7 @@ export function DragPrototypeScreen() {
                                 width={CARD_W}
                                 height={CARD_H}
                               />
-                            </View>
+                            </Pressable>
                           </DraggableCard>
                         );
                       })
@@ -211,7 +213,7 @@ export function DragPrototypeScreen() {
             <Text style={styles.logHeader}>Gesture log (newest first)</Text>
             <ScrollView style={styles.logScroll} showsVerticalScrollIndicator>
               {log.map((line, i) => (
-                <Text key={i} style={styles.logLine}>
+                <Text key={`${log.length - i}-${line}`} style={styles.logLine}>
                   {line}
                 </Text>
               ))}
