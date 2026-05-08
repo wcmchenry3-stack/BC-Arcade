@@ -75,7 +75,8 @@ const MATTER_GRAVITY_Y = 1.4;
 export async function createEngine(
   W: number,
   H: number,
-  fruitSet: FruitSet
+  fruitSet: FruitSet,
+  nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
   const engine = Matter.Engine.create({
     gravity: { x: 0, y: MATTER_GRAVITY_Y },
@@ -189,7 +190,7 @@ export async function createEngine(
       fruitTier: def.tier,
       fruitSetId: setId,
       isMerging: false,
-      createdAt: Date.now(),
+      createdAt: nowProvider(),
       fruitRadius: def.radius,
       collisionVerts: verts,
       graceTicksRemaining: graceTicks,
@@ -248,15 +249,20 @@ export async function createEngine(
           );
           const newFb = spawnAt(nextDef, fruitSet.id, spawnX, spawnY, SPAWN_GRACE_TICKS);
           // Wake sleeping neighbors within 2× spawn radius so they react to the new body.
+          // Iterate fruitMap (only live fruits) to mirror Rapier's neighbor-wake logic.
+          // Build an id→body map first (O(M)) so fruitMap lookups are O(1), not O(M) each.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
-          for (const b of Matter.Composite.allBodies(world)) {
-            if (b.isStatic || b.id === newFb.handle) continue;
+          const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
+          fruitMap.forEach((_fb2, neighborId) => {
+            if (neighborId === newFb.handle) return;
+            const b = bodyById.get(neighborId);
+            if (!b) return;
             const dx = b.position.x - midX;
             const dy = b.position.y - midY;
             if (dx * dx + dy * dy < wakeRadiusSq) {
               Matter.Sleeping.set(b, false);
             }
-          }
+          });
         }
       }
     }
@@ -312,7 +318,6 @@ export async function createEngine(
       });
 
       // Velocity clamp: cap per-step speed so no body can tunnel through a 16px wall.
-      // Runs after the sub-step loop, before the wall-clamp band-aid (CASCADE-PHYS-09).
       // body.velocity in Matter.js is position change per step (px/step), so the threshold
       // is MAX_FRUIT_SPEED_PX_S × FIXED_STEP_MS/1000. On sub-60 Hz frames (dt < 1/60),
       // the last sub-step is shorter, body.velocity is proportionally smaller, and the
@@ -332,51 +337,10 @@ export async function createEngine(
         });
       }
 
-      // Safety net: hard-clamp any body that drifted slightly outside the
-      // left/right walls or below the floor and zero outward velocity so it
-      // can't re-tunnel next frame. This catches the rare case where Matter.js
-      // corrective impulses from polygon vertex decomposition push a body
-      // through a thin static collider. Only applies within the escape margin
-      // — bodies farther outside are left for the escape-detection pass below
-      // to remove. See #699 for the floor case (19 events / 5 users).
-      {
-        fruitMap.forEach((fb, bodyId) => {
-          const body = allBodiesPostMerge.find((b) => b.id === bodyId);
-          if (!body) return;
-          const innerLeft = WALL_THICKNESS + fb.fruitRadius;
-          const innerRight = W - WALL_THICKNESS - fb.fruitRadius;
-          const innerBottom = H - WALL_THICKNESS - fb.fruitRadius;
-          const escapeMargin = fb.fruitRadius * 2;
-          let px = body.position.x;
-          let py = body.position.y;
-          let vx = body.velocity.x;
-          let vy = body.velocity.y;
-          let clamped = false;
-          if (px < innerLeft && px >= -escapeMargin) {
-            px = innerLeft;
-            vx = Math.max(0, vx);
-            clamped = true;
-          } else if (px > innerRight && px <= W + escapeMargin) {
-            px = innerRight;
-            vx = Math.min(0, vx);
-            clamped = true;
-          }
-          if (py > innerBottom && py <= H + escapeMargin) {
-            py = innerBottom;
-            vy = Math.min(0, vy);
-            clamped = true;
-          }
-          if (clamped) {
-            Matter.Body.setPosition(body, { x: px, y: py });
-            Matter.Body.setVelocity(body, { x: vx, y: vy });
-          }
-        });
-      }
-
       // Game-over: requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger line
       // AND no merge in the last GAME_OVER_MERGE_COOLDOWN_TICKS ticks.
       if (!gameOverFired) {
-        const now = Date.now();
+        const now = nowProvider();
         let anyAbove = false;
         fruitMap.forEach((fb, bodyId) => {
           if (anyAbove || fb.isMerging) return;

@@ -528,8 +528,10 @@ describe("CCD analysis", () => {
 
     handle.step(1 / 60);
 
-    // Fruit must remain within the floor boundary (velocity clamp + wall clamp ensure this)
-    expect(fruitBody.position.y).toBeLessThanOrEqual(innerBottom + 1); // 1px float tolerance
+    // Fruit must remain within the floor boundary. Allow 2px for polygon-inradius
+    // vs circumradius drift (the hard clamp is removed; polygon vertices contact
+    // the floor at inradius, so the centre sits slightly below innerBottom).
+    expect(fruitBody.position.y).toBeLessThanOrEqual(innerBottom + 2);
     handle.cleanup();
   });
 });
@@ -571,10 +573,10 @@ describe("boundary escape", () => {
 
   it("does NOT remove a fruit inside the escape margin", async () => {
     const handle = await buildEngine();
-    // px = W + RADIUS = 318, which is < W + MARGIN (336)
+    // px = W + RADIUS: outside the right wall but within the escape margin (W + MARGIN).
+    // Escape detection threshold is W + MARGIN, so this body stays in snapshots.
     handle.drop(fruit(0), "fruits", W + RADIUS, H / 2);
     const { snapshots } = handle.step(1 / 60);
-    // Body clamped back inside — still present
     expect(snapshots).toHaveLength(1);
     handle.cleanup();
   });
@@ -587,24 +589,26 @@ describe("boundary escape", () => {
     handle.cleanup();
   });
 
-  // #699 — a body that ends a step below the floor but within the escape
-  // margin must be snapped back to innerBottom by the floor safety net,
-  // not left to drift past H + margin on subsequent frames and fire a
-  // Sentry warning.
-  it("clamps a body below the floor (within escape margin) back to innerBottom", async () => {
+  // CASCADE-PHYS-09 removed: without the hard-clamp band-aid, a body spawned
+  // just below the floor surface is not snapped to innerBottom. Gravity pulls
+  // it further down until it crosses H + escapeMargin, at which point the
+  // escape-detection pass removes it from the world.
+  it("a body spawned just below the floor drifts out and is escape-removed", async () => {
     const handle = await buildEngine();
     const tier0 = fruit(0);
-    const innerBottom = H - 16 - tier0.radius; // WALL_THICKNESS = 16
-    // y = H + radius is below the floor but well inside the escape margin
-    // (margin = radius * 2). The floor rectangle sits at y ∈ [H-16, H], so
-    // the body is clear of it and Matter.js will not push it out — only our
-    // safety net will.
+    // y = H + radius is below the floor surface but inside the escape margin
+    // (H + radius < H + margin = H + radius*2). Without the hard clamp, gravity
+    // pulls it through the escape margin within a few steps.
     handle.drop(tier0, "fruits", W / 2, H + tier0.radius);
 
-    const { snapshots } = handle.step(1 / 60);
-
-    expect(snapshots).toHaveLength(1);
-    expect(snapshots[0]?.y).toBeLessThanOrEqual(innerBottom + 0.5);
+    // Step until the body escapes (or 30 frames max).
+    let snapshots: { id: number; x: number; y: number; tier: number }[] = [];
+    for (let i = 0; i < 30; i++) {
+      snapshots = handle.step(1 / 60).snapshots;
+      if (snapshots.length === 0) break;
+    }
+    expect(snapshots).toHaveLength(0);
+    handle.cleanup();
   });
 });
 
@@ -665,33 +669,51 @@ describe("boundary containment — wall-adjacent merges", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Position clamp safety net (#552) — bodies pushed outside walls are
-// corrected back inside on the next step() call.
+// Wall containment — velocity clamp keeps bodies inside the play area.
 // ---------------------------------------------------------------------------
 
-describe("position clamp safety net", () => {
-  it("a body teleported outside the left wall is clamped back on the next step", async () => {
+describe("wall containment — velocity clamp", () => {
+  it("a normally-dropped body stays inside the play area throughout normal play", async () => {
     const handle = await buildEngine();
     const tier0 = fruit(0);
 
     handle.drop(tier0, "fruits", W / 2, 300);
-    // Let it settle
+    // Let it settle, then verify it remains in bounds.
     for (let i = 0; i < 30; i++) handle.step(1 / 60);
 
-    // The test forces a body position outside the wall by bypassing the
-    // normal physics path. We exercise this via a large, instant velocity
-    // spike rather than direct setPosition (which isn't exposed), by
-    // verifying bodies that ARE outside bounds get removed by the escape
-    // detection — the clamp safety net prevents that from happening for
-    // bodies just barely outside the wall (within escape margin).
-    // The relevant safety net is tested implicitly: after many steps the
-    // body must stay in the snapshot (not escape-removed).
     const { snapshots: snaps } = handle.step(1 / 60);
-    // Body should still be inside the play area
     for (const snap of snaps) {
       if (snap.tier === 0) {
         expect(snap.x).toBeGreaterThanOrEqual(0);
         expect(snap.x).toBeLessThanOrEqual(W);
+      }
+    }
+    handle.cleanup();
+  });
+
+  // CASCADE-PHYS-09 removed: verify that without the hard-clamp band-aid, a
+  // merged fruit spawned near the left wall does not penetrate it. The
+  // velocity clamp (CASCADE-PHYS-08) and spawn clamping in processMerges
+  // together must keep the body inside the wall.
+  it("no hard-clamp: merged fruit spawned near left wall does not penetrate it", async () => {
+    const handle = await buildEngine();
+    const tier0 = fruit(0);
+    const innerLeft = 16 + fruit(1).radius; // WALL_THICKNESS + tier-1 radius
+
+    // Two tier-0 fruits close to the left wall — midpoint is near the wall.
+    handle.drop(tier0, "fruits", 20, 30);
+    handle.drop(tier0, "fruits", 20, 50);
+
+    for (let i = 0; i < 300; i++) {
+      const { snapshots: snaps } = handle.step(1 / 60);
+      const tier1 = snaps.filter((s) => s.tier === 1);
+      if (tier1.length > 0) {
+        for (const snap of tier1) {
+          // Spawn clamping ensures the body starts at innerLeft, and without
+          // the hard clamp it must still stay there (no drift through the wall).
+          expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        }
+        break;
       }
     }
     handle.cleanup();
@@ -875,5 +897,35 @@ describe("spawn grace — Matter.js", () => {
     // Player drops should be able to merge (no grace restriction)
     expect(mergeCount).toBeGreaterThan(0);
     handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism — CASCADE-PHYS-10 (#1240)
+// ---------------------------------------------------------------------------
+
+describe("determinism — nowProvider injection removes Date.now() non-determinism", () => {
+  it("50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function run() {
+      const handle = await createEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), "fruits", 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step(1 / 60).snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step(1 / 60).snapshots;
+      handle.cleanup();
+      return last.map((s) => ({
+        x: Math.round(s.x * 10),
+        y: Math.round(s.y * 10),
+        tier: s.tier,
+      }));
+    }
+
+    const run1 = await run();
+    const run2 = await run();
+    expect(run1).toEqual(run2);
   });
 });

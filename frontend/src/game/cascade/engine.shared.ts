@@ -94,7 +94,14 @@ export interface MergeEvent {
 }
 
 export interface EngineHandle {
-  /** Advance physics one step and return snapshots + any game events that fired. */
+  /**
+   * Advance physics and return snapshots + any game events that fired.
+   *
+   * @param dt - Elapsed time in **seconds** since the last call. When omitted,
+   *   defaults to exactly one 60 Hz sub-step (`FIXED_STEP_MS / 1000`). The engine
+   *   breaks `dt` into fixed sub-steps of `FIXED_STEP_MS` ms and caps the total
+   *   simulated time at 1/6 s to prevent a spiral-of-death after tab suspension.
+   */
   step: (dt?: number) => { snapshots: BodySnapshot[]; events: GameEvent[] };
   /** Drop a fruit at the given pixel coordinates. */
   drop: (def: FruitDefinition, fruitSetId: string, x: number, y: number) => void;

@@ -96,7 +96,8 @@ const COMBO_THRESHOLD = 3;
 export async function createEngine(
   W: number,
   H: number,
-  fruitSet: FruitSet
+  fruitSet: FruitSet,
+  nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
   const R = await getRapier();
 
@@ -232,7 +233,7 @@ export async function createEngine(
       fruitTier: def.tier,
       fruitSetId: setId,
       isMerging: false,
-      createdAt: Date.now(),
+      createdAt: nowProvider(),
       fruitRadius: def.radius,
       collisionVerts: verts,
       graceTicksRemaining: graceTicks,
@@ -397,7 +398,7 @@ export async function createEngine(
       // Game-over: requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger line
       // AND no merge in the last GAME_OVER_MERGE_COOLDOWN_TICKS ticks.
       if (!gameOverFired) {
-        const now = Date.now();
+        const now = nowProvider();
         let anyAbove = false;
         fruitMap.forEach((fb, handle) => {
           if (anyAbove || fb.isMerging) return;
