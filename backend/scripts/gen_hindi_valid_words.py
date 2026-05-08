@@ -10,8 +10,12 @@ Rules (mirror the English valid_en.txt conventions):
 Sources (no extra dependencies — stdlib urllib only):
   1. hermitdave/FrequencyWords hi_50k  — subtitle-corpus frequency list
   2. hermitdave/FrequencyWords hi_full — larger frequency list
-  3. Hindi Wiktionary title dump        — curated dictionary headwords
+  3. Hindi Wiktionary title dump        — curated dictionary headwords (CC BY-SA 4.0)
   4. Existing valid_hi.txt              — preserves any hand-curated entries
+
+Attribution: The Hindi Wiktionary title dump is licensed under CC BY-SA 4.0.
+See https://creativecommons.org/licenses/by-sa/4.0/ and
+https://dumps.wikimedia.org/hiwiktionary/ for licensing details.
 
 Usage (run from repo root):
     python backend/scripts/gen_hindi_valid_words.py
@@ -21,7 +25,9 @@ from __future__ import annotations
 
 import gzip
 import sys
+import time
 import unicodedata
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -64,9 +70,21 @@ def is_devanagari_5cp(word: str) -> bool:
 
 
 def fetch(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "bc-arcade-wordlist-builder/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+    """Fetch URL with exponential backoff retry (Wikimedia rate-limiting compliance)."""
+    max_retries = 3
+    base_delay = 1.0  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "bc-arcade-wordlist-builder/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read()
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            if attempt == max_retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            print(f"  Retry {attempt + 1}/{max_retries - 1} after {delay}s (error: {exc})", file=sys.stderr)
+            time.sleep(delay)
 
 
 def extract_words(raw: bytes, fmt: str) -> list[str]:
