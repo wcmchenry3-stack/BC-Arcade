@@ -155,3 +155,33 @@ def test_valid_en_common_words_accepted():
     """Words routinely rejected before #1261 fix must now validate."""
     for word in ("stoic", "piety", "tryst", "grove", "flint"):
         assert is_valid_guess(word, "en") is True, f"{word!r} should be a valid guess"
+
+
+# ---------------------------------------------------------------------------
+# Hindi valid-guess corpus size (#1262)
+# ---------------------------------------------------------------------------
+
+
+def test_valid_hi_corpus_size():
+    """valid_hi.txt must be large enough for the game to be usable (>=3 000 entries)."""
+    from daily_word.puzzle import _VALID_HI
+
+    assert len(_VALID_HI) >= 3_000, f"Hindi valid-guess corpus too small: {len(_VALID_HI)}"
+
+
+def test_valid_hi_all_five_codepoints():
+    """Every entry in valid_hi.txt must be exactly 5 NFC code points."""
+    import unicodedata
+    from daily_word.puzzle import _VALID_HI
+
+    bad = [w for w in _VALID_HI if len(unicodedata.normalize("NFC", w)) != 5]
+    assert not bad, f"Hindi valid words with wrong length: {bad[:5]}"
+
+
+def test_valid_hi_all_devanagari():
+    """Every character in valid_hi.txt must be in the Devanagari Unicode block."""
+    from daily_word.puzzle import _VALID_HI
+
+    DEVA_START, DEVA_END = 0x0900, 0x097F
+    bad = [w for w in _VALID_HI if not all(DEVA_START <= ord(c) <= DEVA_END for c in w)]
+    assert not bad, f"Non-Devanagari words in valid_hi: {bad[:5]}"

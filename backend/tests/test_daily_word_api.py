@@ -404,3 +404,62 @@ def test_hindi_grapheme_clusters_devanagari_matras(client: TestClient) -> None:
     clusters = _grapheme_clusters("सुंदर")
     assert clusters[0] == [0, 1, 2], f"Expected [0,1,2], got {clusters[0]}"
     assert len(clusters) == 3
+
+
+def test_hindi_cluster_length_mismatch_rejected(client: TestClient) -> None:
+    """Guess with wrong grapheme-cluster count must be rejected as wrong_guess_length (#1262).
+
+    "सुंदर" has 3 clusters; "अचानक" has 4 clusters — both are 5 code points.
+    The code-point-only check (pre-fix) would accept both; the cluster check (post-fix)
+    rejects the 4-cluster guess when the answer is 3 clusters.
+    """
+    from daily_word import puzzle as puzzle_mod
+
+    orig_answers = puzzle_mod._ANSWERS["hi"]
+    orig_valid = puzzle_mod._VALID["hi"]
+    # answer = 3 clusters; guess candidate = 4 clusters — same 5-codepoint length
+    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]   # 3 clusters: [[0,1,2],[3],[4]]
+    puzzle_mod._VALID["hi"] = frozenset(puzzle_mod._ANSWERS["hi"]) | frozenset(["अचानक"])
+    try:
+        headers = _sid_headers()
+        r = client.post(
+            "/daily-word/guess",
+            headers=headers,
+            json={
+                "puzzle_id": _today_puzzle_id(lang="hi"),
+                "guess": "अचानक",  # 4 clusters: [[0],[1,2],[3],[4]]
+                "tz_offset_minutes": 0,
+            },
+        )
+    finally:
+        puzzle_mod._ANSWERS["hi"] = orig_answers
+        puzzle_mod._VALID["hi"] = orig_valid
+
+    assert r.status_code == 422
+    assert r.json()["detail"] == "wrong_guess_length"
+
+
+def test_hindi_cluster_length_match_accepted(client: TestClient) -> None:
+    """Guess with matching grapheme-cluster count must pass the length check (#1262)."""
+    from daily_word import puzzle as puzzle_mod
+
+    orig_answers = puzzle_mod._ANSWERS["hi"]
+    orig_valid = puzzle_mod._VALID["hi"]
+    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]   # 3 clusters
+    puzzle_mod._VALID["hi"] = frozenset(puzzle_mod._ANSWERS["hi"])
+    try:
+        headers = _sid_headers()
+        r = client.post(
+            "/daily-word/guess",
+            headers=headers,
+            json={
+                "puzzle_id": _today_puzzle_id(lang="hi"),
+                "guess": "सुंदर",  # same 3 clusters — passes length check
+                "tz_offset_minutes": 0,
+            },
+        )
+    finally:
+        puzzle_mod._ANSWERS["hi"] = orig_answers
+        puzzle_mod._VALID["hi"] = orig_valid
+
+    assert r.status_code == 200
