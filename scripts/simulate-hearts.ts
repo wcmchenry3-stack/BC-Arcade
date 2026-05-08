@@ -30,13 +30,12 @@ interface GameResult {
   player0Score: number;
   handsPlayed: number;
   moonShots: number;
-  player0HasMoon: number;
   qSpadeOnHuman: number;
 }
 
 function simulateGame(difficulties: Difficulties, seed: number): GameResult {
   setRng(createSeededRng(seed));
-  let state: HeartsState = dealGame(difficulties[1]); // aiDifficulty field is informational
+  let state: HeartsState = dealGame(difficulties[0]); // aiDifficulty field is informational
 
   while (state.phase !== "game_over") {
     if (state.phase === "passing") {
@@ -63,7 +62,6 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
 
   const events = state.events ?? [];
   const moonShots = events.filter((e) => e.type === "moonShot").length;
-  const player0HasMoon = events.some((e) => e.type === "moonShot" && e.shooter === 0) ? 1 : 0;
   const qSpadeOnHuman = events.some((e) => e.type === "queenOfSpades" && e.takerSeat === 0) ? 1 : 0;
 
   return {
@@ -71,7 +69,6 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
     player0Score: state.cumulativeScores[0] ?? 0,
     handsPlayed: state.handNumber,
     moonShots,
-    player0HasMoon,
     qSpadeOnHuman,
   };
 }
@@ -195,7 +192,7 @@ const [easyWr, easyVsMedWr, easyVsHardWr, medVs3HardWr, hardVsMedNeutralWr, medV
 
 const zEM = zTest(easyWr, easyVsMedWr, GAMES_PER_BATCH);
 const zEH = zTest(easyWr, easyVsHardWr, GAMES_PER_BATCH);
-const zMH_full = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
+const zMHFull = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
 // Direct Hard vs Medium comparison: Hard (batch 5) vs Medium (batch 6) — same game, seat swapped.
 const zHvM_direct = zTest(hardVsMedNeutralWr, medVsHardNeutralWr, GAMES_PER_BATCH);
 const check = (cond: boolean) => (cond ? "✓" : "✗");
@@ -209,7 +206,7 @@ console.log(
   `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`
 );
 console.log(
-  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMH_full)} vs Easy batches)`
+  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMHFull)} vs Easy batches)`
 );
 console.log(
   `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`

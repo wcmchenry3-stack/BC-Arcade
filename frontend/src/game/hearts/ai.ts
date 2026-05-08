@@ -175,8 +175,7 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   void direction;
   const selected: Card[] = [];
 
-  const has = (suit: string, rank: number) => hand.some((c) => c.suit === suit && c.rank === rank);
-  const has2Clubs = has("clubs", 2);
+  const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
 
   const spades = hand.filter((c) => c.suit === "spades");
   const hasQSpades = spades.some(isQueenOfSpades);
@@ -207,9 +206,10 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
     }
   }
 
+  const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
+
   // 4. Opportunistic void: if exactly 1 slot remains, use it to void a single-card suit.
   if (selected.length === 2) {
-    const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
     const bySuit = new Map<string, Card[]>();
     for (const c of hand) {
       if (!bySuit.has(c.suit)) bySuit.set(c.suit, []);
@@ -226,7 +226,6 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
 
   // 5. Fill remaining slots with highest safe cards
   if (selected.length < 3) {
-    const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
     const candidates = hand.filter((c) => safe(c) && notSelected(c)).sort((a, b) => {
       const diff = aceHigh(b.rank) - aceHigh(a.rank);
       if (diff !== 0) return diff;

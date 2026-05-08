@@ -635,6 +635,82 @@ describe("selectCardToPlay — Hard difficulty, card counting", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Hard AI — score-aware endgame
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — Hard difficulty, score-aware endgame", () => {
+  it("dumps Q♠ on score leader when void and score leader is winning the trick", () => {
+    // Player 0 has the highest score (70) and is winning the trick.
+    // Hard (player 1) is void in clubs and should dump Q♠ to push player 0 toward 100.
+    const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 8), playerIndex: 0 },
+      { card: c("clubs", 3), playerIndex: 2 },
+      { card: c("clubs", 5), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 8,
+      currentPlayerIndex: 1,
+      cumulativeScores: [70, 20, 10, 15],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("holds Q♠ when dumping would push trick winner to 100+ and Hard is not the game leader", () => {
+    // Player 2 (score 88) is winning the trick; 88 + 13 = 101 ≥ 100 would end the game.
+    // Hard (player 1, score 50) is not the game leader (player 0 has lowest score 30).
+    // Player 3 is the score leader (92) but is NOT winning the trick — offensive dump doesn't fire.
+    // Hard should hold Q♠ and discard a safe card instead.
+    const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 4), playerIndex: 3 },
+      { card: c("clubs", 6), playerIndex: 0 },
+      { card: c("clubs", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 8,
+      currentPlayerIndex: 1,
+      cumulativeScores: [30, 50, 88, 92],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    expect(pick).not.toEqual(c("spades", 12));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hard AI — opportunistic void in passing
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — Hard difficulty, opportunistic void", () => {
+  it("voids a 1-card suit when exactly 1 pass slot remains after dangerous cards", () => {
+    // Q♠ fills slot 1, A♥ fills slot 2 (high heart). 1 slot remains.
+    // ♦7 is the only diamond → void fires and ♦7 fills the last slot.
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("diamonds", 7),
+      c("clubs", 6),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("spades", 5),
+      c("spades", 6),
+      c("spades", 7),
+      c("hearts", 4),
+      c("hearts", 5),
+      c("hearts", 6),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("diamonds", 7));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // detectPotentialMoon
 // ---------------------------------------------------------------------------
 
