@@ -81,14 +81,19 @@ def fetch(url: str) -> bytes:
 
     for attempt in range(max_retries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "bc-arcade-wordlist-builder/1.0"})
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "bc-arcade-wordlist-builder/1.0"}
+            )
             with urllib.request.urlopen(req, timeout=60) as r:
                 return r.read()
         except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             if attempt == max_retries - 1:
                 raise
-            delay = base_delay * (2 ** attempt)
-            print(f"  Retry {attempt + 1}/{max_retries - 1} after {delay}s (error: {exc})", file=sys.stderr)
+            delay = base_delay * (2**attempt)
+            print(
+                f"  Retry {attempt + 1}/{max_retries - 1} after {delay}s (error: {exc})",
+                file=sys.stderr,
+            )
             time.sleep(delay)
 
 
@@ -152,7 +157,9 @@ def main() -> None:
         print(f"\nERROR: only {len(result):,} words — minimum is {TARGET_MIN:,}", file=sys.stderr)
         sys.exit(1)
     elif len(result) < TARGET_IDEAL:
-        print(f"\nNOTE: {len(result):,} words; ideal target is {TARGET_IDEAL:,} — add more sources if possible")
+        print(
+            f"\nNOTE: {len(result):,} words; ideal target is {TARGET_IDEAL:,} — add more sources if possible"
+        )
     else:
         print(f"Target met: {len(result):,} >= {TARGET_IDEAL:,}")
 

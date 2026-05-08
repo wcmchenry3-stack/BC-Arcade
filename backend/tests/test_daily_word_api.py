@@ -418,7 +418,7 @@ def test_hindi_cluster_length_mismatch_rejected(client: TestClient) -> None:
     orig_answers = puzzle_mod._ANSWERS["hi"]
     orig_valid = puzzle_mod._VALID["hi"]
     # answer = 3 clusters; guess candidate = 4 clusters — same 5-codepoint length
-    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]   # 3 clusters: [[0,1,2],[3],[4]]
+    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]  # 3 clusters: [[0,1,2],[3],[4]]
     puzzle_mod._VALID["hi"] = frozenset(puzzle_mod._ANSWERS["hi"]) | frozenset(["अचानक"])
     try:
         headers = _sid_headers()
@@ -445,7 +445,7 @@ def test_hindi_cluster_length_match_accepted(client: TestClient) -> None:
 
     orig_answers = puzzle_mod._ANSWERS["hi"]
     orig_valid = puzzle_mod._VALID["hi"]
-    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]   # 3 clusters
+    puzzle_mod._ANSWERS["hi"] = ["सुंदर"]  # 3 clusters
     puzzle_mod._VALID["hi"] = frozenset(puzzle_mod._ANSWERS["hi"])
     try:
         headers = _sid_headers()

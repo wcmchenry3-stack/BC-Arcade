@@ -192,7 +192,7 @@ def test_valid_hi_no_duplicates():
     from daily_word.puzzle import _WORDS_DIR
 
     lines = (_WORDS_DIR / "valid_hi.txt").read_text("utf-8").splitlines()
-    lines = [l for l in lines if l.strip()]
-    assert len(lines) == len(set(lines)), (
-        f"valid_hi.txt contains {len(lines) - len(set(lines))} duplicate entries"
-    )
+    lines = [ln for ln in lines if ln.strip()]
+    assert len(lines) == len(
+        set(lines)
+    ), f"valid_hi.txt contains {len(lines) - len(set(lines))} duplicate entries"
