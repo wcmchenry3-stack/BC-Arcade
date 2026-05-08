@@ -74,10 +74,7 @@ const MAX_NAME_LENGTH = 32;
 // Tile center — used by FlyingPair to compute animation start/end positions
 // ---------------------------------------------------------------------------
 
-function tileCenter(
-  tile: SlotTile,
-  l: MahjongLayout
-): { cx: number; cy: number } {
+function tileCenter(tile: SlotTile, l: MahjongLayout): { cx: number; cy: number } {
   return {
     cx: l.padX + (tile.col / 2) * l.tileWidth + tile.layer * l.layerDx + l.tileWidth / 2,
     cy: l.padY + tile.row * l.tileHeight - tile.layer * l.layerDy + l.tileHeight / 2,

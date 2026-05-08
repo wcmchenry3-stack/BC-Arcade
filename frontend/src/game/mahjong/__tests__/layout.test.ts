@@ -48,7 +48,13 @@ describe("calculateMahjongLayout", () => {
     const screenHeight = 450;
     const safeAreaTop = 0;
     const safeAreaBottom = 0;
-    const l = calculateMahjongLayout({ screenWidth, screenHeight, safeAreaTop, safeAreaBottom, ...TURTLE });
+    const l = calculateMahjongLayout({
+      screenWidth,
+      screenHeight,
+      safeAreaTop,
+      safeAreaBottom,
+      ...TURTLE,
+    });
     // availH = screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H (116)
     const availH = screenHeight - safeAreaTop - safeAreaBottom - 116;
     expect(l.boardHeight).toBeLessThanOrEqual(availH + 1); // allow 1px rounding
@@ -114,8 +120,10 @@ describe("calculateMahjongLayout", () => {
       safeAreaBottom: 0,
       ...TURTLE,
     });
-    const expectedBoardWidth = l.padX + TURTLE.boardCols * l.tileWidth + TURTLE.boardLayers * l.layerDx + l.padX;
-    const expectedBoardHeight = l.padY + TURTLE.boardRows * l.tileHeight + TURTLE.boardLayers * l.layerDy + l.padY;
+    const expectedBoardWidth =
+      l.padX + TURTLE.boardCols * l.tileWidth + TURTLE.boardLayers * l.layerDx + l.padX;
+    const expectedBoardHeight =
+      l.padY + TURTLE.boardRows * l.tileHeight + TURTLE.boardLayers * l.layerDy + l.padY;
     expect(l.boardWidth).toBe(expectedBoardWidth);
     expect(l.boardHeight).toBe(expectedBoardHeight);
   });

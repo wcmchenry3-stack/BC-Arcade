@@ -59,7 +59,8 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     boardLayers,
   } = input;
 
-  const horizPad = Math.max(safeAreaLeft, MIN_HORIZ_MARGIN) + Math.max(safeAreaRight, MIN_HORIZ_MARGIN);
+  const horizPad =
+    Math.max(safeAreaLeft, MIN_HORIZ_MARGIN) + Math.max(safeAreaRight, MIN_HORIZ_MARGIN);
   const availW = Math.max(1, screenWidth - horizPad);
   const availH = Math.max(1, screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H);
 

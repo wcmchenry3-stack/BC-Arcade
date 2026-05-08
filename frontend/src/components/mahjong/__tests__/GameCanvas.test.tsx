@@ -77,7 +77,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} layout={testLayout} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          layout={testLayout}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // i18n returns keys in tests — check for the key, not the translated string.
@@ -90,7 +96,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} layout={testLayout} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          layout={testLayout}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // Overlay is intentionally delayed — not visible before the timer fires.
@@ -113,7 +125,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} layout={testLayout} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          layout={testLayout}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // Shuffle CTA shows the noMoves key + shuffle button
@@ -127,7 +145,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} layout={testLayout} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          layout={testLayout}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     const str = JSON.stringify(tree!.toJSON());

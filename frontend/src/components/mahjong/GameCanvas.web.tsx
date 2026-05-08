@@ -187,7 +187,13 @@ interface Props {
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, layout, onTilePress, onShufflePress, onNewGamePress }: Props) {
+export default function GameCanvas({
+  state,
+  layout,
+  onTilePress,
+  onShufflePress,
+  onNewGamePress,
+}: Props) {
   const { t } = useTranslation("mahjong");
   const { boardWidth, boardHeight } = layout;
 
