@@ -686,34 +686,46 @@ export default function SolitaireScreen() {
                 style={[styles.board, { width: boardWidth }]}
                 accessibilityLabel={t("solitaire:a11y.boardRegion")}
               >
-                <View>
-                  <View style={styles.foundationsRow}>
-                    {SUITS.map((suit) => (
-                      <FoundationPile
-                        key={suit}
-                        pile={state.foundations[suit]}
-                        suit={suit}
-                        selected={selection?.kind === "foundation" && selection.suit === suit}
-                        shakeX={
-                          selection?.kind === "foundation" && selection.suit === suit
-                            ? shakeX
-                            : undefined
-                        }
-                        onPress={handleFoundationPress}
-                        dropId={`solitaire-foundation-${suit}`}
-                        onDrop={(source) => handleDropToFoundation(source)}
-                      />
-                    ))}
-                  </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                    style={[
-                      StyleSheet.absoluteFill,
-                      { backgroundColor: "#ffd700", opacity: sparkleOpacity, borderRadius: 8 },
-                    ]}
+                <View style={styles.topRow}>
+                  <StockWastePile
+                    stock={state.stock}
+                    waste={state.waste}
+                    drawMode={state.drawMode}
+                    wasteSelected={selection?.kind === "waste"}
+                    shakeX={selection?.kind === "waste" ? shakeX : undefined}
+                    onStockPress={handleStockPress}
+                    onWastePress={handleWastePress}
                   />
+                  <View style={{ width: cardSize.cardWidth + COL_GAP }} />
+                  <View>
+                    <View style={styles.foundationsRow}>
+                      {SUITS.map((suit) => (
+                        <FoundationPile
+                          key={suit}
+                          pile={state.foundations[suit]}
+                          suit={suit}
+                          selected={selection?.kind === "foundation" && selection.suit === suit}
+                          shakeX={
+                            selection?.kind === "foundation" && selection.suit === suit
+                              ? shakeX
+                              : undefined
+                          }
+                          onPress={handleFoundationPress}
+                          dropId={`solitaire-foundation-${suit}`}
+                          onDrop={(source) => handleDropToFoundation(source)}
+                        />
+                      ))}
+                    </View>
+                    <Animated.View
+                      pointerEvents="none"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                      style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "#ffd700", opacity: sparkleOpacity, borderRadius: 8 },
+                      ]}
+                    />
+                  </View>
                 </View>
 
                 <View style={styles.selectionIndicator} accessibilityLiveRegion="polite">
@@ -740,18 +752,6 @@ export default function SolitaireScreen() {
                       onDrop={(source) => handleDropToTableau(source, col)}
                     />
                   ))}
-                </View>
-
-                <View style={styles.stockWasteRow}>
-                  <StockWastePile
-                    stock={state.stock}
-                    waste={state.waste}
-                    drawMode={state.drawMode}
-                    wasteSelected={selection?.kind === "waste"}
-                    shakeX={selection?.kind === "waste" ? shakeX : undefined}
-                    onStockPress={handleStockPress}
-                    onWastePress={handleWastePress}
-                  />
                 </View>
               </View>
 
@@ -1008,10 +1008,14 @@ const styles = StyleSheet.create({
   board: {
     alignSelf: "flex-start",
   },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
   foundationsRow: {
     flexDirection: "row",
     gap: COL_GAP,
-    marginBottom: 12,
   },
   selectionIndicator: {
     alignItems: "center",
@@ -1027,11 +1031,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: COL_GAP,
     alignItems: "flex-start",
-  },
-  stockWasteRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 12,
   },
   autoBtn: {
     alignSelf: "center",
