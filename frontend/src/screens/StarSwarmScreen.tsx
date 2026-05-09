@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -199,6 +200,8 @@ export default function StarSwarmScreen() {
   const displayW = Math.round(CANVAS_W * scale);
   const displayH = Math.round(CANVAS_H * scale);
 
+  const showPauseBtn = !showDifficultyPicker && phase !== "GameOver" && scale > 0;
+
   return (
     <GameShell
       title={t("game.title")}
@@ -211,6 +214,26 @@ export default function StarSwarmScreen() {
         navigation.popToTop();
       }}
       onNewGame={handleRequestNewGame}
+      rightSlot={
+        showPauseBtn ? (
+          <Pressable
+            onPress={isPaused ? handleResume : handlePause}
+            accessibilityRole="button"
+            accessibilityLabel={isPaused ? t("controls.resumeLabel") : t("controls.pauseLabel")}
+            style={({ pressed }) => [
+              styles.pauseHeaderBtn,
+              pressed && styles.pauseHeaderBtnPressed,
+            ]}
+            hitSlop={8}
+          >
+            <MaterialIcons
+              name={isPaused ? "play-arrow" : "pause"}
+              size={22}
+              color={colors.textOnAccent}
+            />
+          </Pressable>
+        ) : undefined
+      }
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
         paddingLeft: Math.max(insets.left, 0),
@@ -491,6 +514,17 @@ const baseStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pauseHeaderBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#00aaff",
+  },
+  pauseHeaderBtnPressed: {
+    opacity: 0.7,
   },
   devButtonText: {
     color: "#fff",
