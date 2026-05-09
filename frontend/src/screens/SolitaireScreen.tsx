@@ -696,7 +696,7 @@ export default function SolitaireScreen() {
                     onStockPress={handleStockPress}
                     onWastePress={handleWastePress}
                   />
-                  <View style={{ width: cardSize.cardWidth + COL_GAP }} />
+                  <View style={{ flex: 1 }} />
                   <View>
                     <View style={styles.foundationsRow}>
                       {SUITS.map((suit) => (
