@@ -696,7 +696,7 @@ export default function SolitaireScreen() {
                     onStockPress={handleStockPress}
                     onWastePress={handleWastePress}
                   />
-                  <View style={{ width: cardSize.cardWidth + COL_GAP }} />
+                  <View style={{ flex: 1 }} />
                   <View>
                     <View style={styles.foundationsRow}>
                       {SUITS.map((suit) => (
@@ -726,14 +726,6 @@ export default function SolitaireScreen() {
                       ]}
                     />
                   </View>
-                </View>
-
-                <View style={styles.selectionIndicator} accessibilityLiveRegion="polite">
-                  {selectionLabel !== null && (
-                    <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
-                      {selectionLabel}
-                    </Text>
-                  )}
                 </View>
 
                 <View style={[styles.tableauRow, { minHeight: cardSize.cardHeight * 3 }]}>
@@ -769,6 +761,18 @@ export default function SolitaireScreen() {
               )}
 
               <SolitaireWinCascade visible={cascadeVisible} />
+
+              <View
+                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
+                accessibilityLiveRegion="polite"
+                pointerEvents="none"
+              >
+                {selectionLabel !== null && (
+                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                    {selectionLabel}
+                  </Text>
+                )}
+              </View>
             </DragContainer>
           </CardSizeContext.Provider>
         )}
@@ -1018,8 +1022,11 @@ const styles = StyleSheet.create({
     gap: COL_GAP,
   },
   selectionIndicator: {
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,

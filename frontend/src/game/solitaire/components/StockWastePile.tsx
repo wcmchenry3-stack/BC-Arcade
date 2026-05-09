@@ -191,7 +191,7 @@ function Waste({
 
   const visibleCount = Math.min(3, waste.length);
   const visible = waste.slice(waste.length - visibleCount);
-  const containerWidth = (visibleCount - 1) * wasteFanOffset + cardWidth;
+  const containerWidth = 2 * wasteFanOffset + cardWidth;
 
   return (
     <View style={[styles.wasteFanContainer, { width: containerWidth, height: cardHeight }]}>
