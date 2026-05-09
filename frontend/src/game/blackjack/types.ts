@@ -32,7 +32,7 @@ export interface GameRules {
 }
 
 export interface BlackjackState {
-  phase: string; // "betting" | "player" | "result"
+  phase: string; // "betting" | "player" | "result" | "victory"
   chips: number;
   bet: number;
   player_hand: HandResponse;
@@ -53,6 +53,10 @@ export interface BlackjackState {
   last_win: number | null;
   /** One-shot UI events emitted by the engine and consumed by the animation layer. */
   events?: readonly BlackjackGameEvent[];
+  // Run-mode fields
+  run_goal: number | null;
+  run_starting_chips: number;
+  run_complete: boolean;
 }
 
 export type BlackjackSession = GameSession<BlackjackState>;

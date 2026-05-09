@@ -46,6 +46,22 @@ export const DEFAULT_RULES: GameRules = {
   penetration: 0.75,
 };
 
+export interface RunConfig {
+  startingChips: number;
+  /** null = no goal; game runs until chips are exhausted (legacy mode). */
+  runGoal: number | null;
+  betMin: number;
+  betMax: number;
+  rules?: GameRules;
+}
+
+export const DEFAULT_RUN_CONFIG: RunConfig = {
+  startingChips: 1000,
+  runGoal: null,
+  betMin: 5,
+  betMax: 500,
+};
+
 /**
  * Full engine state — kept in memory + AsyncStorage. The UI never sees
  * this directly; it consumes `toViewState(engineState)` instead.
@@ -53,7 +69,7 @@ export const DEFAULT_RULES: GameRules = {
 export interface EngineState {
   chips: number;
   bet: number;
-  phase: "betting" | "player" | "result";
+  phase: "betting" | "player" | "result" | "victory";
   outcome: "blackjack" | "win" | "lose" | "push" | null;
   payout: number;
   /** Net chip delta from the previously completed hand. Null until at least one hand resolves. */
@@ -72,6 +88,11 @@ export interface EngineState {
   split_from_aces: boolean[];
   rules: GameRules;
   events?: readonly BlackjackGameEvent[];
+  // Run-mode fields
+  runGoal: number | null;
+  startingChips: number;
+  betMin: number;
+  betMax: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +281,7 @@ export function toViewState(s: EngineState): BlackjackState {
     }
   }
 
-  const game_over = s.chips === 0 && s.phase === "result";
+  const game_over = s.chips === 0 && (s.phase === "result" || s.phase === "victory");
 
   let player_hands_view: HandResponse[];
   if (isSplit) {
@@ -293,6 +314,9 @@ export function toViewState(s: EngineState): BlackjackState {
     hand_payouts: isSplit ? [...s.hand_payouts] : s.payout !== 0 ? [s.payout] : [],
     rules: s.rules,
     events: s.events,
+    run_goal: s.runGoal,
+    run_starting_chips: s.startingChips,
+    run_complete: s.phase === "victory",
   };
 }
 
@@ -321,10 +345,11 @@ function emptySplitState(): Pick<
   };
 }
 
-export function newGame(deck?: Card[], rules?: GameRules): EngineState {
-  const r = rules ?? DEFAULT_RULES;
+export function newGame(deck?: Card[], runConfig?: Partial<RunConfig>): EngineState {
+  const rc = { ...DEFAULT_RUN_CONFIG, ...runConfig };
+  const r = rc.rules ?? DEFAULT_RULES;
   return {
-    chips: 1000,
+    chips: rc.startingChips,
     bet: 0,
     phase: "betting",
     outcome: null,
@@ -335,6 +360,10 @@ export function newGame(deck?: Card[], rules?: GameRules): EngineState {
     dealer_hand: [],
     doubled: false,
     rules: r,
+    runGoal: rc.runGoal,
+    startingChips: rc.startingChips,
+    betMin: rc.betMin,
+    betMax: rc.betMax,
     ...emptySplitState(),
   };
 }
@@ -345,19 +374,21 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
   else if (outcome === "win") delta = s.bet;
   else if (outcome === "lose") delta = -s.bet;
   // push: delta 0
+  const newChips = Math.max(0, s.chips + delta);
+  const phase = s.runGoal !== null && newChips >= s.runGoal ? "victory" : "result";
   return {
     ...s,
     outcome,
     payout: delta,
-    chips: Math.max(0, s.chips + delta),
-    phase: "result",
+    chips: newChips,
+    phase,
   };
 }
 
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
-  if (amount < 5 || amount > 500) {
-    throw new Error("Bet must be between 5 and 500.");
+  if (amount < s.betMin || amount > s.betMax) {
+    throw new Error(`Bet must be between ${s.betMin} and ${s.betMax}.`);
   }
   if (amount > s.chips) throw new Error("Insufficient chips.");
 
@@ -481,12 +512,15 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
   else if (totalPayout < 0) overallOutcome = "lose";
   else overallOutcome = "push";
 
+  const finalChips = Math.max(0, working.chips + totalPayout);
+  const splitPhase =
+    working.runGoal !== null && finalChips >= working.runGoal ? "victory" : "result";
   return {
     ...working,
     payout: totalPayout,
-    chips: Math.max(0, working.chips + totalPayout),
+    chips: finalChips,
     outcome: overallOutcome,
-    phase: "result",
+    phase: splitPhase,
   };
 }
 
@@ -725,7 +759,7 @@ function reshuffleThreshold(rules: GameRules): number {
 }
 
 export function newHand(s: EngineState): EngineState {
-  if (s.phase !== "result") throw new Error("Not in result phase.");
+  if (s.phase !== "result" && s.phase !== "victory") throw new Error("Not in result phase.");
   const deck =
     s.deck.length < reshuffleThreshold(s.rules) ? freshShuffledDeck(s.rules.deck_count) : s.deck;
   return {

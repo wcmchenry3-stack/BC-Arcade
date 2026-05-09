@@ -233,8 +233,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     (rules: GameRules) => {
       if (!engine || engine.phase !== "betting") return;
       const updated: EngineState = {
-        ...newGame(undefined, rules),
+        ...newGame(undefined, { rules }),
         chips: engine.chips,
+        runGoal: engine.runGoal,
+        startingChips: engine.startingChips,
+        betMin: engine.betMin,
+        betMax: engine.betMax,
       };
       setEngine(updated);
       saveGame(updated);
@@ -252,7 +256,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     // is idempotent and the guard in useGameSync makes this a no-op.
     // Otherwise we're mid-game and the user pressed New Game (abandon).
     endSession("abandoned");
-    const fresh = newGame(undefined, engine?.rules ?? DEFAULT_RULES);
+    const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
     saveGame(fresh);
     setError(null);

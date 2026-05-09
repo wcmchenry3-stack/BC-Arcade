@@ -25,6 +25,7 @@ import {
   EngineState,
   Card,
   DEFAULT_RULES,
+  DEFAULT_RUN_CONFIG,
 } from "../engine";
 
 // Helpers ------------------------------------------------------------------
@@ -47,6 +48,7 @@ function emptySplitState() {
 
 function stateInPlayer(chips = 1000, bet = 100): EngineState {
   return {
+    ...DEFAULT_RUN_CONFIG,
     chips,
     bet,
     phase: "player",
@@ -69,6 +71,7 @@ function stateInResult(
   payout = 0
 ): EngineState {
   return {
+    ...DEFAULT_RUN_CONFIG,
     chips,
     bet,
     phase: "result",
@@ -92,6 +95,7 @@ function splitSetup(opts?: {
   deck?: Card[];
 }): EngineState {
   return {
+    ...DEFAULT_RUN_CONFIG,
     chips: opts?.chips ?? 1000,
     bet: opts?.bet ?? 100,
     phase: "player",
@@ -264,6 +268,115 @@ describe("bet validation", () => {
   it("exact chips accepted", () => {
     const g = placeBet({ ...newGame(), chips: 100 }, 100);
     expect(["player", "result"]).toContain(g.phase);
+  });
+});
+
+// --- Run config -----------------------------------------------------------
+
+describe("run config", () => {
+  it("newGame uses startingChips from runConfig", () => {
+    const g = newGame(undefined, { startingChips: 250 });
+    expect(g.chips).toBe(250);
+    expect(g.startingChips).toBe(250);
+  });
+
+  it("newGame uses runGoal from runConfig", () => {
+    const g = newGame(undefined, { runGoal: 500 });
+    expect(g.runGoal).toBe(500);
+  });
+
+  it("newGame defaults to null runGoal (no victory)", () => {
+    expect(newGame().runGoal).toBeNull();
+  });
+
+  it("newGame uses dynamic betMin/betMax", () => {
+    const g = newGame(undefined, { betMin: 10, betMax: 50 });
+    expect(g.betMin).toBe(10);
+    expect(g.betMax).toBe(50);
+  });
+
+  it("placeBet respects dynamic betMin", () => {
+    const g = newGame(undefined, { startingChips: 500, betMin: 10, betMax: 50 });
+    expect(() => placeBet(g, 5)).toThrow();
+    expect(() => placeBet(g, 10)).not.toThrow();
+  });
+
+  it("placeBet respects dynamic betMax", () => {
+    const g = newGame(undefined, { startingChips: 500, betMin: 10, betMax: 50 });
+    expect(() => placeBet(g, 51)).toThrow();
+    expect(() => placeBet(g, 50)).not.toThrow();
+  });
+});
+
+// --- Victory phase --------------------------------------------------------
+
+describe("victory phase", () => {
+  it("transitions to victory when chips reach runGoal after stand", () => {
+    const s: EngineState = {
+      ...stateInPlayer(240, 10),
+      runGoal: 250,
+      player_hand: [c("♠", "K"), c("♥", "9")], // 19
+      dealer_hand: [c("♦", "6"), c("♣", "7")], // 13
+      deck: Array(10).fill(c("♠", "4")), // dealer hits to 17
+    };
+    const r = stand(s);
+    expect(r.outcome).toBe("win");
+    expect(r.chips).toBe(250);
+    expect(r.phase).toBe("victory");
+  });
+
+  it("transitions to victory on natural blackjack crossing the goal", () => {
+    const g = newGame(undefined, { startingChips: 240, runGoal: 250, betMin: 5, betMax: 100 });
+    const withDeck: EngineState = {
+      ...g,
+      deck: [c("♣", "5"), c("♦", "K"), c("♥", "6"), c("♠", "A")],
+    };
+    const r = placeBet(withDeck, 10);
+    expect(r.outcome).toBe("blackjack");
+    expect(r.phase).toBe("victory");
+  });
+
+  it("stays in result phase when chips do not reach runGoal", () => {
+    const s: EngineState = {
+      ...stateInPlayer(100, 10),
+      runGoal: 250,
+      player_hand: [c("♠", "K"), c("♥", "9")],
+      dealer_hand: [c("♦", "6"), c("♣", "7")],
+      deck: Array(10).fill(c("♠", "4")),
+    };
+    const r = stand(s);
+    expect(r.phase).toBe("result");
+  });
+
+  it("never triggers victory when runGoal is null", () => {
+    const s: EngineState = {
+      ...stateInPlayer(2000, 10),
+      runGoal: null,
+      player_hand: [c("♠", "K"), c("♥", "9")],
+      dealer_hand: [c("♦", "6"), c("♣", "7")],
+      deck: Array(10).fill(c("♠", "4")),
+    };
+    expect(stand(s).phase).toBe("result");
+  });
+
+  it("toViewState sets run_complete true in victory phase", () => {
+    const s: EngineState = {
+      ...stateInResult(),
+      phase: "victory",
+      runGoal: 1000,
+    };
+    const view = toViewState(s);
+    expect(view.run_complete).toBe(true);
+    expect(view.run_goal).toBe(1000);
+  });
+
+  it("toViewState sets run_complete false in result phase", () => {
+    expect(toViewState(stateInResult()).run_complete).toBe(false);
+  });
+
+  it("newHand accepts victory phase", () => {
+    const s: EngineState = { ...stateInResult(), phase: "victory" };
+    expect(newHand(s).phase).toBe("betting");
   });
 });
 
@@ -557,6 +670,7 @@ function ddSetup(
   deck: Card[]
 ): EngineState {
   return {
+    ...DEFAULT_RUN_CONFIG,
     chips,
     bet,
     phase: "player",
@@ -1189,6 +1303,7 @@ describe("toViewState with split", () => {
 describe("game events", () => {
   function stateInBetting(chips = 1000): EngineState {
     return {
+      ...DEFAULT_RUN_CONFIG,
       chips,
       bet: 0,
       phase: "betting",
