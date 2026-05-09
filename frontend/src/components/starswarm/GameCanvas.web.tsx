@@ -202,7 +202,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const scaleRef = useRef(scale);
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
     const stateRef = useRef<StarSwarmState>(
-      initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp)
+      initialState ??
+        initStarSwarm(
+          width,
+          height,
+          1,
+          (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
+          difficultyProp
+        )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
     const inputRef = useRef({ playerX: width / 2, fire: true });
@@ -386,7 +393,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         width,
         height,
         opts?.wave ?? 1,
-        42,
+        (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
         opts?.difficulty ?? difficultyRef.current
       );
       sfRef.current = initStarfield(width, height);

@@ -596,7 +596,6 @@ export function initStarSwarm(
   difficulty: DifficultyTier = "LieutenantJG"
 ): StarSwarmState {
   seedRng(seed);
-  _resetIds();
 
   const player: Player = {
     x: canvasW / 2,
