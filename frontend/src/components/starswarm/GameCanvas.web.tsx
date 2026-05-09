@@ -201,7 +201,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const scaleRef = useRef(scale);
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
-    const stateRef = useRef<StarSwarmState>(initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp));
+    const stateRef = useRef<StarSwarmState>(
+      initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp)
+    );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
     const inputRef = useRef({ playerX: width / 2, fire: true });
     const infiniteLivesRef = useRef(false);

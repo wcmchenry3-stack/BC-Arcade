@@ -119,7 +119,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const { t } = useTranslation("starswarm");
     const images = useStarSwarmImages();
 
-    const gameRef = useRef<StarSwarmState>(initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp));
+    const gameRef = useRef<StarSwarmState>(
+      initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp)
+    );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
     const inputRef = useRef({ playerX: width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
