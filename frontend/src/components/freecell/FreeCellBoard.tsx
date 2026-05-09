@@ -20,6 +20,8 @@ import { useCardSelection } from "../../game/_shared/useCardSelection";
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const ROW_GAP = 8;
+// Tighter than COL_GAP so space-between produces a natural ~8px gap between groups
+const TOP_GROUP_GAP = 1;
 const DOUBLE_TAP_MS = 300;
 
 type Selection =
@@ -398,7 +400,7 @@ const styles = StyleSheet.create({
   },
   topGroup: {
     flexDirection: "row",
-    gap: 1,
+    gap: TOP_GROUP_GAP,
   },
   tableau: {
     flexDirection: "row",
