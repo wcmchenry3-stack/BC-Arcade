@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -34,6 +35,11 @@ import {
 } from "../game/starswarm/engine";
 import type { GamePhase, PowerUpType, DifficultyTier } from "../game/starswarm/types";
 import { starSwarmApi } from "../game/starswarm/api";
+import {
+  getSavedPausedState,
+  savePausedState,
+  clearSavedPausedState,
+} from "../game/starswarm/pauseStore";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
 import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
 
@@ -45,9 +51,12 @@ export default function StarSwarmScreen() {
 
   const canvasRef = useRef<GameCanvasHandle>(null);
 
+  // Capture saved paused session once at mount — used to restore game state and skip difficulty picker.
+  const savedPauseRef = useRef(getSavedPausedState());
+
   const [highScore, setHighScore] = useState(0);
   const [phase, setPhase] = useState<GamePhase>("SwoopIn");
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
@@ -62,9 +71,11 @@ export default function StarSwarmScreen() {
   const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
   const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
 
-  // Pre-game difficulty selector — shown before each new game
-  const [difficulty, setDifficulty] = useState<DifficultyTier>("LieutenantJG");
-  const [showDifficultyPicker, setShowDifficultyPicker] = useState(true);
+  // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session)
+  const [difficulty, setDifficulty] = useState<DifficultyTier>(
+    savedPauseRef.current?.difficulty ?? "LieutenantJG"
+  );
+  const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -155,6 +166,8 @@ export default function StarSwarmScreen() {
 
   // Confirm difficulty selection and start the game
   const handleConfirmDifficulty = useCallback(() => {
+    clearSavedPausedState();
+    savedPauseRef.current = null;
     setShowDifficultyPicker(false);
     scoreRef.current = 0;
     setPhase("SwoopIn");
@@ -187,12 +200,40 @@ export default function StarSwarmScreen() {
   const displayW = Math.round(CANVAS_W * scale);
   const displayH = Math.round(CANVAS_H * scale);
 
+  const showPauseBtn = !showDifficultyPicker && phase !== "GameOver" && scale > 0;
+
   return (
     <GameShell
       title={t("game.title")}
       requireBack
-      onBack={() => navigation.popToTop()}
+      onBack={() => {
+        if (isPaused) {
+          const state = canvasRef.current?.getState();
+          if (state) savePausedState({ gameState: state, difficulty });
+        }
+        navigation.popToTop();
+      }}
       onNewGame={handleRequestNewGame}
+      rightSlot={
+        showPauseBtn ? (
+          <Pressable
+            onPress={isPaused ? handleResume : handlePause}
+            accessibilityRole="button"
+            accessibilityLabel={isPaused ? t("controls.resumeLabel") : t("controls.pauseLabel")}
+            style={({ pressed }) => [
+              styles.pauseHeaderBtn,
+              pressed && styles.pauseHeaderBtnPressed,
+            ]}
+            hitSlop={8}
+          >
+            <MaterialIcons
+              name={isPaused ? "play-arrow" : "pause"}
+              size={22}
+              color={colors.textOnAccent}
+            />
+          </Pressable>
+        ) : undefined
+      }
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
         paddingLeft: Math.max(insets.left, 0),
@@ -222,6 +263,7 @@ export default function StarSwarmScreen() {
               scale={scale}
               difficulty={difficulty}
               resetTick={resetTick}
+              initialState={savedPauseRef.current?.gameState}
               // #1311/#1312: spread lastDevOptsRef for new-game options (wave, lives, etc.),
               // then override live-toggleable fields so they propagate mid-game without New Game.
               // pauseStraggler is also overridden here (fixes a pre-existing gap where the toggle
@@ -472,6 +514,17 @@ const baseStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pauseHeaderBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#00aaff",
+  },
+  pauseHeaderBtnPressed: {
+    opacity: 0.7,
   },
   devButtonText: {
     color: "#fff",
