@@ -568,8 +568,10 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[]): Card {
   const losing = inSuit.filter((c) => aceHigh(c.rank) < winningRank);
 
   if (pts === 0 && isLastToPlay) {
-    // Safe trick, last to play — exhaust high cards
-    return highest(inSuit) ?? valid[0]!;
+    // Safe trick, last to play — exhaust high cards, but never dump a point card onto ourselves
+    const safeInSuit = inSuit.filter((c) => cardPoints(c) === 0);
+    if (safeInSuit.length > 0) return highest(safeInSuit) ?? valid[0]!;
+    return lowest(inSuit) ?? valid[0]!;
   }
 
   if (pts > 0) {

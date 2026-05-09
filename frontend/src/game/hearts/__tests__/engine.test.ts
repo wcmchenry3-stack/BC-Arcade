@@ -941,6 +941,77 @@ describe("applyHandScoring — moonShot event", () => {
   });
 });
 
+describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
+  it("emits moonShot immediately when moon is clinched before trick 13", () => {
+    // Player 0 already holds 12 hearts + Q♠ (25 pts). One heart remains.
+    // This is trick 11; winning it gives player 0 all 26 points mid-hand.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 10,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [[...hearts12, c("spades", 12)], [], [], []],
+      handScores: [25, 0, 0, 0],
+      playerHands: [
+        [c("hearts", 1)],
+        [c("clubs", 2)],
+        [c("clubs", 3)],
+        [c("clubs", 4)],
+      ],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    expect(state.phase).toBe("playing");
+    expect(state.events).toContainEqual({ type: "moonShot", shooter: 0 });
+  });
+
+  it("does not emit moonShot mid-hand when moon has not been clinched", () => {
+    // Player 0 has only 12 hearts — still missing Q♠.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 10,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [hearts12, [], [], []],
+      handScores: [12, 0, 0, 0],
+      playerHands: [
+        [c("hearts", 1)],
+        [c("clubs", 2)],
+        [c("clubs", 3)],
+        [c("clubs", 4)],
+      ],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    const moonEvents = (state.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(0);
+  });
+
+  it("emits moonShot exactly once when moon clinches mid-hand then applyHandScoring runs", () => {
+    // Simulate state after a mid-hand moonShot has already been emitted —
+    // applyHandScoring should not append a second event.
+    const allHearts = Array.from({ length: 13 }, (_, i) => c("hearts", (i + 1) as Rank));
+    const state = mkState({
+      phase: "hand_end",
+      handScores: [26, 0, 0, 0],
+      cumulativeScores: [0, 0, 0, 0],
+      wonCards: [[...allHearts, c("spades", 12)], [], [], []],
+      events: [{ type: "moonShot", shooter: 0 }],
+    });
+    const next = applyHandScoring(state);
+    const moonEvents = (next.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(1);
+  });
+});
+
 describe("applyHandScoring — game over", () => {
   it("transitions to game_over when any score reaches 100", () => {
     const state = mkState({

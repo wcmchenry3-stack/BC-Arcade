@@ -745,3 +745,61 @@ describe("detectPotentialMoon", () => {
     expect(detectPotentialMoon(state)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// chooseFollow — safe trick, never self-dump point cards (#1363)
+// ---------------------------------------------------------------------------
+
+describe("chooseFollow — safe trick, never self-dump Q♠ or hearts (#1363)", () => {
+  it("does not play Q♠ last in a 0-pt spades trick when a lower spade is available", () => {
+    const hand = [c("spades", 12), c("spades", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 3), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3);
+    expect(pick).not.toEqual(c("spades", 12));
+    expect(pick).toEqual(c("spades", 7));
+  });
+
+  it("plays Q♠ when it is the only spade remaining (forced)", () => {
+    const hand = [c("spades", 12)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 3), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3);
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("exhausts K♠ last in a 0-pt spades trick (K♠ has no point value)", () => {
+    const hand = [c("spades", 13), c("spades", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 3), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3);
+    expect(pick).toEqual(c("spades", 13));
+  });
+});
