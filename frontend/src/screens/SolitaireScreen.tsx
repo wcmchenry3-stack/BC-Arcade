@@ -763,7 +763,7 @@ export default function SolitaireScreen() {
               <SolitaireWinCascade visible={cascadeVisible} />
 
               <View
-                style={styles.selectionIndicator}
+                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
                 accessibilityLiveRegion="polite"
                 pointerEvents="none"
               >
@@ -1023,7 +1023,6 @@ const styles = StyleSheet.create({
   },
   selectionIndicator: {
     position: "absolute",
-    bottom: 0,
     left: 0,
     right: 0,
     alignItems: "center",
