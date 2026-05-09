@@ -281,7 +281,7 @@ export function toViewState(s: EngineState): BlackjackState {
     }
   }
 
-  const game_over = s.chips === 0 && (s.phase === "result" || s.phase === "victory");
+  const game_over = s.chips === 0 && s.phase === "result";
 
   let player_hands_view: HandResponse[];
   if (isSplit) {
@@ -513,14 +513,14 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
   else overallOutcome = "push";
 
   const finalChips = Math.max(0, working.chips + totalPayout);
-  const splitPhase =
+  const finalPhase =
     working.runGoal !== null && finalChips >= working.runGoal ? "victory" : "result";
   return {
     ...working,
     payout: totalPayout,
     chips: finalChips,
     outcome: overallOutcome,
-    phase: splitPhase,
+    phase: finalPhase,
   };
 }
 

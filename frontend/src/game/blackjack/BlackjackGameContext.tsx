@@ -208,6 +208,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       if (next.chips === 0 && next.phase === "result") {
         endSession("completed");
       }
+      // TODO BJ-3: call endSession("completed") on victory cash-out — the
+      // "victory" phase is handled by BlackjackVictoryScreen, which will
+      // trigger endSession there. Until then, victorious runs close as
+      // "abandoned" when the provider unmounts.
     },
     [endSession, syncEnqueue, syncMarkStarted]
   );

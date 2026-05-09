@@ -374,6 +374,38 @@ describe("victory phase", () => {
     expect(toViewState(stateInResult()).run_complete).toBe(false);
   });
 
+  it("transitions to victory via doubleDown crossing the goal", () => {
+    // Player 10+5=15, DD card 6 → 21. Dealer 6+8=14 hits 10 → 24 bust.
+    // chips=230, bet=10 → DD doubles bet to 20, win pays +20 → 250 == runGoal.
+    const s: EngineState = {
+      ...ddSetup(230, 10, [c("♠", "10"), c("♥", "5")], [c("♦", "6"), c("♣", "8")], [c("♠", "10"), c("♠", "6")]),
+      runGoal: 250,
+    };
+    const r = doubleDown(s);
+    expect(r.outcome).toBe("win");
+    expect(r.chips).toBe(250);
+    expect(r.phase).toBe("victory");
+  });
+
+  it("transitions to victory via split settlement crossing the goal", () => {
+    // Both split hands win: chips=230, bet=10 each → net +20 → 250 == runGoal.
+    // Deck pop order: hand0 gets 9♥ (19), hand1 gets 9♦ (19), dealer draws 10♠ → busts.
+    let s = split(
+      splitSetup({
+        chips: 230,
+        bet: 10,
+        player: [c("♠", "K"), c("♥", "K")],
+        dealer: [c("♦", "6"), c("♣", "7")], // 13 → draws 10 → 23 bust
+        deck: [c("♠", "10"), c("♦", "9"), c("♥", "9")],
+      })
+    );
+    s = { ...s, runGoal: 250 };
+    s = stand(s); // hand 0 done
+    s = stand(s); // hand 1 done → finishIfAllHandsDone → victory
+    expect(s.phase).toBe("victory");
+    expect(s.chips).toBe(250);
+  });
+
   it("newHand accepts victory phase", () => {
     const s: EngineState = { ...stateInResult(), phase: "victory" };
     expect(newHand(s).phase).toBe("betting");

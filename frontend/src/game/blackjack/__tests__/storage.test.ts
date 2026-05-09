@@ -88,4 +88,19 @@ describe("blackjack storage", () => {
     const loaded = await loadGame();
     expect(loaded?.lastWin).toBeNull();
   });
+
+  it("backfills run-mode fields for saves that predate run mode", async () => {
+    const g = newGame();
+    const serialized = JSON.parse(JSON.stringify(g)) as Record<string, unknown>;
+    delete serialized["runGoal"];
+    delete serialized["startingChips"];
+    delete serialized["betMin"];
+    delete serialized["betMax"];
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
+    const loaded = await loadGame();
+    expect(loaded?.runGoal).toBeNull();
+    expect(loaded?.startingChips).toBe(1000);
+    expect(loaded?.betMin).toBe(5);
+    expect(loaded?.betMax).toBe(500);
+  });
 });
