@@ -8,7 +8,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { DEFAULT_RULES, EngineState } from "./engine";
+import { DEFAULT_RULES, DEFAULT_RUN_CONFIG, EngineState } from "./engine";
 
 const STORAGE_KEY = "blackjack_game_v2";
 
@@ -69,6 +69,19 @@ export async function loadGame(): Promise<EngineState | null> {
     // Backfill lastWin for saves created before the HUD was added.
     if (!("lastWin" in (parsed as object))) {
       (parsed as unknown as Record<string, unknown>).lastWin = null;
+    }
+    // Backfill run-mode fields for saves created before run mode was added.
+    if (typeof parsed.runGoal === "undefined") {
+      parsed.runGoal = DEFAULT_RUN_CONFIG.runGoal;
+    }
+    if (typeof parsed.startingChips !== "number") {
+      parsed.startingChips = DEFAULT_RUN_CONFIG.startingChips;
+    }
+    if (typeof parsed.betMin !== "number") {
+      parsed.betMin = DEFAULT_RUN_CONFIG.betMin;
+    }
+    if (typeof parsed.betMax !== "number") {
+      parsed.betMax = DEFAULT_RUN_CONFIG.betMax;
     }
     return parsed;
   } catch (e) {
