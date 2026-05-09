@@ -128,15 +128,31 @@ export default function Controls({
       <View style={[styles.overlay, { width: displayW, height: displayH }]}>
         {/* Pause overlay */}
         {isPaused && !isGameOver && (
-          <Pressable
-            style={styles.pauseOverlay}
-            onPress={onResume}
-            accessibilityLabel={t("controls.resumeLabel")}
-            accessibilityRole="button"
-          >
+          <View style={styles.pauseOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFillObject}
+              onPress={onResume}
+              accessibilityLabel={t("controls.resumeLabel")}
+              accessibilityRole="button"
+            />
             <Text style={styles.pauseTitle}>{t("controls.paused")}</Text>
-            <Text style={styles.pauseHint}>{t("controls.tapToResume")}</Text>
-          </Pressable>
+            <Pressable
+              style={styles.pauseResumeBtn}
+              onPress={onResume}
+              accessibilityLabel={t("controls.resumeLabel")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.pauseHint}>{t("controls.tapToResume")}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.newGameBtn, styles.pauseNewGameBtn]}
+              onPress={handleNewGame}
+              accessibilityLabel={t("controls.newGameFromPauseLabel")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.newGameBtnText}>{t("controls.newGameFromPause")}</Text>
+            </Pressable>
+          </View>
         )}
 
         {/* Game-over new-game button */}
@@ -190,10 +206,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     letterSpacing: 3,
   },
+  pauseResumeBtn: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+  },
   pauseHint: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 13,
-    marginTop: 12,
+  },
+  pauseNewGameBtn: {
+    marginTop: 24,
   },
   gameOverActions: {
     position: "absolute",

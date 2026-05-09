@@ -8,6 +8,7 @@ import {
   tick,
   applyPowerUp,
   POWERUP_DURATION,
+  HIT_FLASH_DURATION,
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
@@ -137,6 +138,8 @@ export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
+  /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
+  getState: () => StarSwarmState;
 }
 
 interface Props {
@@ -160,6 +163,8 @@ interface Props {
   /** Active difficulty tier — passed from the pre-game selector (#1037). */
   difficulty?: DifficultyTier;
   devOptions?: DevOptions;
+  /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
+  initialState?: StarSwarmState;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -183,6 +188,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       resetTick,
       difficulty: difficultyProp = "LieutenantJG",
       devOptions,
+      initialState,
     },
     ref
   ) => {
@@ -195,7 +201,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const scaleRef = useRef(scale);
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
-    const stateRef = useRef<StarSwarmState>(initStarSwarm(width, height, 1, 42, difficultyProp));
+    const stateRef = useRef<StarSwarmState>(initialState ?? initStarSwarm(width, height, 1, 42, difficultyProp));
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
     const inputRef = useRef({ playerX: width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
@@ -363,6 +369,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         triggerPowerUp(type) {
           triggerPowerUpRef.current = type;
         },
+        getState() {
+          return stateRef.current;
+        },
       }),
       []
     );
@@ -472,15 +481,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           );
         }
         if (enemy.hitFlashTimer > 0) {
-          ctx.globalAlpha = 0.55;
-          ctx.fillStyle = C.hitFlash;
-          ctx.fillRect(
-            enemy.x - enemy.width / 2,
-            enemy.y - enemy.height / 2,
-            enemy.width,
-            enemy.height
-          );
-          ctx.globalAlpha = 1;
+          const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
+          const refR = Math.max(enemy.width, enemy.height) * 1.2;
+          const r = refR * (0.6 + 0.5 * progress);
+          const a = enemy.hitFlashTimer / HIT_FLASH_DURATION;
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(0,170,255,${(a * 0.25).toFixed(3)})`;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(0,170,255,${(a * 0.75).toFixed(3)})`;
+          ctx.lineWidth = 3;
+          ctx.stroke();
         }
 
         // HP pips — Elite (2) and Boss (4); Grunt always has 1 HP so pips are omitted
