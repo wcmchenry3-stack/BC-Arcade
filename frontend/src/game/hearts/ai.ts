@@ -45,6 +45,25 @@ function lowest(cards: Card[]): Card | undefined {
   }, undefined);
 }
 
+/**
+ * Returns the player index currently winning a non-empty trick.
+ * Highest card in the led suit wins; off-suit cards cannot win.
+ */
+function currentTrickWinner(trick: readonly TrickCard[]): number {
+  const first = trick[0]!;
+  const ledSuit = first.card.suit;
+  let winnerIdx = first.playerIndex;
+  let winnerRank = aceHigh(first.card.rank);
+  for (let i = 1; i < trick.length; i++) {
+    const tc = trick[i]!;
+    if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > winnerRank) {
+      winnerRank = aceHigh(tc.card.rank);
+      winnerIdx = tc.playerIndex;
+    }
+  }
+  return winnerIdx;
+}
+
 /** Group cards by suit, returning an array of [suit, cards] sorted by count desc. */
 function bySuitDescending(cards: Card[]): Array<[string, Card[]]> {
   const map = new Map<string, Card[]>();
@@ -141,35 +160,44 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
 }
 
 /**
- * Hard: like Medium but always passes Q♠ even when holding A♠ + K♠,
- * maximising danger for opponents.
+ * Hard: dangerous-cards-first passing with opportunistic void creation.
+ *
+ * Priority:
+ *   1. Q♠ (always pass, even when protected — unlike Medium).
+ *   2. A♥, K♥, Q♥, J♥ (high hearts, highest first).
+ *   3. A♠, K♠ (if Q♠ not present).
+ *   4. If any slots remain, complete a void in the shortest eligible suit (1 card only,
+ *      not 2♣ holder's clubs). Voiding a suit gives Hard a free discard opportunity on
+ *      every future lead of that suit without sacrificing a dangerous-card slot.
+ *   5. Fill any remaining slots with the highest safe cards.
  */
 function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   void direction;
   const selected: Card[] = [];
 
-  const hasQSpades = hand.some(isQueenOfSpades);
-  const voidInSpades = hand.filter((c) => c.suit === "spades").length === 0;
+  const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
 
-  // Pass Q♠ even when protected (unlike Medium)
+  const spades = hand.filter((c) => c.suit === "spades");
+  const hasQSpades = spades.some(isQueenOfSpades);
+  const voidInSpades = spades.length === 0;
+
+  // 1. Q♠ (pass even when holding A♠ + K♠)
   if (hasQSpades && !voidInSpades) {
     selected.push({ suit: "spades", rank: 12 });
   }
 
   const safe = passSafeFilter(selected);
 
+  // 2. High hearts
   const dangerHearts = hand
     .filter((c) => c.suit === "hearts" && (c.rank === 1 || c.rank >= 11) && safe(c))
-    .sort((a, b) => {
-      const ra = a.rank === 1 ? 14 : a.rank;
-      const rb = b.rank === 1 ? 14 : b.rank;
-      return rb - ra;
-    });
+    .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
   for (const c of dangerHearts) {
     if (selected.length >= 3) break;
     selected.push(c);
   }
 
+  // 3. High spades if no Q♠
   if (selected.length < 3 && !hasQSpades) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
@@ -178,23 +206,40 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
     }
   }
 
+  const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
+
+  // 4. Opportunistic void: if exactly 1 slot remains, use it to void a single-card suit.
+  if (selected.length === 2) {
+    const bySuit = new Map<string, Card[]>();
+    for (const c of hand) {
+      if (!bySuit.has(c.suit)) bySuit.set(c.suit, []);
+      bySuit.get(c.suit)!.push(c);
+    }
+    for (const [suit, cards] of bySuit) {
+      if (suit === "clubs" && has2Clubs) continue;
+      if (cards.length === 1 && notSelected(cards[0]!)) {
+        selected.push(cards[0]!);
+        break;
+      }
+    }
+  }
+
+  // 5. Fill remaining slots with highest safe cards
   if (selected.length < 3) {
-    const candidates = hand.filter(safe).sort((a, b) => {
-      const ra = a.rank === 1 ? 14 : a.rank;
-      const rb = b.rank === 1 ? 14 : b.rank;
-      if (rb !== ra) return rb - ra;
-      if (a.suit === "clubs" && b.suit !== "clubs") return 1;
-      if (b.suit === "clubs" && a.suit !== "clubs") return -1;
-      return 0;
-    });
+    const candidates = hand
+      .filter((c) => safe(c) && notSelected(c))
+      .sort((a, b) => {
+        const diff = aceHigh(b.rank) - aceHigh(a.rank);
+        if (diff !== 0) return diff;
+        if (a.suit === "clubs" && b.suit !== "clubs") return 1;
+        if (b.suit === "clubs" && a.suit !== "clubs") return -1;
+        return 0;
+      });
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
     }
   }
-
-  // Ensure at least 1 high heart if possible (pass Q♠ took a slot, still need 3)
-  // The loop above handles fill-in; has already added Q♠
 
   return selected.slice(0, 3);
 }
@@ -364,6 +409,60 @@ function selectCardToPlayHard(
       if (inSuit.length === 0) {
         const nonHearts = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
         if (nonHearts.length > 0) return highest(nonHearts) ?? valid[0]!;
+      }
+    }
+  }
+
+  // Game-timing awareness: once anyone is in endgame range, think about whether
+  // ending the game NOW is good or bad for us.
+  const scores = state.cumulativeScores;
+  const myScore = scores[playerIndex] ?? 0;
+  const allScores = scores.map((s) => s ?? 0);
+  const maxScore = Math.max(...allScores);
+  const amGameLeader = myScore <= Math.min(...allScores);
+  const inEndgame = maxScore >= 65 && !isMoonAttempt;
+
+  if (inEndgame && !isLeading) {
+    const first = trick[0];
+    if (first) {
+      const inSuit = valid.filter((c) => c.suit === first.card.suit);
+      if (inSuit.length === 0) {
+        // We're void — choose discard strategically.
+        const trickWinner = currentTrickWinner(trick);
+        const winnerScore = allScores[trickWinner] ?? 0;
+
+        // Offensive: score leader is winning — dump highest point card to push them toward 100.
+        let scoreLeaderIndex = -1;
+        let scoreLeaderScore = -1;
+        for (let i = 0; i < 4; i++) {
+          if (i === playerIndex) continue;
+          const s = allScores[i] ?? 0;
+          if (s > scoreLeaderScore) {
+            scoreLeaderScore = s;
+            scoreLeaderIndex = i;
+          }
+        }
+        if (trickWinner === scoreLeaderIndex) {
+          const pointCards = valid
+            .filter((c) => cardPoints(c) > 0)
+            .sort((a, b) => cardPoints(b) - cardPoints(a) || aceHigh(b.rank) - aceHigh(a.rank));
+          if (pointCards.length > 0) return pointCards[0]!;
+        }
+
+        // Timing guard: if dumping Q♠ would push the trick winner to 100+ and end the game
+        // while we're NOT the game leader, hold Q♠ back — don't hand someone else the win.
+        const hasQ = valid.some(isQueenOfSpades);
+        if (!amGameLeader && hasQ && winnerScore + 13 >= 100) {
+          const withoutQ = valid.filter((c) => !isQueenOfSpades(c));
+          // Prefer a non-point card; fall back to lowest point card if forced
+          const nonPoint = withoutQ.filter((c) => cardPoints(c) === 0);
+          if (nonPoint.length > 0) return lowest(nonPoint) ?? withoutQ[0]!;
+          const lowestHeart = withoutQ
+            .filter((c) => c.suit === "hearts")
+            .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
+          if (lowestHeart.length > 0) return lowestHeart[0]!;
+          if (withoutQ.length > 0) return withoutQ[0]!;
+        }
       }
     }
   }
