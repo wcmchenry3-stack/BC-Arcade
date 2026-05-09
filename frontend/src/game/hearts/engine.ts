@@ -139,6 +139,7 @@ export function dealNextHand(state: HeartsState): HeartsState {
     wonCards: [[], [], [], []],
     heartsBroken: false,
     tricksPlayedInHand: 0,
+    events: [],
   };
 }
 
@@ -331,6 +332,12 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     ? ([{ type: "queenOfSpades", takerSeat: winnerPlayerIndex }] as const)
     : ([] as const);
 
+  const moonShooterMidHand = detectMoon(newWonCards);
+  const moonEvent =
+    moonShooterMidHand !== null && newTricksPlayed < 13
+      ? ([{ type: "moonShot", shooter: moonShooterMidHand }] as const)
+      : ([] as const);
+
   let next: HeartsState = {
     ...state,
     currentTrick: [],
@@ -339,7 +346,7 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     wonCards: newWonCards,
     handScores: newHandScores,
     tricksPlayedInHand: newTricksPlayed,
-    events: [...(state.events ?? []), ...queenEvent],
+    events: [...(state.events ?? []), ...queenEvent, ...moonEvent],
   };
 
   if (newTricksPlayed === 13) {
@@ -386,8 +393,12 @@ export function applyHandScoring(state: HeartsState): HeartsState {
   const appliedDelta = newCumulative.map((c, i) => c - (state.cumulativeScores[i] ?? 0));
   const newScoreHistory = [...state.scoreHistory, appliedDelta];
 
+  // Don't re-emit if resolveTrick already fired the event mid-hand
+  const alreadyFired = (state.events ?? []).some((e) => e.type === "moonShot");
   const moonEvent =
-    moonShooter !== null ? ([{ type: "moonShot", shooter: moonShooter }] as const) : ([] as const);
+    moonShooter !== null && !alreadyFired
+      ? ([{ type: "moonShot", shooter: moonShooter }] as const)
+      : ([] as const);
 
   if (isGameOver(newCumulative)) {
     return {
