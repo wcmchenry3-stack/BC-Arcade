@@ -20,6 +20,8 @@ import { useCardSelection } from "../../game/_shared/useCardSelection";
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const ROW_GAP = 8;
+// Tighter than COL_GAP so space-between produces a natural ~8px gap between groups
+const TOP_GROUP_GAP = 1;
 const DOUBLE_TAP_MS = 300;
 
 type Selection =
@@ -313,38 +315,44 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
               },
             ]}
           >
-            {state.freeCells.map((card, i) => (
-              <FreeCellSlot
-                key={i}
-                card={card}
-                cellIndex={i}
-                selected={selection?.kind === "freecell" && selection.cell === i}
-                shakeX={selection?.kind === "freecell" && selection.cell === i ? shakeX : undefined}
-                hintSource={
-                  (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
-                  (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
-                }
-                hintDestination={hintDestFreeCellIndex === i}
-                onPress={handleFreeCellPress}
-                dropId={`freecell-slot-${i}`}
-                onDrop={(source) => handleDropToFreeCell(source, i)}
-              />
-            ))}
-            {SUITS.map((suit) => (
-              <FoundationPile
-                key={suit}
-                pile={state.foundations[suit]}
-                suit={suit}
-                selected={selection?.kind === "foundation" && selection.suit === suit}
-                shakeX={
-                  selection?.kind === "foundation" && selection.suit === suit ? shakeX : undefined
-                }
-                hintDestination={hintDestFoundationSuit === suit}
-                onPress={() => handleFoundationPress(suit)}
-                dropId={`freecell-foundation-${suit}`}
-                onDrop={(source) => handleDropToFoundation(source)}
-              />
-            ))}
+            <View style={styles.topGroup}>
+              {state.freeCells.map((card, i) => (
+                <FreeCellSlot
+                  key={i}
+                  card={card}
+                  cellIndex={i}
+                  selected={selection?.kind === "freecell" && selection.cell === i}
+                  shakeX={
+                    selection?.kind === "freecell" && selection.cell === i ? shakeX : undefined
+                  }
+                  hintSource={
+                    (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
+                    (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
+                  }
+                  hintDestination={hintDestFreeCellIndex === i}
+                  onPress={handleFreeCellPress}
+                  dropId={`freecell-slot-${i}`}
+                  onDrop={(source) => handleDropToFreeCell(source, i)}
+                />
+              ))}
+            </View>
+            <View style={styles.topGroup}>
+              {SUITS.map((suit) => (
+                <FoundationPile
+                  key={suit}
+                  pile={state.foundations[suit]}
+                  suit={suit}
+                  selected={selection?.kind === "foundation" && selection.suit === suit}
+                  shakeX={
+                    selection?.kind === "foundation" && selection.suit === suit ? shakeX : undefined
+                  }
+                  hintDestination={hintDestFoundationSuit === suit}
+                  onPress={() => handleFoundationPress(suit)}
+                  dropId={`freecell-foundation-${suit}`}
+                  onDrop={(source) => handleDropToFoundation(source)}
+                />
+              ))}
+            </View>
           </View>
 
           <View style={styles.tableau}>
@@ -390,7 +398,11 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
-    gap: COL_GAP,
+    justifyContent: "space-between",
+  },
+  topGroup: {
+    flexDirection: "row",
+    gap: TOP_GROUP_GAP,
   },
   tableau: {
     flexDirection: "row",
