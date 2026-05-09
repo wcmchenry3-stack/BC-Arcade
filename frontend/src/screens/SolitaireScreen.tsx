@@ -728,14 +728,6 @@ export default function SolitaireScreen() {
                   </View>
                 </View>
 
-                <View style={styles.selectionIndicator} accessibilityLiveRegion="polite">
-                  {selectionLabel !== null && (
-                    <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
-                      {selectionLabel}
-                    </Text>
-                  )}
-                </View>
-
                 <View style={[styles.tableauRow, { minHeight: cardSize.cardHeight * 3 }]}>
                   {state.tableau.map((pile, col) => (
                     <TableauPile
@@ -769,6 +761,18 @@ export default function SolitaireScreen() {
               )}
 
               <SolitaireWinCascade visible={cascadeVisible} />
+
+              <View
+                style={styles.selectionIndicator}
+                accessibilityLiveRegion="polite"
+                pointerEvents="none"
+              >
+                {selectionLabel !== null && (
+                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                    {selectionLabel}
+                  </Text>
+                )}
+              </View>
             </DragContainer>
           </CardSizeContext.Provider>
         )}
@@ -1018,8 +1022,12 @@ const styles = StyleSheet.create({
     gap: COL_GAP,
   },
   selectionIndicator: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,
