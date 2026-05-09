@@ -953,12 +953,7 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
       currentPlayerIndex: 0,
       wonCards: [[...hearts12, c("spades", 12)], [], [], []],
       handScores: [25, 0, 0, 0],
-      playerHands: [
-        [c("hearts", 1)],
-        [c("clubs", 2)],
-        [c("clubs", 3)],
-        [c("clubs", 4)],
-      ],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
     });
     state = playCard(state, 0, c("hearts", 1));
     state = playCard(state, 1, c("clubs", 2));
@@ -979,12 +974,7 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
       currentPlayerIndex: 0,
       wonCards: [hearts12, [], [], []],
       handScores: [12, 0, 0, 0],
-      playerHands: [
-        [c("hearts", 1)],
-        [c("clubs", 2)],
-        [c("clubs", 3)],
-        [c("clubs", 4)],
-      ],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
     });
     state = playCard(state, 0, c("hearts", 1));
     state = playCard(state, 1, c("clubs", 2));
@@ -1023,12 +1013,7 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
       wonCards: [[...hearts12, c("spades", 12)], [], [], []],
       handScores: [25, 0, 0, 0],
       cumulativeScores: [0, 0, 0, 0],
-      playerHands: [
-        [c("hearts", 1)],
-        [c("clubs", 2)],
-        [c("clubs", 3)],
-        [c("clubs", 4)],
-      ],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
     });
     state = playCard(state, 0, c("hearts", 1));
     state = playCard(state, 1, c("clubs", 2));
