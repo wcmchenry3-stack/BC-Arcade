@@ -144,9 +144,10 @@ function Waste({
   const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
 
   if (waste.length === 0) {
+    const emptyWidth = drawMode === 3 ? 2 * wasteFanOffset + cardWidth : cardWidth;
     return (
       <View
-        style={{ width: cardWidth, height: cardHeight }}
+        style={{ width: emptyWidth, height: cardHeight }}
         accessibilityRole="image"
         accessibilityLabel={t("pile.waste.empty")}
       />
