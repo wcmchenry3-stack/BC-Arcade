@@ -378,7 +378,13 @@ describe("victory phase", () => {
     // Player 10+5=15, DD card 6 → 21. Dealer 6+8=14 hits 10 → 24 bust.
     // chips=230, bet=10 → DD doubles bet to 20, win pays +20 → 250 == runGoal.
     const s: EngineState = {
-      ...ddSetup(230, 10, [c("♠", "10"), c("♥", "5")], [c("♦", "6"), c("♣", "8")], [c("♠", "10"), c("♠", "6")]),
+      ...ddSetup(
+        230,
+        10,
+        [c("♠", "10"), c("♥", "5")],
+        [c("♦", "6"), c("♣", "8")],
+        [c("♠", "10"), c("♠", "6")]
+      ),
       runGoal: 250,
     };
     const r = doubleDown(s);
