@@ -1010,6 +1010,35 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
     const moonEvents = (next.events ?? []).filter((e) => e.type === "moonShot");
     expect(moonEvents).toHaveLength(1);
   });
+
+  it("emits moonShot exactly once when moon is clinched on trick 13 (applyHandScoring path)", () => {
+    // Moon clinched on the final trick — resolveTrick must NOT fire the event
+    // (newTricksPlayed === 13 guard), applyHandScoring fires it once.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 12,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [[...hearts12, c("spades", 12)], [], [], []],
+      handScores: [25, 0, 0, 0],
+      cumulativeScores: [0, 0, 0, 0],
+      playerHands: [
+        [c("hearts", 1)],
+        [c("clubs", 2)],
+        [c("clubs", 3)],
+        [c("clubs", 4)],
+      ],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    const moonEvents = (state.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(1);
+    expect(state.phase).not.toBe("playing");
+  });
 });
 
 describe("applyHandScoring — game over", () => {

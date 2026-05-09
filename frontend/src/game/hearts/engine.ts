@@ -139,6 +139,7 @@ export function dealNextHand(state: HeartsState): HeartsState {
     wonCards: [[], [], [], []],
     heartsBroken: false,
     tricksPlayedInHand: 0,
+    events: [],
   };
 }
 
