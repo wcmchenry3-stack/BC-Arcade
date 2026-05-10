@@ -2,6 +2,43 @@ import { useMemo } from "react";
 import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// ---------------------------------------------------------------------------
+// Camera abstraction — authoritative world→screen converter.
+// Future implementations can swap tileToScreen to add zoom/pan without
+// touching any rendering or hit-test code.
+// ---------------------------------------------------------------------------
+
+export interface BoardCamera {
+  tileToScreen(col: number, row: number, layer: number): { x: number; y: number };
+  tileWidth: number;
+  tileHeight: number;
+  faceWidth: number;
+  faceHeight: number;
+  sideWidth: number;
+  boardWidth: number;
+  boardHeight: number;
+}
+
+export function makeBoardCamera(layout: MahjongLayout): BoardCamera {
+  const { tileWidth, tileHeight, sideWidth, layerDx, layerDy, padX, padY, boardWidth, boardHeight } =
+    layout;
+  return {
+    tileToScreen(col, row, layer) {
+      return {
+        x: padX + (col / 2) * tileWidth + layer * layerDx,
+        y: padY + row * tileHeight - layer * layerDy,
+      };
+    },
+    tileWidth,
+    tileHeight,
+    faceWidth: tileWidth - sideWidth,
+    faceHeight: tileHeight - sideWidth,
+    sideWidth,
+    boardWidth,
+    boardHeight,
+  };
+}
+
 export interface MahjongLayoutInput {
   screenWidth: number;
   screenHeight: number;
@@ -120,4 +157,9 @@ export function useMahjongCanvasLayout(): MahjongLayout {
       }),
     [width, height, insets.top, insets.bottom, insets.left, insets.right]
   );
+}
+
+export function useMahjongCamera(): BoardCamera {
+  const layout = useMahjongCanvasLayout();
+  return useMemo(() => makeBoardCamera(layout), [layout]);
 }

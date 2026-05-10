@@ -20,18 +20,7 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_BG } from "../../theme/theme.constants";
-import type { MahjongLayout } from "../../game/mahjong/layout";
-
-// ---------------------------------------------------------------------------
-// Geometry helpers — accept layout so they stay pure functions
-// ---------------------------------------------------------------------------
-
-function tileX(col: number, layer: number, l: MahjongLayout): number {
-  return l.padX + (col / 2) * l.tileWidth + layer * l.layerDx;
-}
-function tileY(row: number, layer: number, l: MahjongLayout): number {
-  return l.padY + row * l.tileHeight - layer * l.layerDy;
-}
+import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -203,15 +192,13 @@ function hitTest(
   tiles: readonly SlotTile[],
   tapX: number,
   tapY: number,
-  l: MahjongLayout
+  cam: BoardCamera
 ): number | null {
-  const fw = l.tileWidth - l.sideWidth;
-  const fh = l.tileHeight - l.sideWidth;
+  const { faceWidth: fw, faceHeight: fh } = cam;
   // Iterate from highest layer down so the topmost tile wins.
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer, l);
-    const y = tileY(tile.row, tile.layer, l);
+    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -225,7 +212,7 @@ function hitTest(
 
 interface Props {
   state: MahjongState;
-  layout: MahjongLayout;
+  camera: BoardCamera;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
@@ -233,14 +220,15 @@ interface Props {
 
 export default function GameCanvas({
   state,
-  layout,
+  camera,
   onTilePress,
   onShufflePress,
   onNewGamePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
   const tileSvgs = useAllTileSVGs();
-  const { tileWidth, tileHeight, sideWidth, boardWidth, boardHeight } = layout;
+  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } =
+    camera;
 
   const freeTiles = useMemo(() => {
     const s = new Set<number>();
@@ -278,7 +266,7 @@ export default function GameCanvas({
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
     if (!gameActive) return;
     const { locationX, locationY } = e.nativeEvent;
-    const tileId = hitTest(state.tiles, locationX, locationY, layout);
+    const tileId = hitTest(state.tiles, locationX, locationY, camera);
     if (tileId !== null) onTilePress(tileId);
   }
 
@@ -291,12 +279,11 @@ export default function GameCanvas({
       >
         <Fill color={BG} />
         {sortedTiles.map((tile) => {
-          const x = tileX(tile.col, tile.layer, layout);
-          const y = tileY(tile.row, tile.layer, layout);
+          const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
           const isSelected = tile.id === selectedId;
           const isFree = freeTiles.has(tile.id);
-          const fw = tileWidth - sideWidth;
-          const fh = tileHeight - sideWidth;
+          const fw = faceWidth;
+          const fh = faceHeight;
 
           // Lift selected tile upward/outward — scale with tile size.
           const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;

@@ -17,18 +17,7 @@ import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine"
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_SHADOW } from "../../theme/theme.constants";
-import type { MahjongLayout } from "../../game/mahjong/layout";
-
-// ---------------------------------------------------------------------------
-// Geometry helpers
-// ---------------------------------------------------------------------------
-
-function tileX(col: number, layer: number, l: MahjongLayout): number {
-  return l.padX + (col / 2) * l.tileWidth + layer * l.layerDx;
-}
-function tileY(row: number, layer: number, l: MahjongLayout): number {
-  return l.padY + row * l.tileHeight - layer * l.layerDy;
-}
+import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -62,14 +51,12 @@ function hitTest(
   tiles: readonly SlotTile[],
   tapX: number,
   tapY: number,
-  l: MahjongLayout
+  cam: BoardCamera
 ): number | null {
-  const fw = l.tileWidth - l.sideWidth;
-  const fh = l.tileHeight - l.sideWidth;
+  const { faceWidth: fw, faceHeight: fh } = cam;
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer, l);
-    const y = tileY(tile.row, tile.layer, l);
+    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -86,9 +73,9 @@ function drawBoard(
   state: MahjongState,
   freeTiles: ReadonlySet<number>,
   tileImages: readonly (HTMLImageElement | null)[],
-  l: MahjongLayout
+  cam: BoardCamera
 ): void {
-  const { tileWidth, tileHeight, sideWidth, boardWidth, boardHeight } = l;
+  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } = cam;
 
   ctx.clearRect(0, 0, boardWidth, boardHeight);
 
@@ -105,16 +92,15 @@ function drawBoard(
   for (const tile of sorted) {
     ctx.save();
 
-    const x = tileX(tile.col, tile.layer, l);
-    const y = tileY(tile.row, tile.layer, l);
+    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
-    const fw = tileWidth - sideWidth;
-    const fh = tileHeight - sideWidth;
+    const fw = faceWidth;
+    const fh = faceHeight;
 
     // Lift selected tile upward/outward — scale with tile size.
-    const liftX = isSelected ? Math.round(l.tileWidth * (4 / 44)) : 0;
-    const liftY = isSelected ? -Math.round(l.tileHeight * (5 / 56)) : 0;
+    const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
+    const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
     // 2 px border on selected for visibility at small tile sizes.
     const borderInset = isSelected ? 2 : 1;
 
@@ -181,7 +167,7 @@ function drawBoard(
 
 interface Props {
   state: MahjongState;
-  layout: MahjongLayout;
+  camera: BoardCamera;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
@@ -189,13 +175,13 @@ interface Props {
 
 export default function GameCanvas({
   state,
-  layout,
+  camera,
   onTilePress,
   onShufflePress,
   onNewGamePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
-  const { boardWidth, boardHeight } = layout;
+  const { boardWidth, boardHeight } = camera;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
@@ -269,8 +255,8 @@ export default function GameCanvas({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawBoard(ctx, state, freeTiles, tileImagesRef.current, layout);
-  }, [state, freeTiles, imagesVersion, layout]);
+    drawBoard(ctx, state, freeTiles, tileImagesRef.current, camera);
+  }, [state, freeTiles, imagesVersion, camera]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -280,14 +266,14 @@ export default function GameCanvas({
       const rect = canvas.getBoundingClientRect();
       // getBoundingClientRect reflects the parent's CSS scale transform, so
       // divide by the visual/native ratio to get canvas drawing coordinates.
-      const scaleX = rect.width / layout.boardWidth;
-      const scaleY = rect.height / layout.boardHeight;
+      const scaleX = rect.width / camera.boardWidth;
+      const scaleY = rect.height / camera.boardHeight;
       const tapX = (e.clientX - rect.left) / scaleX;
       const tapY = (e.clientY - rect.top) / scaleY;
-      const tileId = hitTest(state.tiles, tapX, tapY, layout);
+      const tileId = hitTest(state.tiles, tapX, tapY, camera);
       if (tileId !== null) onTilePress(tileId);
     },
-    [state.tiles, onTilePress, gameActive, layout]
+    [state.tiles, onTilePress, gameActive, camera]
   );
 
   return (
