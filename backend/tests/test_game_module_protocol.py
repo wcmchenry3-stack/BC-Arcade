@@ -125,6 +125,37 @@ def test_blackjack_stats_shape_none_latest_score() -> None:
     assert shaped["current_chips"] is None
 
 
+def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
+    shaped = blackjack_module.stats_shape(_RAW_BJ)
+    assert shaped.get("best_run_chips") is None
+    assert shaped.get("total_runs") is None
+    assert shaped.get("runs_completed") is None
+    assert shaped.get("current_table") is None
+
+
+def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
+    raw = {
+        **_RAW_BJ,
+        "metadata": {
+            "best_run_chips": 3000,
+            "total_runs": 12,
+            "runs_completed": 4,
+            "current_table": "intermediate",
+        },
+    }
+    shaped = blackjack_module.stats_shape(raw)
+    assert shaped["best_run_chips"] == 3000
+    assert shaped["total_runs"] == 12
+    assert shaped["runs_completed"] == 4
+    assert shaped["current_table"] == "intermediate"
+
+
+def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
+    shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
+    assert shaped.get("best_run_chips") is None
+    assert shaped.get("current_table") is None
+
+
 # ---------------------------------------------------------------------------
 # CascadeModule.stats_shape — pass-through, strips latest_score
 # ---------------------------------------------------------------------------

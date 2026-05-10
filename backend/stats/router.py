@@ -33,6 +33,10 @@ async def get_my_stats(request: Request) -> StatsResponse:
                 last_played_at=s.last_played_at,
                 best_chips=s.best_chips,
                 current_chips=s.current_chips,
+                best_run_chips=s.best_run_chips,
+                total_runs=s.total_runs,
+                runs_completed=s.runs_completed,
+                current_table=s.current_table,
             )
             for name, s in summary.by_game.items()
         },

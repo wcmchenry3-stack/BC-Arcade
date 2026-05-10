@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { newGame, EngineState, DEFAULT_RULES, handValue, isNaturalBlackjack, Card } from "./engine";
 import { GameRules } from "./types";
-import { saveGame, loadGame, clearGame } from "./storage";
+import { saveGame, loadGame, clearGame, saveRun } from "./storage";
 import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
 
@@ -42,6 +42,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   } = useGameSync("blackjack");
   const sessionStartedAtRef = useRef<number>(0);
   const totalHandsRef = useRef(0);
+  const lowestChipsRef = useRef(0);
+  const biggestWinRef = useRef(0);
   const engineRef = useRef<EngineState | null>(null);
   useEffect(() => {
     engineRef.current = engine;
@@ -51,6 +53,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     (startingChips: number) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
+      lowestChipsRef.current = startingChips;
+      biggestWinRef.current = 0;
       setSessionStats(initialSessionStats(startingChips));
       syncStart({ starting_chips: startingChips });
     },
@@ -68,6 +72,22 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           outcome,
         }
       );
+      // Persist a run record when the player actually played hands.
+      const engine = engineRef.current;
+      if (engine && totalHandsRef.current > 0) {
+        saveRun({
+          table: "beginner",
+          startingChips: engine.startingChips,
+          finalChips: engine.chips,
+          runGoal: engine.runGoal,
+          completed: engine.phase === "victory",
+          handsPlayed: totalHandsRef.current,
+          biggestWin: biggestWinRef.current,
+          lowestChips: lowestChipsRef.current,
+          startedAt: sessionStartedAtRef.current,
+          endedAt: Date.now(),
+        });
+      }
     },
     [syncComplete]
   );
@@ -154,6 +174,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       const nextHasNoSplit = next.player_hands.length === 0;
       if (prevHadNoSplit && nextHasNoSplit && prev.outcome === null && next.outcome !== null) {
         totalHandsRef.current += 1;
+        if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
+        if (next.payout > biggestWinRef.current) biggestWinRef.current = next.payout;
         syncEnqueue({
           type: "hand_resolved",
           data: {
@@ -180,6 +202,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const nOut = next.hand_outcomes[i] ?? null;
         if (pOut === null && nOut !== null) {
           totalHandsRef.current += 1;
+          if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
+          const splitPayout = next.hand_payouts[i] ?? 0;
+          if (splitPayout > biggestWinRef.current) biggestWinRef.current = splitPayout;
           syncEnqueue({
             type: "hand_resolved",
             data: {

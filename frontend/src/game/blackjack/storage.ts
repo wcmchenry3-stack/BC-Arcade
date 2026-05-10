@@ -1,9 +1,11 @@
 /**
- * AsyncStorage persistence for Blackjack in-progress games.
+ * AsyncStorage persistence for Blackjack in-progress games and run history.
  *
  * Persists the full engine state (deck + both hands + chip balance) so a
  * player can close the app mid-hand and resume where they left off, and
  * so chip balance carries across launches.
+ *
+ * Run history is stored separately under RUNS_KEY and capped at MAX_RUNS.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -11,6 +13,55 @@ import * as Sentry from "@sentry/react-native";
 import { DEFAULT_RULES, DEFAULT_RUN_CONFIG, EngineState } from "./engine";
 
 const STORAGE_KEY = "blackjack_game_v2";
+const RUNS_KEY = "blackjack_runs_v1";
+const MAX_RUNS = 50;
+
+export interface RunRecord {
+  /** Table tier the run was played on. BJ-2 will populate tiers; defaults to "beginner". */
+  table: string;
+  startingChips: number;
+  finalChips: number;
+  runGoal: number | null;
+  /** True when the run ended in victory (chips >= runGoal). */
+  completed: boolean;
+  handsPlayed: number;
+  biggestWin: number;
+  lowestChips: number;
+  /** Unix ms timestamp when the session started. */
+  startedAt: number;
+  /** Unix ms timestamp when the session ended. */
+  endedAt: number;
+}
+
+export async function saveRun(record: RunRecord): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(RUNS_KEY);
+    const existing: RunRecord[] = raw ? (JSON.parse(raw) as RunRecord[]) : [];
+    const updated = [...existing, record];
+    // Drop oldest entries when over the cap.
+    const trimmed = updated.length > MAX_RUNS ? updated.slice(updated.length - MAX_RUNS) : updated;
+    await AsyncStorage.setItem(RUNS_KEY, JSON.stringify(trimmed));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "blackjack.storage", op: "saveRun" } });
+  }
+}
+
+export async function loadRuns(): Promise<RunRecord[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RUNS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed as RunRecord[];
+  } catch (e) {
+    Sentry.captureMessage("blackjack.storage: corrupt runs payload, discarding", {
+      level: "warning",
+      tags: { subsystem: "blackjack.storage", op: "loadRuns" },
+      extra: { error: String(e) },
+    });
+    return [];
+  }
+}
 
 export async function saveGame(state: EngineState): Promise<void> {
   try {
