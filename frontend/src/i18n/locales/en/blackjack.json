@@ -127,6 +127,7 @@
   "victory.keepPlayingLabel": "Keep Playing — continue without a goal",
   "victory.nextTable": "Play {{table}} Table",
   "victory.nextTableLabel": "Play {{table}} Table — move up to next table",
+  "victory.unlocked": "You unlocked: {{name}}",
   "milestone.toast": "Milestone reached: {{chips}} chips!",
   "hud.winStreak": "{{count}}x Streak",
   "hud.winStreakAccessibilityLabel": "Win streak: {{count}} wins",

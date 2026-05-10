@@ -123,6 +123,7 @@
   "victory.cashOutLabel": "Cash Out — end run and return to table selection",
   "victory.cashOut": "Cash Out",
   "victory.nextTableLabel": "Play {{table}} Table — move up to next table",
+  "victory.unlocked": "You unlocked: {{name}}",
   "victory.statsNetPLPositive": "+{{amount}} chips",
   "victory.title": "Goal Reached!",
   "victory.statsWinRate": "{{winRate}}% win rate",
