@@ -31,10 +31,12 @@ test.describe("Cascade — merge and score behavior", () => {
   test("two tier-0 fruits at same x merge → score = 2, fruitCount = 1", async ({
     page,
   }) => {
-    // Tier-0 radius=18, sum-of-radii=36. Place 35px apart (1px contact) so
-    // Rapier fires CollisionStart without explosive penetration-correction.
+    // Tier-0 radius=18. Same x: fruit 1 settles at the floor, fruit 2 falls
+    // onto it from above — guaranteed collision regardless of CI round-trip timing.
+    // (The 1px-contact approach broke at GRAVITY_Y≥18 because the first fruit
+    // falls ~9px before the second spawns, pushing them outside contact range.)
     await spawnTierAt(page, 0, 150);
-    await spawnTierAt(page, 0, 185);
+    await spawnTierAt(page, 0, 150);
     await fastForward(page, 2000);
 
     const state = await getState(page);
@@ -99,14 +101,14 @@ test.describe("Cascade — merge and score behavior", () => {
   test("sequential tier-0 merges accumulate score correctly", async ({
     page,
   }) => {
-    // Merge 1: two tier-0 → score += 2 (35px apart = 1px contact, no explosive separation)
+    // Merge 1: two tier-0 at same x → score += 2; fruit 2 falls onto settled fruit 1
     await spawnTierAt(page, 0, 110);
-    await spawnTierAt(page, 0, 145);
+    await spawnTierAt(page, 0, 110);
     await fastForward(page, 2000);
 
-    // Merge 2: two more tier-0 → score += 2 (total = 4), right side
+    // Merge 2: two more tier-0 at same x → score += 2 (total = 4), right side
     await spawnTierAt(page, 0, 240);
-    await spawnTierAt(page, 0, 275);
+    await spawnTierAt(page, 0, 240);
     await fastForward(page, 2000);
 
     const state = await getState(page);
@@ -114,14 +116,14 @@ test.describe("Cascade — merge and score behavior", () => {
   });
 
   test("mixed-tier merges accumulate score correctly", async ({ page }) => {
-    // tier-0 merge (+2): 35px apart (radius=18, sum=36) → 1px contact
+    // tier-0 merge (+2): same x, fruit 2 falls onto settled fruit 1
     await spawnTierAt(page, 0, 150);
-    await spawnTierAt(page, 0, 185);
+    await spawnTierAt(page, 0, 150);
     await fastForward(page, 2000);
 
     // tier-2 merge (+8): 58px apart (radius=33, sum=66, 8px overlap ~12%)
     // so Rapier fires CollisionStart reliably. Start at x=235 to clear the
-    // tier-1 body spawned above (at x≈167, radius=25, rightmost edge ≈192).
+    // tier-1 body spawned above (at x=150, radius=25, rightmost edge ≈175).
     await spawnTierAt(page, 2, 235);
     await spawnTierAt(page, 2, 293);
     await fastForward(page, 2000);
