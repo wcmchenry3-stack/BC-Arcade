@@ -732,10 +732,20 @@ export default function MahjongScreen() {
       {__DEV__ && devPanelOpen && state && (
         <View style={styles.devPanel} pointerEvents="box-none">
           <Text style={styles.devPanelTitle}>DEV — Mahjong</Text>
-          <Text style={styles.devPanelText}>tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}</Text>
-          <Text style={styles.devPanelText}>free tiles: {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free pairs: {freePairs.length}</Text>
-          <Text style={styles.devPanelText}>shuffles left: {state.shufflesLeft} / score: {state.score}</Text>
-          <Text style={styles.devPanelText}>deal #{state.dealId} / undo depth: {state.undoStack.length}</Text>
+          <Text style={styles.devPanelText}>
+            tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}
+          </Text>
+          <Text style={styles.devPanelText}>
+            free tiles:{" "}
+            {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free
+            pairs: {freePairs.length}
+          </Text>
+          <Text style={styles.devPanelText}>
+            shuffles left: {state.shufflesLeft} / score: {state.score}
+          </Text>
+          <Text style={styles.devPanelText}>
+            deal #{state.dealId} / undo depth: {state.undoStack.length}
+          </Text>
           <Pressable
             onPress={() => setDebugShowFree((v) => !v)}
             style={[styles.devToggleBtn, debugShowFree && styles.devToggleBtnActive]}
@@ -750,14 +760,18 @@ export default function MahjongScreen() {
               <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
                 {freePairs.map(([a, b]: [SlotTile, SlotTile], i: number) => (
                   <Text key={i} style={styles.devPairText}>
-                    {a.suit[0]}{a.rank} ↔ {b.suit[0]}{b.rank} (ids {a.id},{b.id})
+                    {a.suit[0]}
+                    {a.rank} ↔ {b.suit[0]}
+                    {b.rank} (ids {a.id},{b.id})
                   </Text>
                 ))}
               </ScrollView>
             </>
           )}
           {freePairs.length === 0 && (
-            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>no free pairs</Text>
+            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>
+              no free pairs
+            </Text>
           )}
         </View>
       )}
