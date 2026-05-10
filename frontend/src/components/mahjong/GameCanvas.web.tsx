@@ -149,10 +149,6 @@ function drawBoard(
     const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
     const suitColor = SUIT_COLOR[tile.suit] ?? "#888888";
 
-    // Drop shadow
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(x + sideWidth + 2 + liftX, y + sideWidth + 2 + liftY, faceWidth, faceHeight);
-
     // Right 3-D side
     ctx.fillStyle = SIDE_R;
     ctx.fillRect(x + faceWidth + liftX, y + sideWidth + liftY, sideWidth, faceHeight);
@@ -161,21 +157,29 @@ function drawBoard(
     ctx.fillStyle = SIDE_B;
     ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
 
-    // Glow behind selected (gold) or hint (blue) tile.
+    // Shadow/glow on the border rect: selected → gold glow, hint → blue glow,
+    // normal → soft feathered drop shadow (replaces the old hard-rect shadow).
     if (isSelected) {
       ctx.shadowColor = MAHJONG_GLOW_SHADOW;
       ctx.shadowBlur = 10;
     } else if (isHint) {
       ctx.shadowColor = MAHJONG_HINT_GLOW_SHADOW;
       ctx.shadowBlur = 8;
+    } else {
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetX = sideWidth + 2;
+      ctx.shadowOffsetY = sideWidth + 2;
     }
 
     // Border
     ctx.fillStyle = borderColor;
     ctx.fillRect(x + liftX, y + liftY, faceWidth, faceHeight);
 
-    // Clear glow before drawing face so inner fills stay crisp.
+    // Clear shadow before drawing face so inner fills stay crisp.
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
 
     // Face
     ctx.fillStyle = faceColor;

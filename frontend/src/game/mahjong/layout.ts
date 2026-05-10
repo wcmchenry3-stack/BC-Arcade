@@ -134,8 +134,8 @@ const MAX_TILE_W = 56;
 const SIDE_R = 5 / 44;
 const LAYER_DX_R = 6 / 44;
 const LAYER_DY_R = 5 / 44;
-const PAD_X_R = 6 / 44;
-const PAD_Y_R = 10 / 44;
+const PAD_X_R = 10 / 44;
+const PAD_Y_R = 14 / 44;
 
 // Keep APP_HEADER_H in sync with AppHeader.APP_HEADER_HEIGHT
 const APP_HEADER_H = 64;
@@ -144,7 +144,7 @@ const MIN_BOTTOM_PAD = 16;
 // App header + HUD row + bottom padding = 116
 const MAHJONG_CHROME_H = APP_HEADER_H + HUD_ROW_H + MIN_BOTTOM_PAD;
 // Minimum horizontal margin on each side when safe-area insets are absent
-const MIN_HORIZ_MARGIN = 4;
+const MIN_HORIZ_MARGIN = 8;
 
 export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout {
   const {
