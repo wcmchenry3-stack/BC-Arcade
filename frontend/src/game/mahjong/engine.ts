@@ -113,7 +113,7 @@ export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
   return false;
 }
 
-/** Returns all valid free pairs. Used by the dev panel to list every available move. */
+/** Returns all valid free pairs. */
 export function getAllFreePairs(tiles: readonly SlotTile[]): [SlotTile, SlotTile][] {
   const free = tiles.filter((t) => isFreeTile(t, tiles));
   const pairs: [SlotTile, SlotTile][] = [];

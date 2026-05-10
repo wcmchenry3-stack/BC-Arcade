@@ -219,9 +219,9 @@ export default function MahjongScreen() {
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [debugShowFree, setDebugShowFree] = useState(false);
   const freePairs = useMemo<[SlotTile, SlotTile][]>(
-    () => (__DEV__ && state ? getAllFreePairs(state.tiles) : []),
+    () => (__DEV__ && devPanelOpen && state ? getAllFreePairs(state.tiles) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state?.tiles]
+    [devPanelOpen, state?.tiles]
   );
 
   // Animation state
@@ -624,14 +624,17 @@ export default function MahjongScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hudRow} accessibilityRole="summary">
-            <Pressable
-              onLongPress={__DEV__ ? () => setDevPanelOpen((o) => !o) : undefined}
-              accessibilityRole="text"
-            >
+            {__DEV__ ? (
+              <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+                <Text style={[styles.hudText, { color: colors.text }]}>
+                  {t("hud.score")} {state.score}
+                </Text>
+              </Pressable>
+            ) : (
               <Text style={[styles.hudText, { color: colors.text }]}>
                 {t("hud.score")} {state.score}
               </Text>
-            </Pressable>
+            )}
             <Text style={[styles.hudText, { color: colors.textMuted }]}>
               {t("hud.pairs")} {state.pairsRemoved}/72
             </Text>
