@@ -78,9 +78,7 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.goal")}
                   </Text>
-                  <Text style={[styles.statValue, { color: colors.text }]}>
-                    {config.runGoal}
-                  </Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{config.runGoal}</Text>
                 </View>
                 <View style={styles.statRow}>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>

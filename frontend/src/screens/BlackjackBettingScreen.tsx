@@ -27,7 +27,9 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
-    loadRuns().then(setRuns).catch(() => {});
+    loadRuns()
+      .then(setRuns)
+      .catch(() => {});
   }, []);
 
   // Show table selection when the engine is in "pending table" state:
