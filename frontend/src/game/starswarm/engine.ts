@@ -76,6 +76,11 @@ const WAVE_CLEAR_PAUSE = 1600; // ms
 const CHALLENGING_CLEAR_PAUSE = 2200; // ms
 const CHALLENGING_ENEMY_COUNT = 40; // classic 40-enemy Challenging Stage (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
+// #1463: reduced HP — challenging stage is a shooting gallery; multi-hit enemies are unkillable at speed
+const CHALLENGING_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
+// #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
+const CHALLENGING_PATH_DURATION = 5000; // ms each enemy traverses its arc
+const CHALLENGING_STAGGER_MS = 400; // ms between successive enemy entries
 
 const SHOOT_INTERVAL_BASE = 2600; // ms base
 const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
@@ -484,7 +489,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
   const size = TIER_SIZE[tier];
   const path = challengePath(idx, total, canvasW, canvasH);
   const p0 = evalCubic(path, 0);
-  const delay = (idx * 80) / 3200;
+  const delay = (idx * CHALLENGING_STAGGER_MS) / CHALLENGING_PATH_DURATION;
 
   return {
     id: nextId(),
@@ -498,7 +503,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     formationY: path.p3.y,
     path,
     pathT: -delay,
-    pathDuration: 3200,
+    pathDuration: CHALLENGING_PATH_DURATION,
     vel: { x: 0, y: 0 },
     circleCx: 0,
     circleCy: 0,
@@ -507,7 +512,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     circleSpeed: CIRCLE_SPEED,
     shootTimer: 9_999_999, // never shoots
     diveTargetX: 0,
-    hp: TIER_HP[tier],
+    hp: CHALLENGING_TIER_HP[tier],
     isAlive: true,
     hitFlashTimer: 0,
     wiggleTimer: 0,
@@ -637,18 +642,7 @@ function buildWaveState(
 
   const startingNonBossCount = enemies.filter((e) => e.tier !== "Boss").length;
 
-  // #1032: Challenging Stage power-up X is randomised (Math.random() — cosmetic, non-deterministic)
-  const challengingPowerUp: PowerUp = {
-    id: nextId(),
-    type: "lightning",
-    x: POWERUP_W / 2 + Math.random() * (canvasW - POWERUP_W),
-    y: POWERUP_H / 2,
-    vy: POWERUP_VY,
-    width: POWERUP_W,
-    height: POWERUP_H,
-    despawnTimer: powerUpDespawnMs(canvasH),
-  };
-  const powerUps: PowerUp[] = isChallengingWave(wave) ? [challengingPowerUp] : [];
+  const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
   const paramScale = difficultyParamScale(difficulty);
   // Ensign gets gentler AI; every tier above gets straggler aggression
@@ -1756,7 +1750,9 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     const anyAlive = liveEnemies.length > 0;
     if (!anyAlive) {
       const sm = difficultyMultiplier(state.difficulty);
-      const waveClearBonus = Math.round(state.wave * WAVE_CLEAR_BONUS_BASE * sm);
+      // #1463: wave-clear bonus scales with hit ratio — zero kills = zero bonus
+      const hitFraction = Math.min(1, state.challengingHits / CHALLENGING_ENEMY_COUNT);
+      const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.challengingHits === CHALLENGING_ENEMY_COUNT;
       const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
       return {
