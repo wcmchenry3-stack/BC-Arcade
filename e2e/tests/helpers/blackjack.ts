@@ -13,7 +13,7 @@ export interface InjectedCard {
 export interface InjectedEngineState {
   chips: number;
   bet: number;
-  phase: "betting" | "player" | "result";
+  phase: "betting" | "player" | "result" | "victory";
   outcome: "blackjack" | "win" | "lose" | "push" | null;
   payout: number;
   deck: InjectedCard[];
@@ -28,20 +28,32 @@ export interface InjectedEngineState {
   active_hand_index: number;
   split_count: number;
   split_from_aces: boolean[];
+  // BJ-2 run-mode fields
+  runGoal?: number | null;
+  startingChips?: number;
+  betMin?: number;
+  betMax?: number;
+  lastWin?: number | null;
 }
 
 /**
  * Navigate from Home to Blackjack, clearing any saved state first.
+ * Selects the Beginner table (BJ-2: fresh install shows TableSelectPanel).
  *
  * NOTE: The Deal button will be DISABLED on arrival (bet = 0).
  * You must click a chip button before clicking Deal, or use
  * injectEngineState() to land in player/result phase directly.
+ *
+ * Beginner table: 100 starting chips, betMin=5, betMax=25,
+ * chip denominations: [5, 10, 25].
  */
 export async function gotoBlackjack(page: Page): Promise<void> {
   await page.goto("/");
   await page.evaluate(() => localStorage.removeItem("blackjack_game_v2"));
   await page.goto("/");
   await page.getByRole("button", { name: "Play Blackjack" }).click();
+  // BJ-2: fresh install shows TableSelectPanel — pick Beginner table
+  await page.getByRole("button", { name: /select beginner table/i }).click();
   // Use role selector to avoid strict-mode violations from "Dealer's Hand" / "dealer" substrings
   await page.getByRole("button", { name: /deal cards with/i }).waitFor();
 }
@@ -147,7 +159,7 @@ export class BlackjackPage {
     await gotoBlackjack(this.page);
   }
 
-  chipButton(amount: 5 | 25 | 100 | 500) {
+  chipButton(amount: 5 | 10 | 25) {
     return this.page.getByRole("button", {
       name: new RegExp(`add ${amount} to bet`, "i"),
     });
