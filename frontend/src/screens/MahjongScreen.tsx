@@ -14,7 +14,7 @@
  *      MatchBurst / DeadlockShake / ShufflePulse / WinModal spring.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -55,6 +55,7 @@ import type { BoardCamera } from "../game/mahjong/layout";
 import {
   createGame,
   elapsedMs,
+  getAllFreePairs,
   getAnyFreePair,
   selectTile,
   shuffleBoard,
@@ -214,6 +215,15 @@ export default function MahjongScreen() {
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const [debugShowFree, setDebugShowFree] = useState(false);
+  const freePairs = useMemo<[SlotTile, SlotTile][]>(
+    () => (__DEV__ && state ? getAllFreePairs(state.tiles) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state?.tiles]
+  );
+
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -328,6 +338,16 @@ export default function MahjongScreen() {
   // Reduce motion preference.
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+  }, []);
+
+  // Dev panel: Shift+D keyboard shortcut on web.
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== "web") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.shiftKey && e.key === "D") setDevPanelOpen((o) => !o);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Scoreboard snapshot — updated on every state change.
@@ -604,9 +624,14 @@ export default function MahjongScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hudRow} accessibilityRole="summary">
-            <Text style={[styles.hudText, { color: colors.text }]}>
-              {t("hud.score")} {state.score}
-            </Text>
+            <Pressable
+              onLongPress={__DEV__ ? () => setDevPanelOpen((o) => !o) : undefined}
+              accessibilityRole="text"
+            >
+              <Text style={[styles.hudText, { color: colors.text }]}>
+                {t("hud.score")} {state.score}
+              </Text>
+            </Pressable>
             <Text style={[styles.hudText, { color: colors.textMuted }]}>
               {t("hud.pairs")} {state.pairsRemoved}/72
             </Text>
@@ -650,6 +675,16 @@ export default function MahjongScreen() {
             >
               <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
             </Pressable>
+            {__DEV__ && (
+              <Pressable
+                onPress={() => setDevPanelOpen((o) => !o)}
+                style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle dev panel"
+              >
+                <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
+              </Pressable>
+            )}
           </View>
 
           {/* Viewport container — clips the board during zoom/pan */}
@@ -673,6 +708,7 @@ export default function MahjongScreen() {
                     state={state}
                     camera={camera}
                     hintIds={hintIds}
+                    debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
                     onShufflePress={handleShuffle}
                     onNewGamePress={startNewGame}
@@ -691,6 +727,39 @@ export default function MahjongScreen() {
             </GestureDetector>
           </View>
         </ScrollView>
+      )}
+
+      {__DEV__ && devPanelOpen && state && (
+        <View style={styles.devPanel} pointerEvents="box-none">
+          <Text style={styles.devPanelTitle}>DEV — Mahjong</Text>
+          <Text style={styles.devPanelText}>tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}</Text>
+          <Text style={styles.devPanelText}>free tiles: {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free pairs: {freePairs.length}</Text>
+          <Text style={styles.devPanelText}>shuffles left: {state.shufflesLeft} / score: {state.score}</Text>
+          <Text style={styles.devPanelText}>deal #{state.dealId} / undo depth: {state.undoStack.length}</Text>
+          <Pressable
+            onPress={() => setDebugShowFree((v) => !v)}
+            style={[styles.devToggleBtn, debugShowFree && styles.devToggleBtnActive]}
+          >
+            <Text style={styles.devToggleText}>
+              {debugShowFree ? "overlay: ON" : "overlay: off"}
+            </Text>
+          </Pressable>
+          {freePairs.length > 0 && (
+            <>
+              <Text style={[styles.devPanelTitle, { marginTop: 8 }]}>free pairs</Text>
+              <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
+                {freePairs.map(([a, b]: [SlotTile, SlotTile], i: number) => (
+                  <Text key={i} style={styles.devPairText}>
+                    {a.suit[0]}{a.rank} ↔ {b.suit[0]}{b.rank} (ids {a.id},{b.id})
+                  </Text>
+                ))}
+              </ScrollView>
+            </>
+          )}
+          {freePairs.length === 0 && (
+            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>no free pairs</Text>
+          )}
+        </View>
       )}
 
       {state?.isComplete && (
@@ -983,5 +1052,53 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  devPanel: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 220,
+    backgroundColor: "rgba(0,0,0,0.82)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,128,0,0.5)",
+    padding: 10,
+  },
+  devPanelTitle: {
+    color: "rgba(255,128,0,1)",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  devPanelText: {
+    color: "#cccccc",
+    fontSize: 10,
+    lineHeight: 16,
+    fontVariant: ["tabular-nums"],
+  },
+  devPairText: {
+    color: "#aaccaa",
+    fontSize: 10,
+    lineHeight: 15,
+    fontVariant: ["tabular-nums"],
+  },
+  devToggleBtn: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,128,0,0.5)",
+    alignSelf: "flex-start",
+  },
+  devToggleBtnActive: {
+    backgroundColor: "rgba(255,128,0,0.2)",
+    borderColor: "rgba(255,128,0,1)",
+  },
+  devToggleText: {
+    color: "rgba(255,128,0,1)",
+    fontSize: 10,
+    fontWeight: "700",
   },
 });

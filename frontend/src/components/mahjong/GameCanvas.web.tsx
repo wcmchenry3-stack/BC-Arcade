@@ -110,7 +110,8 @@ function drawBoard(
   matchingIds: ReadonlySet<number>,
   tileImages: readonly (HTMLImageElement | null)[],
   cam: BoardCamera,
-  feltPattern: CanvasPattern | null
+  feltPattern: CanvasPattern | null,
+  debugShowFree: boolean
 ): void {
   const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } = cam;
 
@@ -202,6 +203,13 @@ function drawBoard(
       ctx.fillRect(x + 8 + liftX, y + 10 + liftY, faceWidth - 16, faceHeight - 20);
     }
 
+    // Debug: green tint over free tiles when dev overlay is active.
+    if (debugShowFree && isFree) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = "#00cc44";
+      ctx.fillRect(x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
+    }
+
     ctx.restore();
   }
 }
@@ -214,6 +222,7 @@ interface Props {
   state: MahjongState;
   camera: BoardCamera;
   hintIds?: ReadonlySet<number>;
+  debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
@@ -225,6 +234,7 @@ export default function GameCanvas({
   state,
   camera,
   hintIds = EMPTY_SET,
+  debugShowFree = false,
   onTilePress,
   onShufflePress,
   onNewGamePress,
@@ -353,9 +363,10 @@ export default function GameCanvas({
       allHintIds,
       tileImagesRef.current,
       camera,
-      feltPatternRef.current
+      feltPatternRef.current,
+      debugShowFree
     );
-  }, [state, freeTiles, allHintIds, imagesVersion, camera]);
+  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
