@@ -12,6 +12,7 @@ export {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -40,6 +41,7 @@ import {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -128,24 +130,21 @@ export async function createEngine(
 
   // Floor (top surface at H - WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((W / 2) * SCALE, (WALL_THICKNESS / 2) * SCALE).setTranslation(
-      (W / 2) * SCALE,
-      (H - WALL_THICKNESS / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((W / 2) * SCALE, (WALL_THICKNESS / 2) * SCALE)
+      .setTranslation((W / 2) * SCALE, (H - WALL_THICKNESS / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
   // Left wall (inner surface at WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE).setTranslation(
-      (WALL_THICKNESS / 2) * SCALE,
-      (H / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE)
+      .setTranslation((WALL_THICKNESS / 2) * SCALE, (H / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
   // Right wall (inner surface at W - WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE).setTranslation(
-      (W - WALL_THICKNESS / 2) * SCALE,
-      (H / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE)
+      .setTranslation((W - WALL_THICKNESS / 2) * SCALE, (H / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
 
   const dangerY = H * DANGER_LINE_RATIO; // pixels
