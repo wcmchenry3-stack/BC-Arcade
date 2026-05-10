@@ -161,11 +161,11 @@ export default function SortBoard({
     const isRight = pouringFrom < pouringTo;
     const tiltSign: 1 | -1 = isRight ? 1 : -1;
 
-    // Spout pivot: outer neck edge scaled from viewBox coords to bottleW/bottleH
+    // Spout pivot: outer neck edge scaled from viewBox coords to bottleW
     const pivotLocalX = ((isRight ? NECK_RIGHT_VB : NECK_LEFT_VB) / VB_W) * bottleW;
-    const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
 
     // Diagonal lift target: move spout to center-top of destination opening
+    // liftDy aligns bottle tops (pivotLocalY cancels: dstNeckY - srcNeckY = dstY - srcY)
     const liftDx = (dstPos.x + bottleW / 2) - (srcPos.x + pivotLocalX);
     const liftDy = dstPos.y - srcPos.y;
 
