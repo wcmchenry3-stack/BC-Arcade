@@ -618,7 +618,7 @@ export default function MahjongScreen() {
                 {
                   borderColor: "#ffd700",
                   opacity:
-                    state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked ? 0.3 : 1,
+                    state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
                 },
               ]}
               accessibilityRole="button"
