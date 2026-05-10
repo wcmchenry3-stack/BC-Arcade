@@ -307,7 +307,12 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     if (startCall === undefined) throw new Error("Expected startGame call");
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("blackjack");
-    expect(meta).toEqual({});
+    expect(meta).toEqual({
+      best_run_chips: null,
+      total_runs: 0,
+      runs_completed: 0,
+      current_table: "beginner",
+    });
     expect(eventData).toEqual({ starting_chips: 1000 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
@@ -511,7 +516,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
-    expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
+    expect(mockStartGame).toHaveBeenCalledWith(
+      "blackjack",
+      { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
+      { starting_chips: 1000 }
+    );
   });
 
   it("capture ordering: bet_placed emits before hand_dealt", async () => {
