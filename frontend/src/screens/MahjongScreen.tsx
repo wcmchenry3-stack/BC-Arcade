@@ -68,14 +68,9 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
+import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
-const MAX_ZOOM = 2.5;
-
-function clamp(value: number, min: number, max: number): number {
-  "worklet";
-  return Math.min(Math.max(value, min), max);
-}
 
 // ---------------------------------------------------------------------------
 // Tile center — used by FlyingPair to compute animation start/end positions
@@ -218,33 +213,43 @@ export default function MahjongScreen() {
     opacity: boardOpacity.value,
   }));
 
-  // Gesture zoom/pan shared values — min zoom = camera.scale (fit-to-screen).
-  const minZoom = useSharedValue(camera.scale);
-  const zoomScale = useSharedValue(camera.scale);
-  const baseScale = useSharedValue(camera.scale);
+  // Gesture zoom/pan shared values.
+  // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
+  const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
+  const minZoom = useSharedValue(initMin);
+  const maxZoom = useSharedValue(initMax);
+  const zoomScale = useSharedValue(initMin);
+  const baseScale = useSharedValue(initMin);
   const translateX = useSharedValue(0);
   const baseTranslateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const baseTranslateY = useSharedValue(0);
 
-  // Reset gesture state when fit-to-screen scale changes (orientation / resize).
+  // Reset gesture state when layout changes (orientation / resize).
   useEffect(() => {
-    minZoom.value = camera.scale;
-    zoomScale.value = camera.scale;
-    baseScale.value = camera.scale;
+    const bounds = computeZoomBounds(camera.scale, camera.tileWidth);
+    minZoom.value = bounds.minZoom;
+    maxZoom.value = bounds.maxZoom;
+    zoomScale.value = bounds.minZoom;
+    baseScale.value = bounds.minZoom;
     translateX.value = 0;
     baseTranslateX.value = 0;
     translateY.value = 0;
     baseTranslateY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.scale]);
+  }, [camera.scale, camera.tileWidth]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      zoomScale.value = clamp(baseScale.value * e.scale, minZoom.value, MAX_ZOOM);
+      // Allow rubber-band overshoot past limits; onEnd springs back.
+      zoomScale.value = rubberClamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
     })
     .onEnd(() => {
-      baseScale.value = zoomScale.value;
+      const target = clamp(zoomScale.value, minZoom.value, maxZoom.value);
+      baseScale.value = target;
+      if (Math.abs(zoomScale.value - target) > 1e-6) {
+        zoomScale.value = withSpring(target, { damping: 20, stiffness: 300 });
+      }
     });
 
   const panGesture = Gesture.Pan()
