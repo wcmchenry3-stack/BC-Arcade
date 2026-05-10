@@ -65,12 +65,12 @@ export interface BoundaryEscapeEvent {
 
 const COMBO_THRESHOLD = 3;
 
-// matter.js gravity scale: Rapier uses GRAVITY_Y=14 with SCALE=0.01, i.e. 1400 px/s².
+// matter.js gravity scale: Rapier uses GRAVITY_Y=18 with SCALE=0.01, i.e. 1800 px/s².
 // matter.js default gravity.scale = 0.001 and gravity.y = 1 → effective ≈ 1 px/tick².
-// We want ~1400 px/s² at 60fps (dt=16.67ms). matter.js applies gravity as:
+// We want ~1800 px/s² at 60fps (dt=16.67ms). matter.js applies gravity as:
 //   force = body.mass * gravity.y * gravity.scale  (per tick)
-// With default scale 0.001 and y=1.4, that gives us a punchy-but-controllable fall.
-const MATTER_GRAVITY_Y = 1.4;
+// With default scale 0.001 and y=1.8, that gives us a snappy arcade fall.
+const MATTER_GRAVITY_Y = 1.8;
 
 export async function createEngine(
   W: number,

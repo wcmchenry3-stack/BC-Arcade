@@ -13,20 +13,20 @@ export const WALL_THICKNESS = 16;
 export const DANGER_LINE_RATIO = 0.18;
 export const GAME_OVER_GRACE_MS = 3000;
 /** Consecutive ticks a settled fruit must be above the danger line before game-over fires. */
-export const GAME_OVER_CONSECUTIVE_TICKS = 30;
+export const GAME_OVER_CONSECUTIVE_TICKS = 180;
 /** Ticks after the last merge before game-over can fire — suppresses spurious loss mid-cascade. */
 export const GAME_OVER_MERGE_COOLDOWN_TICKS = 90;
 
 // --- Physics tuning constants ---
 /** Low restitution = THUD feel (original Suika); fruits barely bounce. */
 export const FRUIT_RESTITUTION = 0.1;
-/** Moderate friction = fruits grip each other and settle into place. */
-export const FRUIT_FRICTION = 0.3;
+/** Low friction = fruits slide and settle naturally (spec: 0.05–0.1). */
+export const FRUIT_FRICTION = 0.08;
 export const FRUIT_DENSITY = 1.0;
 
 // --- Rapier-specific constants (used only by engine.ts / web) ---
 export const SCALE = 0.01;
-export const GRAVITY_Y = 14.0;
+export const GRAVITY_Y = 18.0;
 
 // --- Fixed physics timestep ---
 /** Fixed physics sub-step duration (ms). Both engines run at 60 Hz regardless of frame rate. */
@@ -44,8 +44,8 @@ export const MATTER_POSITION_ITERATIONS = 10;
 export const MATTER_VELOCITY_ITERATIONS = 6;
 
 // --- Body sleeping ---
-/** Ticks of low velocity before a Matter.js body sleeps (default 60 ≈ 1 s at 60 Hz). */
-export const MATTER_SLEEP_THRESHOLD = 60;
+/** Ticks of low velocity before a Matter.js body sleeps (spec: 30 ≈ 500 ms at 60 Hz). */
+export const MATTER_SLEEP_THRESHOLD = 30;
 
 // --- Terminal velocity guard ---
 // CASCADE-PHYS-08 (Outcome C): tier-0 at 1200 px/s travels 20 px per 1/60s frame > WALL_THICKNESS (16 px).
