@@ -215,6 +215,7 @@ interface Props {
   state: MahjongState;
   camera: BoardCamera;
   hintIds?: ReadonlySet<number>;
+  debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
@@ -226,6 +227,7 @@ export default function GameCanvas({
   state,
   camera,
   hintIds = EMPTY_SET,
+  debugShowFree = false,
   onTilePress,
   onShufflePress,
   onNewGamePress,
@@ -372,6 +374,17 @@ export default function GameCanvas({
                 h={faceHeight - 4}
                 opacity={isFree ? 1 : 0.35}
               />
+              {/* Debug: green tint over free tiles when dev overlay is active */}
+              {debugShowFree && isFree && (
+                <Rect
+                  x={x + 2 + liftX}
+                  y={y + 2 + liftY}
+                  width={faceWidth - 4}
+                  height={faceHeight - 4}
+                  color="#00cc44"
+                  opacity={0.3}
+                />
+              )}
             </Group>
           );
         })}

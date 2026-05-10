@@ -8,6 +8,7 @@ import {
   createGame,
   createSeededRng,
   elapsedMs,
+  getAllFreePairs,
   getAnyFreePair,
   getMatchingFreeTileIds,
   hasFreePairs,
@@ -673,6 +674,36 @@ describe("hasFreePairs", () => {
     const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
     // a is covered by c, b is free. But the pair (a,b) can't form since a is not free.
     expect(hasFreePairs([a, b, c])).toBe(false);
+  });
+});
+
+describe("getAllFreePairs", () => {
+  it("returns empty array for an empty board", () => {
+    expect(getAllFreePairs([])).toEqual([]);
+  });
+
+  it("returns one pair when exactly one match exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const result = getAllFreePairs([a, b]);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.map((t) => t.id).sort()).toEqual([0, 1]);
+  });
+
+  it("returns multiple pairs when several matches exist", () => {
+    // Place pairs on separate rows so none are horizontally blocked by the other pair.
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "circles", rank: 2, faceId: 18, col: 0, row: 2, layer: 0 };
+    const d: SlotTile = { id: 3, suit: "circles", rank: 2, faceId: 18, col: 2, row: 2, layer: 0 };
+    expect(getAllFreePairs([a, b, c, d])).toHaveLength(2);
+  });
+
+  it("excludes blocked tiles", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
+    expect(getAllFreePairs([a, b, c])).toHaveLength(0);
   });
 });
 

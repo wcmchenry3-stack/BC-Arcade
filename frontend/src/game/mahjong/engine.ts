@@ -113,6 +113,18 @@ export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
   return false;
 }
 
+/** Returns all valid free pairs. */
+export function getAllFreePairs(tiles: readonly SlotTile[]): [SlotTile, SlotTile][] {
+  const free = tiles.filter((t) => isFreeTile(t, tiles));
+  const pairs: [SlotTile, SlotTile][] = [];
+  for (let i = 0; i < free.length; i++) {
+    for (let j = i + 1; j < free.length; j++) {
+      if (tilesMatch(free[i]!, free[j]!)) pairs.push([free[i]!, free[j]!]);
+    }
+  }
+  return pairs;
+}
+
 /** Returns the IDs of one valid free pair, or null when none exists. Used by the hint button. */
 export function getAnyFreePair(tiles: readonly SlotTile[]): [number, number] | null {
   const free = tiles.filter((t) => isFreeTile(t, tiles));
