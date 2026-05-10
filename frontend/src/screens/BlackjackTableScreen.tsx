@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-na
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
@@ -51,6 +52,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { engine, loading, error, apply, clearEvents, handlePlayAgain } = useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
+  const [milestoneChips, setMilestoneChips] = useState(0);
+  const milestoneOpacity = useSharedValue(0);
 
   const cardDealSound = useSound("blackjack.cardDeal");
   const blackjackSound = useSound("blackjack.blackjack");
@@ -72,6 +75,10 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(34,197,94,0.35)",
     opacity: winFlash.value,
+    pointerEvents: "none",
+  }));
+  const milestoneStyle = useAnimatedStyle(() => ({
+    opacity: milestoneOpacity.value,
     pointerEvents: "none",
   }));
 
@@ -100,6 +107,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         );
       },
       push: () => pushSound.play(),
+      milestone: (event) => {
+        setMilestoneChips(event.value);
+        milestoneOpacity.value = withSequence(
+          withTiming(1, { duration: 150 }),
+          withDelay(1400, withTiming(0, { duration: 250 }))
+        );
+      },
     },
     clearEvents
   );
@@ -215,6 +229,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             />
             <Animated.View style={bustFlashStyle} />
             <Animated.View style={winFlashStyle} />
+            <Animated.View style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}>
+              <Text style={[styles.milestoneText, { color: colors.surface }]}>
+                {t("blackjack:milestone.toast", { chips: milestoneChips })}
+              </Text>
+            </Animated.View>
           </View>
 
           {/* Right spacer to balance the sidebar — collapsed on split so both hands fit */}
@@ -405,5 +424,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  milestoneToast: {
+    position: "absolute",
+    top: 8,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  milestoneText: {
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

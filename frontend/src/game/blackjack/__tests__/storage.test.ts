@@ -89,6 +89,18 @@ describe("blackjack storage", () => {
     expect(loaded?.lastWin).toBeNull();
   });
 
+  it("backfills milestone fields for saves that predate BJ-5", async () => {
+    const g = newGame();
+    const serialized = JSON.parse(JSON.stringify(g)) as Record<string, unknown>;
+    delete serialized["milestones"];
+    delete serialized["milestones_reached"];
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.milestones).toEqual([]);
+    expect(loaded!.milestones_reached).toEqual([]);
+  });
+
   it("backfills run-mode fields for saves that predate run mode", async () => {
     const g = newGame();
     const serialized = JSON.parse(JSON.stringify(g)) as Record<string, unknown>;

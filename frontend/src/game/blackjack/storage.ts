@@ -142,6 +142,13 @@ export async function loadGame(): Promise<EngineState | null> {
     if (typeof parsed.betMax !== "number") {
       parsed.betMax = DEFAULT_RUN_CONFIG.betMax;
     }
+    // Backfill milestone fields for saves created before BJ-5.
+    if (!Array.isArray(parsed.milestones)) {
+      parsed.milestones = [];
+    }
+    if (!Array.isArray(parsed.milestones_reached)) {
+      parsed.milestones_reached = [];
+    }
     return parsed;
   } catch (e) {
     // Corrupt payload: recovery is complete (we remove the bad entry and

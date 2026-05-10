@@ -8,6 +8,7 @@ export interface TableConfig {
   readonly betMin: number;
   readonly betMax: number;
   readonly chipDenominations: readonly number[];
+  readonly milestones: readonly number[];
 }
 
 export const TABLE_CONFIGS: readonly TableConfig[] = [
@@ -19,6 +20,7 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
     betMin: 5,
     betMax: 25,
     chipDenominations: [5, 10, 25],
+    milestones: [175, 220],
   },
   {
     id: "intermediate",
@@ -28,6 +30,7 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
     betMin: 10,
     betMax: 50,
     chipDenominations: [10, 25, 50],
+    milestones: [500, 625],
   },
   {
     id: "high_roller",
@@ -37,6 +40,7 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
     betMin: 25,
     betMax: 200,
     chipDenominations: [25, 50, 100, 200],
+    milestones: [1000, 1250],
   },
 ] as const;
 

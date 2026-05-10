@@ -108,5 +108,6 @@
   "tableSelect.betRange": "Bets",
   "tableSelect.locked": "Complete {{table}} first",
   "tableSelect.selectLabel": "Select {{table}} table",
-  "tableSelect.lockedLabel": "{{table}} table locked"
+  "tableSelect.lockedLabel": "{{table}} table locked",
+  "milestone.toast": "Milestone reached: {{chips}} chips!"
 }

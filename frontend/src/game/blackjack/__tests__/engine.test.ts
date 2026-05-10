@@ -49,6 +49,7 @@ function emptySplitState() {
 function stateInPlayer(chips = 1000, bet = 100): EngineState {
   return {
     ...DEFAULT_RUN_CONFIG,
+    milestones_reached: [],
     chips,
     bet,
     phase: "player",
@@ -72,6 +73,7 @@ function stateInResult(
 ): EngineState {
   return {
     ...DEFAULT_RUN_CONFIG,
+    milestones_reached: [],
     chips,
     bet,
     phase: "result",
@@ -96,6 +98,7 @@ function splitSetup(opts?: {
 }): EngineState {
   return {
     ...DEFAULT_RUN_CONFIG,
+    milestones_reached: [],
     chips: opts?.chips ?? 1000,
     bet: opts?.bet ?? 100,
     phase: "player",
@@ -709,6 +712,7 @@ function ddSetup(
 ): EngineState {
   return {
     ...DEFAULT_RUN_CONFIG,
+    milestones_reached: [],
     chips,
     bet,
     phase: "player",
@@ -1342,6 +1346,7 @@ describe("game events", () => {
   function stateInBetting(chips = 1000): EngineState {
     return {
       ...DEFAULT_RUN_CONFIG,
+      milestones_reached: [],
       chips,
       bet: 0,
       phase: "betting",
@@ -1485,5 +1490,131 @@ describe("game events", () => {
     };
     const view = toViewState(s);
     expect(view.events).toEqual([{ type: "cardDeal" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Milestone system (BJ-5)
+// ---------------------------------------------------------------------------
+
+describe("milestone system", () => {
+  function stateWithMilestones(
+    chips: number,
+    milestones: number[],
+    milestones_reached: number[] = []
+  ): EngineState {
+    return {
+      ...stateInPlayer(chips),
+      milestones,
+      milestones_reached,
+      player_hand: [c("♠", "K"), c("♥", "9")], // 19 — beats dealer
+      dealer_hand: [c("♦", "6"), c("♣", "7")], // 13 — dealer draws to stand
+      deck: Array(10).fill(c("♠", "4")),
+    };
+  }
+
+  it("newGame initializes milestones_reached as empty array", () => {
+    const g = newGame(undefined, { milestones: [175, 220] });
+    expect(g.milestones).toEqual([175, 220]);
+    expect(g.milestones_reached).toEqual([]);
+  });
+
+  it("no milestone emitted when chips don't reach threshold", () => {
+    const s = stateWithMilestones(100, [500]);
+    // Player 19 vs dealer 13 (draws 4+4=21 bust path — dealer actually stands at 17)
+    // chips: 100, bet: 100 → win → chips 200 — below 500 threshold
+    const next = stand(s);
+    expect(next.milestones_reached).toEqual([]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(false);
+  });
+
+  it("emits milestone event when chips cross a threshold via stand", () => {
+    // chips 150, bet 100, milestones [200] — win brings chips to 250 → crosses 200
+    const s: EngineState = {
+      ...stateWithMilestones(150, [200]),
+      bet: 100,
+    };
+    const next = stand(s);
+    expect(next.chips).toBe(250);
+    expect(next.milestones_reached).toEqual([200]);
+    const msEvent = next.events?.find((e) => e.type === "milestone");
+    expect(msEvent).toEqual({ type: "milestone", value: 200 });
+  });
+
+  it("emits milestone event when chips cross threshold via doubleDown win", () => {
+    const s: EngineState = {
+      ...stateWithMilestones(150, [200]),
+      bet: 50,
+      player_hand: [c("♠", "6"), c("♥", "5")], // 11 — good DD hand
+      deck: [c("♠", "K"), c("♠", "4")], // DD card=K→21, dealer draws 4 (stays 17)
+    };
+    const next = doubleDown(s);
+    expect(next.chips).toBe(250); // 150 + 100 (2*50)
+    expect(next.milestones_reached).toEqual([200]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(true);
+  });
+
+  it("does not re-emit an already-reached milestone", () => {
+    const s: EngineState = {
+      ...stateWithMilestones(250, [200], [200]),
+      bet: 50,
+    };
+    const next = stand(s);
+    // 200 already in milestones_reached — should not fire again
+    expect(next.milestones_reached).toEqual([200]);
+    expect(next.events?.filter((e) => e.type === "milestone")).toHaveLength(0);
+  });
+
+  it("emits multiple milestone events when chips skip past two thresholds at once", () => {
+    // chips 100, bet 500 (theoretical) → win brings chips to 600; milestones [200, 500]
+    const s: EngineState = {
+      ...stateWithMilestones(100, [200, 500]),
+      bet: 500,
+    };
+    const next = stand(s);
+    expect(next.chips).toBe(600);
+    expect(next.milestones_reached).toEqual([200, 500]);
+    const msEvents = next.events?.filter((e) => e.type === "milestone") ?? [];
+    expect(msEvents).toHaveLength(2);
+  });
+
+  it("milestones_reached persists across newHand", () => {
+    const s = stateInResult(300, 100, "win", 100);
+    const sWithMilestones: EngineState = {
+      ...s,
+      milestones: [200],
+      milestones_reached: [200],
+    };
+    const next = newHand(sWithMilestones);
+    expect(next.milestones_reached).toEqual([200]);
+    expect(next.milestones).toEqual([200]);
+  });
+
+  it("emits milestone event on natural blackjack crossing threshold", () => {
+    // Natural blackjack: chips 150, bet 50, milestone [200] → 150 + ceil(50*1.5)=75 = 225
+    const s: EngineState = {
+      ...DEFAULT_RUN_CONFIG,
+      milestones: [200],
+      milestones_reached: [],
+      chips: 150,
+      bet: 0,
+      phase: "betting",
+      outcome: null,
+      payout: 0,
+      lastWin: null,
+      // Deal order (pop from end): player1=A, dealer1=K, player2=Q, dealer2=2
+      // Player [A,Q]=21 natural; dealer [K,2]=12 — not BJ → outcome "blackjack"
+      deck: [c("♦", "2"), c("♣", "Q"), c("♠", "K"), c("♥", "A")],
+      player_hand: [],
+      dealer_hand: [],
+      doubled: false,
+      rules: DEFAULT_RULES,
+      ...emptySplitState(),
+    };
+    const next = placeBet(s, 50);
+    expect(next.outcome).toBe("blackjack");
+    expect(next.chips).toBe(225);
+    expect(next.milestones_reached).toEqual([200]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(true);
   });
 });
