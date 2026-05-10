@@ -13,6 +13,8 @@
   "action.shuffleLabel": "__NEEDS_TRANSLATION__",
   "action.undo": "__NEEDS_TRANSLATION__",
   "action.undoLabel": "__NEEDS_TRANSLATION__",
+  "action.hint": "__NEEDS_TRANSLATION__",
+  "action.hintLabel": "__NEEDS_TRANSLATION__",
   "overlay.noMoves": "__NEEDS_TRANSLATION__",
   "overlay.noMovesDetail": "__NEEDS_TRANSLATION__",
   "overlay.deadlocked": "__NEEDS_TRANSLATION__",

@@ -209,14 +209,18 @@ function drawBoard(
 interface Props {
   state: MahjongState;
   camera: BoardCamera;
+  hintIds?: ReadonlySet<number>;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
+const EMPTY_SET: ReadonlySet<number> = new Set();
+
 export default function GameCanvas({
   state,
   camera,
+  hintIds = EMPTY_SET,
   onTilePress,
   onShufflePress,
   onNewGamePress,
@@ -239,6 +243,13 @@ export default function GameCanvas({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
+
+  const allHintIds = useMemo(() => {
+    if (hintIds.size === 0) return matchingIds;
+    const merged = new Set(matchingIds);
+    for (const id of hintIds) merged.add(id);
+    return merged as ReadonlySet<number>;
+  }, [matchingIds, hintIds]);
 
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),
@@ -335,12 +346,12 @@ export default function GameCanvas({
       ctx,
       state,
       freeTiles,
-      matchingIds,
+      allHintIds,
       tileImagesRef.current,
       camera,
       feltPatternRef.current
     );
-  }, [state, freeTiles, matchingIds, imagesVersion, camera]);
+  }, [state, freeTiles, allHintIds, imagesVersion, camera]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {

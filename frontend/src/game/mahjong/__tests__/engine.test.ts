@@ -8,6 +8,7 @@ import {
   createGame,
   createSeededRng,
   elapsedMs,
+  getAnyFreePair,
   getMatchingFreeTileIds,
   hasFreePairs,
   isFreeTile,
@@ -672,6 +673,41 @@ describe("hasFreePairs", () => {
     const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
     // a is covered by c, b is free. But the pair (a,b) can't form since a is not free.
     expect(hasFreePairs([a, b, c])).toBe(false);
+  });
+});
+
+describe("getAnyFreePair", () => {
+  it("returns null for an empty board", () => {
+    expect(getAnyFreePair([])).toBeNull();
+  });
+
+  it("returns the two IDs when a matching free pair exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const result = getAnyFreePair([a, b]);
+    expect(result).not.toBeNull();
+    expect(result!.sort()).toEqual([0, 1]);
+  });
+
+  it("returns null when no matching free pair exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "circles", rank: 2, faceId: 18, col: 2, row: 0, layer: 0 };
+    expect(getAnyFreePair([a, b])).toBeNull();
+  });
+
+  it("returns null when the only matching pair is blocked", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
+    expect(getAnyFreePair([a, b, c])).toBeNull();
+  });
+
+  it("returns flower IDs for a matching flower pair", () => {
+    const a: SlotTile = { id: 10, suit: "flowers", rank: 1, faceId: 37, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 11, suit: "flowers", rank: 2, faceId: 38, col: 2, row: 0, layer: 0 };
+    const result = getAnyFreePair([a, b]);
+    expect(result).not.toBeNull();
+    expect(result!.sort()).toEqual([10, 11]);
   });
 });
 

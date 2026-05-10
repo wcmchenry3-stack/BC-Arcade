@@ -214,14 +214,18 @@ function hitTest(
 interface Props {
   state: MahjongState;
   camera: BoardCamera;
+  hintIds?: ReadonlySet<number>;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
+const EMPTY_SET: ReadonlySet<number> = new Set();
+
 export default function GameCanvas({
   state,
   camera,
+  hintIds = EMPTY_SET,
   onTilePress,
   onShufflePress,
   onNewGamePress,
@@ -292,7 +296,7 @@ export default function GameCanvas({
           // 2 px border on selected for visibility at small tile sizes.
           const borderInset = isSelected ? 2 : 1;
 
-          const isHint = matchingIds.has(tile.id);
+          const isHint = matchingIds.has(tile.id) || hintIds.has(tile.id);
           const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
           const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
 
