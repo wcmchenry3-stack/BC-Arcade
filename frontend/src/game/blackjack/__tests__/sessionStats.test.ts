@@ -13,6 +13,7 @@ describe("initialSessionStats", () => {
       blackjacks: 0,
       busts: 0,
       biggestWin: 0,
+      winStreak: 0,
     });
   });
 });
@@ -110,5 +111,85 @@ describe("reduceHandResolved", () => {
       isBust: true,
     });
     expect(next.busts).toBe(0);
+  });
+
+  describe("winStreak", () => {
+    it("increments on consecutive wins", () => {
+      let s = reduceHandResolved(start, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1050,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(1);
+      s = reduceHandResolved(s, {
+        outcome: "blackjack",
+        payoutDelta: 75,
+        chipsAfter: 1125,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(2);
+      s = reduceHandResolved(s, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1175,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(3);
+    });
+
+    it("resets to 0 on a loss", () => {
+      let s = reduceHandResolved(start, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1050,
+        isBust: false,
+      });
+      s = reduceHandResolved(s, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1100,
+        isBust: false,
+      });
+      s = reduceHandResolved(s, {
+        outcome: "lose",
+        payoutDelta: -50,
+        chipsAfter: 1050,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(0);
+    });
+
+    it("resets to 0 on a push", () => {
+      let s = reduceHandResolved(start, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1050,
+        isBust: false,
+      });
+      s = reduceHandResolved(s, {
+        outcome: "push",
+        payoutDelta: 0,
+        chipsAfter: 1050,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(0);
+    });
+
+    it("starts counting again after a reset", () => {
+      let s = reduceHandResolved(start, {
+        outcome: "lose",
+        payoutDelta: -50,
+        chipsAfter: 950,
+        isBust: false,
+      });
+      s = reduceHandResolved(s, {
+        outcome: "win",
+        payoutDelta: 50,
+        chipsAfter: 1000,
+        isBust: false,
+      });
+      expect(s.winStreak).toBe(1);
+    });
   });
 });
