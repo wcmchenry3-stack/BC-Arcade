@@ -158,8 +158,10 @@ function drawBoard(
     ctx.fillStyle = SIDE_B;
     ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
 
-    // Shadow/glow on the border rect: selected → gold glow, hint → blue glow,
-    // normal → soft feathered drop shadow (replaces the old hard-rect shadow).
+    // Shadow/glow on the border rect: selected → gold glow + drop shadow,
+    // hint → blue glow + drop shadow, normal → soft feathered drop shadow.
+    ctx.shadowOffsetX = sideWidth + 2;
+    ctx.shadowOffsetY = sideWidth + 2;
     if (isSelected) {
       ctx.shadowColor = MAHJONG_GLOW_SHADOW;
       ctx.shadowBlur = 10;
@@ -169,8 +171,6 @@ function drawBoard(
     } else {
       ctx.shadowColor = "rgba(0,0,0,0.35)";
       ctx.shadowBlur = 5;
-      ctx.shadowOffsetX = sideWidth + 2;
-      ctx.shadowOffsetY = sideWidth + 2;
     }
 
     // Border
