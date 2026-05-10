@@ -52,6 +52,7 @@ export interface RunConfig {
   runGoal: number | null;
   betMin: number;
   betMax: number;
+  milestones: readonly number[];
   rules?: GameRules;
 }
 
@@ -60,6 +61,7 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   runGoal: null,
   betMin: 5,
   betMax: 500,
+  milestones: [],
 };
 
 /**
@@ -93,6 +95,8 @@ export interface EngineState {
   startingChips: number;
   betMin: number;
   betMax: number;
+  milestones: readonly number[];
+  milestones_reached: number[];
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +212,23 @@ function deal(deck: Card[], deckCount: number = 1): { deck: Card[]; card: Card }
   const next = [...working];
   const card = next.pop()!;
   return { deck: next, card };
+}
+
+// ---------------------------------------------------------------------------
+// Milestone helpers
+// ---------------------------------------------------------------------------
+
+function advanceMilestonesReached(s: EngineState, newChips: number): number[] {
+  if (s.milestones.length === 0) return s.milestones_reached;
+  const newly = s.milestones.filter((t) => !s.milestones_reached.includes(t) && newChips >= t);
+  return newly.length > 0 ? [...s.milestones_reached, ...newly] : s.milestones_reached;
+}
+
+function pendingMilestoneEvents(prev: EngineState, next: EngineState): BlackjackGameEvent[] {
+  if (prev.milestones_reached.length === next.milestones_reached.length) return [];
+  return next.milestones_reached
+    .filter((t) => !prev.milestones_reached.includes(t))
+    .map((value) => ({ type: "milestone" as const, value }));
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +385,8 @@ export function newGame(deck?: Card[], runConfig?: Partial<RunConfig>): EngineSt
     startingChips: rc.startingChips,
     betMin: rc.betMin,
     betMax: rc.betMax,
+    milestones: rc.milestones ?? [],
+    milestones_reached: [],
     ...emptySplitState(),
   };
 }
@@ -382,6 +405,7 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
     payout: delta,
     chips: newChips,
     phase,
+    milestones_reached: advanceMilestonesReached(s, newChips),
   };
 }
 
@@ -422,9 +446,10 @@ export function placeBet(s: EngineState, amount: number): EngineState {
   if (isNaturalBlackjack(playerHand)) {
     const outcome = isNaturalBlackjack(dealerHand) ? "push" : "blackjack";
     const settled = settleWith(afterDeal, outcome);
+    const msEvents = pendingMilestoneEvents(afterDeal, settled);
     return {
       ...settled,
-      events: [{ type: "cardDeal" }, { type: "cardDeal" }, outcomeEvent(outcome)],
+      events: [{ type: "cardDeal" }, { type: "cardDeal" }, outcomeEvent(outcome), ...msEvents],
     };
   }
   return {
@@ -521,6 +546,7 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
     chips: finalChips,
     outcome: overallOutcome,
     phase: finalPhase,
+    milestones_reached: advanceMilestonesReached(working, finalChips),
   };
 }
 
@@ -547,7 +573,9 @@ export function hit(s: EngineState): EngineState {
     let next: EngineState = { ...s, deck, player_hands: newHands, events };
     if (busted) {
       next = settleHand(next, s.active_hand_index, "lose");
-      return { ...advanceHand(next), events };
+      const advanced = advanceHand(next);
+      const msEvents = pendingMilestoneEvents(s, advanced);
+      return { ...advanced, events: msEvents.length > 0 ? [...events, ...msEvents] : events };
     }
     return next;
   }
@@ -559,7 +587,9 @@ export function hit(s: EngineState): EngineState {
     player_hand: [...s.player_hand, card],
   };
   if (handValue(next.player_hand) > 21) {
-    return { ...settleWith(next, "lose"), events: [{ type: "cardDeal" }, { type: "bust" }] };
+    const settled = settleWith(next, "lose");
+    const msEvents = pendingMilestoneEvents(next, settled);
+    return { ...settled, events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents] };
   }
   return { ...next, events: [{ type: "cardDeal" }] };
 }
@@ -569,12 +599,17 @@ export function stand(s: EngineState): EngineState {
   if (s.split_count > 0) {
     const next = advanceHand({ ...s, events: undefined });
     if (next.phase === "result" && next.outcome !== null) {
-      return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push")] };
+      const msEvents = pendingMilestoneEvents(s, next);
+      return {
+        ...next,
+        events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents],
+      };
     }
     return next;
   }
   const next = determineAndSettle(dealerPlay({ ...s, events: undefined }));
-  return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push")] };
+  const msEvents = pendingMilestoneEvents(s, next);
+  return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents] };
 }
 
 export function doubleDown(s: EngineState): EngineState {
@@ -619,13 +654,18 @@ export function doubleDown(s: EngineState): EngineState {
       next = settleHand(next, idx, "lose");
     }
     const advanced = advanceHand(next);
+    const msEvents = pendingMilestoneEvents(s, advanced);
     if (advanced.phase === "result" && advanced.outcome !== null && !busted) {
       return {
         ...advanced,
-        events: [...splitDoubleEvents, outcomeEvent(advanced.outcome as "win" | "lose" | "push")],
+        events: [
+          ...splitDoubleEvents,
+          outcomeEvent(advanced.outcome as "win" | "lose" | "push"),
+          ...msEvents,
+        ],
       };
     }
-    return { ...advanced, events: splitDoubleEvents };
+    return { ...advanced, events: [...splitDoubleEvents, ...msEvents] };
   }
 
   if (s.player_hand.length !== 2) {
@@ -644,15 +684,19 @@ export function doubleDown(s: EngineState): EngineState {
   };
 
   if (handValue(afterDouble.player_hand) > 21) {
-    return {
-      ...settleWith(afterDouble, "lose"),
-      events: [{ type: "cardDeal" }, { type: "bust" }],
-    };
+    const settled = settleWith(afterDouble, "lose");
+    const msEvents = pendingMilestoneEvents(afterDouble, settled);
+    return { ...settled, events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents] };
   }
   const settled = determineAndSettle(dealerPlay(afterDouble));
+  const msEvents = pendingMilestoneEvents(s, settled);
   return {
     ...settled,
-    events: [{ type: "cardDeal" }, outcomeEvent(settled.outcome as "win" | "lose" | "push")],
+    events: [
+      { type: "cardDeal" },
+      outcomeEvent(settled.outcome as "win" | "lose" | "push"),
+      ...msEvents,
+    ],
   };
 }
 
