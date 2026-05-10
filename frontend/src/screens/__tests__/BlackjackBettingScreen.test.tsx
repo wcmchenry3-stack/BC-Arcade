@@ -18,6 +18,8 @@ jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),
   loadGame: jest.fn().mockResolvedValue(null),
+  saveRun: jest.fn().mockResolvedValue(undefined),
+  loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
 function mockNav() {
