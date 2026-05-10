@@ -170,7 +170,7 @@ function drawBoard(
       ctx.shadowBlur = 8;
     } else {
       ctx.shadowColor = "rgba(0,0,0,0.35)";
-      ctx.shadowBlur = 5;
+      ctx.shadowBlur = 3;
     }
 
     // Border
@@ -246,6 +246,9 @@ export default function GameCanvas({
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
   const feltPatternRef = useRef<CanvasPattern | null>(null);
   const [imagesVersion, setImagesVersion] = useState(0);
+  const [dpr, setDpr] = useState(() =>
+    typeof window !== "undefined" ? (window.devicePixelRatio ?? 1) : 1
+  );
 
   const freeTiles = useMemo(() => {
     const s = new Set<number>();
@@ -290,6 +293,21 @@ export default function GameCanvas({
     []
   );
 
+  // Reactive DPR — re-renders when the user moves the window between screens or
+  // changes browser zoom. The query matches the current DPR; when it stops matching
+  // (DPR changed), we update state which triggers a redraw via the deps array below.
+  // Re-registering on [dpr] keeps the query in sync after each change.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    function handler() {
+      feltPatternRef.current = null; // invalidate pattern for new scale
+      setDpr(window.devicePixelRatio ?? 1);
+    }
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [dpr]);
+
   // Load all 42 SVG tile images once on mount.
   useEffect(() => {
     const images: (HTMLImageElement | null)[] = Array(42).fill(null);
@@ -327,14 +345,13 @@ export default function GameCanvas({
     };
   }, []);
 
-  // Redraw whenever state, tile images, or layout changes.
+  // Redraw whenever state, tile images, layout, or DPR changes.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     // Scale the backing buffer to physical pixels so the canvas is crisp on
     // high-DPI / Retina screens. CSS display size stays at logical pixels.
-    const dpr = window.devicePixelRatio ?? 1;
     const physW = Math.round(boardWidth * dpr);
     const physH = Math.round(boardHeight * dpr);
     canvas.style.width = `${boardWidth}px`;
@@ -356,6 +373,7 @@ export default function GameCanvas({
       feltPatternRef.current = makeFeltPattern(ctx);
     }
 
+    const drawT0 = __DEV__ ? performance.now() : 0;
     drawBoard(
       ctx,
       state,
@@ -366,7 +384,15 @@ export default function GameCanvas({
       feltPatternRef.current,
       debugShowFree
     );
-  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree]);
+    if (__DEV__) {
+      const elapsed = performance.now() - drawT0;
+      // eslint-disable-next-line no-console
+      if (elapsed > 2)
+        console.warn(
+          `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
+        );
+    }
+  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree, dpr]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
