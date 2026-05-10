@@ -21,6 +21,7 @@ import {
   toViewState,
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
+import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
@@ -188,6 +189,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     navigation.replace("BlackjackBetting");
   }, [handlePlayAgain, navigation]);
 
+  // Derive active table config so the HUD can show the right accent colour and milestones.
+  const activeTable =
+    TABLE_CONFIGS.find((c) => c.betMin === engine?.betMin && c.betMax === engine?.betMax) ??
+    TABLE_CONFIGS[0]!;
+  const tableAccentColor = colors[activeTable.accentKey];
+
   const isSplit = (state?.player_hands?.length ?? 0) > 1;
 
   const handleHit = () => apply(engineHit, "hit");
@@ -205,108 +212,81 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
-      rightSlot={
-        state ? (
-          <View style={styles.bankroll}>
-            <Text style={[styles.bankrollLabel, { color: colors.textMuted }]}>
-              {t("header.bankrollLabel")}
-            </Text>
-            <Text
-              style={[styles.bankrollValue, { color: colors.text }]}
-              accessibilityLabel={t("header.bankrollAccessibilityLabel", {
-                chips: state.chips,
-              })}
-            >
-              {state.chips.toLocaleString()}
-            </Text>
-          </View>
-        ) : undefined
-      }
     >
-      {/* Phase label */}
-      {state && (
-        <Text style={[styles.phaseLabel, { color: colors.textMuted }]}>
-          {t(`blackjack:phase.${state.phase}` as Parameters<typeof t>[0])}
-        </Text>
+      {/* Full-width run HUD — table name pill, chip/goal, progress bar */}
+      {state && engine?.runGoal != null && (
+        <View style={styles.hudContainer}>
+          <HudSidebar
+            chips={engine.chips}
+            startingChips={engine.startingChips}
+            runGoal={engine.runGoal}
+            milestones={activeTable.milestones}
+            tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
+            tableAccentColor={tableAccentColor}
+            winStreak={sessionStats.winStreak}
+          />
+        </View>
       )}
 
       {/* New Game */}
       <View style={styles.actionRow}>
         <Pressable
           onPress={handleNewGamePress}
-          style={[styles.newGameBtn, { borderColor: colors.accent }]}
+          style={[styles.newGameBtn, { borderColor: tableAccentColor }]}
           accessibilityRole="button"
           accessibilityLabel={t("common:newGame.button")}
         >
-          <Text style={[styles.newGameText, { color: colors.accent }]}>
+          <Text style={[styles.newGameText, { color: tableAccentColor }]}>
             {t("common:newGame.button")}
           </Text>
         </Pressable>
       </View>
 
-      {/* Table + HUD sidebar */}
+      {/* Table */}
       {state && (
-        <View style={styles.tableRow}>
-          {/* Left sidebar HUD */}
-          <View style={styles.sidebarLeft}>
-            <HudSidebar
-              currentPot={state.bet}
-              lastWin={state.last_win}
-              chips={engine?.chips}
-              startingChips={engine?.startingChips}
-              runGoal={engine?.runGoal}
-              onPress={() => navigation.navigate("BlackjackStats")}
-              winStreak={sessionStats.winStreak}
-            />
-          </View>
-
-          <View style={styles.tableArea}>
-            <BlackjackTable
-              playerHand={state.player_hand}
-              dealerHand={state.dealer_hand}
-              phase={state.phase}
-              playerHands={state.player_hands}
-              activeHandIndex={state.active_hand_index}
-              handBets={state.hand_bets}
-              handOutcomes={state.hand_outcomes}
-              handPayouts={state.hand_payouts}
-              compact={isCompact}
-            />
-            <Animated.View style={bustFlashStyle} />
-            <Animated.View style={winFlashStyle} />
-            {milestoneChips !== null && (
-              <Animated.View
-                style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}
-              >
-                <Text style={[styles.toastText, { color: colors.surface }]}>
-                  {t("blackjack:milestone.toast", { chips: milestoneChips })}
-                </Text>
-              </Animated.View>
-            )}
-            {comebackVisible && (
-              <Animated.View
-                style={[styles.comebackBanner, comebackStyle, { backgroundColor: colors.bonus }]}
-                accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
-              >
-                <Text style={[styles.comebackText, { color: colors.surface }]}>
-                  {t("blackjack:comeback.banner")}
-                </Text>
-              </Animated.View>
-            )}
-            {allInVisible && (
-              <Animated.View
-                style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
-                accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
-              >
-                <Text style={[styles.allInText, { color: colors.surface }]}>
-                  {t("blackjack:allIn.badge")}
-                </Text>
-              </Animated.View>
-            )}
-          </View>
-
-          {/* Right spacer to balance the sidebar — collapsed on split so both hands fit */}
-          {!isSplit && <View style={styles.sidebarRight} />}
+        <View style={styles.tableArea}>
+          <BlackjackTable
+            playerHand={state.player_hand}
+            dealerHand={state.dealer_hand}
+            phase={state.phase}
+            playerHands={state.player_hands}
+            activeHandIndex={state.active_hand_index}
+            handBets={state.hand_bets}
+            handOutcomes={state.hand_outcomes}
+            handPayouts={state.hand_payouts}
+            compact={isCompact}
+          />
+          <Animated.View style={bustFlashStyle} />
+          <Animated.View style={winFlashStyle} />
+          {milestoneChips !== null && (
+            <Animated.View
+              style={[styles.milestoneToast, milestoneStyle, { backgroundColor: tableAccentColor }]}
+            >
+              <Text style={[styles.toastText, { color: colors.surface }]}>
+                {t("blackjack:milestone.toast", { chips: milestoneChips })}
+              </Text>
+            </Animated.View>
+          )}
+          {comebackVisible && (
+            <Animated.View
+              style={[styles.comebackBanner, comebackStyle, { backgroundColor: colors.bonus }]}
+              accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
+            >
+              <Text style={[styles.comebackText, { color: colors.surface }]}>
+                {t("blackjack:comeback.banner")}
+              </Text>
+            </Animated.View>
+          )}
+          {allInVisible && (
+            <Animated.View
+              style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
+              accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
+            >
+              <Text style={[styles.allInText, { color: colors.surface }]}>
+                {t("blackjack:allIn.badge")}
+              </Text>
+            </Animated.View>
+          )}
         </View>
       )}
 
@@ -318,7 +298,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
             <View style={styles.resultActions}>
               <Pressable
-                style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+                style={[styles.actionBtn, { backgroundColor: tableAccentColor }]}
                 onPress={handleNextHand}
                 accessibilityRole="button"
                 accessibilityLabel={t("blackjack:actions.nextHandLabel")}
@@ -386,14 +366,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  phaseLabel: {
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 4,
-    marginBottom: 4,
+  hudContainer: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
   },
   actionRow: {
     flexDirection: "row",
@@ -415,31 +390,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  tableRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-    // minHeight: 0 allows this flex child to actually shrink below its
-    // intrinsic content height on constrained viewports (Galaxy Fold
-    // landscape etc.); overflow:hidden guarantees any residual overflow
-    // from the table contents can't visually bleed into the controls row
-    // below.
-    minHeight: 0,
-    overflow: "hidden",
-  },
-  sidebarLeft: {
-    width: 88,
-    justifyContent: "center",
-    paddingLeft: 12,
-    paddingVertical: 8,
-  },
-  sidebarRight: {
-    width: 88,
-  },
   tableArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    // minHeight: 0 lets this flex child shrink below intrinsic content height
+    // on compact viewports (Galaxy Fold landscape, etc.)
+    minHeight: 0,
+    overflow: "hidden",
   },
   controls: {
     alignItems: "center",
@@ -479,20 +437,6 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 13,
     textAlign: "center",
-  },
-  bankroll: {
-    alignItems: "flex-end",
-  },
-  bankrollLabel: {
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "500",
-  },
-  bankrollValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    lineHeight: 20,
   },
   milestoneToast: {
     position: "absolute",

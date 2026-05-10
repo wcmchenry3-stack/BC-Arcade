@@ -9,22 +9,33 @@ import { RunRecord } from "../../game/blackjack/storage";
 interface Props {
   runs: RunRecord[];
   onSelectTable: (config: TableConfig) => void;
+  onViewHistory: () => void;
 }
 
-export default function TableSelectPanel({ runs, onSelectTable }: Props) {
+export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: colors.text, fontFamily: typography.heading }]}>
-        {t("tableSelect.title")}
-      </Text>
+      {/* Intro header */}
+      <View style={styles.header}>
+        <Text style={[styles.kicker, { color: colors.textMuted, fontFamily: typography.label }]}>
+          {t("tableSelect.kicker")}
+        </Text>
+        <Text style={[styles.tagline, { color: colors.text, fontFamily: typography.heading }]}>
+          {t("tableSelect.tagline")}
+        </Text>
+        <Text style={[styles.taglineSub, { color: colors.textMuted }]}>
+          {t("tableSelect.taglineSub")}
+        </Text>
+      </View>
 
       <View style={styles.cards}>
         {TABLE_CONFIGS.map((config, idx) => {
           const unlocked = isTableUnlocked(idx, runs);
           const prevConfig = idx > 0 ? TABLE_CONFIGS[idx - 1] : null;
+          const accentColor = colors[config.accentKey];
 
           return (
             <Pressable
@@ -33,8 +44,8 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
                 styles.card,
                 {
                   backgroundColor: colors.surface,
-                  borderColor: unlocked ? colors.accent : colors.border,
-                  opacity: unlocked ? 1 : 0.55,
+                  borderColor: unlocked ? accentColor + "66" : colors.border,
+                  opacity: unlocked ? 1 : 0.5,
                 },
               ]}
               onPress={() => unlocked && onSelectTable(config)}
@@ -51,22 +62,32 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
               }
               accessibilityState={{ disabled: !unlocked }}
             >
-              <Text
-                style={[styles.cardName, { color: unlocked ? colors.accent : colors.textMuted }]}
-              >
-                {t(config.labelKey as Parameters<typeof t>[0])}
-              </Text>
+              <View style={styles.cardTop}>
+                <View>
+                  <Text
+                    style={[
+                      styles.cardName,
+                      { color: unlocked ? accentColor : colors.textMuted, fontFamily: typography.heading },
+                    ]}
+                  >
+                    {t(config.labelKey as Parameters<typeof t>[0])}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: colors.textMuted }]}>
+                    {t(config.subtitleKey as Parameters<typeof t>[0])}
+                  </Text>
+                </View>
 
-              {!unlocked && prevConfig && (
-                <Text style={[styles.lockHint, { color: colors.textMuted }]}>
-                  {t("tableSelect.locked", {
-                    table: t(prevConfig.labelKey as Parameters<typeof t>[0]),
-                  })}
-                </Text>
-              )}
+                {!unlocked && prevConfig && (
+                  <Text style={[styles.lockHint, { color: colors.textMuted }]}>
+                    🔒 {t("tableSelect.locked", {
+                      table: t(prevConfig.labelKey as Parameters<typeof t>[0]),
+                    })}
+                  </Text>
+                )}
+              </View>
 
-              <View style={styles.stats}>
-                <View style={styles.statRow}>
+              <View style={styles.statsRow}>
+                <View style={styles.stat}>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.startChips")}
                   </Text>
@@ -74,13 +95,19 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
                     {config.startingChips}
                   </Text>
                 </View>
-                <View style={styles.statRow}>
+
+                <Text style={[styles.arrow, { color: colors.border }]}>→</Text>
+
+                <View style={styles.stat}>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.goal")}
                   </Text>
-                  <Text style={[styles.statValue, { color: colors.text }]}>{config.runGoal}</Text>
+                  <Text style={[styles.statValue, { color: unlocked ? accentColor : colors.text }]}>
+                    {config.runGoal}
+                  </Text>
                 </View>
-                <View style={styles.statRow}>
+
+                <View style={styles.stat}>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.betRange")}
                   </Text>
@@ -93,6 +120,17 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
           );
         })}
       </View>
+
+      <Pressable
+        onPress={onViewHistory}
+        style={styles.historyLink}
+        accessibilityRole="button"
+        accessibilityLabel={t("stats.viewStatsLabel")}
+      >
+        <Text style={[styles.historyText, { color: colors.textMuted }]}>
+          ◷{"  "}{t("tableSelect.viewHistory")}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -100,49 +138,88 @@ export default function TableSelectPanel({ runs, onSelectTable }: Props) {
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: 20,
+    gap: 16,
     width: "100%",
     maxWidth: 360,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
+  header: {
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+  },
+  kicker: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2,
     textTransform: "uppercase",
-    letterSpacing: 1,
+  },
+  tagline: {
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  taglineSub: {
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
   },
   cards: {
     width: "100%",
-    gap: 12,
+    gap: 10,
   },
   card: {
     borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 8,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 10,
+  },
+  cardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   cardName: {
     fontSize: 16,
     fontWeight: "800",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  lockHint: {
-    fontSize: 11,
-    fontStyle: "italic",
-  },
-  stats: {
-    gap: 4,
-  },
-  statRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  statLabel: {
-    fontSize: 12,
-    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  cardSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  lockHint: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  statsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  stat: {
+    gap: 2,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
   statValue: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  arrow: {
+    fontSize: 16,
+    marginHorizontal: 2,
+  },
+  historyLink: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  historyText: {
     fontSize: 12,
     fontWeight: "600",
   },

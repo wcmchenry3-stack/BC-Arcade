@@ -3,6 +3,8 @@ import { RunRecord } from "./storage";
 export interface TableConfig {
   readonly id: "beginner" | "intermediate" | "high_roller";
   readonly labelKey: string;
+  readonly subtitleKey: string;
+  readonly accentKey: "accent" | "secondary" | "tertiary";
   readonly startingChips: number;
   readonly runGoal: number;
   readonly betMin: number;
@@ -15,6 +17,8 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
   {
     id: "beginner",
     labelKey: "table.beginner",
+    subtitleKey: "table.beginner.subtitle",
+    accentKey: "accent",
     startingChips: 100,
     runGoal: 250,
     betMin: 5,
@@ -25,6 +29,8 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
   {
     id: "intermediate",
     labelKey: "table.intermediate",
+    subtitleKey: "table.intermediate.subtitle",
+    accentKey: "secondary",
     startingChips: 250,
     runGoal: 750,
     betMin: 10,
@@ -35,6 +41,8 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
   {
     id: "high_roller",
     labelKey: "table.highRoller",
+    subtitleKey: "table.highRoller.subtitle",
+    accentKey: "tertiary",
     startingChips: 500,
     runGoal: 1500,
     betMin: 25,
