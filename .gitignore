@@ -9,6 +9,8 @@ env/
 dist/
 .pytest_cache/
 .hypothesis/
+.coverage
+htmlcov/
 
 # Node / Expo
 node_modules/
