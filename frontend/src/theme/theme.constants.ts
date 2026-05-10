@@ -34,6 +34,11 @@ export const DEV_SURFACE_SUBTLE = "rgba(255,255,255,0.08)";
 /** Slightly more opaque white surface for dev-panel step buttons. */
 export const DEV_SURFACE_DIM = "rgba(255,255,255,0.1)";
 
+/** Mahjong board background — desaturated sage green (hsl 120 15% 21%).
+ *  Reduced saturation vs. the original #1a3a1a to lower chromatic contrast
+ *  against white tile faces during long play sessions. */
+export const MAHJONG_BOARD_BG = "#2d3d2d";
+
 /** Mahjong tile face when selected — soft yellow highlight. */
 export const MAHJONG_TILE_FACE_SELECTED = "#fff8c0";
 
