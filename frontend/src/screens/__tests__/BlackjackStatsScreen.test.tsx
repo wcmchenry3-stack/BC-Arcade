@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { render, screen, fireEvent, act } from "@testing-library/react-native";
 import BlackjackStatsScreen from "../BlackjackStatsScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -32,6 +32,7 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 
 // Make useFocusEffect behave like useEffect so it fires synchronously in tests.
 jest.mock("@react-navigation/native", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mockReact = require("react") as typeof React;
   return {
     ...jest.requireActual("@react-navigation/native"),
