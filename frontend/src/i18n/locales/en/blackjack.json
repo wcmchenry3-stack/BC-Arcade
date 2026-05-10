@@ -122,9 +122,9 @@
   "victory.statsNetPLPositive": "+{{amount}} chips",
   "victory.statsNetPLNegative": "{{amount}} chips",
   "victory.cashOut": "Cash Out",
-  "victory.cashOutLabel": "End run and return to table selection",
+  "victory.cashOutLabel": "Cash Out — end run and return to table selection",
   "victory.keepPlaying": "Keep Playing",
-  "victory.keepPlayingLabel": "Continue playing without a goal",
+  "victory.keepPlayingLabel": "Keep Playing — continue without a goal",
   "victory.nextTable": "Play {{table}} Table",
-  "victory.nextTableLabel": "Move up to {{table}} table"
+  "victory.nextTableLabel": "Play {{table}} Table — move up to next table"
 }
