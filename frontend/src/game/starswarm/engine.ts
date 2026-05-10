@@ -64,8 +64,9 @@ export const BOSS_DIVE_THRESHOLD = 0.35; // boss unlocked when ≤35% non-boss r
 
 // #979: Boss burst-fire
 export const BURST_INTERVAL = 200; // ms between shots within a burst
-export const BURST_PAUSE_BASE = 3000; // ms cooldown after burst completes
+export const BURST_PAUSE_BASE = 2000; // ms cooldown after burst completes
 const BURST_PAUSE_JITTER = 1000; // ms random addend to pause
+const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
 const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
 
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
@@ -550,21 +551,22 @@ export function bulletCap(wave: number, paramScale = 1): number {
   return Math.min(24, Math.round((3 + Math.floor((wave - 1) / 2)) * paramScale));
 }
 
-// #1314: proportional aim — keeps vy = BULLET_E_VY (same arrival time), scales vx to intersect the player.
-// vx is capped at ±BULLET_E_VY so the bullet never travels more than 45° from vertical; without the cap,
+// #1314: proportional aim — keeps vy = speed (same arrival time), scales vx to intersect the player.
+// vx is capped at ±speed so the bullet never travels more than 45° from vertical; without the cap,
 // circling enemies near the player's altitude produce extreme vx values (dy is small → dx/dy blows up).
 function aimVelocity(
   enemyX: number,
   enemyY: number,
   playerX: number,
-  playerY: number
+  playerY: number,
+  speed = BULLET_E_VY
 ): { vx: number; vy: number } {
   const dy = playerY - enemyY;
-  if (dy <= 0) return { vx: 0, vy: BULLET_E_VY }; // player at or above enemy — fire straight down
+  if (dy <= 0) return { vx: 0, vy: speed }; // player at or above enemy — fire straight down
   const dx = playerX - enemyX;
-  const rawVx = (dx / dy) * BULLET_E_VY;
-  const vx = Math.max(-BULLET_E_VY, Math.min(BULLET_E_VY, rawVx));
-  return { vx, vy: BULLET_E_VY };
+  const rawVx = (dx / dy) * speed;
+  const vx = Math.max(-speed, Math.min(speed, rawVx));
+  return { vx, vy: speed };
 }
 
 // #924/#1314: compute velocity for a Grunt enemy bullet — straight down before wave 1+;
@@ -939,12 +941,12 @@ function tickFormation(
 function bossBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTickResult {
   const newBurstShotsLeft =
     enemy.burstShotsLeft === 0
-      ? 2 + Math.floor(rng() * 2) - 1 // start new burst: pick 2 or 3, return remaining
+      ? 2 + Math.floor(rng() * 3) // start new burst: pick 3–5 total, return remaining
       : enemy.burstShotsLeft - 1;
   const newShootTimer =
     newBurstShotsLeft > 0 ? BURST_INTERVAL : BURST_PAUSE_BASE + rng() * BURST_PAUSE_JITTER;
 
-  const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY); // #1314
+  const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, BOSS_BULLET_VY); // #1314
   const bullet: Bullet = {
     id: nextId(),
     x: enemy.x,
@@ -1120,7 +1122,8 @@ function tickCircling(
   const shootTimer = enemy.shootTimer - dtMs;
   let bullet: Bullet | null = null;
   if (shootTimer <= 0) {
-    const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY);
+    const speed = enemy.tier === "Boss" ? BOSS_BULLET_VY : undefined;
+    const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, speed);
     bullet = {
       id: nextId(),
       x: enemy.x,

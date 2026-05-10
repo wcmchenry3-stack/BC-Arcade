@@ -1278,9 +1278,9 @@ describe("Boss burst-fire (#979)", () => {
     const boss = s.enemies[bossIdx]!;
     // After first burst shot, timer is either BURST_INTERVAL (more shots) or long pause (1-shot burst)
     expect(boss.shootTimer).toBeLessThanOrEqual(BURST_INTERVAL + 2);
-    // burstShotsLeft is 0 (burst complete) or 1 (one more shot coming)
+    // burstShotsLeft is 0 (burst complete) or up to 4 (3–5 shot burst, remaining after first)
     expect(boss.burstShotsLeft).toBeGreaterThanOrEqual(0);
-    expect(boss.burstShotsLeft).toBeLessThanOrEqual(2);
+    expect(boss.burstShotsLeft).toBeLessThanOrEqual(4);
   });
 
   it("Boss has long pause after burst completes (burstShotsLeft reaches 0)", () => {
