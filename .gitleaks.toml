@@ -1,0 +1,9 @@
+[allowlist]
+  description = "False-positive suppressions"
+  # frontend/src/game/blackjack/storage.ts: RUNS_KEY constant name triggered
+  # generic-api-key rule; "blackjack_runs_v1" is an AsyncStorage namespace, not
+  # a credential. Suppressed at commit level rather than renaming to avoid
+  # misleading future readers.
+  commits = [
+    "6c996d98bb38a8971a308fd6a56397fef55dbebb",
+  ]
