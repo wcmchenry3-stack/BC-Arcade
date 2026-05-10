@@ -434,8 +434,9 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
 
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
-  if (amount < s.betMin || amount > s.betMax) {
-    throw new Error(`Bet must be between ${s.betMin} and ${s.betMax}.`);
+  const effectiveMin = s.chips < s.betMin ? s.chips : s.betMin;
+  if (amount < effectiveMin || amount > s.betMax) {
+    throw new Error(`Bet must be between ${effectiveMin} and ${s.betMax}.`);
   }
   if (amount > s.chips) throw new Error("Insufficient chips.");
 
