@@ -3,6 +3,7 @@ import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-
 import Animated, {
   cancelAnimation,
   runOnJS,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -10,15 +11,18 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
-import type { Bottle, SortState } from "../types";
+import type { Bottle, Color, SortState } from "../types";
 import { BOTTLE_DEPTH } from "../types";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
+  FLASK_CAVITY,
   LIQUID_COLORS,
 } from "./BottleView";
+
+const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
 const BOTTLE_GAP = 12;
 const ASPECT_RATIO = DEFAULT_BOTTLE_WIDTH / DEFAULT_BOTTLE_HEIGHT; // ≈ 0.333
@@ -38,6 +42,7 @@ export interface SortBoardProps {
 interface GhostInfo {
   bottle: Bottle;
   bottleIndex: number;
+  pourColor: Color;
   startX: number;
   startY: number;
   dstX: number;
@@ -56,16 +61,21 @@ export const POUR_RETURN_MS = 320; // simultaneous untilt + return
 const TILT_START_DEG = 50;
 const TILT_PEAK_DEG = 95;
 
-// BottleView SVG proportions — used to compute pivot/spout position
+// BottleView SVG proportions — must stay in sync with BottleView flask shape
 const VB_W = 56;
 const VB_H = 168;
 const NECK_TOP_VB = 14; // PAD_TOP in BottleView
-const NECK_LEFT_VB = 12; // left outer neck edge in viewBox
-const NECK_RIGHT_VB = 44; // right outer neck edge in viewBox
+const NECK_LEFT_VB = 18; // flask inner neck left edge
+const NECK_RIGHT_VB = 38; // flask inner neck right edge
 const BODY_BOTTOM_VB = 166;
 const INNER_H_VB = BODY_BOTTOM_VB - NECK_TOP_VB; // 152
 
-const STREAM_WIDTH = 7;
+// ms for poured liquid to travel from spout to settle in destination
+const POUR_TRAVEL_MS = 160;
+
+const STREAM_WIDTH = 6;
+const STREAM_GLOW_WIDTH = 14;
+const STREAM_HIGHLIGHT_WIDTH = 1.4;
 
 export default function SortBoard({
   state,
@@ -112,12 +122,19 @@ export default function SortBoard({
   const ghostDx = useSharedValue(0);
   const ghostTiltDeg = useSharedValue(0);
   const ghostStreamOpacity = useSharedValue(0);
+  // Pivot offset from element center to spout/neck corner — set when ghost is created
+  const ghostPivotOffX = useSharedValue(0);
+  const ghostPivotOffY = useSharedValue(0);
 
+  // Simulate CSS transformOrigin at the spout corner by bracketing rotate with
+  // a pre-shift (pivot to center) and post-shift (center back to pivot).
   const ghostAnimStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: ghostDx.value },
-      { translateY: ghostDy.value },
+      { translateX: ghostDx.value + ghostPivotOffX.value },
+      { translateY: ghostDy.value + ghostPivotOffY.value },
       { rotate: `${ghostTiltDeg.value}deg` },
+      { translateX: -ghostPivotOffX.value },
+      { translateY: -ghostPivotOffY.value },
     ],
   }));
 
@@ -128,7 +145,17 @@ export default function SortBoard({
   // Ghost React state (drives overlay visibility and bottle capture)
   const [ghost, setGhost] = useState<GhostInfo | null>(null);
   const [unitsEmitted, setUnitsEmitted] = useState(0);
+  const [unitsLanded, setUnitsLanded] = useState(0);
   const emitTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const landTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Animated splash at landing point
+  const splashRx = useSharedValue(4);
+  const splashOpacity = useSharedValue(0);
+  const splashProps = useAnimatedProps(() => ({
+    rx: splashRx.value,
+    opacity: splashOpacity.value,
+  }));
 
   // Stable ref for values read inside the effect (avoids stale closure without
   // adding them to the dep array, which would re-trigger on every state change)
@@ -145,8 +172,11 @@ export default function SortBoard({
       ghostDx.value = 0;
       ghostTiltDeg.value = 0;
       ghostStreamOpacity.value = 0;
+      ghostPivotOffX.value = 0;
+      ghostPivotOffY.value = 0;
       setGhost(null);
       setUnitsEmitted(0);
+      setUnitsLanded(0);
       return;
     }
 
@@ -161,17 +191,24 @@ export default function SortBoard({
     const isRight = pouringFrom < pouringTo;
     const tiltSign: 1 | -1 = isRight ? 1 : -1;
 
-    // Spout pivot: outer neck edge scaled from viewBox coords to bottleW
+    // Spout pivot: outer neck edge scaled from viewBox coords to bottleW/H
     const pivotLocalX = ((isRight ? NECK_RIGHT_VB : NECK_LEFT_VB) / VB_W) * bottleW;
+    const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
 
-    // Diagonal lift target: move spout to center-top of destination opening
-    // liftDy aligns bottle tops (pivotLocalY cancels: dstNeckY - srcNeckY = dstY - srcY)
+    // Pivot offset from bottle center — used to rotate around the spout corner.
+    ghostPivotOffX.value = pivotLocalX - bottleW / 2;
+    ghostPivotOffY.value = pivotLocalY - bottleH / 2;
+
+    // Diagonal lift: position spout just above the destination neck opening.
+    // liftDx moves the spout (not center) to dst center-X; liftDy aligns neck tops.
     const liftDx = dstPos.x + bottleW / 2 - (srcPos.x + pivotLocalX);
-    const liftDy = dstPos.y - srcPos.y;
+    const liftDy = dstPos.y - srcPos.y - 8;
 
     const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_PER_UNIT_MS));
+    const pourColor = sourceBottle[sourceBottle.length - 1] ?? ("red" as Color);
 
     setUnitsEmitted(0);
+    setUnitsLanded(0);
 
     ghostDx.value = 0;
     ghostDy.value = 0;
@@ -181,6 +218,7 @@ export default function SortBoard({
     setGhost({
       bottle: sourceBottle,
       bottleIndex: pouringFrom,
+      pourColor,
       startX: srcPos.x,
       startY: srcPos.y,
       dstX: dstPos.x,
@@ -228,20 +266,34 @@ export default function SortBoard({
       )
     );
 
-    // Schedule per-unit ghost content draining
+    // Schedule per-unit drain (source ghost) and land (destination fill) timers
     const flowStart = POUR_LIFT_MS + POUR_TILT_MS;
     for (let i = 1; i <= unitCount; i++) {
       const emitAt = flowStart + (i - 1) * POUR_PER_UNIT_MS + POUR_PER_UNIT_MS * 0.6;
+      const landAt = emitAt + POUR_TRAVEL_MS;
       const captured = i;
       emitTimersRef.current.push(setTimeout(() => setUnitsEmitted(captured), emitAt));
+      landTimersRef.current.push(setTimeout(() => setUnitsLanded(captured), landAt));
     }
 
     return () => {
       emitTimersRef.current.forEach(clearTimeout);
       emitTimersRef.current = [];
+      landTimersRef.current.forEach(clearTimeout);
+      landTimersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pouringFrom, pouringTo, reduceMotion, pourHoldMs]);
+
+  // Pulse the splash ellipse on each unit landing
+  useEffect(() => {
+    if (unitsLanded === 0) return;
+    splashRx.value = 4;
+    splashRx.value = withTiming(14, { duration: 200 });
+    splashOpacity.value = 0.7;
+    splashOpacity.value = withTiming(0, { duration: 280 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitsLanded]);
 
   // Pour tilt direction — used for reduce-motion fallback only
   const pouringDirection: "left" | "right" | undefined =
@@ -263,20 +315,21 @@ export default function SortBoard({
   // Stream arc geometry — computed from ghost snapshot each render.
   let streamPath = "";
   let streamColor = "transparent";
+  let spoutX = 0;
+  let spoutY = 0;
+  let streamEndY = 0;
   if (ghost !== null) {
     const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
     const unitHPx = (INNER_H_VB / VB_H / BOTTLE_DEPTH) * bottleH;
-    // After diagonal lift the spout sits just above the destination neck opening
-    const spoutX = ghost.dstX + bottleW / 2;
-    const spoutY = ghost.dstY + pivotLocalY;
-    // Fill level at pour start — endpoint stays fixed during the pour (simplification:
-    // rising fill as units land is not tracked; the visual impact is minor)
+    // Spout is fixed at dst center-X, 8px above dst neck (matches liftDy offset)
+    spoutX = ghost.dstX + bottleW / 2;
+    spoutY = ghost.dstY + pivotLocalY - 8;
     const dstFillTopY =
       ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH - ghost.dstBottleLength * unitHPx;
-    const streamEndY = Math.max(spoutY + 10, dstFillTopY);
-    // Control point curves in the pour direction (matches the tilted bottle's arc)
-    const ctrlX = spoutX + ghost.tiltSign * 6;
-    const ctrlY = spoutY + (streamEndY - spoutY) * 0.3;
+    streamEndY = Math.max(spoutY + 12, dstFillTopY);
+    const arcSag = Math.max(6, (streamEndY - spoutY) * 0.18);
+    const ctrlX = spoutX + ghost.tiltSign * 4;
+    const ctrlY = (spoutY + streamEndY) / 2 + arcSag;
     streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
     const topColor = ghost.bottle[ghost.bottle.length - 1];
     streamColor = topColor ? LIQUID_COLORS[topColor] : "transparent";
@@ -336,15 +389,108 @@ export default function SortBoard({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
+          {/* Destination highlight ring — glows in pour color */}
+          {streamColor !== "transparent" && (
+            <View
+              style={[
+                styles.dstRing,
+                {
+                  left: ghost.dstX - 4,
+                  top: ghost.dstY - 4,
+                  width: bottleW + 8,
+                  height: bottleH + 8,
+                  borderColor: streamColor + "88",
+                },
+              ]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+          )}
+
+          {/* Destination rising fill — units appear in target bottle as they land */}
+          {unitsLanded > 0 && (
+            <View
+              style={[
+                styles.dstFillOverlay,
+                { left: ghost.dstX, top: ghost.dstY, width: bottleW, height: bottleH },
+              ]}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Svg width={bottleW} height={bottleH} viewBox={`0 0 ${VB_W} ${VB_H}`}>
+                <Defs>
+                  <ClipPath id={`dst-fill-${ghost.bottleIndex}-${ghost.dstX}`}>
+                    <Path d={FLASK_CAVITY} />
+                  </ClipPath>
+                </Defs>
+                <G clipPath={`url(#dst-fill-${ghost.bottleIndex}-${ghost.dstX})`}>
+                  {(() => {
+                    const unitHVb = INNER_H_VB / BOTTLE_DEPTH;
+                    const fillColor = LIQUID_COLORS[ghost.pourColor];
+                    return Array.from({ length: unitsLanded }).map((_, k) => {
+                      const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
+                      return (
+                        <G key={k}>
+                          <Rect
+                            x={0}
+                            y={yVb}
+                            width={VB_W}
+                            height={unitHVb + 0.5}
+                            fill={fillColor}
+                          />
+                          <Rect
+                            x={0}
+                            y={yVb}
+                            width={VB_W}
+                            height={2.5}
+                            fill="rgba(255,255,255,0.22)"
+                          />
+                        </G>
+                      );
+                    });
+                  })()}
+                </G>
+              </Svg>
+            </View>
+          )}
           {streamPath !== "" && (
             <Animated.View style={[StyleSheet.absoluteFill, ghostStreamStyle]} pointerEvents="none">
               <Svg width="100%" height="100%">
+                {/* Soft glow layer behind the stream */}
+                <Path
+                  d={streamPath}
+                  stroke={streamColor}
+                  strokeWidth={STREAM_GLOW_WIDTH}
+                  strokeOpacity={0.25}
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                {/* Main stream */}
                 <Path
                   d={streamPath}
                   stroke={streamColor}
                   strokeWidth={STREAM_WIDTH}
                   fill="none"
                   strokeLinecap="round"
+                />
+                {/* Inner white highlight */}
+                <Path
+                  d={streamPath}
+                  stroke="rgba(255,255,255,0.4)"
+                  strokeWidth={STREAM_HIGHLIGHT_WIDTH}
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                {/* Bead forming at the spout */}
+                <Circle cx={spoutX} cy={spoutY + 1} r={3.5} fill={streamColor} opacity={0.95} />
+                {/* Splash ellipse at landing — animates on each unit landing */}
+                <AnimatedEllipse
+                  cx={spoutX}
+                  cy={streamEndY}
+                  ry={2}
+                  fill={streamColor}
+                  animatedProps={splashProps}
                 />
               </Svg>
             </Animated.View>
@@ -513,6 +659,16 @@ const styles = StyleSheet.create({
   },
   ghostBottle: {
     position: "absolute",
+  },
+  dstRing: {
+    position: "absolute",
+    borderRadius: 14,
+    borderWidth: 2,
+    pointerEvents: "none",
+  },
+  dstFillOverlay: {
+    position: "absolute",
+    pointerEvents: "none",
   },
   particle: { position: "absolute", width: 20, height: 20, borderRadius: 10, top: 0 },
   p0: { left: "8%" },
