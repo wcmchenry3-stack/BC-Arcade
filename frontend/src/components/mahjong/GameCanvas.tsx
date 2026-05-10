@@ -13,10 +13,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Canvas, Fill, Group, ImageSVG, Rect, useSVG } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
-import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine";
+import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
-import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_BG } from "../../theme/theme.constants";
+import {
+  MAHJONG_GLOW_BG,
+  MAHJONG_HINT_GLOW_BG,
+  MAHJONG_TILE_FACE_SELECTED,
+} from "../../theme/theme.constants";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -235,6 +239,9 @@ export default function GameCanvas({
     return s;
   }, [state.tiles]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
+
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),
     [state.isComplete, state.tiles]
@@ -257,7 +264,6 @@ export default function GameCanvas({
   );
 
   const selectedId = state.selected?.id ?? null;
-  const hasSelection = selectedId !== null;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;
 
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
@@ -286,9 +292,7 @@ export default function GameCanvas({
           // 2 px border on selected for visibility at small tile sizes.
           const borderInset = isSelected ? 2 : 1;
 
-          // Hints only on tiles that actually match the selection.
-          const isHint =
-            isFree && hasSelection && state.selected !== null && tilesMatch(tile, state.selected);
+          const isHint = matchingIds.has(tile.id);
           const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
           const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
 
@@ -310,6 +314,16 @@ export default function GameCanvas({
                   width={faceWidth + 6}
                   height={faceHeight + 6}
                   color={MAHJONG_GLOW_BG}
+                />
+              )}
+              {/* Blue glow behind matching free tiles */}
+              {isHint && (
+                <Rect
+                  x={x - 2}
+                  y={y - 2}
+                  width={faceWidth + 4}
+                  height={faceHeight + 4}
+                  color={MAHJONG_HINT_GLOW_BG}
                 />
               )}
               {/* Right 3-D side */}
