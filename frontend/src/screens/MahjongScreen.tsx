@@ -40,7 +40,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { HomeStackParamList } from "../../App";
@@ -212,23 +212,6 @@ export default function MahjongScreen() {
     transform: [{ translateX: boardShakeX.value }],
     opacity: boardOpacity.value,
   }));
-
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS !== "web") {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const SO = require("expo-screen-orientation");
-        SO.lockAsync(SO.OrientationLock.LANDSCAPE);
-      }
-      return () => {
-        if (Platform.OS !== "web") {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const SO = require("expo-screen-orientation");
-          SO.lockAsync(SO.OrientationLock.PORTRAIT_UP);
-        }
-      };
-    }, [])
-  );
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
@@ -765,10 +748,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    alignItems: "center",
   },
   hudRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignSelf: "stretch",
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
