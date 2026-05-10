@@ -257,6 +257,9 @@ export default function GameCanvas({
     return () => clearTimeout(timer);
   }, [state.isDeadlocked]);
 
+  // Reset felt pattern on unmount so a remount regenerates it against the new context.
+  useEffect(() => () => { feltPatternRef.current = null; }, []);
+
   // Load all 42 SVG tile images once on mount.
   useEffect(() => {
     const images: (HTMLImageElement | null)[] = Array(42).fill(null);
