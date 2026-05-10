@@ -2264,6 +2264,20 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
     // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
     expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
   });
+
+  it("partial hit fraction (20/40 kills) gives proportional wave-clear bonus at Ensign ×1 (#1463)", () => {
+    // 20/40 = 50% hit fraction → waveClear = round(0.5 × 3 × 500 × 1) = 750
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
+    s = {
+      ...s,
+      challengingHits: 20,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WaveClear");
+    // waveClear(750) + hits(20×50=1000) + no perfect bonus = 1750
+    expect(s.score).toBe(750 + 20 * 50);
+  });
 });
 
 // ---------------------------------------------------------------------------

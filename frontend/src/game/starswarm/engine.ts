@@ -78,8 +78,8 @@ const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#
 // #1463: reduced HP — challenging stage is a shooting gallery; multi-hit enemies are unkillable at speed
 const CHALLENGING_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
 // #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
-const CHALLENGE_PATH_DURATION = 5000; // ms each enemy traverses its arc
-const CHALLENGE_STAGGER_MS = 400; // ms between successive enemy entries
+const CHALLENGING_PATH_DURATION = 5000; // ms each enemy traverses its arc
+const CHALLENGING_STAGGER_MS = 400; // ms between successive enemy entries
 
 const SHOOT_INTERVAL_BASE = 2600; // ms base
 const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
@@ -488,7 +488,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
   const size = TIER_SIZE[tier];
   const path = challengePath(idx, total, canvasW, canvasH);
   const p0 = evalCubic(path, 0);
-  const delay = (idx * CHALLENGE_STAGGER_MS) / CHALLENGE_PATH_DURATION;
+  const delay = (idx * CHALLENGING_STAGGER_MS) / CHALLENGING_PATH_DURATION;
 
   return {
     id: nextId(),
@@ -502,7 +502,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     formationY: path.p3.y,
     path,
     pathT: -delay,
-    pathDuration: CHALLENGE_PATH_DURATION,
+    pathDuration: CHALLENGING_PATH_DURATION,
     vel: { x: 0, y: 0 },
     circleCx: 0,
     circleCy: 0,
@@ -1748,7 +1748,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     if (!anyAlive) {
       const sm = difficultyMultiplier(state.difficulty);
       // #1463: wave-clear bonus scales with hit ratio — zero kills = zero bonus
-      const hitFraction = state.challengingHits / CHALLENGING_ENEMY_COUNT;
+      const hitFraction = Math.min(1, state.challengingHits / CHALLENGING_ENEMY_COUNT);
       const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.challengingHits === CHALLENGING_ENEMY_COUNT;
       const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
