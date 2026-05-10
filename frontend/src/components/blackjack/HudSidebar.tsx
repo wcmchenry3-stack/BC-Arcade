@@ -61,7 +61,9 @@ export default function HudSidebar({
           >
             {chips.toLocaleString()}
           </Text>
-          <Text style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}>
+          <Text
+            style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
+          >
             {" / "}
             {runGoal.toLocaleString()}
           </Text>

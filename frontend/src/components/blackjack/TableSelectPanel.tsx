@@ -67,7 +67,10 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                   <Text
                     style={[
                       styles.cardName,
-                      { color: unlocked ? accentColor : colors.textMuted, fontFamily: typography.heading },
+                      {
+                        color: unlocked ? accentColor : colors.textMuted,
+                        fontFamily: typography.heading,
+                      },
                     ]}
                   >
                     {t(config.labelKey as Parameters<typeof t>[0])}
@@ -79,7 +82,8 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
 
                 {!unlocked && prevConfig && (
                   <Text style={[styles.lockHint, { color: colors.textMuted }]}>
-                    🔒 {t("tableSelect.locked", {
+                    🔒{" "}
+                    {t("tableSelect.locked", {
                       table: t(prevConfig.labelKey as Parameters<typeof t>[0]),
                     })}
                   </Text>
@@ -128,7 +132,8 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
         accessibilityLabel={t("stats.viewStatsLabel")}
       >
         <Text style={[styles.historyText, { color: colors.textMuted }]}>
-          ◷{"  "}{t("tableSelect.viewHistory")}
+          ◷{"  "}
+          {t("tableSelect.viewHistory")}
         </Text>
       </Pressable>
     </View>

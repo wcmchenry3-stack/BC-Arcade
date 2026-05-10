@@ -52,7 +52,9 @@ function mockNav() {
 
 /** Construct a player-phase state, retrying to avoid natural blackjack. */
 function makePlayerPhaseState(withRunGoal = false): EngineState {
-  const runConfig = withRunGoal ? { startingChips: 1000, runGoal: 2500, betMin: 5, betMax: 500, milestones: [] } : undefined;
+  const runConfig = withRunGoal
+    ? { startingChips: 1000, runGoal: 2500, betMin: 5, betMax: 500, milestones: [] }
+    : undefined;
   for (let i = 0; i < 50; i++) {
     const s = placeBet(newGame(undefined, runConfig), 100);
     if (s.phase === "player") return s;
