@@ -230,7 +230,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             <Animated.View style={bustFlashStyle} />
             <Animated.View style={winFlashStyle} />
             {milestoneChips !== null && (
-              <Animated.View style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}>
+              <Animated.View
+                style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}
+              >
                 <Text style={[styles.milestoneText, { color: colors.surface }]}>
                   {t("blackjack:milestone.toast", { chips: milestoneChips })}
                 </Text>

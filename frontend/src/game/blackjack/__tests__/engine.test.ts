@@ -1603,7 +1603,10 @@ describe("milestone system", () => {
       doubled: false,
       rules: DEFAULT_RULES,
       // Two split hands, each bet 50, both win (K+9=19 > dealer 17)
-      player_hands: [[c("♠", "K"), c("♥", "9")], [c("♠", "K"), c("♥", "9")]],
+      player_hands: [
+        [c("♠", "K"), c("♥", "9")],
+        [c("♠", "K"), c("♥", "9")],
+      ],
       hand_bets: [50, 50],
       hand_outcomes: [null, null],
       hand_payouts: [0, 0],

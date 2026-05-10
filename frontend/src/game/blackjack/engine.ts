@@ -600,7 +600,10 @@ export function stand(s: EngineState): EngineState {
     const next = advanceHand({ ...s, events: undefined });
     if (next.phase === "result" && next.outcome !== null) {
       const msEvents = pendingMilestoneEvents(s, next);
-      return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents] };
+      return {
+        ...next,
+        events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents],
+      };
     }
     return next;
   }
@@ -655,7 +658,11 @@ export function doubleDown(s: EngineState): EngineState {
     if (advanced.phase === "result" && advanced.outcome !== null && !busted) {
       return {
         ...advanced,
-        events: [...splitDoubleEvents, outcomeEvent(advanced.outcome as "win" | "lose" | "push"), ...msEvents],
+        events: [
+          ...splitDoubleEvents,
+          outcomeEvent(advanced.outcome as "win" | "lose" | "push"),
+          ...msEvents,
+        ],
       };
     }
     return { ...advanced, events: [...splitDoubleEvents, ...msEvents] };
@@ -685,7 +692,11 @@ export function doubleDown(s: EngineState): EngineState {
   const msEvents = pendingMilestoneEvents(s, settled);
   return {
     ...settled,
-    events: [{ type: "cardDeal" }, outcomeEvent(settled.outcome as "win" | "lose" | "push"), ...msEvents],
+    events: [
+      { type: "cardDeal" },
+      outcomeEvent(settled.outcome as "win" | "lose" | "push"),
+      ...msEvents,
+    ],
   };
 }
 
