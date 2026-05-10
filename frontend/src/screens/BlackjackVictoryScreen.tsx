@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,8 @@ import { useTheme } from "../theme/ThemeContext";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
+import { Unlock, evaluateUnlocks, loadUnlocks, mergeUnlocks, saveUnlocks } from "../game/blackjack/unlocks";
+import { loadRuns } from "../game/blackjack/storage";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackVictory">;
@@ -25,6 +27,41 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
     TABLE_CONFIGS[0]!;
   const tableIndex = TABLE_CONFIGS.indexOf(activeTable);
   const nextTable = TABLE_CONFIGS[tableIndex + 1];
+
+  const [newUnlocks, setNewUnlocks] = useState<Unlock[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    async function evaluate() {
+      const [runs, existing] = await Promise.all([loadRuns(), loadUnlocks()]);
+      // Synthesize the current completed run so evaluateUnlocks sees it even
+      // before handleCashOut persists the RunRecord to storage.
+      const currentRun = {
+        table: activeTable.id,
+        startingChips: engine?.startingChips ?? 0,
+        finalChips: engine?.chips ?? 0,
+        runGoal: engine?.runGoal ?? null,
+        completed: true,
+        handsPlayed: sessionStats.handsPlayed,
+        biggestWin: sessionStats.biggestWin,
+        lowestChips: 0,
+        startedAt: Date.now(),
+        endedAt: Date.now(),
+      };
+      const triggered = evaluateUnlocks([...runs, currentRun], existing);
+      if (!active) return;
+      if (triggered.length > 0) {
+        await saveUnlocks(mergeUnlocks(existing, triggered));
+        setNewUnlocks(triggered);
+      }
+    }
+    void evaluate();
+    return () => {
+      active = false;
+    };
+    // Intentionally no deps — evaluate once on mount when victory is confirmed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const winRate =
     sessionStats.handsPlayed > 0
@@ -126,6 +163,20 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
             </Text>
           </View>
         </View>
+
+        {/* Unlock notification */}
+        {newUnlocks.length > 0 && (
+          <View
+            style={[styles.unlockPanel, { backgroundColor: colors.surface, borderColor: colors.accent }]}
+            accessibilityLiveRegion="polite"
+          >
+            {newUnlocks.map((u) => (
+              <Text key={u.id} style={[styles.unlockText, { color: colors.text }]}>
+                {t("blackjack:victory.unlocked", { name: u.name })}
+              </Text>
+            ))}
+          </View>
+        )}
 
         {/* CTAs */}
         <View style={styles.actions}>
@@ -297,5 +348,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
     textDecorationLine: "underline",
+  },
+  unlockPanel: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  unlockText: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });
