@@ -52,7 +52,14 @@ import { OfflineBanner } from "../components/shared/OfflineBanner";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import { useMahjongCamera } from "../game/mahjong/layout";
 import type { BoardCamera } from "../game/mahjong/layout";
-import { createGame, elapsedMs, selectTile, shuffleBoard, undoMove } from "../game/mahjong/engine";
+import {
+  createGame,
+  elapsedMs,
+  getAnyFreePair,
+  selectTile,
+  shuffleBoard,
+  undoMove,
+} from "../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
 import {
@@ -202,6 +209,10 @@ export default function MahjongScreen() {
     gamesPlayed: 0,
     gamesWon: 0,
   });
+
+  // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
+  const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
@@ -486,6 +497,11 @@ export default function MahjongScreen() {
 
   const handleTilePress = useCallback(
     (tileId: number) => {
+      if (hintTimerRef.current) {
+        clearTimeout(hintTimerRef.current);
+        hintTimerRef.current = null;
+      }
+      setHintIds(new Set());
       setState((prev) => {
         if (!prev) return prev;
         const next = selectTile(prev, tileId);
@@ -495,6 +511,22 @@ export default function MahjongScreen() {
       });
     },
     [ensureSyncStarted]
+  );
+
+  const handleHint = useCallback(() => {
+    if (!state) return;
+    const pair = getAnyFreePair(state.tiles);
+    if (!pair) return;
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    setHintIds(new Set(pair));
+    hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
+  }, [state]);
+
+  useEffect(
+    () => () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    },
+    []
   );
 
   const handleShuffle = useCallback(() => {
@@ -584,6 +616,22 @@ export default function MahjongScreen() {
             <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
               {t("hud.deal")} #{state.dealId}
             </Text>
+            <Pressable
+              onPress={handleHint}
+              disabled={state.isComplete || state.isDeadlocked}
+              style={[
+                styles.headerBtn,
+                {
+                  borderColor: "#5dbcd2",
+                  opacity: state.isComplete || state.isDeadlocked ? 0.3 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("action.hintLabel")}
+              accessibilityState={{ disabled: state.isComplete || state.isDeadlocked }}
+            >
+              <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
+            </Pressable>
           </View>
 
           {/* Viewport container — clips the board during zoom/pan */}
@@ -606,6 +654,7 @@ export default function MahjongScreen() {
                   <GameCanvas
                     state={state}
                     camera={camera}
+                    hintIds={hintIds}
                     onTilePress={handleTilePress}
                     onShufflePress={handleShuffle}
                     onNewGamePress={startNewGame}
