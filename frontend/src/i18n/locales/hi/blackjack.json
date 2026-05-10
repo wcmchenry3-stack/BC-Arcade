@@ -149,13 +149,13 @@
   "stats.viewStats": "रन के आँकड़े",
   "stats.viewStatsLabel": "रन के आँकड़े देखें",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ गंभीर बैंकरोल",
+  "hud.winStreakBadge": "🔥 {{count}} जीत की लड़ी",
+  "table.beginner.subtitle": "गति सीखें.",
+  "table.intermediate.subtitle": "खेल में बने रहें.",
+  "table.highRoller.subtitle": "एक मौका.",
+  "tableSelect.kicker": "टेबल चुनें",
+  "tableSelect.tagline": "रन से बचे रहें.",
+  "tableSelect.taglineSub": "हर टेबल एक पूरी यात्रा है — शुरूआती बैंकरोल, पहुँचने का लक्ष्य और साफ अंत.",
+  "tableSelect.viewHistory": "रन इतिहास देखें"
 }

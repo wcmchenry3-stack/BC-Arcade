@@ -149,13 +149,13 @@
   "stats.viewStats": "런 통계",
   "stats.viewStatsLabel": "런 통계 보기",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ 잔액 위기",
+  "hud.winStreakBadge": "🔥 {{count}} 연승",
+  "table.beginner.subtitle": "리듬을 익히세요.",
+  "table.intermediate.subtitle": "게임을 이어가세요.",
+  "table.highRoller.subtitle": "한 번의 기회.",
+  "tableSelect.kicker": "테이블 선택",
+  "tableSelect.tagline": "런을 버톰라.",
+  "tableSelect.taglineSub": "각 테이블은 완전한 아크 — 시작 칩, 목표 금액, 그리고 깔끔한 종료.",
+  "tableSelect.viewHistory": "런 기록 보기"
 }

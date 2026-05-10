@@ -149,13 +149,13 @@
   "stats.viewStats": "إحصائيات الجولة",
   "stats.viewStatsLabel": "عرض إحصائيات الجولة",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ رصيد حرج",
+  "hud.winStreakBadge": "🔥 {{count}} انتصارات متتالية",
+  "table.beginner.subtitle": "تعلم الإيقاع.",
+  "table.intermediate.subtitle": "استمر في الجولة.",
+  "table.highRoller.subtitle": "فرصة واحدة.",
+  "tableSelect.kicker": "اختر طاولة",
+  "tableSelect.tagline": "انجُ من الجولة.",
+  "tableSelect.taglineSub": "كل طاولة قوس كامل — رصيد بداية، وهدف للوصول، ونهاية نظيفة.",
+  "tableSelect.viewHistory": "عرض سجل الجولات"
 }

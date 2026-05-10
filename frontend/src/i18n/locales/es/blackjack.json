@@ -149,13 +149,13 @@
   "stats.viewStats": "Estadísticas de serie",
   "stats.viewStatsLabel": "Ver estadísticas de la serie",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ Saldo crítico",
+  "hud.winStreakBadge": "🔥 {{count}} RACHA GANADORA",
+  "table.beginner.subtitle": "Aprende el ritmo.",
+  "table.intermediate.subtitle": "Mantente en la racha.",
+  "table.highRoller.subtitle": "Una oportunidad.",
+  "tableSelect.kicker": "ELIGE UNA MESA",
+  "tableSelect.tagline": "Sobrevive la racha.",
+  "tableSelect.taglineSub": "Cada mesa es un arco completo — un saldo inicial, una meta y un cierre limpio.",
+  "tableSelect.viewHistory": "Ver historial de rachas"
 }

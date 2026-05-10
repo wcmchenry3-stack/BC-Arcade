@@ -149,13 +149,13 @@
   "stats.viewStats": "סטטיסטיקות ריצה",
   "stats.viewStatsLabel": "הצג סטטיסטיקות ריצה",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ יתרה קריטית",
+  "hud.winStreakBadge": "🔥 {{count}} נצחונות ברצף",
+  "table.beginner.subtitle": "למד את הקצב.",
+  "table.intermediate.subtitle": "הישאר במשחק.",
+  "table.highRoller.subtitle": "הזדמנות אחת.",
+  "tableSelect.kicker": "בחר שולחן",
+  "tableSelect.tagline": "שרוד את הסיבוב.",
+  "tableSelect.taglineSub": "כל שולחן הוא קשת שלמה — יתרת פתיחה, יעד להגיע אליו ויציאה נקייה.",
+  "tableSelect.viewHistory": "הצג היסטוריית סיבובים"
 }

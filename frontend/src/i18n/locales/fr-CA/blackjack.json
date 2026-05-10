@@ -149,13 +149,13 @@
   "stats.viewStats": "Statistiques de série",
   "stats.viewStatsLabel": "Voir les statistiques de la série",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ Solde critique",
+  "hud.winStreakBadge": "🔥 {{count}} SÉRIE DE VICTOIRES",
+  "table.beginner.subtitle": "Apprends le rythme.",
+  "table.intermediate.subtitle": "Reste dans la partie.",
+  "table.highRoller.subtitle": "Un essai.",
+  "tableSelect.kicker": "CHOISIR UNE TABLE",
+  "tableSelect.tagline": "Survie à la partie.",
+  "tableSelect.taglineSub": "Chaque table est un arc complet — un solde de départ, un objectif à atteindre et une sortie nette.",
+  "tableSelect.viewHistory": "Voir l'historique"
 }

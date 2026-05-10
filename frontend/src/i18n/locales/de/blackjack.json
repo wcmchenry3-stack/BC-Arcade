@@ -149,13 +149,13 @@
   "stats.viewStats": "Laufstatistiken",
   "stats.viewStatsLabel": "Laufstatistiken ansehen",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ Kritisches Budget",
+  "hud.winStreakBadge": "🔥 {{count}} SIEGESSERIE",
+  "table.beginner.subtitle": "Lern das Tempo.",
+  "table.intermediate.subtitle": "Bleib im Spiel.",
+  "table.highRoller.subtitle": "Ein Versuch.",
+  "tableSelect.kicker": "TISCH WÄHLEN",
+  "tableSelect.tagline": "Überlebe den Run.",
+  "tableSelect.taglineSub": "Jeder Tisch ist ein vollständiger Bogen — ein Startguthaben, ein Ziel und ein sauberes Ende.",
+  "tableSelect.viewHistory": "Spielverlauf anzeigen"
 }

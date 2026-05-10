@@ -149,13 +149,13 @@
   "stats.viewStats": "Rondestatistieken",
   "stats.viewStatsLabel": "Speelrondestatistieken bekijken",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ Kritiek saldo",
+  "hud.winStreakBadge": "🔥 {{count}} WINSERIE",
+  "table.beginner.subtitle": "Leer het ritme.",
+  "table.intermediate.subtitle": "Blijf in het spel.",
+  "table.highRoller.subtitle": "Één kans.",
+  "tableSelect.kicker": "KIES EEN TAFEL",
+  "tableSelect.tagline": "Overleef de run.",
+  "tableSelect.taglineSub": "Elke tafel is een volledig verhaal — startkapitaal, een doel om te bereiken en een schone afsluiting.",
+  "tableSelect.viewHistory": "Bekijk runhistorie"
 }

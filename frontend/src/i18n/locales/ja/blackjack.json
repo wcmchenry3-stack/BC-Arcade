@@ -149,13 +149,13 @@
   "stats.viewStats": "ランの統計",
   "stats.viewStatsLabel": "ランの統計を見る",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ 残高危機",
+  "hud.winStreakBadge": "🔥 {{count}} 連勝中",
+  "table.beginner.subtitle": "ペースをつかもう。",
+  "table.intermediate.subtitle": "ゲームを続けよう。",
+  "table.highRoller.subtitle": "一発勝負。",
+  "tableSelect.kicker": "テーブルを選ぶ",
+  "tableSelect.tagline": "ランを生き延びろ。",
+  "tableSelect.taglineSub": "各テーブルは完全なアーク——開始チップ、目標額、そしてクリーンなエンド。",
+  "tableSelect.viewHistory": "ランの履歴を見る"
 }

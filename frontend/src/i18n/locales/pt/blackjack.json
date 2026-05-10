@@ -149,13 +149,13 @@
   "stats.viewStats": "Estatísticas de rodada",
   "stats.viewStatsLabel": "Ver estatísticas da rodada",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ Saldo crítico",
+  "hud.winStreakBadge": "🔥 {{count}} SEQUÊNCIA DE VITÓRIAS",
+  "table.beginner.subtitle": "Aprenda o ritmo.",
+  "table.intermediate.subtitle": "Fique na rodada.",
+  "table.highRoller.subtitle": "Uma chance.",
+  "tableSelect.kicker": "ESCOLHA UMA MESA",
+  "tableSelect.tagline": "Sobreviva à rodada.",
+  "tableSelect.taglineSub": "Cada mesa é um arco completo — saldo inicial, uma meta a alcançar e um final limpo.",
+  "tableSelect.viewHistory": "Ver histórico de rodadas"
 }

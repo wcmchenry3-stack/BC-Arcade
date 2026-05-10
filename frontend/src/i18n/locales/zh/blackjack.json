@@ -149,13 +149,13 @@
   "stats.viewStats": "游戏统计",
   "stats.viewStatsLabel": "查看游戏统计",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
-  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
-  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
-  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
-  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
-  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
-  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
-  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
-  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
+  "hud.criticalWarning": "⚠ 筹码危急",
+  "hud.winStreakBadge": "🔥 {{count}} 连胜",
+  "table.beginner.subtitle": "掌握节奏。",
+  "table.intermediate.subtitle": "保持状态。",
+  "table.highRoller.subtitle": "孤注一掷。",
+  "tableSelect.kicker": "选择牌桔",
+  "tableSelect.tagline": "在轮次中生存。",
+  "tableSelect.taglineSub": "每张牌桔都是一段完整旅程——初始筹码、达成目标、干净结束。",
+  "tableSelect.viewHistory": "查看轮次记录"
 }
