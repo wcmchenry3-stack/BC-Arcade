@@ -47,10 +47,10 @@ interface GhostInfo {
 }
 
 // Pour animation timing (ms) — exported so SortScreen can compute total timeout
-export const POUR_LIFT_MS = 240;       // diagonal lift+travel phase
-export const POUR_TILT_MS = 220;       // tilt from 0° to TILT_START_DEG
-export const POUR_PER_UNIT_MS = 380;   // per-unit progressive tilt + stream
-export const POUR_RETURN_MS = 320;     // simultaneous untilt + return
+export const POUR_LIFT_MS = 240; // diagonal lift+travel phase
+export const POUR_TILT_MS = 220; // tilt from 0° to TILT_START_DEG
+export const POUR_PER_UNIT_MS = 380; // per-unit progressive tilt + stream
+export const POUR_RETURN_MS = 320; // simultaneous untilt + return
 
 // Tilt progresses from start angle to peak as the bottle empties
 const TILT_START_DEG = 50;
@@ -59,9 +59,9 @@ const TILT_PEAK_DEG = 95;
 // BottleView SVG proportions — used to compute pivot/spout position
 const VB_W = 56;
 const VB_H = 168;
-const NECK_TOP_VB = 14;    // PAD_TOP in BottleView
-const NECK_LEFT_VB = 12;   // left outer neck edge in viewBox
-const NECK_RIGHT_VB = 44;  // right outer neck edge in viewBox
+const NECK_TOP_VB = 14; // PAD_TOP in BottleView
+const NECK_LEFT_VB = 12; // left outer neck edge in viewBox
+const NECK_RIGHT_VB = 44; // right outer neck edge in viewBox
 const BODY_BOTTOM_VB = 166;
 const INNER_H_VB = BODY_BOTTOM_VB - NECK_TOP_VB; // 152
 
@@ -166,7 +166,7 @@ export default function SortBoard({
 
     // Diagonal lift target: move spout to center-top of destination opening
     // liftDy aligns bottle tops (pivotLocalY cancels: dstNeckY - srcNeckY = dstY - srcY)
-    const liftDx = (dstPos.x + bottleW / 2) - (srcPos.x + pivotLocalX);
+    const liftDx = dstPos.x + bottleW / 2 - (srcPos.x + pivotLocalX);
     const liftDy = dstPos.y - srcPos.y;
 
     const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_PER_UNIT_MS));
@@ -194,21 +194,29 @@ export default function SortBoard({
     ghostDy.value = withTiming(liftDy, { duration: POUR_LIFT_MS }, (finished) => {
       if (!finished) return;
       // Phase 2: Tilt to TILT_START_DEG
-      ghostTiltDeg.value = withTiming(tiltSign * TILT_START_DEG, { duration: POUR_TILT_MS }, (finished) => {
-        if (!finished) return;
-        // Phase 3: Progressive tilt to TILT_PEAK_DEG over full pour
-        ghostTiltDeg.value = withTiming(tiltSign * TILT_PEAK_DEG, { duration: pourHoldMs }, (finished) => {
+      ghostTiltDeg.value = withTiming(
+        tiltSign * TILT_START_DEG,
+        { duration: POUR_TILT_MS },
+        (finished) => {
           if (!finished) return;
-          // Phase 4: Simultaneous untilt + diagonal return
-          ghostTiltDeg.value = withTiming(0, { duration: POUR_RETURN_MS });
-          ghostDx.value = withTiming(0, { duration: POUR_RETURN_MS });
-          ghostDy.value = withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
-            if (!finished) return;
-            runOnJS(setGhost)(null);
-            runOnJS(setUnitsEmitted)(0);
-          });
-        });
-      });
+          // Phase 3: Progressive tilt to TILT_PEAK_DEG over full pour
+          ghostTiltDeg.value = withTiming(
+            tiltSign * TILT_PEAK_DEG,
+            { duration: pourHoldMs },
+            (finished) => {
+              if (!finished) return;
+              // Phase 4: Simultaneous untilt + diagonal return
+              ghostTiltDeg.value = withTiming(0, { duration: POUR_RETURN_MS });
+              ghostDx.value = withTiming(0, { duration: POUR_RETURN_MS });
+              ghostDy.value = withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
+                if (!finished) return;
+                runOnJS(setGhost)(null);
+                runOnJS(setUnitsEmitted)(0);
+              });
+            }
+          );
+        }
+      );
     });
 
     // Stream fades in as tilt starts, fades out when return begins
@@ -253,8 +261,8 @@ export default function SortBoard({
   );
 
   // Stream arc geometry — computed from ghost snapshot each render.
-  let streamPath = '';
-  let streamColor = 'transparent';
+  let streamPath = "";
+  let streamColor = "transparent";
   if (ghost !== null) {
     const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
     const unitHPx = (INNER_H_VB / VB_H / BOTTLE_DEPTH) * bottleH;
@@ -263,21 +271,20 @@ export default function SortBoard({
     const spoutY = ghost.dstY + pivotLocalY;
     // Fill level at pour start — endpoint stays fixed during the pour (simplification:
     // rising fill as units land is not tracked; the visual impact is minor)
-    const dstFillTopY = ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH -
-      ghost.dstBottleLength * unitHPx;
+    const dstFillTopY =
+      ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH - ghost.dstBottleLength * unitHPx;
     const streamEndY = Math.max(spoutY + 10, dstFillTopY);
     // Control point curves in the pour direction (matches the tilted bottle's arc)
     const ctrlX = spoutX + ghost.tiltSign * 6;
     const ctrlY = spoutY + (streamEndY - spoutY) * 0.3;
     streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
     const topColor = ghost.bottle[ghost.bottle.length - 1];
-    streamColor = topColor ? LIQUID_COLORS[topColor] : 'transparent';
+    streamColor = topColor ? LIQUID_COLORS[topColor] : "transparent";
   }
 
   // Draining ghost contents: slice from top as units emit
-  const ghostBottle = ghost !== null
-    ? ghost.bottle.slice(0, Math.max(0, ghost.bottle.length - unitsEmitted))
-    : [];
+  const ghostBottle =
+    ghost !== null ? ghost.bottle.slice(0, Math.max(0, ghost.bottle.length - unitsEmitted)) : [];
 
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
@@ -329,7 +336,7 @@ export default function SortBoard({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          {streamPath !== '' && (
+          {streamPath !== "" && (
             <Animated.View style={[StyleSheet.absoluteFill, ghostStreamStyle]} pointerEvents="none">
               <Svg width="100%" height="100%">
                 <Path
