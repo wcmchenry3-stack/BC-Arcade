@@ -7,9 +7,11 @@ import { typography } from "../../theme/typography";
 interface HudSidebarProps {
   currentPot: number;
   lastWin: number | null;
+  chips?: number;
+  runGoal?: number | null;
 }
 
-export default function HudSidebar({ currentPot, lastWin }: HudSidebarProps) {
+export default function HudSidebar({ currentPot, lastWin, chips, runGoal }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -62,6 +64,27 @@ export default function HudSidebar({ currentPot, lastWin }: HudSidebarProps) {
           {lastWinLabel}
         </Text>
       </View>
+
+      {/* Goal progress — only shown when table has a run goal */}
+      {runGoal != null && chips != null && (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.row}>
+            <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.label }]}>
+              {t("hud.runGoal")}
+            </Text>
+            <Text
+              style={[styles.value, { color: colors.text, fontFamily: typography.heading }]}
+              accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
+                chips,
+                goal: runGoal,
+              })}
+            >
+              {t("hud.goalProgress", { chips, goal: runGoal })}
+            </Text>
+          </View>
+        </>
+      )}
     </View>
   );
 }

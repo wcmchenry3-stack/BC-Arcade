@@ -4,6 +4,7 @@ import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, loadRuns } from "./storage";
 import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
+import { TableConfig } from "./tables";
 
 /** Hint passed to apply() so the context can emit a typed player_action. */
 export type PlayerActionHint = "hit" | "stand" | "double" | "split" | null;
@@ -17,6 +18,7 @@ interface BlackjackGameContextValue {
   clearEvents: () => void;
   handleRulesChange: (rules: GameRules) => void;
   handlePlayAgain: () => void;
+  handleTableSelect: (config: TableConfig) => void;
 }
 
 function activeHand(s: EngineState, idx: number): Card[] {
@@ -50,7 +52,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   }, [engine]);
 
   const startSession = useCallback(
-    async (startingChips: number, resuming = false) => {
+    async (startingChips: number, resuming = false, tableId?: string) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
       lowestChipsRef.current = startingChips;
@@ -58,7 +60,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       setSessionStats(initialSessionStats(startingChips));
       // Load run history to compute aggregate metadata for the backend game row.
       // Runs saved in the *previous* endSession call are included because saveRun
-      // is awaited before startSession is invoked from handlePlayAgain, and because
+      // is awaited before startSession is invoked from handleTableSelect, and because
       // the initial-load path never has a preceding saveRun. The minor race that
       // can occur if endSession fires saveRun fire-and-forget (chips=0 path) means
       // the newly-completed run may not yet appear — off by one, self-corrects next
@@ -74,7 +76,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           best_run_chips: bestRunChips,
           total_runs: totalRuns,
           runs_completed: runsCompleted,
-          current_table: "beginner",
+          current_table: (tableId ?? "beginner") as "beginner" | "intermediate" | "high_roller",
         }
       );
       // Mark the session as already started when resuming a mid-game save.
@@ -125,10 +127,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const next = saved ?? newGame();
         setEngine(next);
         if (!saved) saveGame(next);
-        // Start an instrumented session unless the loaded state is already
-        // a chips-exhausted game-over state. Pass resuming=true for saved
-        // mid-game states so syncMarkStarted fires after syncStart.
-        if (!(next.chips === 0 && next.phase === "result")) {
+        // Fresh game with no table selected yet — session starts after table pick.
+        const tableSelectPending =
+          !saved && next.runGoal === null && next.chips === next.startingChips && next.bet === 0;
+        // Start an instrumented session unless table selection is pending or the
+        // loaded state is already a chips-exhausted game-over state. Pass
+        // resuming=true for saved mid-game states so syncMarkStarted fires after syncStart.
+        if (!tableSelectPending && !(next.chips === 0 && next.phase === "result")) {
           void startSession(next.chips, !!saved);
         }
       })
@@ -310,14 +315,31 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     // game_ended was already emitted by emitTransitionEvents — syncComplete
     // is idempotent and the guard in useGameSync makes this a no-op.
     // Otherwise we're mid-game and the user pressed New Game (abandon).
-    // Await so saveRun completes before startSession loads runs for metadata.
     await endSession("abandoned");
+    // Create a fresh engine in table-select-pending state (runGoal=null).
+    // startSession is deferred to handleTableSelect after the user picks a table.
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
     saveGame(fresh);
     setError(null);
-    void startSession(fresh.chips);
-  }, [engine, endSession, startSession]);
+  }, [engine, endSession]);
+
+  const handleTableSelect = useCallback(
+    (config: TableConfig) => {
+      const fresh = newGame(undefined, {
+        startingChips: config.startingChips,
+        runGoal: config.runGoal,
+        betMin: config.betMin,
+        betMax: config.betMax,
+        rules: engine?.rules ?? DEFAULT_RULES,
+      });
+      setEngine(fresh);
+      saveGame(fresh);
+      setError(null);
+      void startSession(fresh.chips, false, config.id);
+    },
+    [engine, startSession]
+  );
 
   return (
     <BlackjackGameContext.Provider
@@ -330,6 +352,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         clearEvents,
         handleRulesChange,
         handlePlayAgain,
+        handleTableSelect,
       }}
     >
       {children}

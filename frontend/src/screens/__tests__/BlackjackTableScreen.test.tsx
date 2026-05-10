@@ -240,6 +240,7 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
 // ---------------------------------------------------------------------------
 
 import { useBlackjackGame, PlayerActionHint } from "../../game/blackjack/BlackjackGameContext";
+import { TableConfig } from "../../game/blackjack/tables";
 import {
   hit,
   doubleDown,
@@ -276,6 +277,7 @@ function getCtx(): {
   engine: EngineState | null;
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
   handlePlayAgain: () => void;
+  handleTableSelect: (config: TableConfig) => void;
 } {
   return (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
 }
@@ -291,12 +293,15 @@ function card(rank: string, suit = "♠"): Card {
 }
 
 describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () => {
+  // A game with runGoal set (non-null) so startSession fires on mount.
+  const tableSelectedGame = () => engineNewGame(undefined, { runGoal: 2500 });
+
   beforeEach(() => {
     mockStartGame.mockReset();
     mockStartGame.mockReturnValue("game-uuid-test");
     mockEnqueueEvent.mockReset();
     mockCompleteGame.mockReset();
-    (loadGame as jest.Mock).mockResolvedValue(null);
+    (loadGame as jest.Mock).mockResolvedValue(tableSelectedGame());
   });
 
   it("calls startGame('blackjack') with starting_chips on mount", async () => {
@@ -516,6 +521,21 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+
+    // handlePlayAgain defers startSession to handleTableSelect (BJ-2 table selection flow).
+    const fakeConfig: TableConfig = {
+      id: "beginner",
+      labelKey: "table.beginner",
+      startingChips: 1000,
+      runGoal: 2500,
+      betMin: 5,
+      betMax: 500,
+      chipDenominations: [5, 25, 100, 500],
+    };
+    act(() => {
+      getCtx().handleTableSelect(fakeConfig);
+    });
+
     await waitFor(() => {
       expect(mockStartGame).toHaveBeenCalledWith(
         "blackjack",

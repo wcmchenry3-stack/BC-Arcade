@@ -95,5 +95,18 @@
   "score.handsWon": "ידיים שזכו",
   "score.handsLost": "ידיים שהפסידו",
   "score.blackjacks": "בלאקג׳ק",
-  "score.busts": "פיצוצים"
+  "score.busts": "פיצוצים",
+  "hud.runGoal": "Goal",
+  "hud.goalProgress": "{{chips}}/{{goal}}",
+  "hud.goalProgressAccessibilityLabel": "Goal progress: {{chips}} of {{goal}} chips",
+  "table.beginner": "Beginner",
+  "table.intermediate": "Intermediate",
+  "table.highRoller": "High Roller",
+  "tableSelect.title": "Choose Your Table",
+  "tableSelect.startChips": "Start",
+  "tableSelect.goal": "Goal",
+  "tableSelect.betRange": "Bets",
+  "tableSelect.locked": "Complete {{table}} first",
+  "tableSelect.selectLabel": "Select {{table}} table",
+  "tableSelect.lockedLabel": "{{table}} table locked"
 }

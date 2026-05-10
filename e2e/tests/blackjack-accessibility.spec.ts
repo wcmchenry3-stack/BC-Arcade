@@ -34,7 +34,7 @@ test.describe("Blackjack — accessibility", () => {
   test("bankroll has accessible label in betting phase", async ({ page }) => {
     await gotoBlackjack(page);
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Bankroll: 100 chips"]'),
     ).toBeVisible();
   });
 
@@ -44,9 +44,8 @@ test.describe("Blackjack — accessibility", () => {
     const bj = new BlackjackPage(page);
     await bj.goto();
     await expect(bj.chipButton(5)).toBeVisible();
+    await expect(bj.chipButton(10)).toBeVisible();
     await expect(bj.chipButton(25)).toBeVisible();
-    await expect(bj.chipButton(100)).toBeVisible();
-    await expect(bj.chipButton(500)).toBeVisible();
   });
 
   test("current bet circle has accessible label", async ({ page }) => {
@@ -61,9 +60,9 @@ test.describe("Blackjack — accessibility", () => {
   }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await expect(
-      page.getByRole("button", { name: /deal cards with 100-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 25-chip bet/i }),
     ).toBeVisible();
   });
 
