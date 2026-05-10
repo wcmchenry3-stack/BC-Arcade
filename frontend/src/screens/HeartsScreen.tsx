@@ -368,6 +368,9 @@ export default function HeartsScreen() {
   function handleNextHand() {
     if (!gameState) return;
     setLastTrick(null);
+    setShowMoonShot(false);
+    setShowHeartsBroken(false);
+    setShowQueenOfSpades(false);
     const next = dealNextHand(gameState);
     setGameState(next);
     void saveGame(next);
@@ -391,6 +394,9 @@ export default function HeartsScreen() {
 
   function handleStartGame(difficulty: AiDifficulty) {
     setLastTrick(null);
+    setShowMoonShot(false);
+    setShowHeartsBroken(false);
+    setShowQueenOfSpades(false);
     setSubmitState("idle");
     setPlayerName("");
     loopActiveRef.current = false;
@@ -402,6 +408,9 @@ export default function HeartsScreen() {
 
   function handlePlayAgain() {
     setLastTrick(null);
+    setShowMoonShot(false);
+    setShowHeartsBroken(false);
+    setShowQueenOfSpades(false);
     setSubmitState("idle");
     setPlayerName("");
     loopActiveRef.current = false;
