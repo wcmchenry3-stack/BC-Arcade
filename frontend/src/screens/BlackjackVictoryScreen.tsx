@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { HomeStackParamList } from "../../App";
 import { useTheme } from "../theme/ThemeContext";
-import { useBlackjackGame, useBlackjackSessionStats } from "../game/blackjack/BlackjackGameContext";
+import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
 
@@ -17,8 +17,8 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { engine, handleCashOut, handleKeepPlaying } = useBlackjackGame();
-  const sessionStats = useBlackjackSessionStats();
+  const { engine, sessionStats, handleCashOut, handleKeepPlaying, handleTableSelect } =
+    useBlackjackGame();
 
   const activeTable =
     TABLE_CONFIGS.find((tc) => tc.betMin === engine?.betMin && tc.betMax === engine?.betMax) ??
@@ -31,12 +31,20 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
       ? Math.round((sessionStats.handsWon / sessionStats.handsPlayed) * 100)
       : 0;
 
-  const netPL = engine ? engine.chips - (engine.startingChips ?? 0) : 0;
+  const netPL = engine ? engine.chips - engine.startingChips : 0;
 
   const onCashOut = useCallback(async () => {
     await handleCashOut();
     navigation.replace("BlackjackBetting");
   }, [handleCashOut, navigation]);
+
+  // End the run then immediately start the next table — bypasses TableSelectPanel.
+  const onNextTable = useCallback(async () => {
+    if (!nextTable) return;
+    await handleCashOut();
+    handleTableSelect(nextTable);
+    navigation.replace("BlackjackBetting");
+  }, [handleCashOut, handleTableSelect, nextTable, navigation]);
 
   const onKeepPlaying = useCallback(() => {
     handleKeepPlaying();
@@ -61,17 +69,25 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
             {t("blackjack:victory.title")}
           </Text>
           <Text style={[styles.heroSubtitle, { color: colors.textMuted }]}>
-            {t("blackjack:victory.subtitle", { table: t(activeTable.labelKey as Parameters<typeof t>[0]) })}
+            {t("blackjack:victory.subtitle", {
+              table: t(activeTable.labelKey as Parameters<typeof t>[0]),
+            })}
           </Text>
         </View>
 
         {/* Chip count */}
-        <View style={[styles.chipCard, { backgroundColor: colors.surface, borderColor: colors.accent }]}>
+        <View
+          style={[styles.chipCard, { backgroundColor: colors.surface, borderColor: colors.accent }]}
+        >
           <Text style={[styles.chipCount, { color: colors.accent }]}>
-            {t("blackjack:victory.chipsLabel", { chips: engine?.chips?.toLocaleString() ?? "—" })}
+            {t("blackjack:victory.chipsLabel", {
+              chips: engine?.chips?.toLocaleString() ?? "—",
+            })}
           </Text>
           <Text style={[styles.chipGoal, { color: colors.textMuted }]}>
-            {t("blackjack:victory.goalLine", { goal: engine?.runGoal?.toLocaleString() ?? "—" })}
+            {t("blackjack:victory.goalLine", {
+              goal: engine?.runGoal?.toLocaleString() ?? "—",
+            })}
           </Text>
         </View>
 
@@ -113,56 +129,69 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
 
         {/* CTAs */}
         <View style={styles.actions}>
-          {nextTable && (
-            <Pressable
-              style={[styles.btn, styles.btnPrimary, { backgroundColor: colors.accent }]}
-              onPress={onCashOut}
-              accessibilityRole="button"
-              accessibilityLabel={t("blackjack:victory.nextTableLabel", {
-                table: t(nextTable.labelKey as Parameters<typeof t>[0]),
-              })}
-            >
-              <Text style={[styles.btnText, { color: colors.surface }]}>
-                {t("blackjack:victory.nextTable", { table: t(nextTable.labelKey as Parameters<typeof t>[0]) })}
-              </Text>
-            </Pressable>
-          )}
+          {nextTable ? (
+            <>
+              <Pressable
+                style={[styles.btn, { backgroundColor: colors.accent }]}
+                onPress={onNextTable}
+                accessibilityRole="button"
+                accessibilityLabel={t("blackjack:victory.nextTableLabel", {
+                  table: t(nextTable.labelKey as Parameters<typeof t>[0]),
+                })}
+              >
+                <Text style={[styles.btnText, { color: colors.surface }]}>
+                  {t("blackjack:victory.nextTable", {
+                    table: t(nextTable.labelKey as Parameters<typeof t>[0]),
+                  })}
+                </Text>
+              </Pressable>
 
-          {!nextTable && (
-            <Pressable
-              style={[styles.btn, styles.btnPrimary, { backgroundColor: colors.accent }]}
-              onPress={onCashOut}
-              accessibilityRole="button"
-              accessibilityLabel={t("blackjack:victory.cashOutLabel")}
-            >
-              <Text style={[styles.btnText, { color: colors.surface }]}>
-                {t("blackjack:victory.cashOut")}
-              </Text>
-            </Pressable>
-          )}
+              <Pressable
+                style={[styles.btn, styles.btnSecondary, { borderColor: colors.border }]}
+                onPress={onKeepPlaying}
+                accessibilityRole="button"
+                accessibilityLabel={t("blackjack:victory.keepPlayingLabel")}
+              >
+                <Text style={[styles.btnText, { color: colors.text }]}>
+                  {t("blackjack:victory.keepPlaying")}
+                </Text>
+              </Pressable>
 
-          <Pressable
-            style={[styles.btn, styles.btnSecondary, { borderColor: colors.border }]}
-            onPress={onKeepPlaying}
-            accessibilityRole="button"
-            accessibilityLabel={t("blackjack:victory.keepPlayingLabel")}
-          >
-            <Text style={[styles.btnText, { color: colors.text }]}>
-              {t("blackjack:victory.keepPlaying")}
-            </Text>
-          </Pressable>
+              <Pressable
+                style={styles.cashOutLink}
+                onPress={onCashOut}
+                accessibilityRole="button"
+                accessibilityLabel={t("blackjack:victory.cashOutLabel")}
+              >
+                <Text style={[styles.cashOutLinkText, { color: colors.textMuted }]}>
+                  {t("blackjack:victory.cashOut")}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable
+                style={[styles.btn, { backgroundColor: colors.accent }]}
+                onPress={onCashOut}
+                accessibilityRole="button"
+                accessibilityLabel={t("blackjack:victory.cashOutLabel")}
+              >
+                <Text style={[styles.btnText, { color: colors.surface }]}>
+                  {t("blackjack:victory.cashOut")}
+                </Text>
+              </Pressable>
 
-          {nextTable && (
-            <Pressable
-              style={styles.cashOutLink}
-              onPress={onCashOut}
-              accessibilityRole="button"
-              accessibilityLabel={t("blackjack:victory.cashOutLabel")}
-            >
-              <Text style={[styles.cashOutLinkText, { color: colors.textMuted }]}>
-                {t("blackjack:victory.cashOut")}
-              </Text>
-            </Pressable>
+              <Pressable
+                style={[styles.btn, styles.btnSecondary, { borderColor: colors.border }]}
+                onPress={onKeepPlaying}
+                accessibilityRole="button"
+                accessibilityLabel={t("blackjack:victory.keepPlayingLabel")}
+              >
+                <Text style={[styles.btnText, { color: colors.text }]}>
+                  {t("blackjack:victory.keepPlaying")}
+                </Text>
+              </Pressable>
+            </>
           )}
         </View>
       </ScrollView>
@@ -253,7 +282,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  btnPrimary: {},
   btnSecondary: {
     backgroundColor: "transparent",
     borderWidth: 1,

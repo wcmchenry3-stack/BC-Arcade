@@ -8,6 +8,10 @@
 import { test, expect } from "@playwright/test";
 import { injectEngineState, victoryPhaseState } from "./helpers/blackjack";
 
+// Convenience: high-roller state so "Cash Out" is the primary CTA (no next table).
+const highRollerVictory = () =>
+  victoryPhaseState({ chips: 1550, runGoal: 1500, betMin: 25, betMax: 200, startingChips: 500 });
+
 test.describe("Blackjack — victory screen", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
@@ -36,17 +40,18 @@ test.describe("Blackjack — victory screen", () => {
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/beginner/i).first()).toBeVisible();
+    // Subtitle: "You completed the Beginner table"
+    await expect(page.getByText(/you completed the beginner/i)).toBeVisible();
   });
 
-  test("Cash Out navigates to table selection", async ({ page }) => {
-    await injectEngineState(page, victoryPhaseState());
+  test("Cash Out (primary CTA on high-roller) navigates to table selection", async ({ page }) => {
+    // High-roller has no next table, so "Cash Out" is the primary button.
+    await injectEngineState(page, highRollerVictory());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /cash out/i }).click();
 
-    // Should land on table select (Choose Your Table)
     await expect(page.getByText(/choose your table/i)).toBeVisible({ timeout: 5000 });
   });
 
@@ -57,28 +62,30 @@ test.describe("Blackjack — victory screen", () => {
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /keep playing/i }).click();
 
-    // Should land on betting panel (Deal button), not table select
+    // Should land on betting panel (Deal button visible), not table select
     await expect(
       page.getByRole("button", { name: /deal cards with/i }),
     ).toBeVisible({ timeout: 5000 });
-    // Table select should NOT be shown
     await expect(page.getByText(/choose your table/i)).not.toBeVisible();
   });
 
-  test("non-high-roller victory shows next table CTA", async ({ page }) => {
+  test("non-high-roller victory shows next table CTA that starts it directly", async ({ page }) => {
     // Beginner table (betMin=5, betMax=25) — next table is Intermediate
     await injectEngineState(page, victoryPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("button", { name: /play intermediate table/i })).toBeVisible();
+    await page.getByRole("button", { name: /play intermediate table/i }).click();
+
+    // Should land directly on betting panel — no table select (already chosen)
+    await expect(
+      page.getByRole("button", { name: /deal cards with/i }),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/choose your table/i)).not.toBeVisible();
   });
 
   test("high-roller victory shows Cash Out as primary CTA (no next table)", async ({ page }) => {
-    await injectEngineState(
-      page,
-      victoryPhaseState({ chips: 1550, runGoal: 1500, betMin: 25, betMax: 200, startingChips: 500 }),
-    );
+    await injectEngineState(page, highRollerVictory());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
@@ -91,7 +98,8 @@ test.describe("Blackjack — victory screen", () => {
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
-    await page.getByRole("button", { name: /back/i }).click();
+    // accessibilityLabel = t("common:nav.backLabel") = "Go back to home screen"
+    await page.getByRole("button", { name: "Go back to home screen" }).click();
 
     await expect(page.getByText("BC Arcade").first()).toBeVisible({ timeout: 5000 });
   });

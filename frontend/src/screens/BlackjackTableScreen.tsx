@@ -108,7 +108,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   useEffect(() => {
     if (loading || !engine) return;
     if (engine.phase === "betting") navigation.replace("BlackjackBetting");
-    if (engine.phase === "victory") navigation.replace("BlackjackVictory");
+    else if (engine.phase === "victory") navigation.replace("BlackjackVictory");
   }, [loading, engine, navigation]);
 
   const currentPhase = engine?.phase;
