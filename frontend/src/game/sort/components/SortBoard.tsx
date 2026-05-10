@@ -317,7 +317,6 @@ export default function SortBoard({
   let streamColor = "transparent";
   let spoutX = 0;
   let spoutY = 0;
-  let streamEndX = 0;
   let streamEndY = 0;
   if (ghost !== null) {
     const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
@@ -325,14 +324,13 @@ export default function SortBoard({
     // Spout is fixed at dst center-X, 8px above dst neck (matches liftDy offset)
     spoutX = ghost.dstX + bottleW / 2;
     spoutY = ghost.dstY + pivotLocalY - 8;
-    streamEndX = ghost.dstX + bottleW / 2;
     const dstFillTopY =
       ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH - ghost.dstBottleLength * unitHPx;
     streamEndY = Math.max(spoutY + 12, dstFillTopY);
     const arcSag = Math.max(6, (streamEndY - spoutY) * 0.18);
-    const ctrlX = (spoutX + streamEndX) / 2 + ghost.tiltSign * 4;
+    const ctrlX = spoutX + ghost.tiltSign * 4;
     const ctrlY = (spoutY + streamEndY) / 2 + arcSag;
-    streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${streamEndX} ${streamEndY}`;
+    streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
     const topColor = ghost.bottle[ghost.bottle.length - 1];
     streamColor = topColor ? LIQUID_COLORS[topColor] : "transparent";
   }
@@ -392,7 +390,7 @@ export default function SortBoard({
           importantForAccessibility="no-hide-descendants"
         >
           {/* Destination highlight ring — glows in pour color */}
-          {ghost !== null && streamColor !== "transparent" && (
+          {streamColor !== "transparent" && (
             <View
               style={[
                 styles.dstRing,
@@ -404,36 +402,42 @@ export default function SortBoard({
                   borderColor: streamColor + "88",
                 },
               ]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             />
           )}
 
           {/* Destination rising fill — units appear in target bottle as they land */}
-          {ghost !== null && unitsLanded > 0 && (
+          {unitsLanded > 0 && (
             <View
               style={[
                 styles.dstFillOverlay,
                 { left: ghost.dstX, top: ghost.dstY, width: bottleW, height: bottleH },
               ]}
               pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             >
               <Svg width={bottleW} height={bottleH} viewBox={`0 0 ${VB_W} ${VB_H}`}>
                 <Defs>
-                  <ClipPath id="dst-fill-clip">
+                  <ClipPath id={`dst-fill-${ghost.bottleIndex}-${ghost.dstX}`}>
                     <Path d={FLASK_CAVITY} />
                   </ClipPath>
                 </Defs>
-                <G clipPath="url(#dst-fill-clip)">
-                  {Array.from({ length: unitsLanded }).map((_, k) => {
+                <G clipPath={`url(#dst-fill-${ghost.bottleIndex}-${ghost.dstX})`}>
+                  {(() => {
                     const unitHVb = INNER_H_VB / BOTTLE_DEPTH;
-                    const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
                     const fillColor = LIQUID_COLORS[ghost.pourColor];
-                    return (
-                      <G key={k}>
-                        <Rect x={0} y={yVb} width={VB_W} height={unitHVb + 0.5} fill={fillColor} />
-                        <Rect x={0} y={yVb} width={VB_W} height={2.5} fill="rgba(255,255,255,0.22)" />
-                      </G>
-                    );
-                  })}
+                    return Array.from({ length: unitsLanded }).map((_, k) => {
+                      const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
+                      return (
+                        <G key={k}>
+                          <Rect x={0} y={yVb} width={VB_W} height={unitHVb + 0.5} fill={fillColor} />
+                          <Rect x={0} y={yVb} width={VB_W} height={2.5} fill="rgba(255,255,255,0.22)" />
+                        </G>
+                      );
+                    });
+                  })()}
                 </G>
               </Svg>
             </View>
@@ -470,7 +474,7 @@ export default function SortBoard({
                 <Circle cx={spoutX} cy={spoutY + 1} r={3.5} fill={streamColor} opacity={0.95} />
                 {/* Splash ellipse at landing — animates on each unit landing */}
                 <AnimatedEllipse
-                  cx={streamEndX}
+                  cx={spoutX}
                   cy={streamEndY}
                   ry={2}
                   fill={streamColor}
@@ -648,7 +652,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderRadius: 14,
     borderWidth: 2,
-    borderStyle: "solid",
     pointerEvents: "none",
   },
   dstFillOverlay: {
