@@ -8,7 +8,13 @@ import { useTheme } from "../theme/ThemeContext";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
-import { Unlock, evaluateUnlocks, loadUnlocks, mergeUnlocks, saveUnlocks } from "../game/blackjack/unlocks";
+import {
+  Unlock,
+  evaluateUnlocks,
+  loadUnlocks,
+  mergeUnlocks,
+  saveUnlocks,
+} from "../game/blackjack/unlocks";
 import { loadRuns } from "../game/blackjack/storage";
 
 type Props = {
@@ -19,7 +25,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { engine, sessionStats, handleCashOut, handleKeepPlaying, handleTableSelect } =
+  const { engine, sessionStats, lowestChips, handleCashOut, handleKeepPlaying, handleTableSelect } =
     useBlackjackGame();
 
   const activeTable =
@@ -44,7 +50,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
         completed: true,
         handsPlayed: sessionStats.handsPlayed,
         biggestWin: sessionStats.biggestWin,
-        lowestChips: 0,
+        lowestChips,
         startedAt: Date.now(),
         endedAt: Date.now(),
       };
@@ -167,7 +173,10 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
         {/* Unlock notification */}
         {newUnlocks.length > 0 && (
           <View
-            style={[styles.unlockPanel, { backgroundColor: colors.surface, borderColor: colors.accent }]}
+            style={[
+              styles.unlockPanel,
+              { backgroundColor: colors.surface, borderColor: colors.accent },
+            ]}
             accessibilityLiveRegion="polite"
           >
             {newUnlocks.map((u) => (

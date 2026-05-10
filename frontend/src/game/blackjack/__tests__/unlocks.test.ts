@@ -137,7 +137,7 @@ describe("evaluateUnlocks", () => {
         name: "Comeback Kid",
         type: "chip_style",
         conditionType: "comeback",
-        conditionValue: "any",
+        conditionValue: null,
         unlocked: false,
       },
     ];
@@ -155,7 +155,7 @@ describe("evaluateUnlocks", () => {
         name: "Comeback Kid",
         type: "chip_style",
         conditionType: "comeback",
-        conditionValue: "any",
+        conditionValue: null,
         unlocked: false,
       },
     ];
@@ -243,5 +243,14 @@ describe("loadUnlocks / saveUnlocks", () => {
       expect.objectContaining({ level: "warning" })
     );
     expect(await AsyncStorage.getItem(UNLOCKS_KEY)).toBeNull();
+  });
+
+  it("saveUnlocks swallows the error and reports to Sentry on write failure", async () => {
+    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("storage full"));
+    await saveUnlocks(INITIAL_UNLOCKS.map((u) => ({ ...u })));
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: expect.objectContaining({ op: "saveUnlocks" }) })
+    );
   });
 });

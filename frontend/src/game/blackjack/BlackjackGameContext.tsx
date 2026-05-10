@@ -22,6 +22,7 @@ interface BlackjackGameContextValue {
   loading: boolean;
   error: string | null;
   sessionStats: SessionStats;
+  lowestChips: number;
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
   clearEvents: () => void;
   handleRulesChange: (rules: GameRules) => void;
@@ -377,6 +378,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         loading,
         error,
         sessionStats,
+        lowestChips: lowestChipsRef.current,
         apply,
         clearEvents,
         handleRulesChange,

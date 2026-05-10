@@ -1,10 +1,3 @@
-/**
- * Unlock system for Blackjack — cosmetic rewards tied to run achievements.
- *
- * Phase 1: three placeholder unlocks (one per table) with persistence.
- * Cosmetic rendering is out of scope for this issue.
- */
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { RunRecord } from "./storage";
@@ -16,7 +9,7 @@ export interface Unlock {
   name: string;
   type: "table_theme" | "card_back" | "chip_style";
   conditionType: "complete_table" | "run_count" | "comeback";
-  conditionValue: string | number;
+  conditionValue: string | number | null;
   unlocked: boolean;
   unlockedAt?: string;
 }
@@ -65,11 +58,9 @@ export function evaluateUnlocks(runHistory: RunRecord[], existingUnlocks: Unlock
     if (unlock.conditionType === "complete_table") {
       triggered = runHistory.some((r) => r.table === unlock.conditionValue && r.completed);
     } else if (unlock.conditionType === "run_count") {
-      triggered = runHistory.length >= (unlock.conditionValue as number);
+      triggered = runHistory.length >= Number(unlock.conditionValue);
     } else if (unlock.conditionType === "comeback") {
-      triggered = runHistory.some(
-        (r) => r.completed && r.lowestChips <= r.startingChips * 0.25
-      );
+      triggered = runHistory.some((r) => r.completed && r.lowestChips <= r.startingChips * 0.25);
     }
 
     if (triggered) {
