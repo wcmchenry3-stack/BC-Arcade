@@ -258,7 +258,12 @@ export default function GameCanvas({
   }, [state.isDeadlocked]);
 
   // Reset felt pattern on unmount so a remount regenerates it against the new context.
-  useEffect(() => () => { feltPatternRef.current = null; }, []);
+  useEffect(
+    () => () => {
+      feltPatternRef.current = null;
+    },
+    []
+  );
 
   // Load all 42 SVG tile images once on mount.
   useEffect(() => {
@@ -326,7 +331,15 @@ export default function GameCanvas({
       feltPatternRef.current = makeFeltPattern(ctx);
     }
 
-    drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera, feltPatternRef.current);
+    drawBoard(
+      ctx,
+      state,
+      freeTiles,
+      matchingIds,
+      tileImagesRef.current,
+      camera,
+      feltPatternRef.current
+    );
   }, [state, freeTiles, matchingIds, imagesVersion, camera]);
 
   const handleClick = useCallback(
