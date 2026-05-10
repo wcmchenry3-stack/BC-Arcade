@@ -6,7 +6,7 @@
 
 import { calculateMahjongLayout } from "../layout";
 
-const TURTLE = { boardRows: 12, boardCols: 8, boardLayers: 4 };
+const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
 
 describe("calculateMahjongLayout", () => {
   it("returns a tileWidth clamped to MAX_TILE_W (56) on a large iPad landscape screen", () => {
@@ -43,9 +43,9 @@ describe("calculateMahjongLayout", () => {
   });
 
   it("board fits within available height (heightFactor formula is correct)", () => {
-    // A 430×700 portrait screen — portrait turtle must not exceed availH.
-    const screenWidth = 430;
-    const screenHeight = 700;
+    // A 900×450 screen at typical mahjong aspect — board must not exceed availH.
+    const screenWidth = 900;
+    const screenHeight = 450;
     const safeAreaTop = 0;
     const safeAreaBottom = 0;
     const l = calculateMahjongLayout({

@@ -1,22 +1,20 @@
 /**
- * Turtle layout — 144 slots (#891, rotated portrait #1416).
+ * Turtle layout — 144 slots (#891).
  *
  * Coordinate system: tiles are 2 grid units wide, 1 unit tall.
  * Adjacent tiles in the same row step by col±2. Stacked tiles share the same
  * (col, row) and differ only in layer.
  *
- * Portrait orientation: head at top, tail at bottom, feet left/right.
- * Derived from the classic landscape layout via 90° CCW rotation:
- *   new_col = old_row × 2,  new_row = (22 − old_col) / 2
+ * Traditional orientation: head protrudes left, tail protrudes right.
  *
  * Layer breakdown:
- *   Layer 0 — 64 tiles: body (rows 2–9, cols 2–12), head (rows 0–1, cols 6,8),
- *              tail (rows 10–11, cols 6,8), left/right feet (cols 0,14, rows 2,3,8,9)
- *   Layer 1 — 36 tiles: body (rows 3–8, cols 2–12) — same col span as layer 0,
- *              narrows in row direction only (no left/right ledge)
- *   Layer 2 — 24 tiles: centre (rows 3–8, cols 4–10)
- *   Layer 3 — 12 tiles: centre (rows 3–8, cols 6,8)
- *   Layer 4 —  8 tiles: peak (rows 4–7, cols 6,8)
+ *   Layer 0 — 64 tiles: body (rows 1–6, cols 4–18), head (rows 3–4, cols 0–2),
+ *              tail (rows 3–4, cols 20–22), top/bottom feet (row 0/7, cols 4,6,16,18)
+ *   Layer 1 — 36 tiles: body (rows 2–5, cols 4–18), head (rows 3–4, col 2),
+ *              tail (rows 3–4, col 20)
+ *   Layer 2 — 24 tiles: centre (rows 2–5, cols 6–16)
+ *   Layer 3 — 12 tiles: centre (rows 3–4, cols 6–16)
+ *   Layer 4 —  8 tiles: peak (rows 3–4, cols 8–14)
  *   Total: 64 + 36 + 24 + 12 + 8 = 144
  */
 
@@ -45,28 +43,32 @@ function slots(
 export const TURTLE_LAYOUT: Layout = [
   // --- Layer 0 ---
   // Body
-  ...slots(0, range(2, 12, 2), range(2, 9, 1)),
-  // Head (top protrusion)
-  ...slots(0, [6, 8], [0, 1]),
-  // Tail (bottom protrusion)
-  ...slots(0, [6, 8], [10, 11]),
-  // Left feet
-  ...slots(0, [0], [2, 3, 8, 9]),
-  // Right feet
-  ...slots(0, [14], [2, 3, 8, 9]),
+  ...slots(0, range(4, 18, 2), range(1, 6, 1)),
+  // Head (left protrusion)
+  ...slots(0, [0, 2], [3, 4]),
+  // Tail (right protrusion)
+  ...slots(0, [20, 22], [3, 4]),
+  // Top feet
+  ...slots(0, [4, 6, 16, 18], [0]),
+  // Bottom feet
+  ...slots(0, [4, 6, 16, 18], [7]),
 
   // --- Layer 1 ---
-  // Body (same col span as layer 0 — narrows in rows only, no left/right ledge)
-  ...slots(1, range(2, 12, 2), range(3, 8, 1)),
+  // Body
+  ...slots(1, range(4, 18, 2), range(2, 5, 1)),
+  // Head
+  ...slots(1, [2], [3, 4]),
+  // Tail
+  ...slots(1, [20], [3, 4]),
 
   // --- Layer 2 ---
-  ...slots(2, range(4, 10, 2), range(3, 8, 1)),
+  ...slots(2, range(6, 16, 2), range(2, 5, 1)),
 
   // --- Layer 3 ---
-  ...slots(3, [6, 8], range(3, 8, 1)),
+  ...slots(3, range(6, 16, 2), [3, 4]),
 
   // --- Layer 4 ---
-  ...slots(4, [6, 8], range(4, 7, 1)),
+  ...slots(4, range(8, 14, 2), [3, 4]),
 ];
 
 if (TURTLE_LAYOUT.length !== 144) {
