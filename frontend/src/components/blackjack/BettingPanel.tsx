@@ -35,6 +35,8 @@ export default function BettingPanel({
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
   const maxBet = Math.min(betMax, chips);
+  const effectiveMin = Math.min(betMin, chips);
+  const effectiveDenominations = chips < betMin ? [chips] : chipDenominations;
   const [bet, setBet] = useState<number>(0);
   const [rulesOpen, setRulesOpen] = useState(false);
 
@@ -46,7 +48,7 @@ export default function BettingPanel({
     setBet(0);
   }
 
-  const canDeal = bet >= betMin && bet <= maxBet && !loading;
+  const canDeal = bet >= effectiveMin && bet <= maxBet && !loading;
   const resolvedAccent = accentColor ?? colors.accent;
 
   const chipColors = [colors.accent, colors.secondary, colors.tertiary, colors.secondary] as const;
@@ -64,7 +66,7 @@ export default function BettingPanel({
 
       {/* Chip denomination row */}
       <View style={styles.chipRow}>
-        {chipDenominations.map((denom, i) => (
+        {effectiveDenominations.map((denom, i) => (
           <ChipButton
             key={denom}
             amount={denom}

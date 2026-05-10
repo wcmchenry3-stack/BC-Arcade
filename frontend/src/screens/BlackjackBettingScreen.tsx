@@ -118,13 +118,6 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
               handOutcomes={state.hand_outcomes}
             />
           </View>
-          <Text style={[styles.dealerRule, { color: colors.textMuted }]}>
-            {t(
-              `blackjack:rules.${state.rules.hit_soft_17 ? "h17Label" : "s17Label"}` as Parameters<
-                typeof t
-              >[0]
-            )}
-          </Text>
         </View>
       )}
 
@@ -195,12 +188,6 @@ const styles = StyleSheet.create({
     opacity: 0.4,
     width: "100%",
     alignItems: "center",
-  },
-  dealerRule: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "500",
   },
   controls: {
     alignItems: "center",
