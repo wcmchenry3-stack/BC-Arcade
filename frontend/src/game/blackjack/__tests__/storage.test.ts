@@ -164,7 +164,7 @@ describe("blackjack run history", () => {
     expect(runs[0].runGoal).toBe(2000);
   });
 
-  it("returns empty array on corrupt storage", async () => {
+  it("returns empty array on corrupt storage and clears the key", async () => {
     await AsyncStorage.setItem("blackjack_runs_v1", "not-valid-json{{{");
     const runs = await loadRuns();
     expect(runs).toEqual([]);
@@ -172,11 +172,17 @@ describe("blackjack run history", () => {
       expect.stringContaining("corrupt runs payload"),
       expect.objectContaining({ level: "warning" })
     );
+    expect(await AsyncStorage.getItem("blackjack_runs_v1")).toBeNull();
   });
 
-  it("returns empty array when stored value is not an array", async () => {
+  it("returns empty array when stored value is not an array, logs warning, and clears the key", async () => {
     await AsyncStorage.setItem("blackjack_runs_v1", JSON.stringify({ foo: "bar" }));
     const runs = await loadRuns();
     expect(runs).toEqual([]);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("not an array"),
+      expect.objectContaining({ level: "warning" })
+    );
+    expect(await AsyncStorage.getItem("blackjack_runs_v1")).toBeNull();
   });
 });

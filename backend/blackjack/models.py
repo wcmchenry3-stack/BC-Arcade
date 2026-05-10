@@ -1,4 +1,8 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
+
+TableTier = Literal["beginner", "intermediate", "high_roller"]
 
 
 class BlackjackMetadata(BaseModel):
@@ -16,4 +20,4 @@ class BlackjackMetadata(BaseModel):
     best_run_chips: int | None = None
     total_runs: int | None = None
     runs_completed: int | None = None
-    current_table: str | None = None
+    current_table: TableTier | None = None

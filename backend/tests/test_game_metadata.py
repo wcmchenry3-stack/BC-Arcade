@@ -60,6 +60,17 @@ def test_blackjack_metadata_partial_run_fields_accepted() -> None:
     assert m.best_run_chips is None
 
 
+def test_blackjack_metadata_all_table_tiers_accepted() -> None:
+    for tier in ("beginner", "intermediate", "high_roller"):
+        m = BlackjackMetadata.model_validate({"current_table": tier})
+        assert m.current_table == tier
+
+
+def test_blackjack_metadata_invalid_current_table_rejected() -> None:
+    with pytest.raises(ValidationError):
+        BlackjackMetadata.model_validate({"current_table": "hacker_table"})
+
+
 # ---------------------------------------------------------------------------
 # CascadeMetadata unit tests
 # ---------------------------------------------------------------------------

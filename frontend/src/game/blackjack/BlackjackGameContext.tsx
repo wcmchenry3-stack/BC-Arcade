@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { newGame, EngineState, DEFAULT_RULES, handValue, isNaturalBlackjack, Card } from "./engine";
 import { GameRules } from "./types";
-import { saveGame, loadGame, clearGame, saveRun } from "./storage";
+import { saveGame, loadGame, clearGame, saveRun, loadRuns } from "./storage";
 import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
 
@@ -50,19 +50,42 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   }, [engine]);
 
   const startSession = useCallback(
-    (startingChips: number) => {
+    async (startingChips: number, resuming = false) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
       lowestChipsRef.current = startingChips;
       biggestWinRef.current = 0;
       setSessionStats(initialSessionStats(startingChips));
-      syncStart({ starting_chips: startingChips });
+      // Load run history to compute aggregate metadata for the backend game row.
+      // Runs saved in the *previous* endSession call are included because saveRun
+      // is awaited before startSession is invoked from handlePlayAgain, and because
+      // the initial-load path never has a preceding saveRun. The minor race that
+      // can occur if endSession fires saveRun fire-and-forget (chips=0 path) means
+      // the newly-completed run may not yet appear — off by one, self-corrects next
+      // session start.
+      const runs = await loadRuns();
+      const totalRuns = runs.length;
+      const runsCompleted = runs.filter((r) => r.completed).length;
+      const bestRunChips =
+        runs.length > 0 ? runs.reduce((m, r) => Math.max(m, r.finalChips), 0) : null;
+      syncStart(
+        { starting_chips: startingChips },
+        {
+          best_run_chips: bestRunChips,
+          total_runs: totalRuns,
+          runs_completed: runsCompleted,
+          current_table: "beginner",
+        }
+      );
+      // Mark the session as already started when resuming a mid-game save.
+      // Must come after syncStart so the game ID exists.
+      if (resuming) syncMarkStarted();
     },
-    [syncStart]
+    [syncStart, syncMarkStarted]
   );
 
   const endSession = useCallback(
-    (outcome: "completed" | "abandoned") => {
+    async (outcome: "completed" | "abandoned") => {
       const durationMs = Date.now() - sessionStartedAtRef.current;
       syncComplete(
         { outcome, durationMs },
@@ -72,10 +95,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           outcome,
         }
       );
-      // Persist a run record when the player actually played hands.
+      // Persist a run record when the player actually played hands. Awaited so
+      // that the subsequent startSession call (in handlePlayAgain) sees the
+      // newly saved run when it loads run history for aggregate metadata.
       const engine = engineRef.current;
       if (engine && totalHandsRef.current > 0) {
-        saveRun({
+        await saveRun({
           table: "beginner",
           startingChips: engine.startingChips,
           finalChips: engine.chips,
@@ -101,11 +126,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         setEngine(next);
         if (!saved) saveGame(next);
         // Start an instrumented session unless the loaded state is already
-        // a chips-exhausted game-over state.
+        // a chips-exhausted game-over state. Pass resuming=true for saved
+        // mid-game states so syncMarkStarted fires after syncStart.
         if (!(next.chips === 0 && next.phase === "result")) {
-          startSession(next.chips);
-          // Resuming a saved mid-game means the player already started — mark it.
-          if (saved) syncMarkStarted();
+          void startSession(next.chips, !!saved);
         }
       })
       .finally(() => {
@@ -229,9 +253,11 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         }
       }
 
-      // game_ended: chips exhausted in result phase
+      // game_ended: chips exhausted in result phase. Fire-and-forget — the
+      // next startSession (from handlePlayAgain) may see this run's saveRun
+      // slightly late, off by one, self-corrects on the following session.
       if (next.chips === 0 && next.phase === "result") {
-        endSession("completed");
+        void endSession("completed");
       }
       // TODO BJ-3: call endSession("completed") on victory cash-out — the
       // "victory" phase is handled by BlackjackVictoryScreen, which will
@@ -279,17 +305,18 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     setEngine((prev) => (prev ? { ...prev, events: undefined } : null));
   }, []);
 
-  const handlePlayAgain = useCallback(() => {
+  const handlePlayAgain = useCallback(async () => {
     // If a session is still open, close it out. When chips hit 0 mid-hand,
     // game_ended was already emitted by emitTransitionEvents — syncComplete
     // is idempotent and the guard in useGameSync makes this a no-op.
     // Otherwise we're mid-game and the user pressed New Game (abandon).
-    endSession("abandoned");
+    // Await so saveRun completes before startSession loads runs for metadata.
+    await endSession("abandoned");
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
     saveGame(fresh);
     setError(null);
-    startSession(fresh.chips);
+    void startSession(fresh.chips);
   }, [engine, endSession, startSession]);
 
   return (

@@ -51,7 +51,14 @@ export async function loadRuns(): Promise<RunRecord[]> {
     const raw = await AsyncStorage.getItem(RUNS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      Sentry.captureMessage("blackjack.storage: runs payload is not an array, discarding", {
+        level: "warning",
+        tags: { subsystem: "blackjack.storage", op: "loadRuns" },
+      });
+      await AsyncStorage.removeItem(RUNS_KEY).catch(() => {});
+      return [];
+    }
     return parsed as RunRecord[];
   } catch (e) {
     Sentry.captureMessage("blackjack.storage: corrupt runs payload, discarding", {
@@ -59,6 +66,7 @@ export async function loadRuns(): Promise<RunRecord[]> {
       tags: { subsystem: "blackjack.storage", op: "loadRuns" },
       extra: { error: String(e) },
     });
+    await AsyncStorage.removeItem(RUNS_KEY).catch(() => {});
     return [];
   }
 }
