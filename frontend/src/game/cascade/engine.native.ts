@@ -268,7 +268,10 @@ export async function createEngine(
               const dist = Math.sqrt(distSq);
               if (dist > 0) {
                 const mag = nextDef.radius * POP_IMPULSE_SCALE;
-                Matter.Body.applyForce(b, b.position, { x: (dx / dist) * mag, y: (dy / dist) * mag });
+                Matter.Body.applyForce(b, b.position, {
+                  x: (dx / dist) * mag,
+                  y: (dy / dist) * mag,
+                });
               }
               Matter.Sleeping.set(b, false);
             }
