@@ -174,6 +174,38 @@ export class BlackjackPage {
   }
 }
 
+/**
+ * Victory state: chips hit runGoal, phase=victory.
+ * Beginner table: startingChips=100, runGoal=250.
+ */
+export function victoryPhaseState(
+  overrides: Partial<InjectedEngineState> = {},
+): InjectedEngineState {
+  return {
+    chips: 260,
+    bet: 25,
+    phase: "victory",
+    outcome: "win",
+    payout: 25,
+    deck: [],
+    player_hand: [
+      { suit: "♠", rank: "K" },
+      { suit: "♥", rank: "Q" },
+    ],
+    dealer_hand: [
+      { suit: "♣", rank: "7" },
+      { suit: "♦", rank: "9" },
+    ],
+    doubled: false,
+    runGoal: 250,
+    startingChips: 100,
+    betMin: 5,
+    betMax: 25,
+    ...emptySplitFields(),
+    ...overrides,
+  };
+}
+
 /** Game-over state: chips exhausted, phase=result. */
 export function gameOverState(): InjectedEngineState {
   return {

@@ -1,5 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { newGame, EngineState, DEFAULT_RULES, handValue, isNaturalBlackjack, Card } from "./engine";
+import {
+  newGame,
+  newHand,
+  EngineState,
+  DEFAULT_RULES,
+  handValue,
+  isNaturalBlackjack,
+  Card,
+} from "./engine";
 import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, loadRuns } from "./storage";
 import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
@@ -19,6 +27,10 @@ interface BlackjackGameContextValue {
   handleRulesChange: (rules: GameRules) => void;
   handlePlayAgain: () => void;
   handleTableSelect: (config: TableConfig) => void;
+  /** End the completed run and return to table-select state. */
+  handleCashOut: () => Promise<void>;
+  /** Continue playing at the same table without a run goal. */
+  handleKeepPlaying: () => void;
 }
 
 function activeHand(s: EngineState, idx: number): Card[] {
@@ -264,10 +276,6 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       if (next.chips === 0 && next.phase === "result") {
         void endSession("completed");
       }
-      // TODO BJ-3: call endSession("completed") on victory cash-out — the
-      // "victory" phase is handled by BlackjackVictoryScreen, which will
-      // trigger endSession there. Until then, victorious runs close as
-      // "abandoned" when the provider unmounts.
     },
     [endSession, syncEnqueue, syncMarkStarted]
   );
@@ -328,6 +336,22 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     setError(null);
   }, [engine, endSession]);
 
+  const handleCashOut = useCallback(async () => {
+    await endSession("completed");
+    const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
+    setEngine(fresh);
+    saveGame(fresh);
+    setError(null);
+  }, [engine, endSession]);
+
+  const handleKeepPlaying = useCallback(() => {
+    if (!engine) return;
+    const next = { ...newHand(engine), runGoal: null };
+    setEngine(next);
+    saveGame(next);
+    setError(null);
+  }, [engine]);
+
   const handleTableSelect = useCallback(
     (config: TableConfig) => {
       const fresh = newGame(undefined, {
@@ -358,6 +382,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         handleRulesChange,
         handlePlayAgain,
         handleTableSelect,
+        handleCashOut,
+        handleKeepPlaying,
       }}
     >
       {children}
