@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -7,7 +7,10 @@ import { HomeStackParamList } from "../../App";
 import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
+import { loadRuns, RunRecord } from "../game/blackjack/storage";
+import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import BettingPanel from "../components/blackjack/BettingPanel";
+import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
@@ -19,7 +22,26 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { engine, loading, error, apply, handleRulesChange, handlePlayAgain } = useBlackjackGame();
+  const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
+    useBlackjackGame();
+  const [runs, setRuns] = useState<RunRecord[]>([]);
+
+  useEffect(() => {
+    loadRuns().then(setRuns).catch(() => {});
+  }, []);
+
+  // Show table selection when the engine is in "pending table" state:
+  // fresh game (runGoal=null) that hasn't had any chips committed yet.
+  const showTableSelect =
+    engine !== null &&
+    engine.runGoal === null &&
+    engine.chips === engine.startingChips &&
+    engine.bet === 0;
+
+  // Derive active table config from engine's betMin/betMax (set by handleTableSelect).
+  const activeTable =
+    TABLE_CONFIGS.find((t) => t.betMin === engine?.betMin && t.betMax === engine?.betMax) ??
+    TABLE_CONFIGS[0]!;
 
   // Redirect to TableScreen if loaded mid-hand (app restart, or injected state).
   useEffect(() => {
@@ -109,16 +131,23 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
         </View>
       )}
 
-      {/* Betting controls */}
+      {/* Table selection or betting controls */}
       <View style={styles.controls}>
-        <BettingPanel
-          chips={state?.chips ?? 1000}
-          onDeal={handleDeal}
-          loading={false}
-          error={error}
-          rules={state?.rules ?? DEFAULT_RULES}
-          onRulesChange={handleRulesChange}
-        />
+        {showTableSelect ? (
+          <TableSelectPanel runs={runs} onSelectTable={handleTableSelect} />
+        ) : (
+          <BettingPanel
+            chips={state?.chips ?? activeTable.startingChips}
+            betMin={engine?.betMin ?? activeTable.betMin}
+            betMax={engine?.betMax ?? activeTable.betMax}
+            chipDenominations={activeTable.chipDenominations}
+            onDeal={handleDeal}
+            loading={false}
+            error={error}
+            rules={state?.rules ?? DEFAULT_RULES}
+            onRulesChange={handleRulesChange}
+          />
+        )}
       </View>
     </View>
   );

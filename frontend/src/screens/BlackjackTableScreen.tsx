@@ -193,7 +193,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         <View style={styles.tableRow}>
           {/* Left sidebar HUD */}
           <View style={styles.sidebarLeft}>
-            <HudSidebar currentPot={state.bet} lastWin={state.last_win} />
+            <HudSidebar
+              currentPot={state.bet}
+              lastWin={state.last_win}
+              chips={engine?.chips}
+              runGoal={engine?.runGoal}
+            />
           </View>
 
           <View style={styles.tableArea}>
