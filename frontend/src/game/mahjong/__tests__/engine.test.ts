@@ -623,6 +623,21 @@ describe("getMatchingFreeTileIds", () => {
     expect(getMatchingFreeTileIds(state).has(match.id)).toBe(true);
   });
 
+  it("matches season suit tiles regardless of rank", () => {
+    const sel: SlotTile = { id: 0, suit: "seasons", rank: 1, faceId: 39, col: 0, row: 0, layer: 0 };
+    const match: SlotTile = {
+      id: 1,
+      suit: "seasons",
+      rank: 3,
+      faceId: 41,
+      col: 4,
+      row: 0,
+      layer: 0,
+    };
+    const state: MahjongState = { ...base, tiles: [sel, match], selected: sel };
+    expect(getMatchingFreeTileIds(state).has(match.id)).toBe(true);
+  });
+
   it("clears on deselect (selected = null)", () => {
     const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
     const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 };

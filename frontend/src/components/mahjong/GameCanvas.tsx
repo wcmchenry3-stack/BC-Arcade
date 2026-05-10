@@ -239,7 +239,8 @@ export default function GameCanvas({
     return s;
   }, [state.tiles]);
 
-  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
 
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),

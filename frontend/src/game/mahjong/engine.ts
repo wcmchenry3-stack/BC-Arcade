@@ -88,7 +88,7 @@ export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean 
 /**
  * Returns the IDs of all free tiles that match the currently selected tile.
  * Returns an empty set when nothing is selected.
- * O(n) over free tiles — call once per state change, not per frame.
+ * O(n²) over all tiles (isFreeTile is O(n) per candidate) — call once per state change, not per frame.
  */
 export function getMatchingFreeTileIds(state: MahjongState): ReadonlySet<number> {
   if (!state.selected) return new Set();
