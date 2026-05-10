@@ -120,9 +120,7 @@ describe("BlackjackStatsScreen — outcome badges", () => {
   });
 
   it("shows Busted outcome for a run that ended in bankruptcy", async () => {
-    (loadRuns as jest.Mock).mockResolvedValueOnce([
-      makeRun({ completed: false, finalChips: 0 }),
-    ]);
+    (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ completed: false, finalChips: 0 })]);
     renderScreen();
     expect(await screen.findByLabelText(/Busted/)).toBeTruthy();
   });

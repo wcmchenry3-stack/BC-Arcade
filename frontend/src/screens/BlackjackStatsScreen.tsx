@@ -203,9 +203,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
 
         {sortedRuns.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-              {t("stats.noRuns")}
-            </Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t("stats.noRuns")}</Text>
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
