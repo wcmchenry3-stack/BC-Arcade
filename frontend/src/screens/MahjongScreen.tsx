@@ -610,9 +610,27 @@ export default function MahjongScreen() {
             <Text style={[styles.hudText, { color: colors.textMuted }]}>
               {t("hud.pairs")} {state.pairsRemoved}/72
             </Text>
-            <Text style={[styles.hudText, { color: colors.textMuted }]}>
-              {t("action.shuffle")} {state.shufflesLeft}
-            </Text>
+            <Pressable
+              onPress={handleShuffle}
+              disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
+              style={[
+                styles.headerBtn,
+                {
+                  borderColor: "#ffd700",
+                  opacity:
+                    state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked ? 0.3 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("action.shuffleLabel")}
+              accessibilityState={{
+                disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
+              }}
+            >
+              <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
+                {t("action.shuffle")} {state.shufflesLeft}
+              </Text>
+            </Pressable>
             <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
               {t("hud.deal")} #{state.dealId}
             </Text>
