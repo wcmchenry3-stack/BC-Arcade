@@ -1352,7 +1352,6 @@ describe("Boss burst-fire (#979)", () => {
       (e) => e.isAlive && e.tier === "Boss"
     );
     if (bossIdx === -1) throw new Error("no boss");
-    const boss = s.enemies[bossIdx]!;
     const cx = CANVAS_W / 2;
     const cy = CANVAS_H * 0.3;
     const radius = 60;
