@@ -15,6 +15,7 @@ import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mah
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import {
+  MAHJONG_BOARD_BG,
   MAHJONG_GLOW_SHADOW,
   MAHJONG_HINT_GLOW_SHADOW,
   MAHJONG_TILE_FACE_SELECTED,
@@ -25,7 +26,7 @@ import type { BoardCamera } from "../../game/mahjong/layout";
 // Colors
 // ---------------------------------------------------------------------------
 
-const BG = "#1a3a1a";
+const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
 const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
 const TILE_FACE_LOCKED = "#d0c8b8";
@@ -44,6 +45,38 @@ const SUIT_COLOR: Record<string, string> = {
   flowers: "#aa2299",
   seasons: "#0044aa",
 };
+
+// ---------------------------------------------------------------------------
+// Felt texture
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a 64×64 random-noise canvas pattern that simulates felt grain.
+ * Drawn at ~7% opacity over the board background. Generated once per session
+ * and cached by the caller — never called on every frame.
+ */
+function makeFeltPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  try {
+    const size = 64;
+    const offscreen = document.createElement("canvas");
+    offscreen.width = size;
+    offscreen.height = size;
+    const oc = offscreen.getContext("2d");
+    if (!oc) return null;
+    const id = oc.createImageData(size, size);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = Math.floor(Math.random() * 30);
+      id.data[i] = v;
+      id.data[i + 1] = v;
+      id.data[i + 2] = v;
+      id.data[i + 3] = 18; // ~7% opacity
+    }
+    oc.putImageData(id, 0, 0);
+    return ctx.createPattern(offscreen, "repeat");
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hit-testing
@@ -76,15 +109,20 @@ function drawBoard(
   freeTiles: ReadonlySet<number>,
   matchingIds: ReadonlySet<number>,
   tileImages: readonly (HTMLImageElement | null)[],
-  cam: BoardCamera
+  cam: BoardCamera,
+  feltPattern: CanvasPattern | null
 ): void {
   const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } = cam;
 
   ctx.clearRect(0, 0, boardWidth, boardHeight);
 
-  // Background
+  // Background — solid colour then subtle felt-grain overlay.
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, boardWidth, boardHeight);
+  if (feltPattern) {
+    ctx.fillStyle = feltPattern;
+    ctx.fillRect(0, 0, boardWidth, boardHeight);
+  }
 
   const selectedId = state.selected?.id ?? null;
 
@@ -188,6 +226,7 @@ export default function GameCanvas({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
+  const feltPatternRef = useRef<CanvasPattern | null>(null);
   const [imagesVersion, setImagesVersion] = useState(0);
 
   const freeTiles = useMemo(() => {
@@ -279,7 +318,12 @@ export default function GameCanvas({
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera);
+    // Generate the felt-grain pattern once; reuse on every subsequent draw.
+    if (!feltPatternRef.current) {
+      feltPatternRef.current = makeFeltPattern(ctx);
+    }
+
+    drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera, feltPatternRef.current);
   }, [state, freeTiles, matchingIds, imagesVersion, camera]);
 
   const handleClick = useCallback(
