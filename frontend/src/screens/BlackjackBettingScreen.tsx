@@ -45,9 +45,12 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
     TABLE_CONFIGS.find((t) => t.betMin === engine?.betMin && t.betMax === engine?.betMax) ??
     TABLE_CONFIGS[0]!;
 
-  // Redirect to TableScreen if loaded mid-hand (app restart, or injected state).
+  // Redirect when loaded mid-hand or into victory (app restart, injected state).
   useEffect(() => {
-    if (!loading && engine && engine.phase !== "betting") {
+    if (loading || !engine || engine.phase === "betting") return;
+    if (engine.phase === "victory") {
+      navigation.replace("BlackjackVictory");
+    } else {
       navigation.replace("BlackjackTable");
     }
   }, [loading, engine, navigation]);
