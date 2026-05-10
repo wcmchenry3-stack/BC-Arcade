@@ -126,5 +126,6 @@
   "victory.statsNetPLPositive": "+{{amount}} chips",
   "victory.title": "Goal Reached!",
   "victory.statsWinRate": "{{winRate}}% win rate",
-  "victory.statsNetPL": "Net P/L"
+  "victory.statsNetPL": "Net P/L",
+  "milestone.toast": "Milestone reached: {{chips}} chips!"
 }

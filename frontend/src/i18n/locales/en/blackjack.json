@@ -126,5 +126,6 @@
   "victory.keepPlaying": "Keep Playing",
   "victory.keepPlayingLabel": "Keep Playing — continue without a goal",
   "victory.nextTable": "Play {{table}} Table",
-  "victory.nextTableLabel": "Play {{table}} Table — move up to next table"
+  "victory.nextTableLabel": "Play {{table}} Table — move up to next table",
+  "milestone.toast": "Milestone reached: {{chips}} chips!"
 }

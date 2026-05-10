@@ -1,0 +1,116 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e10]:
+  - generic [ref=e19]:
+    - heading "BC Arcade BC Arcade Send feedback" [level=1] [ref=e20]:
+      - generic [ref=e22]:
+        - img "BC Arcade" [ref=e24]:
+          - img "BC Arcade" [ref=e26]
+        - heading "BC Arcade" [level=1] [ref=e27]
+        - button "Send feedback" [ref=e28] [cursor=pointer]:
+          - generic [ref=e29]: "?"
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - button "Yacht — Coming soon" [ref=e34] [cursor=pointer]:
+            - generic [ref=e37]: 🎲
+            - generic [ref=e38]: Yacht
+            - generic [ref=e39]: Roll dice, score categories, beat your high score.
+            - generic [ref=e41]: Unlock
+          - generic:
+            - generic: 🔒
+        - generic [ref=e42]:
+          - button "Cascade — Coming soon" [ref=e43] [cursor=pointer]:
+            - generic [ref=e46]: 🍉
+            - generic [ref=e47]: Cascade
+            - generic [ref=e48]: Drop, merge, and chain — don't let them overflow.
+            - generic [ref=e50]: Unlock
+          - generic:
+            - generic: 🔒
+      - generic [ref=e51]:
+        - button "Play Blackjack" [ref=e53] [cursor=pointer]:
+          - generic [ref=e56]: 🃏
+          - generic [ref=e57]: Blackjack
+          - generic [ref=e58]: Beat the dealer. Don't bust.
+          - generic [ref=e60]: Play Blackjack
+        - button "Play 2048" [ref=e62] [cursor=pointer]:
+          - generic [ref=e65]: 🔢
+          - generic [ref=e66]: "2048"
+          - generic [ref=e67]: Slide and merge tiles to reach 2048.
+          - generic [ref=e69]: Play 2048
+      - generic [ref=e70]:
+        - button "Play Solitaire" [ref=e72] [cursor=pointer]:
+          - generic [ref=e75]: ♠
+          - generic [ref=e76]: Solitaire
+          - generic [ref=e77]: Draw, stack, and clear — work the deck to the foundations.
+          - generic [ref=e79]: Play Solitaire
+        - button "Play FreeCell" [ref=e81] [cursor=pointer]:
+          - generic [ref=e84]: 🂡
+          - generic [ref=e85]: FreeCell
+          - generic [ref=e86]: Move all cards to the foundations — plan every move.
+          - generic [ref=e88]: Play FreeCell
+      - generic [ref=e89]:
+        - generic [ref=e90]:
+          - button "Hearts — Coming soon" [ref=e91] [cursor=pointer]:
+            - generic [ref=e94]: ♥
+            - generic [ref=e95]: Hearts
+            - generic [ref=e96]: Avoid hearts and the queen of spades.
+            - generic [ref=e98]: Unlock
+          - generic:
+            - generic: 🔒
+        - generic [ref=e99]:
+          - button "Sudoku — Coming soon" [ref=e100] [cursor=pointer]:
+            - generic [ref=e103]: 🧩
+            - generic [ref=e104]: Sudoku
+            - generic [ref=e105]: Classic 9x9 number puzzle across three difficulty tiers.
+            - generic [ref=e107]: Unlock
+          - generic:
+            - generic: 🔒
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - button "Star Swarm — Coming soon" [ref=e110] [cursor=pointer]:
+            - generic [ref=e113]: 👾
+            - generic [ref=e114]: Star Swarm
+            - generic [ref=e115]: Blast waves of alien invaders before they reach you.
+            - generic [ref=e117]: Unlock
+          - generic:
+            - generic: 🔒
+        - button "Play Mahjong Solitaire" [ref=e119] [cursor=pointer]:
+          - generic [ref=e122]: 🀄
+          - generic [ref=e123]: Mahjong Solitaire
+          - generic [ref=e124]: Match pairs of free tiles to clear the board.
+          - generic [ref=e126]: Play Mahjong Solitaire
+      - generic [ref=e127]:
+        - generic [ref=e128]:
+          - button "Sort Puzzle — Coming soon" [ref=e129] [cursor=pointer]:
+            - generic [ref=e132]: 🍾
+            - generic [ref=e133]: Sort Puzzle
+            - generic [ref=e134]: Pour colors bottle to bottle — sort them all to win.
+            - generic [ref=e136]: Unlock
+          - generic:
+            - generic: 🔒
+        - button "Play Daily Word" [ref=e138] [cursor=pointer]:
+          - generic [ref=e141]: 📝
+          - generic [ref=e142]: Daily Word
+          - generic [ref=e143]: One five-letter word. Six guesses. A new puzzle every day.
+          - generic [ref=e145]: Play Daily Word
+  - tablist [ref=e146]:
+    - generic [ref=e148]:
+      - tab "Lobby" [ref=e149] [cursor=pointer]:
+        - generic [ref=e150]:
+          - generic [ref=e151]: 
+          - generic [ref=e152]: Lobby
+      - tab "Ranks" [ref=e153] [cursor=pointer]:
+        - generic [ref=e154]:
+          - generic [ref=e155]: 
+          - generic [ref=e156]: Ranks
+      - tab "Profile" [ref=e157] [cursor=pointer]:
+        - generic [ref=e158]:
+          - generic [ref=e159]: 
+          - generic [ref=e160]: Profile
+      - tab "Settings" [ref=e161] [cursor=pointer]:
+        - generic [ref=e162]:
+          - generic [ref=e163]: 
+          - generic [ref=e164]: Settings
+```

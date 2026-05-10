@@ -307,6 +307,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         startingChips: engine.startingChips,
         betMin: engine.betMin,
         betMax: engine.betMax,
+        milestones: engine.milestones,
+        milestones_reached: engine.milestones_reached,
       };
       setEngine(updated);
       saveGame(updated);
@@ -355,6 +357,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         runGoal: config.runGoal,
         betMin: config.betMin,
         betMax: config.betMax,
+        milestones: config.milestones,
         rules: engine?.rules ?? DEFAULT_RULES,
       });
       setEngine(fresh);

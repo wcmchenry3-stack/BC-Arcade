@@ -10,7 +10,8 @@ export type BlackjackGameEvent =
   | { readonly type: "bust" }
   | { readonly type: "win" }
   | { readonly type: "loss" }
-  | { readonly type: "push" };
+  | { readonly type: "push" }
+  | { readonly type: "milestone"; readonly value: number };
 
 export interface CardResponse {
   rank: string;
