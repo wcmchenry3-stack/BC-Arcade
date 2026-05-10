@@ -36,7 +36,7 @@ const BULLET_C_H = 22;
 
 const BULLET_E_W = 5;
 const BULLET_E_H = 10;
-const BULLET_E_VY = 0.35; // px/ms downward
+export const BULLET_E_VY = 0.35; // px/ms downward
 
 const FORMATION_COLS = 8;
 const FORMATION_COL_W = 44; // #950: was 38 — Boss (36 px) had only 1 px margin/side
@@ -66,7 +66,7 @@ export const BOSS_DIVE_THRESHOLD = 0.35; // boss unlocked when ≤35% non-boss r
 export const BURST_INTERVAL = 200; // ms between shots within a burst
 export const BURST_PAUSE_BASE = 2000; // ms cooldown after burst completes
 const BURST_PAUSE_JITTER = 1000; // ms random addend to pause
-const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
+export const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
 const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
 
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
@@ -941,7 +941,7 @@ function tickFormation(
 function bossBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTickResult {
   const newBurstShotsLeft =
     enemy.burstShotsLeft === 0
-      ? 2 + Math.floor(rng() * 3) // start new burst: pick 3–5 total, return remaining
+      ? 2 + Math.floor(rng() * 3) // start new burst: pick 3–5 total shots; return remaining after this shot
       : enemy.burstShotsLeft - 1;
   const newShootTimer =
     newBurstShotsLeft > 0 ? BURST_INTERVAL : BURST_PAUSE_BASE + rng() * BURST_PAUSE_JITTER;

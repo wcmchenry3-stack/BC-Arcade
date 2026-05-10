@@ -23,6 +23,8 @@ import {
   difficultyMultiplier,
   difficultyParamScale,
   difficultyLabel,
+  BOSS_BULLET_VY,
+  BULLET_E_VY,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -1309,6 +1311,74 @@ describe("Boss burst-fire (#979)", () => {
   it("burstShotsLeft is 0 for all enemies at wave start", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     expect(s.enemies.every((e) => e.burstShotsLeft === 0)).toBe(true);
+  });
+
+  it("Boss burst bullet travels at BOSS_BULLET_VY; Elite bullet travels at BULLET_E_VY", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    const bossIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation"
+    );
+    const eliteIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Elite" && e.phase === "Formation"
+    );
+    if (bossIdx === -1) throw new Error("no boss in formation");
+    if (eliteIdx === -1) throw new Error("no elite in formation");
+    s = {
+      ...s,
+      bossThresholdCrossed: true,
+      enemyBullets: [],
+      enemies: s.enemies.map((e, i) => {
+        if (i === bossIdx) return { ...e, shootTimer: 0, burstShotsLeft: 0 };
+        if (i === eliteIdx) return { ...e, shootTimer: 0 };
+        return e;
+      }),
+    };
+    s = tick(s, 16, NO_INPUT);
+    const bossBullet = s.enemyBullets.find(
+      (b) => b.vy === BOSS_BULLET_VY
+    );
+    const eliteBullet = s.enemyBullets.find(
+      (b) => b.vy === BULLET_E_VY
+    );
+    expect(bossBullet).toBeDefined();
+    expect(eliteBullet).toBeDefined();
+  });
+
+  it("Boss circle-phase bullet travels at BOSS_BULLET_VY", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    const bossIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Boss"
+    );
+    if (bossIdx === -1) throw new Error("no boss");
+    const boss = s.enemies[bossIdx]!;
+    const cx = CANVAS_W / 2;
+    const cy = CANVAS_H * 0.3;
+    const radius = 60;
+    s = {
+      ...s,
+      bossThresholdCrossed: true,
+      enemyBullets: [],
+      enemies: s.enemies.map((e, i) =>
+        i === bossIdx
+          ? {
+              ...e,
+              phase: "Circling" as const,
+              circleCx: cx,
+              circleCy: cy,
+              circleRadius: radius,
+              circleAngle: 0,
+              circleSpeed: 0.001,
+              shootTimer: 0,
+            }
+          : e
+      ),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemyBullets.length).toBeGreaterThan(0);
+    const bullet = s.enemyBullets[0]!;
+    expect(bullet.vy).toBe(BOSS_BULLET_VY);
   });
 });
 
