@@ -280,7 +280,7 @@ export default function GameCanvas({
     ctx.imageSmoothingQuality = "high";
 
     drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera);
-  }, [state, freeTiles, matchingIds, imagesVersion, camera, boardWidth, boardHeight]);
+  }, [state, freeTiles, matchingIds, imagesVersion, camera]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
