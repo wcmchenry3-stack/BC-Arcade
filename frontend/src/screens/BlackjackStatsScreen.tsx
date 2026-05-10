@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { HomeStackParamList } from "../../App";
@@ -27,9 +28,11 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
   const { sessionStats } = useBlackjackGame();
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
-  useEffect(() => {
-    loadRuns().then(setRuns).catch(() => {});
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadRuns().then(setRuns).catch(() => {});
+    }, [])
+  );
 
   const winRate =
     sessionStats.handsPlayed > 0
@@ -216,13 +219,13 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                 year: "numeric",
               });
               return (
-                <React.Fragment key={i}>
+                <React.Fragment key={run.startedAt}>
                   {i > 0 && (
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
                   )}
                   <View
                     style={styles.runRow}
-                    accessibilityRole="text"
+                    accessibilityRole="none"
                     accessibilityLabel={`${tableLabel(run.table)}, ${date}, ${run.finalChips} chips, ${outcome}`}
                   >
                     <View style={styles.runInfo}>

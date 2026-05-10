@@ -153,7 +153,7 @@
   "stats.allTimeBestRun": "Best Run",
   "stats.allTimeMostHands": "Most Hands",
   "stats.allTimeBiggestComeback": "Biggest Comeback",
-  "stats.comebackLow": "{{chips}} chip low",
+  "stats.comebackLow": "{{chips}} chips low",
   "stats.runHistory": "Run History",
   "stats.noRuns": "Complete a run to see your history.",
   "stats.runOutcome.completed": "Completed",
