@@ -52,7 +52,7 @@ test.describe("Blackjack — victory screen", () => {
     await expect(page.getByText("Goal Reached!")).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /cash out/i }).click();
 
-    await expect(page.getByText(/choose your table/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/choose a table/i)).toBeVisible({ timeout: 5000 });
   });
 
   test("Keep Playing transitions to betting phase without a goal", async ({ page }) => {
@@ -66,7 +66,7 @@ test.describe("Blackjack — victory screen", () => {
     await expect(
       page.getByRole("button", { name: /deal cards with/i }),
     ).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/choose your table/i)).not.toBeVisible();
+    await expect(page.getByText(/choose a table/i)).not.toBeVisible();
   });
 
   test("non-high-roller victory shows next table CTA that starts it directly", async ({ page }) => {
@@ -81,7 +81,7 @@ test.describe("Blackjack — victory screen", () => {
     await expect(
       page.getByRole("button", { name: /deal cards with/i }),
     ).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/choose your table/i)).not.toBeVisible();
+    await expect(page.getByText(/choose a table/i)).not.toBeVisible();
   });
 
   test("high-roller victory shows Cash Out as primary CTA (no next table)", async ({ page }) => {
