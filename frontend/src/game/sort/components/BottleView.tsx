@@ -47,10 +47,11 @@ const BODY_BOTTOM = VB_H - 2; // 166
 const INNER_H = BODY_BOTTOM - PAD_TOP; // 152
 const UNIT_H = INNER_H / BOTTLE_DEPTH; // 38 per liquid unit
 
-// Test-tube shape: straight walls → rounded bottom, narrow opening at neck.
-// TUBE_CAVITY clips liquid to body only; TUBE_OUTLINE draws the full silhouette.
-const TUBE_CAVITY = `M 12 ${PAD_TOP} L 12 150 Q 12 ${BODY_BOTTOM} 28 ${BODY_BOTTOM} Q 44 ${BODY_BOTTOM} 44 150 L 44 ${PAD_TOP} Z`;
-const TUBE_OUTLINE = `M 20 0 L 20 ${PAD_TOP} L 12 ${PAD_TOP} L 12 150 Q 12 ${BODY_BOTTOM} 28 ${BODY_BOTTOM} Q 44 ${BODY_BOTTOM} 44 150 L 44 ${PAD_TOP} L 36 ${PAD_TOP} L 36 0 Z`;
+// Flask (chem-flask) shape: narrow neck flares to wide round body.
+// FLASK_CAVITY clips liquid; FLASK_OUTLINE draws the full silhouette.
+// Neck x: 18–38; shoulder transition at y=36; body x: 6–50; rounded bottom at y=154.
+export const FLASK_CAVITY = `M 18 ${PAD_TOP} L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_BOTTOM} L 38 ${BODY_BOTTOM} Q 50 ${BODY_BOTTOM} 50 154 Q 50 52 38 36 L 38 ${PAD_TOP} Z`;
+const FLASK_OUTLINE = `M 18 0 L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_BOTTOM} L 38 ${BODY_BOTTOM} Q 50 ${BODY_BOTTOM} 50 154 Q 50 52 38 36 L 38 0 Z`;
 
 // Liquid colors are now imported from theme.bottle
 export const LIQUID_COLORS = BOTTLE_LIQUID_COLORS;
@@ -171,7 +172,7 @@ export default function BottleView({
       <Svg width={bottleWidth} height={bottleHeight} viewBox={`0 0 ${VB_W} ${VB_H}`}>
         <Defs>
           <ClipPath id={clipId}>
-            <Path d={TUBE_CAVITY} />
+            <Path d={FLASK_CAVITY} />
           </ClipPath>
           <LinearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
             <Stop offset="0" stopColor={BOTTLE_GLOSS_HIGHLIGHT} stopOpacity="0.12" />
@@ -181,7 +182,7 @@ export default function BottleView({
         </Defs>
 
         {/* Glass body */}
-        <Path d={TUBE_OUTLINE} fill={bodyFill} stroke={strokeColor} strokeWidth={strokeWidth} />
+        <Path d={FLASK_OUTLINE} fill={bodyFill} stroke={strokeColor} strokeWidth={strokeWidth} />
 
         {/* Liquid layers clipped inside cavity */}
         <G clipPath={`url(#${clipId})`}>
@@ -219,7 +220,7 @@ export default function BottleView({
         </G>
 
         {/* Cavity outline drawn on top of liquid */}
-        <Path d={TUBE_CAVITY} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} />
+        <Path d={FLASK_CAVITY} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} />
 
         {/* Solved checkmark badge in neck */}
         {solved && isFilled && (

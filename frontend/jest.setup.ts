@@ -34,6 +34,7 @@ jest.mock("react-native-reanimated", () => {
     // Named exports used directly in AnimatedTile.tsx
     useSharedValue: sharedValue,
     useAnimatedStyle: (fn: () => object) => fn(),
+    useAnimatedProps: (fn: () => object) => fn(),
     withTiming: noopAnim,
     withSpring: noopAnim,
     withSequence: (...args: unknown[]) => args[args.length - 1],
