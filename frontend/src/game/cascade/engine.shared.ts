@@ -24,6 +24,8 @@ export const FRUIT_RESTITUTION = 0.1;
 export const FRUIT_FRICTION = 0.08;
 /** Wall/floor friction (spec: ~0.2) — higher than fruit friction so fruits grip walls but slide freely on each other. */
 export const WALL_FRICTION = 0.2;
+/** Radial pop impulse applied to neighbors on merge: magnitude = nextTierRadius × this. Tunable. */
+export const POP_IMPULSE_SCALE = 2.0;
 export const FRUIT_DENSITY = 1.0;
 
 // --- Rapier-specific constants (used only by engine.ts / web) ---

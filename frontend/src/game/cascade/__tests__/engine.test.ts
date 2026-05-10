@@ -880,11 +880,11 @@ describe("body sleeping — canSleep", () => {
 // ---------------------------------------------------------------------------
 
 describe("body sleeping — neighbor wake", () => {
-  it("calls wakeUp() on bodies within 2× spawn radius after a merge", async () => {
+  it("applies radial pop impulse and wakes bodies within 2× spawn radius after a merge", async () => {
     const handle = await buildEngine();
     const world = getWorld();
 
-    // Drop 3 fruits: two will merge (1003/1004), one nearby (1005) that should be woken.
+    // Drop 3 fruits: two will merge (1003/1004), one nearby (1005) that should receive the impulse.
     handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, collider 1003
     handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, collider 1004
     handle.drop(fruit(0), fruitSet.id, 105, 310); // body 2, collider 1005 — nearby
@@ -895,7 +895,9 @@ describe("body sleeping — neighbor wake", () => {
 
     const nearbyBody = world._bodies.get(2);
     expect(nearbyBody).toBeDefined();
+    // applyImpulse(impulse, wakeUp=true) increments _wakeUpCount and records the impulse
     expect(nearbyBody!._wakeUpCount).toBeGreaterThan(0);
+    expect(nearbyBody!._impulses.length).toBeGreaterThan(0);
   });
 });
 

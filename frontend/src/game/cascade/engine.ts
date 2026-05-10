@@ -13,6 +13,7 @@ export {
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -42,6 +43,7 @@ import {
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -290,7 +292,8 @@ export async function createEngine(
         const nextDef = fruitSet.fruits[(tier + 1) as FruitTier];
         if (nextDef !== undefined) {
           const newFb = spawnAt(nextDef, fruitSet.id, midX, midY, SPAWN_GRACE_TICKS);
-          // Wake any sleeping neighbors within 2× spawn radius so they react to the new body.
+          // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
+          // them out of the merge zone, preventing stuck overlaps after spawn.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
           fruitMap.forEach((_fb2, wHandle) => {
             if (wHandle === newFb.handle) return;
@@ -299,8 +302,15 @@ export async function createEngine(
             const wpos = wrb.translation();
             const dx = wpos.x / SCALE - midX;
             const dy = wpos.y / SCALE - midY;
-            if (dx * dx + dy * dy < wakeRadiusSq) {
-              wrb.wakeUp();
+            const distSq = dx * dx + dy * dy;
+            if (distSq < wakeRadiusSq) {
+              const dist = Math.sqrt(distSq);
+              if (dist > 0) {
+                const mag = nextDef.radius * POP_IMPULSE_SCALE * SCALE;
+                wrb.applyImpulse({ x: (dx / dist) * mag, y: (dy / dist) * mag }, true);
+              } else {
+                wrb.wakeUp();
+              }
             }
           });
         }
