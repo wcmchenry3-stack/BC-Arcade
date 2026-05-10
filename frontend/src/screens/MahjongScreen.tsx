@@ -68,25 +68,9 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
+import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
-// Tile must render at least this many logical pixels to be comfortably readable.
-// Tunable — candidate for a future "larger tiles" accessibility preference.
-const MIN_READABLE_TILE_PX = 48;
-// Resistance factor for rubber-band overshoot past zoom limits (0 = rigid, 1 = no resistance).
-const RUBBER_FACTOR = 0.3;
-
-function clamp(value: number, min: number, max: number): number {
-  "worklet";
-  return Math.min(Math.max(value, min), max);
-}
-
-function rubberClamp(value: number, min: number, max: number): number {
-  "worklet";
-  if (value < min) return min + (value - min) * RUBBER_FACTOR;
-  if (value > max) return max + (value - max) * RUBBER_FACTOR;
-  return value;
-}
 
 // ---------------------------------------------------------------------------
 // Tile center — used by FlyingPair to compute animation start/end positions
@@ -231,10 +215,11 @@ export default function MahjongScreen() {
 
   // Gesture zoom/pan shared values.
   // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
-  const minZoom = useSharedValue(camera.scale);
-  const maxZoom = useSharedValue(Math.max(camera.scale, MIN_READABLE_TILE_PX / camera.tileWidth));
-  const zoomScale = useSharedValue(camera.scale);
-  const baseScale = useSharedValue(camera.scale);
+  const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
+  const minZoom = useSharedValue(initMin);
+  const maxZoom = useSharedValue(initMax);
+  const zoomScale = useSharedValue(initMin);
+  const baseScale = useSharedValue(initMin);
   const translateX = useSharedValue(0);
   const baseTranslateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -242,12 +227,11 @@ export default function MahjongScreen() {
 
   // Reset gesture state when layout changes (orientation / resize).
   useEffect(() => {
-    const newMin = camera.scale;
-    const newMax = Math.max(camera.scale, MIN_READABLE_TILE_PX / camera.tileWidth);
-    minZoom.value = newMin;
-    maxZoom.value = newMax;
-    zoomScale.value = newMin;
-    baseScale.value = newMin;
+    const bounds = computeZoomBounds(camera.scale, camera.tileWidth);
+    minZoom.value = bounds.minZoom;
+    maxZoom.value = bounds.maxZoom;
+    zoomScale.value = bounds.minZoom;
+    baseScale.value = bounds.minZoom;
     translateX.value = 0;
     baseTranslateX.value = 0;
     translateY.value = 0;
@@ -263,7 +247,7 @@ export default function MahjongScreen() {
     .onEnd(() => {
       const target = clamp(zoomScale.value, minZoom.value, maxZoom.value);
       baseScale.value = target;
-      if (zoomScale.value !== target) {
+      if (Math.abs(zoomScale.value - target) > 1e-6) {
         zoomScale.value = withSpring(target, { damping: 20, stiffness: 300 });
       }
     });
