@@ -510,17 +510,19 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     mockStartGame.mockReturnValue("game-uuid-test-2");
     mockCompleteGame.mockClear();
 
-    act(() => {
+    await act(async () => {
       getCtx().handlePlayAgain();
     });
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
-    expect(mockStartGame).toHaveBeenCalledWith(
-      "blackjack",
-      { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
-      { starting_chips: 1000 }
-    );
+    await waitFor(() => {
+      expect(mockStartGame).toHaveBeenCalledWith(
+        "blackjack",
+        { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
+        { starting_chips: 1000 }
+      );
+    });
   });
 
   it("capture ordering: bet_placed emits before hand_dealt", async () => {
