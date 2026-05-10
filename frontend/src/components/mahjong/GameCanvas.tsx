@@ -263,7 +263,6 @@ export default function GameCanvas({
   );
 
   const selectedId = state.selected?.id ?? null;
-  const hasSelection = selectedId !== null;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;
 
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
