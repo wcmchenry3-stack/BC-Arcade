@@ -247,9 +247,8 @@ function applyLowChipsTracking(
   const threshold25 = s.startingChips * 0.25;
   const threshold75 = s.startingChips * 0.75;
   const hitLowChips = s.hitLowChips || newChips < threshold25;
-  const comebackEmitted =
-    s.comebackEmitted || (hitLowChips && !s.comebackEmitted && newChips >= threshold75);
-  return { hitLowChips, comebackEmitted };
+  const triggerComeback = !s.comebackEmitted && hitLowChips && newChips >= threshold75;
+  return { hitLowChips, comebackEmitted: s.comebackEmitted || triggerComeback };
 }
 
 // ---------------------------------------------------------------------------

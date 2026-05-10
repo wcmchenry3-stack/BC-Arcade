@@ -1557,19 +1557,6 @@ describe("allIn event", () => {
 // ---------------------------------------------------------------------------
 
 describe("comeback event", () => {
-  function stateWithLowChips(chips: number): EngineState {
-    // Player has been low (hitLowChips=true) but not yet emitted comeback
-    return {
-      ...stateInPlayer(chips, Math.floor(chips * 0.5)),
-      startingChips: 1000,
-      hitLowChips: true,
-      comebackEmitted: false,
-      player_hand: [c("♠", "K"), c("♥", "9")], // 19
-      dealer_hand: [c("♦", "6"), c("♣", "7")], // 13
-      deck: Array(10).fill(c("♠", "4")),
-    };
-  }
-
   it("emits comeback when chips cross from below 25% to above 75%", () => {
     // startingChips=1000, so 75% = 750. Chips 400, bet 400 → win → chips 800 ≥ 750.
     const s: EngineState = {
@@ -1635,6 +1622,21 @@ describe("comeback event", () => {
     const sLow: EngineState = { ...s, hitLowChips: true, comebackEmitted: false };
     const next = newHand(sLow);
     expect(next.hitLowChips).toBe(true);
+  });
+
+  it("does not emit comeback on hit-bust path even when hitLowChips is true", () => {
+    // chips=800 (above 75% threshold), hitLowChips=true — bust reduces chips, can't trigger comeback
+    const s: EngineState = {
+      ...stateInPlayer(800, 100),
+      startingChips: 1000,
+      hitLowChips: true,
+      comebackEmitted: false,
+      player_hand: [c("♠", "K"), c("♥", "Q")], // 20
+      deck: [c("♦", "5")], // 25 — bust
+    };
+    const next = hit(s);
+    expect(next.outcome).toBe("lose");
+    expect(next.events?.some((e) => e.type === "comeback")).toBe(false);
   });
 });
 

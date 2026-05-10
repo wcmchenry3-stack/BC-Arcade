@@ -107,6 +107,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       },
       bust: () => {
         bustSound.play();
+        // engine.chips reflects post-settlement state; close enough to the bust point for this threshold
         const isCriticalLow =
           engine != null && engine.startingChips > 0 && engine.chips < engine.startingChips * 0.2;
         if (isCriticalLow) {
@@ -145,6 +146,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
           withTiming(1, { duration: 200 }),
           withDelay(2200, withTiming(0, { duration: 400 }))
         );
+        setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
       },
       allIn: () => {
         setAllInVisible(true);
@@ -152,6 +154,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
           withTiming(1, { duration: 150 }),
           withDelay(900, withTiming(0, { duration: 250 }))
         );
+        setTimeout(() => setAllInVisible(false), 1300); // 150+900+250
       },
     },
     clearEvents
