@@ -432,8 +432,20 @@ export default function SortBoard({
                       const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
                       return (
                         <G key={k}>
-                          <Rect x={0} y={yVb} width={VB_W} height={unitHVb + 0.5} fill={fillColor} />
-                          <Rect x={0} y={yVb} width={VB_W} height={2.5} fill="rgba(255,255,255,0.22)" />
+                          <Rect
+                            x={0}
+                            y={yVb}
+                            width={VB_W}
+                            height={unitHVb + 0.5}
+                            fill={fillColor}
+                          />
+                          <Rect
+                            x={0}
+                            y={yVb}
+                            width={VB_W}
+                            height={2.5}
+                            fill="rgba(255,255,255,0.22)"
+                          />
                         </G>
                       );
                     });
