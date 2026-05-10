@@ -104,11 +104,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     clearEvents
   );
 
-  // Redirect to BettingScreen when Next Hand transitions phase back to betting.
+  // Redirect when phase changes away from the in-hand phases.
   useEffect(() => {
-    if (!loading && engine && engine.phase === "betting") {
-      navigation.replace("BlackjackBetting");
-    }
+    if (loading || !engine) return;
+    if (engine.phase === "betting") navigation.replace("BlackjackBetting");
+    if (engine.phase === "victory") navigation.replace("BlackjackVictory");
   }, [loading, engine, navigation]);
 
   const currentPhase = engine?.phase;
