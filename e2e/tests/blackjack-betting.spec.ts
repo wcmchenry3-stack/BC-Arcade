@@ -36,10 +36,10 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     ).toBeDisabled();
   });
 
-  test("bankroll is displayed in the header", async ({ page }) => {
+  test("goal-progress HUD is displayed during betting", async ({ page }) => {
     await gotoBlackjack(page);
     await expect(
-      page.locator('[aria-label*="Bankroll: 100 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 

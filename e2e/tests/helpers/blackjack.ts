@@ -170,7 +170,7 @@ export class BlackjackPage {
   }
 
   bankrollDisplay() {
-    return this.page.locator('[aria-label*="Bankroll:"]');
+    return this.page.locator('[aria-label*="Goal progress:"]');
   }
 }
 

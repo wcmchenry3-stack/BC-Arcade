@@ -31,10 +31,10 @@ test.describe("Blackjack — accessibility", () => {
   // Betting phase
   // ---------------------------------------------------------------------------
 
-  test("bankroll has accessible label in betting phase", async ({ page }) => {
+  test("goal-progress HUD has accessible label in betting phase", async ({ page }) => {
     await gotoBlackjack(page);
     await expect(
-      page.locator('[aria-label*="Bankroll: 100 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
@@ -124,7 +124,7 @@ test.describe("Blackjack — accessibility", () => {
     ).toBeDisabled();
   });
 
-  test("chip balance strip has accessible label in player phase", async ({
+  test("goal-progress HUD has accessible label in player phase", async ({
     page,
   }) => {
     await injectEngineState(page, playerPhaseState({ chips: 1000 }));
@@ -132,7 +132,7 @@ test.describe("Blackjack — accessibility", () => {
     await expect(page.getByText("Hit")).toBeVisible();
 
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
