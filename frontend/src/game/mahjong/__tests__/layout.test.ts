@@ -1,10 +1,10 @@
 /**
- * Unit tests for calculateMahjongLayout.
+ * Unit tests for calculateMahjongLayout and makeBoardCamera.
  *
- * The pure function is tested in isolation (no hooks, no React).
+ * Pure functions tested in isolation (no hooks, no React).
  */
 
-import { calculateMahjongLayout } from "../layout";
+import { calculateMahjongLayout, makeBoardCamera } from "../layout";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
 
@@ -126,5 +126,51 @@ describe("calculateMahjongLayout", () => {
       l.padY + TURTLE.boardRows * l.tileHeight + TURTLE.boardLayers * l.layerDy + l.padY;
     expect(l.boardWidth).toBe(expectedBoardWidth);
     expect(l.boardHeight).toBe(expectedBoardHeight);
+  });
+});
+
+describe("makeBoardCamera", () => {
+  const layout = calculateMahjongLayout({
+    screenWidth: 800,
+    screenHeight: 600,
+    safeAreaTop: 0,
+    safeAreaBottom: 0,
+    ...TURTLE,
+  });
+  const cam = makeBoardCamera(layout);
+
+  it("tileToScreen(0, 0, 0) returns the pad origin", () => {
+    const { x, y } = cam.tileToScreen(0, 0, 0);
+    expect(x).toBe(layout.padX);
+    expect(y).toBe(layout.padY);
+  });
+
+  it("tileToScreen advances x by tileWidth per 2 col units", () => {
+    const { x: x0 } = cam.tileToScreen(0, 0, 0);
+    const { x: x2 } = cam.tileToScreen(2, 0, 0);
+    expect(x2 - x0).toBe(layout.tileWidth);
+  });
+
+  it("tileToScreen advances y by tileHeight per row", () => {
+    const { y: y0 } = cam.tileToScreen(0, 0, 0);
+    const { y: y1 } = cam.tileToScreen(0, 1, 0);
+    expect(y1 - y0).toBe(layout.tileHeight);
+  });
+
+  it("tileToScreen shifts right and up by layer offsets", () => {
+    const { x: x0, y: y0 } = cam.tileToScreen(0, 0, 0);
+    const { x: x1, y: y1 } = cam.tileToScreen(0, 0, 1);
+    expect(x1 - x0).toBe(layout.layerDx);
+    expect(y0 - y1).toBe(layout.layerDy);
+  });
+
+  it("faceWidth and faceHeight equal tileWidth/tileHeight minus sideWidth", () => {
+    expect(cam.faceWidth).toBe(layout.tileWidth - layout.sideWidth);
+    expect(cam.faceHeight).toBe(layout.tileHeight - layout.sideWidth);
+  });
+
+  it("exposes boardWidth and boardHeight matching the source layout", () => {
+    expect(cam.boardWidth).toBe(layout.boardWidth);
+    expect(cam.boardHeight).toBe(layout.boardHeight);
   });
 });

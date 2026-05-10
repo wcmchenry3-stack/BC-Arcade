@@ -4,9 +4,7 @@
  * Rendered via HTML Canvas 2D.
  * Metro uses this file automatically on the web platform.
  *
- * Tile geometry (grid → pixels):
- *   pixel_x = padX + (col / 2) * tileWidth + layer * layerDx
- *   pixel_y = padY + row * tileHeight − layer * layerDy
+ * World→screen conversion is delegated to BoardCamera.tileToScreen().
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -95,8 +93,6 @@ function drawBoard(
     const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
-    const fw = faceWidth;
-    const fh = faceHeight;
 
     // Lift selected tile upward/outward — scale with tile size.
     const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
@@ -113,15 +109,15 @@ function drawBoard(
 
     // Drop shadow
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(x + sideWidth + 2 + liftX, y + sideWidth + 2 + liftY, fw, fh);
+    ctx.fillRect(x + sideWidth + 2 + liftX, y + sideWidth + 2 + liftY, faceWidth, faceHeight);
 
     // Right 3-D side
     ctx.fillStyle = SIDE_R;
-    ctx.fillRect(x + fw + liftX, y + sideWidth + liftY, sideWidth, fh);
+    ctx.fillRect(x + faceWidth + liftX, y + sideWidth + liftY, sideWidth, faceHeight);
 
     // Bottom 3-D side
     ctx.fillStyle = SIDE_B;
-    ctx.fillRect(x + sideWidth + liftX, y + fh + liftY, fw, sideWidth);
+    ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
 
     // Gold glow behind selected tile — applied to the border rect only.
     if (isSelected) {
@@ -131,7 +127,7 @@ function drawBoard(
 
     // Border
     ctx.fillStyle = borderColor;
-    ctx.fillRect(x + liftX, y + liftY, fw, fh);
+    ctx.fillRect(x + liftX, y + liftY, faceWidth, faceHeight);
 
     // Clear glow before drawing face so inner fills stay crisp.
     ctx.shadowBlur = 0;
@@ -141,8 +137,8 @@ function drawBoard(
     ctx.fillRect(
       x + borderInset + liftX,
       y + borderInset + liftY,
-      fw - 2 * borderInset,
-      fh - 2 * borderInset
+      faceWidth - 2 * borderInset,
+      faceHeight - 2 * borderInset
     );
 
     // SVG face art — fall back to suit-color rect while image is loading.
@@ -151,10 +147,10 @@ function drawBoard(
     const img = tileImages[tile.faceId - 1];
     ctx.globalAlpha = isFree ? 1 : 0.35;
     if (img !== null) {
-      ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, fw - 4, fh - 4);
+      ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     } else {
       ctx.fillStyle = suitColor;
-      ctx.fillRect(x + 8 + liftX, y + 10 + liftY, fw - 16, fh - 20);
+      ctx.fillRect(x + 8 + liftX, y + 10 + liftY, faceWidth - 16, faceHeight - 20);
     }
 
     ctx.restore();

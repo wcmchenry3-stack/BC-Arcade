@@ -4,10 +4,7 @@
  * Rendered via @shopify/react-native-skia.
  * Metro automatically uses GameCanvas.web.tsx on the web platform.
  *
- * Tile geometry (grid → pixels):
- *   pixel_x = padX + (col / 2) * tileWidth + layer * layerDx
- *   pixel_y = padY + row * tileHeight − layer * layerDy
- *
+ * World→screen conversion is delegated to BoardCamera.tileToScreen().
  * Rendering order: layer ASC so higher layers appear on top.
  * Hit-testing: topmost tile (highest layer) at touch point wins.
  */
@@ -282,8 +279,6 @@ export default function GameCanvas({
           const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
           const isSelected = tile.id === selectedId;
           const isFree = freeTiles.has(tile.id);
-          const fw = faceWidth;
-          const fh = faceHeight;
 
           // Lift selected tile upward/outward — scale with tile size.
           const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
@@ -303,8 +298,8 @@ export default function GameCanvas({
               <Rect
                 x={x + sideWidth + 2 + liftX}
                 y={y + sideWidth + 2 + liftY}
-                width={fw}
-                height={fh}
+                width={faceWidth}
+                height={faceHeight}
                 color={SHADOW}
               />
               {/* Gold glow behind selected tile */}
@@ -312,35 +307,41 @@ export default function GameCanvas({
                 <Rect
                   x={x + liftX - 3}
                   y={y + liftY - 3}
-                  width={fw + 6}
-                  height={fh + 6}
+                  width={faceWidth + 6}
+                  height={faceHeight + 6}
                   color={MAHJONG_GLOW_BG}
                 />
               )}
               {/* Right 3-D side */}
               <Rect
-                x={x + fw + liftX}
+                x={x + faceWidth + liftX}
                 y={y + sideWidth + liftY}
                 width={sideWidth}
-                height={fh}
+                height={faceHeight}
                 color={SIDE_R}
               />
               {/* Bottom 3-D side */}
               <Rect
                 x={x + sideWidth + liftX}
-                y={y + fh + liftY}
-                width={fw}
+                y={y + faceHeight + liftY}
+                width={faceWidth}
                 height={sideWidth}
                 color={SIDE_B}
               />
               {/* Border */}
-              <Rect x={x + liftX} y={y + liftY} width={fw} height={fh} color={borderColor} />
+              <Rect
+                x={x + liftX}
+                y={y + liftY}
+                width={faceWidth}
+                height={faceHeight}
+                color={borderColor}
+              />
               {/* Face */}
               <Rect
                 x={x + borderInset + liftX}
                 y={y + borderInset + liftY}
-                width={fw - 2 * borderInset}
-                height={fh - 2 * borderInset}
+                width={faceWidth - 2 * borderInset}
+                height={faceHeight - 2 * borderInset}
                 color={faceColor}
               />
               {/* SVG face art */}
@@ -349,8 +350,8 @@ export default function GameCanvas({
                 suit={tile.suit}
                 x={x + 2 + liftX}
                 y={y + 2 + liftY}
-                w={fw - 4}
-                h={fh - 4}
+                w={faceWidth - 4}
+                h={faceHeight - 4}
                 opacity={isFree ? 1 : 0.35}
               />
             </Group>
