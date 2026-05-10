@@ -148,5 +148,14 @@
   "stats.runOutcome.comeback": "वापसी",
   "stats.viewStats": "रन के आँकड़े",
   "stats.viewStatsLabel": "रन के आँकड़े देखें",
-  "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}"
+  "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
+  "hud.criticalWarning": "__NEEDS_TRANSLATION__",
+  "hud.winStreakBadge": "__NEEDS_TRANSLATION__",
+  "table.beginner.subtitle": "__NEEDS_TRANSLATION__",
+  "table.intermediate.subtitle": "__NEEDS_TRANSLATION__",
+  "table.highRoller.subtitle": "__NEEDS_TRANSLATION__",
+  "tableSelect.kicker": "__NEEDS_TRANSLATION__",
+  "tableSelect.tagline": "__NEEDS_TRANSLATION__",
+  "tableSelect.taglineSub": "__NEEDS_TRANSLATION__",
+  "tableSelect.viewHistory": "__NEEDS_TRANSLATION__"
 }
