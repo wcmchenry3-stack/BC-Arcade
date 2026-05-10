@@ -275,11 +275,12 @@ export async function createEngine(
 
           // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
           // them out of the merge zone, preventing stuck overlaps after spawn.
-          // Bug fix (GH #1419, Bug 2): use setVelocity (dt-scaled) instead of applyForce
-          // (dt²-scaled) so push magnitude is frame-rate-independent.
+          // applyForce is frame-rate-independent here: the raw velocity contribution
+          // (force/mass * dt²) always greatly exceeds the clamp threshold, so the body
+          // receives a full kick to the clamp-scaled max speed (900 px/s physical) at
+          // any frame rate once Bug 1 (lastStepMs clamp) is in place.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
-          const popSpeedPxS = nextDef.radius * POP_IMPULSE_SCALE;
-          const popVelPerStep = (popSpeedPxS * stepMs) / 1000;
+          const mag = nextDef.radius * POP_IMPULSE_SCALE;
           fruitMap.forEach((_fb2, neighborId) => {
             if (neighborId === newFb.handle) return;
             const b = bodyById.get(neighborId);
@@ -290,9 +291,9 @@ export async function createEngine(
             if (distSq < wakeRadiusSq) {
               const dist = Math.sqrt(distSq);
               if (dist > 0) {
-                Matter.Body.setVelocity(b, {
-                  x: b.velocity.x + (dx / dist) * popVelPerStep,
-                  y: b.velocity.y + (dy / dist) * popVelPerStep,
+                Matter.Body.applyForce(b, b.position, {
+                  x: (dx / dist) * mag,
+                  y: (dy / dist) * mag,
                 });
               }
               Matter.Sleeping.set(b, false);

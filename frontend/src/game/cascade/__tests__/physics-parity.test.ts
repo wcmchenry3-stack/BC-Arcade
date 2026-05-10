@@ -521,6 +521,20 @@ describe("wall containment parity — no fruit escapes through left or right wal
     }
     handle.cleanup();
   });
+
+  // GH #1419 Bug 1 — clamp uses lastStepMs so wall containment holds at 120 Hz
+  it("Matter.js: x stays within wall bounds at 120 Hz (step(1/120))", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 1200; i++) {
+      const { snapshots } = handle.step(1 / 120);
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
+    handle.cleanup();
+  });
 });
 
 // ---------------------------------------------------------------------------
