@@ -1,5 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { newGame, newHand, EngineState, DEFAULT_RULES, handValue, isNaturalBlackjack, Card } from "./engine";
+import {
+  newGame,
+  newHand,
+  EngineState,
+  DEFAULT_RULES,
+  handValue,
+  isNaturalBlackjack,
+  Card,
+} from "./engine";
 import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, loadRuns } from "./storage";
 import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
