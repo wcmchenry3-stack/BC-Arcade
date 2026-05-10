@@ -97,9 +97,9 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   };
 }
 
-// Turtle layout board grid dimensions
-const TURTLE_BOARD_ROWS = 8;
-const TURTLE_BOARD_COLS = 12;
+// Turtle layout board grid dimensions (portrait: 8 cols × 12 rows, #1416)
+const TURTLE_BOARD_ROWS = 12;
+const TURTLE_BOARD_COLS = 8;
 const TURTLE_BOARD_LAYERS = 4;
 
 export function useMahjongCanvasLayout(): MahjongLayout {
