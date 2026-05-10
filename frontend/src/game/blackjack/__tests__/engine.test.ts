@@ -1554,6 +1554,70 @@ describe("milestone system", () => {
     expect(next.events?.some((e) => e.type === "milestone")).toBe(true);
   });
 
+  it("emits milestone event when chips cross threshold via hit-bust settling below zero", () => {
+    // Player busts → loses bet. chips 300, bet 100, milestone [150].
+    // After bust: chips 200 — already above 150, so milestone fires.
+    // (We set milestones_reached=[] to simulate not having crossed it yet.)
+    const s: EngineState = {
+      ...stateWithMilestones(300, [250]),
+      bet: 100,
+      player_hand: [c("♠", "K"), c("♥", "Q")], // 20 — one more card will bust
+      deck: [c("♦", "5")], // deal 5 → 25, bust
+    };
+    // Bust brings chips to 200, which is below 250 → no milestone
+    const next = hit(s);
+    expect(next.chips).toBe(200);
+    expect(next.milestones_reached).toEqual([]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(false);
+  });
+
+  it("emits milestone event on hit-bust when chips after loss still cross threshold", () => {
+    // chips 300, bet 50, milestone [200]. Bust → chips 250. 250 ≥ 200 → milestone fires.
+    const s: EngineState = {
+      ...stateWithMilestones(300, [200]),
+      bet: 50,
+      player_hand: [c("♠", "K"), c("♥", "Q")], // 20
+      deck: [c("♦", "5")], // 25 — bust
+    };
+    const next = hit(s);
+    expect(next.chips).toBe(250);
+    expect(next.milestones_reached).toEqual([200]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(true);
+  });
+
+  it("emits milestone event on split final settlement via finishIfAllHandsDone", () => {
+    // Two-hand split. Win both hands: chips 100 → 100+50+50=200; milestone [150] fires.
+    const s: EngineState = {
+      ...DEFAULT_RUN_CONFIG,
+      milestones: [150],
+      milestones_reached: [],
+      chips: 100,
+      bet: 0,
+      phase: "player",
+      outcome: null,
+      payout: 0,
+      lastWin: null,
+      player_hand: [],
+      dealer_hand: [c("♦", "6"), c("♣", "7")], // dealer 13, will draw 4s → stands at 17
+      deck: Array(10).fill(c("♠", "4")),
+      doubled: false,
+      rules: DEFAULT_RULES,
+      // Two split hands, each bet 50, both win (K+9=19 > dealer 17)
+      player_hands: [[c("♠", "K"), c("♥", "9")], [c("♠", "K"), c("♥", "9")]],
+      hand_bets: [50, 50],
+      hand_outcomes: [null, null],
+      hand_payouts: [0, 0],
+      active_hand_index: 2, // past both hands — triggers finishIfAllHandsDone
+      split_count: 1,
+      split_from_aces: [false, false],
+    };
+    // Calling stand on hand 2 (already active_hand_index=2, finishIfAllHandsDone runs)
+    const next = stand({ ...s, active_hand_index: 1, phase: "player" });
+    expect(next.chips).toBe(200); // 100 + 50 + 50
+    expect(next.milestones_reached).toEqual([150]);
+    expect(next.events?.some((e) => e.type === "milestone")).toBe(true);
+  });
+
   it("does not re-emit an already-reached milestone", () => {
     const s: EngineState = {
       ...stateWithMilestones(250, [200], [200]),

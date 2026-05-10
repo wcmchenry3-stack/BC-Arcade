@@ -52,7 +52,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { engine, loading, error, apply, clearEvents, handlePlayAgain } = useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
-  const [milestoneChips, setMilestoneChips] = useState(0);
+  const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
   const milestoneOpacity = useSharedValue(0);
 
   const cardDealSound = useSound("blackjack.cardDeal");
@@ -229,11 +229,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             />
             <Animated.View style={bustFlashStyle} />
             <Animated.View style={winFlashStyle} />
-            <Animated.View style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.milestoneText, { color: colors.surface }]}>
-                {t("blackjack:milestone.toast", { chips: milestoneChips })}
-              </Text>
-            </Animated.View>
+            {milestoneChips !== null && (
+              <Animated.View style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}>
+                <Text style={[styles.milestoneText, { color: colors.surface }]}>
+                  {t("blackjack:milestone.toast", { chips: milestoneChips })}
+                </Text>
+              </Animated.View>
+            )}
           </View>
 
           {/* Right spacer to balance the sidebar — collapsed on split so both hands fit */}
