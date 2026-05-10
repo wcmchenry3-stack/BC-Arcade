@@ -748,10 +748,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    alignItems: "center",
   },
   hudRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignSelf: "stretch",
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
