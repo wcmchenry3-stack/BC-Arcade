@@ -76,39 +76,48 @@ test.describe("Blackjack — error paths and guardrails", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Bet stepper boundaries
+  // Bet stepper boundaries (Beginner table: betMax=25, chips=[5,10,25])
   // ---------------------------------------------------------------------------
 
-  test("chip buttons are disabled when bet would exceed max (500)", async ({
+  test("chip buttons are disabled when bet would exceed max (25)", async ({
     page,
   }) => {
     await gotoBlackjack(page);
 
-    // Place 500-chip — all chip buttons become disabled
-    await page.getByRole("button", { name: /add 500 to bet/i }).click();
+    // Place 25-chip — at max bet for Beginner table
+    await page.getByRole("button", { name: /add 25 to bet/i }).click();
 
     await expect(
-      page.getByRole("button", { name: /deal cards with 500-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 25-chip bet/i }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "5-chip not available", exact: true }),
     ).toBeDisabled();
   });
 
-  test("500-chip button is disabled when chips cap is lower than 500", async ({
+  test("25-chip button is disabled when chips balance is below 25", async ({
     page,
   }) => {
-    const bj = new BlackjackPage(page);
-    await bj.goto();
+    // Inject a betting-phase state with only 10 chips — can't afford 25-chip
+    await injectEngineState(
+      page,
+      playerPhaseState({
+        chips: 10,
+        bet: 0,
+        phase: "betting",
+        outcome: null,
+        payout: 0,
+        player_hand: [],
+        dealer_hand: [],
+      }),
+    );
+    await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    // Place 400 chips (four 100s); now only 5 and 25 would still fit,
-    // but 500 is definitely disabled
-    for (let i = 0; i < 4; i++) {
-      await bj.chipButton(100).click();
-    }
+    const bj = new BlackjackPage(page);
+    await expect(bj.dealButton()).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: "500-chip not available", exact: true }),
+      page.getByRole("button", { name: "25-chip not available", exact: true }),
     ).toBeDisabled();
   });
 
@@ -133,7 +142,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
     ).toBeVisible();
   });
 
-  test("Play Again in game-over modal starts fresh with 1000 chips", async ({
+  test("Play Again in game-over modal shows table selection then starts fresh", async ({
     page,
   }) => {
     await injectEngineState(page, gameOverState());
@@ -144,11 +153,14 @@ test.describe("Blackjack — error paths and guardrails", () => {
       .getByRole("button", { name: /start a new session with 1000 chips/i })
       .click();
 
-    // Back in betting phase with fresh chip count
+    // BJ-2: Play Again shows TableSelectPanel — select Beginner table
+    await page.getByRole("button", { name: /select beginner table/i }).click();
+
+    // Back in betting phase with Beginner chip count
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Bankroll: 100 chips"]'),
     ).toBeVisible();
   });
 
@@ -180,11 +192,13 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    // Should start fresh in betting phase, not crash
+    // BJ-2: fresh game shows TableSelectPanel — select Beginner
+    await page.getByRole("button", { name: /select beginner table/i }).click();
+
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Bankroll: 100 chips"]'),
     ).toBeVisible();
   });
 
@@ -200,6 +214,14 @@ test.describe("Blackjack — error paths and guardrails", () => {
     );
     await page.goto("/");
     await page.getByRole("button", { name: "Play Blackjack" }).click();
+
+    // BJ-2: malformed state may show TableSelectPanel — select Beginner if present
+    const tableSelectBtn = page.getByRole("button", {
+      name: /select beginner table/i,
+    });
+    if (await tableSelectBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await tableSelectBtn.click();
+    }
 
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
