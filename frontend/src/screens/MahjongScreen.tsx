@@ -595,10 +595,7 @@ export default function MahjongScreen() {
             <GestureDetector gesture={boardGesture}>
               {/* Gesture layer — pinch-to-zoom + two-finger pan */}
               <Animated.View
-                style={[
-                  { width: camera.boardWidth, height: camera.boardHeight },
-                  gestureAnimStyle,
-                ]}
+                style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
               >
                 <Animated.View style={boardAnimStyle}>
                   <GameCanvas
