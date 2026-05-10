@@ -107,8 +107,8 @@ export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht
               {
                 left: "50%",
                 top: "50%",
-                marginLeft: offset.x,
-                marginTop: offset.y,
+                marginLeft: offset.x - 16,
+                marginTop: offset.y - 16,
               },
               faceStyles[i],
             ]}
