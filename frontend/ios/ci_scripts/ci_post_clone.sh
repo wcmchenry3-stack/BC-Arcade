@@ -8,8 +8,12 @@ export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 # -------------------------------------------------------
 # 1. Install Node.js (not pre-installed on Xcode Cloud)
+#    Pin to Node 22 LTS — floating `node` formula tracks the latest
+#    major and pulled in v26.0.0 on 2026-05-10 which caused npm to
+#    crash with "Exit handler never called!" (Build 60, issue #1491).
 # -------------------------------------------------------
-brew install node
+brew install node@22
+export PATH="/usr/local/opt/node@22/bin:$PATH"
 echo "Node: $(node --version) at $(which node)"
 echo "npm:  $(npm --version) at $(which npm)"
 
@@ -22,8 +26,8 @@ echo "export NODE_BINARY=$NODE_BIN" > .xcode.env.local
 cat .xcode.env.local
 
 # Ensure login shells (bash -l) can find node
-echo "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$PATH\"" >> "$HOME/.bash_profile"
-echo "export PATH=\"/usr/local/bin:/opt/homebrew/bin:\$PATH\"" >> "$HOME/.zprofile"
+echo "export PATH=\"/usr/local/opt/node@22/bin:/usr/local/bin:/opt/homebrew/bin:\$PATH\"" >> "$HOME/.bash_profile"
+echo "export PATH=\"/usr/local/opt/node@22/bin:/usr/local/bin:/opt/homebrew/bin:\$PATH\"" >> "$HOME/.zprofile"
 
 # -------------------------------------------------------
 # 3. Write environment variables for the JS bundle
