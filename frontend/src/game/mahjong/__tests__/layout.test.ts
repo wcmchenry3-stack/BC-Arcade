@@ -156,19 +156,11 @@ describe("fitToScreen", () => {
   });
 
   it("centers the board horizontally and vertically", () => {
-    const boardWidth = 400;
-    const boardHeight = 300;
-    const viewportWidth = 500;
-    const viewportHeight = 400;
-    const { scale, offsetX, offsetY } = fitToScreen(
-      boardWidth,
-      boardHeight,
-      viewportWidth,
-      viewportHeight,
-      0
-    );
-    expect(offsetX).toBeCloseTo((viewportWidth - boardWidth * scale) / 2, 5);
-    expect(offsetY).toBeCloseTo((viewportHeight - boardHeight * scale) / 2, 5);
+    // board (400×300) fits inside viewport (500×400) with no margin → scale=1
+    // offsetX = (500 - 400) / 2 = 50, offsetY = (400 - 300) / 2 = 50
+    const { offsetX, offsetY } = fitToScreen(400, 300, 500, 400, 0);
+    expect(offsetX).toBe(50);
+    expect(offsetY).toBe(50);
   });
 
   it("applies margin symmetrically", () => {

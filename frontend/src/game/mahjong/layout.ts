@@ -50,7 +50,8 @@ export function fitToScreen(
   const scaleX = (viewportWidth - margin * 2) / boardWidth;
   const scaleY = (viewportHeight - margin * 2) / boardHeight;
   // Cap at 1 — never scale up beyond natural tile size; user zooms in via gesture (#1454).
-  const scale = Math.min(1, scaleX, scaleY);
+  // Floor at 0.01 — guards against negative scale when margin > viewport/2.
+  const scale = Math.max(0.01, Math.min(1, scaleX, scaleY));
   return {
     scale,
     offsetX: (viewportWidth - boardWidth * scale) / 2,
@@ -68,6 +69,10 @@ export interface BoardCamera {
   boardWidth: number;
   boardHeight: number;
   // Camera transform — applied to the canvas container by MahjongScreen.
+  // tileToScreen() returns world-space coords (pre-transform); MahjongScreen
+  // applies scale via a View transform and centers via flexbox, so offsetX/offsetY
+  // are reserved for the gesture-driven zoom/pan layer (#1454) and not used for
+  // static positioning.
   scale: number;
   offsetX: number;
   offsetY: number;
