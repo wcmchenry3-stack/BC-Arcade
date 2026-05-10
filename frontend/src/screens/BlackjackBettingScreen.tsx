@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -154,6 +154,17 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
           />
         )}
       </View>
+
+      <Pressable
+        style={styles.statsLink}
+        onPress={() => navigation.navigate("BlackjackStats")}
+        accessibilityRole="button"
+        accessibilityLabel={t("blackjack:stats.viewStatsLabel")}
+      >
+        <Text style={[styles.statsLinkText, { color: colors.textMuted }]}>
+          {t("blackjack:stats.viewStats")}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -198,8 +209,18 @@ const styles = StyleSheet.create({
   controls: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 8,
     gap: 0,
+  },
+  statsLink: {
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingBottom: 16,
+  },
+  statsLinkText: {
+    fontSize: 12,
+    fontWeight: "500",
+    textDecorationLine: "underline",
   },
   bankroll: {
     alignItems: "flex-end",

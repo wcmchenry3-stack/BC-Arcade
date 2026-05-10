@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
@@ -9,9 +9,10 @@ interface HudSidebarProps {
   lastWin: number | null;
   chips?: number;
   runGoal?: number | null;
+  onPress?: () => void;
 }
 
-export default function HudSidebar({ currentPot, lastWin, chips, runGoal }: HudSidebarProps) {
+export default function HudSidebar({ currentPot, lastWin, chips, runGoal, onPress }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -34,8 +35,12 @@ export default function HudSidebar({ currentPot, lastWin, chips, runGoal }: HudS
   })();
 
   return (
-    <View
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
       style={[styles.container, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? t("hud.statsAccessibilityLabel") : undefined}
     >
       {/* Current Pot */}
       <View style={styles.row}>
@@ -85,7 +90,20 @@ export default function HudSidebar({ currentPot, lastWin, chips, runGoal }: HudS
           </View>
         </>
       )}
-    </View>
+
+      {/* Stats link hint — only shown when sidebar is tappable */}
+      {onPress && (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Text
+            style={[styles.statsHint, { color: colors.accent }]}
+            accessibilityElementsHidden
+          >
+            {t("hud.viewStats")}
+          </Text>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -113,5 +131,12 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginVertical: 8,
+  },
+  statsHint: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    textAlign: "center",
   },
 });

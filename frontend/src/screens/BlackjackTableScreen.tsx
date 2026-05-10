@@ -212,6 +212,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               lastWin={state.last_win}
               chips={engine?.chips}
               runGoal={engine?.runGoal}
+              onPress={() => navigation.navigate("BlackjackStats")}
             />
           </View>
 
