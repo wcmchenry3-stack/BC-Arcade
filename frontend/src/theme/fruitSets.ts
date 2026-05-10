@@ -216,7 +216,7 @@ export const FRUIT_SETS: Record<string, FruitSet> = {
         name: "Mercury",
         icon: COSMOS_ICONS.mercury,
         bakedIcon: COSMOS_BAKED.mercury,
-        bakedClipR: 2.577490,
+        bakedClipR: 2.57749,
         emoji: "🪨",
         color: "#9ca3af",
         radius: RADII[2],
