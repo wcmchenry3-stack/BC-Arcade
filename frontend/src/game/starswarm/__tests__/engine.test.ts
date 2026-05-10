@@ -1335,12 +1335,8 @@ describe("Boss burst-fire (#979)", () => {
       }),
     };
     s = tick(s, 16, NO_INPUT);
-    const bossBullet = s.enemyBullets.find(
-      (b) => b.vy === BOSS_BULLET_VY
-    );
-    const eliteBullet = s.enemyBullets.find(
-      (b) => b.vy === BULLET_E_VY
-    );
+    const bossBullet = s.enemyBullets.find((b) => b.vy === BOSS_BULLET_VY);
+    const eliteBullet = s.enemyBullets.find((b) => b.vy === BULLET_E_VY);
     expect(bossBullet).toBeDefined();
     expect(eliteBullet).toBeDefined();
   });
@@ -1348,9 +1344,7 @@ describe("Boss burst-fire (#979)", () => {
   it("Boss circle-phase bullet travels at BOSS_BULLET_VY", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIdx = s.enemies.findIndex(
-      (e) => e.isAlive && e.tier === "Boss"
-    );
+    const bossIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Boss");
     if (bossIdx === -1) throw new Error("no boss");
     const cx = CANVAS_W / 2;
     const cy = CANVAS_H * 0.3;
