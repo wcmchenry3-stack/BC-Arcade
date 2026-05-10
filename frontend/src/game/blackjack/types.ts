@@ -11,7 +11,9 @@ export type BlackjackGameEvent =
   | { readonly type: "win" }
   | { readonly type: "loss" }
   | { readonly type: "push" }
-  | { readonly type: "milestone"; readonly value: number };
+  | { readonly type: "milestone"; readonly value: number }
+  | { readonly type: "allIn" }
+  | { readonly type: "comeback" };
 
 export interface CardResponse {
   rank: string;

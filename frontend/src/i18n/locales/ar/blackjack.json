@@ -127,5 +127,11 @@
   "victory.title": "Goal Reached!",
   "victory.statsWinRate": "{{winRate}}% win rate",
   "victory.statsNetPL": "Net P/L",
-  "milestone.toast": "Milestone reached: {{chips}} chips!"
+  "milestone.toast": "Milestone reached: {{chips}} chips!",
+  "hud.winStreak": "{{count}}x Streak",
+  "hud.winStreakAccessibilityLabel": "Win streak: {{count}} wins",
+  "comeback.banner": "What a comeback!",
+  "comeback.bannerAccessibilityLabel": "Comeback: chips recovered",
+  "allIn.badge": "All In!",
+  "allIn.badgeAccessibilityLabel": "All in wager"
 }

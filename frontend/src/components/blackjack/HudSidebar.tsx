@@ -8,11 +8,21 @@ interface HudSidebarProps {
   currentPot: number;
   lastWin: number | null;
   chips?: number;
+  startingChips?: number;
   runGoal?: number | null;
   onPress?: () => void;
+  winStreak?: number;
 }
 
-export default function HudSidebar({ currentPot, lastWin, chips, runGoal, onPress }: HudSidebarProps) {
+export default function HudSidebar({
+  currentPot,
+  lastWin,
+  chips,
+  startingChips,
+  runGoal,
+  onPress,
+  winStreak = 0,
+}: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -34,11 +44,21 @@ export default function HudSidebar({ currentPot, lastWin, chips, runGoal, onPres
     return t("hud.lastWinAccessibilityLabel", { result: `${lastWin > 0 ? "+" : ""}${lastWin}` });
   })();
 
+  const isLowChips =
+    chips != null && startingChips != null && startingChips > 0 && chips < startingChips * 0.3;
+  const showStreak = winStreak >= 3;
+
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[styles.container, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.surfaceAlt,
+          borderColor: isLowChips ? colors.error : colors.border,
+        },
+      ]}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={onPress ? t("hud.statsAccessibilityLabel") : undefined}
     >
@@ -70,6 +90,21 @@ export default function HudSidebar({ currentPot, lastWin, chips, runGoal, onPres
         </Text>
       </View>
 
+      {/* Win streak badge — appears on 3+ consecutive wins */}
+      {showStreak && (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.row}>
+            <Text
+              style={[styles.streakBadge, { color: colors.bonus, fontFamily: typography.heading }]}
+              accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
+            >
+              {t("hud.winStreak", { count: winStreak })}
+            </Text>
+          </View>
+        </>
+      )}
+
       {/* Goal progress — only shown when table has a run goal */}
       {runGoal != null && chips != null && (
         <>
@@ -79,7 +114,10 @@ export default function HudSidebar({ currentPot, lastWin, chips, runGoal, onPres
               {t("hud.runGoal")}
             </Text>
             <Text
-              style={[styles.value, { color: colors.text, fontFamily: typography.heading }]}
+              style={[
+                styles.value,
+                { color: isLowChips ? colors.error : colors.text, fontFamily: typography.heading },
+              ]}
               accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
                 chips,
                 goal: runGoal,
@@ -127,6 +165,11 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 16,
     lineHeight: 20,
+  },
+  streakBadge: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   divider: {
     height: 1,

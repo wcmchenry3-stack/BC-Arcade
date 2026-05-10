@@ -309,6 +309,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         betMax: engine.betMax,
         milestones: engine.milestones,
         milestones_reached: engine.milestones_reached,
+        hitLowChips: engine.hitLowChips,
+        comebackEmitted: engine.comebackEmitted,
       };
       setEngine(updated);
       saveGame(updated);
