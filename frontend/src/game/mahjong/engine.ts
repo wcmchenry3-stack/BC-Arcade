@@ -85,6 +85,23 @@ export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean 
   return true;
 }
 
+/**
+ * Returns the IDs of all free tiles that match the currently selected tile.
+ * Returns an empty set when nothing is selected.
+ * O(n) over free tiles — call once per state change, not per frame.
+ */
+export function getMatchingFreeTileIds(state: MahjongState): ReadonlySet<number> {
+  if (!state.selected) return new Set();
+  const selected = state.selected;
+  const ids = new Set<number>();
+  for (const tile of state.tiles) {
+    if (tile.id !== selected.id && isFreeTile(tile, state.tiles) && tilesMatch(tile, selected)) {
+      ids.add(tile.id);
+    }
+  }
+  return ids;
+}
+
 /** Returns true if any two free tiles in `tiles` form a matching pair. */
 export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
   const free = tiles.filter((t) => isFreeTile(t, tiles));

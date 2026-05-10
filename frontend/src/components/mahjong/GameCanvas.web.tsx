@@ -11,10 +11,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
-import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine";
+import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
-import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_SHADOW } from "../../theme/theme.constants";
+import {
+  MAHJONG_GLOW_SHADOW,
+  MAHJONG_HINT_GLOW_SHADOW,
+  MAHJONG_TILE_FACE_SELECTED,
+} from "../../theme/theme.constants";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -70,6 +74,7 @@ function drawBoard(
   ctx: CanvasRenderingContext2D,
   state: MahjongState,
   freeTiles: ReadonlySet<number>,
+  matchingIds: ReadonlySet<number>,
   tileImages: readonly (HTMLImageElement | null)[],
   cam: BoardCamera
 ): void {
@@ -82,7 +87,6 @@ function drawBoard(
   ctx.fillRect(0, 0, boardWidth, boardHeight);
 
   const selectedId = state.selected?.id ?? null;
-  const hasSelection = selectedId !== null;
 
   // Draw tiles lowest layer → highest so higher layers appear on top.
   const sorted = [...state.tiles].sort((a, b) => a.layer - b.layer || a.row - b.row);
@@ -93,6 +97,7 @@ function drawBoard(
     const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
+    const isHint = matchingIds.has(tile.id);
 
     // Lift selected tile upward/outward — scale with tile size.
     const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
@@ -100,9 +105,6 @@ function drawBoard(
     // 2 px border on selected for visibility at small tile sizes.
     const borderInset = isSelected ? 2 : 1;
 
-    // Hints only on tiles that actually match the selection, not all free tiles.
-    const isHint =
-      isFree && hasSelection && state.selected !== null && tilesMatch(tile, state.selected);
     const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
     const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
     const suitColor = SUIT_COLOR[tile.suit] ?? "#888888";
@@ -119,10 +121,13 @@ function drawBoard(
     ctx.fillStyle = SIDE_B;
     ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
 
-    // Gold glow behind selected tile — applied to the border rect only.
+    // Glow behind selected (gold) or hint (blue) tile.
     if (isSelected) {
       ctx.shadowColor = MAHJONG_GLOW_SHADOW;
       ctx.shadowBlur = 10;
+    } else if (isHint) {
+      ctx.shadowColor = MAHJONG_HINT_GLOW_SHADOW;
+      ctx.shadowBlur = 8;
     }
 
     // Border
@@ -191,6 +196,8 @@ export default function GameCanvas({
     return s;
   }, [state.tiles]);
 
+  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state]);
+
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),
     [state.isComplete, state.tiles]
@@ -251,8 +258,8 @@ export default function GameCanvas({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawBoard(ctx, state, freeTiles, tileImagesRef.current, camera);
-  }, [state, freeTiles, imagesVersion, camera]);
+    drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera);
+  }, [state, freeTiles, matchingIds, imagesVersion, camera]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
