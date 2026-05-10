@@ -160,5 +160,6 @@
   "stats.runOutcome.busted": "Busted",
   "stats.runOutcome.comeback": "Comeback",
   "stats.viewStats": "Run Stats",
-  "stats.viewStatsLabel": "View run statistics"
+  "stats.viewStatsLabel": "View run statistics",
+  "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}"
 }

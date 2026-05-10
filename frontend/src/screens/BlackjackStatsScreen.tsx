@@ -72,7 +72,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
 
   return (
     <GameShell
-      title={t("blackjack:stats.title")}
+      title={t("stats.title")}
       requireBack
       onBack={() => navigation.goBack()}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
@@ -80,21 +80,21 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Current Run */}
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
-          {t("blackjack:stats.currentRun")}
+          {t("stats.currentRun")}
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           {sessionStats.handsPlayed === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-              {t("blackjack:stats.currentRunEmpty")}
+              {t("stats.currentRunEmpty")}
             </Text>
           ) : (
             <>
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("blackjack:stats.chipsLabel")}
+                  {t("stats.chipsLabel")}
                 </Text>
                 <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("blackjack:stats.chips", {
+                  {t("stats.chips", {
                     chips: sessionStats.chips.toLocaleString(),
                   })}
                 </Text>
@@ -102,21 +102,21 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("blackjack:stats.handsLabel")}
+                  {t("stats.handsLabel")}
                 </Text>
                 <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("blackjack:stats.hands", { hands: sessionStats.handsPlayed })}
+                  {t("stats.hands", { hands: sessionStats.handsPlayed })}
                   {"  ·  "}
-                  {t("blackjack:stats.winRate", { winRate })}
+                  {t("stats.winRate", { winRate })}
                 </Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("blackjack:stats.biggestWin")}
+                  {t("stats.biggestWin")}
                 </Text>
                 <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("blackjack:stats.biggestWinAmount", {
+                  {t("stats.biggestWinAmount", {
                     amount: sessionStats.biggestWin,
                   })}
                 </Text>
@@ -124,7 +124,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("blackjack:stats.netPL")}
+                  {t("stats.netPL")}
                 </Text>
                 <Text
                   style={[
@@ -133,8 +133,8 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                   ]}
                 >
                   {sessionStats.plChips >= 0
-                    ? t("blackjack:stats.netPLPositive", { amount: sessionStats.plChips })
-                    : t("blackjack:stats.netPLNegative", { amount: sessionStats.plChips })}
+                    ? t("stats.netPLPositive", { amount: sessionStats.plChips })
+                    : t("stats.netPLNegative", { amount: sessionStats.plChips })}
                 </Text>
               </View>
             </>
@@ -145,17 +145,17 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
         {runs.length > 0 && (
           <>
             <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
-              {t("blackjack:stats.allTimeBest")}
+              {t("stats.allTimeBest")}
             </Text>
             <View style={[styles.card, { backgroundColor: colors.surface }]}>
               {bestRun && (
                 <>
                   <View style={styles.statRow}>
                     <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                      {t("blackjack:stats.allTimeBestRun")}
+                      {t("stats.allTimeBestRun")}
                     </Text>
                     <Text style={[styles.statValue, { color: colors.text }]}>
-                      {t("blackjack:stats.chips", {
+                      {t("stats.chips", {
                         chips: bestRun.finalChips.toLocaleString(),
                       })}
                     </Text>
@@ -169,10 +169,10 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                 <>
                   <View style={styles.statRow}>
                     <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                      {t("blackjack:stats.allTimeMostHands")}
+                      {t("stats.allTimeMostHands")}
                     </Text>
                     <Text style={[styles.statValue, { color: colors.text }]}>
-                      {t("blackjack:stats.hands", { hands: mostHandsRun.handsPlayed })}
+                      {t("stats.hands", { hands: mostHandsRun.handsPlayed })}
                     </Text>
                   </View>
                   {biggestComebackRun && (
@@ -183,10 +183,10 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               {biggestComebackRun && (
                 <View style={styles.statRow}>
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                    {t("blackjack:stats.allTimeBiggestComeback")}
+                    {t("stats.allTimeBiggestComeback")}
                   </Text>
                   <Text style={[styles.statValue, { color: colors.accent }]}>
-                    {t("blackjack:stats.comebackLow", {
+                    {t("stats.comebackLow", {
                       chips: biggestComebackRun.lowestChips.toLocaleString(),
                     })}
                   </Text>
@@ -198,13 +198,13 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
 
         {/* Run History */}
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
-          {t("blackjack:stats.runHistory")}
+          {t("stats.runHistory")}
         </Text>
 
         {sortedRuns.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-              {t("blackjack:stats.noRuns")}
+              {t("stats.noRuns")}
             </Text>
           </View>
         ) : (
@@ -218,12 +218,18 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                 year: "numeric",
               });
               return (
-                <React.Fragment key={run.startedAt}>
+                <React.Fragment key={`${run.startedAt}-${run.table}`}>
                   {i > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
                   <View
                     style={styles.runRow}
-                    accessibilityRole="none"
-                    accessibilityLabel={`${tableLabel(run.table)}, ${date}, ${run.finalChips} chips, ${outcome}`}
+                    accessible
+                    accessibilityRole="text"
+                    accessibilityLabel={t("stats.runAccessibilityLabel", {
+                      table: tableLabel(run.table),
+                      date,
+                      chips: t("stats.chips", { chips: run.finalChips.toLocaleString() }),
+                      outcome: t(`stats.runOutcome.${outcome}` as Parameters<typeof t>[0]),
+                    })}
                   >
                     <View style={styles.runInfo}>
                       <Text style={[styles.runTable, { color: colors.text }]}>
@@ -233,7 +239,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                     </View>
                     <View style={styles.runRight}>
                       <Text style={[styles.runChips, { color: colors.text }]}>
-                        {t("blackjack:stats.chips", {
+                        {t("stats.chips", {
                           chips: run.finalChips.toLocaleString(),
                         })}
                       </Text>
@@ -242,7 +248,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                         accessibilityElementsHidden
                       >
                         <Text style={[styles.badgeText, { color: badgeColor }]}>
-                          {t(`blackjack:stats.runOutcome.${outcome}` as Parameters<typeof t>[0])}
+                          {t(`stats.runOutcome.${outcome}` as Parameters<typeof t>[0])}
                         </Text>
                       </View>
                     </View>

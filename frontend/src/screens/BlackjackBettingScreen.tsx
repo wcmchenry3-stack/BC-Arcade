@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   },
   statsLink: {
     alignItems: "center",
-    paddingVertical: 10,
+    paddingTop: 10,
     paddingBottom: 16,
   },
   statsLinkText: {
