@@ -38,6 +38,7 @@ import Animated, {
   runOnJS,
   Easing,
 } from "react-native-reanimated";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -69,6 +70,12 @@ import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
 
 const MAX_NAME_LENGTH = 32;
+const MAX_ZOOM = 2.5;
+
+function clamp(value: number, min: number, max: number): number {
+  "worklet";
+  return Math.min(Math.max(value, min), max);
+}
 
 // ---------------------------------------------------------------------------
 // Tile center — used by FlyingPair to compute animation start/end positions
@@ -209,6 +216,56 @@ export default function MahjongScreen() {
   const boardAnimStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: boardShakeX.value }],
     opacity: boardOpacity.value,
+  }));
+
+  // Gesture zoom/pan shared values — min zoom = camera.scale (fit-to-screen).
+  const minZoom = useSharedValue(camera.scale);
+  const zoomScale = useSharedValue(camera.scale);
+  const baseScale = useSharedValue(camera.scale);
+  const translateX = useSharedValue(0);
+  const baseTranslateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const baseTranslateY = useSharedValue(0);
+
+  // Reset gesture state when fit-to-screen scale changes (orientation / resize).
+  useEffect(() => {
+    minZoom.value = camera.scale;
+    zoomScale.value = camera.scale;
+    baseScale.value = camera.scale;
+    translateX.value = 0;
+    baseTranslateX.value = 0;
+    translateY.value = 0;
+    baseTranslateY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera.scale]);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      zoomScale.value = clamp(baseScale.value * e.scale, minZoom.value, MAX_ZOOM);
+    })
+    .onEnd(() => {
+      baseScale.value = zoomScale.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    .minPointers(2)
+    .onUpdate((e) => {
+      translateX.value = baseTranslateX.value + e.translationX;
+      translateY.value = baseTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      baseTranslateX.value = translateX.value;
+      baseTranslateY.value = translateY.value;
+    });
+
+  const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const gestureAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: zoomScale.value },
+    ],
   }));
 
   const hasLoadedRef = useRef(false);
@@ -524,7 +581,7 @@ export default function MahjongScreen() {
             </Text>
           </View>
 
-          {/* Viewport container — clips the scaled board */}
+          {/* Viewport container — clips the board during zoom/pan */}
           <View
             style={{
               width: camera.viewportWidth,
@@ -535,33 +592,31 @@ export default function MahjongScreen() {
               justifyContent: "center",
             }}
           >
-            {/* Camera scale transform — fits board in viewport */}
-            <View
-              style={{
-                width: camera.boardWidth,
-                height: camera.boardHeight,
-                transform: [{ scale: camera.scale }],
-              }}
-            >
-              <Animated.View style={boardAnimStyle}>
-                <GameCanvas
-                  state={state}
-                  camera={camera}
-                  onTilePress={handleTilePress}
-                  onShufflePress={handleShuffle}
-                  onNewGamePress={startNewGame}
-                />
+            <GestureDetector gesture={boardGesture}>
+              {/* Gesture layer — pinch-to-zoom + two-finger pan */}
+              <Animated.View
+                style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
+              >
+                <Animated.View style={boardAnimStyle}>
+                  <GameCanvas
+                    state={state}
+                    camera={camera}
+                    onTilePress={handleTilePress}
+                    onShufflePress={handleShuffle}
+                    onNewGamePress={startNewGame}
+                  />
+                </Animated.View>
+                {flyingPairs.map((pair) => (
+                  <FlyingPair
+                    key={pair.id}
+                    {...pair}
+                    camera={camera}
+                    color={colors.accent + "99"}
+                    onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
+                  />
+                ))}
               </Animated.View>
-              {flyingPairs.map((pair) => (
-                <FlyingPair
-                  key={pair.id}
-                  {...pair}
-                  camera={camera}
-                  color={colors.accent + "99"}
-                  onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
-                />
-              ))}
-            </View>
+            </GestureDetector>
           </View>
         </ScrollView>
       )}
