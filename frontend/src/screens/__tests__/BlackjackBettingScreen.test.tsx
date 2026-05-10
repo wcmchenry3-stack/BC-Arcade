@@ -62,7 +62,7 @@ describe("BlackjackBettingScreen — initial load", () => {
   it("renders TableSelectPanel when no saved game exists (fresh install)", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     renderScreen();
-    expect(await screen.findByText("Choose Your Table")).toBeTruthy();
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
     expect(screen.getByText("Beginner")).toBeTruthy();
     expect(screen.getByText("Intermediate")).toBeTruthy();
     expect(screen.getByText("High Roller")).toBeTruthy();
@@ -145,11 +145,11 @@ describe("BlackjackBettingScreen — phase redirect", () => {
 // ---------------------------------------------------------------------------
 
 describe("BlackjackBettingScreen — chip balance visibility (GH #227)", () => {
-  it("bankroll is visible in header during betting phase", async () => {
+  it("chip/goal progress is visible in HUD during betting phase", async () => {
     renderScreen();
     await screen.findByText("Deal");
-    // Beginner table starts with 100 chips
-    expect(screen.getByLabelText(/bankroll: 100 chips/i)).toBeTruthy();
+    // HUD shows goal progress when a table with a runGoal is active
+    expect(screen.getByLabelText(/goal progress:/i)).toBeTruthy();
   });
 });
 

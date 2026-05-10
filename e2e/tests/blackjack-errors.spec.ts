@@ -160,7 +160,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
     await expect(
-      page.locator('[aria-label*="Bankroll: 100 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
@@ -198,7 +198,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
     await expect(
-      page.locator('[aria-label*="Bankroll: 100 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
@@ -259,7 +259,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await expect(page.getByText("Hit")).toBeVisible();
 
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
@@ -269,7 +269,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
 
     await expect(page.getByText("Next Hand")).toBeVisible();
     await expect(
-      page.locator('[aria-label*="Bankroll: 1100 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 });

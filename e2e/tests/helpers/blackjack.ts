@@ -116,6 +116,10 @@ export function playerPhaseState(
       { suit: "♣", rank: "K" },
     ],
     doubled: false,
+    startingChips: 1000,
+    runGoal: 2000,
+    betMin: 10,
+    betMax: 100,
     ...emptySplitFields(),
     ...overrides,
   };
@@ -141,6 +145,10 @@ export function resultPhaseState(
       { suit: "♦", rank: "9" },
     ],
     doubled: false,
+    startingChips: 1000,
+    runGoal: 2000,
+    betMin: 10,
+    betMax: 100,
     ...emptySplitFields(),
     ...overrides,
   };
@@ -170,7 +178,7 @@ export class BlackjackPage {
   }
 
   bankrollDisplay() {
-    return this.page.locator('[aria-label*="Bankroll:"]');
+    return this.page.locator('[aria-label*="Goal progress:"]');
   }
 }
 

@@ -12,6 +12,7 @@ interface Props {
   betMin: number;
   betMax: number;
   chipDenominations: readonly number[];
+  accentColor?: string;
   onDeal: (amount: number) => void;
   loading: boolean;
   error: string | null;
@@ -24,6 +25,7 @@ export default function BettingPanel({
   betMin,
   betMax,
   chipDenominations,
+  accentColor,
   onDeal,
   loading,
   error,
@@ -45,6 +47,7 @@ export default function BettingPanel({
   }
 
   const canDeal = bet >= betMin && bet <= maxBet && !loading;
+  const resolvedAccent = accentColor ?? colors.accent;
 
   const chipColors = [colors.accent, colors.secondary, colors.tertiary, colors.secondary] as const;
   const chipTextColors = [
@@ -57,7 +60,7 @@ export default function BettingPanel({
   return (
     <View style={styles.container}>
       {/* Betting circle */}
-      <BettingCircle bet={bet} />
+      <BettingCircle bet={bet} accentColor={resolvedAccent} />
 
       {/* Chip denomination row */}
       <View style={styles.chipRow}>
@@ -99,7 +102,7 @@ export default function BettingPanel({
         </Pressable>
 
         <Pressable
-          style={[styles.dealBtn, { backgroundColor: canDeal ? colors.accent : colors.border }]}
+          style={[styles.dealBtn, { backgroundColor: canDeal ? resolvedAccent : colors.border }]}
           onPress={() => onDeal(bet)}
           disabled={!canDeal}
           accessibilityRole="button"

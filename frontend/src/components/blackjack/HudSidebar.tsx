@@ -1,144 +1,120 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
 interface HudSidebarProps {
-  currentPot: number;
-  lastWin: number | null;
-  chips?: number;
-  startingChips?: number;
-  runGoal?: number | null;
-  onPress?: () => void;
+  chips: number;
+  startingChips: number;
+  runGoal: number;
+  milestones: readonly number[];
+  tableName: string;
+  tableAccentColor: string;
   winStreak?: number;
 }
 
 export default function HudSidebar({
-  currentPot,
-  lastWin,
   chips,
   startingChips,
   runGoal,
-  onPress,
+  milestones,
+  tableName,
+  tableAccentColor,
   winStreak = 0,
 }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
-  const lastWinLabel = (() => {
-    if (lastWin === null) return t("hud.lastWinNull");
-    if (lastWin === 0) return t("hud.lastWinZero");
-    if (lastWin > 0) return t("hud.lastWinPositive", { amount: lastWin });
-    return t("hud.lastWinNegative", { amount: lastWin });
-  })();
-
-  const lastWinColor = (() => {
-    if (lastWin === null || lastWin === 0) return colors.textMuted;
-    return lastWin > 0 ? colors.bonus : colors.error;
-  })();
-
-  const lastWinA11y = (() => {
-    if (lastWin === null) return t("hud.lastWinAccessibilityLabel", { result: "none" });
-    if (lastWin === 0) return t("hud.lastWinAccessibilityLabel", { result: "push" });
-    return t("hud.lastWinAccessibilityLabel", { result: `${lastWin > 0 ? "+" : ""}${lastWin}` });
-  })();
-
-  const isLowChips =
-    chips != null && startingChips != null && startingChips > 0 && chips < startingChips * 0.3;
+  const isLowChips = startingChips > 0 && chips < startingChips * 0.3;
+  const isCritical = startingChips > 0 && chips < startingChips * 0.2;
   const showStreak = winStreak >= 3;
 
+  const hudColor = isCritical ? colors.error : isLowChips ? "#ffb547" : colors.text;
+  const barColor = isCritical ? colors.error : isLowChips ? "#ffb547" : tableAccentColor;
+  const goalProgress = Math.min(1, chips / runGoal);
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
+    <View
       style={[
         styles.container,
         {
-          backgroundColor: colors.surfaceAlt,
-          borderColor: isLowChips ? colors.error : colors.border,
+          backgroundColor: colors.surface,
+          // colors.error is always a 6-digit hex token; appending "55" gives 33% alpha
+          borderColor: isCritical ? colors.error + "55" : colors.border,
         },
       ]}
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={onPress ? t("hud.statsAccessibilityLabel") : undefined}
     >
-      {/* Current Pot */}
-      <View style={styles.row}>
-        <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.label }]}>
-          {t("hud.currentPot")}
-        </Text>
-        <Text
-          style={[styles.value, { color: colors.text, fontFamily: typography.heading }]}
-          accessibilityLabel={t("hud.currentPotAccessibilityLabel", { amount: currentPot })}
-        >
-          {currentPot > 0 ? currentPot.toLocaleString() : "—"}
-        </Text>
-      </View>
+      {/* Top row: table pill | chip/goal | streak badge */}
+      <View style={styles.topRow}>
+        <View style={styles.tableTag} accessibilityElementsHidden>
+          <View style={[styles.dot, { backgroundColor: tableAccentColor }]} />
+          <Text style={[styles.tagText, { color: colors.textMuted, fontFamily: typography.label }]}>
+            {tableName.toUpperCase()}
+          </Text>
+        </View>
 
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View style={styles.chipBlock}>
+          <Text
+            style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
+            accessibilityLabel={t("hud.goalProgressAccessibilityLabel", { chips, goal: runGoal })}
+          >
+            {chips.toLocaleString()}
+          </Text>
+          <Text
+            style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
+          >
+            {" / "}
+            {runGoal.toLocaleString()}
+          </Text>
+        </View>
 
-      {/* Last Win */}
-      <View style={styles.row}>
-        <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.label }]}>
-          {t("hud.lastWin")}
-        </Text>
-        <Text
-          style={[styles.value, { color: lastWinColor, fontFamily: typography.heading }]}
-          accessibilityLabel={lastWinA11y}
-        >
-          {lastWinLabel}
-        </Text>
-      </View>
-
-      {/* Win streak badge — appears on 3+ consecutive wins */}
-      {showStreak && (
-        <>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.row}>
+        {showStreak && (
+          <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
             <Text
-              style={[styles.streakBadge, { color: colors.bonus, fontFamily: typography.heading }]}
+              style={[styles.streakText, { color: tableAccentColor }]}
               accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
             >
-              {t("hud.winStreak", { count: winStreak })}
+              {t("hud.winStreakBadge", { count: winStreak })}
             </Text>
           </View>
-        </>
-      )}
+        )}
+      </View>
 
-      {/* Goal progress — only shown when table has a run goal */}
-      {runGoal != null && chips != null && (
-        <>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.row}>
-            <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.label }]}>
-              {t("hud.runGoal")}
-            </Text>
-            <Text
-              style={[
-                styles.value,
-                { color: isLowChips ? colors.error : colors.text, fontFamily: typography.heading },
-              ]}
-              accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
-                chips,
-                goal: runGoal,
-              })}
-            >
-              {t("hud.goalProgress", { chips, goal: runGoal })}
-            </Text>
-          </View>
-        </>
-      )}
+      {/* Progress bar with milestone tick marks.
+          barWrapper is 6 px tall so ticks (6 px) can protrude 1 px above/below
+          the 4 px barTrack without being clipped by overflow:hidden. */}
+      <View style={styles.barWrapper}>
+        <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.barFill,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
+            ]}
+          />
+        </View>
+        {milestones.map((m, i) => (
+          <View
+            key={i}
+            style={[
+              styles.tick,
+              {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                left: `${((m / runGoal) * 100).toFixed(1)}%` as any,
+                backgroundColor: chips >= m ? barColor : colors.border,
+              },
+            ]}
+          />
+        ))}
+      </View>
 
-      {/* Stats link hint — only shown when sidebar is tappable */}
-      {onPress && (
-        <>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.statsHint, { color: colors.accent }]} accessibilityElementsHidden>
-            {t("hud.viewStats")}
-          </Text>
-        </>
+      {isCritical && (
+        <Text style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}>
+          {t("hud.criticalWarning")}
+        </Text>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -146,37 +122,88 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 10,
     borderWidth: 1,
-    paddingVertical: 10,
     paddingHorizontal: 12,
-    minWidth: 80,
+    paddingVertical: 10,
+    gap: 8,
+    width: "100%",
   },
-  row: {
+  topRow: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    justifyContent: "space-between",
+    gap: 8,
   },
-  label: {
+  tableTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  tagText: {
     fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    fontWeight: "700",
+    letterSpacing: 1,
   },
-  value: {
-    fontSize: 16,
-    lineHeight: 20,
+  chipBlock: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 2,
+    flex: 1,
+    justifyContent: "center",
+  },
+  chipsText: {
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    lineHeight: 24,
+  },
+  goalText: {
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 24,
   },
   streakBadge: {
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.4,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
-  divider: {
-    height: 1,
-    marginVertical: 8,
-  },
-  statsHint: {
+  streakText: {
     fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  barWrapper: {
+    height: 6,
+    position: "relative",
+    justifyContent: "center",
+  },
+  barTrack: {
+    height: 4,
+    borderRadius: 2,
+  },
+  barFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    height: "100%",
+    borderRadius: 2,
+  },
+  tick: {
+    position: "absolute",
+    top: 0,
+    width: 2,
+    height: 6,
+    borderRadius: 1,
+  },
+  warning: {
+    fontSize: 10,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     textAlign: "center",
   },
 });
