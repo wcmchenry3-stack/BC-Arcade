@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
@@ -10,6 +10,7 @@ interface HudSidebarProps {
   chips?: number;
   startingChips?: number;
   runGoal?: number | null;
+  onPress?: () => void;
   winStreak?: number;
 }
 
@@ -19,6 +20,7 @@ export default function HudSidebar({
   chips,
   startingChips,
   runGoal,
+  onPress,
   winStreak = 0,
 }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
@@ -47,7 +49,9 @@ export default function HudSidebar({
   const showStreak = winStreak >= 3;
 
   return (
-    <View
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
       style={[
         styles.container,
         {
@@ -55,6 +59,8 @@ export default function HudSidebar({
           borderColor: isLowChips ? colors.error : colors.border,
         },
       ]}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={onPress ? t("hud.statsAccessibilityLabel") : undefined}
     >
       {/* Current Pot */}
       <View style={styles.row}>
@@ -122,7 +128,17 @@ export default function HudSidebar({
           </View>
         </>
       )}
-    </View>
+
+      {/* Stats link hint — only shown when sidebar is tappable */}
+      {onPress && (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Text style={[styles.statsHint, { color: colors.accent }]} accessibilityElementsHidden>
+            {t("hud.viewStats")}
+          </Text>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -155,5 +171,12 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginVertical: 8,
+  },
+  statsHint: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    textAlign: "center",
   },
 });

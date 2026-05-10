@@ -255,6 +255,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               chips={engine?.chips}
               startingChips={engine?.startingChips}
               runGoal={engine?.runGoal}
+              onPress={() => navigation.navigate("BlackjackStats")}
               winStreak={sessionStats.winStreak}
             />
           </View>
