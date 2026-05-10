@@ -42,8 +42,6 @@ interface GhostInfo {
   startY: number;
   dstX: number;
   dstY: number;
-  liftDx: number;
-  liftDy: number;
   tiltSign: 1 | -1;
   dstBottleLength: number;
 }
@@ -148,8 +146,6 @@ export default function SortBoard({
       ghostTiltDeg.value = 0;
       ghostStreamOpacity.value = 0;
       setGhost(null);
-      emitTimersRef.current.forEach(clearTimeout);
-      emitTimersRef.current = [];
       setUnitsEmitted(0);
       return;
     }
@@ -175,8 +171,6 @@ export default function SortBoard({
 
     const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_PER_UNIT_MS));
 
-    emitTimersRef.current.forEach(clearTimeout);
-    emitTimersRef.current = [];
     setUnitsEmitted(0);
 
     ghostDx.value = 0;
@@ -191,8 +185,6 @@ export default function SortBoard({
       startY: srcPos.y,
       dstX: dstPos.x,
       dstY: dstPos.y,
-      liftDx,
-      liftDy,
       tiltSign,
       dstBottleLength: dstBottle?.length ?? 0,
     });
@@ -261,21 +253,21 @@ export default function SortBoard({
   );
 
   // Stream arc geometry — computed from ghost snapshot each render.
-  const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
-  const unitH_px = (INNER_H_VB / VB_H / BOTTLE_DEPTH) * bottleH;
-
   let streamPath = '';
   let streamColor = 'transparent';
   if (ghost !== null) {
+    const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
+    const unitHPx = (INNER_H_VB / VB_H / BOTTLE_DEPTH) * bottleH;
     // After diagonal lift the spout sits just above the destination neck opening
     const spoutX = ghost.dstX + bottleW / 2;
     const spoutY = ghost.dstY + pivotLocalY;
-    // Destination fill level at the start of the pour (stream falls into liquid)
+    // Fill level at pour start — endpoint stays fixed during the pour (simplification:
+    // rising fill as units land is not tracked; the visual impact is minor)
     const dstFillTopY = ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH -
-      ghost.dstBottleLength * unitH_px;
+      ghost.dstBottleLength * unitHPx;
     const streamEndY = Math.max(spoutY + 10, dstFillTopY);
-    // Slight curve in the pour direction for a natural arc
-    const ctrlX = spoutX - ghost.tiltSign * 6;
+    // Control point curves in the pour direction (matches the tilted bottle's arc)
+    const ctrlX = spoutX + ghost.tiltSign * 6;
     const ctrlY = spoutY + (streamEndY - spoutY) * 0.3;
     streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
     const topColor = ghost.bottle[ghost.bottle.length - 1];
