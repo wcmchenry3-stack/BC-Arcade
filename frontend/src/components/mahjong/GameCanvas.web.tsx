@@ -94,7 +94,9 @@ function drawBoard(
   for (const tile of sorted) {
     ctx.save();
 
-    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
+    const { x: rawX, y: rawY } = cam.tileToScreen(tile.col, tile.row, tile.layer);
+    const x = Math.round(rawX);
+    const y = Math.round(rawY);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
     const isHint = matchingIds.has(tile.id);
@@ -257,10 +259,28 @@ export default function GameCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Scale the backing buffer to physical pixels so the canvas is crisp on
+    // high-DPI / Retina screens. CSS display size stays at logical pixels.
+    const dpr = window.devicePixelRatio ?? 1;
+    const physW = Math.round(boardWidth * dpr);
+    const physH = Math.round(boardHeight * dpr);
+    canvas.style.width = `${boardWidth}px`;
+    canvas.style.height = `${boardHeight}px`;
+    if (canvas.width !== physW) canvas.width = physW;
+    if (canvas.height !== physH) canvas.height = physH;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Map all drawing coordinates to physical pixels and use high-quality
+    // filtering when scaling SVG art.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
     drawBoard(ctx, state, freeTiles, matchingIds, tileImagesRef.current, camera);
-  }, [state, freeTiles, matchingIds, imagesVersion, camera]);
+  }, [state, freeTiles, matchingIds, imagesVersion, camera, boardWidth, boardHeight]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
