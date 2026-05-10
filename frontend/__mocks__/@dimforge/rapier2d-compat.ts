@@ -11,6 +11,7 @@ export class MockRigidBody {
   _vx = 0;
   _vy = 0;
   _wakeUpCount = 0;
+  _impulses: Array<{ x: number; y: number }> = [];
   _colliders: MockCollider[] = [];
 
   constructor(handle: number, x: number, y: number) {
@@ -34,6 +35,10 @@ export class MockRigidBody {
   }
   wakeUp() {
     this._wakeUpCount++;
+  }
+  applyImpulse(impulse: { x: number; y: number }, wakeUp: boolean) {
+    this._impulses.push({ ...impulse });
+    if (wakeUp) this._wakeUpCount++;
   }
   numColliders() {
     return this._colliders.length;

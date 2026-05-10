@@ -14,6 +14,7 @@ export {
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -44,6 +45,7 @@ import {
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
   WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
   MATTER_VELOCITY_ITERATIONS,
@@ -250,8 +252,8 @@ export async function createEngine(
             Math.min(H - WALL_THICKNESS - nextDef.radius, midY)
           );
           const newFb = spawnAt(nextDef, fruitSet.id, spawnX, spawnY, SPAWN_GRACE_TICKS);
-          // Wake sleeping neighbors within 2× spawn radius so they react to the new body.
-          // Iterate fruitMap (only live fruits) to mirror Rapier's neighbor-wake logic.
+          // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
+          // them out of the merge zone, preventing stuck overlaps after spawn.
           // Build an id→body map first (O(M)) so fruitMap lookups are O(1), not O(M) each.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
           const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
@@ -261,7 +263,13 @@ export async function createEngine(
             if (!b) return;
             const dx = b.position.x - midX;
             const dy = b.position.y - midY;
-            if (dx * dx + dy * dy < wakeRadiusSq) {
+            const distSq = dx * dx + dy * dy;
+            if (distSq < wakeRadiusSq) {
+              const dist = Math.sqrt(distSq);
+              if (dist > 0) {
+                const mag = nextDef.radius * POP_IMPULSE_SCALE;
+                Matter.Body.applyForce(b, b.position, { x: (dx / dist) * mag, y: (dy / dist) * mag });
+              }
               Matter.Sleeping.set(b, false);
             }
           });
