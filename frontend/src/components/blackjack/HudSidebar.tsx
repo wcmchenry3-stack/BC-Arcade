@@ -40,6 +40,7 @@ export default function HudSidebar({
         styles.container,
         {
           backgroundColor: colors.surface,
+          // colors.error is always a 6-digit hex token; appending "55" gives 33% alpha
           borderColor: isCritical ? colors.error + "55" : colors.border,
         },
       ]}
@@ -67,9 +68,9 @@ export default function HudSidebar({
         </View>
 
         {showStreak && (
-          <View style={[styles.streakBadge, { borderColor: colors.tertiary }]}>
+          <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
             <Text
-              style={[styles.streakText, { color: colors.tertiary }]}
+              style={[styles.streakText, { color: tableAccentColor }]}
               accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
             >
               {t("hud.winStreakBadge", { count: winStreak })}
@@ -78,15 +79,19 @@ export default function HudSidebar({
         )}
       </View>
 
-      {/* Progress bar with milestone tick marks */}
-      <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
-        <View
-          style={[
-            styles.barFill,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
-          ]}
-        />
+      {/* Progress bar with milestone tick marks.
+          barWrapper is 6 px tall so ticks (6 px) can protrude 1 px above/below
+          the 4 px barTrack without being clipped by overflow:hidden. */}
+      <View style={styles.barWrapper}>
+        <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.barFill,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
+            ]}
+          />
+        </View>
         {milestones.map((m, i) => (
           <View
             key={i}
@@ -170,11 +175,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1,
   },
+  barWrapper: {
+    height: 6,
+    position: "relative",
+    justifyContent: "center",
+  },
   barTrack: {
     height: 4,
     borderRadius: 2,
-    position: "relative",
-    overflow: "hidden",
   },
   barFill: {
     position: "absolute",
@@ -185,7 +193,7 @@ const styles = StyleSheet.create({
   },
   tick: {
     position: "absolute",
-    top: -1,
+    top: 0,
     width: 2,
     height: 6,
     borderRadius: 1,
