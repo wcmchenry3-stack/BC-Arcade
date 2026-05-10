@@ -738,10 +738,10 @@ describe("ChallengingStage off-screen cleanup", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("ChallengingStage");
 
-    // With 40 enemies, last enemy (idx 39) has delay = 39*80/3200 = 0.975.
-    // It exits the canvas after (1 + 0.975) * 3200 ≈ 6320 ms.
+    // With 40 enemies, last enemy (idx 39) has delay = 39*400/5000 = 3.12 (×pathDuration).
+    // It exits the canvas after 39*400 + 5000 = 20600 ms.
     // Advance past that with no firing so enemies scroll off instead of being shot.
-    s = advanceMs(s, 7000, NO_INPUT);
+    s = advanceMs(s, 22000, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
   });
 
@@ -1497,16 +1497,10 @@ describe("Power-up engine (#980)", () => {
     expect(s.activePowerUp).toBeNull();
   });
 
-  it("Challenging Stage spawns one lightning power-up at wave start within safe bounds (#1032)", () => {
+  it("Challenging Stage spawns no power-ups (#1463 — power-ups trivialise the perfect-clear)", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("ChallengingStage");
-    expect(s.powerUps.length).toBe(1);
-    const pu = s.powerUps[0]!;
-    expect(pu.type).toBe("lightning");
-    // X randomised within safe margins (not hardcoded to center)
-    expect(pu.x).toBeGreaterThanOrEqual(12);
-    expect(pu.x).toBeLessThanOrEqual(CANVAS_W - 12);
-    expect(pu.despawnTimer).toBeGreaterThan(6000); // canvas-height-derived (~8950ms at CANVAS_H=640)
+    expect(s.powerUps.length).toBe(0);
   });
 });
 
@@ -2244,19 +2238,20 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
 
   it("challengingPerfect is false on WaveClear when enemies scroll off without being shot", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    // 40 enemies; last one (idx 39) exits at ≈6320ms — advance past with no firing
-    s = advanceMs(s, 7000, NO_INPUT);
+    // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
+    s = advanceMs(s, 22000, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
     expect(s.challengingPerfect).toBe(false);
   });
 
   it("PERFECT clears add 10,000 pts bonus at Ensign ×1 (plus 40×50 hit bonus)", () => {
-    // Zero-hit path: enemies scroll off — only waveClearBonus (wave 3 × 500 × 1 = 1500)
+    // Zero-hit path: enemies scroll off — wave-clear bonus is 0 (conditional on hits, #1463)
     let noPerfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    noPerfect = advanceMs(noPerfect, 7000, NO_INPUT);
+    noPerfect = advanceMs(noPerfect, 22000, NO_INPUT);
     expect(noPerfect.phase).toBe("WaveClear");
+    expect(noPerfect.score).toBe(0); // zero kills → zero wave-clear bonus
 
-    // Full-hit path: all 40 hit + perfect → 1500 + 2000 + 10000 = 13500
+    // Full-hit path: all 40 hit + perfect → waveClear(1500) + hits(2000) + perfect(10000) = 13500
     let perfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     perfect = {
       ...perfect,
@@ -2266,8 +2261,8 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
     perfect = tick(perfect, 16, NO_INPUT);
     expect(perfect.phase).toBe("WaveClear");
 
-    // Δ = 40 hits × 50 + 10,000 perfect bonus = 12,000
-    expect(perfect.score - noPerfect.score).toBe(40 * 50 + 10_000);
+    // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
+    expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
   });
 });
 
