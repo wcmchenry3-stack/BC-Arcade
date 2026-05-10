@@ -30,7 +30,9 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      loadRuns().then(setRuns).catch(() => {});
+      loadRuns()
+        .then(setRuns)
+        .catch(() => {});
     }, [])
   );
 
@@ -75,10 +77,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       onBack={() => navigation.goBack()}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Current Run */}
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
           {t("blackjack:stats.currentRun")}
@@ -220,9 +219,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               });
               return (
                 <React.Fragment key={run.startedAt}>
-                  {i > 0 && (
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  )}
+                  {i > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
                   <View
                     style={styles.runRow}
                     accessibilityRole="none"
@@ -245,9 +242,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                         accessibilityElementsHidden
                       >
                         <Text style={[styles.badgeText, { color: badgeColor }]}>
-                          {t(
-                            `blackjack:stats.runOutcome.${outcome}` as Parameters<typeof t>[0]
-                          )}
+                          {t(`blackjack:stats.runOutcome.${outcome}` as Parameters<typeof t>[0])}
                         </Text>
                       </View>
                     </View>

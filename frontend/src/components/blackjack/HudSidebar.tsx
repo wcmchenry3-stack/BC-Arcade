@@ -133,10 +133,7 @@ export default function HudSidebar({
       {onPress && (
         <>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text
-            style={[styles.statsHint, { color: colors.accent }]}
-            accessibilityElementsHidden
-          >
+          <Text style={[styles.statsHint, { color: colors.accent }]} accessibilityElementsHidden>
             {t("hud.viewStats")}
           </Text>
         </>
