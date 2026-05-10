@@ -49,8 +49,8 @@ import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
 import GameCanvas from "../components/mahjong/GameCanvas";
-import { useMahjongCanvasLayout } from "../game/mahjong/layout";
-import type { MahjongLayout } from "../game/mahjong/layout";
+import { useMahjongCamera } from "../game/mahjong/layout";
+import type { BoardCamera } from "../game/mahjong/layout";
 import { createGame, elapsedMs, selectTile, shuffleBoard, undoMove } from "../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
@@ -74,11 +74,9 @@ const MAX_NAME_LENGTH = 32;
 // Tile center — used by FlyingPair to compute animation start/end positions
 // ---------------------------------------------------------------------------
 
-function tileCenter(tile: SlotTile, l: MahjongLayout): { cx: number; cy: number } {
-  return {
-    cx: l.padX + (tile.col / 2) * l.tileWidth + tile.layer * l.layerDx + l.tileWidth / 2,
-    cy: l.padY + tile.row * l.tileHeight - tile.layer * l.layerDy + l.tileHeight / 2,
-  };
+function tileCenter(tile: SlotTile, cam: BoardCamera): { cx: number; cy: number } {
+  const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
+  return { cx: x + cam.tileWidth / 2, cy: y + cam.tileHeight / 2 };
 }
 
 // ---------------------------------------------------------------------------
@@ -96,12 +94,12 @@ const BURST_R = 22;
 function FlyingPair({
   tile1,
   tile2,
-  layout,
+  camera,
   color,
   onDone,
-}: FlyingPairData & { layout: MahjongLayout; color: string; onDone: () => void }) {
-  const { cx: c1x, cy: c1y } = tileCenter(tile1, layout);
-  const { cx: c2x, cy: c2y } = tileCenter(tile2, layout);
+}: FlyingPairData & { camera: BoardCamera; color: string; onDone: () => void }) {
+  const { cx: c1x, cy: c1y } = tileCenter(tile1, camera);
+  const { cx: c2x, cy: c2y } = tileCenter(tile2, camera);
   const midX = (c1x + c2x) / 2;
   const midY = (c1y + c2y) / 2;
 
@@ -133,8 +131,8 @@ function FlyingPair({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tw = layout.tileWidth - layout.sideWidth;
-  const th = layout.tileHeight - layout.sideWidth;
+  const tw = camera.faceWidth;
+  const th = camera.faceHeight;
 
   const tile1Style = useAnimatedStyle(() => ({
     position: "absolute",
@@ -192,7 +190,7 @@ export default function MahjongScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const layout = useMahjongCanvasLayout();
+  const camera = useMahjongCamera();
 
   const [state, setState] = useState<MahjongState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -529,8 +527,8 @@ export default function MahjongScreen() {
           {/* Board container — overflow:hidden clips FlyingPair animations */}
           <View
             style={{
-              width: layout.boardWidth,
-              height: layout.boardHeight,
+              width: camera.boardWidth,
+              height: camera.boardHeight,
               overflow: "hidden",
               alignSelf: "center",
             }}
@@ -538,7 +536,7 @@ export default function MahjongScreen() {
             <Animated.View style={boardAnimStyle}>
               <GameCanvas
                 state={state}
-                layout={layout}
+                camera={camera}
                 onTilePress={handleTilePress}
                 onShufflePress={handleShuffle}
                 onNewGamePress={startNewGame}
@@ -548,7 +546,7 @@ export default function MahjongScreen() {
               <FlyingPair
                 key={pair.id}
                 {...pair}
-                layout={layout}
+                camera={camera}
                 color={colors.accent + "99"}
                 onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
               />

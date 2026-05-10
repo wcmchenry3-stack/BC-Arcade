@@ -11,7 +11,7 @@ import { create, act } from "react-test-renderer";
 import type { MahjongState } from "../../../game/mahjong/types";
 import { createGame } from "../../../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../../../game/mahjong/layouts/turtle";
-import { calculateMahjongLayout } from "../../../game/mahjong/layout";
+import { calculateMahjongLayout, makeBoardCamera } from "../../../game/mahjong/layout";
 
 // Skia requires a native module — stub the whole package.
 jest.mock("@shopify/react-native-skia", () => ({
@@ -39,15 +39,17 @@ jest.mock("expo-asset", () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { default: GameCanvas } = require("../GameCanvas.web");
 
-const testLayout = calculateMahjongLayout({
-  screenWidth: 768,
-  screenHeight: 1024,
-  safeAreaTop: 0,
-  safeAreaBottom: 0,
-  boardRows: 8,
-  boardCols: 12,
-  boardLayers: 4,
-});
+const testCamera = makeBoardCamera(
+  calculateMahjongLayout({
+    screenWidth: 768,
+    screenHeight: 1024,
+    safeAreaTop: 0,
+    safeAreaBottom: 0,
+    boardRows: 8,
+    boardCols: 12,
+    boardLayers: 4,
+  })
+);
 
 function makeState(overrides: Partial<MahjongState> = {}): MahjongState {
   return { ...createGame(TURTLE_LAYOUT, 12345), ...overrides };
@@ -62,7 +64,7 @@ describe("GameCanvas (web)", () => {
         create(
           <GameCanvas
             state={makeState()}
-            layout={testLayout}
+            camera={testCamera}
             onTilePress={noop}
             onShufflePress={noop}
             onNewGamePress={noop}
@@ -79,7 +81,7 @@ describe("GameCanvas (web)", () => {
       tree = create(
         <GameCanvas
           state={state}
-          layout={testLayout}
+          camera={testCamera}
           onTilePress={noop}
           onShufflePress={noop}
           onNewGamePress={noop}
@@ -98,7 +100,7 @@ describe("GameCanvas (web)", () => {
       tree = create(
         <GameCanvas
           state={state}
-          layout={testLayout}
+          camera={testCamera}
           onTilePress={noop}
           onShufflePress={noop}
           onNewGamePress={noop}
@@ -127,7 +129,7 @@ describe("GameCanvas (web)", () => {
       tree = create(
         <GameCanvas
           state={state}
-          layout={testLayout}
+          camera={testCamera}
           onTilePress={noop}
           onShufflePress={noop}
           onNewGamePress={noop}
@@ -147,7 +149,7 @@ describe("GameCanvas (web)", () => {
       tree = create(
         <GameCanvas
           state={state}
-          layout={testLayout}
+          camera={testCamera}
           onTilePress={noop}
           onShufflePress={noop}
           onNewGamePress={noop}
