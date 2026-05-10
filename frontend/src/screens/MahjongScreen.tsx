@@ -524,33 +524,44 @@ export default function MahjongScreen() {
             </Text>
           </View>
 
-          {/* Board container — overflow:hidden clips FlyingPair animations */}
+          {/* Viewport container — clips the scaled board */}
           <View
             style={{
-              width: camera.boardWidth,
-              height: camera.boardHeight,
+              width: camera.viewportWidth,
+              height: camera.viewportHeight,
               overflow: "hidden",
               alignSelf: "center",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <Animated.View style={boardAnimStyle}>
-              <GameCanvas
-                state={state}
-                camera={camera}
-                onTilePress={handleTilePress}
-                onShufflePress={handleShuffle}
-                onNewGamePress={startNewGame}
-              />
-            </Animated.View>
-            {flyingPairs.map((pair) => (
-              <FlyingPair
-                key={pair.id}
-                {...pair}
-                camera={camera}
-                color={colors.accent + "99"}
-                onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
-              />
-            ))}
+            {/* Camera scale transform — fits board in viewport */}
+            <View
+              style={{
+                width: camera.boardWidth,
+                height: camera.boardHeight,
+                transform: [{ scale: camera.scale }],
+              }}
+            >
+              <Animated.View style={boardAnimStyle}>
+                <GameCanvas
+                  state={state}
+                  camera={camera}
+                  onTilePress={handleTilePress}
+                  onShufflePress={handleShuffle}
+                  onNewGamePress={startNewGame}
+                />
+              </Animated.View>
+              {flyingPairs.map((pair) => (
+                <FlyingPair
+                  key={pair.id}
+                  {...pair}
+                  camera={camera}
+                  color={colors.accent + "99"}
+                  onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
+                />
+              ))}
+            </View>
           </View>
         </ScrollView>
       )}
