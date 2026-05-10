@@ -13,6 +13,7 @@ export {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
@@ -42,6 +43,7 @@ import {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
   MATTER_VELOCITY_ITERATIONS,
@@ -95,15 +97,15 @@ export async function createEngine(
   // --- Static walls and floor ---
   const floor = Matter.Bodies.rectangle(W / 2, H - WALL_THICKNESS / 2, W, WALL_THICKNESS, {
     isStatic: true,
-    friction: FRUIT_FRICTION,
+    friction: WALL_FRICTION,
   });
   const leftWall = Matter.Bodies.rectangle(WALL_THICKNESS / 2, H / 2, WALL_THICKNESS, H, {
     isStatic: true,
-    friction: FRUIT_FRICTION,
+    friction: WALL_FRICTION,
   });
   const rightWall = Matter.Bodies.rectangle(W - WALL_THICKNESS / 2, H / 2, WALL_THICKNESS, H, {
     isStatic: true,
-    friction: FRUIT_FRICTION,
+    friction: WALL_FRICTION,
   });
   Matter.Composite.add(world, [floor, leftWall, rightWall]);
 
