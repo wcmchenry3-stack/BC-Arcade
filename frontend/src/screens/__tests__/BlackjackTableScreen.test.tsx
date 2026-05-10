@@ -17,6 +17,8 @@ jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),
   loadGame: jest.fn().mockResolvedValue(null),
+  saveRun: jest.fn().mockResolvedValue(undefined),
+  loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
 // ---------------------------------------------------------------------------
@@ -305,7 +307,12 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     if (startCall === undefined) throw new Error("Expected startGame call");
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("blackjack");
-    expect(meta).toEqual({});
+    expect(meta).toEqual({
+      best_run_chips: null,
+      total_runs: 0,
+      runs_completed: 0,
+      current_table: "beginner",
+    });
     expect(eventData).toEqual({ starting_chips: 1000 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
@@ -503,13 +510,19 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     mockStartGame.mockReturnValue("game-uuid-test-2");
     mockCompleteGame.mockClear();
 
-    act(() => {
+    await act(async () => {
       getCtx().handlePlayAgain();
     });
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
-    expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
+    await waitFor(() => {
+      expect(mockStartGame).toHaveBeenCalledWith(
+        "blackjack",
+        { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
+        { starting_chips: 1000 }
+      );
+    });
   });
 
   it("capture ordering: bet_placed emits before hand_dealt", async () => {

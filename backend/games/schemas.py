@@ -108,6 +108,10 @@ class GameTypeStatsResponse(BaseModel):
     last_played_at: datetime | None = None
     best_chips: int | None = None
     current_chips: int | None = None
+    best_run_chips: int | None = None
+    total_runs: int | None = None
+    runs_completed: int | None = None
+    current_table: str | None = None
 
 
 class StatsResponse(BaseModel):

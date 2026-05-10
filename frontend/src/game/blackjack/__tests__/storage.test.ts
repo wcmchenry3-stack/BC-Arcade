@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame } from "../storage";
+import { saveGame, loadGame, clearGame, saveRun, loadRuns, RunRecord } from "../storage";
 import { newGame, EngineState } from "../engine";
 
 const STORAGE_KEY = "blackjack_game_v2";
@@ -102,5 +102,87 @@ describe("blackjack storage", () => {
     expect(loaded?.startingChips).toBe(1000);
     expect(loaded?.betMin).toBe(5);
     expect(loaded?.betMax).toBe(500);
+  });
+});
+
+const makeRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
+  table: "beginner",
+  startingChips: 1000,
+  finalChips: 800,
+  runGoal: null,
+  completed: false,
+  handsPlayed: 10,
+  biggestWin: 50,
+  lowestChips: 750,
+  startedAt: 1000000,
+  endedAt: 1001000,
+  ...overrides,
+});
+
+describe("blackjack run history", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (Sentry.captureException as jest.Mock).mockClear();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it("returns empty array when no runs saved", async () => {
+    expect(await loadRuns()).toEqual([]);
+  });
+
+  it("saves and loads a single run", async () => {
+    const run = makeRun();
+    await saveRun(run);
+    const runs = await loadRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toEqual(run);
+  });
+
+  it("appends runs in order", async () => {
+    await saveRun(makeRun({ startedAt: 1 }));
+    await saveRun(makeRun({ startedAt: 2 }));
+    await saveRun(makeRun({ startedAt: 3 }));
+    const runs = await loadRuns();
+    expect(runs).toHaveLength(3);
+    expect(runs.map((r) => r.startedAt)).toEqual([1, 2, 3]);
+  });
+
+  it("caps history at 50 runs, dropping oldest", async () => {
+    for (let i = 0; i < 55; i++) {
+      await saveRun(makeRun({ startedAt: i }));
+    }
+    const runs = await loadRuns();
+    expect(runs).toHaveLength(50);
+    expect(runs[0].startedAt).toBe(5);
+    expect(runs[49].startedAt).toBe(54);
+  });
+
+  it("persists completed flag correctly", async () => {
+    await saveRun(makeRun({ completed: true, runGoal: 2000, finalChips: 2000 }));
+    const runs = await loadRuns();
+    expect(runs[0].completed).toBe(true);
+    expect(runs[0].runGoal).toBe(2000);
+  });
+
+  it("returns empty array on corrupt storage and clears the key", async () => {
+    await AsyncStorage.setItem("blackjack_runs_v1", "not-valid-json{{{");
+    const runs = await loadRuns();
+    expect(runs).toEqual([]);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("corrupt runs payload"),
+      expect.objectContaining({ level: "warning" })
+    );
+    expect(await AsyncStorage.getItem("blackjack_runs_v1")).toBeNull();
+  });
+
+  it("returns empty array when stored value is not an array, logs warning, and clears the key", async () => {
+    await AsyncStorage.setItem("blackjack_runs_v1", JSON.stringify({ foo: "bar" }));
+    const runs = await loadRuns();
+    expect(runs).toEqual([]);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("not an array"),
+      expect.objectContaining({ level: "warning" })
+    );
+    expect(await AsyncStorage.getItem("blackjack_runs_v1")).toBeNull();
   });
 });

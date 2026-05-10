@@ -31,6 +31,46 @@ def test_blackjack_metadata_rejects_unknown_field() -> None:
         BlackjackMetadata.model_validate({"deck_count": 6})
 
 
+def test_blackjack_metadata_run_fields_accepted() -> None:
+    m = BlackjackMetadata.model_validate(
+        {
+            "best_run_chips": 2500,
+            "total_runs": 10,
+            "runs_completed": 3,
+            "current_table": "intermediate",
+        }
+    )
+    assert m.best_run_chips == 2500
+    assert m.total_runs == 10
+    assert m.runs_completed == 3
+    assert m.current_table == "intermediate"
+
+
+def test_blackjack_metadata_run_fields_default_to_none() -> None:
+    m = BlackjackMetadata.model_validate({})
+    assert m.best_run_chips is None
+    assert m.total_runs is None
+    assert m.runs_completed is None
+    assert m.current_table is None
+
+
+def test_blackjack_metadata_partial_run_fields_accepted() -> None:
+    m = BlackjackMetadata.model_validate({"total_runs": 5})
+    assert m.total_runs == 5
+    assert m.best_run_chips is None
+
+
+def test_blackjack_metadata_all_table_tiers_accepted() -> None:
+    for tier in ("beginner", "intermediate", "high_roller"):
+        m = BlackjackMetadata.model_validate({"current_table": tier})
+        assert m.current_table == tier
+
+
+def test_blackjack_metadata_invalid_current_table_rejected() -> None:
+    with pytest.raises(ValidationError):
+        BlackjackMetadata.model_validate({"current_table": "hacker_table"})
+
+
 # ---------------------------------------------------------------------------
 # CascadeMetadata unit tests
 # ---------------------------------------------------------------------------

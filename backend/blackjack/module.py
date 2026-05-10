@@ -23,6 +23,7 @@ class BlackjackModule:
     metadata_model = BlackjackMetadata
 
     def stats_shape(self, raw_stats: dict) -> dict:
+        meta: dict = raw_stats.get("metadata") or {}
         return {
             "played": raw_stats["played"],
             "best": None,
@@ -30,6 +31,10 @@ class BlackjackModule:
             "last_played_at": raw_stats["last_played_at"],
             "best_chips": raw_stats["best"],
             "current_chips": raw_stats["latest_score"],
+            "best_run_chips": meta.get("best_run_chips"),
+            "total_runs": meta.get("total_runs"),
+            "runs_completed": meta.get("runs_completed"),
+            "current_table": meta.get("current_table"),
         }
 
 
