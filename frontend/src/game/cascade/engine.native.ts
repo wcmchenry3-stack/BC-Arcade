@@ -25,6 +25,7 @@ export {
   MATTER_SLEEP_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_TICKS,
+  SPAWN_GRACE_MS,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -51,7 +52,7 @@ import {
   MATTER_VELOCITY_ITERATIONS,
   MATTER_SLEEP_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
-  SPAWN_GRACE_TICKS,
+  SPAWN_GRACE_MS,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -147,7 +148,7 @@ export async function createEngine(
     x: number,
     y: number,
     graceTicks = 0
-  ): FruitBody {
+  ): { fb: FruitBody; body: Matter.Body } {
     const nameKey = (def as { nameKey?: string }).nameKey ?? def.name.toLowerCase();
     const verts = getVerticesForFruit(setId, nameKey);
 
@@ -200,19 +201,25 @@ export async function createEngine(
       graceTicksRemaining: graceTicks,
     };
     fruitMap.set(body.id, fb);
-    return fb;
+    return { fb, body };
   }
 
-  function removeBody(bodyId: number): void {
-    const bodies = Matter.Composite.allBodies(world);
-    const body = bodies.find((b) => b.id === bodyId);
+  function removeBody(bodyId: number, bodyRef?: Matter.Body): void {
+    const body = bodyRef ?? Matter.Composite.allBodies(world).find((b) => b.id === bodyId);
     if (body) {
       Matter.Composite.remove(world, body);
     }
     fruitMap.delete(bodyId);
   }
 
-  function processMerges(events: GameEvent[]): void {
+  // processMerges receives the per-step bodyById map (built once in step()) so it
+  // never calls allBodies() itself.  It keeps the map in sync as it removes merged
+  // bodies and inserts the newly spawned result body.
+  function processMerges(
+    events: GameEvent[],
+    bodyById: Map<number, Matter.Body>,
+    stepMs: number
+  ): void {
     for (const [idA, idB, enqueuedTier] of mergeQueue) {
       const fa = fruitMap.get(idA);
       const fb = fruitMap.get(idB);
@@ -224,16 +231,17 @@ export async function createEngine(
       if (fa.fruitTier !== enqueuedTier || fb.fruitTier !== enqueuedTier) continue;
 
       const tier = enqueuedTier;
-      const bodies = Matter.Composite.allBodies(world);
-      const bodyA = bodies.find((b) => b.id === idA);
-      const bodyB = bodies.find((b) => b.id === idB);
+      const bodyA = bodyById.get(idA);
+      const bodyB = bodyById.get(idB);
       if (!bodyA || !bodyB) continue;
 
       const midX = (bodyA.position.x + bodyB.position.x) / 2;
       const midY = (bodyA.position.y + bodyB.position.y) / 2;
 
-      removeBody(idA);
-      removeBody(idB);
+      bodyById.delete(idA);
+      bodyById.delete(idB);
+      removeBody(idA, bodyA);
+      removeBody(idB, bodyB);
       events.push({ type: "fruitMerge", tier, x: midX, y: midY });
 
       if (tier < 10) {
@@ -251,12 +259,27 @@ export async function createEngine(
             nextDef.radius,
             Math.min(H - WALL_THICKNESS - nextDef.radius, midY)
           );
-          const newFb = spawnAt(nextDef, fruitSet.id, spawnX, spawnY, SPAWN_GRACE_TICKS);
+          // Bug fix (GH #1419, Bug 2): express grace as wall-clock ms → ticks at actual step
+          // rate so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz.
+          //   60 Hz: ceil(50 / 16.67) = 3 ticks × 16.67 ms = 50 ms
+          //   120 Hz: ceil(50 / 8.33)  = 6 ticks × 8.33 ms  = 50 ms
+          const graceTicks = Math.ceil(SPAWN_GRACE_MS / stepMs);
+          const { fb: newFb, body: newBody } = spawnAt(
+            nextDef,
+            fruitSet.id,
+            spawnX,
+            spawnY,
+            graceTicks
+          );
+          bodyById.set(newFb.handle, newBody);
+
           // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
           // them out of the merge zone, preventing stuck overlaps after spawn.
-          // Build an id→body map first (O(M)) so fruitMap lookups are O(1), not O(M) each.
+          // Bug fix (GH #1419, Bug 2): use setVelocity (dt-scaled) instead of applyForce
+          // (dt²-scaled) so push magnitude is frame-rate-independent.
           const wakeRadiusSq = (nextDef.radius * 2) ** 2;
-          const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
+          const popSpeedPxS = nextDef.radius * POP_IMPULSE_SCALE;
+          const popVelPerStep = (popSpeedPxS * stepMs) / 1000;
           fruitMap.forEach((_fb2, neighborId) => {
             if (neighborId === newFb.handle) return;
             const b = bodyById.get(neighborId);
@@ -267,10 +290,9 @@ export async function createEngine(
             if (distSq < wakeRadiusSq) {
               const dist = Math.sqrt(distSq);
               if (dist > 0) {
-                const mag = nextDef.radius * POP_IMPULSE_SCALE;
-                Matter.Body.applyForce(b, b.position, {
-                  x: (dx / dist) * mag,
-                  y: (dy / dist) * mag,
+                Matter.Body.setVelocity(b, {
+                  x: b.velocity.x + (dx / dist) * popVelPerStep,
+                  y: b.velocity.y + (dy / dist) * popVelPerStep,
                 });
               }
               Matter.Sleeping.set(b, false);
@@ -290,15 +312,25 @@ export async function createEngine(
       // so a backgrounded tab can't schedule a hundred catch-up steps.
       const rawElapsed = dt ?? 1 / 60;
       let remainingMs = Math.min(rawElapsed, 1 / 6) * 1000;
+      // Bug fix (GH #1419, Bug 1): track the actual last sub-step duration so the
+      // velocity clamp threshold is correct on 120 Hz ProMotion devices (8.33 ms/step)
+      // rather than always using the nominal FIXED_STEP_MS (16.67 ms).
+      let lastStepMs = FIXED_STEP_MS;
       while (remainingMs > 0.01) {
-        const stepMs = Math.min(remainingMs, FIXED_STEP_MS);
-        Matter.Engine.update(engine, stepMs);
-        remainingMs -= stepMs;
+        lastStepMs = Math.min(remainingMs, FIXED_STEP_MS);
+        Matter.Engine.update(engine, lastStepMs);
+        remainingMs -= lastStepMs;
       }
 
       const events: GameEvent[] = [];
       const mergesThisStep = mergeQueue.length;
-      processMerges(events);
+
+      // Bug fix (GH #1419, Bug 3): build body map once per step for O(1) lookups.
+      // processMerges keeps the map in sync as it removes and adds bodies, so all
+      // subsequent sections (grace-tick, velocity clamp, game-over, snapshots) reuse
+      // it without a second allBodies() allocation.
+      const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
+      processMerges(events, bodyById, lastStepMs);
 
       // Cascade combo and merge-cooldown tracking.
       if (mergesThisStep > 0) {
@@ -314,16 +346,13 @@ export async function createEngine(
         ticksSinceLastMerge++;
       }
 
-      // Single allBodies snapshot shared by grace-tick, velocity-clamp, and wall-clamp below.
-      // processMerges has already run, so this reflects the post-merge body list.
-      const allBodiesPostMerge = Matter.Composite.allBodies(world);
-
       // Grace-tick decrement: restore normal collision filter when grace period expires.
+      // bodyById reflects the post-merge body list (updated by processMerges).
       fruitMap.forEach((fb, bodyId) => {
         if (fb.graceTicksRemaining <= 0) return;
         fb.graceTicksRemaining--;
         if (fb.graceTicksRemaining === 0) {
-          const body = allBodiesPostMerge.find((b) => b.id === bodyId);
+          const body = bodyById.get(bodyId);
           if (body) {
             body.collisionFilter.mask = COLLISION_GROUP_WALL | COLLISION_GROUP_DYNAMIC;
           }
@@ -332,14 +361,13 @@ export async function createEngine(
 
       // Velocity clamp: cap per-step speed so no body can tunnel through a 16px wall.
       // body.velocity in Matter.js is position change per step (px/step), so the threshold
-      // is MAX_FRUIT_SPEED_PX_S × FIXED_STEP_MS/1000. On sub-60 Hz frames (dt < 1/60),
-      // the last sub-step is shorter, body.velocity is proportionally smaller, and the
-      // clamp threshold is never exceeded — this is safe because travel distance also shrinks.
+      // must use the actual step duration (lastStepMs), not FIXED_STEP_MS.  On 120 Hz
+      // ProMotion devices lastStepMs = 8.33 ms; using FIXED_STEP_MS would double the limit.
       {
-        const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000;
+        const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * lastStepMs) / 1000;
         const maxVelSq = maxVelPerStep * maxVelPerStep;
         fruitMap.forEach((_fb, bodyId) => {
-          const body = allBodiesPostMerge.find((b) => b.id === bodyId);
+          const body = bodyById.get(bodyId);
           if (!body) return;
           const { x: vx, y: vy } = body.velocity;
           const speedSq = vx * vx + vy * vy;
@@ -358,7 +386,7 @@ export async function createEngine(
         fruitMap.forEach((fb, bodyId) => {
           if (anyAbove || fb.isMerging) return;
           if (now - fb.createdAt < GAME_OVER_GRACE_MS) return;
-          const body = allBodiesPostMerge.find((b) => b.id === bodyId);
+          const body = bodyById.get(bodyId);
           if (!body) return;
           const topY = body.position.y - fb.fruitRadius;
           if (topY < dangerY) anyAbove = true;
@@ -374,12 +402,11 @@ export async function createEngine(
         }
       }
 
-      // Collect snapshots and detect boundary escapes
+      // Collect snapshots and detect boundary escapes (reuse bodyById — no second allBodies call).
       const snapshots: BodySnapshot[] = [];
       const escapedIds: number[] = [];
-      const allBodies = Matter.Composite.allBodies(world);
       fruitMap.forEach((fb, bodyId) => {
-        const body = allBodies.find((b) => b.id === bodyId);
+        const body = bodyById.get(bodyId);
         if (!body) return;
         const px = body.position.x;
         const py = body.position.y;
@@ -403,7 +430,7 @@ export async function createEngine(
       });
       // Clean up escaped bodies
       for (const id of escapedIds) {
-        removeBody(id);
+        removeBody(id, bodyById.get(id));
       }
       return { snapshots, events };
     },

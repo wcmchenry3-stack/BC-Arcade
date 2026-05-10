@@ -205,6 +205,31 @@ describe("velocity clamp parity", () => {
 
     handle.cleanup();
   });
+
+  // GH #1419 Bug 1 — clamp threshold must use actual step duration, not FIXED_STEP_MS
+  it("Matter.js: velocity clamp uses actual step duration at 120 Hz (step(1/120))", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    handle.step(1 / 120);
+
+    const dynamicBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    const fruitBody = dynamicBodies[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: 9999 });
+    handle.step(1 / 120);
+
+    // At 120 Hz (stepMs = 8.33 ms): max px/step = MAX_FRUIT_SPEED_PX_S / 120
+    const speed = Math.sqrt(fruitBody.velocity.x ** 2 + fruitBody.velocity.y ** 2);
+    expect(speed).toBeLessThanOrEqual(MAX_FRUIT_SPEED_PX_S / 120 + 0.5);
+
+    handle.cleanup();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -579,5 +604,53 @@ describe("determinism parity — nowProvider injection makes runs reproducible",
     const run1 = await runNative();
     const run2 = await runNative();
     expect(run1).toEqual(run2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GH #1419 Bug 2 — grace wall-clock parity at 120 Hz ProMotion
+// ---------------------------------------------------------------------------
+
+describe("grace period wall-clock parity — ≥ 40 ms protection at any step rate", () => {
+  it("Matter.js: grace period effective wall-clock time is ≥ 40 ms at step(1/120)", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2 - 5, 30);
+    handle.drop(fruit(0), fruitSet.id, W / 2 + 5, 30);
+
+    const DT = 1 / 120;
+    let mergeFound = false;
+    for (let i = 0; i < 1200 && !mergeFound; i++) {
+      const { events } = handle.step(DT);
+      mergeFound = events.some((e) => e.type === "fruitMerge");
+    }
+    expect(mergeFound).toBe(true);
+
+    const dynBodies = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+
+    // Spawned body should be in grace immediately after the merge step
+    expect(dynBodies().some((b) => (b.collisionFilter.mask & COLLISION_GROUP_DYNAMIC) === 0)).toBe(
+      true
+    );
+
+    // Count remaining grace steps until the dynamic collision bit is restored
+    let remainingGraceSteps = 0;
+    for (let i = 0; i < 20; i++) {
+      const stillGrace = dynBodies().some(
+        (b) => (b.collisionFilter.mask & COLLISION_GROUP_DYNAMIC) === 0
+      );
+      if (!stillGrace) break;
+      remainingGraceSteps++;
+      handle.step(DT);
+    }
+
+    // Total: 1 (the merge step that spawned and decremented grace) + remaining steps
+    const totalGraceTicks = 1 + remainingGraceSteps;
+    expect(totalGraceTicks * DT * 1000).toBeGreaterThanOrEqual(40);
+
+    handle.cleanup();
   });
 });

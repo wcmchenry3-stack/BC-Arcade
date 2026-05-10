@@ -60,6 +60,9 @@ export const MAX_FRUIT_SPEED_PX_S = 900;
 // --- Spawn grace period ---
 /** Number of physics ticks a merge-spawned body is immune to dynamic-vs-dynamic collisions. */
 export const SPAWN_GRACE_TICKS = 3;
+/** Wall-clock duration of spawn grace (ms). Converted to ticks at spawn time based on actual step
+ *  duration so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz. */
+export const SPAWN_GRACE_MS = SPAWN_GRACE_TICKS * FIXED_STEP_MS; // ≈ 50 ms
 
 // --- Collision group bitmasks (shared by Rapier and Matter.js implementations) ---
 export const COLLISION_GROUP_WALL = 0x0001;

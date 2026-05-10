@@ -121,11 +121,13 @@ test.describe("Cascade — merge and score behavior", () => {
     await spawnTierAt(page, 0, 150);
     await fastForward(page, 2000);
 
-    // tier-2 merge (+8): 58px apart (radius=33, sum=66, 8px overlap ~12%)
-    // so Rapier fires CollisionStart reliably. Start at x=235 to clear the
-    // tier-1 body spawned above (at x=150, radius=25, rightmost edge ≈175).
+    // tier-2 merge (+8): 49px apart (radius=33, sum=66, 17px overlap ~26%).
+    // Increased from 8px overlap — was intermittently missing in CI under Rapier
+    // WASM load (GH #1418). 17px guarantees CollisionStart fires on the first step
+    // regardless of physics cadence. Start at x=235 to clear the tier-1 body
+    // spawned above (at x=150, radius=25, rightmost edge ≈175).
     await spawnTierAt(page, 2, 235);
-    await spawnTierAt(page, 2, 293);
+    await spawnTierAt(page, 2, 284);
     await fastForward(page, 2000);
 
     const state = await getState(page);
