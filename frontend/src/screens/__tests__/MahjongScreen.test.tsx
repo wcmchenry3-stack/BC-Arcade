@@ -59,6 +59,7 @@ jest.mock("@react-navigation/native", () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
+    setOptions: jest.fn(),
     addListener: mockAddListener,
   }),
   useFocusEffect: (cb: () => () => void) => {

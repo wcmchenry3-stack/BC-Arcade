@@ -274,7 +274,8 @@ export default function MahjongScreen() {
     });
 
   const panGesture = Gesture.Pan()
-    .minPointers(2)
+    .minPointers(1)
+    .maxPointers(1)
     .onUpdate((e) => {
       translateX.value = baseTranslateX.value + e.translationX;
       translateY.value = baseTranslateY.value + e.translationY;
@@ -491,6 +492,13 @@ export default function MahjongScreen() {
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete]);
 
+  // Disable native swipe-back (iOS edge gesture) while the game is open so that
+  // a left-pan on the board doesn't accidentally exit to the lobby.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false });
+    return () => navigation.setOptions({ gestureEnabled: true });
+  }, [navigation]);
+
   // Abandon on back-navigation.
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", () => {
@@ -618,11 +626,7 @@ export default function MahjongScreen() {
       }
     >
       {state !== null && (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, alignItems: "center" }}>
           <View style={styles.hudRow} accessibilityRole="summary">
             {__DEV__ ? (
               <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
@@ -729,7 +733,7 @@ export default function MahjongScreen() {
               </Animated.View>
             </GestureDetector>
           </View>
-        </ScrollView>
+        </View>
       )}
 
       {__DEV__ && devPanelOpen && state && (
@@ -967,10 +971,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
-  },
-  scrollContent: {
-    flexGrow: 1,
-    alignItems: "center",
   },
   hudRow: {
     flexDirection: "row",
