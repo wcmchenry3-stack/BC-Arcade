@@ -215,13 +215,9 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    // BJ-2: malformed state may show TableSelectPanel — select Beginner if present
-    const tableSelectBtn = page.getByRole("button", {
-      name: /select beginner table/i,
-    });
-    if (await tableSelectBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await tableSelectBtn.click();
-    }
+    // BJ-2: malformed state is rejected by loadGame() → falls back to null →
+    // TableSelectPanel shows (same as a fresh install) — select Beginner
+    await page.getByRole("button", { name: /select beginner table/i }).click();
 
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
