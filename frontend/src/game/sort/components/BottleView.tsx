@@ -72,10 +72,10 @@ export const DEFAULT_BOTTLE_HEIGHT = 156;
 export const BOTTLE_WIDTH = DEFAULT_BOTTLE_WIDTH;
 export const BOTTLE_HEIGHT = DEFAULT_BOTTLE_HEIGHT;
 
-// Pour animation timing (ms)
-const TILT_IN_MS = 250;
+// Pour animation timing (ms) — used by reduce-motion fallback in SortScreen
+export const TILT_IN_MS = 250;
 export const TILT_HOLD_MS = 150;
-const TILT_OUT_MS = 200;
+export const TILT_OUT_MS = 200;
 export const TILT_DEG = 62;
 
 export interface BottleViewProps {

@@ -31,13 +31,12 @@ import {
 import { getNextHint } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
 import SortBoard, {
-  LIFT_MS,
-  TRAVEL_MS,
-  TILT_IN_MS,
-  TILT_OUT_MS,
-  TILT_HOLD_MS_PER_UNIT,
+  POUR_LIFT_MS,
+  POUR_TILT_MS,
+  POUR_PER_UNIT_MS,
+  POUR_RETURN_MS,
 } from "../game/sort/components/SortBoard";
-import { TILT_HOLD_MS } from "../game/sort/components/BottleView";
+import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
 import { loadProgress, saveProgress, type SortProgress } from "../game/sort/storage";
@@ -82,7 +81,7 @@ export default function SortScreen() {
   // Pour animation state
   const [pouringFrom, setPouringFrom] = useState<number | null>(null);
   const [pouringTo, setPouringTo] = useState<number | null>(null);
-  const [pourHoldMs, setPourHoldMs] = useState(TILT_HOLD_MS_PER_UNIT);
+  const [pourHoldMs, setPourHoldMs] = useState(POUR_PER_UNIT_MS);
   const [isPouring, setIsPouring] = useState(false);
   const [boardHeight, setBoardHeight] = useState(0);
   const pourTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,11 +201,11 @@ export default function SortScreen() {
     if (isValidPour(gameState.bottles[selectedBottleIndex], gameState.bottles[index])) {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
-      const holdMs = TILT_HOLD_MS_PER_UNIT * units;
-      // Reduce-motion skips the ghost; BottleView does a fixed tilt-only animation (no scaling).
+      const holdMs = POUR_PER_UNIT_MS * units;
+      // Reduce-motion: BottleView does a fixed tilt-only animation (no ghost overlay).
       const totalMs = reduceMotion
         ? TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50
-        : LIFT_MS + TRAVEL_MS + TILT_IN_MS + holdMs + TILT_OUT_MS + TRAVEL_MS + LIFT_MS + 50;
+        : POUR_LIFT_MS + POUR_TILT_MS + holdMs + POUR_RETURN_MS + 50;
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
       setPouringFrom(selectedBottleIndex);

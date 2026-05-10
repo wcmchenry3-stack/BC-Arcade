@@ -10,13 +10,14 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import Svg, { Path } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import type { Bottle, SortState } from "../types";
+import { BOTTLE_DEPTH } from "../types";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
   LIQUID_COLORS,
-  TILT_DEG,
 } from "./BottleView";
 
 const BOTTLE_GAP = 12;
@@ -30,7 +31,7 @@ export interface SortBoardProps {
   readonly pouringTo?: number | null;
   /** Height of the board container in pixels — used to scale bottles to fit. */
   readonly availableHeight?: number;
-  /** Tilt-hold duration in ms; defaults to TILT_HOLD_MS_PER_UNIT (1 unit). */
+  /** Total flow duration in ms (POUR_PER_UNIT_MS × unitCount); computed by SortScreen. */
   readonly pourHoldMs?: number;
 }
 
@@ -41,19 +42,29 @@ interface GhostInfo {
   startY: number;
   dstX: number;
   dstY: number;
+  tiltSign: 1 | -1;
+  dstBottleLength: number;
 }
 
-// Ghost animation timing constants (ms) — exported so SortScreen can compute total timeout
-export const LIFT_MS = 150;
-export const TRAVEL_MS = 150;
-export const TILT_IN_MS = 250;
-export const TILT_OUT_MS = 200;
-export const TILT_HOLD_MS_PER_UNIT = 150; // scaled by # of sections poured
+// Pour animation timing (ms) — exported so SortScreen can compute total timeout
+export const POUR_LIFT_MS = 240; // diagonal lift+travel phase
+export const POUR_TILT_MS = 220; // tilt from 0° to TILT_START_DEG
+export const POUR_PER_UNIT_MS = 380; // per-unit progressive tilt + stream
+export const POUR_RETURN_MS = 320; // simultaneous untilt + return
 
-// Ghost rises just enough to clear the target bottle's opening
-const LIFT_HEIGHT = 40;
+// Tilt progresses from start angle to peak as the bottle empties
+const TILT_START_DEG = 50;
+const TILT_PEAK_DEG = 95;
 
-// Stream dimensions — 7px renders reliably on iOS at all display densities
+// BottleView SVG proportions — used to compute pivot/spout position
+const VB_W = 56;
+const VB_H = 168;
+const NECK_TOP_VB = 14; // PAD_TOP in BottleView
+const NECK_LEFT_VB = 12; // left outer neck edge in viewBox
+const NECK_RIGHT_VB = 44; // right outer neck edge in viewBox
+const BODY_BOTTOM_VB = 166;
+const INNER_H_VB = BODY_BOTTOM_VB - NECK_TOP_VB; // 152
+
 const STREAM_WIDTH = 7;
 
 export default function SortBoard({
@@ -63,7 +74,7 @@ export default function SortBoard({
   pouringFrom = null,
   pouringTo = null,
   availableHeight,
-  pourHoldMs = TILT_HOLD_MS_PER_UNIT,
+  pourHoldMs = POUR_PER_UNIT_MS,
 }: SortBoardProps) {
   const { t } = useTranslation("sort");
   const { width: screenW } = useWindowDimensions();
@@ -97,15 +108,15 @@ export default function SortBoard({
   const bottlePositionsRef = useRef<{ x: number; y: number }[]>([]);
 
   // Ghost shared values — always allocated (hooks can't be conditional)
-  const ghostLiftY = useSharedValue(0);
-  const ghostTravelX = useSharedValue(0);
+  const ghostDy = useSharedValue(0);
+  const ghostDx = useSharedValue(0);
   const ghostTiltDeg = useSharedValue(0);
   const ghostStreamOpacity = useSharedValue(0);
 
   const ghostAnimStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: ghostLiftY.value },
-      { translateX: ghostTravelX.value },
+      { translateX: ghostDx.value },
+      { translateY: ghostDy.value },
       { rotate: `${ghostTiltDeg.value}deg` },
     ],
   }));
@@ -116,6 +127,8 @@ export default function SortBoard({
 
   // Ghost React state (drives overlay visibility and bottle capture)
   const [ghost, setGhost] = useState<GhostInfo | null>(null);
+  const [unitsEmitted, setUnitsEmitted] = useState(0);
+  const emitTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Stable ref for values read inside the effect (avoids stale closure without
   // adding them to the dep array, which would re-trigger on every state change)
@@ -124,30 +137,44 @@ export default function SortBoard({
 
   useEffect(() => {
     if (pouringFrom === null || pouringTo === null || reduceMotion) {
-      cancelAnimation(ghostLiftY);
-      cancelAnimation(ghostTravelX);
+      cancelAnimation(ghostDy);
+      cancelAnimation(ghostDx);
       cancelAnimation(ghostTiltDeg);
       cancelAnimation(ghostStreamOpacity);
-      ghostLiftY.value = 0;
-      ghostTravelX.value = 0;
+      ghostDy.value = 0;
+      ghostDx.value = 0;
       ghostTiltDeg.value = 0;
       ghostStreamOpacity.value = 0;
       setGhost(null);
+      setUnitsEmitted(0);
       return;
     }
 
     const srcPos = bottlePositionsRef.current[pouringFrom];
     const dstPos = bottlePositionsRef.current[pouringTo];
-    if (!srcPos || !dstPos) return; // layout not measured yet — silent fallback
-
-    const dx = dstPos.x - srcPos.x;
-    const tiltAngle = pouringFrom < pouringTo ? TILT_DEG : -TILT_DEG;
+    if (!srcPos || !dstPos) return;
 
     const sourceBottle = stateRef.current.bottles[pouringFrom];
+    const dstBottle = stateRef.current.bottles[pouringTo];
     if (!sourceBottle) return;
 
-    ghostLiftY.value = 0;
-    ghostTravelX.value = 0;
+    const isRight = pouringFrom < pouringTo;
+    const tiltSign: 1 | -1 = isRight ? 1 : -1;
+
+    // Spout pivot: outer neck edge scaled from viewBox coords to bottleW
+    const pivotLocalX = ((isRight ? NECK_RIGHT_VB : NECK_LEFT_VB) / VB_W) * bottleW;
+
+    // Diagonal lift target: move spout to center-top of destination opening
+    // liftDy aligns bottle tops (pivotLocalY cancels: dstNeckY - srcNeckY = dstY - srcY)
+    const liftDx = dstPos.x + bottleW / 2 - (srcPos.x + pivotLocalX);
+    const liftDy = dstPos.y - srcPos.y;
+
+    const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_PER_UNIT_MS));
+
+    setUnitsEmitted(0);
+
+    ghostDx.value = 0;
+    ghostDy.value = 0;
     ghostTiltDeg.value = 0;
     ghostStreamOpacity.value = 0;
 
@@ -158,40 +185,61 @@ export default function SortBoard({
       startY: srcPos.y,
       dstX: dstPos.x,
       dstY: dstPos.y,
+      tiltSign,
+      dstBottleLength: dstBottle?.length ?? 0,
     });
 
-    // Lift → travel → tilt in → hold → tilt out → return travel → lower.
-    // Ghost clears at end; SortScreen commits state 50ms later.
-    ghostLiftY.value = withTiming(-LIFT_HEIGHT, { duration: LIFT_MS }, (finished) => {
+    // Phase 1: Diagonal lift+travel simultaneously (POUR_LIFT_MS)
+    ghostDx.value = withTiming(liftDx, { duration: POUR_LIFT_MS });
+    ghostDy.value = withTiming(liftDy, { duration: POUR_LIFT_MS }, (finished) => {
       if (!finished) return;
-      ghostTravelX.value = withTiming(dx, { duration: TRAVEL_MS }, (finished) => {
-        if (!finished) return;
-        ghostTiltDeg.value = withTiming(tiltAngle, { duration: TILT_IN_MS }, (finished) => {
+      // Phase 2: Tilt to TILT_START_DEG
+      ghostTiltDeg.value = withTiming(
+        tiltSign * TILT_START_DEG,
+        { duration: POUR_TILT_MS },
+        (finished) => {
           if (!finished) return;
-          ghostTiltDeg.value = withDelay(
-            pourHoldMs,
-            withTiming(0, { duration: TILT_OUT_MS }, (finished) => {
+          // Phase 3: Progressive tilt to TILT_PEAK_DEG over full pour
+          ghostTiltDeg.value = withTiming(
+            tiltSign * TILT_PEAK_DEG,
+            { duration: pourHoldMs },
+            (finished) => {
               if (!finished) return;
-              ghostTravelX.value = withTiming(0, { duration: TRAVEL_MS }, (finished) => {
+              // Phase 4: Simultaneous untilt + diagonal return
+              ghostTiltDeg.value = withTiming(0, { duration: POUR_RETURN_MS });
+              ghostDx.value = withTiming(0, { duration: POUR_RETURN_MS });
+              ghostDy.value = withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
                 if (!finished) return;
-                ghostLiftY.value = withTiming(0, { duration: LIFT_MS }, () => {
-                  runOnJS(setGhost)(null);
-                });
+                runOnJS(setGhost)(null);
+                runOnJS(setUnitsEmitted)(0);
               });
-            })
+            }
           );
-        });
-      });
+        }
+      );
     });
 
-    // Stream fades in at tilt-in start, holds, fades out at tilt-out start.
+    // Stream fades in as tilt starts, fades out when return begins
     ghostStreamOpacity.value = withDelay(
-      LIFT_MS + TRAVEL_MS,
+      POUR_LIFT_MS,
       withSequence(
-        withTiming(1, { duration: TILT_IN_MS }),
-        withDelay(pourHoldMs, withTiming(0, { duration: TILT_OUT_MS }))
+        withTiming(1, { duration: POUR_TILT_MS }),
+        withDelay(pourHoldMs, withTiming(0, { duration: POUR_RETURN_MS / 2 }))
       )
     );
+
+    // Schedule per-unit ghost content draining
+    const flowStart = POUR_LIFT_MS + POUR_TILT_MS;
+    for (let i = 1; i <= unitCount; i++) {
+      const emitAt = flowStart + (i - 1) * POUR_PER_UNIT_MS + POUR_PER_UNIT_MS * 0.6;
+      const captured = i;
+      emitTimersRef.current.push(setTimeout(() => setUnitsEmitted(captured), emitAt));
+    }
+
+    return () => {
+      emitTimersRef.current.forEach(clearTimeout);
+      emitTimersRef.current = [];
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pouringFrom, pouringTo, reduceMotion, pourHoldMs]);
 
@@ -212,13 +260,31 @@ export default function SortBoard({
     [state.bottles.length, onBottleTap]
   );
 
-  // Stream geometry — derived from ghost snapshot; stable for the life of each pour.
-  const streamTopColor =
-    ghost !== null && ghost.bottle.length > 0 ? ghost.bottle[ghost.bottle.length - 1] : null;
-  const streamColor = streamTopColor ? LIQUID_COLORS[streamTopColor] : "transparent";
-  const streamTop = ghost !== null ? ghost.startY - LIFT_HEIGHT : 0;
-  const streamHeight = ghost !== null ? Math.max(0, ghost.dstY - ghost.startY + LIFT_HEIGHT) : 0;
-  const streamLeft = ghost !== null ? ghost.dstX + (bottleW - STREAM_WIDTH) / 2 : 0;
+  // Stream arc geometry — computed from ghost snapshot each render.
+  let streamPath = "";
+  let streamColor = "transparent";
+  if (ghost !== null) {
+    const pivotLocalY = (NECK_TOP_VB / VB_H) * bottleH;
+    const unitHPx = (INNER_H_VB / VB_H / BOTTLE_DEPTH) * bottleH;
+    // After diagonal lift the spout sits just above the destination neck opening
+    const spoutX = ghost.dstX + bottleW / 2;
+    const spoutY = ghost.dstY + pivotLocalY;
+    // Fill level at pour start — endpoint stays fixed during the pour (simplification:
+    // rising fill as units land is not tracked; the visual impact is minor)
+    const dstFillTopY =
+      ghost.dstY + (BODY_BOTTOM_VB / VB_H) * bottleH - ghost.dstBottleLength * unitHPx;
+    const streamEndY = Math.max(spoutY + 10, dstFillTopY);
+    // Control point curves in the pour direction (matches the tilted bottle's arc)
+    const ctrlX = spoutX + ghost.tiltSign * 6;
+    const ctrlY = spoutY + (streamEndY - spoutY) * 0.3;
+    streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
+    const topColor = ghost.bottle[ghost.bottle.length - 1];
+    streamColor = topColor ? LIQUID_COLORS[topColor] : "transparent";
+  }
+
+  // Draining ghost contents: slice from top as units emit
+  const ghostBottle =
+    ghost !== null ? ghost.bottle.slice(0, Math.max(0, ghost.bottle.length - unitsEmitted)) : [];
 
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
@@ -270,20 +336,18 @@ export default function SortBoard({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          {streamHeight > 0 && (
-            <Animated.View
-              style={[
-                styles.stream,
-                {
-                  left: streamLeft,
-                  top: streamTop,
-                  width: STREAM_WIDTH,
-                  height: streamHeight,
-                  backgroundColor: streamColor,
-                },
-                ghostStreamStyle,
-              ]}
-            />
+          {streamPath !== "" && (
+            <Animated.View style={[StyleSheet.absoluteFill, ghostStreamStyle]} pointerEvents="none">
+              <Svg width="100%" height="100%">
+                <Path
+                  d={streamPath}
+                  stroke={streamColor}
+                  strokeWidth={STREAM_WIDTH}
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            </Animated.View>
           )}
           <Animated.View
             style={[
@@ -298,7 +362,7 @@ export default function SortBoard({
             ]}
           >
             <BottleView
-              bottle={ghost.bottle}
+              bottle={ghostBottle}
               index={ghost.bottleIndex}
               isGhost
               colorblindMode={colorblindMode}
@@ -449,10 +513,6 @@ const styles = StyleSheet.create({
   },
   ghostBottle: {
     position: "absolute",
-  },
-  stream: {
-    position: "absolute",
-    borderRadius: STREAM_WIDTH / 2,
   },
   particle: { position: "absolute", width: 20, height: 20, borderRadius: 10, top: 0 },
   p0: { left: "8%" },
