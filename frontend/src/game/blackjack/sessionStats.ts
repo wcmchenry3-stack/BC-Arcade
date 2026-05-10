@@ -22,6 +22,8 @@ export interface SessionStats {
   readonly busts: number;
   /** Largest single positive payout delta in the session (0 if no wins). */
   readonly biggestWin: number;
+  /** Current consecutive-win count; resets to 0 on any non-win outcome. */
+  readonly winStreak: number;
 }
 
 export function initialSessionStats(startingChips: number): SessionStats {
@@ -36,6 +38,7 @@ export function initialSessionStats(startingChips: number): SessionStats {
     blackjacks: 0,
     busts: 0,
     biggestWin: 0,
+    winStreak: 0,
   };
 }
 
@@ -64,5 +67,6 @@ export function reduceHandResolved(prev: SessionStats, args: HandResolvedArgs): 
     blackjacks: prev.blackjacks + (isBlackjack ? 1 : 0),
     busts: prev.busts + (isLose && isBust ? 1 : 0),
     biggestWin: payoutDelta > prev.biggestWin ? payoutDelta : prev.biggestWin,
+    winStreak: isWin ? prev.winStreak + 1 : 0,
   };
 }

@@ -50,6 +50,8 @@ function stateInPlayer(chips = 1000, bet = 100): EngineState {
   return {
     ...DEFAULT_RUN_CONFIG,
     milestones_reached: [],
+    hitLowChips: false,
+    comebackEmitted: false,
     chips,
     bet,
     phase: "player",
@@ -74,6 +76,8 @@ function stateInResult(
   return {
     ...DEFAULT_RUN_CONFIG,
     milestones_reached: [],
+    hitLowChips: false,
+    comebackEmitted: false,
     chips,
     bet,
     phase: "result",
@@ -99,6 +103,8 @@ function splitSetup(opts?: {
   return {
     ...DEFAULT_RUN_CONFIG,
     milestones_reached: [],
+    hitLowChips: false,
+    comebackEmitted: false,
     chips: opts?.chips ?? 1000,
     bet: opts?.bet ?? 100,
     phase: "player",
@@ -713,6 +719,8 @@ function ddSetup(
   return {
     ...DEFAULT_RUN_CONFIG,
     milestones_reached: [],
+    hitLowChips: false,
+    comebackEmitted: false,
     chips,
     bet,
     phase: "player",
@@ -1347,6 +1355,8 @@ describe("game events", () => {
     return {
       ...DEFAULT_RUN_CONFIG,
       milestones_reached: [],
+      hitLowChips: false,
+      comebackEmitted: false,
       chips,
       bet: 0,
       phase: "betting",
@@ -1494,6 +1504,141 @@ describe("game events", () => {
 });
 
 // ---------------------------------------------------------------------------
+// allIn event (BJ-7)
+// ---------------------------------------------------------------------------
+
+describe("allIn event", () => {
+  function bettingState(chips: number): EngineState {
+    return {
+      ...DEFAULT_RUN_CONFIG,
+      milestones_reached: [],
+      hitLowChips: false,
+      comebackEmitted: false,
+      chips,
+      bet: 0,
+      phase: "betting",
+      outcome: null,
+      payout: 0,
+      lastWin: null,
+      deck: [],
+      player_hand: [],
+      dealer_hand: [],
+      doubled: false,
+      rules: DEFAULT_RULES,
+      ...emptySplitState(),
+    };
+  }
+
+  it("emits allIn when bet equals chips", () => {
+    setRng(createSeededRng(42));
+    const next = placeBet(bettingState(200), 200);
+    expect(next.events?.some((e) => e.type === "allIn")).toBe(true);
+  });
+
+  it("does not emit allIn when bet is less than chips", () => {
+    setRng(createSeededRng(42));
+    const next = placeBet(bettingState(1000), 100);
+    expect(next.events?.some((e) => e.type === "allIn")).toBe(false);
+  });
+
+  it("allIn appears before cardDeal events", () => {
+    setRng(createSeededRng(1));
+    const next = placeBet(bettingState(100), 100);
+    const types = next.events!.map((e) => e.type);
+    const allInIdx = types.indexOf("allIn");
+    const firstCardDealIdx = types.indexOf("cardDeal");
+    expect(allInIdx).toBeGreaterThanOrEqual(0);
+    expect(allInIdx).toBeLessThan(firstCardDealIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Comeback event (BJ-7)
+// ---------------------------------------------------------------------------
+
+describe("comeback event", () => {
+  function stateWithLowChips(chips: number): EngineState {
+    // Player has been low (hitLowChips=true) but not yet emitted comeback
+    return {
+      ...stateInPlayer(chips, Math.floor(chips * 0.5)),
+      startingChips: 1000,
+      hitLowChips: true,
+      comebackEmitted: false,
+      player_hand: [c("♠", "K"), c("♥", "9")], // 19
+      dealer_hand: [c("♦", "6"), c("♣", "7")], // 13
+      deck: Array(10).fill(c("♠", "4")),
+    };
+  }
+
+  it("emits comeback when chips cross from below 25% to above 75%", () => {
+    // startingChips=1000, so 75% = 750. Chips 400, bet 400 → win → chips 800 ≥ 750.
+    const s: EngineState = {
+      ...stateInPlayer(400, 400),
+      startingChips: 1000,
+      hitLowChips: true,
+      comebackEmitted: false,
+      player_hand: [c("♠", "K"), c("♥", "9")], // 19
+      dealer_hand: [c("♦", "6"), c("♣", "7")], // dealer draws to 21 or bust
+      deck: Array(10).fill(c("♠", "4")), // dealer: 13 → draws 4 → 17, stands
+    };
+    const next = stand(s);
+    expect(next.chips).toBe(800);
+    expect(next.events?.some((e) => e.type === "comeback")).toBe(true);
+    expect(next.comebackEmitted).toBe(true);
+  });
+
+  it("does not emit comeback when hitLowChips is false", () => {
+    const s: EngineState = {
+      ...stateInPlayer(400, 400),
+      startingChips: 1000,
+      hitLowChips: false,
+      comebackEmitted: false,
+      player_hand: [c("♠", "K"), c("♥", "9")],
+      dealer_hand: [c("♦", "6"), c("♣", "7")],
+      deck: Array(10).fill(c("♠", "4")),
+    };
+    const next = stand(s);
+    expect(next.events?.some((e) => e.type === "comeback")).toBe(false);
+  });
+
+  it("does not re-emit comeback when already emitted", () => {
+    const s: EngineState = {
+      ...stateInPlayer(400, 400),
+      startingChips: 1000,
+      hitLowChips: true,
+      comebackEmitted: true,
+      player_hand: [c("♠", "K"), c("♥", "9")],
+      dealer_hand: [c("♦", "6"), c("♣", "7")],
+      deck: Array(10).fill(c("♠", "4")),
+    };
+    const next = stand(s);
+    expect(next.events?.some((e) => e.type === "comeback")).toBe(false);
+  });
+
+  it("sets hitLowChips when chips fall below 25% of starting", () => {
+    // startingChips=1000, bet=400, chips=300 → lose → chips=0 (below 25%)
+    const s: EngineState = {
+      ...stateInPlayer(300, 300),
+      startingChips: 1000,
+      hitLowChips: false,
+      comebackEmitted: false,
+      player_hand: [c("♠", "7"), c("♥", "8")], // 15
+      dealer_hand: [c("♦", "K"), c("♣", "7")], // 17 — dealer wins
+      deck: [],
+    };
+    const next = stand(s);
+    expect(next.hitLowChips).toBe(true);
+  });
+
+  it("hitLowChips persists across newHand", () => {
+    const s = stateInResult(200, 100, "win", 100);
+    const sLow: EngineState = { ...s, hitLowChips: true, comebackEmitted: false };
+    const next = newHand(sLow);
+    expect(next.hitLowChips).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Milestone system (BJ-5)
 // ---------------------------------------------------------------------------
 
@@ -1591,6 +1736,8 @@ describe("milestone system", () => {
       ...DEFAULT_RUN_CONFIG,
       milestones: [150],
       milestones_reached: [],
+      hitLowChips: false,
+      comebackEmitted: false,
       chips: 100,
       bet: 0,
       phase: "player",
@@ -1663,6 +1810,8 @@ describe("milestone system", () => {
       ...DEFAULT_RUN_CONFIG,
       milestones: [200],
       milestones_reached: [],
+      hitLowChips: false,
+      comebackEmitted: false,
       chips: 150,
       bet: 0,
       phase: "betting",

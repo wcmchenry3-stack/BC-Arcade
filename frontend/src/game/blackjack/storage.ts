@@ -149,6 +149,13 @@ export async function loadGame(): Promise<EngineState | null> {
     if (!Array.isArray(parsed.milestones_reached)) {
       parsed.milestones_reached = [];
     }
+    // Backfill emotional-feedback fields for saves created before BJ-7.
+    if (typeof parsed.hitLowChips !== "boolean") {
+      parsed.hitLowChips = false;
+    }
+    if (typeof parsed.comebackEmitted !== "boolean") {
+      parsed.comebackEmitted = false;
+    }
     return parsed;
   } catch (e) {
     // Corrupt payload: recovery is complete (we remove the bad entry and

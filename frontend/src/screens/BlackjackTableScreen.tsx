@@ -49,11 +49,16 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const isCompact = height < COMPACT_HEIGHT_BREAKPOINT;
-  const { engine, loading, error, apply, clearEvents, handlePlayAgain } = useBlackjackGame();
+  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats } =
+    useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
   const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
+  const [comebackVisible, setComebackVisible] = useState(false);
+  const [allInVisible, setAllInVisible] = useState(false);
   const milestoneOpacity = useSharedValue(0);
+  const comebackOpacity = useSharedValue(0);
+  const allInOpacity = useSharedValue(0);
 
   const cardDealSound = useSound("blackjack.cardDeal");
   const blackjackSound = useSound("blackjack.blackjack");
@@ -81,6 +86,14 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     opacity: milestoneOpacity.value,
     pointerEvents: "none",
   }));
+  const comebackStyle = useAnimatedStyle(() => ({
+    opacity: comebackOpacity.value,
+    pointerEvents: "none",
+  }));
+  const allInStyle = useAnimatedStyle(() => ({
+    opacity: allInOpacity.value,
+    pointerEvents: "none",
+  }));
 
   const state = engine ? toViewState(engine) : null;
 
@@ -94,16 +107,28 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       },
       bust: () => {
         bustSound.play();
-        bustFlash.value = withSequence(
-          withTiming(1, { duration: 80 }),
-          withTiming(0, { duration: 400 })
-        );
+        const isCriticalLow =
+          engine != null && engine.startingChips > 0 && engine.chips < engine.startingChips * 0.2;
+        if (isCriticalLow) {
+          bustFlash.value = withSequence(
+            withTiming(1, { duration: 120 }),
+            withTiming(0.6, { duration: 200 }),
+            withTiming(1, { duration: 100 }),
+            withTiming(0, { duration: 700 })
+          );
+        } else {
+          bustFlash.value = withSequence(
+            withTiming(1, { duration: 80 }),
+            withTiming(0, { duration: 400 })
+          );
+        }
       },
       win: () => {
         winSound.play();
-        winFlash.value = withSequence(
-          withTiming(1, { duration: 80 }),
-          withTiming(0, { duration: 500 })
+        // 300ms delay creates suspense after dealer reveals hole card
+        winFlash.value = withDelay(
+          300,
+          withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 500 }))
         );
       },
       push: () => pushSound.play(),
@@ -112,6 +137,20 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         milestoneOpacity.value = withSequence(
           withTiming(1, { duration: 150 }),
           withDelay(1400, withTiming(0, { duration: 250 }))
+        );
+      },
+      comeback: () => {
+        setComebackVisible(true);
+        comebackOpacity.value = withSequence(
+          withTiming(1, { duration: 200 }),
+          withDelay(2200, withTiming(0, { duration: 400 }))
+        );
+      },
+      allIn: () => {
+        setAllInVisible(true);
+        allInOpacity.value = withSequence(
+          withTiming(1, { duration: 150 }),
+          withDelay(900, withTiming(0, { duration: 250 }))
         );
       },
     },
@@ -211,7 +250,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               currentPot={state.bet}
               lastWin={state.last_win}
               chips={engine?.chips}
+              startingChips={engine?.startingChips}
               runGoal={engine?.runGoal}
+              winStreak={sessionStats.winStreak}
             />
           </View>
 
@@ -233,8 +274,28 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               <Animated.View
                 style={[styles.milestoneToast, milestoneStyle, { backgroundColor: colors.accent }]}
               >
-                <Text style={[styles.milestoneText, { color: colors.surface }]}>
+                <Text style={[styles.toastText, { color: colors.surface }]}>
                   {t("blackjack:milestone.toast", { chips: milestoneChips })}
+                </Text>
+              </Animated.View>
+            )}
+            {comebackVisible && (
+              <Animated.View
+                style={[styles.comebackBanner, comebackStyle, { backgroundColor: colors.bonus }]}
+                accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
+              >
+                <Text style={[styles.comebackText, { color: colors.surface }]}>
+                  {t("blackjack:comeback.banner")}
+                </Text>
+              </Animated.View>
+            )}
+            {allInVisible && (
+              <Animated.View
+                style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
+                accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
+              >
+                <Text style={[styles.allInText, { color: colors.surface }]}>
+                  {t("blackjack:allIn.badge")}
                 </Text>
               </Animated.View>
             )}
@@ -438,8 +499,37 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     zIndex: 10,
   },
-  milestoneText: {
+  toastText: {
     fontSize: 14,
     fontWeight: "700",
+  },
+  comebackBanner: {
+    position: "absolute",
+    top: "35%",
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    zIndex: 10,
+  },
+  comebackText: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  allInBadge: {
+    position: "absolute",
+    bottom: 12,
+    alignSelf: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  allInText: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
 });
