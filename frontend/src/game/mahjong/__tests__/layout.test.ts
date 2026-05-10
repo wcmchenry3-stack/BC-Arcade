@@ -4,7 +4,7 @@
  * Pure functions tested in isolation (no hooks, no React).
  */
 
-import { calculateMahjongLayout, makeBoardCamera } from "../layout";
+import { calculateMahjongLayout, fitToScreen, makeBoardCamera } from "../layout";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
 
@@ -129,6 +129,48 @@ describe("calculateMahjongLayout", () => {
   });
 });
 
+describe("fitToScreen", () => {
+  it("returns scale=1 when board fits within viewport minus margin", () => {
+    const { scale } = fitToScreen(400, 300, 800, 600, 16);
+    expect(scale).toBe(1);
+  });
+
+  it("scales down when board is larger than viewport minus margin", () => {
+    const { scale } = fitToScreen(800, 600, 400, 300, 0);
+    expect(scale).toBeCloseTo(0.5, 5);
+  });
+
+  it("is constrained by the tighter dimension and capped at 1", () => {
+    // board (100×200) fits inside viewport (200×300) — uncapped would be 1.5 but cap applies
+    const { scale } = fitToScreen(100, 200, 200, 300, 0);
+    expect(scale).toBe(1);
+    // verify the width dimension actually constrains when height has more room
+    const { scale: s2 } = fitToScreen(800, 200, 400, 300, 0);
+    // scaleX = 400/800 = 0.5, scaleY = 300/200 = 1.5 → min = 0.5
+    expect(s2).toBeCloseTo(0.5, 5);
+  });
+
+  it("never exceeds 1 even when board is much smaller than viewport", () => {
+    const { scale } = fitToScreen(200, 150, 1366, 1024, 16);
+    expect(scale).toBe(1);
+  });
+
+  it("centers the board horizontally and vertically", () => {
+    // board (400×300) fits inside viewport (500×400) with no margin → scale=1
+    // offsetX = (500 - 400) / 2 = 50, offsetY = (400 - 300) / 2 = 50
+    const { offsetX, offsetY } = fitToScreen(400, 300, 500, 400, 0);
+    expect(offsetX).toBe(50);
+    expect(offsetY).toBe(50);
+  });
+
+  it("applies margin symmetrically", () => {
+    const margin = 20;
+    const { scale } = fitToScreen(400, 300, 400, 300, margin);
+    const expectedScale = Math.min((400 - margin * 2) / 400, (300 - margin * 2) / 300);
+    expect(scale).toBeCloseTo(expectedScale, 5);
+  });
+});
+
 describe("makeBoardCamera", () => {
   const layout = calculateMahjongLayout({
     screenWidth: 800,
@@ -172,5 +214,22 @@ describe("makeBoardCamera", () => {
   it("exposes boardWidth and boardHeight matching the source layout", () => {
     expect(cam.boardWidth).toBe(layout.boardWidth);
     expect(cam.boardHeight).toBe(layout.boardHeight);
+  });
+
+  it("defaults to scale=1 and zero offsets when no viewport args are given", () => {
+    expect(cam.scale).toBe(1);
+    expect(cam.offsetX).toBe(0);
+    expect(cam.offsetY).toBe(0);
+    expect(cam.viewportWidth).toBe(layout.boardWidth);
+    expect(cam.viewportHeight).toBe(layout.boardHeight);
+  });
+
+  it("computes fit-to-screen scale when viewport and margin are provided", () => {
+    const fitCam = makeBoardCamera(layout, layout.boardWidth * 2, layout.boardHeight * 2, 0);
+    // Viewport is 2× the board — scale capped at 1
+    expect(fitCam.scale).toBe(1);
+    // Viewport is half the board — scale = 0.5
+    const smallCam = makeBoardCamera(layout, layout.boardWidth / 2, layout.boardHeight / 2, 0);
+    expect(smallCam.scale).toBeCloseTo(0.5, 5);
   });
 });

@@ -24,6 +24,8 @@ export interface MahjongLayout {
   padY: number;
   boardWidth: number;
   boardHeight: number;
+  availWidth: number;
+  availHeight: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,31 @@ export interface MahjongLayout {
 // Future implementations can swap tileToScreen to add zoom/pan without
 // touching any rendering or hit-test code.
 // ---------------------------------------------------------------------------
+
+export interface CameraState {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export function fitToScreen(
+  boardWidth: number,
+  boardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  margin = 16
+): CameraState {
+  const scaleX = (viewportWidth - margin * 2) / boardWidth;
+  const scaleY = (viewportHeight - margin * 2) / boardHeight;
+  // Cap at 1 — never scale up beyond natural tile size; user zooms in via gesture (#1454).
+  // Floor at 0.01 — guards against negative scale when margin > viewport/2.
+  const scale = Math.max(0.01, Math.min(1, scaleX, scaleY));
+  return {
+    scale,
+    offsetX: (viewportWidth - boardWidth * scale) / 2,
+    offsetY: (viewportHeight - boardHeight * scale) / 2,
+  };
+}
 
 export interface BoardCamera {
   tileToScreen(col: number, row: number, layer: number): { x: number; y: number };
@@ -41,9 +68,24 @@ export interface BoardCamera {
   sideWidth: number;
   boardWidth: number;
   boardHeight: number;
+  // Camera transform — applied to the canvas container by MahjongScreen.
+  // tileToScreen() returns world-space coords (pre-transform); MahjongScreen
+  // applies scale via a View transform and centers via flexbox, so offsetX/offsetY
+  // are reserved for the gesture-driven zoom/pan layer (#1454) and not used for
+  // static positioning.
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
-export function makeBoardCamera(layout: MahjongLayout): BoardCamera {
+export function makeBoardCamera(
+  layout: MahjongLayout,
+  viewportWidth = layout.boardWidth,
+  viewportHeight = layout.boardHeight,
+  margin = 0
+): BoardCamera {
   const {
     tileWidth,
     tileHeight,
@@ -55,6 +97,13 @@ export function makeBoardCamera(layout: MahjongLayout): BoardCamera {
     boardWidth,
     boardHeight,
   } = layout;
+  const { scale, offsetX, offsetY } = fitToScreen(
+    boardWidth,
+    boardHeight,
+    viewportWidth,
+    viewportHeight,
+    margin
+  );
   return {
     tileToScreen(col, row, layer) {
       return {
@@ -69,6 +118,11 @@ export function makeBoardCamera(layout: MahjongLayout): BoardCamera {
     sideWidth,
     boardWidth,
     boardHeight,
+    scale,
+    offsetX,
+    offsetY,
+    viewportWidth,
+    viewportHeight,
   };
 }
 
@@ -140,6 +194,8 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     padY,
     boardWidth,
     boardHeight,
+    availWidth: availW,
+    availHeight: availH,
   };
 }
 
@@ -170,5 +226,8 @@ export function useMahjongCanvasLayout(): MahjongLayout {
 
 export function useMahjongCamera(): BoardCamera {
   const layout = useMahjongCanvasLayout();
-  return useMemo(() => makeBoardCamera(layout), [layout]);
+  return useMemo(
+    () => makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16),
+    [layout]
+  );
 }
