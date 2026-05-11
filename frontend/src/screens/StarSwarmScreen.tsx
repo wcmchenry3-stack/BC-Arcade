@@ -315,7 +315,7 @@ export default function StarSwarmScreen() {
                     <Pressable
                       key={tier}
                       style={[
-                        styles.pickerRow,
+                        dynamicStyles.pickerRow,
                         difficulty === tier && dynamicStyles.pickerRowSelected,
                       ]}
                       onPress={() => setDifficulty(tier)}
@@ -325,7 +325,7 @@ export default function StarSwarmScreen() {
                     >
                       <Text
                         style={[
-                          styles.pickerTierName,
+                          dynamicStyles.pickerTierName,
                           difficulty === tier && dynamicStyles.pickerTierNameSelected,
                         ]}
                       >
@@ -636,22 +636,6 @@ const baseStyles = StyleSheet.create({
     gap: 6,
     paddingVertical: 4,
   },
-  pickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  pickerTierName: {
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 13,
-    fontWeight: "600",
-  },
   pickerTierMult: {
     color: "rgba(255,238,0,0.8)",
     fontSize: 13,
@@ -736,6 +720,22 @@ const getStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     },
     pickerTierNameSelected: {
       color: "#ffffff",
+    },
+    pickerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.textMuted + "30",
+      backgroundColor: colors.textMuted + "0d",
+    },
+    pickerTierName: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "600",
     },
   });
 
