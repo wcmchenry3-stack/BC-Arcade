@@ -21,7 +21,7 @@ import type {
 export const CANVAS_W = 360;
 export const CANVAS_H = 640;
 
-const PLAYER_W = 34;
+export const PLAYER_W = 34;
 const PLAYER_H = 34;
 const PLAYER_Y_FROM_BOTTOM = 72;
 const PLAYER_SHOOT_COOLDOWN = 280; // ms

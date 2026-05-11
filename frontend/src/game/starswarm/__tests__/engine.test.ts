@@ -25,6 +25,7 @@ import {
   difficultyLabel,
   BOSS_BULLET_VY,
   BULLET_E_VY,
+  PLAYER_W,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -91,6 +92,48 @@ describe("initStarSwarm", () => {
   it("player starts near bottom of canvas", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     expect(s.player.y).toBeGreaterThan(CANVAS_H * 0.8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Player boundary clamping — regression for corner-stuck bug
+// Controls.tsx previously clamped playerXRef to [0, CANVAS_W] while the engine
+// clamps to [PLAYER_W/2, CANVAS_W - PLAYER_W/2], creating a dead zone at edges.
+// ---------------------------------------------------------------------------
+
+describe("player boundary clamping", () => {
+  const hw = PLAYER_W / 2; // 17
+
+  it("clamps player to right edge (CANVAS_W - hw) when input exceeds canvas width", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: CANVAS_W, fire: false });
+    expect(next.player.x).toBe(CANVAS_W - hw);
+  });
+
+  it("clamps player to left edge (hw) when input is 0", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: 0, fire: false });
+    expect(next.player.x).toBe(hw);
+  });
+
+  it("does not over-clamp when input is exactly at the right boundary", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: CANVAS_W - hw, fire: false });
+    expect(next.player.x).toBe(CANVAS_W - hw);
+  });
+
+  it("does not over-clamp when input is exactly at the left boundary", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: hw, fire: false });
+    expect(next.player.x).toBe(hw);
+  });
+
+  it("consecutive right-edge inputs do not push ship beyond CANVAS_W - hw", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    for (let i = 0; i < 5; i++) {
+      s = tick(s, 16, { playerX: CANVAS_W, fire: false });
+    }
+    expect(s.player.x).toBe(CANVAS_W - hw);
   });
 });
 
