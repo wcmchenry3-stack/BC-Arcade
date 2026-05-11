@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
 import type { GamePhase } from "../../game/starswarm/types";
-import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
+import { CANVAS_W, CANVAS_H, PLAYER_W } from "../../game/starswarm/engine";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 
@@ -68,7 +68,9 @@ export default function Controls({
     .onChange((e) => {
       if (!activeDragRef.current) return;
       // newX = shipX_at_touch_start + (currentTouchX - touchStartX)
-      const newX = clamp(shipXAtDragStartRef.current + e.translationX / scale, 0, CANVAS_W);
+      // Clamp to engine's half-width margins so playerXRef never diverges from the rendered position.
+      const hw = PLAYER_W / 2;
+      const newX = clamp(shipXAtDragStartRef.current + e.translationX / scale, hw, CANVAS_W - hw);
       playerXRef.current = newX;
       canvasRef.current?.setPlayerX(newX);
     })
@@ -94,7 +96,8 @@ export default function Controls({
       if (held.size > 0) {
         const dx = (held.has("ArrowRight") ? STEP : 0) - (held.has("ArrowLeft") ? STEP : 0);
         if (dx !== 0) {
-          playerXRef.current = clamp(playerXRef.current + dx, 0, CANVAS_W);
+          const hw = PLAYER_W / 2;
+          playerXRef.current = clamp(playerXRef.current + dx, hw, CANVAS_W - hw);
           canvasRef.current?.setPlayerX(playerXRef.current);
         }
       }
