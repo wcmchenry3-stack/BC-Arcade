@@ -301,6 +301,11 @@ export default function HeartsScreen() {
   function handleCardPress(card: Card) {
     if (!gameState || gameState.currentPlayerIndex !== HUMAN || gameState.phase !== "playing")
       return;
+    // Don't accept input while the completed-trick animation is still playing.
+    // If the human taps during this window and clears lastTrick, the AI loop's
+    // pending animation-resolver promise would never be fulfilled, leaving
+    // loopActiveRef.current === true and freezing all subsequent AI turns.
+    if (lastTrick !== null) return;
     ensureSyncStarted();
     if (isQueenOfSpades(card)) {
       humanJustPlayedQSRef.current = true;
