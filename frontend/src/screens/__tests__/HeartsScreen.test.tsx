@@ -243,10 +243,10 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
         { card: { suit: "hearts", rank: 5 }, playerIndex: 0 }, // human led ♥5
       ],
       playerHands: [
-        [],                                          // human has no cards left
-        [{ suit: "diamonds", rank: 7 }],             // AI 1
-        [{ suit: "diamonds", rank: 8 }],             // AI 2
-        [{ suit: "diamonds", rank: 9 }],             // AI 3
+        [], // human has no cards left
+        [{ suit: "diamonds", rank: 7 }], // AI 1
+        [{ suit: "diamonds", rank: 8 }], // AI 2
+        [{ suit: "diamonds", rank: 9 }], // AI 3
       ],
       wonCards: [[], [], [], []],
     };
