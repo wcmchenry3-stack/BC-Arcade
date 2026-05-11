@@ -358,7 +358,12 @@ function selectCardToPlayMedium(
   }
 
   if (isLeading) {
-    return chooseLead(valid);
+    const seenMedium = new Set<string>();
+    for (const pile of state.wonCards) {
+      for (const c of pile) seenMedium.add(`${c.suit}:${c.rank}`);
+    }
+    for (const tc of state.currentTrick) seenMedium.add(`${tc.card.suit}:${tc.card.rank}`);
+    return chooseLead(valid, seenMedium.has("spades:12"));
   }
 
   return chooseFollow(valid, trick);
@@ -478,7 +483,7 @@ function selectCardToPlayHard(
     return chooseLeadHard(valid, seenKeys);
   }
 
-  return chooseFollow(valid, trick);
+  return chooseFollow(valid, trick, isMoonAttempt);
 }
 
 /**
@@ -497,9 +502,13 @@ export function selectCardToPlay(
   return selectCardToPlayMedium(hand, trick, state, playerIndex);
 }
 
-function chooseLead(valid: Card[]): Card {
-  // Avoid leading hearts or Q♠ unless forced
-  const safe = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
+function chooseLead(valid: Card[], qSpadeGone: boolean): Card {
+  // Avoid leading hearts, Q♠, and (until Q♠ is gone) K♠/A♠
+  const safe = valid.filter((c) => {
+    if (c.suit === "hearts" || isQueenOfSpades(c)) return false;
+    if (c.suit === "spades" && (c.rank === 13 || c.rank === 1) && !qSpadeGone) return false;
+    return true;
+  });
   const pool = safe.length > 0 ? safe : valid;
 
   // Lead lowest of longest non-heart suit (exhaust safe suits first)
@@ -540,7 +549,7 @@ function chooseLeadHard(valid: Card[], seenKeys: Set<string>): Card {
   return lowest(pool) ?? valid[0]!;
 }
 
-function chooseFollow(valid: Card[], trick: readonly TrickCard[]): Card {
+function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt = false): Card {
   const first = trick[0];
   if (!first) return valid[0]!;
 
@@ -584,7 +593,8 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[]): Card {
     return lowest(inSuit) ?? valid[0]!;
   }
 
-  // No points, not last — play lowest to stay safe
+  // No points, not last — exhaust highest card that still loses (unless moon-attempt must keep Q♠)
+  if (!isMoonAttempt && losing.length > 0) return highest(losing) ?? valid[0]!;
   return lowest(inSuit) ?? valid[0]!;
 }
 

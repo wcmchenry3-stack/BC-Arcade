@@ -4,7 +4,9 @@
  * Runs batches of 3,000 games. Each batch specifies all 4 player difficulties
  * individually. Player 0's stats are tracked and reported.
  *
- * Usage: npx tsx scripts/simulate-hearts.ts
+ * Usage:
+ *   npx tsx scripts/simulate-hearts.ts                  # aggregate stats
+ *   npx tsx scripts/simulate-hearts.ts --log-games 10   # 10 fully-logged games (NDJSON)
  */
 
 import {
@@ -17,7 +19,7 @@ import {
   setRng,
 } from "../frontend/src/game/hearts/engine";
 import { selectCardToPlay, selectCardsToPass } from "../frontend/src/game/hearts/ai";
-import type { AiDifficulty, HeartsState } from "../frontend/src/game/hearts/types";
+import type { AiDifficulty, Card, HeartsState } from "../frontend/src/game/hearts/types";
 
 // ---------------------------------------------------------------------------
 // Simulation
@@ -74,6 +76,125 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostic game logging (#1502)
+// ---------------------------------------------------------------------------
+
+interface TrickLog {
+  trickNumber: number;
+  leader: number;
+  plays: Array<{ player: number; card: Card }>;
+  winner: number;
+}
+
+interface HandLog {
+  handNumber: number;
+  passDirection: string;
+  initialDeal: Card[][];
+  passed: Card[][];
+  received: Card[][];
+  tricks: TrickLog[];
+}
+
+interface GameLog {
+  seed: number;
+  difficulties: string[];
+  winner: number;
+  finalScores: number[];
+  hands: HandLog[];
+}
+
+function simulateGameLogged(difficulties: Difficulties, seed: number): GameLog {
+  setRng(createSeededRng(seed));
+  let state: HeartsState = dealGame(difficulties[0]);
+
+  const hands: HandLog[] = [];
+  let currentHand: HandLog = {
+    handNumber: state.handNumber,
+    passDirection: state.passDirection,
+    initialDeal: state.playerHands.map((h) => [...h]),
+    passed: [[], [], [], []],
+    received: [[], [], [], []],
+    tricks: [],
+  };
+  let trickPlays: Array<{ player: number; card: Card }> = [];
+  let trickLeader = -1;
+  let trickNumber = 0;
+  let pendingPasses: Card[][] = [[], [], [], []];
+
+  while (state.phase !== "game_over") {
+    if (state.phase === "passing") {
+      for (let i = 0; i < 4; i++) {
+        const diff = difficulties[i]!;
+        const hand = [...(state.playerHands[i] ?? [])];
+        const cards = selectCardsToPass(hand, state.passDirection, diff);
+        pendingPasses[i] = cards;
+        for (const card of cards) {
+          state = selectPassCard(state, i, card);
+        }
+      }
+      const handsBeforeCommit = state.playerHands.map((h) => new Set(h.map((c) => `${c.suit}:${c.rank}`)));
+      state = commitPass(state);
+      currentHand.passed = pendingPasses.map((p) => [...p]);
+      for (let i = 0; i < 4; i++) {
+        currentHand.received[i] = (state.playerHands[i] ?? []).filter(
+          (c) => !handsBeforeCommit[i]!.has(`${c.suit}:${c.rank}`)
+        );
+      }
+    } else if (state.phase === "playing") {
+      const playerIndex = state.currentPlayerIndex;
+      const diff = difficulties[playerIndex]!;
+      const hand = [...(state.playerHands[playerIndex] ?? [])];
+      const trick = [...state.currentTrick];
+      const card = selectCardToPlay(hand, trick, state, playerIndex, diff);
+
+      if (trick.length === 0) {
+        trickLeader = playerIndex;
+        trickNumber++;
+      }
+
+      const prevTricksPlayed = state.tricksPlayedInHand;
+      trickPlays.push({ player: playerIndex, card });
+      state = playCard(state, playerIndex, card);
+
+      if (state.tricksPlayedInHand > prevTricksPlayed) {
+        currentHand.tricks.push({
+          trickNumber,
+          leader: trickLeader,
+          plays: trickPlays,
+          winner: state.currentLeaderIndex,
+        });
+        trickPlays = [];
+      }
+    } else if (state.phase === "dealing") {
+      hands.push(currentHand);
+      state = dealNextHand(state);
+      currentHand = {
+        handNumber: state.handNumber,
+        passDirection: state.passDirection,
+        initialDeal: state.playerHands.map((h) => [...h]),
+        passed: [[], [], [], []],
+        received: [[], [], [], []],
+        tricks: [],
+      };
+      trickPlays = [];
+      trickLeader = -1;
+      trickNumber = 0;
+      pendingPasses = [[], [], [], []];
+    }
+  }
+
+  hands.push(currentHand);
+
+  return {
+    seed,
+    difficulties: [...difficulties],
+    winner: state.winnerIndex ?? -1,
+    finalScores: [...state.cumulativeScores],
+    hands,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Stats helpers
 // ---------------------------------------------------------------------------
 
@@ -101,6 +222,25 @@ function sigLabel(z: number): string {
   if (z > 2.58) return "p < 0.01";
   if (z > 1.96) return "p < 0.05";
   return "n.s.";
+}
+
+// ---------------------------------------------------------------------------
+// CLI dispatch
+// ---------------------------------------------------------------------------
+
+const logGamesArg = process.argv.indexOf("--log-games");
+if (logGamesArg !== -1) {
+  const count = parseInt(process.argv[logGamesArg + 1] ?? "0", 10);
+  if (!count || count < 1) {
+    process.stderr.write("Usage: --log-games <N>  (N must be a positive integer)\n");
+    process.exit(1);
+  }
+  const logDifficulties: Difficulties = ["medium", "medium", "medium", "medium"];
+  for (let i = 0; i < count; i++) {
+    const log = simulateGameLogged(logDifficulties, i);
+    process.stdout.write(JSON.stringify(log) + "\n");
+  }
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
