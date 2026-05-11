@@ -843,6 +843,48 @@ describe("chooseFollow — highest losing card (#1500)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Regression: #1510 — chooseFollow sheds Q♠ before K♠ when A♠ is played
+// ---------------------------------------------------------------------------
+describe("chooseFollow — Q♠ priority over K♠ when both lose (#1510)", () => {
+  it("sheds Q♠ before K♠ when A♠ leads and both would lose (pts > 0)", () => {
+    // A♠ leads with Q♥ already in the trick (points > 0).
+    // Player holds K♠ + Q♠ — both lose to A♠. Q♠ must be shed first.
+    const hand = [c("spades", 13), c("spades", 12)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 1), playerIndex: 0 }, // A♠ leads (ace-high wins)
+      { card: c("hearts", 12), playerIndex: 2 }, // Q♥ discarded — trick has points
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 12)); // Q♠ not K♠
+  });
+
+  it("sheds Q♠ before K♠ when A♠ leads in a 0-pt trick (no-points branch)", () => {
+    // A♠ leads, no points in trick yet, player not last to play.
+    // Player holds K♠ + Q♠ — both lose to A♠. Q♠ must still be shed first.
+    const hand = [c("spades", 13), c("spades", 12)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 1), playerIndex: 0 }, // A♠ leads
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+    });
+    // Player 1 follows; players 2 and 3 still to play → not last
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 12)); // Q♠ not K♠
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Regression: #1501 — medium AI avoids leading K♠/A♠ when Q♠ still live
 // ---------------------------------------------------------------------------
 describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {

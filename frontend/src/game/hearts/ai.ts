@@ -586,7 +586,9 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   if (pts > 0) {
     // Trick has points — try to lose
     if (losing.length > 0) {
-      // Play highest card that still loses
+      // Shed Q♠ before K♠: Q♠ is more dangerous even though K♠ has higher rank
+      const qSpade = losing.find(isQueenOfSpades);
+      if (qSpade) return qSpade;
       return highest(losing) ?? valid[0]!;
     }
     // Must win — play lowest to minimize damage
@@ -594,7 +596,11 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   }
 
   // No points, not last — exhaust highest card that still loses (unless moon-attempt must keep Q♠)
-  if (!isMoonAttempt && losing.length > 0) return highest(losing) ?? valid[0]!;
+  if (!isMoonAttempt && losing.length > 0) {
+    const qSpade = losing.find(isQueenOfSpades);
+    if (qSpade) return qSpade;
+    return highest(losing) ?? valid[0]!;
+  }
   return lowest(inSuit) ?? valid[0]!;
 }
 
