@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -10,8 +12,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 import analyzer
-
-app = FastAPI()
 
 DATA_DIR = Path(__file__).parent / "data"
 REPO_ROOT = Path(__file__).parent.parent
@@ -25,9 +25,13 @@ def _reload_games() -> int:
     return len(GAMES)
 
 
-@app.on_event("startup")
-def startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     _reload_games()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -105,22 +109,26 @@ class SimulateRequest(BaseModel):
 
 
 @app.post("/api/simulate")
-def simulate(req: SimulateRequest) -> dict:
-    diff_str = ",".join(req.difficulties)
+async def simulate(req: SimulateRequest) -> dict:
+    # Explicitly rebuild safe values so static analysis can verify no injection path
+    safe_count = max(1, min(500, int(req.count)))
+    safe_diffs = [d for d in req.difficulties if d in {"easy", "medium", "hard"}]
     cmd = [
         "npx", "tsx", "scripts/simulate-hearts.ts",
-        "--count", str(req.count),
-        "--difficulties", diff_str,
+        "--count", str(safe_count),
+        "--difficulties", ",".join(safe_diffs),
     ]
     games_file = DATA_DIR / "games.json"
     # Write stdout directly to file to avoid pipe buffer truncation on large outputs
     with open(games_file, "w", encoding="utf-8") as out_f:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             cmd,
             cwd=str(REPO_ROOT),
             stdout=out_f,
             stderr=subprocess.PIPE,
             text=True,
+            timeout=120,
         )
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=result.stderr or "Simulation failed")

@@ -6,9 +6,6 @@ import os
 import re
 from typing import Any
 
-CARD_RANK_MAP = {1: 14, 11: 11, 12: 12, 13: 13}
-
-
 def _rank(card: dict) -> int:
     r = card["rank"]
     return 14 if r == 1 else r
@@ -181,11 +178,6 @@ def safe_discard_rate(games: list[dict]) -> dict:
                     # void opportunity
                     counts[p]["void_opportunities"] += 1
 
-                    penalty = _card_points(card) > 0
-                    # trick 1: hearts and Q♠ restricted — can't count as penalty dump
-                    if trick_number == 1 and (_is_heart(card) or _is_qs(card)):
-                        penalty = False
-
                     if _is_heart(card) and trick_number != 1:
                         counts[p]["hearts_dumped"] += 1
                     elif _is_qs(card) and trick_number != 1:
@@ -223,13 +215,6 @@ def qs_dump_timing(games: list[dict]) -> dict:
     for game in games:
         for hand in game.get("hands", []):
             received = hand.get("received", [[], [], [], []])
-            held_qs = {
-                p for p in range(4)
-                if any(_is_qs(c) for c in received[p])
-                or any(_is_qs(c) for c in hand.get("initialDeal", [[], [], [], []])[p])
-                if not hand.get("passed", [[], [], [], []])[p]
-                or not any(_is_qs(c) for c in hand.get("passed", [[], [], [], []])[p])
-            }
 
             # Rebuild who holds Q♠ after passing
             qs_holders = set()
