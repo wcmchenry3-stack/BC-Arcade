@@ -6,6 +6,7 @@ import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, setRng } from "../../game/hearts/engine";
 import * as engine from "../../game/hearts/engine";
 import { loadGame } from "../../game/hearts/storage";
+import type { HeartsState } from "../../game/hearts/types";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -196,5 +197,87 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     expect(queryByText("25")).toBeNull();
     expect(queryByText("41")).toBeNull();
     expect(queryByText("17")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: AI loop frozen when human taps card during trick animation
+// ---------------------------------------------------------------------------
+//
+// Root cause: the AI loop awaits a Promise (trickAnimResolverRef.current) while
+// showing the completed-trick animation. If the human tapped a card BEFORE the
+// animation fired handleTrickAnimationComplete, handleCardPress would call
+// setLastTrick(null) — clearing the animation — WITHOUT ever resolving the
+// Promise. This left loopActiveRef.current === true permanently, freezing all
+// subsequent AI turns.
+//
+// Fix: handleCardPress now returns early when lastTrick !== null, so the human
+// cannot interact with the hand while the animation is in progress. Once the
+// animation completes normally (handleTrickAnimationComplete → resolver →
+// setLastTrick(null)), the human can play and the AI loop is free.
+describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
+  // State: trick 13 is in progress — the human has already played the leading
+  // card (♥5), and AI 1/2/3 each have one card left to follow.
+  // currentPlayerIndex === 1 (AI 1's turn), so the AI loop should run 3 turns
+  // and complete the hand (tricksPlayedInHand → 13 → phase "dealing").
+  function makeFinalTrickInProgressState(): HeartsState {
+    return {
+      _v: 3,
+      aiDifficulty: "medium",
+      phase: "playing",
+      handNumber: 1,
+      passDirection: "none",
+      cumulativeScores: [0, 0, 0, 0],
+      handScores: [0, 0, 0, 0],
+      scoreHistory: [],
+      passSelections: [[], [], [], []],
+      passingComplete: true,
+      heartsBroken: true,
+      isComplete: false,
+      winnerIndex: null,
+      events: [],
+      tricksPlayedInHand: 12, // 12 complete, trick 13 started
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 1, // AI 1 to play
+      currentTrick: [
+        { card: { suit: "hearts", rank: 5 }, playerIndex: 0 }, // human led ♥5
+      ],
+      playerHands: [
+        [], // human has no cards left
+        [{ suit: "diamonds", rank: 7 }], // AI 1
+        [{ suit: "diamonds", rank: 8 }], // AI 2
+        [{ suit: "diamonds", rank: 9 }], // AI 3
+      ],
+      wonCards: [[], [], [], []],
+    };
+  }
+
+  beforeEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(makeFinalTrickInProgressState());
+  });
+
+  afterEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("AI completes the final trick and the hand-end overlay appears", async () => {
+    const { getByText } = renderScreen();
+
+    // Wait for the saved game to load.
+    await waitFor(() => expect(loadGame).toHaveBeenCalled());
+
+    // Advance timers past all 3 AI delays (3 × 400 ms) plus a buffer.
+    // Before the fix, if the game reached this state after the human had tapped
+    // a card mid-animation, loopActiveRef would be stuck true and no AI turn
+    // would ever run — the game would freeze indefinitely here.
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+
+    // AI 1/2/3 each void in hearts → each plays their diamond freely.
+    // Human wins the trick (only ♥5 in the led suit).
+    // tricksPlayedInHand reaches 13 → applyHandScoring → phase "dealing"
+    // → "Hand Complete" modal rendered.
+    await waitFor(() => expect(getByText("Hand Complete")).toBeTruthy());
   });
 });

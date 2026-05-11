@@ -803,3 +803,86 @@ describe("chooseFollow — safe trick, never self-dump Q♠ or hearts (#1363)", 
     expect(pick).toEqual(c("spades", 13));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: #1500 — chooseFollow plays highest losing card when trick is 0-pt
+// ---------------------------------------------------------------------------
+describe("chooseFollow — highest losing card (#1500)", () => {
+  it("plays highest losing card (not lowest) in a 0-pt trick when not last to play", () => {
+    // A♠ leads; K♠ and 5♠ both lose to it. Before fix: plays 5♠. After fix: plays K♠.
+    const hand = [c("spades", 13), c("spades", 5)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 1), playerIndex: 0 }, // A♠ wins (ace-high)
+    ];
+    // player 1 follows; players 2 and 3 still to play (not last)
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 13));
+  });
+
+  it("dumps Q♠ on K♠ trick (highest losing = Q♠ beats keeping it)", () => {
+    // K♠ leads; Q♠ (rank 12 < rank 13 ace-high) loses to it — dump it.
+    const hand = [c("spades", 12), c("spades", 5)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 13), playerIndex: 0 }, // K♠ leads
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 12)); // Q♠ dumped
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: #1501 — medium AI avoids leading K♠/A♠ when Q♠ still live
+// ---------------------------------------------------------------------------
+describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
+  it("does not lead K♠ when Q♠ has not been seen", () => {
+    const hand = [c("spades", 13), c("clubs", 5), c("diamonds", 7)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      heartsBroken: false,
+      wonCards: [[], [], [], []], // Q♠ not in wonCards
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    expect(pick).not.toEqual(c("spades", 13));
+  });
+
+  it("does not lead A♠ when Q♠ has not been seen", () => {
+    const hand = [c("spades", 1), c("clubs", 4), c("diamonds", 6)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      heartsBroken: false,
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    expect(pick).not.toEqual(c("spades", 1));
+  });
+
+  it("leads K♠ freely once Q♠ is in wonCards", () => {
+    // Only K♠ is safe to lead (other cards are hearts); Q♠ already won → K♠ is safe.
+    const hand = [c("spades", 13), c("hearts", 2), c("hearts", 3)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      heartsBroken: true,
+      wonCards: [[c("spades", 12)], [], [], []], // Q♠ has been played
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    expect(pick).toEqual(c("spades", 13));
+  });
+});
