@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import re
 from typing import Any
 
 def _rank(card: dict) -> int:
@@ -42,17 +41,14 @@ def load_games(data_dir: str) -> list:
             continue
         path = os.path.join(data_dir, fname)
         with open(path, encoding="utf-8") as f:
-            raw = f.read()
-        # Split multi-object files on {"seed": boundaries
-        parts = re.split(r'(?=\{"seed")', raw)
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-            try:
-                games.append(json.loads(part))
-            except json.JSONDecodeError:
-                pass
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    games.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
     return games
 
 
