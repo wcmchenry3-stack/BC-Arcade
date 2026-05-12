@@ -98,6 +98,8 @@ const FP_FACE = "#f5f0e8";
 const FP_BORDER = "#ffd700";
 const FP_SIDE_R = "#a89070";
 const FP_SIDE_B = "#987860";
+// Border inset between the gold frame and the ivory face, in logical pixels.
+const FACE_INSET = 2;
 
 function FlyingTileGlyph({
   faceWidth: fw,
@@ -111,6 +113,10 @@ function FlyingTileGlyph({
   imgUri: string | null;
 }) {
   return (
+    // overflow: "visible" is intentional so the 3-D side panels render outside
+    // the face bounds. Note: Android clips overflow in deeply nested Views by
+    // default, so the side shadows won't appear on native until the parent
+    // Animated.View chain also carries overflow: "visible".
     <View style={{ width: fw, height: fh, overflow: "visible" }}>
       {/* 3-D right side */}
       <View
@@ -150,10 +156,10 @@ function FlyingTileGlyph({
       <View
         style={{
           position: "absolute",
-          left: 2,
-          top: 2,
-          width: fw - 4,
-          height: fh - 4,
+          left: FACE_INSET,
+          top: FACE_INSET,
+          width: fw - FACE_INSET * 2,
+          height: fh - FACE_INSET * 2,
           backgroundColor: FP_FACE,
           borderRadius: 1,
           overflow: "hidden",
@@ -163,7 +169,13 @@ function FlyingTileGlyph({
         {Platform.OS === "web" && imgUri !== null && (
           <Image
             source={{ uri: imgUri }}
-            style={{ position: "absolute", left: 2, top: 2, right: 2, bottom: 2 }}
+            style={{
+              position: "absolute",
+              left: FACE_INSET,
+              top: FACE_INSET,
+              right: FACE_INSET,
+              bottom: FACE_INSET,
+            }}
             resizeMode="contain"
           />
         )}
@@ -301,7 +313,9 @@ export default function MahjongScreen() {
   );
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
-  const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
+  const [tileUris, setTileUris] = useState<(string | null)[]>(
+    Array(TILE_REQUIRES.length).fill(null)
+  );
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
@@ -425,14 +439,14 @@ export default function MahjongScreen() {
   useEffect(() => {
     if (Platform.OS !== "web") return;
     let cancelled = false;
-    const uris: (string | null)[] = Array(42).fill(null);
+    const uris: (string | null)[] = Array(TILE_REQUIRES.length).fill(null);
     (async () => {
       await Promise.all(
-        (TILE_REQUIRES as number[]).map(async (src, i) => {
+        (TILE_REQUIRES as readonly number[]).map(async (src, i) => {
           try {
             const asset = Asset.fromModule(src);
             await asset.downloadAsync();
-            uris[i] = asset.localUri ?? asset.uri ?? null;
+            uris[i] = asset.uri ?? null;
           } catch {
             /* keep null */
           }
