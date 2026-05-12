@@ -928,14 +928,19 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
     expect(pick).toEqual(c("spades", 13));
   });
 
-  it("dumps Q♠ when last to play and K♠ is covering (safe dump opportunity)", () => {
-    // P3 is last to play. A♠ led the trick, K♠ and 9♠ already played (K♠ covers Q♠).
-    // P3 holds Q♠ and 7♠. Q♠ should be dumped — K♠ takes the trick, not Q♠.
+});
+
+// ---------------------------------------------------------------------------
+// Regression: #1525 — chooseFollow dumps Q♠ when last to play with covering card
+// ---------------------------------------------------------------------------
+describe("chooseFollow — last to play, covering card (#1525)", () => {
+  it("dumps Q♠ when A♠ is covering and K♠ is already played", () => {
+    // A♠ led — winningRank=14. Q♠ (rank 12) loses to A♠, so dump it.
     const hand = [c("spades", 12), c("spades", 7)];
     const trick: TrickCard[] = [
-      { card: c("spades", 1), playerIndex: 0 },  // A♠ led — winningRank=14
-      { card: c("spades", 13), playerIndex: 1 }, // K♠
-      { card: c("spades", 9), playerIndex: 2 },  // 9♠
+      { card: c("spades", 1), playerIndex: 0 },
+      { card: c("spades", 13), playerIndex: 1 },
+      { card: c("spades", 9), playerIndex: 2 },
     ];
     const state = mkState({
       playerHands: [[], [], [], hand],
@@ -946,13 +951,11 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
     expect(pick).toEqual(c("spades", 12));
   });
 
-  it("does not dump Q♠ when last to play and would take the trick (no covering card)", () => {
-    // A♠ led and K♠ already played; Q♠ holder has Q♠ and would lose to A♠.
-    // But if only lower cards are covering Q♠ stays — wait, here A♠ covers so we DO dump.
-    // Variant: 9♠ is the current winner and Q♠ would win. Should NOT dump Q♠.
+  it("does not dump Q♠ when no covering card — Q♠ would win the trick", () => {
+    // 9♠ is the current winner; Q♠ rank 12 > 9 so playing Q♠ takes the trick.
     const hand = [c("spades", 12), c("spades", 7)];
     const trick: TrickCard[] = [
-      { card: c("spades", 9), playerIndex: 0 },  // 9♠ led — winningRank=9
+      { card: c("spades", 9), playerIndex: 0 },
       { card: c("spades", 3), playerIndex: 1 },
       { card: c("spades", 5), playerIndex: 2 },
     ];
@@ -962,7 +965,28 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
       currentPlayerIndex: 3,
     });
     const pick = selectCardToPlay(hand, trick, state, 3, "medium");
-    // Q♠ would win this trick (rank 12 > 9) — must not dump it on ourselves
+    expect(pick).not.toEqual(c("spades", 12));
+    expect(pick).toEqual(c("spades", 7));
+  });
+
+  it("hard AI in moon-attempt mode does not dump Q♠ even when covering card present", () => {
+    // Hard AI holds 8 hearts + Q♠ with 0 pts taken → isMoonAttempt = true.
+    // A♠ is covering; Q♠ should be held to complete the moon shot.
+    const hearts8 = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
+    const hand = [...hearts8, c("spades", 12), c("spades", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 1), playerIndex: 0 },
+      { card: c("spades", 13), playerIndex: 1 },
+      { card: c("spades", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      currentPlayerIndex: 3,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3, "hard");
     expect(pick).not.toEqual(c("spades", 12));
   });
 });

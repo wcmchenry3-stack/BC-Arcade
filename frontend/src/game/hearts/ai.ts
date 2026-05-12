@@ -579,7 +579,7 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   if (pts === 0 && isLastToPlay) {
     // If Q♠ is a losing card (K♠ or A♠ covering), dump it — it won't come back to us
     const qSpade = inSuit.find(isQueenOfSpades);
-    if (qSpade && aceHigh(qSpade.rank) < winningRank) return qSpade;
+    if (!isMoonAttempt && qSpade && aceHigh(qSpade.rank) < winningRank) return qSpade;
     // Safe trick, last to play — exhaust high cards, but never dump a point card onto ourselves
     const safeInSuit = inSuit.filter((c) => cardPoints(c) === 0);
     if (safeInSuit.length > 0) return highest(safeInSuit) ?? valid[0]!;
