@@ -369,6 +369,11 @@ export default function MahjongScreen() {
   const panGesture = Gesture.Pan()
     .minPointers(1)
     .maxPointers(1)
+    // Only activate after an intentional drag so simple taps on overlay buttons
+    // (CTA shuffle, deadlock new-game, win new-game) are not intercepted by the
+    // gesture recognizer before Pressable.onPress can fire.
+    .activeOffsetX([-8, 8])
+    .activeOffsetY([-8, 8])
     .onUpdate((e) => {
       translateX.value = baseTranslateX.value + e.translationX;
       translateY.value = baseTranslateY.value + e.translationY;
