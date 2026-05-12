@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -28,6 +29,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { Asset } from "expo-asset";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -45,6 +47,7 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { HomeStackParamList } from "../../App";
+import { TILE_REQUIRES } from "../components/mahjong/tileAssets";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
@@ -81,15 +84,6 @@ import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
 const MAX_NAME_LENGTH = 32;
 
 // ---------------------------------------------------------------------------
-// Tile center — used by FlyingPair to compute animation start/end positions
-// ---------------------------------------------------------------------------
-
-function tileCenter(tile: SlotTile, cam: BoardCamera): { cx: number; cy: number } {
-  const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
-  return { cx: x + cam.tileWidth / 2, cy: y + cam.tileHeight / 2 };
-}
-
-// ---------------------------------------------------------------------------
 // FlyingPair — two matched tiles slide toward each other then burst and fade
 // ---------------------------------------------------------------------------
 
@@ -99,19 +93,120 @@ interface FlyingPairData {
   tile2: SlotTile;
 }
 
-const BURST_R = 22;
+// Colors that match the canvas tile rendering.
+const FP_FACE = "#f5f0e8";
+const FP_BORDER = "#ffd700";
+const FP_SIDE_R = "#a89070";
+const FP_SIDE_B = "#987860";
+// Border inset between the gold frame and the ivory face, in logical pixels.
+const FACE_INSET = 2;
+
+function FlyingTileGlyph({
+  faceWidth: fw,
+  faceHeight: fh,
+  sideWidth: sw,
+  imgUri,
+}: {
+  faceWidth: number;
+  faceHeight: number;
+  sideWidth: number;
+  imgUri: string | null;
+}) {
+  return (
+    // overflow: "visible" is intentional so the 3-D side panels render outside
+    // the face bounds. Note: Android clips overflow in deeply nested Views by
+    // default, so the side shadows won't appear on native until the parent
+    // Animated.View chain also carries overflow: "visible".
+    <View style={{ width: fw, height: fh, overflow: "visible" }}>
+      {/* 3-D right side */}
+      <View
+        style={{
+          position: "absolute",
+          left: fw,
+          top: sw,
+          width: sw,
+          height: fh,
+          backgroundColor: FP_SIDE_R,
+        }}
+      />
+      {/* 3-D bottom side */}
+      <View
+        style={{
+          position: "absolute",
+          left: sw,
+          top: fh,
+          width: fw,
+          height: sw,
+          backgroundColor: FP_SIDE_B,
+        }}
+      />
+      {/* Gold border (selected-tile look) */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: fw,
+          height: fh,
+          backgroundColor: FP_BORDER,
+          borderRadius: 2,
+        }}
+      />
+      {/* Ivory face */}
+      <View
+        style={{
+          position: "absolute",
+          left: FACE_INSET,
+          top: FACE_INSET,
+          width: fw - FACE_INSET * 2,
+          height: fh - FACE_INSET * 2,
+          backgroundColor: FP_FACE,
+          borderRadius: 1,
+          overflow: "hidden",
+        }}
+      >
+        {/* SVG art — only on web where RN Image renders SVG via <img> */}
+        {Platform.OS === "web" && imgUri !== null && (
+          <Image
+            source={{ uri: imgUri }}
+            style={{
+              position: "absolute",
+              left: FACE_INSET,
+              top: FACE_INSET,
+              right: FACE_INSET,
+              bottom: FACE_INSET,
+            }}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+    </View>
+  );
+}
 
 function FlyingPair({
   tile1,
   tile2,
   camera,
-  color,
+  tileUris,
   onDone,
-}: FlyingPairData & { camera: BoardCamera; color: string; onDone: () => void }) {
-  const { cx: c1x, cy: c1y } = tileCenter(tile1, camera);
-  const { cx: c2x, cy: c2y } = tileCenter(tile2, camera);
+}: FlyingPairData & {
+  camera: BoardCamera;
+  tileUris: readonly (string | null)[];
+  onDone: () => void;
+}) {
+  const { x: x1, y: y1 } = camera.tileToScreen(tile1.col, tile1.row, tile1.layer);
+  const { x: x2, y: y2 } = camera.tileToScreen(tile2.col, tile2.row, tile2.layer);
+  const { faceWidth: fw, faceHeight: fh, sideWidth: sw } = camera;
+
+  // Face-center coords so the overlay aligns exactly with the canvas tile face.
+  const c1x = x1 + fw / 2;
+  const c1y = y1 + fh / 2;
+  const c2x = x2 + fw / 2;
+  const c2y = y2 + fh / 2;
   const midX = (c1x + c2x) / 2;
   const midY = (c1y + c2y) / 2;
+  const burstR = Math.round(fw * 0.65);
 
   const t1cx = useSharedValue(c1x);
   const t1cy = useSharedValue(c1y);
@@ -127,65 +222,58 @@ function FlyingPair({
     t1cy.value = withTiming(midY, moveCfg);
     t2cx.value = withTiming(midX, moveCfg);
     t2cy.value = withTiming(midY, moveCfg);
+    // Hold fully visible through the slide, then snap-fade after meeting.
     pairOpacity.value = withSequence(
-      withTiming(1, { duration: 180 }),
-      withTiming(0, { duration: 100 }, (finished) => {
+      withTiming(1, { duration: 220 }),
+      withTiming(0, { duration: 70 }, (finished) => {
         if (finished) runOnJS(onDone)();
       })
     );
-    burstScaleVal.value = withDelay(180, withSpring(1.5, { damping: 8, stiffness: 60 }));
+    burstScaleVal.value = withDelay(220, withSpring(1.8, { damping: 7, stiffness: 100 }));
     burstOpacity.value = withSequence(
-      withDelay(180, withTiming(0.85, { duration: 40 })),
-      withTiming(0, { duration: 80 })
+      withDelay(220, withTiming(0.9, { duration: 25 })),
+      withTiming(0, { duration: 85 })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tw = camera.faceWidth;
-  const th = camera.faceHeight;
-
   const tile1Style = useAnimatedStyle(() => ({
     position: "absolute",
-    left: t1cx.value - tw / 2,
-    top: t1cy.value - th / 2,
-    width: tw,
-    height: th,
-    borderRadius: 2,
-    backgroundColor: color,
-    borderWidth: 1.5,
-    borderColor: "#ffd700",
+    left: t1cx.value - fw / 2,
+    top: t1cy.value - fh / 2,
     opacity: pairOpacity.value,
   }));
 
   const tile2Style = useAnimatedStyle(() => ({
     position: "absolute",
-    left: t2cx.value - tw / 2,
-    top: t2cy.value - th / 2,
-    width: tw,
-    height: th,
-    borderRadius: 2,
-    backgroundColor: color,
-    borderWidth: 1.5,
-    borderColor: "#ffd700",
+    left: t2cx.value - fw / 2,
+    top: t2cy.value - fh / 2,
     opacity: pairOpacity.value,
   }));
 
   const burstStyle = useAnimatedStyle(() => ({
     position: "absolute",
-    left: midX - BURST_R,
-    top: midY - BURST_R,
-    width: BURST_R * 2,
-    height: BURST_R * 2,
-    borderRadius: BURST_R,
-    backgroundColor: color,
+    left: midX - burstR,
+    top: midY - burstR,
+    width: burstR * 2,
+    height: burstR * 2,
+    borderRadius: burstR,
+    backgroundColor: FP_BORDER,
     transform: [{ scale: burstScaleVal.value }],
     opacity: burstOpacity.value,
   }));
 
+  const img1 = tileUris[tile1.faceId - 1] ?? null;
+  const img2 = tileUris[tile2.faceId - 1] ?? null;
+
   return (
     <>
-      <Animated.View pointerEvents="none" style={tile1Style} />
-      <Animated.View pointerEvents="none" style={tile2Style} />
+      <Animated.View pointerEvents="none" style={tile1Style}>
+        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img1} />
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={tile2Style}>
+        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img2} />
+      </Animated.View>
       <Animated.View pointerEvents="none" style={burstStyle} />
     </>
   );
@@ -222,6 +310,11 @@ export default function MahjongScreen() {
     () => (__DEV__ && devPanelOpen && state ? getAllFreePairs(state.tiles) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [devPanelOpen, state?.tiles]
+  );
+
+  // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
+  const [tileUris, setTileUris] = useState<(string | null)[]>(
+    Array(TILE_REQUIRES.length).fill(null)
   );
 
   // Animation state
@@ -339,6 +432,31 @@ export default function MahjongScreen() {
   // Reduce motion preference.
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+  }, []);
+
+  // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
+  // display requires Skia and can't run inside Animated.View).
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    let cancelled = false;
+    const uris: (string | null)[] = Array(TILE_REQUIRES.length).fill(null);
+    (async () => {
+      await Promise.all(
+        (TILE_REQUIRES as readonly number[]).map(async (src, i) => {
+          try {
+            const asset = Asset.fromModule(src);
+            await asset.downloadAsync();
+            uris[i] = asset.uri ?? null;
+          } catch {
+            /* keep null */
+          }
+        })
+      );
+      if (!cancelled) setTileUris([...uris]);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Dev panel: Shift+D keyboard shortcut on web.
@@ -726,7 +844,7 @@ export default function MahjongScreen() {
                     key={pair.id}
                     {...pair}
                     camera={camera}
-                    color={colors.accent + "99"}
+                    tileUris={tileUris}
                     onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
                   />
                 ))}
