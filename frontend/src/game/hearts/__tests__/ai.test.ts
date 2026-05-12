@@ -927,7 +927,6 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
     const pick = selectCardToPlay(hand, [], state, 0, "medium");
     expect(pick).toEqual(c("spades", 13));
   });
-
 });
 
 // ---------------------------------------------------------------------------
