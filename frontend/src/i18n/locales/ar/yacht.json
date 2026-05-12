@@ -56,5 +56,7 @@
   "gameOver.playAgain": "العب مجددًا",
   "gameOver.playAgainLabel": "ابدأ لعبة جديدة",
   "gameOver.dismiss": "لا شكرًا",
-  "gameOver.dismissLabel": "إغلاق وإبقاء النتيجة الحالية ظاهرة"
+  "gameOver.dismissLabel": "إغلاق وإبقاء النتيجة الحالية ظاهرة",
+  "tab.upper": "علوي",
+  "tab.lower": "سفلي"
 }

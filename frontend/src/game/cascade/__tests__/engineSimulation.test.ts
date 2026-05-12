@@ -24,6 +24,7 @@ const _engine: typeof import("../engine") = require(
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const { createEngine } = _engine;
 import type { EngineHandle } from "../engine.shared";
+import { FIXED_STEP_MS, GAME_OVER_CONSECUTIVE_TICKS } from "../engine.shared";
 import { scoreForMerge } from "../scoring";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 import { MockWorld } from "../../../../__mocks__/@dimforge/rapier2d-compat";
@@ -122,9 +123,12 @@ describe("chain merge: tier 1 → tier 2", () => {
     world._fireCollision(1003, 1004);
     handle.step(); // spawns tier-1 at collider 1005
 
-    // Second merge: spawned tier-1 collides with a freshly dropped tier-1 (collider 1006)
+    // Second merge: spawned tier-1 collides with a freshly dropped tier-1 (collider 1006).
+    // The spawned body has SPAWN_GRACE_TICKS (3) grace ticks; it was decremented once in
+    // the spawn step (3→2). One more step assigned 1006 (2→1). One more exhausts grace (1→0).
     handle.drop(fruit(1), fruitSet.id, 120, 300);
-    handle.step(); // assigns collider 1006
+    handle.step(); // assigns collider 1006, grace 2→1
+    handle.step(); // grace 1→0, collision groups restored
     world._fireCollision(1005, 1006);
     const { events } = handle.step();
 
@@ -142,10 +146,11 @@ describe("chain merge: tier 1 → tier 2", () => {
     handle.drop(fruit(0), fruitSet.id, 110, 300);
     handle.step();
     world._fireCollision(1003, 1004);
-    handle.step(); // spawns tier-1 at 1005
+    handle.step(); // spawns tier-1 at 1005 (grace=3, decremented to 2)
 
     handle.drop(fruit(1), fruitSet.id, 120, 300);
-    handle.step(); // assigns 1006
+    handle.step(); // assigns 1006, grace 2→1
+    handle.step(); // grace 1→0, restored
     world._fireCollision(1005, 1006);
     handle.step();
 
@@ -178,8 +183,10 @@ describe("score accumulation across a merge sequence", () => {
     }
 
     // Merge 2: tier 1 → scores scoreForMerge(1) = 4
+    // Exhaust the spawned tier-1 body's grace period (2 ticks remain after spawn step).
     handle.drop(fruit(1), fruitSet.id, 120, 300);
-    handle.step(); // assigns 1006
+    handle.step(); // assigns 1006, grace 2→1
+    handle.step(); // grace 1→0, restored
     world._fireCollision(1005, 1006);
     const step2 = handle.step();
 
@@ -293,10 +300,17 @@ describe("game-over with multiple fruits above the danger line", () => {
 
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3001);
-    const { events } = handle.step();
+
+    // Hysteresis requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger
+    // line — advance enough steps to satisfy it, then verify exactly one gameOver fires.
+    const gameOverEvents: ReturnType<typeof handle.step>["events"] = [];
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      const { events } = handle.step();
+      gameOverEvents.push(...events.filter((e) => e.type === "gameOver"));
+    }
     jest.useRealTimers();
 
-    expect(events.filter((e) => e.type === "gameOver")).toHaveLength(1);
+    expect(gameOverEvents).toHaveLength(1);
   });
 
   it("emits gameOver only once even after additional steps", async () => {
@@ -307,7 +321,8 @@ describe("game-over with multiple fruits above the danger line", () => {
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3001);
     let totalGameOver = 0;
-    for (let i = 0; i < 5; i++) {
+    // Run well past the 30-tick threshold; gameOver must fire exactly once.
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
       totalGameOver += handle.step().events.filter((e) => e.type === "gameOver").length;
     }
     jest.useRealTimers();
@@ -383,5 +398,140 @@ describe("cleanup after multi-step simulation", () => {
     handle.step();
 
     expect(() => handle.cleanup()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Merge pipeline hardening (#1224): 5 simultaneous same-tier pairs
+// ---------------------------------------------------------------------------
+
+describe("merge pipeline hardening — 5 simultaneous pairs", () => {
+  it("5 simultaneous same-tier pairs produce exactly 5 child bodies", async () => {
+    // Drop 10 tier-2 fruits, fire 5 non-overlapping collision pairs simultaneously.
+    // Each pair should produce exactly one tier-3 child; no phantom or double merges.
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    // Mock _colliderHandleCounter starts at 1000; 3 wall colliders consume 1000–1002,
+    // so the first fruit collider is 1003. Bodies 0–9 → colliders 1003–1012.
+    for (let i = 0; i < 10; i++) {
+      handle.drop(fruit(2), fruitSet.id, 50 + i * 20, 300);
+    }
+    handle.step();
+
+    // Fire 5 non-overlapping pairs: (0+1), (2+3), (4+5), (6+7), (8+9)
+    // colliders: 1003+1004, 1005+1006, 1007+1008, 1009+1010, 1011+1012
+    world._fireCollision(1003, 1004);
+    world._fireCollision(1005, 1006);
+    world._fireCollision(1007, 1008);
+    world._fireCollision(1009, 1010);
+    world._fireCollision(1011, 1012);
+
+    const { events } = handle.step();
+
+    const merges = events.filter((e) => e.type === "fruitMerge");
+    expect(merges).toHaveLength(5);
+
+    // Each merge should produce one tier-3 child body
+    const tiers = handle.step().snapshots.map((s) => s.tier);
+    expect(tiers.filter((t) => t === 3)).toHaveLength(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fixed-step accumulator — GH #1220
+// ---------------------------------------------------------------------------
+
+describe("fixed-step accumulator — sub-step counts", () => {
+  it("step(1/60) runs exactly 1 physics sub-step", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+    handle.step(1 / 60);
+    expect(stepSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("step(1/30) runs exactly 2 physics sub-steps", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+    handle.step(1 / 30);
+    expect(stepSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("step(0.005) runs 0 physics sub-steps — accumulates partial frame", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+    handle.step(0.005);
+    expect(stepSpy).toHaveBeenCalledTimes(0);
+  });
+
+  it("three 8ms frames accumulate to 1 sub-step on the third call", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+
+    handle.step(0.008); // 8ms — below 16.67ms threshold
+    expect(stepSpy).toHaveBeenCalledTimes(0);
+    handle.step(0.008); // 16ms cumulative — still below
+    expect(stepSpy).toHaveBeenCalledTimes(0);
+    handle.step(0.008); // 24ms cumulative — crosses threshold → 1 sub-step
+    expect(stepSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a huge frame delta is capped — no more than round((1000/6) / FIXED_STEP_MS) sub-steps", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+    // Math.round because 1000/6 / FIXED_STEP_MS = 9.9999... in IEEE 754.
+    const maxSubSteps = Math.round(1000 / 6 / FIXED_STEP_MS);
+    handle.step(10); // 10 seconds — clamped to 1/6 s
+    expect(stepSpy.mock.calls.length).toBeLessThanOrEqual(maxSubSteps);
+  });
+
+  it("total simulated time never exceeds total wall time across a mixed sequence", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+    const stepSpy = jest.spyOn(world, "step");
+
+    const frames = [1 / 60, 1 / 60, 1 / 30, 0.005, 0.008, 0.008, 0.008, 1 / 60];
+    let totalWallMs = 0;
+    for (const dt of frames) {
+      totalWallMs += Math.min(dt * 1000, 1000 / 6); // match the engine's 1/6s cap
+      handle.step(dt);
+    }
+
+    const totalSimMs = stepSpy.mock.calls.length * FIXED_STEP_MS;
+    expect(totalSimMs).toBeLessThanOrEqual(totalWallMs + 0.1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism — CASCADE-PHYS-10 (#1240)
+// ---------------------------------------------------------------------------
+
+describe("determinism — Rapier nowProvider injection removes Date.now() non-determinism", () => {
+  it("50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function run() {
+      const handle = await createEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step().snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step().snapshots;
+      return last.map((s) => ({
+        x: Math.round(s.x * 10),
+        y: Math.round(s.y * 10),
+        tier: s.tier,
+      }));
+    }
+
+    const run1 = await run();
+    const run2 = await run();
+    expect(run1).toEqual(run2);
   });
 });

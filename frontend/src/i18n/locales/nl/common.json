@@ -44,5 +44,8 @@
   "overflow.abandon.title": "Huidig spel verlaten?",
   "overflow.abandon.body": "Een nieuw spel starten verwijdert je voortgang in deze ronde. Je statistieken blijven behouden.",
   "overflow.abandon.keepPlaying": "Doorgaan",
-  "overflow.abandon.startNew": "Nieuw starten"
+  "overflow.abandon.startNew": "Nieuw starten",
+  "home.locked.buttonLabel": "Ontgrendelen",
+  "home.locked.cardLabel": "{{title}} — Binnenkort",
+  "home.locked.comingSoon": "Dit spel is binnenkort beschikbaar"
 }

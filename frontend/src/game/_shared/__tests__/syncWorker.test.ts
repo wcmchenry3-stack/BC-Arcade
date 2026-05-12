@@ -13,7 +13,7 @@ import { EventStore, Row } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncApi, SyncResponse } from "../syncApi";
-import { SyncWorker } from "../syncWorker";
+import { SyncWorker, FlushResult } from "../syncWorker";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 
@@ -593,6 +593,52 @@ describe("SyncWorker", () => {
 
     rows = await store.peek(100, { includeDeadLettered: true });
     expect(rows.filter((r) => r.log_type === "game_event").length).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // start / stop / restart lifecycle (AppState pause behaviour)
+  // -------------------------------------------------------------------------
+
+  describe("start / stop / restart", () => {
+    const emptyResult: FlushResult = {
+      attempted: 0,
+      accepted: 0,
+      duplicates: 0,
+      deadLettered: 0,
+      parked: 0,
+      backoffMs: 0,
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("stop prevents the interval from firing; start after stop re-arms it", () => {
+      jest.useFakeTimers();
+      const flushSpy = jest.spyOn(worker, "flush").mockResolvedValue(emptyResult);
+
+      worker.start();
+      jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS + 1);
+      expect(flushSpy).toHaveBeenCalledTimes(1);
+
+      worker.stop();
+      jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS * 3);
+      expect(flushSpy).toHaveBeenCalledTimes(1); // no new calls while stopped
+
+      worker.start(); // simulates AppState "active" transition
+      jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS + 1);
+      expect(flushSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("calling start twice does not double-register the interval", () => {
+      jest.useFakeTimers();
+      const flushSpy = jest.spyOn(worker, "flush").mockResolvedValue(emptyResult);
+
+      worker.start();
+      worker.start(); // second call must be a no-op
+      jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS + 1);
+      expect(flushSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   // -------------------------------------------------------------------------

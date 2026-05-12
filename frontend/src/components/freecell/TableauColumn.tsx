@@ -3,14 +3,16 @@ import { Pressable, StyleSheet, View, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
-import SharedPlayingCard from "../shared/PlayingCard";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import type { Card } from "../../game/freecell/types";
-import { CARD_WIDTH, CARD_HEIGHT } from "./FreeCellSlot";
+import { CARD_WIDTH } from "./FreeCellSlot";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
+import SelectableCard from "../../game/_shared/SelectableCard";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import type { SharedValue } from "react-native-reanimated";
 
 const FACE_UP_OFFSET = 36;
 
@@ -18,6 +20,7 @@ export interface TableauColumnProps {
   readonly pile: readonly Card[];
   readonly colIndex: number;
   readonly selectedIndex?: number;
+  readonly shakeX?: SharedValue<number>;
   readonly hintIndex?: number;
   readonly hintDestination?: boolean;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
@@ -30,6 +33,7 @@ export default function TableauColumn({
   pile,
   colIndex,
   selectedIndex,
+  shakeX,
   hintIndex,
   hintDestination = false,
   onCardPress,
@@ -39,6 +43,8 @@ export default function TableauColumn({
 }: TableauColumnProps) {
   const { colors } = useTheme();
   const { t } = useTranslation("freecell");
+  const { cardWidth, cardHeight } = useCardSize();
+  const faceUpOffset = Math.round(FACE_UP_OFFSET * (cardWidth / CARD_WIDTH));
 
   const highlightStyle: ViewStyle = { borderColor: colors.accent, borderWidth: 2, borderRadius: 6 };
   const dimStyle: ViewStyle = { opacity: 0.4 };
@@ -51,6 +57,8 @@ export default function TableauColumn({
         style={[
           styles.empty,
           {
+            width: cardWidth,
+            height: cardHeight,
             borderColor: hintDestination ? colors.bonus : colors.border,
             borderWidth: hintDestination ? 2 : 1,
             backgroundColor: colors.background,
@@ -79,12 +87,13 @@ export default function TableauColumn({
   let acc = 0;
   for (let i = 0; i < pile.length; i++) {
     offsets.push(acc);
-    acc += FACE_UP_OFFSET;
+    acc += faceUpOffset;
   }
-  const containerHeight = CARD_HEIGHT + (offsets[pile.length - 1] ?? 0);
-  const containerStyle: ViewStyle = { width: CARD_WIDTH, height: containerHeight };
+  const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
+  const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
 
   const cards = pile.map((card, cardIndex) => {
+    const isTop = cardIndex === pile.length - 1;
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
     const isHint = hintIndex !== undefined && cardIndex >= hintIndex;
     const isHintDest = hintDestination && cardIndex === pile.length - 1;
@@ -99,9 +108,13 @@ export default function TableauColumn({
       suit: c.suit as CanonicalSuit,
       rank: c.rank,
       faceDown: false,
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
+      width: cardWidth,
+      height: cardHeight,
     }));
+    const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
+    const hitSlop = isTop
+      ? undefined
+      : { top: 0, bottom: Math.min(24, stripeHeight), left: 4, right: 4 };
 
     return (
       <DraggableCard
@@ -110,13 +123,15 @@ export default function TableauColumn({
         onTap={handlePress}
         dragCards={dragCards}
         dragSource={{ game: "freecell", type: "tableau", col: colIndex, fromIndex: cardIndex }}
+        hitSlop={hitSlop}
       >
-        <SharedPlayingCard
+        <SelectableCard
           suit={card.suit as CanonicalSuit}
           rank={card.rank}
-          width={CARD_WIDTH}
-          height={CARD_HEIGHT}
-          highlighted={isSelected}
+          width={cardWidth}
+          height={cardHeight}
+          selected={isSelected}
+          shakeX={isSelected ? shakeX : undefined}
           hintHighlighted={isHint || isHintDest}
           accessibilityLabel={label}
         />
@@ -155,8 +170,6 @@ export default function TableauColumn({
 
 const styles = StyleSheet.create({
   empty: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     borderRadius: 6,
     borderWidth: 1,
     borderStyle: "dashed",

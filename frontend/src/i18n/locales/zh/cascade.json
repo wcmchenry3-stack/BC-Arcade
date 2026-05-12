@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "掉落水果，合并配对，别让它们溢出。",
-  "game.playLabel": "开始 Fruit Merge",
-  "game.canvasLabel": "Fruit Merge 游戏 — 掉落水果到堆叠中合并相同的。点击或轻触掉落。",
+  "game.playLabel": "开始 Cascade",
+  "game.canvasLabel": "Cascade 游戏 — 掉落水果到堆叠中合并相同的。点击或轻触掉落。",
   "score.label": "得分",
   "score.display": "得分：{{score}}",
   "preview.dropLabel": "掉落",

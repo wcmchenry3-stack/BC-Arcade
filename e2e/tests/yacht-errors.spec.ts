@@ -11,7 +11,7 @@
  * GH #225 — regression tests for "Play Again" reset bug.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { injectGameState, blankScores } from "./helpers/yacht";
 
 test.describe("Yacht — error paths and navigation", () => {

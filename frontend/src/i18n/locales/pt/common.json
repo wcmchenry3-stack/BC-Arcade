@@ -44,5 +44,8 @@
   "overflow.abandon.title": "Abandonar o jogo atual?",
   "overflow.abandon.body": "Começar um novo jogo vai apagar seu progresso nesta rodada. Suas estatísticas gerais não serão afetadas.",
   "overflow.abandon.keepPlaying": "Continuar Jogando",
-  "overflow.abandon.startNew": "Começar Novo"
+  "overflow.abandon.startNew": "Começar Novo",
+  "home.locked.buttonLabel": "Desbloquear",
+  "home.locked.cardLabel": "{{title}} — Em breve",
+  "home.locked.comingSoon": "Este jogo estará disponível em breve"
 }

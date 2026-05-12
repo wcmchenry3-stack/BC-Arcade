@@ -100,7 +100,7 @@ function buildSystemPrompt(localeConfig) {
 
 Target locale: ${localeConfig.code} — ${localeConfig.nativeLabel} (${localeConfig.label})
 
-ABOUT THE APP: A gaming app containing two games — Yacht (a classic dice game) and Fruit Merge (a physics-based fruit dropping game). The tone is casual, fun, and encouraging. UI strings should feel like they belong in a polished mobile game, not a corporate app.
+ABOUT THE APP: A gaming app containing two games — Yacht (a classic dice game) and Cascade (a physics-based fruit dropping game). The tone is casual, fun, and encouraging. UI strings should feel like they belong in a polished mobile game, not a corporate app.
 
 ADAPTATION GUIDELINES:
 - Do NOT translate literally — adapt so it feels natural in ${localeConfig.nativeLabel} gaming contexts

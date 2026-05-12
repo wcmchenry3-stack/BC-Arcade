@@ -1,9 +1,24 @@
 import React from "react";
+import { Alert } from "react-native";
 import { render, fireEvent, waitFor } from "@testing-library/react-native";
 import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
+
+// ---------------------------------------------------------------------------
+// Mock entitlements — default: all games entitled (canPlay always true)
+// ---------------------------------------------------------------------------
+const mockCanPlay = jest.fn().mockReturnValue(true);
+
+jest.mock("../../entitlements/EntitlementContext", () => ({
+  ...jest.requireActual("../../entitlements/EntitlementContext"),
+  useEntitlements: () => ({
+    canPlay: mockCanPlay,
+    isLoading: false,
+    lastRefreshed: null,
+  }),
+}));
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -15,7 +30,7 @@ jest.mock("expo-linear-gradient", () => ({
 
 const mockPrefetch = jest.fn();
 jest.mock("../../utils/lazyScreens", () => ({
-  prefetchLobbyGameScreens: () => mockPrefetch(),
+  prefetchLobbyGameScreens: (canPlay: (slug: string) => boolean) => mockPrefetch(canPlay),
 }));
 
 // ---------------------------------------------------------------------------
@@ -80,6 +95,8 @@ function renderScreen(windowWidth = 390) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCanPlay.mockReturnValue(true);
+  jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
 describe("HomeScreen — game cards", () => {
@@ -90,8 +107,22 @@ describe("HomeScreen — game cards", () => {
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
     expect(getByLabelText("Play Solitaire")).toBeTruthy();
     expect(getByLabelText("Play Sudoku")).toBeTruthy();
+    expect(getByLabelText("Play Sort Puzzle")).toBeTruthy();
+    expect(getByLabelText("Play Daily Word")).toBeTruthy();
     // Pachisi is disabled — should not appear
     expect(queryByLabelText("Play Pachisi")).toBeNull();
+  });
+
+  it("navigates to DailyWord when Daily Word card pressed", () => {
+    const { getByLabelText } = renderScreen();
+    fireEvent.press(getByLabelText("Play Daily Word"));
+    expect(mockNavigate).toHaveBeenCalledWith("DailyWord");
+  });
+
+  it("navigates to Sort when Sort Puzzle card pressed", () => {
+    const { getByLabelText } = renderScreen();
+    fireEvent.press(getByLabelText("Play Sort Puzzle"));
+    expect(mockNavigate).toHaveBeenCalledWith("Sort");
   });
 
   it("navigates to Blackjack when Blackjack card pressed", () => {
@@ -143,10 +174,15 @@ describe("HomeScreen — AppHeader", () => {
   });
 });
 
-describe("HomeScreen — lobby prefetch (issue #706)", () => {
+describe("HomeScreen — lobby prefetch (issue #706, #1055)", () => {
   it("warms lobby game chunks after interactions settle", async () => {
     renderScreen();
     await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
+  });
+
+  it("passes canPlay from useEntitlements to prefetchLobbyGameScreens", async () => {
+    renderScreen();
+    await waitFor(() => expect(mockPrefetch).toHaveBeenCalledWith(mockCanPlay));
   });
 });
 
@@ -167,5 +203,50 @@ describe("HomeScreen — responsive layout (Galaxy Fold fix, #356)", () => {
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
     expect(getByLabelText("Play 2048")).toBeTruthy();
     expect(getByLabelText("Play Solitaire")).toBeTruthy();
+  });
+});
+
+describe("HomeScreen — locked game UI (#1054)", () => {
+  beforeEach(() => {
+    // Cascade is locked, all others entitled
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+  });
+
+  it("renders locked card with 'Coming soon' label for unentitled premium game", () => {
+    const { getByLabelText } = renderScreen();
+    expect(getByLabelText("Cascade — Coming soon")).toBeTruthy();
+  });
+
+  it("does not show play label for locked card", () => {
+    const { queryByLabelText } = renderScreen();
+    expect(queryByLabelText("Play Cascade")).toBeNull();
+  });
+
+  it("tapping locked card shows coming soon alert, not navigation", () => {
+    const { getByLabelText } = renderScreen();
+    fireEvent.press(getByLabelText("Cascade — Coming soon"));
+    expect(Alert.alert).toHaveBeenCalledWith("This game is coming soon");
+    expect(mockNavigate).not.toHaveBeenCalledWith("Cascade");
+  });
+
+  it("free games render and navigate normally when a premium game is locked", () => {
+    const { getByLabelText } = renderScreen();
+    expect(getByLabelText("Play Blackjack")).toBeTruthy();
+    fireEvent.press(getByLabelText("Play Blackjack"));
+    expect(mockNavigate).toHaveBeenCalledWith("BlackjackBetting");
+  });
+
+  it("entitled premium games render and navigate normally", () => {
+    // Yacht is entitled (mockCanPlay returns true for non-cascade)
+    const { getByLabelText } = renderScreen();
+    expect(getByLabelText("Play Yacht")).toBeTruthy();
+  });
+
+  it("all games show play label when all entitled", () => {
+    mockCanPlay.mockReturnValue(true);
+    const { getByLabelText } = renderScreen();
+    expect(getByLabelText("Play Yacht")).toBeTruthy();
+    expect(getByLabelText("Play Cascade")).toBeTruthy();
+    expect(getByLabelText("Play Sudoku")).toBeTruthy();
   });
 });

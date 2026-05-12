@@ -4,10 +4,7 @@
  * Rendered via @shopify/react-native-skia.
  * Metro automatically uses GameCanvas.web.tsx on the web platform.
  *
- * Tile geometry (grid → pixels):
- *   pixel_x = PAD_X + (col / 2) * TILE_W + layer * LAYER_DX
- *   pixel_y = PAD_Y + row * TILE_H − layer * LAYER_DY
- *
+ * World→screen conversion is delegated to BoardCamera.tileToScreen().
  * Rendering order: layer ASC so higher layers appear on top.
  * Hit-testing: topmost tile (highest layer) at touch point wins.
  */
@@ -16,32 +13,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Canvas, Fill, Group, ImageSVG, Rect, useSVG } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
-import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine";
+import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
-import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_BG } from "../../theme/theme.constants";
-
-// ---------------------------------------------------------------------------
-// Layout constants
-// ---------------------------------------------------------------------------
-
-export const TILE_W = 44; // face width
-export const TILE_H = 56; // face height
-const SIDE_W = 5; // 3-D side strip width (right + bottom)
-const LAYER_DX = 6; // rightward offset per layer
-const LAYER_DY = 5; // upward offset per layer
-const PAD_X = 10;
-const PAD_Y = 30; // extra top padding so layer-4 tiles don't clip
-
-export const BOARD_W = PAD_X + 12 * TILE_W + 4 * LAYER_DX + PAD_X; // 572
-export const BOARD_H = PAD_Y + 8 * TILE_H + 4 * LAYER_DY + PAD_Y; // 508
-
-function tileX(col: number, layer: number): number {
-  return PAD_X + (col / 2) * TILE_W + layer * LAYER_DX;
-}
-function tileY(row: number, layer: number): number {
-  return PAD_Y + row * TILE_H - layer * LAYER_DY;
-}
+import {
+  MAHJONG_GLOW_BG,
+  MAHJONG_HINT_GLOW_BG,
+  MAHJONG_TILE_FACE_SELECTED,
+} from "../../theme/theme.constants";
+import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -209,14 +189,17 @@ function TileFaceLayer({
 // Hit-testing
 // ---------------------------------------------------------------------------
 
-function hitTest(tiles: readonly SlotTile[], tapX: number, tapY: number): number | null {
-  const fw = TILE_W - SIDE_W;
-  const fh = TILE_H - SIDE_W;
+function hitTest(
+  tiles: readonly SlotTile[],
+  tapX: number,
+  tapY: number,
+  cam: BoardCamera
+): number | null {
+  const { faceWidth: fw, faceHeight: fh } = cam;
   // Iterate from highest layer down so the topmost tile wins.
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -230,14 +213,29 @@ function hitTest(tiles: readonly SlotTile[], tapX: number, tapY: number): number
 
 interface Props {
   state: MahjongState;
+  camera: BoardCamera;
+  hintIds?: ReadonlySet<number>;
+  debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
+const EMPTY_SET: ReadonlySet<number> = new Set();
+
+export default function GameCanvas({
+  state,
+  camera,
+  hintIds = EMPTY_SET,
+  debugShowFree = false,
+  onTilePress,
+  onShufflePress,
+  onNewGamePress,
+}: Props) {
   const { t } = useTranslation("mahjong");
   const tileSvgs = useAllTileSVGs();
+  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } =
+    camera;
 
   const freeTiles = useMemo(() => {
     const s = new Set<number>();
@@ -246,6 +244,9 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
     }
     return s;
   }, [state.tiles]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
 
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),
@@ -269,41 +270,35 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
   );
 
   const selectedId = state.selected?.id ?? null;
-  const hasSelection = selectedId !== null;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;
 
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
     if (!gameActive) return;
     const { locationX, locationY } = e.nativeEvent;
-    const tileId = hitTest(state.tiles, locationX, locationY);
+    const tileId = hitTest(state.tiles, locationX, locationY, camera);
     if (tileId !== null) onTilePress(tileId);
   }
 
   return (
-    <View style={{ width: BOARD_W, height: BOARD_H }}>
+    <View style={{ width: boardWidth, height: boardHeight }}>
       <Canvas
-        style={{ width: BOARD_W, height: BOARD_H }}
+        style={{ width: boardWidth, height: boardHeight }}
         accessibilityLabel={t("game.canvasLabel")}
         accessibilityRole="none"
       >
         <Fill color={BG} />
         {sortedTiles.map((tile) => {
-          const x = tileX(tile.col, tile.layer);
-          const y = tileY(tile.row, tile.layer);
+          const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
           const isSelected = tile.id === selectedId;
           const isFree = freeTiles.has(tile.id);
-          const fw = TILE_W - SIDE_W;
-          const fh = TILE_H - SIDE_W;
 
-          // Lift selected tile upward/outward for a "picked up" cue.
-          const liftX = isSelected ? 4 : 0;
-          const liftY = isSelected ? -5 : 0;
+          // Lift selected tile upward/outward — scale with tile size.
+          const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
+          const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
           // 2 px border on selected for visibility at small tile sizes.
           const borderInset = isSelected ? 2 : 1;
 
-          // Hints only on tiles that actually match the selection.
-          const isHint =
-            isFree && hasSelection && state.selected !== null && tilesMatch(tile, state.selected);
+          const isHint = matchingIds.has(tile.id) || hintIds.has(tile.id);
           const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
           const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
 
@@ -311,10 +306,10 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
             <Group key={tile.id}>
               {/* Drop shadow */}
               <Rect
-                x={x + SIDE_W + 2 + liftX}
-                y={y + SIDE_W + 2 + liftY}
-                width={fw}
-                height={fh}
+                x={x + sideWidth + 2 + liftX}
+                y={y + sideWidth + 2 + liftY}
+                width={faceWidth}
+                height={faceHeight}
                 color={SHADOW}
               />
               {/* Gold glow behind selected tile */}
@@ -322,35 +317,51 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
                 <Rect
                   x={x + liftX - 3}
                   y={y + liftY - 3}
-                  width={fw + 6}
-                  height={fh + 6}
+                  width={faceWidth + 6}
+                  height={faceHeight + 6}
                   color={MAHJONG_GLOW_BG}
+                />
+              )}
+              {/* Blue glow behind matching free tiles */}
+              {isHint && (
+                <Rect
+                  x={x - 2}
+                  y={y - 2}
+                  width={faceWidth + 4}
+                  height={faceHeight + 4}
+                  color={MAHJONG_HINT_GLOW_BG}
                 />
               )}
               {/* Right 3-D side */}
               <Rect
-                x={x + fw + liftX}
-                y={y + SIDE_W + liftY}
-                width={SIDE_W}
-                height={fh}
+                x={x + faceWidth + liftX}
+                y={y + sideWidth + liftY}
+                width={sideWidth}
+                height={faceHeight}
                 color={SIDE_R}
               />
               {/* Bottom 3-D side */}
               <Rect
-                x={x + SIDE_W + liftX}
-                y={y + fh + liftY}
-                width={fw}
-                height={SIDE_W}
+                x={x + sideWidth + liftX}
+                y={y + faceHeight + liftY}
+                width={faceWidth}
+                height={sideWidth}
                 color={SIDE_B}
               />
               {/* Border */}
-              <Rect x={x + liftX} y={y + liftY} width={fw} height={fh} color={borderColor} />
+              <Rect
+                x={x + liftX}
+                y={y + liftY}
+                width={faceWidth}
+                height={faceHeight}
+                color={borderColor}
+              />
               {/* Face */}
               <Rect
                 x={x + borderInset + liftX}
                 y={y + borderInset + liftY}
-                width={fw - 2 * borderInset}
-                height={fh - 2 * borderInset}
+                width={faceWidth - 2 * borderInset}
+                height={faceHeight - 2 * borderInset}
                 color={faceColor}
               />
               {/* SVG face art */}
@@ -359,10 +370,21 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
                 suit={tile.suit}
                 x={x + 2 + liftX}
                 y={y + 2 + liftY}
-                w={fw - 4}
-                h={fh - 4}
+                w={faceWidth - 4}
+                h={faceHeight - 4}
                 opacity={isFree ? 1 : 0.35}
               />
+              {/* Debug: green tint over free tiles when dev overlay is active */}
+              {debugShowFree && isFree && (
+                <Rect
+                  x={x + 2 + liftX}
+                  y={y + 2 + liftY}
+                  width={faceWidth - 4}
+                  height={faceHeight - 4}
+                  color="#00cc44"
+                  opacity={0.3}
+                />
+              )}
             </Group>
           );
         })}

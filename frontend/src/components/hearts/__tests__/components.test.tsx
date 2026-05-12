@@ -232,12 +232,12 @@ describe("TrickArea", () => {
         />
       );
       act(() => {
-        jest.advanceTimersByTime(700);
+        jest.advanceTimersByTime(950);
       });
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
-    it("fires onAnimationComplete within the 700ms budget (staggered: 3×60ms + 500ms = 680ms)", () => {
+    it("fires onAnimationComplete within the 930ms budget (250ms settle + 3×60ms stagger + 500ms slide)", () => {
       const onComplete = jest.fn();
       wrap(
         <TrickArea
@@ -247,14 +247,44 @@ describe("TrickArea", () => {
           onAnimationComplete={onComplete}
         />
       );
-      // Not yet complete at mid-animation.
+      // Not yet complete mid-settle window.
       act(() => {
         jest.advanceTimersByTime(300);
       });
       expect(onComplete).not.toHaveBeenCalled();
       // Finishes after the full duration.
       act(() => {
-        jest.advanceTimersByTime(400);
+        jest.advanceTimersByTime(650);
+      });
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows all 4 cards statically during settle window (E/W completing-card regression)", () => {
+      // West (seat 1 / George) plays the completing 4th card — previously his card
+      // appeared for only ~60ms before animating, making it imperceptible.
+      const trick: TrickCard[] = [
+        { card: c("spades", 10), playerIndex: 2 }, // North leads
+        { card: c("hearts", 3), playerIndex: 3 }, // East (Elaine)
+        { card: c("clubs", 8), playerIndex: 0 }, // South (human)
+        { card: c("diamonds", 5), playerIndex: 1 }, // West (George) — completing card
+      ];
+      const onComplete = jest.fn();
+      const { getByText } = wrap(
+        <TrickArea trick={trick} playerIndex={0} winnerIndex={1} onAnimationComplete={onComplete} />
+      );
+      // All 4 cards visible immediately (before animation starts).
+      expect(getByText("10")).toBeTruthy(); // North
+      expect(getByText("3")).toBeTruthy(); // East
+      expect(getByText("8")).toBeTruthy(); // South
+      expect(getByText("5")).toBeTruthy(); // West (the completing card)
+      // Animation not complete before settle window ends.
+      act(() => {
+        jest.advanceTimersByTime(249);
+      });
+      expect(onComplete).not.toHaveBeenCalled();
+      // Animation completes after full window.
+      act(() => {
+        jest.advanceTimersByTime(701);
       });
       expect(onComplete).toHaveBeenCalledTimes(1);
     });

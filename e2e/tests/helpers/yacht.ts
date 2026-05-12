@@ -3,9 +3,11 @@
  */
 
 import { Page } from "@playwright/test";
+import { installEntitlementsMock } from "./api-mock";
 
 /** Navigate from Home to Yacht game screen, clearing any saved state first. */
 export async function gotoYacht(page: Page): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
   await page.goto("/");

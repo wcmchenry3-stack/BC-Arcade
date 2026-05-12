@@ -49,7 +49,8 @@ function h4(
 
 function mkState(overrides: Partial<HeartsState> = {}): HeartsState {
   return {
-    _v: 2,
+    _v: 3,
+    aiDifficulty: "medium",
     phase: "playing",
     handNumber: 1,
     passDirection: "left",
@@ -106,8 +107,8 @@ describe("dealGame", () => {
     expect(state.scoreHistory).toEqual([]);
   });
 
-  it("uses storage schema v2", () => {
-    expect(dealGame()._v).toBe(2);
+  it("uses storage schema v3", () => {
+    expect(dealGame()._v).toBe(3);
   });
 });
 
@@ -937,6 +938,91 @@ describe("applyHandScoring — moonShot event", () => {
     const next = applyHandScoring(state);
     expect(next.phase).toBe("game_over");
     expect(next.events).toContainEqual({ type: "moonShot", shooter: 1 });
+  });
+});
+
+describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
+  it("emits moonShot immediately when moon is clinched before trick 13", () => {
+    // Player 0 already holds 12 hearts + Q♠ (25 pts). One heart remains.
+    // This is trick 11; winning it gives player 0 all 26 points mid-hand.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 10,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [[...hearts12, c("spades", 12)], [], [], []],
+      handScores: [25, 0, 0, 0],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    expect(state.phase).toBe("playing");
+    expect(state.events).toContainEqual({ type: "moonShot", shooter: 0 });
+  });
+
+  it("does not emit moonShot mid-hand when moon has not been clinched", () => {
+    // Player 0 has only 12 hearts — still missing Q♠.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 10,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [hearts12, [], [], []],
+      handScores: [12, 0, 0, 0],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    const moonEvents = (state.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(0);
+  });
+
+  it("emits moonShot exactly once when moon clinches mid-hand then applyHandScoring runs", () => {
+    // Simulate state after a mid-hand moonShot has already been emitted —
+    // applyHandScoring should not append a second event.
+    const allHearts = Array.from({ length: 13 }, (_, i) => c("hearts", (i + 1) as Rank));
+    const state = mkState({
+      phase: "hand_end",
+      handScores: [26, 0, 0, 0],
+      cumulativeScores: [0, 0, 0, 0],
+      wonCards: [[...allHearts, c("spades", 12)], [], [], []],
+      events: [{ type: "moonShot", shooter: 0 }],
+    });
+    const next = applyHandScoring(state);
+    const moonEvents = (next.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(1);
+  });
+
+  it("emits moonShot exactly once when moon is clinched on trick 13 (applyHandScoring path)", () => {
+    // Moon clinched on the final trick — resolveTrick must NOT fire the event
+    // (newTricksPlayed === 13 guard), applyHandScoring fires it once.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+    let state = mkState({
+      tricksPlayedInHand: 12,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [[...hearts12, c("spades", 12)], [], [], []],
+      handScores: [25, 0, 0, 0],
+      cumulativeScores: [0, 0, 0, 0],
+      playerHands: [[c("hearts", 1)], [c("clubs", 2)], [c("clubs", 3)], [c("clubs", 4)]],
+    });
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 2));
+    state = playCard(state, 2, c("clubs", 3));
+    state = playCard(state, 3, c("clubs", 4));
+
+    const moonEvents = (state.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(1);
+    expect(state.phase).not.toBe("playing");
   });
 });
 

@@ -56,5 +56,7 @@
   "gameOver.playAgain": "Nochmal",
   "gameOver.playAgainLabel": "Ein neues Spiel starten",
   "gameOver.dismiss": "Nein danke",
-  "gameOver.dismissLabel": "Schließen und aktuelle Punktzahl sichtbar lassen"
+  "gameOver.dismissLabel": "Schließen und aktuelle Punktzahl sichtbar lassen",
+  "tab.upper": "Oben",
+  "tab.lower": "Unten"
 }

@@ -1,0 +1,207 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SelectableCard snapshot: selected 1`] = `
+<View
+  style={
+    [
+      {
+        "overflow": "visible",
+      },
+      {
+        "elevation": 0,
+        "shadowColor": "#ffffff",
+        "shadowOpacity": 0,
+        "shadowRadius": 0,
+        "transform": [
+          {
+            "translateX": 0,
+          },
+          {
+            "translateY": 0,
+          },
+          {
+            "scale": 1,
+          },
+        ],
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessibilityRole="image"
+    style={
+      [
+        {
+          "elevation": 2,
+          "height": 74,
+          "shadowColor": "#000",
+          "shadowOffset": {
+            "height": 1,
+            "width": 0,
+          },
+          "shadowOpacity": 0.2,
+          "shadowRadius": 4,
+          "width": 52,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 8,
+            "borderWidth": 1,
+            "gap": 2,
+            "justifyContent": "center",
+          },
+          {
+            "backgroundColor": "#fff",
+            "borderColor": "#2e2e38",
+            "height": 74,
+            "width": 52,
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontSize": 16,
+              "fontWeight": "700",
+              "lineHeight": 20,
+            },
+            {
+              "color": "#0e0e13",
+            },
+          ]
+        }
+      >
+        A
+      </Text>
+      <Text
+        style={
+          [
+            {
+              "fontSize": 18,
+              "lineHeight": 22,
+            },
+            {
+              "color": "#0e0e13",
+            },
+          ]
+        }
+      >
+        ♠
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`SelectableCard snapshot: unselected 1`] = `
+<View
+  style={
+    [
+      {
+        "overflow": "visible",
+      },
+      {
+        "elevation": 0,
+        "shadowColor": "#ffffff",
+        "shadowOpacity": 0,
+        "shadowRadius": 0,
+        "transform": [
+          {
+            "translateX": 0,
+          },
+          {
+            "translateY": 0,
+          },
+          {
+            "scale": 1,
+          },
+        ],
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessibilityRole="image"
+    style={
+      [
+        {
+          "elevation": 2,
+          "height": 74,
+          "shadowColor": "#000",
+          "shadowOffset": {
+            "height": 1,
+            "width": 0,
+          },
+          "shadowOpacity": 0.2,
+          "shadowRadius": 4,
+          "width": 52,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 8,
+            "borderWidth": 1,
+            "gap": 2,
+            "justifyContent": "center",
+          },
+          {
+            "backgroundColor": "#fff",
+            "borderColor": "#2e2e38",
+            "height": 74,
+            "width": 52,
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontSize": 16,
+              "fontWeight": "700",
+              "lineHeight": 20,
+            },
+            {
+              "color": "#0e0e13",
+            },
+          ]
+        }
+      >
+        A
+      </Text>
+      <Text
+        style={
+          [
+            {
+              "fontSize": 18,
+              "lineHeight": 22,
+            },
+            {
+              "color": "#0e0e13",
+            },
+          ]
+        }
+      >
+        ♠
+      </Text>
+    </View>
+  </View>
+</View>
+`;

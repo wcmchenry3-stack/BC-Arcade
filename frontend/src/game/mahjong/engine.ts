@@ -85,6 +85,23 @@ export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean 
   return true;
 }
 
+/**
+ * Returns the IDs of all free tiles that match the currently selected tile.
+ * Returns an empty set when nothing is selected.
+ * O(n²) over all tiles (isFreeTile is O(n) per candidate) — call once per state change, not per frame.
+ */
+export function getMatchingFreeTileIds(state: MahjongState): ReadonlySet<number> {
+  if (!state.selected) return new Set();
+  const selected = state.selected;
+  const ids = new Set<number>();
+  for (const tile of state.tiles) {
+    if (tile.id !== selected.id && isFreeTile(tile, state.tiles) && tilesMatch(tile, selected)) {
+      ids.add(tile.id);
+    }
+  }
+  return ids;
+}
+
 /** Returns true if any two free tiles in `tiles` form a matching pair. */
 export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
   const free = tiles.filter((t) => isFreeTile(t, tiles));
@@ -94,6 +111,29 @@ export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
     }
   }
   return false;
+}
+
+/** Returns all valid free pairs. */
+export function getAllFreePairs(tiles: readonly SlotTile[]): [SlotTile, SlotTile][] {
+  const free = tiles.filter((t) => isFreeTile(t, tiles));
+  const pairs: [SlotTile, SlotTile][] = [];
+  for (let i = 0; i < free.length; i++) {
+    for (let j = i + 1; j < free.length; j++) {
+      if (tilesMatch(free[i]!, free[j]!)) pairs.push([free[i]!, free[j]!]);
+    }
+  }
+  return pairs;
+}
+
+/** Returns the IDs of one valid free pair, or null when none exists. Used by the hint button. */
+export function getAnyFreePair(tiles: readonly SlotTile[]): [number, number] | null {
+  const free = tiles.filter((t) => isFreeTile(t, tiles));
+  for (let i = 0; i < free.length; i++) {
+    for (let j = i + 1; j < free.length; j++) {
+      if (tilesMatch(free[i]!, free[j]!)) return [free[i]!.id, free[j]!.id];
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

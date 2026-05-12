@@ -15,8 +15,11 @@ interface Props {
 
 const POSITIONS = ["bottom", "left", "top", "right"] as const;
 
-// Each card slides out in 500 ms; cards stagger 60 ms apart (bottom→left→top→right).
-// Total window: 3 × 60 + 500 = 680 ms — within the 700 ms test budget.
+// All 4 cards are shown statically for SETTLE_MS before any movement begins,
+// giving the completing player's card time to visibly land in its slot.
+// Then cards stagger out 60 ms apart (bottom→left→top→right) over 500 ms each.
+// Total window: 250 + 3 × 60 + 500 = 930 ms.
+const SETTLE_MS = 250;
 const STAGGER_MS = 60;
 const CARD_DURATION_MS = 500;
 
@@ -73,7 +76,7 @@ export default function TrickArea({
 
     const animations = cardProgress.map((p, i) =>
       Animated.sequence([
-        Animated.delay(i * STAGGER_MS),
+        Animated.delay(SETTLE_MS + i * STAGGER_MS),
         Animated.timing(p, {
           toValue: 1,
           duration: CARD_DURATION_MS,

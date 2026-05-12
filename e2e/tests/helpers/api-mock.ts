@@ -126,6 +126,42 @@ export async function installYachtGameMock(page: Page): Promise<void> {
 }
 
 /**
+ * Install a mock for GET /entitlements that grants all premium game access.
+ * Must be called before page.goto("/") so the route is registered when the
+ * EntitlementProvider mounts.
+ */
+export async function installEntitlementsMock(page: Page): Promise<void> {
+  const b64url = (s: string): string =>
+    Buffer.from(s)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=/g, "");
+
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(
+    JSON.stringify({
+      sub: "e2e-test",
+      entitled_games: ["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"],
+      iat: 1000000000,
+      exp: 9999999999,
+    }),
+  );
+  const token = `${header}.${payload}.e2e-sig`;
+
+  await page.route(`${API_BASE}/entitlements`, async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        token,
+        expires_at: "2286-11-20T17:46:39.000Z",
+      }),
+    });
+  });
+}
+
+/**
  * Install a mock that returns a 503 for the first /yacht/new call,
  * then succeeds on subsequent calls.
  */

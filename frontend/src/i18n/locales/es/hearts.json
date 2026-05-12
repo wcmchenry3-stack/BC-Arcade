@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Corazones descubiertos",
   "events.moonShot": "¡{{name}} hizo luna!",
-  "events.queenOfSpades": "¡{{name}} toma la Reina de Espadas!"
+  "events.queenOfSpades": "¡{{name}} toma la Reina de Espadas!",
+
+  "difficulty.groupLabel": "Dificultad",
+  "difficulty.easy": "Fácil",
+  "difficulty.medium": "Media",
+  "difficulty.hard": "Difícil",
+  "game.startGame": "Iniciar juego"
 }

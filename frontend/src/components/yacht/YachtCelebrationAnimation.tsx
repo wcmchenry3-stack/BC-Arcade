@@ -17,8 +17,8 @@ interface Props {
   variant?: "yacht" | "joker";
 }
 
-// Die face characters scattered around the badge
-const DIE_FACES = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅", "⚅", "⚄"] as const;
+// Emoji dice scattered around the badge (emoji layer renders consistently on all platforms)
+const DIE_FACES = ["🎲", "🎲", "🎲", "🎲", "🎲", "🎲", "🎲", "🎲"] as const;
 const FACE_OFFSETS = [
   { x: -110, y: -110 },
   { x: 110, y: -110 },
@@ -107,8 +107,8 @@ export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht
               {
                 left: "50%",
                 top: "50%",
-                marginLeft: offset.x,
-                marginTop: offset.y,
+                marginLeft: offset.x - 16,
+                marginTop: offset.y - 16,
               },
               faceStyles[i],
             ]}

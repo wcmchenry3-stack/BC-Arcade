@@ -56,5 +56,7 @@
   "gameOver.playAgain": "다시 하기",
   "gameOver.playAgainLabel": "새 게임 시작",
   "gameOver.dismiss": "괜찮습니다",
-  "gameOver.dismissLabel": "닫고 현재 점수를 계속 표시"
+  "gameOver.dismissLabel": "닫고 현재 점수를 계속 표시",
+  "tab.upper": "상단",
+  "tab.lower": "하단"
 }

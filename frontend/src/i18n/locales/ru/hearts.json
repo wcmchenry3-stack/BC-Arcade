@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Черви раскрыты",
   "events.moonShot": "{{name}} собрал всё!",
-  "events.queenOfSpades": "{{name}} забирает Даму Пик!"
+  "events.queenOfSpades": "{{name}} забирает Даму Пик!",
+
+  "difficulty.groupLabel": "Сложность",
+  "difficulty.easy": "Легко",
+  "difficulty.medium": "Средне",
+  "difficulty.hard": "Сложно",
+  "game.startGame": "Начать игру"
 }

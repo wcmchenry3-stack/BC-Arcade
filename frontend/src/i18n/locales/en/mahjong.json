@@ -13,6 +13,8 @@
   "action.shuffleLabel": "Shuffle remaining tiles into a new solvable arrangement",
   "action.undo": "UNDO",
   "action.undoLabel": "Undo last matched pair",
+  "action.hint": "HINT",
+  "action.hintLabel": "Show a hint — highlights one valid pair for 2 seconds",
   "overlay.noMoves": "NO MOVES",
   "overlay.noMovesDetail": "No matches available. Shuffle to continue.",
   "overlay.deadlocked": "NO MORE MOVES",

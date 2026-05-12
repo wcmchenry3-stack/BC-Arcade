@@ -1,4 +1,5 @@
 import React from "react";
+import { AppState, AppStateStatus } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import { CapacityWarningToast } from "../CapacityWarningToast";
 import { ThemeProvider } from "../../../theme/ThemeContext";
@@ -105,6 +106,61 @@ describe("CapacityWarningToast", () => {
     // After one or more poll intervals, a subsequent check fires → show.
     await findByTestId("capacity-warning-toast");
     expect(check.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // -------------------------------------------------------------------------
+  // AppState pause / resume (battery drain fix — #1156)
+  // -------------------------------------------------------------------------
+
+  it("pauses the interval on background and resumes with an immediate check on active", async () => {
+    jest.useFakeTimers();
+    const check = jest.fn().mockResolvedValue(false);
+    renderWith(check);
+
+    // Flush the initial runCheck promise
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(check).toHaveBeenCalledTimes(1);
+
+    // Let the interval tick once
+    await act(async () => {
+      jest.advanceTimersByTime(60);
+    });
+    expect(check.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // Capture the AppState listener registered inside the component
+    const listener = (AppState.addEventListener as jest.Mock).mock.calls[0][1] as (
+      s: AppStateStatus
+    ) => void;
+
+    // Simulate going to background — interval should be cleared
+    act(() => {
+      listener("background");
+    });
+    const countAfterBackground = check.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    expect(check.mock.calls.length).toBe(countAfterBackground);
+
+    // Simulate returning to foreground — immediate check fires + interval restarts
+    act(() => {
+      listener("active");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(check.mock.calls.length).toBeGreaterThan(countAfterBackground);
+
+    // Interval is live again — another tick should fire
+    await act(async () => {
+      jest.advanceTimersByTime(60);
+    });
+    const countAfterResume = check.mock.calls.length;
+    expect(countAfterResume).toBeGreaterThan(countAfterBackground + 1);
+
+    jest.useRealTimers();
   });
 
   it("swallows errors from the check function without crashing", async () => {

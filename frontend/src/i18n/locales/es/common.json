@@ -44,5 +44,8 @@
   "overflow.abandon.title": "¿Abandonar la partida actual?",
   "overflow.abandon.body": "Empezar una nueva partida eliminará tu progreso en esta ronda. Tus estadísticas generales no se verán afectadas.",
   "overflow.abandon.keepPlaying": "Seguir jugando",
-  "overflow.abandon.startNew": "Empezar nueva"
+  "overflow.abandon.startNew": "Empezar nueva",
+  "home.locked.buttonLabel": "Desbloquear",
+  "home.locked.cardLabel": "{{title}} — Próximamente",
+  "home.locked.comingSoon": "Este juego estará disponible próximamente"
 }

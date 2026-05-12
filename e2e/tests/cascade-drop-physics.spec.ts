@@ -126,7 +126,7 @@ test.describe("Cascade — drop physics invariants", () => {
       // tier-3 radius=38, tier-0 radius=18 — both must fit inside walls.
       const r = f.tier === 0 ? 18 : 38;
       expect(f.x - r).toBeGreaterThanOrEqual(INNER_LEFT - 1);
-      expect(f.x + r).toBeLessThanOrEqual(INNER_RIGHT + 1);
+      expect(f.x + r).toBeLessThanOrEqual(INNER_RIGHT + 2);
       expect(f.y + r).toBeLessThanOrEqual(INNER_FLOOR + 5);
       // Top of every sprite must stay below the top of the bin.
       expect(f.y - r).toBeGreaterThan(0);

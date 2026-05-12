@@ -10,14 +10,29 @@ GET /sudoku/scores/{difficulty} remains unchanged.
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
+from db.base import get_session_factory
+from db.models import GameEntitlement
 from main import app
 
 client = TestClient(app)
 
 TEST_SESSION = str(uuid.uuid4())
 SESSION_HEADERS = {"X-Session-ID": TEST_SESSION}
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _sudoku_entitlement():
+    await _grant(TEST_SESSION, "sudoku")
 
 
 def _create_game(
@@ -115,9 +130,10 @@ class TestSetPlayerName:
         )
         assert res.status_code == 404
 
-    def test_wrong_session_returns_403(self):
+    async def test_wrong_session_returns_403(self):
         """A game owned by session A must not be claimable by session B."""
         other_session = str(uuid.uuid4())
+        await _grant(other_session, "sudoku")
         gid = _create_game(session_id=other_session)
         _complete_game(gid, 200, session_id=other_session)
         res = client.patch(
@@ -135,14 +151,14 @@ class TestSetPlayerName:
 
 class TestGetScores:
     def test_empty_initially(self):
-        res = client.get("/sudoku/scores/easy")
+        res = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS)
         assert res.status_code == 200
         assert res.json()["scores"] == []
 
     def test_returns_submitted_entries_for_difficulty(self):
         _submit("Alice", 90, "easy")
         _submit("Bob", 60, "easy")
-        scores = client.get("/sudoku/scores/easy").json()["scores"]
+        scores = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS).json()["scores"]
         assert len(scores) == 2
 
     def test_ordered_by_score_descending(self):
@@ -154,11 +170,11 @@ class TestGetScores:
         _submit("Bob", 180, "medium")
         limiter.reset()
         _submit("Carol", 120, "medium")
-        scores = client.get("/sudoku/scores/medium").json()["scores"]
+        scores = client.get("/sudoku/scores/medium", headers=SESSION_HEADERS).json()["scores"]
         assert [s["score"] for s in scores] == [180, 120, 40]
 
     def test_invalid_difficulty_path_returns_422(self):
-        assert client.get("/sudoku/scores/impossible").status_code == 422
+        assert client.get("/sudoku/scores/impossible", headers=SESSION_HEADERS).status_code == 422
 
     def test_capped_at_ten_entries(self):
         from limiter import limiter
@@ -166,7 +182,7 @@ class TestGetScores:
         for i in range(15):
             limiter.reset()
             _submit(f"Player{i}", i * 10, "hard")
-        scores = client.get("/sudoku/scores/hard").json()["scores"]
+        scores = client.get("/sudoku/scores/hard", headers=SESSION_HEADERS).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 140
 
@@ -179,12 +195,12 @@ class TestGetScores:
 class TestDifficultyIsolation:
     def test_easy_submission_absent_from_hard(self):
         _submit("EasyPlayer", 100, "easy")
-        hard = client.get("/sudoku/scores/hard").json()["scores"]
+        hard = client.get("/sudoku/scores/hard", headers=SESSION_HEADERS).json()["scores"]
         assert hard == []
 
     def test_hard_submission_absent_from_easy(self):
         _submit("HardPlayer", 290, "hard")
-        easy = client.get("/sudoku/scores/easy").json()["scores"]
+        easy = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS).json()["scores"]
         assert easy == []
 
     def test_three_tiers_kept_separate(self):
@@ -197,9 +213,9 @@ class TestDifficultyIsolation:
         limiter.reset()
         _submit("H", 300, "hard")
 
-        easy = client.get("/sudoku/scores/easy").json()["scores"]
-        medium = client.get("/sudoku/scores/medium").json()["scores"]
-        hard = client.get("/sudoku/scores/hard").json()["scores"]
+        easy = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS).json()["scores"]
+        medium = client.get("/sudoku/scores/medium", headers=SESSION_HEADERS).json()["scores"]
+        hard = client.get("/sudoku/scores/hard", headers=SESSION_HEADERS).json()["scores"]
 
         assert [s["player_name"] for s in easy] == ["E"]
         assert [s["player_name"] for s in medium] == ["M"]

@@ -5,13 +5,32 @@ same Cascade/Solitaire pattern. Score is max(0, 100 − human_cumulative)
 so higher = better performance.
 """
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
 import hearts.router as hearts_router_module
+from db.base import get_session_factory
+from db.models import GameEntitlement
 from main import app
 
 client = TestClient(app)
+
+_SID = str(uuid.uuid4())
+_HEADERS = {"X-Session-ID": _SID}
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _hearts_entitlement():
+    await _grant(_SID, "hearts")
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +41,9 @@ def reset_leaderboard():
 
 
 def _submit(player_name: str, score: int):
-    return client.post("/hearts/score", json={"player_name": player_name, "score": score})
+    return client.post(
+        "/hearts/score", json={"player_name": player_name, "score": score}, headers=_HEADERS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -44,11 +65,11 @@ class TestSubmitScore:
         assert res.status_code == 201
 
     def test_missing_player_name_returns_422(self):
-        res = client.post("/hearts/score", json={"score": 50})
+        res = client.post("/hearts/score", json={"score": 50}, headers=_HEADERS)
         assert res.status_code == 422
 
     def test_missing_score_returns_422(self):
-        res = client.post("/hearts/score", json={"player_name": "Bob"})
+        res = client.post("/hearts/score", json={"player_name": "Bob"}, headers=_HEADERS)
         assert res.status_code == 422
 
     def test_empty_player_name_returns_422(self):
@@ -71,21 +92,21 @@ class TestSubmitScore:
 
 class TestGetScores:
     def test_empty_initially(self):
-        res = client.get("/hearts/scores")
+        res = client.get("/hearts/scores", headers=_HEADERS)
         assert res.status_code == 200
         assert res.json()["scores"] == []
 
     def test_returns_submitted_entries(self):
         _submit("Alice", 80)
         _submit("Bob", 60)
-        scores = client.get("/hearts/scores").json()["scores"]
+        scores = client.get("/hearts/scores", headers=_HEADERS).json()["scores"]
         assert len(scores) == 2
 
     def test_ordered_by_score_descending(self):
         _submit("Alice", 40)
         _submit("Bob", 90)
         _submit("Carol", 70)
-        scores = client.get("/hearts/scores").json()["scores"]
+        scores = client.get("/hearts/scores", headers=_HEADERS).json()["scores"]
         assert [s["score"] for s in scores] == [90, 70, 40]
 
     def test_capped_at_ten_entries(self):
@@ -94,7 +115,7 @@ class TestGetScores:
         for i in range(15):
             limiter.reset()
             _submit(f"Player{i}", i * 5)
-        scores = client.get("/hearts/scores").json()["scores"]
+        scores = client.get("/hearts/scores", headers=_HEADERS).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 70  # top score is 14 * 5
 
@@ -156,7 +177,7 @@ class TestTieBreak:
         limiter.reset()
         body = _submit("Bob", 75).json()
 
-        scores = client.get("/hearts/scores").json()["scores"]
+        scores = client.get("/hearts/scores", headers=_HEADERS).json()["scores"]
         assert scores[0]["player_name"] == "Alice"
         assert scores[1]["player_name"] == "Bob"
         assert body["rank"] == 2

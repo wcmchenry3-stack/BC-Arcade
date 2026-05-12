@@ -76,6 +76,8 @@ def test_game_type_enum_values() -> None:
         "mahjong",
         "starswarm",
         "freecell",
+        "sort",
+        "daily_word",
     }
     assert {v.value for v in GameType} == expected
 

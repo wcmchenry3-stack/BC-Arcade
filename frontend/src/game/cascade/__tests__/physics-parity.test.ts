@@ -22,9 +22,20 @@ const _rapierEngine: typeof import("../engine") = require(
 );
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const { createEngine: createRapierEngine } = _rapierEngine;
+import Matter from "matter-js";
 import { createEngine as createNativeEngine } from "../engine.native";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 import { MockWorld } from "../../../../__mocks__/@dimforge/rapier2d-compat";
+import {
+  MAX_FRUIT_SPEED_PX_S,
+  SCALE,
+  FIXED_STEP_MS,
+  SPAWN_GRACE_TICKS,
+  COLLISION_GROUP_DYNAMIC,
+  COLLISION_GROUP_WALL,
+  WALL_THICKNESS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+} from "../engine.shared";
 
 const RAPIER_MOCK = require("@dimforge/rapier2d-compat").default; // eslint-disable-line @typescript-eslint/no-require-imports
 
@@ -57,7 +68,7 @@ function getRapierWorld(): MockWorld {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Gravity: fruits fall on both engines
+// 1. Gravity: fruits fall on both engines — GH #203
 // ---------------------------------------------------------------------------
 
 describe("gravity — both engines pull fruits downward", () => {
@@ -84,7 +95,7 @@ describe("gravity — both engines pull fruits downward", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Fruit count: N well-separated drops → N fruits, no auto-merges
+// 2. Fruit count: N well-separated drops → N fruits, no auto-merges — GH #203
 // ---------------------------------------------------------------------------
 
 describe("fruit count — N drops at distinct x positions → N snapshots", () => {
@@ -109,7 +120,7 @@ describe("fruit count — N drops at distinct x positions → N snapshots", () =
 });
 
 // ---------------------------------------------------------------------------
-// 3 & 4. Merge semantics: same-tier collision produces fruitMerge on both engines
+// 3 & 4. Merge semantics: same-tier collision produces fruitMerge on both engines — GH #203
 // ---------------------------------------------------------------------------
 
 describe("merge semantics — same-tier collision fires fruitMerge on both engines", () => {
@@ -151,7 +162,140 @@ describe("merge semantics — same-tier collision fires fruitMerge on both engin
 });
 
 // ---------------------------------------------------------------------------
-// 5. Different-tier fruits never merge on either engine
+// 5. Velocity clamp parity: both engines cap at the same constant — CASCADE-PHYS-08
+// ---------------------------------------------------------------------------
+
+describe("velocity clamp parity", () => {
+  it("Rapier: body exceeding MAX_FRUIT_SPEED_PX_S is clamped after step", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    const world = getRapierWorld();
+
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    handle.step(); // register body (handle 0)
+
+    const body = world._bodies.get(0)!;
+    body._vx = 99; // >> maxPhysSpeed = MAX_FRUIT_SPEED_PX_S * SCALE = 12
+    body._vy = 99;
+    handle.step();
+
+    const vel = body.linvel();
+    const maxPhysSpeed = MAX_FRUIT_SPEED_PX_S * SCALE;
+    expect(Math.sqrt(vel.x ** 2 + vel.y ** 2)).toBeLessThanOrEqual(maxPhysSpeed + 0.001);
+  });
+
+  it("Matter.js: body exceeding MAX_FRUIT_SPEED_PX_S is clamped after step", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    handle.step(1 / 60); // register body
+
+    const dynamicBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    const fruitBody = dynamicBodies[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: 9999 });
+    handle.step(1 / 60);
+
+    const speed = Math.sqrt(fruitBody.velocity.x ** 2 + fruitBody.velocity.y ** 2);
+    expect(speed).toBeLessThanOrEqual(MAX_FRUIT_SPEED_PX_S / 60 + 0.5);
+
+    handle.cleanup();
+  });
+
+  // GH #1419 Bug 1 — clamp threshold must use actual step duration, not FIXED_STEP_MS
+  it("Matter.js: velocity clamp uses actual step duration at 120 Hz (step(1/120))", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    handle.step(1 / 120);
+
+    const dynamicBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    const fruitBody = dynamicBodies[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: 9999 });
+    handle.step(1 / 120);
+
+    // At 120 Hz (stepMs = 8.33 ms): max px/step = MAX_FRUIT_SPEED_PX_S / 120
+    const speed = Math.sqrt(fruitBody.velocity.x ** 2 + fruitBody.velocity.y ** 2);
+    expect(speed).toBeLessThanOrEqual(MAX_FRUIT_SPEED_PX_S / 120 + 0.5);
+
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Fixed-step parity: both engines run 2 sub-steps for dt=1/30 — GH #1220
+// ---------------------------------------------------------------------------
+
+describe("fixed-step parity — dt=1/30 produces 2 sub-steps on both engines", () => {
+  it("Rapier: step(1/30) calls world.step() exactly twice", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    const world = getRapierWorld();
+    const stepSpy = jest.spyOn(world, "step");
+    handle.step(1 / 30);
+    expect(stepSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("Matter.js: step(1/30) calls Matter.Engine.update() exactly twice", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const updateSpy = jest.spyOn(Matter.Engine, "update");
+    handle.step(1 / 30);
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    for (const call of updateSpy.mock.calls) {
+      expect(call[1]).toBeLessThanOrEqual(FIXED_STEP_MS + 0.001);
+    }
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Body sleeping parity — GH #1222
+// ---------------------------------------------------------------------------
+
+describe("body sleeping parity — sleeping is enabled on both engines", () => {
+  it("Rapier: canSleep(true) is called on every spawned body", async () => {
+    const canSleepSpy = jest.fn().mockImplementation(function (this: unknown) {
+      return this;
+    });
+    const origDynamic = RAPIER_MOCK.RigidBodyDesc.dynamic;
+    RAPIER_MOCK.RigidBodyDesc.dynamic = () => {
+      const builder = origDynamic();
+      builder.setCanSleep = canSleepSpy;
+      return builder;
+    };
+
+    try {
+      const handle = await createRapierEngine(W, H, fruitSet);
+      handle.drop(fruit(0), fruitSet.id, W / 2, 300);
+      handle.step();
+      expect(canSleepSpy).toHaveBeenCalledWith(true);
+    } finally {
+      RAPIER_MOCK.RigidBodyDesc.dynamic = origDynamic;
+    }
+  });
+
+  it("Matter.js: enableSleeping is true on the Matter engine", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine & {
+      enableSleeping: boolean;
+    };
+    expect(engineInstance.enableSleeping).toBe(true);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Different-tier fruits never merge on either engine — GH #203
 // ---------------------------------------------------------------------------
 
 describe("no cross-tier merges", () => {
@@ -181,6 +325,346 @@ describe("no cross-tier merges", () => {
     }
 
     expect(mergeCount).toBe(0);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. Merge count parity (#1224)
+// ---------------------------------------------------------------------------
+
+describe("merge count parity — same collision sequence → same fruitMerge count", () => {
+  it("Rapier: 3 non-overlapping pairs each produce exactly 1 fruitMerge", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    const world = getRapierWorld();
+
+    handle.drop(fruit(1), fruitSet.id, 50, 300);
+    handle.drop(fruit(1), fruitSet.id, 60, 300);
+    handle.drop(fruit(1), fruitSet.id, 100, 300);
+    handle.drop(fruit(1), fruitSet.id, 110, 300);
+    handle.drop(fruit(1), fruitSet.id, 150, 300);
+    handle.drop(fruit(1), fruitSet.id, 160, 300);
+    handle.step();
+
+    world._fireCollision(1003, 1004);
+    world._fireCollision(1005, 1006);
+    world._fireCollision(1007, 1008);
+    const { events } = handle.step();
+
+    expect(events.filter((e) => e.type === "fruitMerge")).toHaveLength(3);
+  });
+
+  it("Matter.js: same-tier pairs produce the same fruitMerge count as Rapier", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const tier1 = fruit(1);
+    let mergeCount = 0;
+
+    handle.drop(tier1, fruitSet.id, 50, 30);
+    handle.drop(tier1, fruitSet.id, 58, 30);
+
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      mergeCount += events.filter((e) => e.type === "fruitMerge").length;
+      if (mergeCount > 0) break;
+    }
+    // Both engines should produce exactly 1 merge for one pair
+    expect(mergeCount).toBe(1);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Spawn grace parity (#1226)
+// ---------------------------------------------------------------------------
+
+describe("spawn grace parity — both engines apply and expire grace on the same tick count", () => {
+  it("Rapier: grace collision groups restored after exactly SPAWN_GRACE_TICKS steps", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    const world = getRapierWorld();
+
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.step();
+
+    world._fireCollision(1003, 1004);
+    handle.step(); // merge → spawns grace body (body 2, col 1005)
+
+    const spawnedCollider = world._bodies.get(2)?._colliders[0];
+    expect(spawnedCollider).toBeDefined();
+
+    const GRACE_GROUPS = COLLISION_GROUP_DYNAMIC | (COLLISION_GROUP_WALL << 16);
+    const NORMAL_GROUPS =
+      COLLISION_GROUP_DYNAMIC | ((COLLISION_GROUP_WALL | COLLISION_GROUP_DYNAMIC) << 16);
+
+    // After spawn step: graceTicksRemaining was 3, decremented to 2 → still grace
+    expect(spawnedCollider!._collisionGroups).toBe(GRACE_GROUPS);
+
+    // Step SPAWN_GRACE_TICKS-1 more times to exhaust grace
+    for (let i = 0; i < SPAWN_GRACE_TICKS - 1; i++) {
+      handle.step();
+    }
+    expect(spawnedCollider!._collisionGroups).toBe(NORMAL_GROUPS);
+  });
+
+  it("Matter.js: grace filter restored after exactly SPAWN_GRACE_TICKS steps", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    const tier0 = fruit(0);
+    handle.drop(tier0, fruitSet.id, W / 2 - 5, 30);
+    handle.drop(tier0, fruitSet.id, W / 2 + 5, 30);
+
+    let mergeStep = -1;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        mergeStep = i;
+        break;
+      }
+    }
+    expect(mergeStep).toBeGreaterThanOrEqual(0);
+
+    // Spawned body should have grace filter right after merge step
+    const dynBodies = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    const graceBody = dynBodies().find(
+      (b) => b.collisionFilter.category === COLLISION_GROUP_DYNAMIC
+    );
+    expect(graceBody).toBeDefined();
+    expect(graceBody!.collisionFilter.mask & COLLISION_GROUP_DYNAMIC).toBe(0);
+
+    // Step SPAWN_GRACE_TICKS-1 more times
+    for (let i = 0; i < SPAWN_GRACE_TICKS - 1; i++) {
+      handle.step(1 / 60);
+    }
+
+    // After grace expires, dynamic collisions allowed again
+    const restoredBody = dynBodies().find(
+      (b) => b.collisionFilter.category === COLLISION_GROUP_DYNAMIC
+    );
+    expect(restoredBody).toBeDefined();
+    expect(restoredBody!.collisionFilter.mask & COLLISION_GROUP_DYNAMIC).not.toBe(0);
+
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game-over hysteresis parity (CASCADE-PHYS-07)
+// ---------------------------------------------------------------------------
+
+describe("game-over hysteresis parity — both engines fire gameOver on same tick", () => {
+  it("both engines fire gameOver on tick 30 after 30 consecutive ticks above danger line", async () => {
+    const rapierHandle = await createRapierEngine(W, H, fruitSet);
+    const nativeHandle = await createNativeEngine(W, H, fruitSet);
+
+    // Drop tier-0 at y=50; top = 50-18 = 32 < dangerY (108) → above danger line
+    rapierHandle.drop(fruit(0), fruitSet.id, W / 2, 50);
+    nativeHandle.drop(fruit(0), fruitSet.id, W / 2, 50);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000); // past grace for both engines
+
+    let rapierFiredAt = -1;
+    let nativeFiredAt = -1;
+
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (rapierFiredAt === -1) {
+        if (rapierHandle.step().events.some((e) => e.type === "gameOver")) rapierFiredAt = i;
+      }
+      if (nativeFiredAt === -1) {
+        // Tiny dt keeps Matter.js body frozen at y=50 (no physics advancement)
+        if (nativeHandle.step(1e-7).events.some((e) => e.type === "gameOver")) nativeFiredAt = i;
+      }
+    }
+
+    jest.useRealTimers();
+    nativeHandle.cleanup();
+
+    expect(rapierFiredAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    expect(nativeFiredAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+    expect(rapierFiredAt).toBe(nativeFiredAt);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wall containment parity (CASCADE-PHYS-08)
+// ---------------------------------------------------------------------------
+
+describe("wall containment parity — no fruit escapes through left or right wall in 600 frames", () => {
+  const tier0Radius = fruit(0).radius;
+  const innerLeft = WALL_THICKNESS + tier0Radius;
+  const innerRight = W - WALL_THICKNESS - tier0Radius;
+
+  it("Rapier: x stays within wall bounds", async () => {
+    const handle = await createRapierEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 600; i++) {
+      const { snapshots } = handle.step();
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
+  });
+
+  it("Matter.js: x stays within wall bounds", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 600; i++) {
+      const { snapshots } = handle.step(1 / 60);
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
+    handle.cleanup();
+  });
+
+  // GH #1419 Bug 1 — clamp uses lastStepMs so wall containment holds at 120 Hz
+  it("Matter.js: x stays within wall bounds at 120 Hz (step(1/120))", async () => {
+    const handle = await createNativeEngine(W, H, fruitSet);
+    handle.drop(fruit(0), fruitSet.id, W / 2, 100);
+    for (let i = 0; i < 1200; i++) {
+      const { snapshots } = handle.step(1 / 120);
+      for (const snap of snapshots) {
+        expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
+        expect(snap.x).toBeLessThanOrEqual(innerRight + 1);
+      }
+    }
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. Neighbor-wake parity — GH #1277
+// ---------------------------------------------------------------------------
+
+describe("neighbor-wake parity — both engines wake sleeping neighbors after a merge", () => {
+  it("Matter.js: Matter.Sleeping.set is called for neighbors when a merge fires", async () => {
+    // The neighbor-wake loop was changed from iterating Matter.Composite.allBodies
+    // (which includes static walls) to iterating fruitMap (live fruits only).
+    // Verify the wake call fires — if the loop never ran, no sleeping.set calls
+    // for non-static bodies would occur.
+    const sleepSpy = jest.spyOn(Matter.Sleeping, "set");
+    const handle = await createNativeEngine(W, H, fruitSet);
+
+    const tier1 = fruit(1);
+    handle.drop(tier1, fruitSet.id, W / 2 - 5, 30);
+    handle.drop(tier1, fruitSet.id, W / 2 + 5, 30);
+
+    let mergeFired = false;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        mergeFired = true;
+        break;
+      }
+    }
+    expect(mergeFired).toBe(true);
+
+    // At least one sleeping.set(body, false) call should have happened for the
+    // neighbor-wake pass on the spawned tier-2 body's neighbors.
+    // fruitMap iterates only dynamic fruit bodies; verify at least one dynamic body was woken.
+    // (Matter.js may also call Sleeping.set on static walls internally — we scope to dynamic only.)
+    const wakeCallsOnDynamic = sleepSpy.mock.calls.filter(
+      ([body, flag]) => !body.isStatic && flag === false
+    );
+    expect(wakeCallsOnDynamic.length).toBeGreaterThan(0);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. Determinism parity — CASCADE-PHYS-10 (GH #1240)
+// ---------------------------------------------------------------------------
+
+describe("determinism parity — nowProvider injection makes runs reproducible", () => {
+  it("Rapier: 50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function runRapier() {
+      const handle = await createRapierEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step().snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step().snapshots;
+      return last.map((s) => ({ x: Math.round(s.x * 10), y: Math.round(s.y * 10), tier: s.tier }));
+    }
+
+    const run1 = await runRapier();
+    const run2 = await runRapier();
+    expect(run1).toEqual(run2);
+  });
+
+  it("Matter.js: 50 drops + 300 ticks with a fixed nowProvider produce identical snapshots on two runs", async () => {
+    const FIXED_NOW = 1_000_000;
+    const nowFn = () => FIXED_NOW;
+
+    async function runNative() {
+      const handle = await createNativeEngine(W, H, fruitSet, nowFn);
+      for (let i = 0; i < 50; i++) {
+        handle.drop(fruit(i % 5), fruitSet.id, 50 + (i % 5) * 40, 30 + (i % 3) * 10);
+      }
+      let last = handle.step(1 / 60).snapshots;
+      for (let i = 1; i < 300; i++) last = handle.step(1 / 60).snapshots;
+      handle.cleanup();
+      return last.map((s) => ({ x: Math.round(s.x * 10), y: Math.round(s.y * 10), tier: s.tier }));
+    }
+
+    const run1 = await runNative();
+    const run2 = await runNative();
+    expect(run1).toEqual(run2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GH #1419 Bug 2 — grace wall-clock parity at 120 Hz ProMotion
+// ---------------------------------------------------------------------------
+
+describe("grace period wall-clock parity — ≥ 40 ms protection at any step rate", () => {
+  it("Matter.js: grace period effective wall-clock time is ≥ 40 ms at step(1/120)", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createNativeEngine(W, H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2 - 5, 30);
+    handle.drop(fruit(0), fruitSet.id, W / 2 + 5, 30);
+
+    const DT = 1 / 120;
+    let mergeFound = false;
+    for (let i = 0; i < 1200 && !mergeFound; i++) {
+      const { events } = handle.step(DT);
+      mergeFound = events.some((e) => e.type === "fruitMerge");
+    }
+    expect(mergeFound).toBe(true);
+
+    const dynBodies = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+
+    // Spawned body should be in grace immediately after the merge step
+    expect(dynBodies().some((b) => (b.collisionFilter.mask & COLLISION_GROUP_DYNAMIC) === 0)).toBe(
+      true
+    );
+
+    // Count remaining grace steps until the dynamic collision bit is restored
+    let remainingGraceSteps = 0;
+    for (let i = 0; i < 20; i++) {
+      const stillGrace = dynBodies().some(
+        (b) => (b.collisionFilter.mask & COLLISION_GROUP_DYNAMIC) === 0
+      );
+      if (!stillGrace) break;
+      remainingGraceSteps++;
+      handle.step(DT);
+    }
+
+    // Total: 1 (the merge step that spawned and decremented grace) + remaining steps
+    const totalGraceTicks = 1 + remainingGraceSteps;
+    expect(totalGraceTicks * DT * 1000).toBeGreaterThanOrEqual(40);
+
     handle.cleanup();
   });
 });

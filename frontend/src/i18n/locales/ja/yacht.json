@@ -56,5 +56,7 @@
   "gameOver.playAgain": "もう一度",
   "gameOver.playAgainLabel": "新しいゲームを始める",
   "gameOver.dismiss": "いいえ",
-  "gameOver.dismissLabel": "閉じて現在のスコアを表示したままにする"
+  "gameOver.dismissLabel": "閉じて現在のスコアを表示したままにする",
+  "tab.upper": "上部",
+  "tab.lower": "下部"
 }

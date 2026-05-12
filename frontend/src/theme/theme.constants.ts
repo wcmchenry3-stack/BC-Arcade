@@ -34,6 +34,11 @@ export const DEV_SURFACE_SUBTLE = "rgba(255,255,255,0.08)";
 /** Slightly more opaque white surface for dev-panel step buttons. */
 export const DEV_SURFACE_DIM = "rgba(255,255,255,0.1)";
 
+/** Mahjong board background — desaturated sage green (hsl 120 15% 21%).
+ *  Reduced saturation vs. the original #1a3a1a to lower chromatic contrast
+ *  against white tile faces during long play sessions. */
+export const MAHJONG_BOARD_BG = "#2d3d2d";
+
 /** Mahjong tile face when selected — soft yellow highlight. */
 export const MAHJONG_TILE_FACE_SELECTED = "#fff8c0";
 
@@ -42,3 +47,9 @@ export const MAHJONG_GLOW_BG = "rgba(255,215,0,0.35)";
 
 /** Mahjong selected tile glow — stronger gold shadow effect. */
 export const MAHJONG_GLOW_SHADOW = "rgba(255,215,0,0.7)";
+
+/** Mahjong hint tile glow — subtle blue background for matching free tiles. */
+export const MAHJONG_HINT_GLOW_BG = "rgba(93,188,210,0.35)";
+
+/** Mahjong hint tile glow — stronger blue shadow effect (web canvas). */
+export const MAHJONG_HINT_GLOW_SHADOW = "rgba(93,188,210,0.7)";

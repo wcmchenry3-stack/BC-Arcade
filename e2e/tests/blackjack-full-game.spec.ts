@@ -30,6 +30,8 @@ test.describe("Blackjack — full happy-path game journey", () => {
     const bj = new BlackjackPage(page);
     await expect(page.getByText("BC Arcade").first()).toBeVisible();
     await page.getByRole("button", { name: "Play Blackjack" }).click();
+    // BJ-2: fresh install shows TableSelectPanel — select Beginner
+    await page.getByRole("button", { name: /select beginner table/i }).click();
     await expect(bj.dealButton()).toBeVisible();
   });
 
@@ -38,7 +40,7 @@ test.describe("Blackjack — full happy-path game journey", () => {
   }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await bj.dealButton().click();
 
     // Either player phase (Hit/Stand) or immediate result (natural BJ → Next Hand)
@@ -97,7 +99,7 @@ test.describe("Blackjack — full happy-path game journey", () => {
     for (let hand = 0; hand < 3; hand++) {
       // Betting phase
       await expect(bj.dealButton()).toBeVisible({ timeout: 10000 });
-      await bj.chipButton(100).click();
+      await bj.chipButton(5).click();
       await bj.dealButton().click();
 
       // Player or result phase

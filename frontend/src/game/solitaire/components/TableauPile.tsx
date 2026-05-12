@@ -13,18 +13,23 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../../theme/ThemeContext";
 import type { Card } from "../types";
 import type { CanonicalSuit } from "../../_shared/decks/types";
-import CardView, { CARD_HEIGHT, CARD_WIDTH } from "./CardView";
+import CardView, { CARD_WIDTH } from "./CardView";
+import { useCardSize } from "../../_shared/CardSizeContext";
+import { rankLabel } from "../../_shared/decks/cardId";
+import SelectableCard from "../../_shared/SelectableCard";
 import { DraggableCard } from "../../_shared/drag/DraggableCard";
 import { DropTarget } from "../../_shared/drag/DropTarget";
 import type { DropHandler } from "../../_shared/drag/DragContext";
+import type { SharedValue } from "react-native-reanimated";
 
-const FACE_UP_OFFSET = 24;
-const FACE_DOWN_OFFSET = 14;
+const FACE_UP_OFFSET = 28;
+const FACE_DOWN_OFFSET = 20;
 
 export interface TableauPileProps {
   readonly pile: readonly Card[];
   readonly colIndex: number;
   readonly selectedIndex?: number;
+  readonly shakeX?: SharedValue<number>;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0". Required for DnD. */
@@ -36,6 +41,7 @@ export default function TableauPile({
   pile,
   colIndex,
   selectedIndex,
+  shakeX,
   onCardPress,
   onEmptyPress,
   dropId,
@@ -43,6 +49,10 @@ export default function TableauPile({
 }: TableauPileProps) {
   const { colors } = useTheme();
   const { t } = useTranslation("solitaire");
+  const { cardWidth, cardHeight } = useCardSize();
+  const scale = cardWidth / CARD_WIDTH;
+  const faceUpOffset = Math.round(FACE_UP_OFFSET * scale);
+  const faceDownOffset = Math.round(FACE_DOWN_OFFSET * scale);
 
   const highlightStyle: ViewStyle = {
     borderColor: colors.accent,
@@ -56,7 +66,15 @@ export default function TableauPile({
     const empty = (
       <Pressable
         onPress={onEmptyPress ? () => onEmptyPress(colIndex) : undefined}
-        style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.background }]}
+        style={[
+          styles.empty,
+          {
+            width: cardWidth,
+            height: cardHeight,
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+          },
+        ]}
         accessibilityRole="button"
         accessibilityLabel={t("pile.tableau.empty", { col: colIndex + 1 })}
       />
@@ -82,21 +100,34 @@ export default function TableauPile({
     offsets.push(acc);
     const card = pile[i];
     if (card === undefined) break;
-    acc += card.faceUp ? FACE_UP_OFFSET : FACE_DOWN_OFFSET;
+    acc += card.faceUp ? faceUpOffset : faceDownOffset;
   }
-  const containerHeight = CARD_HEIGHT + (offsets[pile.length - 1] ?? 0);
-  const containerStyle: ViewStyle = { width: CARD_WIDTH, height: containerHeight };
+  const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
+  const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
 
   const cards = pile.map((card, cardIndex) => {
+    const isTop = cardIndex === pile.length - 1;
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
     const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
     const dragCards = pile.slice(cardIndex).map((c) => ({
       suit: c.suit as CanonicalSuit,
       rank: c.rank,
       faceDown: !c.faceUp,
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
+      width: cardWidth,
+      height: cardHeight,
     }));
+    const selectedLabel = isSelected
+      ? card.faceUp
+        ? t("card.faceUpSelected", {
+            rank: rankLabel(card.rank),
+            suit: t(`suit.${card.suit}` as const),
+          })
+        : t("card.faceDownSelected")
+      : undefined;
+    const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
+    const hitSlop = isTop
+      ? undefined
+      : { top: 0, bottom: Math.min(24, stripeHeight), left: 4, right: 4 };
     return (
       <DraggableCard
         key={cardIndex}
@@ -105,8 +136,22 @@ export default function TableauPile({
         dragCards={dragCards}
         dragSource={{ game: "solitaire", type: "tableau", col: colIndex, fromIndex: cardIndex }}
         draggable={card.faceUp}
+        hitSlop={hitSlop}
       >
-        <CardView card={card} selected={isSelected} />
+        {isSelected ? (
+          <SelectableCard
+            suit={card.suit as CanonicalSuit}
+            rank={card.rank}
+            faceDown={!card.faceUp}
+            width={cardWidth}
+            height={cardHeight}
+            selected
+            shakeX={shakeX}
+            accessibilityLabel={selectedLabel}
+          />
+        ) : (
+          <CardView card={card} />
+        )}
       </DraggableCard>
     );
   });
@@ -144,8 +189,6 @@ export default function TableauPile({
 
 const styles = StyleSheet.create({
   empty: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     borderRadius: 8,
     borderWidth: 1,
     borderStyle: "dashed",

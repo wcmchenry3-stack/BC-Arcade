@@ -52,7 +52,7 @@ test.describe("Blackjack — state persistence", () => {
   }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await bj.dealButton().click();
 
     // Wait for player or result phase

@@ -11,7 +11,7 @@
  *   Home → click "Play Yacht" → 13× (roll + score) → Game Over modal → Play Again
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Categories scored in order, matched to the scorecard display text.
 const CATEGORY_LABELS_IN_ORDER = [

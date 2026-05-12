@@ -129,6 +129,64 @@ describe("ScoreQueue", () => {
   });
 
   // -------------------------------------------------------------------------
+  // dropByGameType
+  // -------------------------------------------------------------------------
+
+  describe("dropByGameType", () => {
+    it("removes all items for the given game type, leaves others intact", async () => {
+      await queue.enqueue("hearts", { score: 1 });
+      await queue.enqueue("hearts", { score: 2 });
+      await queue.enqueue("cascade", { score: 3 });
+      await queue.dropByGameType("hearts");
+      const items = await queue.peek();
+      expect(items).toHaveLength(1);
+      expect(items[0]?.game_type).toBe("cascade");
+    });
+
+    it("is a no-op when no items match the game type", async () => {
+      await queue.enqueue("cascade", { score: 1 });
+      await queue.dropByGameType("hearts");
+      expect(await queue.size()).toBe(1);
+    });
+
+    it("is a no-op when the queue is empty", async () => {
+      await expect(queue.dropByGameType("yacht")).resolves.toBeUndefined();
+      expect(await queue.size()).toBe(0);
+    });
+
+    it("does not write to storage when no items are removed", async () => {
+      const spy = jest.spyOn(queue as unknown as { write: () => void }, "write");
+      await queue.enqueue("cascade", { score: 1 });
+      spy.mockClear();
+      await queue.dropByGameType("hearts");
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("is a no-op when a flush is in progress", async () => {
+      await queue.enqueue("hearts", { score: 1 });
+      let resolveHandler!: () => void;
+      // handlerStarted resolves once flush is mid-handler, guaranteeing flushInProgress=true
+      // and that resolveHandler has been assigned before we call it.
+      const handlerStarted = new Promise<void>((signal) => {
+        queue.registerHandler("hearts", () => {
+          signal();
+          return new Promise<void>((resolve) => {
+            resolveHandler = resolve;
+          });
+        });
+      });
+      const flushPromise = queue.flush();
+      await handlerStarted;
+      await queue.dropByGameType("hearts"); // drop is skipped — flush in progress
+      resolveHandler();
+      await flushPromise;
+      // item was flushed successfully (not dropped), queue is now empty
+      expect(await queue.size()).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // generateUUID — crypto fallback (regression for Sentry issue: "Property
   // 'crypto' doesn't exist")
   // -------------------------------------------------------------------------

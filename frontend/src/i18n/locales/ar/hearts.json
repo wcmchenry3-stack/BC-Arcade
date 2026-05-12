@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "كُسرت القلوب",
   "events.moonShot": "{{name}} سيطر على الجولة!",
-  "events.queenOfSpades": "{{name}} أخذ ملكة البستوني!"
+  "events.queenOfSpades": "{{name}} أخذ ملكة البستوني!",
+
+  "difficulty.groupLabel": "الصعوبة",
+  "difficulty.easy": "سهل",
+  "difficulty.medium": "متوسط",
+  "difficulty.hard": "صعب",
+  "game.startGame": "ابدأ اللعبة"
 }

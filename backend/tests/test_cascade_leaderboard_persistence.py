@@ -17,7 +17,8 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import get_engine
+from db.base import get_engine, get_session_factory
+from db.models import GameEntitlement
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +31,11 @@ async def test_cascade_score_survives_engine_dispose() -> None:
 
     sid = str(uuid.uuid4())
     headers = {"X-Session-ID": sid}
+
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=sid, game_slug="cascade"))
+        await db.commit()
 
     with TestClient(app) as c1:
         # Create game
@@ -58,7 +64,7 @@ async def test_cascade_score_survives_engine_dispose() -> None:
     await engine.dispose()
 
     with TestClient(app) as c2:
-        r = c2.get("/cascade/scores")
+        r = c2.get("/cascade/scores", headers=headers)
         assert r.status_code == 200
         scores = r.json()["scores"]
         assert any(

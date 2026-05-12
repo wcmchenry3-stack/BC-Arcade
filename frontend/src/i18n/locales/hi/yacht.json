@@ -56,5 +56,7 @@
   "gameOver.playAgain": "फिर से खेलें",
   "gameOver.playAgainLabel": "नया खेल शुरू करें",
   "gameOver.dismiss": "नहीं धन्यवाद",
-  "gameOver.dismissLabel": "बंद करें और वर्तमान स्कोर दिखाए रखें"
+  "gameOver.dismissLabel": "बंद करें और वर्तमान स्कोर दिखाए रखें",
+  "tab.upper": "ऊपरी",
+  "tab.lower": "निचला"
 }

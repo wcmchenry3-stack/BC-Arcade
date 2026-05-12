@@ -56,5 +56,7 @@
   "gameOver.playAgain": "שחק שוב",
   "gameOver.playAgainLabel": "התחל משחק חדש",
   "gameOver.dismiss": "לא תודה",
-  "gameOver.dismissLabel": "סגור והשאר את הניקוד הנוכחי גלוי"
+  "gameOver.dismissLabel": "סגור והשאר את הניקוד הנוכחי גלוי",
+  "tab.upper": "עליון",
+  "tab.lower": "תחתון"
 }

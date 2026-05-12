@@ -3,10 +3,10 @@
  *
  * Bet chip selector and Deal button interaction tests.
  *
- * BettingPanel rules:
+ * BettingPanel rules (Beginner table — selected after fresh install):
  *   - Default bet: 0 (no chips placed yet)
- *   - Chip denominations: 5, 25, 100, 500
- *   - Min bet: 5, Max bet: min(500, chips)
+ *   - Chip denominations: 5, 10, 25
+ *   - Min bet: 5, Max bet: min(25, chips)
  *   - Deal button disabled when bet < 5 or bet > chips
  *   - Clear Bet resets to 0
  */
@@ -36,20 +36,20 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     ).toBeDisabled();
   });
 
-  test("bankroll is displayed in the header", async ({ page }) => {
+  test("goal-progress HUD is displayed during betting", async ({ page }) => {
     await gotoBlackjack(page);
     await expect(
-      page.locator('[aria-label*="Bankroll: 1000 chips"]'),
+      page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();
   });
 
-  test("clicking 100-chip button adds 100 to bet", async ({ page }) => {
+  test("clicking 10-chip button adds 10 to bet", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(10).click();
 
     await expect(
-      page.getByRole("button", { name: /deal cards with 100-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 10-chip bet/i }),
     ).toBeVisible();
   });
 
@@ -66,21 +66,21 @@ test.describe("Blackjack — betting panel and chip selector", () => {
   test("multiple chip clicks accumulate the bet", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
-    await bj.chipButton(25).click();
+    await bj.chipButton(10).click();
+    await bj.chipButton(5).click();
 
-    // 100 + 25 = 125
+    // 10 + 5 = 15
     await expect(
-      page.getByRole("button", { name: /deal cards with 125-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 15-chip bet/i }),
     ).toBeVisible();
   });
 
   test("Clear Bet resets bet to 0 and disables Deal", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await expect(
-      page.getByRole("button", { name: /deal cards with 100-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 25-chip bet/i }),
     ).toBeVisible();
 
     await page.getByRole("button", { name: /clear bet/i }).click();
@@ -97,11 +97,11 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     ).toBeDisabled();
   });
 
-  test("500-chip button is disabled when chips < 500", async ({ page }) => {
+  test("25-chip button is disabled when chips < 25", async ({ page }) => {
     await injectEngineState(
       page,
       playerPhaseState({
-        chips: 200,
+        chips: 10,
         bet: 0,
         phase: "betting",
         outcome: null,
@@ -115,7 +115,7 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     await expect(bj.dealButton()).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: /500.*not available/i }),
+      page.getByRole("button", { name: /25.*not available/i }),
     ).toBeDisabled();
   });
 
@@ -123,13 +123,13 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     page,
   }) => {
     await gotoBlackjack(page);
-    // Place 500 chips — now all chip buttons should be disabled
-    await page.getByRole("button", { name: /add 500 to bet/i }).click();
+    // Place 25 chips — at max bet for beginner table (betMax = 25)
+    await page.getByRole("button", { name: /add 25 to bet/i }).click();
 
     await expect(
-      page.getByRole("button", { name: /deal cards with 500-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 25-chip bet/i }),
     ).toBeVisible();
-    // 5-chip button should now be disabled (exact match avoids 25/500 ambiguity)
+    // 5-chip button should now be disabled (exact match avoids 25 ambiguity)
     await expect(
       page.getByRole("button", { name: "5-chip not available", exact: true }),
     ).toBeDisabled();
@@ -143,18 +143,18 @@ test.describe("Blackjack — betting panel and chip selector", () => {
   test("Deal button is enabled after placing a valid bet", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await expect(
-      page.getByRole("button", { name: /deal cards with 100-chip bet/i }),
+      page.getByRole("button", { name: /deal cards with 25-chip bet/i }),
     ).not.toBeDisabled();
   });
 
   test("pressing Deal with a valid bet starts the hand", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await bj.goto();
-    await bj.chipButton(100).click();
+    await bj.chipButton(25).click();
     await page
-      .getByRole("button", { name: /deal cards with 100-chip bet/i })
+      .getByRole("button", { name: /deal cards with 25-chip bet/i })
       .click();
 
     // Either player phase or natural blackjack result

@@ -1,9 +1,10 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import type { Card } from "../../types";
-import CardView from "../CardView";
+import CardView, { CARD_WIDTH, CARD_HEIGHT } from "../CardView";
 
 function withTheme(children: React.ReactNode) {
   return <ThemeProvider>{children}</ThemeProvider>;
@@ -67,5 +68,21 @@ describe("CardView", () => {
   it("does not register a button role when no onPress is provided", () => {
     const { queryByRole } = render(withTheme(<CardView card={c()} />));
     expect(queryByRole("button")).toBeNull();
+  });
+});
+
+describe("CardView — natural size without Provider", () => {
+  it("renders at natural CARD_WIDTH × CARD_HEIGHT when no CardSizeContext.Provider ancestor exists", () => {
+    // CardSizeContext defaults to { cardWidth: CARD_WIDTH, cardHeight: CARD_HEIGHT }
+    // so components outside a Provider should render at the natural card size, not 0×0.
+    const { getByLabelText } = render(
+      <ThemeProvider>
+        <CardView card={c({ rank: 7, suit: "diamonds" })} />
+      </ThemeProvider>
+    );
+    const el = getByLabelText(/7 of Diamonds/);
+    const flat = StyleSheet.flatten(el.props.style);
+    expect(flat.width).toBe(CARD_WIDTH);
+    expect(flat.height).toBe(CARD_HEIGHT);
   });
 });

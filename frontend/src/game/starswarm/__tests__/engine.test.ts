@@ -23,6 +23,9 @@ import {
   difficultyMultiplier,
   difficultyParamScale,
   difficultyLabel,
+  BOSS_BULLET_VY,
+  BULLET_E_VY,
+  PLAYER_W,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -89,6 +92,48 @@ describe("initStarSwarm", () => {
   it("player starts near bottom of canvas", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     expect(s.player.y).toBeGreaterThan(CANVAS_H * 0.8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Player boundary clamping — regression for corner-stuck bug
+// Controls.tsx previously clamped playerXRef to [0, CANVAS_W] while the engine
+// clamps to [PLAYER_W/2, CANVAS_W - PLAYER_W/2], creating a dead zone at edges.
+// ---------------------------------------------------------------------------
+
+describe("player boundary clamping", () => {
+  const hw = PLAYER_W / 2; // 17
+
+  it("clamps player to right edge (CANVAS_W - hw) when input exceeds canvas width", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: CANVAS_W, fire: false });
+    expect(next.player.x).toBe(CANVAS_W - hw);
+  });
+
+  it("clamps player to left edge (hw) when input is 0", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: 0, fire: false });
+    expect(next.player.x).toBe(hw);
+  });
+
+  it("does not over-clamp when input is exactly at the right boundary", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: CANVAS_W - hw, fire: false });
+    expect(next.player.x).toBe(CANVAS_W - hw);
+  });
+
+  it("does not over-clamp when input is exactly at the left boundary", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const next = tick(s, 16, { playerX: hw, fire: false });
+    expect(next.player.x).toBe(hw);
+  });
+
+  it("consecutive right-edge inputs do not push ship beyond CANVAS_W - hw", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    for (let i = 0; i < 5; i++) {
+      s = tick(s, 16, { playerX: CANVAS_W, fire: false });
+    }
+    expect(s.player.x).toBe(CANVAS_W - hw);
   });
 });
 
@@ -738,10 +783,10 @@ describe("ChallengingStage off-screen cleanup", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("ChallengingStage");
 
-    // With 40 enemies, last enemy (idx 39) has delay = 39*80/3200 = 0.975.
-    // It exits the canvas after (1 + 0.975) * 3200 ≈ 6320 ms.
+    // With 40 enemies, last enemy (idx 39) has delay = 39*400/5000 = 3.12 (×pathDuration).
+    // It exits the canvas after 39*400 + 5000 = 20600 ms.
     // Advance past that with no firing so enemies scroll off instead of being shot.
-    s = advanceMs(s, 7000, NO_INPUT);
+    s = advanceMs(s, 22000, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
   });
 
@@ -1157,6 +1202,9 @@ describe("Bézier arc dives (#977)", () => {
     const wiggling = s.enemies.find((e) => e.phase === "Wiggling");
     if (!wiggling) throw new Error("no wiggling enemy");
     const id = wiggling.id;
+    // #1314: proportional aiming is more lethal — give invincibility so the player can't die
+    // mid-advance and freeze the game in GameOver before the dive completes.
+    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 } };
     s = advanceMs(s, WIGGLE_DURATION + DIVE_PATH_DURATION + 200, NO_INPUT);
     const after = s.enemies.find((e) => e.id === id)!;
     const completed =
@@ -1275,9 +1323,9 @@ describe("Boss burst-fire (#979)", () => {
     const boss = s.enemies[bossIdx]!;
     // After first burst shot, timer is either BURST_INTERVAL (more shots) or long pause (1-shot burst)
     expect(boss.shootTimer).toBeLessThanOrEqual(BURST_INTERVAL + 2);
-    // burstShotsLeft is 0 (burst complete) or 1 (one more shot coming)
+    // burstShotsLeft is 0 (burst complete) or up to 4 (3–5 shot burst, remaining after first)
     expect(boss.burstShotsLeft).toBeGreaterThanOrEqual(0);
-    expect(boss.burstShotsLeft).toBeLessThanOrEqual(2);
+    expect(boss.burstShotsLeft).toBeLessThanOrEqual(4);
   });
 
   it("Boss has long pause after burst completes (burstShotsLeft reaches 0)", () => {
@@ -1306,6 +1354,67 @@ describe("Boss burst-fire (#979)", () => {
   it("burstShotsLeft is 0 for all enemies at wave start", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     expect(s.enemies.every((e) => e.burstShotsLeft === 0)).toBe(true);
+  });
+
+  it("Boss burst bullet travels at BOSS_BULLET_VY; Elite bullet travels at BULLET_E_VY", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    const bossIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation"
+    );
+    const eliteIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Elite" && e.phase === "Formation"
+    );
+    if (bossIdx === -1) throw new Error("no boss in formation");
+    if (eliteIdx === -1) throw new Error("no elite in formation");
+    s = {
+      ...s,
+      bossThresholdCrossed: true,
+      enemyBullets: [],
+      enemies: s.enemies.map((e, i) => {
+        if (i === bossIdx) return { ...e, shootTimer: 0, burstShotsLeft: 0 };
+        if (i === eliteIdx) return { ...e, shootTimer: 0 };
+        return e;
+      }),
+    };
+    s = tick(s, 16, NO_INPUT);
+    const bossBullet = s.enemyBullets.find((b) => b.vy === BOSS_BULLET_VY);
+    const eliteBullet = s.enemyBullets.find((b) => b.vy === BULLET_E_VY);
+    expect(bossBullet).toBeDefined();
+    expect(eliteBullet).toBeDefined();
+  });
+
+  it("Boss circle-phase bullet travels at BOSS_BULLET_VY", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    const bossIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Boss");
+    if (bossIdx === -1) throw new Error("no boss");
+    const cx = CANVAS_W / 2;
+    const cy = CANVAS_H * 0.3;
+    const radius = 60;
+    s = {
+      ...s,
+      bossThresholdCrossed: true,
+      enemyBullets: [],
+      enemies: s.enemies.map((e, i) =>
+        i === bossIdx
+          ? {
+              ...e,
+              phase: "Circling" as const,
+              circleCx: cx,
+              circleCy: cy,
+              circleRadius: radius,
+              circleAngle: 0,
+              circleSpeed: 0.001,
+              shootTimer: 0,
+            }
+          : e
+      ),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemyBullets.length).toBeGreaterThan(0);
+    const bullet = s.enemyBullets[0]!;
+    expect(bullet.vy).toBe(BOSS_BULLET_VY);
   });
 });
 
@@ -1494,16 +1603,10 @@ describe("Power-up engine (#980)", () => {
     expect(s.activePowerUp).toBeNull();
   });
 
-  it("Challenging Stage spawns one lightning power-up at wave start within safe bounds (#1032)", () => {
+  it("Challenging Stage spawns no power-ups (#1463 — power-ups trivialise the perfect-clear)", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("ChallengingStage");
-    expect(s.powerUps.length).toBe(1);
-    const pu = s.powerUps[0]!;
-    expect(pu.type).toBe("lightning");
-    // X randomised within safe margins (not hardcoded to center)
-    expect(pu.x).toBeGreaterThanOrEqual(12);
-    expect(pu.x).toBeLessThanOrEqual(CANVAS_W - 12);
-    expect(pu.despawnTimer).toBeGreaterThan(6000); // canvas-height-derived (~8950ms at CANVAS_H=640)
+    expect(s.powerUps.length).toBe(0);
   });
 });
 
@@ -2065,7 +2168,9 @@ describe("#1035 Buddy Ship", () => {
     s = applyPowerUp(s, "buddy");
     expect(s.buddyShips.length).toBe(1);
 
-    // Advance until the buddy has fired (pathT >= 0.45) and completed (pathT > 1.2)
+    // Advance until the buddy has fired (pathT >= 0.45) and completed (pathT > 1.2).
+    // #1314: proportional aiming is more lethal — invincibility prevents GameOver mid-advance.
+    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 } };
     s = advanceMs(s, 4000, NO_INPUT);
 
     // Buddy should be gone after full traversal
@@ -2239,19 +2344,20 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
 
   it("challengingPerfect is false on WaveClear when enemies scroll off without being shot", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    // 40 enemies; last one (idx 39) exits at ≈6320ms — advance past with no firing
-    s = advanceMs(s, 7000, NO_INPUT);
+    // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
+    s = advanceMs(s, 22000, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
     expect(s.challengingPerfect).toBe(false);
   });
 
   it("PERFECT clears add 10,000 pts bonus at Ensign ×1 (plus 40×50 hit bonus)", () => {
-    // Zero-hit path: enemies scroll off — only waveClearBonus (wave 3 × 500 × 1 = 1500)
+    // Zero-hit path: enemies scroll off — wave-clear bonus is 0 (conditional on hits, #1463)
     let noPerfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    noPerfect = advanceMs(noPerfect, 7000, NO_INPUT);
+    noPerfect = advanceMs(noPerfect, 22000, NO_INPUT);
     expect(noPerfect.phase).toBe("WaveClear");
+    expect(noPerfect.score).toBe(0); // zero kills → zero wave-clear bonus
 
-    // Full-hit path: all 40 hit + perfect → 1500 + 2000 + 10000 = 13500
+    // Full-hit path: all 40 hit + perfect → waveClear(1500) + hits(2000) + perfect(10000) = 13500
     let perfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     perfect = {
       ...perfect,
@@ -2261,8 +2367,22 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
     perfect = tick(perfect, 16, NO_INPUT);
     expect(perfect.phase).toBe("WaveClear");
 
-    // Δ = 40 hits × 50 + 10,000 perfect bonus = 12,000
-    expect(perfect.score - noPerfect.score).toBe(40 * 50 + 10_000);
+    // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
+    expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
+  });
+
+  it("partial hit fraction (20/40 kills) gives proportional wave-clear bonus at Ensign ×1 (#1463)", () => {
+    // 20/40 = 50% hit fraction → waveClear = round(0.5 × 3 × 500 × 1) = 750
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
+    s = {
+      ...s,
+      challengingHits: 20,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WaveClear");
+    // waveClear(750) + hits(20×50=1000) + no perfect bonus = 1750
+    expect(s.score).toBe(750 + 20 * 50);
   });
 });
 
@@ -2305,6 +2425,9 @@ describe("laser sound gating", () => {
 
   it("does not trigger laser sound once lightning power-up expires", () => {
     let s = applyPowerUp(playingState(), "lightning");
+    // #1314: proportional aiming is more lethal — invincibility prevents GameOver freezing the
+    // power-up timer before it can expire.
+    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 } };
     s = advanceMs(s, POWERUP_DURATION + 100, FIRE_INPUT); // advance past expiry while firing
     expect(s.activePowerUp).toBeNull();
     // Advance one more frame: cooldown may already be 0 from continuous fire

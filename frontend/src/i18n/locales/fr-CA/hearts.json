@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Cœurs brisés",
   "events.moonShot": "{{name}} a raflé la mise!",
-  "events.queenOfSpades": "{{name}} prend la Dame de pique!"
+  "events.queenOfSpades": "{{name}} prend la Dame de pique!",
+
+  "difficulty.groupLabel": "Difficulté",
+  "difficulty.easy": "Facile",
+  "difficulty.medium": "Moyen",
+  "difficulty.hard": "Difficile",
+  "game.startGame": "Commencer"
 }

@@ -16,7 +16,7 @@
  * because the label localizes, which broke the round-trip test historically.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./fixtures";
 
 async function gotoSettings(page: Page) {
   await page.goto("/");

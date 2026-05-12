@@ -211,6 +211,10 @@ export interface StarSwarmState {
   readonly difficulty: DifficultyTier;
   /** True when the player hit all enemies in a Challenging Stage (#1022). */
   readonly challengingPerfect: boolean;
+  /** Dev: suppress player fire (bullets never spawn, cooldown still ticks). */
+  readonly playerFireDisabled: boolean;
+  /** Dev: enemy bullets are never pushed to the bullet list. */
+  readonly enemyFireDisabled: boolean;
 }
 
 /** Input snapshot consumed by each `tick` call. */

@@ -42,6 +42,8 @@ function renderBoard(state = BASE, onMove = jest.fn()) {
   return { ...utils, onMove };
 }
 
+afterEach(() => jest.useRealTimers());
+
 // ── Selection ────────────────────────────────────────────────────────────────
 
 describe("foundation retreat — selection", () => {
@@ -115,11 +117,11 @@ describe("foundation retreat — invalid move", () => {
     expect(onMove).not.toHaveBeenCalled();
   });
 
-  it("clears selection after an invalid attempt", () => {
+  it("preserves selection after an invalid attempt", () => {
     const { getByLabelText, queryByLabelText } = renderBoard();
     fireEvent.press(getByLabelText("2 of Spades"));
-    fireEvent.press(getByLabelText("Empty tableau column 2")); // invalid
-    expect(queryByLabelText(/\(selected\)/)).toBeNull();
+    fireEvent.press(getByLabelText("Empty tableau column 2")); // invalid — non-King on empty col
+    expect(queryByLabelText(/\(selected\)/)).toBeTruthy();
   });
 });
 

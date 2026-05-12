@@ -81,13 +81,24 @@ def _headers(sid: str) -> dict[str, str]:
     return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
+async def _grant(session_id: str, game_slug: str) -> None:
+    from db.base import get_session_factory
+    from db.models import GameEntitlement
+
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
 @pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-def test_create_game_stores_players_from_session(client) -> None:
+async def test_create_game_stores_players_from_session(client) -> None:
     """When players is omitted, the session id is stored as the sole player."""
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     r = client.post("/games", headers=_headers(sid), json={"game_type": "yacht"})
     assert r.status_code == 200
     gid = r.json()["id"]
@@ -102,9 +113,10 @@ def test_create_game_stores_players_from_session(client) -> None:
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-def test_create_game_stores_explicit_players(client) -> None:
+async def test_create_game_stores_explicit_players(client) -> None:
     """When players is provided, the given list is persisted."""
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     custom_id = str(uuid.uuid4())
     r = client.post(
         "/games",
@@ -123,9 +135,10 @@ def test_create_game_stores_explicit_players(client) -> None:
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-def test_game_history_includes_players(client) -> None:
+async def test_game_history_includes_players(client) -> None:
     """GET /games/me items include the players field."""
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     client.post("/games", headers=_headers(sid), json={"game_type": "yacht"})
 
     r = client.get("/games/me", headers=_headers(sid))

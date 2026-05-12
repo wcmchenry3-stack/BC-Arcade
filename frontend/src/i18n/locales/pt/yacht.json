@@ -56,5 +56,7 @@
   "gameOver.playAgain": "Jogar de Novo",
   "gameOver.playAgainLabel": "Iniciar um novo jogo",
   "gameOver.dismiss": "Não, obrigado",
-  "gameOver.dismissLabel": "Fechar e manter a pontuação atual visível"
+  "gameOver.dismissLabel": "Fechar e manter a pontuação atual visível",
+  "tab.upper": "Superior",
+  "tab.lower": "Inferior"
 }

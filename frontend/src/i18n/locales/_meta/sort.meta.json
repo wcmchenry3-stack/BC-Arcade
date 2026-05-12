@@ -1,0 +1,281 @@
+{
+  "game.title": {
+    "component": "HomeScreen",
+    "description": "Name of the Sort Puzzle game card.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A color-sorting puzzle game."
+  },
+  "game.description": {
+    "component": "HomeScreen",
+    "description": "One-line description on the Sort Puzzle game card.",
+    "tone": "casual, punchy",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "game.playLabel": {
+    "component": "HomeScreen",
+    "description": "Accessibility label for the Sort Puzzle play button.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.level": {
+    "component": "SortScreen HUD",
+    "description": "Current level readout shown in the header.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": [],
+    "notes": "{{level}} is a 1-indexed integer."
+  },
+  "hud.moves": {
+    "component": "SortScreen HUD",
+    "description": "Move counter shown in the header.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": ["{{moves}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.undos": {
+    "component": "SortScreen HUD",
+    "description": "Undo count shown in the header.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": ["{{undos}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.undo": {
+    "component": "SortScreen header",
+    "description": "Undo button.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.hint": {
+    "component": "SortScreen header",
+    "description": "Hint button — highlights the next suggested move.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.newGame": {
+    "component": "SortScreen header",
+    "description": "New Game button.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.colorblindToggle": {
+    "component": "SortScreen header",
+    "description": "Button label for toggling colorblind symbol overlay.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "win.title": {
+    "component": "SortScreen win overlay",
+    "description": "Header shown when the puzzle is solved.",
+    "tone": "celebratory",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "win.movesUsed": {
+    "component": "SortScreen win overlay",
+    "description": "Total moves used, shown on the win screen.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["{{moves}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "win.undosUsed": {
+    "component": "SortScreen win overlay",
+    "description": "Total undos used, shown on the win screen.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["{{undos}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.red": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the red color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.blue": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the blue color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.green": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the green color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.yellow": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the yellow color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.orange": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the orange color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.purple": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the purple color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.pink": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the pink color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.teal": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the teal color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.boardRegion": {
+    "component": "SortBoard",
+    "description": "Accessibility region label wrapping the full sort board.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.bottle": {
+    "component": "BottleView",
+    "description": "Accessibility label for a non-empty, unsolved, unselected bottle.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{index}}", "{{count}}", "{{depth}}"],
+    "doNotTranslate": [],
+    "notes": "{{index}} is 1-based bottle number; {{count}} is balls present; {{depth}} is BOTTLE_DEPTH (4)."
+  },
+  "a11y.bottleSelected": {
+    "component": "BottleView",
+    "description": "Accessibility label for a bottle that is currently selected.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": ["{{index}}"],
+    "doNotTranslate": [],
+    "notes": "Instructs the user to tap another bottle to execute the pour."
+  },
+  "a11y.bottleEmpty": {
+    "component": "BottleView",
+    "description": "Accessibility label for an empty bottle.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{index}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.bottleSolved": {
+    "component": "BottleView",
+    "description": "Accessibility label for a completely sorted bottle.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{index}}"],
+    "doNotTranslate": [],
+    "notes": "Indicates that this bottle is already in its final solved state."
+  },
+  "settings.colorblindMode": {
+    "component": "SortScreen settings",
+    "description": "Label for the colorblind mode toggle setting.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "settings.colorblindModeHint": {
+    "component": "SortScreen settings",
+    "description": "Hint text explaining what colorblind mode does.",
+    "tone": "informational",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.loadFailed": {
+    "component": "SortScreen",
+    "description": "Error message when a level fails to load.",
+    "tone": "apologetic, clear",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.submitFailed": {
+    "component": "SortScreen win overlay",
+    "description": "Error message when submitting the score to the leaderboard fails.",
+    "tone": "apologetic, clear",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.submitRetry": {
+    "component": "SortScreen win overlay",
+    "description": "Button label to retry a failed leaderboard submission.",
+    "tone": "action",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

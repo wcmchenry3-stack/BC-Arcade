@@ -9,19 +9,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
 from db.models import Game, GameType
+from entitlements.dependencies import require_entitlement
 from limiter import limiter, session_key
 from session import get_session_id
 from vocab import GameType as GameTypeEnum
 
 from .models import LeaderboardResponse, ScoreEntry, SetPlayerNameRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_entitlement("cascade"))])
 
 LEADERBOARD_LIMIT = 10
 

@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -7,7 +7,11 @@ import { HomeStackParamList } from "../../App";
 import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
+import { loadRuns, RunRecord } from "../game/blackjack/storage";
+import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import BettingPanel from "../components/blackjack/BettingPanel";
+import TableSelectPanel from "../components/blackjack/TableSelectPanel";
+import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
@@ -19,11 +23,36 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { engine, loading, error, apply, handleRulesChange, handlePlayAgain } = useBlackjackGame();
+  const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
+    useBlackjackGame();
+  const [runs, setRuns] = useState<RunRecord[]>([]);
 
-  // Redirect to TableScreen if loaded mid-hand (app restart, or injected state).
   useEffect(() => {
-    if (!loading && engine && engine.phase !== "betting") {
+    loadRuns()
+      .then(setRuns)
+      .catch(() => {});
+  }, []);
+
+  // Show table selection when the engine is in "pending table" state:
+  // fresh game (runGoal=null) that hasn't had any chips committed yet.
+  const showTableSelect =
+    engine !== null &&
+    engine.runGoal === null &&
+    engine.chips === engine.startingChips &&
+    engine.bet === 0;
+
+  // Derive active table config from engine's betMin/betMax (set by handleTableSelect).
+  const activeTable =
+    TABLE_CONFIGS.find((t) => t.betMin === engine?.betMin && t.betMax === engine?.betMax) ??
+    TABLE_CONFIGS[0]!;
+  const tableAccentColor = colors[activeTable.accentKey];
+
+  // Redirect when loaded mid-hand or into victory (app restart, injected state).
+  useEffect(() => {
+    if (loading || !engine || engine.phase === "betting") return;
+    if (engine.phase === "victory") {
+      navigation.replace("BlackjackVictory");
+    } else {
       navigation.replace("BlackjackTable");
     }
   }, [loading, engine, navigation]);
@@ -56,30 +85,20 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
         onBack={() => navigation.popToTop()}
         onNewGame={handlePlayAgain}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
-        rightSlot={
-          state ? (
-            <View style={styles.bankroll}>
-              <Text style={[styles.bankrollLabel, { color: colors.textMuted }]}>
-                {t("header.bankrollLabel")}
-              </Text>
-              <Text
-                style={[styles.bankrollValue, { color: colors.text }]}
-                accessibilityLabel={t("header.bankrollAccessibilityLabel", {
-                  chips: state.chips,
-                })}
-              >
-                {state.chips.toLocaleString()}
-              </Text>
-            </View>
-          ) : undefined
-        }
       />
 
-      {/* Phase label */}
-      {state && (
-        <Text style={[styles.phaseLabel, { color: colors.textMuted }]}>
-          {t(`blackjack:phase.${state.phase}` as Parameters<typeof t>[0])}
-        </Text>
+      {/* Full-width run HUD — shown once a table is selected */}
+      {state && !showTableSelect && engine?.runGoal != null && (
+        <View style={styles.hudContainer}>
+          <HudSidebar
+            chips={engine.chips}
+            startingChips={engine.startingChips}
+            runGoal={engine.runGoal}
+            milestones={activeTable.milestones}
+            tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
+            tableAccentColor={tableAccentColor}
+          />
+        </View>
       )}
 
       {/*
@@ -99,27 +118,46 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
               handOutcomes={state.hand_outcomes}
             />
           </View>
-          <Text style={[styles.dealerRule, { color: colors.textMuted }]}>
-            {t(
-              `blackjack:rules.${state.rules.hit_soft_17 ? "h17Label" : "s17Label"}` as Parameters<
-                typeof t
-              >[0]
-            )}
-          </Text>
         </View>
       )}
 
-      {/* Betting controls */}
+      {/* Table selection or betting controls */}
       <View style={styles.controls}>
-        <BettingPanel
-          chips={state?.chips ?? 1000}
-          onDeal={handleDeal}
-          loading={false}
-          error={error}
-          rules={state?.rules ?? DEFAULT_RULES}
-          onRulesChange={handleRulesChange}
-        />
+        {showTableSelect ? (
+          <TableSelectPanel
+            runs={runs}
+            onSelectTable={handleTableSelect}
+            onViewHistory={() => navigation.navigate("BlackjackStats")}
+          />
+        ) : (
+          <BettingPanel
+            chips={state?.chips ?? activeTable.startingChips}
+            betMin={engine?.betMin ?? activeTable.betMin}
+            betMax={engine?.betMax ?? activeTable.betMax}
+            chipDenominations={activeTable.chipDenominations}
+            accentColor={tableAccentColor}
+            onDeal={handleDeal}
+            loading={false}
+            error={error}
+            rules={state?.rules ?? DEFAULT_RULES}
+            onRulesChange={handleRulesChange}
+          />
+        )}
       </View>
+
+      {/* Stats link — only shown during betting phase (table select has its own history link) */}
+      {!showTableSelect && (
+        <Pressable
+          style={styles.statsLink}
+          onPress={() => navigation.navigate("BlackjackStats")}
+          accessibilityRole="button"
+          accessibilityLabel={t("blackjack:stats.viewStatsLabel")}
+        >
+          <Text style={[styles.statsLinkText, { color: colors.textMuted }]}>
+            {t("blackjack:stats.viewStats")}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -133,14 +171,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  phaseLabel: {
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 4,
-    marginBottom: 4,
+  hudContainer: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
   },
   dealerArea: {
     flex: 1,
@@ -155,30 +189,20 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
   },
-  dealerRule: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "500",
-  },
   controls: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 8,
     gap: 0,
   },
-  bankroll: {
-    alignItems: "flex-end",
+  statsLink: {
+    alignItems: "center",
+    paddingTop: 10,
+    paddingBottom: 16,
   },
-  bankrollLabel: {
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+  statsLinkText: {
+    fontSize: 12,
     fontWeight: "500",
-  },
-  bankrollValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    lineHeight: 20,
+    textDecorationLine: "underline",
   },
 });

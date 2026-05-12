@@ -12,6 +12,7 @@ interface ScoreRowProps {
   potential: number | undefined;
   onSelect: () => void;
   canScore: boolean;
+  compact?: boolean;
 }
 
 export default function ScoreRow({
@@ -22,6 +23,7 @@ export default function ScoreRow({
   potential,
   onSelect,
   canScore,
+  compact = false,
 }: ScoreRowProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
@@ -49,6 +51,7 @@ export default function ScoreRow({
     <Pressable
       style={[
         styles.row,
+        compact && styles.rowCompact,
         {
           backgroundColor: colors.surface,
           borderColor: isFilled ? accentColor : colors.border,
@@ -62,9 +65,13 @@ export default function ScoreRow({
       accessibilityState={{ disabled: !isSelectable }}
     >
       <View style={styles.labelBox}>
-        <CategoryIcon category={category} tone={tone} muted={!isFilled} />
+        {!compact && <CategoryIcon category={category} tone={tone} muted={!isFilled} />}
         <Text
-          style={[styles.label, { color: isFilled ? colors.text : colors.textMuted }]}
+          style={[
+            styles.label,
+            compact && styles.labelCompact,
+            { color: isFilled ? colors.text : colors.textMuted },
+          ]}
           numberOfLines={1}
         >
           {label}
@@ -95,6 +102,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 6,
   },
+  rowCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
   labelBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -105,6 +116,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     flexShrink: 1,
+  },
+  labelCompact: {
+    fontSize: 12,
   },
   scoreBox: {
     minWidth: 44,

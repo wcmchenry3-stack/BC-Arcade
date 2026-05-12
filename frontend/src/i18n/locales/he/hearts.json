@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "הלבבות נשברו",
   "events.moonShot": "{{name}} לקח את הכל!",
-  "events.queenOfSpades": "{{name}} לקח את מלכת הספייד!"
+  "events.queenOfSpades": "{{name}} לקח את מלכת הספייד!",
+
+  "difficulty.groupLabel": "רמת קושי",
+  "difficulty.easy": "קל",
+  "difficulty.medium": "בינוני",
+  "difficulty.hard": "קשה",
+  "game.startGame": "התחל משחק"
 }

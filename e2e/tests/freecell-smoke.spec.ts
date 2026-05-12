@@ -9,55 +9,31 @@
  */
 
 import { test, expect } from "@playwright/test";
-
-const API_BASE = "http://localhost:8000";
+import { mockFreecellApi, gotoFreecell } from "./helpers/freecell";
 
 test.describe("FreeCell — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route(`${API_BASE}/freecell/**`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    });
-    await page.goto("/");
-    await page.evaluate(() => {
-      localStorage.removeItem("freecell_game");
-    });
+    await mockFreecellApi(page);
+    await gotoFreecell(page);
   });
 
   test("navigates from Home to FreeCell screen", async ({ page }) => {
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
     await expect(
       page.getByRole("heading", { name: "FreeCell", exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible();
   });
 
   test("move counter is visible", async ({ page }) => {
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
-    await expect(
-      page.getByRole("heading", { name: "FreeCell", exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Moves:\s*\d+/)).toBeVisible({ timeout: 5_000 });
   });
 
   test("board region is accessible", async ({ page }) => {
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
-    await expect(
-      page.getByRole("heading", { name: "FreeCell", exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
     await expect(
       page.getByLabel("FreeCell board").first(),
     ).toBeVisible({ timeout: 5_000 });
   });
 
   test("interacting with the board does not crash the app", async ({ page }) => {
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
-    await expect(
-      page.getByRole("heading", { name: "FreeCell", exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
-
     const board = page.getByLabel("FreeCell board").first();
     await expect(board).toBeVisible({ timeout: 5_000 });
 

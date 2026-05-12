@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform, StyleSheet } from "react-native";
 import { render, screen, fireEvent } from "@testing-library/react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import BottomTabBar from "../BottomTabBar";
@@ -112,5 +113,35 @@ describe("BottomTabBar", () => {
     expect(screen.queryByText("🏆")).toBeNull();
     expect(screen.queryByText("👤")).toBeNull();
     expect(screen.queryByText("⚙️")).toBeNull();
+  });
+
+  it("wrapper has flexShrink 0 on native", () => {
+    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
+    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+    const flat = StyleSheet.flatten(wrapper.props.style);
+    expect(flat.flexShrink).toBe(0);
+  });
+});
+
+describe("BottomTabBar — web platform", () => {
+  beforeEach(() => {
+    Object.defineProperty(Platform, "OS", { value: "web", configurable: true });
+  });
+  afterEach(() => {
+    Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
+  });
+
+  it("applies alignSelf stretch on the wrapper", () => {
+    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
+    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+    const flat = StyleSheet.flatten(wrapper.props.style);
+    expect(flat.alignSelf).toBe("stretch");
+  });
+
+  it("retains flexShrink 0 on the wrapper", () => {
+    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
+    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+    const flat = StyleSheet.flatten(wrapper.props.style);
+    expect(flat.flexShrink).toBe(0);
   });
 });

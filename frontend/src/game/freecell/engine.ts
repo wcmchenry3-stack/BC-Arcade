@@ -400,9 +400,46 @@ export function applyMove(state: FreeCellState, move: Move): FreeCellState {
 // ---------------------------------------------------------------------------
 
 /**
+ * Returns false when a tableau-to-tableau move is a pure oscillation: the
+ * moving run's parent card is color-rank-equivalent to the destination card
+ * (same rank, same color), and the move uncovers no new foundation play and
+ * creates no empty column. All other move types are always productive.
+ *
+ * Used by getHintMoves to avoid suggesting reversible swaps (#1295).
+ * applyMove / validateMove are unaffected — players may still execute
+ * non-productive moves via tap/drag.
+ */
+export function isProductiveMove(state: FreeCellState, move: Move): boolean {
+  if (move.type !== "tableau-to-tableau") return true;
+
+  const src = state.tableau[move.fromCol];
+  const dst = state.tableau[move.toCol];
+  if (src === undefined || dst === undefined) return true;
+
+  // No parent card: moving from the column base — could create empty column
+  if (move.fromIndex === 0) return true;
+
+  const parent = src[move.fromIndex - 1];
+  const destTop = topOf(dst);
+  if (parent === undefined || destTop === undefined) return true;
+
+  // Different color or rank → not a reversible swap
+  if (parent.rank !== destTop.rank || cardColor(parent) !== cardColor(destTop)) return true;
+
+  // Exposing the parent enables a foundation play → productive
+  if (canStackOnFoundation(parent, state.foundations[parent.suit])) return true;
+
+  return false;
+}
+
+/**
  * Returns all legal moves from the current state, ordered by desirability:
  * foundation moves first (always progress), then tableau runs, then freecell
  * moves, then parking a card to an empty freecell as a last resort.
+ *
+ * Non-productive tableau-to-tableau moves (reversible swaps with no benefit)
+ * are filtered out (#1295). Returns [] when only non-productive moves exist,
+ * triggering the existing "No moves left" banner in the hint handler.
  *
  * Used by the hint system (#988) and the no-moves detector (#989).
  */
@@ -427,7 +464,7 @@ export function getHintMoves(state: FreeCellState): Move[] {
       for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
         if (toCol === fromCol) continue;
         const m: Move = { type: "tableau-to-tableau", fromCol, fromIndex, toCol };
-        if (validateMove(state, m)) {
+        if (validateMove(state, m) && isProductiveMove(state, m)) {
           moves.push(m);
           break;
         }

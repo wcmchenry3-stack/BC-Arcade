@@ -8,17 +8,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
 from db.models import Game, GameType
+from entitlements.dependencies import require_entitlement
 from limiter import limiter, session_key
 from vocab import GameType as GameTypeEnum
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_entitlement("starswarm"))])
 
 LEADERBOARD_LIMIT = 10
 _STARSWARM_SESSION = "starswarm-anon"

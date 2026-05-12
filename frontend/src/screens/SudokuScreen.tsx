@@ -124,9 +124,6 @@ export default function SudokuScreen() {
   const unitFlashOpacity = useRef(new Animated.Value(0)).current;
   const isComplete = state?.isComplete ?? false;
 
-  const { play: playDigitPlace } = useSound("sudoku.digitPlace");
-  const { play: playErrorEntered } = useSound("sudoku.errorEntered");
-  const { play: playUnitComplete } = useSound("sudoku.unitComplete");
   const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete");
 
   const {
@@ -345,12 +342,9 @@ export default function SudokuScreen() {
     const evts = state?.events;
     if (!evts?.length) return;
     for (const evt of evts) {
-      if (evt.type === "digitPlace") playDigitPlace();
-      else if (evt.type === "errorEntered") {
-        playErrorEntered();
+      if (evt.type === "errorEntered") {
         flashError();
       } else if (evt.type === "unitComplete") {
-        playUnitComplete();
         Animated.sequence([
           Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
           Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),

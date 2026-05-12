@@ -3,6 +3,10 @@ import logging
 import os
 import time
 
+from dotenv import load_dotenv
+
+load_dotenv()  # loads backend/.env when running locally; no-op in production (Render injects vars)
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,12 +19,16 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from db.base import DATABASE_URL, get_engine, is_configured
+from entitlements.dependencies import EntitlementError
+from entitlements.service import is_dev_override_active
 from limiter import _real_ip, limiter
 from cascade.router import router as cascade_router
+from daily_word.router import router as daily_word_router
 from freecell.router import router as freecell_router
 from hearts.router import router as hearts_router
 from mahjong.router import router as mahjong_router
 from solitaire.router import router as solitaire_router
+from sort.router import router as sort_router
 from sudoku.router import router as sudoku_router
 from starswarm.router import router as starswarm_router
 from entitlements.router import router as entitlements_router
@@ -54,10 +62,12 @@ if _sentry_dsn:
 app = FastAPI(title="BC Arcade API")
 app.include_router(entitlements_router, prefix="/entitlements")
 app.include_router(cascade_router, prefix="/cascade")
+app.include_router(daily_word_router, prefix="/daily-word")
 app.include_router(freecell_router, prefix="/freecell")
 app.include_router(hearts_router, prefix="/hearts")
 app.include_router(mahjong_router, prefix="/mahjong")
 app.include_router(solitaire_router, prefix="/solitaire")
+app.include_router(sort_router, prefix="/sort")
 app.include_router(sudoku_router, prefix="/sudoku")
 app.include_router(starswarm_router, prefix="/starswarm")
 app.include_router(games_router, prefix="/games")
@@ -90,6 +100,16 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONR
 
 
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
+
+async def _entitlement_error_handler(request: Request, exc: EntitlementError) -> JSONResponse:
+    return JSONResponse(
+        status_code=403,
+        content={"detail": "not_entitled", "game": exc.game_slug},
+    )
+
+
+app.add_exception_handler(EntitlementError, _entitlement_error_handler)
 
 # ---------------------------------------------------------------------------
 # CORS — scoped to known origins; set ALLOWED_ORIGINS env var (comma-separated)
@@ -190,6 +210,14 @@ async def security_headers(request: Request, call_next) -> Response:
     if "server" in response.headers:
         del response.headers["server"]
     return response
+
+
+@app.on_event("startup")
+async def _dev_entitlement_override_warning() -> None:
+    if is_dev_override_active():
+        logging.getLogger("audit").warning(
+            "DEV ENTITLEMENT OVERRIDE ACTIVE — all premium games unlocked for all sessions"
+        )
 
 
 @app.on_event("startup")

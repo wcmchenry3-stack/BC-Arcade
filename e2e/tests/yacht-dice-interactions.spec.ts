@@ -7,7 +7,7 @@
  * so they are excluded from subsequent rolls. Tapping again unholds.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test.describe("Yacht — dice hold/unhold (#182)", () => {
   test.beforeEach(async ({ page }) => {

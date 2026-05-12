@@ -6,7 +6,7 @@
  * on each transition — state is immutable.
  */
 
-import type { Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
+import type { AiDifficulty, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
 import { RANKS, SUITS } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -88,12 +88,13 @@ export function getPassDirection(handNumber: number): PassDirection {
 }
 
 /** Initial game state for a fresh game (hand 1). */
-export function dealGame(): HeartsState {
+export function dealGame(difficulty: AiDifficulty = "medium"): HeartsState {
   const hands = dealHands();
   const passDirection = getPassDirection(1);
   const leaderIndex = passDirection === "none" ? find2ClubsHolder(hands) : 0;
   return {
-    _v: 2,
+    _v: 3,
+    aiDifficulty: difficulty,
     phase: passDirection === "none" ? "playing" : "passing",
     handNumber: 1,
     passDirection,
@@ -138,6 +139,7 @@ export function dealNextHand(state: HeartsState): HeartsState {
     wonCards: [[], [], [], []],
     heartsBroken: false,
     tricksPlayedInHand: 0,
+    events: [],
   };
 }
 
@@ -271,6 +273,7 @@ export function playCard(state: HeartsState, playerIndex: number, card: Card): H
   const newEvents = [
     ...(state.events ?? []),
     ...(!state.heartsBroken && card.suit === "hearts" ? ([{ type: "heartsBroken" }] as const) : []),
+    ...(isQueenOfSpades(card) ? ([{ type: "queenOfSpadesPlayed" }] as const) : []),
   ];
 
   let next: HeartsState = {
@@ -329,6 +332,12 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     ? ([{ type: "queenOfSpades", takerSeat: winnerPlayerIndex }] as const)
     : ([] as const);
 
+  const moonShooterMidHand = detectMoon(newWonCards);
+  const moonEvent =
+    moonShooterMidHand !== null && newTricksPlayed < 13
+      ? ([{ type: "moonShot", shooter: moonShooterMidHand }] as const)
+      : ([] as const);
+
   let next: HeartsState = {
     ...state,
     currentTrick: [],
@@ -337,7 +346,7 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     wonCards: newWonCards,
     handScores: newHandScores,
     tricksPlayedInHand: newTricksPlayed,
-    events: [...(state.events ?? []), ...queenEvent],
+    events: [...(state.events ?? []), ...queenEvent, ...moonEvent],
   };
 
   if (newTricksPlayed === 13) {
@@ -384,8 +393,12 @@ export function applyHandScoring(state: HeartsState): HeartsState {
   const appliedDelta = newCumulative.map((c, i) => c - (state.cumulativeScores[i] ?? 0));
   const newScoreHistory = [...state.scoreHistory, appliedDelta];
 
+  // Don't re-emit if resolveTrick already fired the event mid-hand
+  const alreadyFired = (state.events ?? []).some((e) => e.type === "moonShot");
   const moonEvent =
-    moonShooter !== null ? ([{ type: "moonShot", shooter: moonShooter }] as const) : ([] as const);
+    moonShooter !== null && !alreadyFired
+      ? ([{ type: "moonShot", shooter: moonShooter }] as const)
+      : ([] as const);
 
   if (isGameOver(newCumulative)) {
     return {

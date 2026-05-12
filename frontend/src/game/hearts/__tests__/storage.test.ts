@@ -26,7 +26,7 @@ describe("hearts storage", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
     const loaded = await loadGame();
     expect(loaded).not.toBeNull();
-    expect(loaded?._v).toBe(2);
+    expect(loaded?._v).toBe(3);
     expect(loaded?.phase).toBe(state.phase);
   });
 
@@ -75,9 +75,26 @@ describe("hearts storage", () => {
   });
 
   it("loadGame returns null for missing required arrays", async () => {
-    const bad: Partial<HeartsState> = { _v: 2 };
+    const bad: Partial<HeartsState> = { _v: 3 };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
     expect(await loadGame()).toBeNull();
+  });
+
+  it("loadGame migrates v2 save by defaulting aiDifficulty to medium (#1168)", async () => {
+    const v2Save = { ...dealGame(), _v: 2 } as unknown as Record<string, unknown>;
+    delete v2Save["aiDifficulty"];
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(v2Save));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded?._v).toBe(3);
+    expect(loaded?.aiDifficulty).toBe("medium");
+  });
+
+  it("loadGame round-trips aiDifficulty: hard", async () => {
+    const state: HeartsState = { ...dealGame(), aiDifficulty: "hard" };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    const loaded = await loadGame();
+    expect(loaded?.aiDifficulty).toBe("hard");
   });
 
   it("clearGame removes the storage key", async () => {

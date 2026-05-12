@@ -9,6 +9,8 @@ env/
 dist/
 .pytest_cache/
 .hypothesis/
+.coverage
+htmlcov/
 
 # Node / Expo
 node_modules/
@@ -37,6 +39,12 @@ frontend/android/app/upload-keystore.jks
 
 # Claude Code local overrides (personal, not shared)
 .claude/settings.local.json
+
+# Git worktrees created by Claude Code review agents
+.worktrees/
+
+# Local env overrides — never committed
+backend/.env
 
 # Entitlement key pair — loaded via env vars in production, never committed
 private.pem

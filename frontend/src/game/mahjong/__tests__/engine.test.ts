@@ -8,6 +8,9 @@ import {
   createGame,
   createSeededRng,
   elapsedMs,
+  getAllFreePairs,
+  getAnyFreePair,
+  getMatchingFreeTileIds,
   hasFreePairs,
   isFreeTile,
   MAX_SHUFFLES,
@@ -525,6 +528,128 @@ describe("shuffleBoard", () => {
 // hasFreePairs
 // ---------------------------------------------------------------------------
 
+describe("getMatchingFreeTileIds", () => {
+  const base: Omit<MahjongState, "tiles" | "selected"> = {
+    ...createGame(TURTLE_LAYOUT),
+    tiles: [],
+    selected: null,
+  };
+
+  it("returns an empty set when nothing is selected", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const state: MahjongState = { ...base, tiles: [a], selected: null };
+    expect(getMatchingFreeTileIds(state).size).toBe(0);
+  });
+
+  it("returns IDs of free matching tiles when a tile is selected", () => {
+    const sel: SlotTile = {
+      id: 0,
+      suit: "characters",
+      rank: 1,
+      faceId: 8,
+      col: 0,
+      row: 0,
+      layer: 0,
+    };
+    const match: SlotTile = {
+      id: 1,
+      suit: "characters",
+      rank: 1,
+      faceId: 8,
+      col: 4,
+      row: 0,
+      layer: 0,
+    };
+    const other: SlotTile = {
+      id: 2,
+      suit: "circles",
+      rank: 2,
+      faceId: 18,
+      col: 6,
+      row: 0,
+      layer: 0,
+    };
+    const state: MahjongState = { ...base, tiles: [sel, match, other], selected: sel };
+    const result = getMatchingFreeTileIds(state);
+    expect(result.has(match.id)).toBe(true);
+    expect(result.has(sel.id)).toBe(false); // selected tile excluded
+    expect(result.has(other.id)).toBe(false); // non-matching excluded
+  });
+
+  it("excludes blocked tiles even if they match", () => {
+    const sel: SlotTile = {
+      id: 0,
+      suit: "characters",
+      rank: 1,
+      faceId: 8,
+      col: 0,
+      row: 0,
+      layer: 0,
+    };
+    const match: SlotTile = {
+      id: 1,
+      suit: "characters",
+      rank: 1,
+      faceId: 8,
+      col: 4,
+      row: 0,
+      layer: 0,
+    };
+    // Blocker sits on top of match — same col/row, layer+1.
+    const blocker: SlotTile = {
+      id: 2,
+      suit: "dragons",
+      rank: 1,
+      faceId: 1,
+      col: 4,
+      row: 0,
+      layer: 1,
+    };
+    const state: MahjongState = { ...base, tiles: [sel, match, blocker], selected: sel };
+    const result = getMatchingFreeTileIds(state);
+    expect(result.has(match.id)).toBe(false);
+  });
+
+  it("matches flower suit tiles regardless of rank", () => {
+    const sel: SlotTile = { id: 0, suit: "flowers", rank: 1, faceId: 35, col: 0, row: 0, layer: 0 };
+    const match: SlotTile = {
+      id: 1,
+      suit: "flowers",
+      rank: 2,
+      faceId: 36,
+      col: 4,
+      row: 0,
+      layer: 0,
+    };
+    const state: MahjongState = { ...base, tiles: [sel, match], selected: sel };
+    expect(getMatchingFreeTileIds(state).has(match.id)).toBe(true);
+  });
+
+  it("matches season suit tiles regardless of rank", () => {
+    const sel: SlotTile = { id: 0, suit: "seasons", rank: 1, faceId: 39, col: 0, row: 0, layer: 0 };
+    const match: SlotTile = {
+      id: 1,
+      suit: "seasons",
+      rank: 3,
+      faceId: 41,
+      col: 4,
+      row: 0,
+      layer: 0,
+    };
+    const state: MahjongState = { ...base, tiles: [sel, match], selected: sel };
+    expect(getMatchingFreeTileIds(state).has(match.id)).toBe(true);
+  });
+
+  it("clears on deselect (selected = null)", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 };
+    const withSel: MahjongState = { ...base, tiles: [a, b], selected: a };
+    const deselected: MahjongState = { ...withSel, selected: null };
+    expect(getMatchingFreeTileIds(withSel).size).toBe(1);
+    expect(getMatchingFreeTileIds(deselected).size).toBe(0);
+  });
+});
+
 describe("hasFreePairs", () => {
   it("returns false for an empty board", () => {
     expect(hasFreePairs([])).toBe(false);
@@ -549,6 +674,71 @@ describe("hasFreePairs", () => {
     const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
     // a is covered by c, b is free. But the pair (a,b) can't form since a is not free.
     expect(hasFreePairs([a, b, c])).toBe(false);
+  });
+});
+
+describe("getAllFreePairs", () => {
+  it("returns empty array for an empty board", () => {
+    expect(getAllFreePairs([])).toEqual([]);
+  });
+
+  it("returns one pair when exactly one match exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const result = getAllFreePairs([a, b]);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.map((t) => t.id).sort()).toEqual([0, 1]);
+  });
+
+  it("returns multiple pairs when several matches exist", () => {
+    // Place pairs on separate rows so none are horizontally blocked by the other pair.
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "circles", rank: 2, faceId: 18, col: 0, row: 2, layer: 0 };
+    const d: SlotTile = { id: 3, suit: "circles", rank: 2, faceId: 18, col: 2, row: 2, layer: 0 };
+    expect(getAllFreePairs([a, b, c, d])).toHaveLength(2);
+  });
+
+  it("excludes blocked tiles", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
+    expect(getAllFreePairs([a, b, c])).toHaveLength(0);
+  });
+});
+
+describe("getAnyFreePair", () => {
+  it("returns null for an empty board", () => {
+    expect(getAnyFreePair([])).toBeNull();
+  });
+
+  it("returns the two IDs when a matching free pair exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const result = getAnyFreePair([a, b]);
+    expect(result).not.toBeNull();
+    expect(result!.sort()).toEqual([0, 1]);
+  });
+
+  it("returns null when no matching free pair exists", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "circles", rank: 2, faceId: 18, col: 2, row: 0, layer: 0 };
+    expect(getAnyFreePair([a, b])).toBeNull();
+  });
+
+  it("returns null when the only matching pair is blocked", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 };
+    expect(getAnyFreePair([a, b, c])).toBeNull();
+  });
+
+  it("returns flower IDs for a matching flower pair", () => {
+    const a: SlotTile = { id: 10, suit: "flowers", rank: 1, faceId: 37, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 11, suit: "flowers", rank: 2, faceId: 38, col: 2, row: 0, layer: 0 };
+    const result = getAnyFreePair([a, b]);
+    expect(result).not.toBeNull();
+    expect(result!.sort()).toEqual([10, 11]);
   });
 });
 

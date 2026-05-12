@@ -13,6 +13,11 @@ import { join } from "path";
  *   twenty48    — twenty48-*.spec.ts
  *   mahjong     — mahjong-*.spec.ts
  *   freecell    — freecell-*.spec.ts
+ *   hearts      — hearts-*.spec.ts
+ *   solitaire   — solitaire-*.spec.ts
+ *   sudoku      — sudoku-*.spec.ts
+ *   sort        — sort-*.spec.ts
+ *   daily_word  — daily-word-*.spec.ts
  *   cross       — accessibility.spec.ts, cascade-flow.spec.ts, ui-preferences.spec.ts
  *   logs-budget — logs-*.spec.ts (#373 acceptance gate, CPU-throttled to
  *                  approximate mid-tier mobile device performance)
@@ -78,6 +83,31 @@ export default defineConfig({
     {
       name: "starswarm",
       testMatch: "starswarm-*.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "hearts",
+      testMatch: "hearts-*.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "solitaire",
+      testMatch: "solitaire-*.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "sudoku",
+      testMatch: "sudoku-*.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "sort",
+      testMatch: "sort-*.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "daily_word",
+      testMatch: "daily-word-*.spec.ts",
       use: { ...devices["Desktop Chrome"] },
     },
     {

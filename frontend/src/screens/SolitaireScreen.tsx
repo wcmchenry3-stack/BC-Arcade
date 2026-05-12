@@ -16,11 +16,10 @@
  * is intentionally route-agnostic and reads its navigation via the hook.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -60,6 +59,7 @@ import { SUITS } from "../game/solitaire/types";
 import { DragProvider } from "../game/_shared/drag/DragContext";
 import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
+import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
 import {
   clearGame,
   loadGame,
@@ -73,16 +73,12 @@ import { solitaireApi, type ScoreEntry } from "../game/solitaire/api";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { useCardSelection } from "../game/_shared/useCardSelection";
+import { rankLabel } from "../game/_shared/decks/cardId";
 
 const TABLEAU_COLS = 7;
 const COL_GAP = 6;
-/** Full-size width of the 7-column board — target scale baseline. */
-const BOARD_WIDTH = TABLEAU_COLS * CARD_WIDTH + (TABLEAU_COLS - 1) * COL_GAP;
-/** Upper-bound intrinsic board height for layout reservation. Foundations
- * (CARD_HEIGHT) + tableau worst-case (~12 cards × 24px offset + CARD_HEIGHT)
- * + stock+waste (CARD_HEIGHT) + inter-row margins. Scaled by `scale` so the
- * outer wrapper reserves exactly the visible pixel height. */
-const BOARD_HEIGHT = CARD_HEIGHT * 3 + 12 * 24 + 12 * 2;
+const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
 const MAX_NAME_LENGTH = 32;
@@ -102,7 +98,6 @@ export default function SolitaireScreen() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [moves, setMoves] = useState(0);
   const [autoCompleting, setAutoCompleting] = useState(false);
-  const [outerWidth, setOuterWidth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<SolitaireStats>({
     bestTimeMs: 0,
@@ -111,9 +106,6 @@ export default function SolitaireScreen() {
     gamesWon: 0,
   });
 
-  // Invalid-move flash — red overlay pulse instead of positional shake so we
-  // don't fight React Navigation / safe-area layout math.
-  const flashOpacity = useRef(new Animated.Value(0)).current;
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,6 +126,7 @@ export default function SolitaireScreen() {
   const { play: playFoundationComplete } = useSound("solitaire.foundationComplete");
   const { play: playInvalidMove } = useSound("solitaire.invalidMove");
   const { play: playGameWin } = useSound("solitaire.gameWin");
+  const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
 
   const {
     start: syncStart,
@@ -287,15 +280,6 @@ export default function SolitaireScreen() {
     [syncGetGameId, syncStart, syncMarkStarted]
   );
 
-  const flashInvalid = useCallback(() => {
-    playInvalidMove();
-    setSelection(null);
-    Animated.sequence([
-      Animated.timing(flashOpacity, { toValue: 0.4, duration: 80, useNativeDriver: true }),
-      Animated.timing(flashOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-    ]).start();
-  }, [flashOpacity, playInvalidMove]);
-
   const deal = useCallback((drawMode: DrawMode) => {
     setState(dealGame(drawMode));
     setSelection(null);
@@ -329,7 +313,7 @@ export default function SolitaireScreen() {
     lastTapRef.current = { key: "waste", time: now };
 
     if (isDouble) {
-      if (!tryMove({ type: "waste-to-foundation" })) flashInvalid();
+      if (!tryMove({ type: "waste-to-foundation" })) triggerIllegal();
       return;
     }
     if (state.waste.length === 0) return;
@@ -338,7 +322,7 @@ export default function SolitaireScreen() {
       return;
     }
     setSelection({ kind: "waste" });
-  }, [state, selection, autoCompleting, tryMove, flashInvalid]);
+  }, [state, selection, autoCompleting, tryMove, triggerIllegal]);
 
   const handleStockPress = useCallback(() => {
     if (state === null || autoCompleting) return;
@@ -359,7 +343,7 @@ export default function SolitaireScreen() {
       if (selection !== null) {
         if (selection.kind === "waste") {
           if (tryMove({ type: "waste-to-foundation" })) return;
-          flashInvalid();
+          triggerIllegal();
           return;
         }
         if (selection.kind === "tableau") {
@@ -367,12 +351,12 @@ export default function SolitaireScreen() {
           if (col !== undefined && selection.index === col.length - 1) {
             if (tryMove({ type: "tableau-to-foundation", fromCol: selection.col })) return;
           }
-          flashInvalid();
+          triggerIllegal();
           return;
         }
         if (selection.kind === "foundation") {
           if (selection.suit === suit) setSelection(null);
-          else flashInvalid();
+          else triggerIllegal();
           return;
         }
       }
@@ -380,7 +364,7 @@ export default function SolitaireScreen() {
         setSelection({ kind: "foundation", suit });
       }
     },
-    [state, selection, autoCompleting, tryMove, flashInvalid]
+    [state, selection, autoCompleting, tryMove, triggerIllegal]
   );
 
   const handleTableauCardPress = useCallback(
@@ -398,20 +382,23 @@ export default function SolitaireScreen() {
       lastTapRef.current = { key, time: now };
 
       if (isDouble && index === pile.length - 1 && card.faceUp) {
-        if (!tryMove({ type: "tableau-to-foundation", fromCol: col })) flashInvalid();
+        if (!tryMove({ type: "tableau-to-foundation", fromCol: col })) triggerIllegal();
         return;
       }
 
       if (selection !== null) {
+        // Face-down card with active selection → no-op (no flash, no deselect).
+        if (!card.faceUp) return;
+
         if (selection.kind === "waste") {
           if (tryMove({ type: "waste-to-tableau", toCol: col })) return;
-          flashInvalid();
+          triggerIllegal();
           return;
         }
         if (selection.kind === "foundation") {
           if (tryMove({ type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col }))
             return;
-          flashInvalid();
+          triggerIllegal();
           return;
         }
         if (selection.kind === "tableau") {
@@ -420,26 +407,29 @@ export default function SolitaireScreen() {
               setSelection(null);
               return;
             }
-            if (card.faceUp) setSelection({ kind: "tableau", col, index });
+            // Face-up guaranteed by the guard above — re-select within same column.
+            setSelection({ kind: "tableau", col, index });
             return;
           }
-          if (
-            tryMove({
-              type: "tableau-to-tableau",
-              fromCol: selection.col,
-              fromIndex: selection.index,
-              toCol: col,
-            })
-          )
-            return;
-          flashInvalid();
+          // Different column, face-up guaranteed. Legal destination → move; otherwise re-select.
+          const move = {
+            type: "tableau-to-tableau" as const,
+            fromCol: selection.col,
+            fromIndex: selection.index,
+            toCol: col,
+          };
+          if (validateMove(state, move)) {
+            tryMove(move);
+          } else {
+            setSelection({ kind: "tableau", col, index });
+          }
           return;
         }
       }
 
       if (card.faceUp) setSelection({ kind: "tableau", col, index });
     },
-    [state, selection, autoCompleting, tryMove, flashInvalid]
+    [state, selection, autoCompleting, tryMove, triggerIllegal]
   );
 
   const handleEmptyTableauPress = useCallback(
@@ -448,12 +438,12 @@ export default function SolitaireScreen() {
       lastTapRef.current = null;
       if (selection === null) return;
       if (selection.kind === "waste") {
-        if (!tryMove({ type: "waste-to-tableau", toCol: col })) flashInvalid();
+        if (!tryMove({ type: "waste-to-tableau", toCol: col })) triggerIllegal();
         return;
       }
       if (selection.kind === "foundation") {
         if (!tryMove({ type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col }))
-          flashInvalid();
+          triggerIllegal();
         return;
       }
       if (selection.kind === "tableau") {
@@ -465,10 +455,10 @@ export default function SolitaireScreen() {
             toCol: col,
           })
         )
-          flashInvalid();
+          triggerIllegal();
       }
     },
-    [state, selection, autoCompleting, tryMove, flashInvalid]
+    [state, selection, autoCompleting, tryMove, triggerIllegal]
   );
 
   // ── Drag-and-drop handlers ─────────────────────────────────────────────────
@@ -595,17 +585,50 @@ export default function SolitaireScreen() {
 
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
   const showAutoComplete = state !== null && !state.isComplete && canAutoComplete(state);
-  const scale = outerWidth > 0 ? Math.min(1, outerWidth / BOARD_WIDTH) : 1;
-
-  const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
-    setOuterWidth(Math.floor(e.nativeEvent.layout.width));
-  }, []);
+  const cardSize = useResponsiveCardSize(
+    CARD_WIDTH,
+    CARD_HEIGHT,
+    TABLEAU_COLS,
+    COL_GAP,
+    SCREEN_H_PADDING
+  );
+  const boardWidth = TABLEAU_COLS * cardSize.cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
 
   const tableauSelection = (col: number): number | undefined => {
     if (selection === null || selection.kind !== "tableau") return undefined;
     if (selection.col !== col) return undefined;
     return selection.index;
   };
+
+  const selectionLabel = useMemo((): string | null => {
+    if (!selection || !state) return null;
+    if (selection.kind === "waste") {
+      const card = state.waste[state.waste.length - 1];
+      if (!card?.faceUp) return null;
+      return t("card.faceUpSelected", {
+        rank: rankLabel(card.rank),
+        suit: t(`suit.${card.suit}` as const),
+      });
+    }
+    if (selection.kind === "foundation") {
+      const pile = state.foundations[selection.suit];
+      const card = pile[pile.length - 1];
+      if (!card) return null;
+      return t("card.faceUpSelected", {
+        rank: rankLabel(card.rank),
+        suit: t(`suit.${card.suit}` as const),
+      });
+    }
+    // tableau
+    const col = state.tableau[selection.col];
+    const card = col?.[selection.index];
+    if (!card) return null;
+    if (!card.faceUp) return t("card.faceDownSelected");
+    return t("card.faceUpSelected", {
+      rank: rankLabel(card.rank),
+      suit: t(`suit.${card.suit}` as const),
+    });
+  }, [selection, state, t]);
 
   return (
     <DragProvider getLegalDropIds={getLegalDropIds}>
@@ -642,67 +665,79 @@ export default function SolitaireScreen() {
         {state === null ? (
           <PreGameModal onChoose={deal} />
         ) : (
-          <DragContainer style={styles.body as ViewStyle} onLayout={onOuterLayout}>
-            <View style={styles.hudRow} accessibilityRole="summary">
-              <Text
-                style={[styles.hudText, { color: colors.text }]}
-                accessibilityLabel={t("solitaire:score.label", { score: state.score })}
-              >
-                {t("solitaire:score.label", { score: state.score })}
-              </Text>
-              <Text
-                style={[styles.hudText, { color: colors.textMuted }]}
-                accessibilityLabel={t("solitaire:score.moves", { moves })}
-              >
-                {t("solitaire:score.moves", { moves })}
-              </Text>
-            </View>
+          <CardSizeContext.Provider value={cardSize}>
+            <DragContainer style={styles.body as ViewStyle}>
+              <View style={styles.hudRow} accessibilityRole="summary">
+                <Text
+                  style={[styles.hudText, { color: colors.text }]}
+                  accessibilityLabel={t("solitaire:score.label", { score: state.score })}
+                >
+                  {t("solitaire:score.label", { score: state.score })}
+                </Text>
+                <Text
+                  style={[styles.hudText, { color: colors.textMuted }]}
+                  accessibilityLabel={t("solitaire:score.moves", { moves })}
+                >
+                  {t("solitaire:score.moves", { moves })}
+                </Text>
+              </View>
 
-            <View
-              style={[styles.boardWrap, outerWidth > 0 ? { height: BOARD_HEIGHT * scale } : null]}
-              accessibilityLabel={t("solitaire:a11y.boardRegion")}
-            >
               <View
-                style={[
-                  styles.board,
-                  {
-                    width: BOARD_WIDTH,
-                    transform: [{ scale }],
-                  } as ViewStyle,
-                ]}
+                style={[styles.board, { width: boardWidth }]}
+                accessibilityLabel={t("solitaire:a11y.boardRegion")}
               >
-                <View>
-                  <View style={styles.foundationsRow}>
-                    {SUITS.map((suit) => (
-                      <FoundationPile
-                        key={suit}
-                        pile={state.foundations[suit]}
-                        suit={suit}
-                        selected={selection?.kind === "foundation" && selection.suit === suit}
-                        onPress={handleFoundationPress}
-                        dropId={`solitaire-foundation-${suit}`}
-                        onDrop={(source) => handleDropToFoundation(source)}
-                      />
-                    ))}
-                  </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                    style={[
-                      StyleSheet.absoluteFill,
-                      { backgroundColor: "#ffd700", opacity: sparkleOpacity, borderRadius: 8 },
-                    ]}
+                <View style={styles.topRow}>
+                  <StockWastePile
+                    stock={state.stock}
+                    waste={state.waste}
+                    drawMode={state.drawMode}
+                    wasteSelected={selection?.kind === "waste"}
+                    shakeX={selection?.kind === "waste" ? shakeX : undefined}
+                    onStockPress={handleStockPress}
+                    onWastePress={handleWastePress}
                   />
+                  <View style={{ flex: 1 }} />
+                  <View>
+                    <View style={styles.foundationsRow}>
+                      {SUITS.map((suit) => (
+                        <FoundationPile
+                          key={suit}
+                          pile={state.foundations[suit]}
+                          suit={suit}
+                          selected={selection?.kind === "foundation" && selection.suit === suit}
+                          shakeX={
+                            selection?.kind === "foundation" && selection.suit === suit
+                              ? shakeX
+                              : undefined
+                          }
+                          onPress={handleFoundationPress}
+                          dropId={`solitaire-foundation-${suit}`}
+                          onDrop={(source) => handleDropToFoundation(source)}
+                        />
+                      ))}
+                    </View>
+                    <Animated.View
+                      pointerEvents="none"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                      style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "#ffd700", opacity: sparkleOpacity, borderRadius: 8 },
+                      ]}
+                    />
+                  </View>
                 </View>
 
-                <View style={styles.tableauRow}>
+                <View style={[styles.tableauRow, { minHeight: cardSize.cardHeight * 3 }]}>
                   {state.tableau.map((pile, col) => (
                     <TableauPile
                       key={col}
                       pile={pile}
                       colIndex={col}
                       selectedIndex={tableauSelection(col)}
+                      shakeX={
+                        selection?.kind === "tableau" && selection.col === col ? shakeX : undefined
+                      }
                       onCardPress={handleTableauCardPress}
                       onEmptyPress={handleEmptyTableauPress}
                       dropId={`solitaire-tableau-${col}`}
@@ -710,46 +745,36 @@ export default function SolitaireScreen() {
                     />
                   ))}
                 </View>
-
-                <View style={styles.stockWasteRow}>
-                  <StockWastePile
-                    stock={state.stock}
-                    waste={state.waste}
-                    drawMode={state.drawMode}
-                    wasteSelected={selection?.kind === "waste"}
-                    onStockPress={handleStockPress}
-                    onWastePress={handleWastePress}
-                  />
-                </View>
               </View>
-            </View>
 
-            {showAutoComplete && (
-              <Pressable
-                onPress={handleAutoComplete}
-                style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-                accessibilityRole="button"
-                accessibilityLabel={t("solitaire:action.autoComplete")}
+              {showAutoComplete && (
+                <Pressable
+                  onPress={handleAutoComplete}
+                  style={[styles.autoBtn, { backgroundColor: colors.accent }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("solitaire:action.autoComplete")}
+                >
+                  <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
+                    {t("solitaire:action.autoComplete")}
+                  </Text>
+                </Pressable>
+              )}
+
+              <SolitaireWinCascade visible={cascadeVisible} />
+
+              <View
+                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
+                accessibilityLiveRegion="polite"
+                pointerEvents="none"
               >
-                <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
-                  {t("solitaire:action.autoComplete")}
-                </Text>
-              </Pressable>
-            )}
-
-            <SolitaireWinCascade visible={cascadeVisible} />
-
-            <Animated.View
-              pointerEvents="none"
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.error, opacity: flashOpacity },
-              ]}
-              testID="solitaire-invalid-flash"
-            />
-          </DragContainer>
+                {selectionLabel !== null && (
+                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                    {selectionLabel}
+                  </Text>
+                )}
+              </View>
+            </DragContainer>
+          </CardSizeContext.Provider>
         )}
 
         {state?.isComplete === true && <WinModal score={state.score} onNewGame={resetToPreGame} />}
@@ -984,30 +1009,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.5,
   },
-  boardWrap: {
-    alignSelf: "stretch",
-    alignItems: "flex-start",
-    overflow: "hidden",
-  },
   board: {
     alignSelf: "flex-start",
-    transformOrigin: "top left",
-  } as ViewStyle,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
   foundationsRow: {
     flexDirection: "row",
     gap: COL_GAP,
-    marginBottom: 12,
+  },
+  selectionIndicator: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  selectionIndicatorText: {
+    fontFamily: typography.heading,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   tableauRow: {
     flexDirection: "row",
     gap: COL_GAP,
     alignItems: "flex-start",
-    minHeight: CARD_HEIGHT * 3,
-  },
-  stockWasteRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 12,
   },
   autoBtn: {
     alignSelf: "center",

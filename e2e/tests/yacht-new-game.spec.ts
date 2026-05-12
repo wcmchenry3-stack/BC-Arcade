@@ -7,7 +7,7 @@
  *   - In-progress: roll + score → tap New Game → Start new game → fresh round 1
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test.describe("Yacht — New Game button", () => {
   test.beforeEach(async ({ page }) => {

@@ -3,13 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
-import SharedPlayingCard from "../shared/PlayingCard";
 import { rankLabel } from "../../game/_shared/decks/cardId";
+import SelectableCard from "../../game/_shared/SelectableCard";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import type { Card, Suit } from "../../game/freecell/types";
-import { CARD_WIDTH, CARD_HEIGHT } from "./FreeCellSlot";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import type { SharedValue } from "react-native-reanimated";
 
 const SUIT_SYMBOL: Record<Suit, string> = {
   spades: "♠",
@@ -22,6 +23,7 @@ export interface FoundationPileProps {
   readonly pile: readonly Card[];
   readonly suit: Suit;
   readonly selected?: boolean;
+  readonly shakeX?: SharedValue<number>;
   readonly hintDestination?: boolean;
   readonly onPress?: (suit: Suit) => void;
   readonly dropId?: string;
@@ -32,6 +34,7 @@ export default function FoundationPile({
   pile,
   suit,
   selected = false,
+  shakeX,
   hintDestination = false,
   onPress,
   dropId,
@@ -39,6 +42,7 @@ export default function FoundationPile({
 }: FoundationPileProps) {
   const { colors } = useTheme();
   const { t } = useTranslation("freecell");
+  const { cardWidth, cardHeight } = useCardSize();
   const hasDrop = dropId !== undefined && onDrop !== undefined;
   const RED_SUITS = new Set(["hearts", "diamonds"]);
   const suitSymbolColor = RED_SUITS.has(suit) ? "#ff716c" : colors.textFilled;
@@ -53,12 +57,13 @@ export default function FoundationPile({
           ? t("card.selected", { rank: rl, suit: suitName })
           : t("card.label", { rank: rl, suit: suitName });
         return (
-          <SharedPlayingCard
+          <SelectableCard
             suit={top.suit as CanonicalSuit}
             rank={top.rank}
-            width={CARD_WIDTH}
-            height={CARD_HEIGHT}
-            highlighted={selected}
+            width={cardWidth}
+            height={cardHeight}
+            selected={selected}
+            shakeX={shakeX}
             hintHighlighted={hintDestination}
             onPress={onPress ? () => onPress(suit) : undefined}
             accessibilityLabel={label}
@@ -71,6 +76,8 @@ export default function FoundationPile({
     const pileStyle = [
       styles.empty,
       {
+        width: cardWidth,
+        height: cardHeight,
         borderColor: hintDestination ? colors.bonus : selected ? colors.accent : colors.border,
         borderWidth: hintDestination || selected ? 2 : 1,
         backgroundColor: colors.background,
@@ -116,8 +123,6 @@ export default function FoundationPile({
 
 const styles = StyleSheet.create({
   empty: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",

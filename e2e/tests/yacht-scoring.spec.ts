@@ -9,7 +9,7 @@
  *   - updates the total score display
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Categories in scorecard display order — matches yacht-full-game.spec.ts
 const CATEGORY_LABELS_IN_ORDER = [

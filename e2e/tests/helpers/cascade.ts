@@ -9,6 +9,7 @@
  */
 
 import { Page } from "@playwright/test";
+import { installEntitlementsMock } from "./api-mock";
 
 const API_BASE = "http://localhost:8000";
 
@@ -34,6 +35,7 @@ export async function mockLeaderboard(page: Page): Promise<void> {
 
 /** Navigate from Home to Cascade and wait for the canvas to be ready. */
 export async function gotoCascade(page: Page): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Play Cascade" }).click();
   await page

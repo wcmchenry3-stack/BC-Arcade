@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Herz gebrochen",
   "events.moonShot": "{{name}} hat den Mond geschossen!",
-  "events.queenOfSpades": "{{name}} nimmt die Pik-Dame!"
+  "events.queenOfSpades": "{{name}} nimmt die Pik-Dame!",
+
+  "difficulty.groupLabel": "Schwierigkeit",
+  "difficulty.easy": "Leicht",
+  "difficulty.medium": "Mittel",
+  "difficulty.hard": "Schwer",
+  "game.startGame": "Spiel starten"
 }

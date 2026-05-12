@@ -11,19 +11,12 @@
  * API endpoints are mocked so tests are hermetic (no running backend required).
  */
 
-import { test, expect } from "@playwright/test";
-
-const API_BASE = "http://localhost:8000";
+import { test, expect } from "./fixtures";
+import { mockStarswarmApi } from "./helpers/starswarm";
 
 test.describe("Star Swarm — navigation and smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route(`${API_BASE}/starswarm/**`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    });
+    await mockStarswarmApi(page);
   });
 
   test("navigates from Home to Star Swarm screen", async ({ page }) => {

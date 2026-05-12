@@ -8,7 +8,7 @@
  * Home screen resumes any non-game-over saved game.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { injectGameState, blankScores } from "./helpers/yacht";
 
 test.describe("Yacht — localStorage persistence (#183)", () => {

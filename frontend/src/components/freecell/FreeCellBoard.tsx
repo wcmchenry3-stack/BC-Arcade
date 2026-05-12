@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
@@ -7,18 +7,22 @@ import { useTheme } from "../../theme/ThemeContext";
 import { SUITS } from "../../game/freecell/types";
 import { validateMove } from "../../game/freecell/engine";
 import type { FreeCellState, Move, Suit } from "../../game/freecell/types";
-import FreeCellSlot, { CARD_WIDTH } from "./FreeCellSlot";
+import FreeCellSlot from "./FreeCellSlot";
 import FoundationPile from "./FoundationPile";
 import TableauColumn from "./TableauColumn";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DragProvider } from "../../game/_shared/drag/DragContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../../game/_shared/drag/DragContext";
+import { useSound } from "../../game/_shared/useSound";
+import { useCardSelection } from "../../game/_shared/useCardSelection";
 
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const ROW_GAP = 8;
-
-const BOARD_WIDTH = TABLEAU_COLS * CARD_WIDTH + (TABLEAU_COLS - 1) * COL_GAP;
+// Tighter than COL_GAP so space-between produces a natural ~8px gap between groups
+const TOP_GROUP_GAP = 1;
+const DOUBLE_TAP_MS = 300;
 
 type Selection =
   | { kind: "tableau"; col: number; index: number }
@@ -34,16 +38,41 @@ export interface FreeCellBoardProps {
 export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
+  const { cardWidth } = useCardSize();
+  const boardWidth = TABLEAU_COLS * cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
   const [selection, setSelection] = useState<Selection>(null);
+  const lastTapRef = useRef<{ key: string; time: number } | null>(null);
+
+  const { play: playInvalidMove } = useSound("freecell.invalidMove");
+  const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
 
   function tryMove(move: Move) {
     if (validateMove(state, move)) {
       onMove(move);
+      setSelection(null);
+    } else {
+      triggerIllegal();
     }
-    setSelection(null);
   }
 
   function handleTableauCardPress(col: number, index: number) {
+    const pile = state.tableau[col];
+    if (pile === undefined) return;
+    const card = pile[index];
+    if (card === undefined) return;
+
+    const key = `tableau:${col}:${index}`;
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isDouble = last !== null && last.key === key && now - last.time < DOUBLE_TAP_MS;
+    lastTapRef.current = { key, time: now };
+
+    // FreeCell cards are always face-up; no faceUp guard needed (contrast Solitaire).
+    if (isDouble && index === pile.length - 1) {
+      tryMove({ type: "tableau-to-foundation", fromCol: col });
+      return;
+    }
+
     if (selection === null) {
       setSelection({ kind: "tableau", col, index });
       return;
@@ -83,6 +112,17 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleFreeCellPress(cell: number) {
+    const key = `freecell:${cell}`;
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isDouble = last !== null && last.key === key && now - last.time < DOUBLE_TAP_MS;
+    lastTapRef.current = { key, time: now };
+
+    if (isDouble && state.freeCells[cell] !== null) {
+      tryMove({ type: "freecell-to-foundation", fromCell: cell });
+      return;
+    }
+
     if (selection === null) {
       if (state.freeCells[cell] !== null) {
         setSelection({ kind: "freecell", cell });
@@ -102,15 +142,17 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
   function handleFoundationPress(suit: Suit) {
     if (selection === null) {
-      // Select the foundation card if there is one.
       if (state.foundations[suit].length > 0) {
         setSelection({ kind: "foundation", suit });
       }
       return;
     }
     if (selection.kind === "foundation") {
-      // Tap same foundation again → deselect.
-      setSelection(null);
+      if (selection.suit === suit) {
+        setSelection(null);
+      } else {
+        setSelection({ kind: "foundation", suit });
+      }
       return;
     }
     if (selection.kind === "tableau") {
@@ -239,7 +281,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
     if (!hint) return undefined;
     if (hint.type === "tableau-to-foundation") {
       const col = state.tableau[hint.fromCol];
-      return col && col.length > 0 ? col[col.length - 1].suit : undefined;
+      return col && col.length > 0 ? col[col.length - 1]!.suit : undefined;
     }
     if (hint.type === "freecell-to-foundation") {
       return state.freeCells[hint.fromCell]?.suit ?? undefined;
@@ -265,6 +307,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
             style={[
               styles.topRow,
               {
+                width: boardWidth,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 paddingTop: 6,
@@ -272,34 +315,44 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
               },
             ]}
           >
-            {state.freeCells.map((card, i) => (
-              <FreeCellSlot
-                key={i}
-                card={card}
-                cellIndex={i}
-                selected={selection?.kind === "freecell" && selection.cell === i}
-                hintSource={
-                  (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
-                  (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
-                }
-                hintDestination={hintDestFreeCellIndex === i}
-                onPress={handleFreeCellPress}
-                dropId={`freecell-slot-${i}`}
-                onDrop={(source) => handleDropToFreeCell(source, i)}
-              />
-            ))}
-            {SUITS.map((suit) => (
-              <FoundationPile
-                key={suit}
-                pile={state.foundations[suit]}
-                suit={suit}
-                selected={selection?.kind === "foundation" && selection.suit === suit}
-                hintDestination={hintDestFoundationSuit === suit}
-                onPress={() => handleFoundationPress(suit)}
-                dropId={`freecell-foundation-${suit}`}
-                onDrop={(source) => handleDropToFoundation(source)}
-              />
-            ))}
+            <View style={styles.topGroup}>
+              {state.freeCells.map((card, i) => (
+                <FreeCellSlot
+                  key={i}
+                  card={card}
+                  cellIndex={i}
+                  selected={selection?.kind === "freecell" && selection.cell === i}
+                  shakeX={
+                    selection?.kind === "freecell" && selection.cell === i ? shakeX : undefined
+                  }
+                  hintSource={
+                    (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
+                    (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
+                  }
+                  hintDestination={hintDestFreeCellIndex === i}
+                  onPress={handleFreeCellPress}
+                  dropId={`freecell-slot-${i}`}
+                  onDrop={(source) => handleDropToFreeCell(source, i)}
+                />
+              ))}
+            </View>
+            <View style={styles.topGroup}>
+              {SUITS.map((suit) => (
+                <FoundationPile
+                  key={suit}
+                  pile={state.foundations[suit]}
+                  suit={suit}
+                  selected={selection?.kind === "foundation" && selection.suit === suit}
+                  shakeX={
+                    selection?.kind === "foundation" && selection.suit === suit ? shakeX : undefined
+                  }
+                  hintDestination={hintDestFoundationSuit === suit}
+                  onPress={() => handleFoundationPress(suit)}
+                  dropId={`freecell-foundation-${suit}`}
+                  onDrop={(source) => handleDropToFoundation(source)}
+                />
+              ))}
+            </View>
           </View>
 
           <View style={styles.tableau}>
@@ -313,6 +366,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
                     ? selection.index
                     : undefined
                 }
+                shakeX={selection?.kind === "tableau" && selection.col === col ? shakeX : undefined}
                 hintIndex={
                   (state.hint?.type === "tableau-to-tableau" ||
                     state.hint?.type === "tableau-to-freecell" ||
@@ -344,8 +398,11 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
-    gap: COL_GAP,
-    width: BOARD_WIDTH,
+    justifyContent: "space-between",
+  },
+  topGroup: {
+    flexDirection: "row",
+    gap: TOP_GROUP_GAP,
   },
   tableau: {
     flexDirection: "row",

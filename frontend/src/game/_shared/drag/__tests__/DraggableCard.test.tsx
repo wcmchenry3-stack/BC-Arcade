@@ -107,7 +107,7 @@ describe("DraggableCard", () => {
     expect(() => fireEvent.press(getByRole("button"))).not.toThrow();
   });
 
-  it("hides the card (opacity 0) while it is the active drag source", () => {
+  it("dims the card (opacity 0.6) while it is the active drag source", () => {
     const { getByLabelText, getByTestId } = render(
       <DragProvider>
         <ThemeProvider>
@@ -119,8 +119,24 @@ describe("DraggableCard", () => {
       </DragProvider>
     );
 
-    expect(getByTestId("card")).not.toHaveStyle({ opacity: 0 });
+    expect(getByTestId("card")).toHaveStyle({ opacity: 1 });
     fireEvent.press(getByLabelText("trigger"));
-    expect(getByTestId("card")).toHaveStyle({ opacity: 0 });
+    expect(getByTestId("card")).toHaveStyle({ opacity: 0.6 });
+  });
+
+  it("accepts hitSlop prop without throwing", () => {
+    const { getByTestId } = render(
+      wrap(
+        <DraggableCard
+          testID="card"
+          dragCards={dragCards}
+          dragSource={dragSource}
+          hitSlop={{ bottom: 28 }}
+        >
+          <Text>A♠</Text>
+        </DraggableCard>
+      )
+    );
+    expect(getByTestId("card")).toBeTruthy();
   });
 });

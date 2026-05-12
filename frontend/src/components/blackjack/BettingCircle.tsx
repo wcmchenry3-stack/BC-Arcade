@@ -6,11 +6,13 @@ import { typography } from "../../theme/typography";
 
 interface BettingCircleProps {
   bet: number;
+  accentColor?: string;
 }
 
-export default function BettingCircle({ bet }: BettingCircleProps) {
+export default function BettingCircle({ bet, accentColor }: BettingCircleProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
+  const resolvedAccent = accentColor ?? colors.accent;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export default function BettingCircle({ bet }: BettingCircleProps) {
       style={[
         styles.circle,
         {
-          borderColor: colors.accent,
+          borderColor: resolvedAccent,
           transform: [{ scale: pulseAnim }],
         },
       ]}
@@ -50,7 +52,7 @@ export default function BettingCircle({ bet }: BettingCircleProps) {
         style={[
           styles.betAmount,
           {
-            color: bet === 0 ? colors.textMuted : colors.accent,
+            color: bet === 0 ? colors.textMuted : resolvedAccent,
             fontFamily: typography.heading,
           },
         ]}

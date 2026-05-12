@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import type { HeartsState } from "./types";
+import type { AiDifficulty, HeartsState } from "./types";
 
 const GAME_KEY = "hearts_game";
+const AI_DIFFICULTY_VALUES: readonly string[] = ["easy", "medium", "hard"];
 
 export async function saveGame(state: HeartsState): Promise<void> {
   try {
@@ -16,29 +17,42 @@ export async function loadGame(): Promise<HeartsState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<HeartsState>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const rawV = parsed["_v"];
+
+    // v2 → v3 migration: add aiDifficulty default
+    if (rawV === 2) {
+      parsed["_v"] = 3;
+      parsed["aiDifficulty"] = "medium";
+    } else if (rawV !== 3) {
+      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
+      return null;
+    }
+
+    const p = parsed as Partial<HeartsState>;
     if (
-      parsed._v !== 2 ||
-      !Array.isArray(parsed.playerHands) ||
-      parsed.playerHands.length !== 4 ||
-      !Array.isArray(parsed.cumulativeScores) ||
-      parsed.cumulativeScores.length !== 4 ||
-      !Array.isArray(parsed.handScores) ||
-      parsed.handScores.length !== 4 ||
-      !Array.isArray(parsed.scoreHistory) ||
-      !parsed.scoreHistory.every(
+      p._v !== 3 ||
+      !AI_DIFFICULTY_VALUES.includes(p.aiDifficulty as string) ||
+      !Array.isArray(p.playerHands) ||
+      p.playerHands.length !== 4 ||
+      !Array.isArray(p.cumulativeScores) ||
+      p.cumulativeScores.length !== 4 ||
+      !Array.isArray(p.handScores) ||
+      p.handScores.length !== 4 ||
+      !Array.isArray(p.scoreHistory) ||
+      !p.scoreHistory.every(
         (row) => Array.isArray(row) && row.length === 4 && row.every((v) => typeof v === "number")
       ) ||
-      !Array.isArray(parsed.currentTrick) ||
-      !Array.isArray(parsed.wonCards) ||
-      typeof parsed.tricksPlayedInHand !== "number" ||
-      typeof parsed.heartsBroken !== "boolean" ||
-      typeof parsed.isComplete !== "boolean"
+      !Array.isArray(p.currentTrick) ||
+      !Array.isArray(p.wonCards) ||
+      typeof p.tricksPlayedInHand !== "number" ||
+      typeof p.heartsBroken !== "boolean" ||
+      typeof p.isComplete !== "boolean"
     ) {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    return parsed as HeartsState;
+    return { ...p, aiDifficulty: p.aiDifficulty as AiDifficulty } as HeartsState;
   } catch (e) {
     Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
       level: "warning",

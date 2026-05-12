@@ -1,7 +1,8 @@
-"""Tests for GET /entitlements (#1050)."""
+"""Tests for GET /entitlements (#1050, #1052)."""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Iterator
@@ -112,3 +113,73 @@ def test_private_key_not_in_response(client: TestClient, session_id: str) -> Non
     raw = r.text
     assert "PRIVATE KEY" not in raw
     assert "BEGIN RSA" not in raw
+
+
+# ---------------------------------------------------------------------------
+# Dev/QA override (#1052)
+# ---------------------------------------------------------------------------
+
+# Update this set whenever a new premium game is added (mirrors game_types.is_premium=true).
+_PREMIUM_GAMES = {"cascade", "hearts", "sudoku", "starswarm", "yacht", "sort"}
+
+
+def test_dev_override_returns_all_premium_games(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    r = client.get("/entitlements", headers=_headers(session_id))
+    assert r.status_code == 200
+    pub_pem = entitlements_service.get_public_key_pem()
+    decoded = jwt.decode(r.json()["token"], pub_pem, algorithms=["RS256"])
+    assert set(decoded["entitled_games"]) == _PREMIUM_GAMES
+
+
+def test_dev_override_false_gives_normal_path(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "false")
+    r = client.get("/entitlements", headers=_headers(session_id))
+    assert r.status_code == 200
+    pub_pem = entitlements_service.get_public_key_pem()
+    decoded = jwt.decode(r.json()["token"], pub_pem, algorithms=["RS256"])
+    assert decoded["entitled_games"] == []
+
+
+def test_startup_warning_logged_when_override_active(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    from main import app
+
+    with caplog.at_level(logging.WARNING, logger="audit"):
+        with TestClient(app):
+            pass
+    assert any("DEV ENTITLEMENT OVERRIDE ACTIVE" in r.message for r in caplog.records)
+
+
+def test_no_startup_warning_when_override_inactive(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    from main import app
+
+    with caplog.at_level(logging.WARNING, logger="audit"):
+        with TestClient(app):
+            pass
+    assert not any("DEV ENTITLEMENT OVERRIDE ACTIVE" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# CI safeguard: render.yaml production service must not set the override
+# ---------------------------------------------------------------------------
+
+
+def test_render_yaml_prod_does_not_set_dev_override() -> None:
+    import yaml
+    from pathlib import Path
+
+    render_yaml = Path(__file__).resolve().parent.parent.parent / "render.yaml"
+    config = yaml.safe_load(render_yaml.read_text())
+    prod_service = next(s for s in config["services"] if s["name"] == "bc-arcade-api")
+    env_keys = {e["key"] for e in prod_service.get("envVars", [])}
+    assert "ENTITLEMENT_DEV_OVERRIDE" not in env_keys

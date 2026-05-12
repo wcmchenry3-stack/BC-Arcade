@@ -56,5 +56,7 @@
   "gameOver.playAgain": "Играть снова",
   "gameOver.playAgainLabel": "Начать новую игру",
   "gameOver.dismiss": "Нет, спасибо",
-  "gameOver.dismissLabel": "Закрыть и оставить текущий счёт видимым"
+  "gameOver.dismissLabel": "Закрыть и оставить текущий счёт видимым",
+  "tab.upper": "Верхняя",
+  "tab.lower": "Нижняя"
 }

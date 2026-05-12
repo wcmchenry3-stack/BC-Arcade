@@ -21,6 +21,7 @@ Two terminals from the repo root.
 
 First time (or when `requirements.txt` changes):
 
+**Mac/Linux:**
 ```bash
 cd backend
 python3.13 -m venv .venv
@@ -29,11 +30,30 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+**Windows (PowerShell):**
+```powershell
+cd backend
+python3.13 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+> If PowerShell blocks the `.ps1` script, run once: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
 Every time:
 
+**Mac/Linux:**
 ```bash
 cd backend
 source .venv/bin/activate
+python -m uvicorn main:app --reload   # http://localhost:8000
+```
+
+**Windows (PowerShell):**
+```powershell
+cd backend
+.venv\Scripts\Activate.ps1
 python -m uvicorn main:app --reload   # http://localhost:8000
 ```
 
@@ -79,6 +99,7 @@ Backend is hosted on Render — see [`docs/RENDER.md`](docs/RENDER.md).
 
 **`pip install -r requirements.txt` fails building `pydantic-core`** — your venv is using Python 3.14. Recreate it with 3.13:
 
+**Mac/Linux:**
 ```bash
 deactivate
 rm -rf backend/.venv
@@ -86,4 +107,14 @@ python3.13 -m venv backend/.venv
 source backend/.venv/bin/activate
 pip install --upgrade pip
 pip install -r backend/requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+deactivate
+Remove-Item -Recurse -Force backend\.venv
+python3.13 -m venv backend\.venv
+backend\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r backend\requirements.txt
 ```

@@ -411,6 +411,94 @@ describe("SolitaireScreen — win-modal score submission", () => {
 // #761 — stats tracking
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Story 8 — selection state machine: face-down no-op + re-select on invalid
+// ---------------------------------------------------------------------------
+
+describe("SolitaireScreen — selection state machine (Story 8)", () => {
+  it("face-down tableau card with active selection is a no-op (selection preserved)", async () => {
+    // Col 0: 3♥ (face-up valid destination for 2♠)
+    // Col 1: 9♦ (face-down)  ← pressing this should be a no-op
+    // Waste: 2♠
+    const state = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [
+        [{ suit: "hearts", rank: 3, faceUp: true }],
+        [{ suit: "diamonds", rank: 9, faceUp: false }],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [{ suit: "spades", rank: 2, faceUp: true }],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("2 of Spades")); // select waste
+    });
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("Face-down card")); // no-op: face-down card
+    });
+    // If selection was preserved, the next press on a valid destination executes the move.
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("3 of Hearts")); // waste-to-tableau: 2♠ on 3♥
+    });
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+
+  it("tapping an invalid face-up destination re-selects to that card", async () => {
+    // Col 0: 8♣ (black rank 8 — cannot land on rank 5)
+    // Col 1: 5♥ (red rank 5 — invalid destination for 8♣)
+    const state = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [
+        [{ suit: "clubs", rank: 8, faceUp: true }],
+        [{ suit: "hearts", rank: 5, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("8 of Clubs")); // select col 0
+    });
+    expect(api.getByLabelText("8 of Clubs (selected)")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("5 of Hearts")); // invalid destination → re-select col 1
+    });
+    expect(api.getByLabelText("5 of Hearts (selected)")).toBeTruthy();
+    expect(api.queryByLabelText("8 of Clubs (selected)")).toBeNull();
+  });
+});
+
 describe("SolitaireScreen — stats tracking", () => {
   it("increments gamesPlayed when the player chooses a draw mode", async () => {
     const api = await mount();

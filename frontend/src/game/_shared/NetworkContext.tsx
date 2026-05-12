@@ -8,6 +8,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
@@ -44,7 +45,30 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     });
     syncWorker.start();
     const unregisterTestHooks = registerLogstoreTestHooks();
+    const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next === "background" || next === "inactive") {
+        syncWorker.stop();
+        Sentry.addBreadcrumb({
+          category: "syncWorker",
+          message: "paused (background)",
+          level: "info",
+        });
+      } else if (next === "active") {
+        syncWorker.start();
+        syncWorker.flush().catch((e) => {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "flush-on-foreground" },
+          });
+        });
+        Sentry.addBreadcrumb({
+          category: "syncWorker",
+          message: "resumed (active)",
+          level: "info",
+        });
+      }
+    });
     return () => {
+      appStateSub.remove();
       unregisterTestHooks();
       syncWorker.stop();
     };

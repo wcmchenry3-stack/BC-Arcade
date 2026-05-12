@@ -44,5 +44,8 @@
   "overflow.abandon.title": "ترك اللعبة الحالية؟",
   "overflow.abandon.body": "بدء لعبة جديدة سيؤدي إلى فقدان تقدمك في هذه الجولة. إحصائياتك الإجمالية لن تتأثر.",
   "overflow.abandon.keepPlaying": "استمر باللعب",
-  "overflow.abandon.startNew": "ابدأ جديد"
+  "overflow.abandon.startNew": "ابدأ جديد",
+  "home.locked.buttonLabel": "فتح",
+  "home.locked.cardLabel": "{{title}} — قريباً",
+  "home.locked.comingSoon": "هذه اللعبة ستكون متاحة قريباً"
 }

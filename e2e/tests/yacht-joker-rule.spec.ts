@@ -16,7 +16,7 @@
  * without needing to rely on random dice producing a yacht.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   injectGameState,
   blankScores,

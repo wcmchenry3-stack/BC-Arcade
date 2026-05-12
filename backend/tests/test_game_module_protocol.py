@@ -6,6 +6,7 @@ import pytest
 
 from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
+from daily_word.module import module as daily_word_module
 from games.protocol import GameModule
 from games.registry import get_module
 from hearts.module import module as hearts_module
@@ -24,15 +25,20 @@ from vocab import GameType
     [
         blackjack_module,
         cascade_module,
+        daily_word_module,
         hearts_module,
         mahjong_module,
         solitaire_module,
         sudoku_module,
     ],
-    ids=["blackjack", "cascade", "hearts", "mahjong", "solitaire", "sudoku"],
+    ids=["blackjack", "cascade", "daily_word", "hearts", "mahjong", "solitaire", "sudoku"],
 )
 def test_module_satisfies_protocol(mod) -> None:
     assert isinstance(mod, GameModule), f"{mod!r} does not satisfy the GameModule Protocol"
+
+
+def test_daily_word_module_game_type() -> None:
+    assert daily_word_module.game_type == GameType.DAILY_WORD
 
 
 def test_blackjack_module_game_type() -> None:
@@ -67,6 +73,7 @@ def test_sudoku_module_game_type() -> None:
 def test_registry_returns_correct_modules() -> None:
     assert get_module("blackjack") is blackjack_module
     assert get_module("cascade") is cascade_module
+    assert get_module("daily_word") is daily_word_module
     assert get_module("hearts") is hearts_module
     assert get_module("mahjong") is mahjong_module
     assert get_module("solitaire") is solitaire_module
@@ -116,6 +123,37 @@ def test_blackjack_stats_shape_none_latest_score() -> None:
     raw = {**_RAW_BJ, "latest_score": None}
     shaped = blackjack_module.stats_shape(raw)
     assert shaped["current_chips"] is None
+
+
+def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
+    shaped = blackjack_module.stats_shape(_RAW_BJ)
+    assert shaped.get("best_run_chips") is None
+    assert shaped.get("total_runs") is None
+    assert shaped.get("runs_completed") is None
+    assert shaped.get("current_table") is None
+
+
+def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
+    raw = {
+        **_RAW_BJ,
+        "metadata": {
+            "best_run_chips": 3000,
+            "total_runs": 12,
+            "runs_completed": 4,
+            "current_table": "intermediate",
+        },
+    }
+    shaped = blackjack_module.stats_shape(raw)
+    assert shaped["best_run_chips"] == 3000
+    assert shaped["total_runs"] == 12
+    assert shaped["runs_completed"] == 4
+    assert shaped["current_table"] == "intermediate"
+
+
+def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
+    shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
+    assert shaped.get("best_run_chips") is None
+    assert shaped.get("current_table") is None
 
 
 # ---------------------------------------------------------------------------
@@ -240,4 +278,29 @@ def test_mahjong_stats_shape_preserves_aggregate_fields() -> None:
 
 def test_mahjong_stats_shape_strips_latest_score() -> None:
     shaped = mahjong_module.stats_shape(_RAW_MAHJONG)
+    assert "latest_score" not in shaped
+
+
+# ---------------------------------------------------------------------------
+# DailyWordModule.stats_shape — pass-through, strips latest_score
+# ---------------------------------------------------------------------------
+
+_RAW_DAILY_WORD = {
+    "played": 10,
+    "best": 6,
+    "avg": 4.5,
+    "last_played_at": None,
+    "latest_score": 5,
+}
+
+
+def test_daily_word_stats_shape_preserves_aggregate_fields() -> None:
+    shaped = daily_word_module.stats_shape(_RAW_DAILY_WORD)
+    assert shaped["played"] == 10
+    assert shaped["best"] == 6
+    assert shaped["avg"] == 4.5
+
+
+def test_daily_word_stats_shape_strips_latest_score() -> None:
+    shaped = daily_word_module.stats_shape(_RAW_DAILY_WORD)
     assert "latest_score" not in shaped

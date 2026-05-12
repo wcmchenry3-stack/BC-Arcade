@@ -21,7 +21,7 @@ import type {
 export const CANVAS_W = 360;
 export const CANVAS_H = 640;
 
-const PLAYER_W = 34;
+export const PLAYER_W = 34;
 const PLAYER_H = 34;
 const PLAYER_Y_FROM_BOTTOM = 72;
 const PLAYER_SHOOT_COOLDOWN = 280; // ms
@@ -36,7 +36,7 @@ const BULLET_C_H = 22;
 
 const BULLET_E_W = 5;
 const BULLET_E_H = 10;
-const BULLET_E_VY = 0.35; // px/ms downward
+export const BULLET_E_VY = 0.35; // px/ms downward
 
 const FORMATION_COLS = 8;
 const FORMATION_COL_W = 44; // #950: was 38 — Boss (36 px) had only 1 px margin/side
@@ -64,8 +64,9 @@ export const BOSS_DIVE_THRESHOLD = 0.35; // boss unlocked when ≤35% non-boss r
 
 // #979: Boss burst-fire
 export const BURST_INTERVAL = 200; // ms between shots within a burst
-export const BURST_PAUSE_BASE = 3000; // ms cooldown after burst completes
+export const BURST_PAUSE_BASE = 2000; // ms cooldown after burst completes
 const BURST_PAUSE_JITTER = 1000; // ms random addend to pause
+export const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
 const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
 
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
@@ -75,6 +76,11 @@ const WAVE_CLEAR_PAUSE = 1600; // ms
 const CHALLENGING_CLEAR_PAUSE = 2200; // ms
 const CHALLENGING_ENEMY_COUNT = 40; // classic 40-enemy Challenging Stage (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
+// #1463: reduced HP — challenging stage is a shooting gallery; multi-hit enemies are unkillable at speed
+const CHALLENGING_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
+// #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
+const CHALLENGING_PATH_DURATION = 5000; // ms each enemy traverses its arc
+const CHALLENGING_STAGGER_MS = 400; // ms between successive enemy entries
 
 const SHOOT_INTERVAL_BASE = 2600; // ms base
 const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
@@ -130,6 +136,9 @@ const SUPER_DAMAGE = 4;
 
 // #974: small circle around the player sprite centre — forgiveness hitbox
 export const PLAYER_HURT_RADIUS = 7; // px
+
+// #1310: duration of the shield-ring hit flash on non-lethal Elite/Boss hits
+export const HIT_FLASH_DURATION = 250; // ms
 
 const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Boss: 400 };
 const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Boss: 4 };
@@ -480,7 +489,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
   const size = TIER_SIZE[tier];
   const path = challengePath(idx, total, canvasW, canvasH);
   const p0 = evalCubic(path, 0);
-  const delay = (idx * 80) / 3200;
+  const delay = (idx * CHALLENGING_STAGGER_MS) / CHALLENGING_PATH_DURATION;
 
   return {
     id: nextId(),
@@ -494,7 +503,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     formationY: path.p3.y,
     path,
     pathT: -delay,
-    pathDuration: 3200,
+    pathDuration: CHALLENGING_PATH_DURATION,
     vel: { x: 0, y: 0 },
     circleCx: 0,
     circleCy: 0,
@@ -503,7 +512,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     circleSpeed: CIRCLE_SPEED,
     shootTimer: 9_999_999, // never shoots
     diveTargetX: 0,
-    hp: TIER_HP[tier],
+    hp: CHALLENGING_TIER_HP[tier],
     isAlive: true,
     hitFlashTimer: 0,
     wiggleTimer: 0,
@@ -547,13 +556,39 @@ export function bulletCap(wave: number, paramScale = 1): number {
   return Math.min(24, Math.round((3 + Math.floor((wave - 1) / 2)) * paramScale));
 }
 
-// #924: compute vx for an enemy bullet — non-zero only at wave 4+; cap raised by difficulty
-function aimedBulletVx(enemyX: number, playerX: number, wave: number, paramScale = 1): number {
-  if (wave < AIMED_SHOT_WAVE_START) return 0;
+// #1314: proportional aim — keeps vy = speed (same arrival time), scales vx to intersect the player.
+// vx is capped at ±speed so the bullet never travels more than 45° from vertical; without the cap,
+// circling enemies near the player's altitude produce extreme vx values (dy is small → dx/dy blows up).
+function aimVelocity(
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+  speed = BULLET_E_VY
+): { vx: number; vy: number } {
+  const dy = playerY - enemyY;
+  if (dy <= 0) return { vx: 0, vy: speed }; // player at or above enemy — fire straight down
+  const dx = playerX - enemyX;
+  const rawVx = (dx / dy) * speed;
+  const vx = Math.max(-speed, Math.min(speed, rawVx));
+  return { vx, vy: speed };
+}
+
+// #924/#1314: compute velocity for a Grunt enemy bullet — straight down before wave 1+;
+// probability-gated proportional aim that ramps per wave
+function aimedBulletVelocity(
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+  wave: number,
+  paramScale = 1
+): { vx: number; vy: number } {
+  if (wave < AIMED_SHOT_WAVE_START) return { vx: 0, vy: BULLET_E_VY };
   const cap = Math.min(0.9, 0.6 * paramScale);
   const fraction = Math.min(cap, AIMED_SHOT_FRACTION + (wave - AIMED_SHOT_WAVE_START) * 0.05);
-  if (rng() > fraction) return 0;
-  return Math.sign(playerX - enemyX) * BULLET_E_VY * 0.5;
+  if (rng() > fraction) return { vx: 0, vy: BULLET_E_VY };
+  return aimVelocity(enemyX, enemyY, playerX, playerY);
 }
 
 // ---------------------------------------------------------------------------
@@ -568,7 +603,6 @@ export function initStarSwarm(
   difficulty: DifficultyTier = "LieutenantJG"
 ): StarSwarmState {
   seedRng(seed);
-  _resetIds();
 
   const player: Player = {
     x: canvasW / 2,
@@ -608,18 +642,7 @@ function buildWaveState(
 
   const startingNonBossCount = enemies.filter((e) => e.tier !== "Boss").length;
 
-  // #1032: Challenging Stage power-up X is randomised (Math.random() — cosmetic, non-deterministic)
-  const challengingPowerUp: PowerUp = {
-    id: nextId(),
-    type: "lightning",
-    x: POWERUP_W / 2 + Math.random() * (canvasW - POWERUP_W),
-    y: POWERUP_H / 2,
-    vy: POWERUP_VY,
-    width: POWERUP_W,
-    height: POWERUP_H,
-    despawnTimer: powerUpDespawnMs(canvasH),
-  };
-  const powerUps: PowerUp[] = isChallengingWave(wave) ? [challengingPowerUp] : [];
+  const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
   const paramScale = difficultyParamScale(difficulty);
   // Ensign gets gentler AI; every tier above gets straggler aggression
@@ -656,6 +679,8 @@ function buildWaveState(
     bombFlashTimer: 0,
     difficulty,
     challengingPerfect: false,
+    playerFireDisabled: false,
+    enemyFireDisabled: false,
   };
 }
 
@@ -738,7 +763,7 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
 
   const isSuper = state.activePowerUp?.type === "lightning";
 
-  if (shootCooldown === 0 && input.fire) {
+  if (shootCooldown === 0 && input.fire && !state.playerFireDisabled) {
     const bullet: Bullet = {
       id: nextId(),
       x: newX,
@@ -774,6 +799,7 @@ function tickSingleEnemy(
   enemy: Enemy,
   dtMs: number,
   playerX: number,
+  playerY: number,
   canvasH: number,
   shouldDive: boolean,
   wave: number,
@@ -791,6 +817,7 @@ function tickSingleEnemy(
         enemy,
         dtMs,
         playerX,
+        playerY,
         shouldDive,
         wave,
         bossThresholdCrossed,
@@ -804,11 +831,12 @@ function tickSingleEnemy(
         dtMs,
         canvasH,
         playerX,
+        playerY,
         bossThresholdCrossed,
         bossDeepThresholdCrossed
       );
     case "Circling":
-      return tickCircling(enemy, dtMs, playerX);
+      return tickCircling(enemy, dtMs, playerX, playerY);
     case "Returning":
       return tickReturning(enemy, dtMs);
   }
@@ -845,6 +873,7 @@ function tickFormation(
   enemy: Enemy,
   dtMs: number,
   playerX: number,
+  playerY: number,
   shouldDive: boolean,
   wave: number,
   bossThresholdCrossed: boolean,
@@ -875,22 +904,22 @@ function tickFormation(
 
   // #979: Boss fires in bursts; other tiers use random single-shot interval
   if (enemy.tier === "Boss") {
-    const { enemy: e, bullet } = bossBurstFire(enemy, playerX);
+    const { enemy: e, bullet } = bossBurstFire(enemy, playerX, playerY);
     return { enemy: e, bullet };
   }
 
-  // Elites always fire aimed shots; Grunts use wave-scaled probabilistic aim
-  const vx =
+  // #1314: Elites always fire proportionally-aimed shots; Grunts use wave-scaled probabilistic aim
+  const vel =
     enemy.tier === "Elite"
-      ? Math.sign(playerX - enemy.x) * BULLET_E_VY * 0.5
-      : aimedBulletVx(enemy.x, playerX, wave, paramScale);
+      ? aimVelocity(enemy.x, enemy.y, playerX, playerY)
+      : aimedBulletVelocity(enemy.x, enemy.y, playerX, playerY, wave, paramScale);
 
   const bullet: Bullet = {
     id: nextId(),
     x: enemy.x,
     y: enemy.y + enemy.height / 2,
-    vx,
-    vy: BULLET_E_VY,
+    vx: vel.vx,
+    vy: vel.vy,
     owner: "enemy",
     width: BULLET_E_W,
     height: BULLET_E_H,
@@ -903,20 +932,21 @@ function tickFormation(
 }
 
 // #979: shared burst-fire logic for Boss in Formation and Diving phases
-function bossBurstFire(enemy: Enemy, playerX: number): EnemyTickResult {
+function bossBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTickResult {
   const newBurstShotsLeft =
     enemy.burstShotsLeft === 0
-      ? 2 + Math.floor(rng() * 2) - 1 // start new burst: pick 2 or 3, return remaining
+      ? 2 + Math.floor(rng() * 3) // start new burst: pick 3–5 total shots; return remaining after this shot
       : enemy.burstShotsLeft - 1;
   const newShootTimer =
     newBurstShotsLeft > 0 ? BURST_INTERVAL : BURST_PAUSE_BASE + rng() * BURST_PAUSE_JITTER;
 
+  const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, BOSS_BULLET_VY); // #1314
   const bullet: Bullet = {
     id: nextId(),
     x: enemy.x,
     y: enemy.y + enemy.height / 2,
-    vx: Math.sign(playerX - enemy.x) * BULLET_E_VY * 0.5,
-    vy: BULLET_E_VY,
+    vx: vel.vx,
+    vy: vel.vy,
     owner: "enemy",
     width: BULLET_E_W,
     height: BULLET_E_H,
@@ -977,6 +1007,7 @@ function tickDiving(
   dtMs: number,
   canvasH: number,
   playerX: number,
+  playerY: number,
   bossThresholdCrossed: boolean,
   bossDeepThresholdCrossed: boolean
 ): EnemyTickResult {
@@ -991,17 +1022,18 @@ function tickDiving(
 
   if (shootTimer <= 0) {
     if (enemy.tier === "Boss") {
-      const result = bossBurstFire(enemy, playerX);
+      const result = bossBurstFire(enemy, playerX, playerY);
       bullet = result.bullet;
       nextShootTimer = result.enemy.shootTimer;
       nextBurstShotsLeft = result.enemy.burstShotsLeft;
     } else {
+      const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY); // #1314
       bullet = {
         id: nextId(),
         x: enemy.x,
         y: enemy.y + enemy.height / 2,
-        vx: Math.sign(playerX - enemy.x) * BULLET_E_VY * 0.5,
-        vy: BULLET_E_VY,
+        vx: vel.vx,
+        vy: vel.vy,
         owner: "enemy",
         width: BULLET_E_W,
         height: BULLET_E_H,
@@ -1070,21 +1102,28 @@ function tickDiving(
   };
 }
 
-function tickCircling(enemy: Enemy, dtMs: number, playerX: number): EnemyTickResult {
+function tickCircling(
+  enemy: Enemy,
+  dtMs: number,
+  playerX: number,
+  playerY: number
+): EnemyTickResult {
   const newAngle = enemy.circleAngle + enemy.circleSpeed * dtMs;
   const newX = enemy.circleCx + Math.cos(newAngle) * enemy.circleRadius;
   const newY = enemy.circleCy + Math.sin(newAngle) * enemy.circleRadius;
 
-  // #944: tick shoot timer and fire aimed bullet if ready
+  // #944/#1314: tick shoot timer and fire proportionally-aimed bullet if ready
   const shootTimer = enemy.shootTimer - dtMs;
   let bullet: Bullet | null = null;
   if (shootTimer <= 0) {
+    const speed = enemy.tier === "Boss" ? BOSS_BULLET_VY : undefined;
+    const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, speed);
     bullet = {
       id: nextId(),
       x: enemy.x,
       y: enemy.y + enemy.height / 2,
-      vx: Math.sign(playerX - enemy.x) * BULLET_E_VY * 0.5,
-      vy: BULLET_E_VY,
+      vx: vel.vx,
+      vy: vel.vy,
       owner: "enemy",
       width: BULLET_E_W,
       height: BULLET_E_H,
@@ -1204,6 +1243,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       enemy,
       dtMs,
       state.player.x,
+      state.player.y,
       state.canvasH,
       shouldDive,
       state.wave,
@@ -1223,7 +1263,11 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (e.isAlive && e.hitFlashTimer > 0) {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
-    if (result.bullet && newEnemyBullets.length < bulletCap(state.wave, _ps)) {
+    if (
+      result.bullet &&
+      newEnemyBullets.length < bulletCap(state.wave, _ps) &&
+      !state.enemyFireDisabled
+    ) {
       newEnemyBullets.push(result.bullet);
     }
     return e;
@@ -1433,8 +1477,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
 
-      // Non-lethal hit — flash (#976); killing blow skips flash (explosion takes over)
-      return { ...enemy, hp: newHp, hitFlashTimer: 120 };
+      // Non-lethal hit — shield ring burst (#1310); killing blow skips flash (explosion takes over)
+      return { ...enemy, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
     }
     return enemy;
   });
@@ -1501,7 +1545,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           if (state.phase === "Playing") killsSinceLastDrop++;
           return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
         }
-        return { ...e, hp: newHp, hitFlashTimer: 120 };
+        return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
       });
     } else if (collected.type === "buddy") {
       // #1035: spawn a buddy ship
@@ -1706,7 +1750,9 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     const anyAlive = liveEnemies.length > 0;
     if (!anyAlive) {
       const sm = difficultyMultiplier(state.difficulty);
-      const waveClearBonus = Math.round(state.wave * WAVE_CLEAR_BONUS_BASE * sm);
+      // #1463: wave-clear bonus scales with hit ratio — zero kills = zero bonus
+      const hitFraction = Math.min(1, state.challengingHits / CHALLENGING_ENEMY_COUNT);
+      const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.challengingHits === CHALLENGING_ENEMY_COUNT;
       const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
       return {
@@ -1779,7 +1825,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
         killsSinceLastDrop++;
         return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
-      return { ...e, hp: newHp, hitFlashTimer: 120 };
+      return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
     });
     return {
       ...state,

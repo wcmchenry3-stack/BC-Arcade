@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "红心已开",
   "events.moonShot": "{{name}}收全红心！",
-  "events.queenOfSpades": "{{name}}拿走了黑桃Q！"
+  "events.queenOfSpades": "{{name}}拿走了黑桃Q！",
+
+  "difficulty.groupLabel": "难度选择",
+  "difficulty.easy": "简单",
+  "difficulty.medium": "中等",
+  "difficulty.hard": "困难",
+  "game.startGame": "开始游戏"
 }

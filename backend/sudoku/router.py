@@ -10,19 +10,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
 from db.models import Game, GameType
+from entitlements.dependencies import require_entitlement
 from limiter import limiter, session_key
 from session import get_session_id
 from vocab import GameType as GameTypeEnum
 
 from .models import Difficulty, LeaderboardResponse, ScoreEntry, SetPlayerNameRequest, Variant
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_entitlement("sudoku"))])
 
 LEADERBOARD_LIMIT = 10
 

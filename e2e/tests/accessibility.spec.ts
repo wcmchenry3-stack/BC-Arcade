@@ -10,7 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { installYachtGameMock } from "./helpers/api-mock";
+import { installYachtGameMock, installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
 
@@ -47,6 +47,7 @@ test.describe("Accessibility — Yacht game screen", () => {
   test("no critical/serious axe violations on Game screen (pre-roll)", async ({
     page,
   }) => {
+    await installEntitlementsMock(page);
     await installYachtGameMock(page);
     await page.goto("/");
 
@@ -61,6 +62,7 @@ test.describe("Accessibility — Yacht game screen", () => {
   test("no critical/serious axe violations on Game screen (post-roll)", async ({
     page,
   }) => {
+    await installEntitlementsMock(page);
     await installYachtGameMock(page);
     await page.goto("/");
 
@@ -75,6 +77,7 @@ test.describe("Accessibility — Yacht game screen", () => {
 
 test.describe("Accessibility — Cascade screen", () => {
   test.beforeEach(async ({ page }) => {
+    await installEntitlementsMock(page);
     await page.route(`${API_BASE}/cascade/**`, async (route) => {
       await route.fulfill({
         status: 200,

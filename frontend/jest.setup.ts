@@ -34,9 +34,11 @@ jest.mock("react-native-reanimated", () => {
     // Named exports used directly in AnimatedTile.tsx
     useSharedValue: sharedValue,
     useAnimatedStyle: (fn: () => object) => fn(),
+    useAnimatedProps: (fn: () => object) => fn(),
     withTiming: noopAnim,
     withSpring: noopAnim,
     withSequence: (...args: unknown[]) => args[args.length - 1],
+    withRepeat: (v: unknown) => v,
     withDelay: (_ms: number, v: unknown) => v,
     Easing: {
       out: () => () => 0,
@@ -116,6 +118,8 @@ import hearts from "./src/i18n/locales/en/hearts.json";
 import sudoku from "./src/i18n/locales/en/sudoku.json";
 import feedback from "./src/i18n/locales/en/feedback.json";
 import profile from "./src/i18n/locales/en/profile.json";
+import sort from "./src/i18n/locales/en/sort.json";
+import daily_word from "./src/i18n/locales/en/daily_word.json";
 
 i18n.use(initReactI18next).init({
   lng: "en",
@@ -133,6 +137,8 @@ i18n.use(initReactI18next).init({
     "sudoku",
     "feedback",
     "profile",
+    "sort",
+    "daily_word",
   ],
   defaultNS: "common",
   resources: {
@@ -149,6 +155,8 @@ i18n.use(initReactI18next).init({
       sudoku,
       feedback,
       profile,
+      sort,
+      daily_word,
     },
   },
   interpolation: { escapeValue: false },

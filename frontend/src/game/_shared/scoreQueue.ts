@@ -162,6 +162,17 @@ export class ScoreQueue {
     }
   }
 
+  async dropByGameType(gameType: GameType): Promise<void> {
+    // Skip if flush is in progress — reading/writing here would race with flush's
+    // own read→process→write cycle and the drop could be overwritten.
+    if (this.flushInProgress) return;
+    const items = await this.read();
+    const filtered = items.filter((item) => item.game_type !== gameType);
+    if (filtered.length !== items.length) {
+      await this.write(filtered);
+    }
+  }
+
   /** For tests only. */
   async _reset(): Promise<void> {
     await AsyncStorage.removeItem(STORAGE_KEY);

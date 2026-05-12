@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Copas abertas",
   "events.moonShot": "{{name}} fez a limpa!",
-  "events.queenOfSpades": "{{name}} pega a Dama de Espadas!"
+  "events.queenOfSpades": "{{name}} pega a Dama de Espadas!",
+
+  "difficulty.groupLabel": "Dificuldade",
+  "difficulty.easy": "Fácil",
+  "difficulty.medium": "Médio",
+  "difficulty.hard": "Difícil",
+  "game.startGame": "Iniciar jogo"
 }

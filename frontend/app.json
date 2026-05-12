@@ -3,7 +3,7 @@
     "name": "BC Arcade",
     "slug": "gaming-app",
     "version": "1.0.9",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {

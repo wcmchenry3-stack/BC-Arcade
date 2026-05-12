@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "दिल टूटे",
   "events.moonShot": "{{name}} ने चांद मारा!",
-  "events.queenOfSpades": "{{name}} ने हुकुम की रानी ली!"
+  "events.queenOfSpades": "{{name}} ने हुकुम की रानी ली!",
+
+  "difficulty.groupLabel": "मुश्किल स्तर",
+  "difficulty.easy": "आसान",
+  "difficulty.medium": "मध्यम",
+  "difficulty.hard": "कठिन",
+  "game.startGame": "खेल शुरू करें"
 }

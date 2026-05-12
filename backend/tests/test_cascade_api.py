@@ -10,14 +10,29 @@ GET /cascade/scores remains unchanged.
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
+from db.base import get_session_factory
+from db.models import GameEntitlement
 from main import app
 
 client = TestClient(app)
 
 TEST_SESSION = str(uuid.uuid4())
 SESSION_HEADERS = {"X-Session-ID": TEST_SESSION}
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _cascade_entitlement():
+    await _grant(TEST_SESSION, "cascade")
 
 
 def _create_game(session_id: str = TEST_SESSION) -> str:
@@ -100,9 +115,13 @@ class TestSetPlayerName:
         res = _set_name(unknown_id, "Alice")
         assert res.status_code == 404
 
-    def test_wrong_session_returns_404(self):
-        gid = _create_game(session_id=str(uuid.uuid4()))
-        res = _set_name(gid, "Alice", session_id=str(uuid.uuid4()))
+    async def test_wrong_session_returns_404(self):
+        other_a = str(uuid.uuid4())
+        other_b = str(uuid.uuid4())
+        await _grant(other_a, "cascade")
+        await _grant(other_b, "cascade")
+        gid = _create_game(session_id=other_a)
+        res = _set_name(gid, "Alice", session_id=other_b)
         assert res.status_code == 404
 
     def test_missing_session_header_returns_400(self):
@@ -127,14 +146,14 @@ class TestSetPlayerName:
 
 class TestGetScores:
     def test_empty_initially(self):
-        res = client.get("/cascade/scores")
+        res = client.get("/cascade/scores", headers=SESSION_HEADERS)
         assert res.status_code == 200
         assert res.json()["scores"] == []
 
     def test_returns_submitted_entries(self):
         _submit("Alice", 300)
         _submit("Bob", 100)
-        res = client.get("/cascade/scores")
+        res = client.get("/cascade/scores", headers=SESSION_HEADERS)
         scores = res.json()["scores"]
         assert len(scores) == 2
 
@@ -142,7 +161,7 @@ class TestGetScores:
         _submit("Alice", 100)
         _submit("Bob", 500)
         _submit("Carol", 250)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         assert scores[0]["score"] == 500
         assert scores[1]["score"] == 250
         assert scores[2]["score"] == 100
@@ -153,7 +172,7 @@ class TestGetScores:
         for i in range(15):
             limiter.reset()
             _submit(f"Player{i}", i * 10)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 140
 
@@ -198,14 +217,14 @@ class TestSubmitRank:
         for name, score in [("A", 500), ("B", 300), ("C", 100)]:
             _submit(name, score)
         _submit("Middle", 400)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         ranks_by_name = {s["player_name"]: s["rank"] for s in scores}
         assert ranks_by_name == {"A": 1, "Middle": 2, "B": 3, "C": 4}
 
     def test_leaderboard_returns_sequential_ranks(self):
         for name, score in [("A", 500), ("B", 300), ("C", 100)]:
             _submit(name, score)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         assert [s["rank"] for s in scores] == [1, 2, 3]
 
 
@@ -250,7 +269,7 @@ class TestTieBreak:
     def test_older_score_ranks_higher_on_tie(self):
         _submit("Alice", 100)
         _submit("Bob", 100)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         assert scores[0]["player_name"] == "Alice"
         assert scores[1]["player_name"] == "Bob"
 
@@ -269,13 +288,13 @@ class TestDuplicateNames:
     def test_duplicate_name_both_entries_kept(self):
         _submit("Alice", 100)
         _submit("Alice", 200)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         alice_entries = [s for s in scores if s["player_name"] == "Alice"]
         assert len(alice_entries) == 2
 
     def test_duplicate_name_ordered_by_score(self):
         _submit("Alice", 100)
         _submit("Alice", 200)
-        scores = client.get("/cascade/scores").json()["scores"]
+        scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         alice_scores = [s["score"] for s in scores if s["player_name"] == "Alice"]
         assert alice_scores == [200, 100]

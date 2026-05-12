@@ -11,7 +11,7 @@
  * The real Rapier2D WASM runs in the Playwright Chromium container.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 const API_BASE = "http://localhost:8000";
 

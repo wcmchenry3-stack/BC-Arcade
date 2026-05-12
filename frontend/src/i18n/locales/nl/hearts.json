@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "Harten gebroken",
   "events.moonShot": "{{name}} ging voor de volle maan!",
-  "events.queenOfSpades": "{{name}} pakt de Schoppenvrauw!"
+  "events.queenOfSpades": "{{name}} pakt de Schoppenvrauw!",
+
+  "difficulty.groupLabel": "Moeilijkheid",
+  "difficulty.easy": "Makkelijk",
+  "difficulty.medium": "Gemiddeld",
+  "difficulty.hard": "Moeilijk",
+  "game.startGame": "Spel starten"
 }

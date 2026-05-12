@@ -14,11 +14,11 @@
  *      MatchBurst / DeadlockShake / ShufflePulse / WinModal spring.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  LayoutChangeEvent,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -29,6 +29,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { Asset } from "expo-asset";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -39,18 +40,30 @@ import Animated, {
   runOnJS,
   Easing,
 } from "react-native-reanimated";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { HomeStackParamList } from "../../App";
+import { TILE_REQUIRES } from "../components/mahjong/tileAssets";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
-import GameCanvas, { BOARD_W, BOARD_H, TILE_W, TILE_H } from "../components/mahjong/GameCanvas";
-import { createGame, elapsedMs, selectTile, shuffleBoard, undoMove } from "../game/mahjong/engine";
+import GameCanvas from "../components/mahjong/GameCanvas";
+import { useMahjongCamera } from "../game/mahjong/layout";
+import type { BoardCamera } from "../game/mahjong/layout";
+import {
+  createGame,
+  elapsedMs,
+  getAllFreePairs,
+  getAnyFreePair,
+  selectTile,
+  shuffleBoard,
+  undoMove,
+} from "../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
 import {
@@ -66,26 +79,9 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
+import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
-
-// ---------------------------------------------------------------------------
-// Tile layout constants — imported from GameCanvas (single source of truth)
-// ---------------------------------------------------------------------------
-
-// TILE_W and TILE_H are imported from GameCanvas above.
-const LAYER_DX = 6;
-const LAYER_DY = 5;
-const PAD_X = 10;
-const PAD_Y = 30;
-const SIDE_W = 5;
-
-function tileCenter(tile: SlotTile): { cx: number; cy: number } {
-  return {
-    cx: PAD_X + (tile.col / 2) * TILE_W + tile.layer * LAYER_DX + TILE_W / 2,
-    cy: PAD_Y + tile.row * TILE_H - tile.layer * LAYER_DY + TILE_H / 2,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // FlyingPair — two matched tiles slide toward each other then burst and fade
@@ -97,24 +93,125 @@ interface FlyingPairData {
   tile2: SlotTile;
 }
 
-const BURST_R = 22;
+// Colors that match the canvas tile rendering.
+const FP_FACE = "#f5f0e8";
+const FP_BORDER = "#ffd700";
+const FP_SIDE_R = "#a89070";
+const FP_SIDE_B = "#987860";
+// Border inset between the gold frame and the ivory face, in logical pixels.
+const FACE_INSET = 2;
+
+function FlyingTileGlyph({
+  faceWidth: fw,
+  faceHeight: fh,
+  sideWidth: sw,
+  imgUri,
+}: {
+  faceWidth: number;
+  faceHeight: number;
+  sideWidth: number;
+  imgUri: string | null;
+}) {
+  return (
+    // overflow: "visible" is intentional so the 3-D side panels render outside
+    // the face bounds. Note: Android clips overflow in deeply nested Views by
+    // default, so the side shadows won't appear on native until the parent
+    // Animated.View chain also carries overflow: "visible".
+    <View style={{ width: fw, height: fh, overflow: "visible" }}>
+      {/* 3-D right side */}
+      <View
+        style={{
+          position: "absolute",
+          left: fw,
+          top: sw,
+          width: sw,
+          height: fh,
+          backgroundColor: FP_SIDE_R,
+        }}
+      />
+      {/* 3-D bottom side */}
+      <View
+        style={{
+          position: "absolute",
+          left: sw,
+          top: fh,
+          width: fw,
+          height: sw,
+          backgroundColor: FP_SIDE_B,
+        }}
+      />
+      {/* Gold border (selected-tile look) */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: fw,
+          height: fh,
+          backgroundColor: FP_BORDER,
+          borderRadius: 2,
+        }}
+      />
+      {/* Ivory face */}
+      <View
+        style={{
+          position: "absolute",
+          left: FACE_INSET,
+          top: FACE_INSET,
+          width: fw - FACE_INSET * 2,
+          height: fh - FACE_INSET * 2,
+          backgroundColor: FP_FACE,
+          borderRadius: 1,
+          overflow: "hidden",
+        }}
+      >
+        {/* SVG art — only on web where RN Image renders SVG via <img> */}
+        {Platform.OS === "web" && imgUri !== null && (
+          <Image
+            source={{ uri: imgUri }}
+            style={{
+              position: "absolute",
+              left: FACE_INSET,
+              top: FACE_INSET,
+              right: FACE_INSET,
+              bottom: FACE_INSET,
+            }}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+    </View>
+  );
+}
 
 function FlyingPair({
   tile1,
   tile2,
-  scale,
-  color,
+  camera,
+  tileUris,
   onDone,
-}: FlyingPairData & { scale: number; color: string; onDone: () => void }) {
-  const { cx: c1x, cy: c1y } = tileCenter(tile1);
-  const { cx: c2x, cy: c2y } = tileCenter(tile2);
-  const midX = ((c1x + c2x) / 2) * scale;
-  const midY = ((c1y + c2y) / 2) * scale;
+}: FlyingPairData & {
+  camera: BoardCamera;
+  tileUris: readonly (string | null)[];
+  onDone: () => void;
+}) {
+  const { x: x1, y: y1 } = camera.tileToScreen(tile1.col, tile1.row, tile1.layer);
+  const { x: x2, y: y2 } = camera.tileToScreen(tile2.col, tile2.row, tile2.layer);
+  const { faceWidth: fw, faceHeight: fh, sideWidth: sw } = camera;
 
-  const t1cx = useSharedValue(c1x * scale);
-  const t1cy = useSharedValue(c1y * scale);
-  const t2cx = useSharedValue(c2x * scale);
-  const t2cy = useSharedValue(c2y * scale);
+  // Face-center coords so the overlay aligns exactly with the canvas tile face.
+  const c1x = x1 + fw / 2;
+  const c1y = y1 + fh / 2;
+  const c2x = x2 + fw / 2;
+  const c2y = y2 + fh / 2;
+  const midX = (c1x + c2x) / 2;
+  const midY = (c1y + c2y) / 2;
+  const burstR = Math.round(fw * 0.65);
+
+  const t1cx = useSharedValue(c1x);
+  const t1cy = useSharedValue(c1y);
+  const t2cx = useSharedValue(c2x);
+  const t2cy = useSharedValue(c2y);
   const pairOpacity = useSharedValue(1);
   const burstScaleVal = useSharedValue(0);
   const burstOpacity = useSharedValue(0);
@@ -125,65 +222,58 @@ function FlyingPair({
     t1cy.value = withTiming(midY, moveCfg);
     t2cx.value = withTiming(midX, moveCfg);
     t2cy.value = withTiming(midY, moveCfg);
+    // Hold fully visible through the slide, then snap-fade after meeting.
     pairOpacity.value = withSequence(
-      withTiming(1, { duration: 180 }),
-      withTiming(0, { duration: 100 }, (finished) => {
+      withTiming(1, { duration: 220 }),
+      withTiming(0, { duration: 70 }, (finished) => {
         if (finished) runOnJS(onDone)();
       })
     );
-    burstScaleVal.value = withDelay(180, withSpring(1.5, { damping: 8, stiffness: 60 }));
+    burstScaleVal.value = withDelay(220, withSpring(1.8, { damping: 7, stiffness: 100 }));
     burstOpacity.value = withSequence(
-      withDelay(180, withTiming(0.85, { duration: 40 })),
-      withTiming(0, { duration: 80 })
+      withDelay(220, withTiming(0.9, { duration: 25 })),
+      withTiming(0, { duration: 85 })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tw = (TILE_W - SIDE_W) * scale;
-  const th = (TILE_H - SIDE_W) * scale;
-
   const tile1Style = useAnimatedStyle(() => ({
     position: "absolute",
-    left: t1cx.value - tw / 2,
-    top: t1cy.value - th / 2,
-    width: tw,
-    height: th,
-    borderRadius: 2,
-    backgroundColor: color,
-    borderWidth: 1.5,
-    borderColor: "#ffd700",
+    left: t1cx.value - fw / 2,
+    top: t1cy.value - fh / 2,
     opacity: pairOpacity.value,
   }));
 
   const tile2Style = useAnimatedStyle(() => ({
     position: "absolute",
-    left: t2cx.value - tw / 2,
-    top: t2cy.value - th / 2,
-    width: tw,
-    height: th,
-    borderRadius: 2,
-    backgroundColor: color,
-    borderWidth: 1.5,
-    borderColor: "#ffd700",
+    left: t2cx.value - fw / 2,
+    top: t2cy.value - fh / 2,
     opacity: pairOpacity.value,
   }));
 
   const burstStyle = useAnimatedStyle(() => ({
     position: "absolute",
-    left: midX - BURST_R,
-    top: midY - BURST_R,
-    width: BURST_R * 2,
-    height: BURST_R * 2,
-    borderRadius: BURST_R,
-    backgroundColor: color,
+    left: midX - burstR,
+    top: midY - burstR,
+    width: burstR * 2,
+    height: burstR * 2,
+    borderRadius: burstR,
+    backgroundColor: FP_BORDER,
     transform: [{ scale: burstScaleVal.value }],
     opacity: burstOpacity.value,
   }));
 
+  const img1 = tileUris[tile1.faceId - 1] ?? null;
+  const img2 = tileUris[tile2.faceId - 1] ?? null;
+
   return (
     <>
-      <Animated.View pointerEvents="none" style={tile1Style} />
-      <Animated.View pointerEvents="none" style={tile2Style} />
+      <Animated.View pointerEvents="none" style={tile1Style}>
+        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img1} />
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={tile2Style}>
+        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img2} />
+      </Animated.View>
       <Animated.View pointerEvents="none" style={burstStyle} />
     </>
   );
@@ -198,16 +288,34 @@ export default function MahjongScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const camera = useMahjongCamera();
 
   const [state, setState] = useState<MahjongState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [outerWidth, setOuterWidth] = useState(0);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
     gamesPlayed: 0,
     gamesWon: 0,
   });
+
+  // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
+  const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const [debugShowFree, setDebugShowFree] = useState(false);
+  const freePairs = useMemo<[SlotTile, SlotTile][]>(
+    () => (__DEV__ && devPanelOpen && state ? getAllFreePairs(state.tiles) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [devPanelOpen, state?.tiles]
+  );
+
+  // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
+  const [tileUris, setTileUris] = useState<(string | null)[]>(
+    Array(TILE_REQUIRES.length).fill(null)
+  );
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
@@ -217,6 +325,67 @@ export default function MahjongScreen() {
   const boardAnimStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: boardShakeX.value }],
     opacity: boardOpacity.value,
+  }));
+
+  // Gesture zoom/pan shared values.
+  // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
+  const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
+  const minZoom = useSharedValue(initMin);
+  const maxZoom = useSharedValue(initMax);
+  const zoomScale = useSharedValue(initMin);
+  const baseScale = useSharedValue(initMin);
+  const translateX = useSharedValue(0);
+  const baseTranslateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const baseTranslateY = useSharedValue(0);
+
+  // Reset gesture state when layout changes (orientation / resize).
+  useEffect(() => {
+    const bounds = computeZoomBounds(camera.scale, camera.tileWidth);
+    minZoom.value = bounds.minZoom;
+    maxZoom.value = bounds.maxZoom;
+    zoomScale.value = bounds.minZoom;
+    baseScale.value = bounds.minZoom;
+    translateX.value = 0;
+    baseTranslateX.value = 0;
+    translateY.value = 0;
+    baseTranslateY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera.scale, camera.tileWidth]);
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      // Allow rubber-band overshoot past limits; onEnd springs back.
+      zoomScale.value = rubberClamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
+    })
+    .onEnd(() => {
+      const target = clamp(zoomScale.value, minZoom.value, maxZoom.value);
+      baseScale.value = target;
+      if (Math.abs(zoomScale.value - target) > 1e-6) {
+        zoomScale.value = withSpring(target, { damping: 20, stiffness: 300 });
+      }
+    });
+
+  const panGesture = Gesture.Pan()
+    .minPointers(1)
+    .maxPointers(1)
+    .onUpdate((e) => {
+      translateX.value = baseTranslateX.value + e.translationX;
+      translateY.value = baseTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      baseTranslateX.value = translateX.value;
+      baseTranslateY.value = translateY.value;
+    });
+
+  const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  const gestureAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: zoomScale.value },
+    ],
   }));
 
   const hasLoadedRef = useRef(false);
@@ -263,6 +432,41 @@ export default function MahjongScreen() {
   // Reduce motion preference.
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+  }, []);
+
+  // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
+  // display requires Skia and can't run inside Animated.View).
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    let cancelled = false;
+    const uris: (string | null)[] = Array(TILE_REQUIRES.length).fill(null);
+    (async () => {
+      await Promise.all(
+        (TILE_REQUIRES as readonly number[]).map(async (src, i) => {
+          try {
+            const asset = Asset.fromModule(src);
+            await asset.downloadAsync();
+            uris[i] = asset.uri ?? null;
+          } catch {
+            /* keep null */
+          }
+        })
+      );
+      if (!cancelled) setTileUris([...uris]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Dev panel: Shift+D keyboard shortcut on web.
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== "web") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.shiftKey && e.key === "D") setDevPanelOpen((o) => !o);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Scoreboard snapshot — updated on every state change.
@@ -406,6 +610,13 @@ export default function MahjongScreen() {
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete]);
 
+  // Disable native swipe-back (iOS edge gesture) while the game is open so that
+  // a left-pan on the board doesn't accidentally exit to the lobby.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false });
+    return () => navigation.setOptions({ gestureEnabled: true });
+  }, [navigation]);
+
   // Abandon on back-navigation.
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", () => {
@@ -432,6 +643,11 @@ export default function MahjongScreen() {
 
   const handleTilePress = useCallback(
     (tileId: number) => {
+      if (hintTimerRef.current) {
+        clearTimeout(hintTimerRef.current);
+        hintTimerRef.current = null;
+      }
+      setHintIds(new Set());
       setState((prev) => {
         if (!prev) return prev;
         const next = selectTile(prev, tileId);
@@ -441,6 +657,22 @@ export default function MahjongScreen() {
       });
     },
     [ensureSyncStarted]
+  );
+
+  const handleHint = useCallback(() => {
+    if (!state) return;
+    const pair = getAnyFreePair(state.tiles);
+    if (!pair) return;
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    setHintIds(new Set(pair));
+    hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
+  }, [state]);
+
+  useEffect(
+    () => () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    },
+    []
   );
 
   const handleShuffle = useCallback(() => {
@@ -480,15 +712,6 @@ export default function MahjongScreen() {
     syncMarkStarted();
   }, [syncGetGameId, syncComplete, syncStart, syncMarkStarted]);
 
-  // Allow upscaling up to a 72 px effective tile on large/landscape screens,
-  // while still shrinking to fit on narrow portrait screens.
-  const MAX_TILE_W = 72;
-  const scale = outerWidth > 0 ? Math.min(MAX_TILE_W / TILE_W, outerWidth / BOARD_W) : 1;
-
-  const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
-    setOuterWidth(Math.floor(e.nativeEvent.layout.width));
-  }, []);
-
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 
   return (
@@ -520,56 +743,163 @@ export default function MahjongScreen() {
         </Pressable>
       }
     >
-      <ScrollView
-        style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
-        onLayout={onOuterLayout}
-        showsVerticalScrollIndicator={false}
-      >
-        {state !== null && (
-          <>
-            <View style={styles.hudRow} accessibilityRole="summary">
+      {state !== null && (
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <View style={styles.hudRow} accessibilityRole="summary">
+            {__DEV__ ? (
+              <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+                <Text style={[styles.hudText, { color: colors.text }]}>
+                  {t("hud.score")} {state.score}
+                </Text>
+              </Pressable>
+            ) : (
               <Text style={[styles.hudText, { color: colors.text }]}>
                 {t("hud.score")} {state.score}
               </Text>
-              <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("hud.pairs")} {state.pairsRemoved}/72
-              </Text>
-              <Text style={[styles.hudText, { color: colors.textMuted }]}>
+            )}
+            <Text style={[styles.hudText, { color: colors.textMuted }]}>
+              {t("hud.pairs")} {state.pairsRemoved}/72
+            </Text>
+            <Pressable
+              onPress={handleShuffle}
+              disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
+              style={[
+                styles.headerBtn,
+                {
+                  borderColor: "#ffd700",
+                  opacity:
+                    state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("action.shuffleLabel")}
+              accessibilityState={{
+                disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
+              }}
+            >
+              <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
                 {t("action.shuffle")} {state.shufflesLeft}
               </Text>
-              <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
-                {t("hud.deal")} #{state.dealId}
-              </Text>
-            </View>
+            </Pressable>
+            <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
+              {t("hud.deal")} #{state.dealId}
+            </Text>
+            <Pressable
+              onPress={handleHint}
+              disabled={state.isComplete || state.isDeadlocked}
+              style={[
+                styles.headerBtn,
+                {
+                  borderColor: "#5dbcd2",
+                  opacity: state.isComplete || state.isDeadlocked ? 0.3 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("action.hintLabel")}
+              accessibilityState={{ disabled: state.isComplete || state.isDeadlocked }}
+            >
+              <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
+            </Pressable>
+            {__DEV__ && (
+              <Pressable
+                onPress={() => setDevPanelOpen((o) => !o)}
+                style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle dev panel"
+              >
+                <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
+              </Pressable>
+            )}
+          </View>
 
-            <View style={[styles.boardWrap, outerWidth > 0 ? { height: BOARD_H * scale } : null]}>
-              {/* boardAnimWrap handles shake + pulse; inner board View applies scale transform */}
-              <Animated.View style={[styles.boardAnimWrap, boardAnimStyle]}>
-                <View
-                  style={[styles.board, { width: BOARD_W, transform: [{ scale }] } as ViewStyle]}
-                >
+          {/* Viewport container — clips the board during zoom/pan */}
+          <View
+            style={{
+              width: camera.viewportWidth,
+              height: camera.viewportHeight,
+              overflow: "hidden",
+              alignSelf: "center",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <GestureDetector gesture={boardGesture}>
+              {/* Gesture layer — pinch-to-zoom + two-finger pan */}
+              <Animated.View
+                style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
+              >
+                <Animated.View style={boardAnimStyle}>
                   <GameCanvas
                     state={state}
+                    camera={camera}
+                    hintIds={hintIds}
+                    debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
                     onShufflePress={handleShuffle}
                     onNewGamePress={startNewGame}
                   />
-                </View>
+                </Animated.View>
+                {flyingPairs.map((pair) => (
+                  <FlyingPair
+                    key={pair.id}
+                    {...pair}
+                    camera={camera}
+                    tileUris={tileUris}
+                    onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
+                  />
+                ))}
               </Animated.View>
-              {flyingPairs.map((pair) => (
-                <FlyingPair
-                  key={pair.id}
-                  {...pair}
-                  scale={scale}
-                  color={colors.accent + "99"}
-                  onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
-                />
-              ))}
-            </View>
-          </>
-        )}
-      </ScrollView>
+            </GestureDetector>
+          </View>
+        </View>
+      )}
+
+      {__DEV__ && devPanelOpen && state && (
+        <View style={styles.devPanel} pointerEvents="box-none">
+          <Text style={styles.devPanelTitle}>DEV — Mahjong</Text>
+          <Text style={styles.devPanelText}>
+            tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}
+          </Text>
+          <Text style={styles.devPanelText}>
+            free tiles:{" "}
+            {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free
+            pairs: {freePairs.length}
+          </Text>
+          <Text style={styles.devPanelText}>
+            shuffles left: {state.shufflesLeft} / score: {state.score}
+          </Text>
+          <Text style={styles.devPanelText}>
+            deal #{state.dealId} / undo depth: {state.undoStack.length}
+          </Text>
+          <Pressable
+            onPress={() => setDebugShowFree((v) => !v)}
+            style={[styles.devToggleBtn, debugShowFree && styles.devToggleBtnActive]}
+          >
+            <Text style={styles.devToggleText}>
+              {debugShowFree ? "overlay: ON" : "overlay: off"}
+            </Text>
+          </Pressable>
+          {freePairs.length > 0 && (
+            <>
+              <Text style={[styles.devPanelTitle, { marginTop: 8 }]}>free pairs</Text>
+              <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
+                {freePairs.map(([a, b]: [SlotTile, SlotTile], i: number) => (
+                  <Text key={i} style={styles.devPairText}>
+                    {a.suit[0]}
+                    {a.rank} ↔ {b.suit[0]}
+                    {b.rank} (ids {a.id},{b.id})
+                  </Text>
+                ))}
+              </ScrollView>
+            </>
+          )}
+          {freePairs.length === 0 && (
+            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>
+              no free pairs
+            </Text>
+          )}
+        </View>
+      )}
 
       {state?.isComplete && (
         <WinModal
@@ -746,12 +1076,6 @@ function WinModal({
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  scrollArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
   headerBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -769,6 +1093,7 @@ const styles = StyleSheet.create({
   hudRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignSelf: "stretch",
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
@@ -781,18 +1106,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     opacity: 0.6,
   },
-  boardWrap: {
-    alignSelf: "stretch",
-    alignItems: "flex-start",
-    overflow: "hidden",
-  },
-  boardAnimWrap: {
-    alignSelf: "flex-start",
-  },
-  board: {
-    alignSelf: "flex-start",
-    transformOrigin: "top left",
-  } as ViewStyle,
   modalOverlay: {
     flex: 1,
     alignItems: "center",
@@ -874,5 +1187,53 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  devPanel: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 220,
+    backgroundColor: "rgba(0,0,0,0.82)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,128,0,0.5)",
+    padding: 10,
+  },
+  devPanelTitle: {
+    color: "rgba(255,128,0,1)",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  devPanelText: {
+    color: "#cccccc",
+    fontSize: 10,
+    lineHeight: 16,
+    fontVariant: ["tabular-nums"],
+  },
+  devPairText: {
+    color: "#aaccaa",
+    fontSize: 10,
+    lineHeight: 15,
+    fontVariant: ["tabular-nums"],
+  },
+  devToggleBtn: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,128,0,0.5)",
+    alignSelf: "flex-start",
+  },
+  devToggleBtnActive: {
+    backgroundColor: "rgba(255,128,0,0.2)",
+    borderColor: "rgba(255,128,0,1)",
+  },
+  devToggleText: {
+    color: "rgba(255,128,0,1)",
+    fontSize: 10,
+    fontWeight: "700",
   },
 });

@@ -56,5 +56,7 @@
   "gameOver.playAgain": "再玩一次",
   "gameOver.playAgainLabel": "开始新游戏",
   "gameOver.dismiss": "不用了",
-  "gameOver.dismissLabel": "关闭并保持当前分数可见"
+  "gameOver.dismissLabel": "关闭并保持当前分数可见",
+  "tab.upper": "上半区",
+  "tab.lower": "下半区"
 }

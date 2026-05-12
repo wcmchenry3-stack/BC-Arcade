@@ -12,8 +12,8 @@
  * overlays any child screen without needing navigation context.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, AppStateStatus, View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -52,6 +52,7 @@ export function CapacityWarningToast({
   const insets = useSafeAreaInsets();
   const { t } = useTranslation("common");
   const [visible, setVisible] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const check = shouldShowCheck ?? (() => eventStore.shouldShowCapacityWarning());
   const mark = markShown ?? (() => eventStore.markWarningShown());
@@ -70,10 +71,30 @@ export function CapacityWarningToast({
   }, []);
 
   // First check fires immediately on mount, then on the interval.
+  // The interval is paused when the app goes to background to avoid
+  // keeping a timer running while the user isn't seeing the app.
   useEffect(() => {
     void runCheck();
-    const id = setInterval(runCheck, pollIntervalMs);
-    return () => clearInterval(id);
+    intervalRef.current = setInterval(runCheck, pollIntervalMs);
+
+    const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next === "background" || next === "inactive") {
+        if (intervalRef.current !== null) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      } else if (next === "active") {
+        if (intervalRef.current === null) {
+          void runCheck();
+          intervalRef.current = setInterval(runCheck, pollIntervalMs);
+        }
+      }
+    });
+
+    return () => {
+      appStateSub.remove();
+      if (intervalRef.current !== null) clearInterval(intervalRef.current);
+    };
   }, [runCheck, pollIntervalMs]);
 
   const onDismiss = useCallback(() => {

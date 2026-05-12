@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "フルーツを落として合体！溢れないように！",
-  "game.playLabel": "Fruit Mergeをプレイ",
-  "game.canvasLabel": "Fruit Mergeゲーム — フルーツを積んで合体させよう。タップまたはクリックで落とす。",
+  "game.playLabel": "Cascadeをプレイ",
+  "game.canvasLabel": "Cascadeゲーム — フルーツを積んで合体させよう。タップまたはクリックで落とす。",
   "score.label": "スコア",
   "score.display": "スコア: {{score}}",
   "preview.dropLabel": "落とす",

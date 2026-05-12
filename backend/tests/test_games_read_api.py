@@ -9,7 +9,8 @@ from typing import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import is_configured
+from db.base import get_session_factory, is_configured
+from db.models import GameEntitlement
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -28,6 +29,13 @@ def client() -> Iterator[TestClient]:
 
 def _headers(sid: str) -> dict[str, str]:
     return {"X-Session-ID": sid, "Content-Type": "application/json"}
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
 
 
 def _create_and_complete(
@@ -59,8 +67,9 @@ def test_stats_me_empty_session(client: TestClient) -> None:
     assert body["favorite_game"] is None
 
 
-def test_stats_me_aggregates_per_game(client: TestClient) -> None:
+async def test_stats_me_aggregates_per_game(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     _create_and_complete(client, sid, game_type="yacht", final_score=100)
     _create_and_complete(client, sid, game_type="yacht", final_score=300)
     _create_and_complete(client, sid, game_type="twenty48", final_score=15_000)
@@ -97,8 +106,9 @@ def test_stats_me_blackjack_uses_chip_shape(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_games_me_history_pagination(client: TestClient) -> None:
+async def test_games_me_history_pagination(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     for s in (10, 20, 30, 40, 50):
         _create_and_complete(client, sid, game_type="yacht", final_score=s)
 
@@ -113,9 +123,11 @@ def test_games_me_history_pagination(client: TestClient) -> None:
     assert len(r2.json()["items"]) == 2
 
 
-def test_games_me_filters_by_session(client: TestClient) -> None:
+async def test_games_me_filters_by_session(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     other = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    await _grant(other, "yacht")
     _create_and_complete(client, sid, game_type="yacht", final_score=100)
     _create_and_complete(client, other, game_type="yacht", final_score=200)
 
@@ -129,8 +141,9 @@ def test_games_me_filters_by_session(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_game_detail_returns_row(client: TestClient) -> None:
+async def test_game_detail_returns_row(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     gid = _create_and_complete(client, sid, game_type="yacht", final_score=250)
     r = client.get(f"/games/{gid}", headers=_headers(sid))
     assert r.status_code == 200
@@ -140,8 +153,9 @@ def test_game_detail_returns_row(client: TestClient) -> None:
     assert body.get("events") is None
 
 
-def test_game_detail_include_events(client: TestClient) -> None:
+async def test_game_detail_include_events(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     r = client.post("/games", headers=_headers(sid), json={"game_type": "yacht"})
     gid = r.json()["id"]
     client.post(
@@ -162,8 +176,9 @@ def test_game_detail_include_events(client: TestClient) -> None:
     assert body["events"][0]["event_type"] == "game_started"
 
 
-def test_game_detail_cross_session_forbidden(client: TestClient) -> None:
+async def test_game_detail_cross_session_forbidden(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     gid = _create_and_complete(client, sid, game_type="yacht", final_score=100)
     other = str(uuid.uuid4())
     r = client.get(f"/games/{gid}", headers=_headers(other))

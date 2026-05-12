@@ -56,5 +56,7 @@
   "gameOver.playAgain": "Rejouer",
   "gameOver.playAgainLabel": "Commencer une nouvelle partie",
   "gameOver.dismiss": "Non merci",
-  "gameOver.dismissLabel": "Fermer et garder le score actuel visible"
+  "gameOver.dismissLabel": "Fermer et garder le score actuel visible",
+  "tab.upper": "Haute",
+  "tab.lower": "Basse"
 }

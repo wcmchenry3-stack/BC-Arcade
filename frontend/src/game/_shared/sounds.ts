@@ -8,7 +8,7 @@
 //   blackjack-win.ogg      → blackjack.win, solitaire.foundationComplete
 //   cascade-game-over.ogg  → cascade.gameOver, mahjong.deadlock, twenty48.gameOver
 //   starswarm-waveclear.ogg → starswarm.waveclear, starswarm.bonuslife, cascade.cascadeCombo
-//   solitaire-invalid-move.ogg → solitaire.invalidMove, sudoku.errorEntered
+//   solitaire-invalid-move.ogg → solitaire.invalidMove, sudoku.errorEntered, freecell.invalidMove
 export type SoundKey = string;
 
 // Metro resolves require() at bundle time so assets must be static literals.
@@ -20,6 +20,12 @@ export const SOUND_REGISTRY: Partial<Record<SoundKey, number>> = {
   "hearts.moonShot": require("../../../assets/sounds/hearts-moon-shot.mp3"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "hearts.queenOfSpades": require("../../../assets/sounds/hearts-queen-of-spades.mp3"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "hearts.cardPlay": require("../../../assets/sounds/solitaire-card-place.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "hearts.trickWon": require("../../../assets/sounds/solitaire-card-flip.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "hearts.gameOver": require("../../../assets/sounds/cascade-game-over.ogg"),
   // Blackjack (#826)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "blackjack.cardDeal": require("../../../assets/sounds/blackjack-card-deal.ogg"),
@@ -124,7 +130,12 @@ export const SOUND_REGISTRY: Partial<Record<SoundKey, number>> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "freecell.gameWin": require("../../../assets/sounds/freecell-game-win.mp3"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  "freecell.invalidMove": require("../../../assets/sounds/freecell-invalid-move.mp3"),
+  "freecell.invalidMove": require("../../../assets/sounds/solitaire-invalid-move.ogg"),
+  // Sort (#1265, #1268)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "sort.pour": require("../../../assets/sounds/cascade-fruit-merge.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "sort.win": require("../../../assets/sounds/freecell-game-win.mp3"),
   // Mahjong (#914)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "mahjong.tileSelect": require("../../../assets/sounds/mahjong-tile-select.ogg"),

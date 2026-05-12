@@ -13,7 +13,8 @@ from typing import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import is_configured
+from db.base import get_session_factory, is_configured
+from db.models import GameEntitlement
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -33,6 +34,18 @@ def client() -> Iterator[TestClient]:
 @pytest.fixture()
 def session_id() -> str:
     return str(uuid.uuid4())
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _yacht_entitlement(session_id: str) -> None:
+    await _grant(session_id, "yacht")
 
 
 def _headers(sid: str) -> dict[str, str]:
@@ -280,8 +293,9 @@ def test_complete_game_cross_session_forbidden(client: TestClient, session_id: s
 # ---------------------------------------------------------------------------
 
 
-def test_games_create_rate_limit_per_session(client: TestClient) -> None:
+async def test_games_create_rate_limit_per_session(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
     codes = [
         client.post("/games", headers=_headers(sid), json={"game_type": "yacht"}).status_code
         for _ in range(12)
@@ -289,5 +303,6 @@ def test_games_create_rate_limit_per_session(client: TestClient) -> None:
     assert 429 in codes
     # Different session should not be rate-limited
     other = str(uuid.uuid4())
+    await _grant(other, "yacht")
     r = client.post("/games", headers=_headers(other), json={"game_type": "yacht"})
     assert r.status_code == 200

@@ -28,6 +28,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     onTilePress: (id: number) => void;
     onShufflePress: () => void;
     onNewGamePress: () => void;
+    layout: object;
   }) {
     return (
       <View testID="game-canvas">
@@ -36,14 +37,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     );
   }
   MockGameCanvas.displayName = "MockGameCanvas";
-  return {
-    __esModule: true,
-    default: MockGameCanvas,
-    BOARD_W: 572,
-    BOARD_H: 508,
-    TILE_W: 44,
-    TILE_H: 56,
-  };
+  return { __esModule: true, default: MockGameCanvas };
 });
 
 const mockNavListeners = new Map<string, Array<() => void>>();
@@ -65,8 +59,22 @@ jest.mock("@react-navigation/native", () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
+    setOptions: jest.fn(),
     addListener: mockAddListener,
   }),
+  useFocusEffect: (cb: () => () => void) => {
+    // Run the effect once synchronously in tests (simulates screen focus).
+    const cleanup = cb();
+    return cleanup;
+  },
+}));
+
+jest.mock("expo-screen-orientation", () => ({
+  lockAsync: jest.fn().mockResolvedValue(undefined),
+  OrientationLock: {
+    LANDSCAPE: "LANDSCAPE",
+    PORTRAIT_UP: "PORTRAIT_UP",
+  },
 }));
 
 jest.mock("@sentry/react-native", () => ({

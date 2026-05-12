@@ -8,6 +8,16 @@ import pytest
 from fastapi.testclient import TestClient
 from hypothesis import HealthCheck, given, settings, strategies as st
 
+from db.base import get_session_factory
+from db.models import GameEntitlement
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
 
 @pytest.fixture()
 def client_default():
@@ -223,9 +233,10 @@ def test_normal_body_not_rejected(client_default):
 
 
 @pytest.mark.security
-def test_rate_limit_returns_429_after_threshold(client_default):
+async def test_rate_limit_returns_429_after_threshold(client_default):
     """PATCH /cascade/score has a 10/minute per-session limit; 11th request must be 429."""
     sid = _sid()
+    await _grant(sid, "cascade")
     game_id = _fake_game_id()
     responses = [
         client_default.patch(
@@ -239,9 +250,10 @@ def test_rate_limit_returns_429_after_threshold(client_default):
 
 
 @pytest.mark.security
-def test_rate_limit_429_has_retry_after(client_default):
+async def test_rate_limit_429_has_retry_after(client_default):
     """429 responses must include Retry-After header."""
     sid = _sid()
+    await _grant(sid, "cascade")
     game_id = _fake_game_id()
     responses = [
         client_default.patch(
@@ -258,13 +270,14 @@ def test_rate_limit_429_has_retry_after(client_default):
 
 
 @pytest.mark.security
-def test_cascade_score_strict_limit(client_default):
+async def test_cascade_score_strict_limit(client_default):
     """PATCH /cascade/score/:id has a 10/minute limit per (session, URL).
 
     All 11 requests target the same game_id so they share one rate-limit bucket.
     """
     fake_id = str(uuid.uuid4())
     sid = _sid()
+    await _grant(sid, "cascade")
     responses = [
         client_default.patch(
             f"/cascade/score/{fake_id}",

@@ -17,7 +17,15 @@ const _engine: typeof import("../engine") = require(
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const { createEngine } = _engine;
 import type { EngineHandle, BodySnapshot } from "../engine.shared";
-import { DANGER_LINE_RATIO, WALL_THICKNESS } from "../engine.shared";
+import {
+  DANGER_LINE_RATIO,
+  WALL_THICKNESS,
+  RAPIER_SOLVER_ITERATIONS,
+  MAX_FRUIT_SPEED_PX_S,
+  SCALE,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
+} from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 import { MockWorld } from "../../../../__mocks__/@dimforge/rapier2d-compat";
 
@@ -79,6 +87,12 @@ describe("createEngine", () => {
   it("creates 3 static wall/floor colliders via cuboid", async () => {
     await buildEngine();
     expect(RAPIER_MOCK.ColliderDesc.cuboid).toHaveBeenCalledTimes(3);
+  });
+
+  it("sets numSolverIterations to RAPIER_SOLVER_ITERATIONS on the Rapier world", async () => {
+    await buildEngine();
+    const world = getWorld();
+    expect(world.integrationParameters.numSolverIterations).toBe(RAPIER_SOLVER_ITERATIONS);
   });
 });
 
@@ -277,10 +291,17 @@ describe("game-over detection", () => {
     // Advance time past the 3-second grace period
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3000);
-    const { events } = handle.step();
+    // Hysteresis requires GAME_OVER_CONSECUTIVE_TICKS (30) above the line before firing.
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
     jest.useRealTimers();
 
-    expect(events.some((e) => e.type === "gameOver")).toBe(true);
+    expect(fired).toBe(true);
   });
 
   it("does NOT emit gameOver during the grace period", async () => {
@@ -313,14 +334,124 @@ describe("game-over detection", () => {
 
     jest.useFakeTimers();
     jest.setSystemTime(Date.now() + 3000);
-    const step1 = handle.step();
-    const step2 = handle.step(); // second step should not re-fire
+    let gameOverCount = 0;
+    // Run well past the 30-tick threshold; gameOver must fire exactly once.
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 30; i++) {
+      gameOverCount += handle.step().events.filter((e) => e.type === "gameOver").length;
+    }
     jest.useRealTimers();
 
-    const totalGameOverEvents =
-      step1.events.filter((e) => e.type === "gameOver").length +
-      step2.events.filter((e) => e.type === "gameOver").length;
-    expect(totalGameOverEvents).toBe(1);
+    expect(gameOverCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game-over hysteresis (CASCADE-PHYS-07)
+// ---------------------------------------------------------------------------
+
+describe("game-over hysteresis", () => {
+  // dangerY = H * DANGER_LINE_RATIO = 108px. tier-0 top = y - 18; safe when y < 126.
+
+  it("single tick above danger does not fire gameOver", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50); // top = 32 < 108
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000); // past grace immediately
+    const { events } = handle.step();
+    jest.useRealTimers();
+
+    expect(events.some((e) => e.type === "gameOver")).toBe(false);
+  });
+
+  it("30 consecutive ticks above danger fires gameOver on the 30th", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+    jest.useRealTimers();
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+  });
+
+  it("counter resets when fruit drops below danger line", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 50); // body handle 0
+    const world = getWorld();
+    const body = world._bodies.get(0)!;
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+
+    // 15 ticks above — dangerTicksAbove=15; not enough to fire (need 30)
+    const halfThreshold = 15;
+    for (let i = 0; i < halfThreshold; i++) {
+      expect(handle.step().events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Move below danger line (top = 282 > 108) — counter resets to 0
+    body._y = 3.0; // 300 px in physics units → 300/SCALE px
+    handle.step();
+
+    // Move back above danger line
+    body._y = 0.5; // 50 px
+
+    // Needs a full 30 consecutive ticks from the reset (not just 15 more)
+    let firedAt = -1;
+    for (let i = 1; i <= GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step().events.some((e) => e.type === "gameOver")) {
+        firedAt = i;
+        break;
+      }
+    }
+    jest.useRealTimers();
+
+    expect(firedAt).toBe(GAME_OVER_CONSECUTIVE_TICKS);
+  });
+
+  it("merge in last 90 ticks suppresses gameOver even after 30 consecutive ticks above", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    // Dangerous fruit above danger line (body 0, collider 1003)
+    handle.drop(fruit(0), fruitSet.id, 150, 50);
+    // Merge pair — same tier, positioned away from danger zone (bodies 1-2, colliders 1004-1005)
+    handle.drop(fruit(0), fruitSet.id, 100, 300);
+    handle.drop(fruit(0), fruitSet.id, 110, 300);
+
+    jest.useFakeTimers();
+    jest.setSystemTime(Date.now() + 5000);
+
+    // 29 ticks above danger — dangerTicksAbove=29, ticksSinceLastMerge well above cooldown
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS - 1; i++) handle.step();
+
+    // Trigger a merge between the pair → resets ticksSinceLastMerge to 0
+    world._fireCollision(1004, 1005);
+
+    // This step processes the merge: dangerTicksAbove=30, ticksSinceLastMerge=0
+    // 30 >= 30 but 0 < 90 → must NOT fire
+    const { events: mergeStep } = handle.step();
+    expect(mergeStep.some((e) => e.type === "gameOver")).toBe(false);
+    expect(mergeStep.some((e) => e.type === "fruitMerge")).toBe(true);
+
+    // 89 more steps — ticksSinceLastMerge climbs to 89; still suppressed
+    for (let i = 0; i < GAME_OVER_MERGE_COOLDOWN_TICKS - 1; i++) {
+      expect(handle.step().events.some((e) => e.type === "gameOver")).toBe(false);
+    }
+
+    // Final step: ticksSinceLastMerge=90 >= cooldown → fires
+    const { events: finalStep } = handle.step();
+    jest.useRealTimers();
+
+    expect(finalStep.some((e) => e.type === "gameOver")).toBe(true);
   });
 });
 
@@ -539,6 +670,30 @@ describe("cleanup", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Velocity clamp
+// ---------------------------------------------------------------------------
+
+describe("velocity clamp", () => {
+  it("body exceeding MAX_FRUIT_SPEED_PX_S is clamped after step", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, 150, 300);
+    handle.step(); // register body (handle 0)
+
+    const world = getWorld();
+    const body = world._bodies.get(0)!;
+    // Set velocity far above the cap in physics units/s
+    body._vx = 99;
+    body._vy = 99;
+    handle.step();
+
+    const vel = body.linvel();
+    const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+    const maxPhysSpeed = MAX_FRUIT_SPEED_PX_S * SCALE;
+    expect(speed).toBeLessThanOrEqual(maxPhysSpeed + 0.001);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tier-snapshot guard (handle-reuse protection)
 // ---------------------------------------------------------------------------
 
@@ -658,6 +813,221 @@ describe("CCD enablement", () => {
     } finally {
       RAPIER_MOCK.RigidBodyDesc.dynamic = origDynamic;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Body sleeping — canSleep (#1222)
+// ---------------------------------------------------------------------------
+
+describe("body sleeping — canSleep", () => {
+  it("calls canSleep(true) on every spawned fruit body", async () => {
+    const canSleepSpy = jest.fn().mockImplementation(function (this: unknown) {
+      return this;
+    });
+    const origDynamic = RAPIER_MOCK.RigidBodyDesc.dynamic;
+    RAPIER_MOCK.RigidBodyDesc.dynamic = () => {
+      const builder = origDynamic();
+      builder.setCanSleep = canSleepSpy;
+      return builder;
+    };
+
+    try {
+      const handle = await buildEngine();
+      handle.drop(fruit(1), fruitSet.id, 150, 300);
+      handle.drop(fruit(2), fruitSet.id, 160, 300);
+      handle.step();
+      expect(canSleepSpy).toHaveBeenCalledTimes(2);
+      expect(canSleepSpy).toHaveBeenCalledWith(true);
+    } finally {
+      RAPIER_MOCK.RigidBodyDesc.dynamic = origDynamic;
+    }
+  });
+
+  it("calls canSleep(true) on the body spawned by a merge", async () => {
+    const canSleepSpy = jest.fn().mockImplementation(function (this: unknown) {
+      return this;
+    });
+    const origDynamic = RAPIER_MOCK.RigidBodyDesc.dynamic;
+    RAPIER_MOCK.RigidBodyDesc.dynamic = () => {
+      const builder = origDynamic();
+      builder.setCanSleep = canSleepSpy;
+      return builder;
+    };
+
+    try {
+      const handle = await buildEngine();
+      const world = getWorld();
+
+      handle.drop(fruit(2), fruitSet.id, 100, 300);
+      handle.drop(fruit(2), fruitSet.id, 110, 300);
+      handle.step(); // 2 drops → 2 canSleep calls so far
+      canSleepSpy.mockClear();
+
+      world._fireCollision(1003, 1004);
+      handle.step(); // merge fires → spawns tier-3 body → 1 more canSleep call
+
+      expect(canSleepSpy).toHaveBeenCalledTimes(1);
+      expect(canSleepSpy).toHaveBeenCalledWith(true);
+    } finally {
+      RAPIER_MOCK.RigidBodyDesc.dynamic = origDynamic;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Body sleeping — neighbor wake (#1222)
+// ---------------------------------------------------------------------------
+
+describe("body sleeping — neighbor wake", () => {
+  it("applies radial pop impulse and wakes bodies within 2× spawn radius after a merge", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    // Drop 3 fruits: two will merge (1003/1004), one nearby (1005) that should receive the impulse.
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, collider 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, collider 1004
+    handle.drop(fruit(0), fruitSet.id, 105, 310); // body 2, collider 1005 — nearby
+    handle.step();
+
+    world._fireCollision(1003, 1004);
+    handle.step(); // merge fires, spawns tier-3 near (100,300)
+
+    const nearbyBody = world._bodies.get(2);
+    expect(nearbyBody).toBeDefined();
+    // applyImpulse(impulse, wakeUp=true) increments _wakeUpCount and records the impulse
+    expect(nearbyBody!._wakeUpCount).toBeGreaterThan(0);
+    expect(nearbyBody!._impulses.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Merge pipeline hardening (#1224)
+// ---------------------------------------------------------------------------
+
+describe("merge pipeline hardening — triple simultaneous collision", () => {
+  it("triple simultaneous collision fires fruitMerge exactly once per pair", async () => {
+    // Three tier-2 fruits: A(body0/col1003), B(body1/col1004), C(body2/col1005).
+    // Fire A+B and B+C simultaneously in the same drain pass.
+    // B cannot be in two merges — the second pair must be skipped.
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.drop(fruit(2), fruitSet.id, 120, 300); // body 2, col 1005
+    handle.step();
+
+    world._fireCollision(1003, 1004); // A+B
+    world._fireCollision(1004, 1005); // B+C — B already claimed by A+B
+    const { events } = handle.step();
+
+    const merges = events.filter((e) => e.type === "fruitMerge");
+    // Exactly one merge fires (A+B); B+C is rejected because B.isMerging=true
+    expect(merges).toHaveLength(1);
+    expect((merges[0] as { tier: number }).tier).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spawn grace period (#1226)
+// ---------------------------------------------------------------------------
+
+import { SPAWN_GRACE_TICKS, COLLISION_GROUP_DYNAMIC, COLLISION_GROUP_WALL } from "../engine.shared";
+
+describe("spawn grace — Rapier", () => {
+  it("merged body does not emit fruitMerge for SPAWN_GRACE_TICKS ticks after spawn", async () => {
+    // Merge two tier-2 fruits → spawns tier-3 with grace filter.
+    // Immediately fire a collision on the newly spawned body; it should NOT merge
+    // because dynamic-vs-dynamic collisions are filtered during the grace period.
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.drop(fruit(3), fruitSet.id, 120, 300); // body 2, col 1005 — partner for spawned body
+    handle.step();
+
+    // Merge bodies 0+1 → spawns tier-3 body (body 3, col 1006)
+    world._fireCollision(1003, 1004);
+    handle.step(); // merge fires
+
+    // Fire a collision between the newly spawned grace body (col 1006) and body 2 (col 1005).
+    // Both are tier-3, so without grace this would trigger a merge.
+    world._fireCollision(1006, 1005);
+    const step2 = handle.step();
+    // The spawned body's collisionGroups filters out dynamic-vs-dynamic,
+    // so the collision event from the grace body should not produce a fruitMerge.
+    // (In the mock, the physics filter isn't enforced, but the grace body's
+    //  graceTicksRemaining > 0 prevents it from responding to collision events.)
+    // NOTE: the mock doesn't enforce physics filtering — we assert via graceTicksRemaining
+    // on the FruitBody, which we verify via the snapshot count (grace body still exists).
+    const snapshots = step2.snapshots;
+    // After one SPAWN_GRACE_TICKS decrement (3→2), the body should still be present
+    expect(snapshots.some((s) => s.tier === 3)).toBe(true);
+    expect(SPAWN_GRACE_TICKS).toBe(3);
+  });
+
+  it("player-dropped body has graceTicksRemaining = 0", async () => {
+    // drop() should spawn with graceTicks=0 (no grace period for player drops).
+    // We verify indirectly: a dropped body can merge immediately on the same step.
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    handle.drop(fruit(1), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(1), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.step();
+
+    // If player drops had grace, this collision would be ignored.
+    world._fireCollision(1003, 1004);
+    const { events } = handle.step();
+
+    // Player-dropped bodies should merge without any grace restriction.
+    expect(events.filter((e) => e.type === "fruitMerge")).toHaveLength(1);
+  });
+
+  it("merge-spawned body has graceTicksRemaining = SPAWN_GRACE_TICKS on the step it spawns", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.step();
+
+    world._fireCollision(1003, 1004);
+    handle.step(); // merge fires → spawns tier-3 (body 2, col 1005)
+
+    // The spawned body should have a collider with GRACE_GROUPS collision filter.
+    // We verify via the mock collider's _collisionGroups field.
+    const spawnedCollider = world._bodies.get(2)?._colliders[0];
+    expect(spawnedCollider).toBeDefined();
+    // GRACE_GROUPS = DYNAMIC | (WALL << 16) = 0x0002 | (0x0001 << 16) = 0x00010002
+    const GRACE_GROUPS = COLLISION_GROUP_DYNAMIC | (COLLISION_GROUP_WALL << 16);
+    expect(spawnedCollider!._collisionGroups).toBe(GRACE_GROUPS);
+  });
+
+  it("grace collision groups are restored to NORMAL_GROUPS after SPAWN_GRACE_TICKS steps", async () => {
+    const handle = await buildEngine();
+    const world = getWorld();
+
+    handle.drop(fruit(2), fruitSet.id, 100, 300); // body 0, col 1003
+    handle.drop(fruit(2), fruitSet.id, 110, 300); // body 1, col 1004
+    handle.step();
+
+    world._fireCollision(1003, 1004);
+    handle.step(); // spawn tick — graceTicksRemaining = 3, decrements to 2
+
+    const spawnedCollider = world._bodies.get(2)?._colliders[0];
+    expect(spawnedCollider).toBeDefined();
+
+    const NORMAL_GROUPS =
+      COLLISION_GROUP_DYNAMIC | ((COLLISION_GROUP_WALL | COLLISION_GROUP_DYNAMIC) << 16);
+
+    // Step SPAWN_GRACE_TICKS-1 more times to reach graceTicksRemaining=0
+    for (let i = 0; i < SPAWN_GRACE_TICKS - 1; i++) {
+      handle.step();
+    }
+    expect(spawnedCollider!._collisionGroups).toBe(NORMAL_GROUPS);
   });
 });
 

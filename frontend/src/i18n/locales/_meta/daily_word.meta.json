@@ -1,0 +1,101 @@
+{
+  "game.title": {
+    "component": "HomeScreen",
+    "description": "Name of the Daily Word game card.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A Wordle-style daily word puzzle."
+  },
+  "game.description": {
+    "component": "HomeScreen",
+    "description": "One-line description on the Daily Word game card.",
+    "tone": "casual, punchy",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "game.playLabel": {
+    "component": "HomeScreen",
+    "description": "Accessibility label for the Daily Word play button.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.win.title": {
+    "component": "DailyWordScreen WinModal",
+    "description": "Heading shown when the player wins.",
+    "tone": "celebratory",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Should feel exciting and positive."
+  },
+  "result.win.share": {
+    "component": "DailyWordScreen WinModal",
+    "description": "Button label to share the result grid.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.loss.title": {
+    "component": "DailyWordScreen LossModal",
+    "description": "Heading shown when the player uses all 6 guesses without winning.",
+    "tone": "empathetic, encouraging",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.loss.answer": {
+    "component": "DailyWordScreen LossModal",
+    "description": "Shows the correct answer after a loss.",
+    "tone": "neutral, informational",
+    "characterLimit": 30,
+    "placeholders": ["{{answer}}"],
+    "doNotTranslate": [],
+    "notes": "{{answer}} is the 5-letter answer word, shown in uppercase."
+  },
+  "error.notAWord": {
+    "component": "DailyWordScreen keyboard",
+    "description": "Toast shown when the guess is not in the word list.",
+    "tone": "neutral",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.tooShort": {
+    "component": "DailyWordScreen keyboard",
+    "description": "Toast shown when the player taps Enter before typing all letters.",
+    "tone": "neutral",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.couldNotLoad": {
+    "component": "DailyWordScreen",
+    "description": "Error banner shown when the puzzle fails to load from the API.",
+    "tone": "neutral, apologetic",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.couldNotSubmit": {
+    "component": "DailyWordScreen keyboard",
+    "description": "Toast shown when the guess submission fails due to a network or server error.",
+    "tone": "neutral, apologetic",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

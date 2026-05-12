@@ -7,6 +7,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Lobby — responsive layout", () => {
   test("all game cards visible at Galaxy Fold width (280 px)", async ({
@@ -16,6 +17,7 @@ test.describe("Lobby — responsive layout", () => {
       viewport: { width: 280, height: 653 },
     });
     const page = await context.newPage();
+    await installEntitlementsMock(page);
     await page.goto("/");
 
     // All four game cards must be visible and tappable
@@ -40,6 +42,7 @@ test.describe("Lobby — responsive layout", () => {
       viewport: { width: 360, height: 740 },
     });
     const page = await context.newPage();
+    await installEntitlementsMock(page);
     await page.goto("/");
 
     await expect(page.getByRole("button", { name: "Play Yacht" })).toBeVisible({
@@ -59,6 +62,7 @@ test.describe("Lobby — responsive layout", () => {
   test("all game cards visible at standard mobile width (390 px)", async ({
     page,
   }) => {
+    await installEntitlementsMock(page);
     await page.goto("/");
 
     await expect(page.getByRole("button", { name: "Play Yacht" })).toBeVisible({
@@ -87,6 +91,7 @@ test.describe("Lobby — responsive layout", () => {
       viewport: { width: 280, height: 653 },
     });
     const page = await context.newPage();
+    await installEntitlementsMock(page);
     await page.goto("/");
 
     // Tapping Cascade should navigate to Cascade screen

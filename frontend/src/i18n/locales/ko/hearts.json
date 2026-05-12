@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "하트 해제",
   "events.moonShot": "{{name}}이(가) 올킬 성공!",
-  "events.queenOfSpades": "{{name}}이(가) 스페이드 퀸을 가져갔습니다!"
+  "events.queenOfSpades": "{{name}}이(가) 스페이드 퀸을 가져갔습니다!",
+
+  "difficulty.groupLabel": "난이도",
+  "difficulty.easy": "쉬움",
+  "difficulty.medium": "보통",
+  "difficulty.hard": "어려움",
+  "game.startGame": "게임 시작"
 }

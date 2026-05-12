@@ -4,6 +4,7 @@ DB-backed leaderboard — mirrors solitaire/cascade pattern. The autouse
 _clean_db_tables fixture in conftest.py handles per-test DB isolation.
 """
 
+import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,9 +13,26 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import starswarm.router as starswarm_router_module
+from db.base import get_session_factory
+from db.models import GameEntitlement
 from main import app
 
 client = TestClient(app)
+
+_SID = str(uuid.uuid4())
+_HEADERS = {"X-Session-ID": _SID}
+
+
+async def _grant(session_id: str, game_slug: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
+        await db.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _starswarm_entitlement():
+    await _grant(_SID, "starswarm")
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +46,7 @@ def _submit(player_id: str, score: int, wave_reached: int = 1):
     return client.post(
         "/starswarm/score",
         json={"player_id": player_id, "score": score, "wave_reached": wave_reached},
+        headers=_HEADERS,
     )
 
 
@@ -48,15 +67,21 @@ class TestSubmitScore:
         assert body["scores"][0]["rank"] == 1
 
     def test_missing_player_id_returns_422(self):
-        res = client.post("/starswarm/score", json={"score": 100, "wave_reached": 1})
+        res = client.post(
+            "/starswarm/score", json={"score": 100, "wave_reached": 1}, headers=_HEADERS
+        )
         assert res.status_code == 422
 
     def test_missing_score_returns_422(self):
-        res = client.post("/starswarm/score", json={"player_id": "alice", "wave_reached": 1})
+        res = client.post(
+            "/starswarm/score", json={"player_id": "alice", "wave_reached": 1}, headers=_HEADERS
+        )
         assert res.status_code == 422
 
     def test_missing_wave_reached_returns_422(self):
-        res = client.post("/starswarm/score", json={"player_id": "alice", "score": 100})
+        res = client.post(
+            "/starswarm/score", json={"player_id": "alice", "score": 100}, headers=_HEADERS
+        )
         assert res.status_code == 422
 
     def test_empty_player_id_returns_422(self):
@@ -69,7 +94,9 @@ class TestSubmitScore:
 
     def test_zero_wave_reached_returns_422(self):
         res = client.post(
-            "/starswarm/score", json={"player_id": "alice", "score": 0, "wave_reached": 0}
+            "/starswarm/score",
+            json={"player_id": "alice", "score": 0, "wave_reached": 0},
+            headers=_HEADERS,
         )
         assert res.status_code == 422
 
@@ -81,14 +108,14 @@ class TestSubmitScore:
 
 class TestGetLeaderboard:
     def test_empty_initially(self):
-        res = client.get("/starswarm/leaderboard")
+        res = client.get("/starswarm/leaderboard", headers=_HEADERS)
         assert res.status_code == 200
         assert res.json()["scores"] == []
 
     def test_returns_submitted_entries(self):
         _submit("alice", 300)
         _submit("bob", 100)
-        scores = client.get("/starswarm/leaderboard").json()["scores"]
+        scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
         assert len(scores) == 2
 
     def test_ordered_descending_by_score(self):
@@ -99,7 +126,7 @@ class TestGetLeaderboard:
         _submit("bob", 500)
         limiter.reset()
         _submit("carol", 250)
-        scores = client.get("/starswarm/leaderboard").json()["scores"]
+        scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
         assert [s["score"] for s in scores] == [500, 250, 100]
         assert scores[0]["rank"] == 1
 
@@ -109,13 +136,13 @@ class TestGetLeaderboard:
         for i in range(15):
             limiter.reset()
             _submit(f"player{i}", (i + 1) * 10)
-        scores = client.get("/starswarm/leaderboard").json()["scores"]
+        scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 150  # highest score first
 
     def test_wave_reached_preserved(self):
         _submit("alice", 200, wave_reached=7)
-        scores = client.get("/starswarm/leaderboard").json()["scores"]
+        scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
         assert scores[0]["wave_reached"] == 7
 
 
@@ -132,7 +159,7 @@ class TestTieBreak:
         limiter.reset()
         _submit("bob", 100)
 
-        scores = client.get("/starswarm/leaderboard").json()["scores"]
+        scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
         assert scores[0]["player_id"] == "alice"
         assert scores[1]["player_id"] == "bob"
 
@@ -156,7 +183,7 @@ class TestRateLimit:
 
     def test_leaderboard_get_not_rate_limited_at_low_volume(self):
         for _ in range(5):
-            assert client.get("/starswarm/leaderboard").status_code == 200
+            assert client.get("/starswarm/leaderboard", headers=_HEADERS).status_code == 200
 
 
 # ---------------------------------------------------------------------------

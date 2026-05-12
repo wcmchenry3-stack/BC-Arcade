@@ -1,8 +1,8 @@
 {
-  "game.title": "Fruit Merge",
+  "game.title": "Cascade",
   "game.description": "זרוק פירות, שלב התאמות, אל תתן להם לגלוש.",
-  "game.playLabel": "שחק ב-Fruit Merge",
-  "game.canvasLabel": "משחק Fruit Merge — זרוק פירות לערימה כדי לשלב התאמות. הקש או לחץ כדי לזרוק.",
+  "game.playLabel": "שחק ב-Cascade",
+  "game.canvasLabel": "משחק Cascade — זרוק פירות לערימה כדי לשלב התאמות. הקש או לחץ כדי לזרוק.",
   "score.label": "ניקוד",
   "score.display": "ניקוד: {{score}}",
   "preview.dropLabel": "זרוק",

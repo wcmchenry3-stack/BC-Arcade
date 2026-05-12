@@ -266,7 +266,7 @@ describe("SudokuGrid", () => {
       );
     });
 
-    it("marks cells in the same 3×3 box as peers", () => {
+    it("does not mark box-only cells as peers", () => {
       const { getAllByRole } = wrap(
         <SudokuGrid
           variant="classic"
@@ -277,12 +277,10 @@ describe("SudokuGrid", () => {
         />
       );
       const cells = getAllByRole("button");
-      // (1,1) shares box with (0,0) and is not on the same row/col.
-      const boxPeer = cells[1 * 9 + 1]!;
-      expect(boxPeer.props.style).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ backgroundColor: "#8ff5ff22" }), // accent+22 peer tint
-        ])
+      // (1,1) shares a box with (0,0) but not its row or column — must not be highlighted.
+      const boxOnlyCell = cells[1 * 9 + 1]!;
+      expect(boxOnlyCell.props.style).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ backgroundColor: "#8ff5ff22" })])
       );
     });
 

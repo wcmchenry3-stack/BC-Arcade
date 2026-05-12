@@ -44,5 +44,8 @@
   "overflow.abandon.title": "לנטוש את המשחק הנוכחי?",
   "overflow.abandon.body": "התחלת משחק חדש תמחק את ההתקדמות שלך בסיבוב הזה. הסטטיסטיקות הכלליות שלך לא יושפעו.",
   "overflow.abandon.keepPlaying": "להמשיך לשחק",
-  "overflow.abandon.startNew": "להתחיל חדש"
+  "overflow.abandon.startNew": "להתחיל חדש",
+  "home.locked.buttonLabel": "פתיחה",
+  "home.locked.cardLabel": "{{title}} — בקרוב",
+  "home.locked.comingSoon": "המשחק הזה יגיע בקרוב"
 }

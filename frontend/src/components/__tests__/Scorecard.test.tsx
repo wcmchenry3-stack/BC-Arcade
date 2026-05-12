@@ -1,7 +1,12 @@
 import React from "react";
 import { render, fireEvent } from "@testing-library/react-native";
+import { Dimensions } from "react-native";
 import Scorecard from "../Scorecard";
 import { ThemeProvider } from "../../theme/ThemeContext";
+
+// Ensure all tests run in a narrow viewport so tab layout is active by default.
+// Wide-layout tests override this per-describe via beforeEach/afterEach.
+jest.spyOn(Dimensions, "get").mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
 
 const ALL_CATEGORIES = [
   "ones",
@@ -42,14 +47,68 @@ function renderScorecard(overrides: Partial<React.ComponentProps<typeof Scorecar
   );
 }
 
-describe("Scorecard", () => {
-  it("renders all 13 category rows", () => {
+describe("Scorecard — tabs", () => {
+  it("renders Upper and Lower tabs", () => {
     const { getAllByRole } = renderScorecard();
-    // Each category is a Pressable button
-    const rows = getAllByRole("button");
-    expect(rows.length).toBe(13);
+    const tabs = getAllByRole("tab");
+    expect(tabs.length).toBe(2);
   });
 
+  it("defaults to upper tab selected", () => {
+    const { getAllByRole } = renderScorecard();
+    const tabs = getAllByRole("tab");
+    expect(tabs[0]?.props.accessibilityState?.selected).toBe(true);
+    expect(tabs[1]?.props.accessibilityState?.selected).toBe(false);
+  });
+
+  it("shows 6 upper category rows by default", () => {
+    const { getAllByRole } = renderScorecard();
+    const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
+    expect(rows.length).toBe(6);
+  });
+
+  it("shows 7 lower category rows after switching to lower tab", () => {
+    const { getAllByRole, getByRole } = renderScorecard();
+    fireEvent.press(getByRole("tab", { name: /lower/i }));
+    const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
+    expect(rows.length).toBe(7);
+  });
+
+  it("lower tab becomes selected after pressing it", () => {
+    const { getAllByRole, getByRole } = renderScorecard();
+    fireEvent.press(getByRole("tab", { name: /lower/i }));
+    const tabs = getAllByRole("tab");
+    expect(tabs[0]?.props.accessibilityState?.selected).toBe(false);
+    expect(tabs[1]?.props.accessibilityState?.selected).toBe(true);
+  });
+});
+
+describe("Scorecard — wide layout (≥600dp)", () => {
+  let dimSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    dimSpy = jest
+      .spyOn(Dimensions, "get")
+      .mockReturnValue({ width: 800, height: 1200, scale: 1, fontScale: 1 });
+  });
+
+  afterEach(() => {
+    dimSpy.mockRestore();
+    // Restore the narrow-viewport default for subsequent describe blocks
+    jest
+      .spyOn(Dimensions, "get")
+      .mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
+  });
+
+  it("renders all 13 categories without tabs", () => {
+    const { queryByRole, getAllByRole } = renderScorecard({ rollsUsed: 0 });
+    expect(queryByRole("tab")).toBeNull();
+    const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
+    expect(rows.length).toBe(13);
+  });
+});
+
+describe("Scorecard", () => {
   it("displays the total score", () => {
     const { getByText } = renderScorecard({ totalScore: 142 });
     expect(getByText("142")).toBeTruthy();
@@ -105,13 +164,11 @@ describe("Scorecard", () => {
 
   it("shows bonus progress text when upperBonus === 0", () => {
     const { getAllByText } = renderScorecard({ upperSubtotal: 21, upperBonus: 0 });
-    // Bonus progress is rendered in the upper bento row
     expect(getAllByText(/21 \/ 63/).length).toBeGreaterThan(0);
   });
 
   it("shows bonus achieved text when upperBonus > 0", () => {
     const { getAllByText } = renderScorecard({ upperSubtotal: 63, upperBonus: 35 });
-    // bonus.achieved = "{{subtotal}} / 63 ✓"
     expect(getAllByText(/✓/).length).toBeGreaterThan(0);
   });
 });
@@ -141,8 +198,8 @@ describe("Scorecard — reset to all-null scores (GH #263)", () => {
 
   it("renders all lower section rows as 'not available' when scores are null", () => {
     const { getByRole } = renderScorecard({ rollsUsed: 0 });
+    fireEvent.press(getByRole("tab", { name: /lower/i }));
     for (const cat of LOWER_CATS) {
-      // Use a loose regex — category labels include point values like "(25)"
       expect(
         getByRole("button", {
           // codeql[js/regex-injection] cat is from LOWER_CATS constant — not user input
@@ -158,10 +215,8 @@ describe("Scorecard — reset to all-null scores (GH #263)", () => {
       scores: filledScores,
       rollsUsed: 0,
     });
-    // Confirm "scored" state
     expect(getByRole("button", { name: /Ones:.*scored/i })).toBeTruthy();
 
-    // Re-render with all-null scores (simulating new game)
     rerender(
       <ThemeProvider>
         <Scorecard
@@ -189,6 +244,7 @@ describe("Scorecard — reset to all-null scores (GH #263)", () => {
       scores: filledScores,
       rollsUsed: 0,
     });
+    fireEvent.press(getByRole("tab", { name: /lower/i }));
     expect(getByRole("button", { name: /Chance:.*scored/i })).toBeTruthy();
 
     rerender(

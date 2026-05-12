@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import Animated from "react-native-reanimated";
-import { useSharedValue, useAnimatedRef, runOnJS, withTiming } from "react-native-reanimated";
+import { useSharedValue, useAnimatedRef, runOnJS, withSpring } from "react-native-reanimated";
 import type { SharedValue, AnimatedRef } from "react-native-reanimated";
 import type { CanonicalSuit } from "../decks/types";
 
@@ -78,6 +78,8 @@ export function useDragContext(): DragContextValue {
 // Provider
 // ---------------------------------------------------------------------------
 
+const SNAP_SPRING = { duration: 250, dampingRatio: 0.8 };
+
 export interface DragProviderProps {
   children: React.ReactNode;
   getLegalDropIds?: (source: DragSource, cards: DragCard[]) => string[];
@@ -117,8 +119,8 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
   );
 
   const snapBackAndClear = useCallback(() => {
-    cardX.value = withTiming(originX.value, { duration: 200 });
-    cardY.value = withTiming(originY.value, { duration: 200 }, (finished) => {
+    cardX.value = withSpring(originX.value, SNAP_SPRING);
+    cardY.value = withSpring(originY.value, SNAP_SPRING, (finished) => {
       "worklet";
       if (finished) runOnJS(clearDrag)();
     });

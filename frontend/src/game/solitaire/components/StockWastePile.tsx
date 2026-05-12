@@ -17,14 +17,19 @@ import type { TFunction } from "i18next";
 import { useTheme } from "../../../theme/ThemeContext";
 import type { Card, DrawMode } from "../types";
 import type { CanonicalSuit } from "../../_shared/decks/types";
-import CardView, { CARD_HEIGHT, CARD_WIDTH } from "./CardView";
+import { CARD_WIDTH } from "./CardView";
+import { useCardSize } from "../../_shared/CardSizeContext";
+import { rankLabel } from "../../_shared/decks/cardId";
 import { DraggableCard } from "../../_shared/drag/DraggableCard";
+import SelectableCard from "../../_shared/SelectableCard";
+import type { SharedValue } from "react-native-reanimated";
 
 export interface StockWastePileProps {
   readonly stock: readonly Card[];
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly wasteSelected?: boolean;
+  readonly shakeX?: SharedValue<number>;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
 }
@@ -34,6 +39,7 @@ export default function StockWastePile({
   waste,
   drawMode,
   wasteSelected = false,
+  shakeX,
   onStockPress,
   onWastePress,
 }: StockWastePileProps) {
@@ -53,6 +59,7 @@ export default function StockWastePile({
         waste={waste}
         drawMode={drawMode}
         selected={wasteSelected}
+        shakeX={shakeX}
         onPress={onWastePress}
         t={t}
       />
@@ -73,6 +80,7 @@ function Stock({
   readonly drawMode: DrawMode;
   readonly t: TFunction<"solitaire">;
 }) {
+  const { cardWidth, cardHeight } = useCardSize();
   const isEmpty = count === 0;
   const label = isEmpty
     ? t("pile.stock.empty", { count: drawMode })
@@ -81,6 +89,8 @@ function Stock({
   const style = [
     styles.slot,
     {
+      width: cardWidth,
+      height: cardHeight,
       backgroundColor: isEmpty ? colors.background : colors.surfaceAlt,
       borderColor: colors.border,
       borderWidth: 1,
@@ -119,19 +129,24 @@ function Waste({
   waste,
   drawMode,
   selected,
+  shakeX,
   onPress,
   t,
 }: {
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly selected: boolean;
+  readonly shakeX?: SharedValue<number>;
   readonly onPress?: () => void;
   readonly t: TFunction<"solitaire">;
 }) {
+  const { cardWidth, cardHeight } = useCardSize();
+  const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
+
   if (waste.length === 0) {
     return (
       <View
-        style={styles.wasteEmpty}
+        style={{ width: cardWidth, height: cardHeight }}
         accessibilityRole="image"
         accessibilityLabel={t("pile.waste.empty")}
       />
@@ -144,10 +159,15 @@ function Waste({
       suit: top.suit as CanonicalSuit,
       rank: top.rank,
       faceDown: false,
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
+      width: cardWidth,
+      height: cardHeight,
     },
   ];
+
+  const topLabel = t("card.faceUp", {
+    rank: rankLabel(top.rank),
+    suit: t(`suit.${top.suit}` as const),
+  });
 
   if (drawMode !== 3) {
     return (
@@ -156,31 +176,51 @@ function Waste({
         dragCards={topDragCards}
         dragSource={{ game: "solitaire", type: "waste" }}
       >
-        <CardView card={top} selected={selected} />
+        <SelectableCard
+          suit={top.suit as CanonicalSuit}
+          rank={top.rank}
+          width={cardWidth}
+          height={cardHeight}
+          selected={selected}
+          shakeX={shakeX}
+          accessibilityLabel={topLabel}
+        />
       </DraggableCard>
     );
   }
 
   const visibleCount = Math.min(3, waste.length);
   const visible = waste.slice(waste.length - visibleCount);
-  const containerWidth = (visibleCount - 1) * WASTE_FAN_OFFSET + CARD_WIDTH;
+  const containerWidth = 2 * wasteFanOffset + cardWidth;
 
   return (
-    <View style={[styles.wasteFanContainer, { width: containerWidth }]}>
+    <View style={[styles.wasteFanContainer, { width: containerWidth, height: cardHeight }]}>
       {visible.map((card, i) => {
         const isTop = i === visible.length - 1;
+        const label = t("card.faceUp", {
+          rank: rankLabel(card.rank),
+          suit: t(`suit.${card.suit}` as const),
+        });
         if (isTop) {
           return (
             <View
               key={`${card.suit}-${card.rank}`}
-              style={[styles.wasteFanCard, { left: i * WASTE_FAN_OFFSET }]}
+              style={[styles.wasteFanCard, { left: i * wasteFanOffset }]}
             >
               <DraggableCard
                 onTap={onPress}
                 dragCards={topDragCards}
                 dragSource={{ game: "solitaire", type: "waste" }}
               >
-                <CardView card={card} selected={selected} />
+                <SelectableCard
+                  suit={card.suit as CanonicalSuit}
+                  rank={card.rank}
+                  width={cardWidth}
+                  height={cardHeight}
+                  selected={selected}
+                  shakeX={shakeX}
+                  accessibilityLabel={label}
+                />
               </DraggableCard>
             </View>
           );
@@ -188,9 +228,16 @@ function Waste({
         return (
           <View
             key={`${card.suit}-${card.rank}`}
-            style={[styles.wasteFanCard, { left: i * WASTE_FAN_OFFSET }]}
+            style={[styles.wasteFanCard, { left: i * wasteFanOffset }]}
           >
-            <CardView card={card} selected={false} />
+            <SelectableCard
+              suit={card.suit as CanonicalSuit}
+              rank={card.rank}
+              width={cardWidth}
+              height={cardHeight}
+              selected={false}
+              accessibilityLabel={label}
+            />
           </View>
         );
       })}
@@ -204,18 +251,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   slot: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  wasteEmpty: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-  },
   wasteFanContainer: {
-    height: CARD_HEIGHT,
     position: "relative",
   },
   wasteFanCard: {

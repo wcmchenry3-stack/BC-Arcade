@@ -17,6 +17,8 @@ jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),
   loadGame: jest.fn().mockResolvedValue(null),
+  saveRun: jest.fn().mockResolvedValue(undefined),
+  loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
 // ---------------------------------------------------------------------------
@@ -49,17 +51,20 @@ function mockNav() {
 }
 
 /** Construct a player-phase state, retrying to avoid natural blackjack. */
-function makePlayerPhaseState(): EngineState {
+function makePlayerPhaseState(withRunGoal = false): EngineState {
+  const runConfig = withRunGoal
+    ? { startingChips: 1000, runGoal: 2500, betMin: 5, betMax: 500, milestones: [] }
+    : undefined;
   for (let i = 0; i < 50; i++) {
-    const s = placeBet(newGame(), 100);
+    const s = placeBet(newGame(undefined, runConfig), 100);
     if (s.phase === "player") return s;
   }
   throw new Error("Could not reach player phase in 50 attempts");
 }
 
 /** Construct a result-phase state via stand after player phase. */
-function makeResultPhaseState(): EngineState {
-  const s = makePlayerPhaseState();
+function makeResultPhaseState(withRunGoal = false): EngineState {
+  const s = makePlayerPhaseState(withRunGoal);
   return stand(s);
 }
 
@@ -122,10 +127,11 @@ describe("BlackjackTableScreen — player phase", () => {
   });
 
   it("chip balance is visible during player phase", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState(true));
     renderScreen();
     await screen.findByText("Hit");
     await waitFor(() => {
-      expect(screen.queryByLabelText(/bankroll: \d+ chips/i)).toBeTruthy();
+      expect(screen.queryByLabelText(/goal progress:/i)).toBeTruthy();
     });
   });
 
@@ -159,9 +165,10 @@ describe("BlackjackTableScreen — result phase", () => {
   });
 
   it("chip balance is visible during result phase", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(makeResultPhaseState(true));
     renderScreen();
     await screen.findByText("Next Hand");
-    expect(screen.queryByLabelText(/bankroll: \d+ chips/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/goal progress:/i)).toBeTruthy();
   });
 
   it("Quit button calls goBack()", async () => {
@@ -238,6 +245,7 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
 // ---------------------------------------------------------------------------
 
 import { useBlackjackGame, PlayerActionHint } from "../../game/blackjack/BlackjackGameContext";
+import { TableConfig } from "../../game/blackjack/tables";
 import {
   hit,
   doubleDown,
@@ -274,6 +282,7 @@ function getCtx(): {
   engine: EngineState | null;
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
   handlePlayAgain: () => void;
+  handleTableSelect: (config: TableConfig) => void;
 } {
   return (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
 }
@@ -289,12 +298,15 @@ function card(rank: string, suit = "♠"): Card {
 }
 
 describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () => {
+  // A game with runGoal set (non-null) so startSession fires on mount.
+  const tableSelectedGame = () => engineNewGame(undefined, { runGoal: 2500 });
+
   beforeEach(() => {
     mockStartGame.mockReset();
     mockStartGame.mockReturnValue("game-uuid-test");
     mockEnqueueEvent.mockReset();
     mockCompleteGame.mockReset();
-    (loadGame as jest.Mock).mockResolvedValue(null);
+    (loadGame as jest.Mock).mockResolvedValue(tableSelectedGame());
   });
 
   it("calls startGame('blackjack') with starting_chips on mount", async () => {
@@ -305,7 +317,12 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     if (startCall === undefined) throw new Error("Expected startGame call");
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("blackjack");
-    expect(meta).toEqual({});
+    expect(meta).toEqual({
+      best_run_chips: null,
+      total_runs: 0,
+      runs_completed: 0,
+      current_table: "beginner",
+    });
     expect(eventData).toEqual({ starting_chips: 1000 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
@@ -503,13 +520,37 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     mockStartGame.mockReturnValue("game-uuid-test-2");
     mockCompleteGame.mockClear();
 
-    act(() => {
+    await act(async () => {
       getCtx().handlePlayAgain();
     });
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
-    expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
+
+    // handlePlayAgain defers startSession to handleTableSelect (BJ-2 table selection flow).
+    const fakeConfig: TableConfig = {
+      id: "beginner",
+      labelKey: "table.beginner",
+      subtitleKey: "table.beginner.subtitle",
+      accentKey: "accent",
+      startingChips: 1000,
+      runGoal: 2500,
+      betMin: 5,
+      betMax: 500,
+      chipDenominations: [5, 25, 100, 500],
+      milestones: [1750, 2200],
+    };
+    act(() => {
+      getCtx().handleTableSelect(fakeConfig);
+    });
+
+    await waitFor(() => {
+      expect(mockStartGame).toHaveBeenCalledWith(
+        "blackjack",
+        { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
+        { starting_chips: 1000 }
+      );
+    });
   });
 
   it("capture ordering: bet_placed emits before hand_dealt", async () => {

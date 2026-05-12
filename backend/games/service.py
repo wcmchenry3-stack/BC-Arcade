@@ -229,6 +229,10 @@ class GameTypeStats:
     last_played_at: datetime | None
     best_chips: int | None = None
     current_chips: int | None = None
+    best_run_chips: int | None = None
+    total_runs: int | None = None
+    runs_completed: int | None = None
+    current_table: str | None = None
 
 
 @dataclass
@@ -284,7 +288,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     )
     latest_score_rows = (
         await session.execute(
-            select(GameType.name, Game.final_score)
+            select(GameType.name, Game.final_score, Game.game_metadata)
             .join(GameType, Game.game_type_id == GameType.id)
             .join(
                 latest_sq,
@@ -295,7 +299,10 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
         )
     ).all()
     latest_score_by_name: dict[str, int | None] = {
-        name: (int(score) if score is not None else None) for name, score in latest_score_rows
+        name: (int(score) if score is not None else None) for name, score, _ in latest_score_rows
+    }
+    latest_meta_by_name: dict[str, dict] = {
+        name: (meta or {}) for name, _, meta in latest_score_rows
     }
 
     # --- build per-game stats via module dispatch -------------------------
@@ -313,6 +320,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             "avg": round(float(avg), 1) if avg is not None else None,
             "last_played_at": last_played,
             "latest_score": latest_score_by_name.get(name),
+            "metadata": latest_meta_by_name.get(name, {}),
         }
 
         game_module = get_module(name)
@@ -329,6 +337,10 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             last_played_at=shaped.get("last_played_at"),
             best_chips=shaped.get("best_chips"),
             current_chips=shaped.get("current_chips"),
+            best_run_chips=shaped.get("best_run_chips"),
+            total_runs=shaped.get("total_runs"),
+            runs_completed=shaped.get("runs_completed"),
+            current_table=shaped.get("current_table"),
         )
 
         if played > favorite_count:

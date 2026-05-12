@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-na
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
@@ -20,6 +21,7 @@ import {
   toViewState,
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
+import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
@@ -48,9 +50,16 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const isCompact = height < COMPACT_HEIGHT_BREAKPOINT;
-  const { engine, loading, error, apply, clearEvents, handlePlayAgain } = useBlackjackGame();
+  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats } =
+    useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
+  const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
+  const [comebackVisible, setComebackVisible] = useState(false);
+  const [allInVisible, setAllInVisible] = useState(false);
+  const milestoneOpacity = useSharedValue(0);
+  const comebackOpacity = useSharedValue(0);
+  const allInOpacity = useSharedValue(0);
 
   const cardDealSound = useSound("blackjack.cardDeal");
   const blackjackSound = useSound("blackjack.blackjack");
@@ -74,6 +83,18 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     opacity: winFlash.value,
     pointerEvents: "none",
   }));
+  const milestoneStyle = useAnimatedStyle(() => ({
+    opacity: milestoneOpacity.value,
+    pointerEvents: "none",
+  }));
+  const comebackStyle = useAnimatedStyle(() => ({
+    opacity: comebackOpacity.value,
+    pointerEvents: "none",
+  }));
+  const allInStyle = useAnimatedStyle(() => ({
+    opacity: allInOpacity.value,
+    pointerEvents: "none",
+  }));
 
   const state = engine ? toViewState(engine) : null;
 
@@ -87,28 +108,64 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       },
       bust: () => {
         bustSound.play();
-        bustFlash.value = withSequence(
-          withTiming(1, { duration: 80 }),
-          withTiming(0, { duration: 400 })
-        );
+        // engine.chips reflects post-settlement state; close enough to the bust point for this threshold
+        const isCriticalLow =
+          engine != null && engine.startingChips > 0 && engine.chips < engine.startingChips * 0.2;
+        if (isCriticalLow) {
+          bustFlash.value = withSequence(
+            withTiming(1, { duration: 120 }),
+            withTiming(0.6, { duration: 200 }),
+            withTiming(1, { duration: 100 }),
+            withTiming(0, { duration: 700 })
+          );
+        } else {
+          bustFlash.value = withSequence(
+            withTiming(1, { duration: 80 }),
+            withTiming(0, { duration: 400 })
+          );
+        }
       },
       win: () => {
         winSound.play();
-        winFlash.value = withSequence(
-          withTiming(1, { duration: 80 }),
-          withTiming(0, { duration: 500 })
+        // 300ms delay creates suspense after dealer reveals hole card
+        winFlash.value = withDelay(
+          300,
+          withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 500 }))
         );
       },
       push: () => pushSound.play(),
+      milestone: (event) => {
+        setMilestoneChips(event.value);
+        milestoneOpacity.value = withSequence(
+          withTiming(1, { duration: 150 }),
+          withDelay(1400, withTiming(0, { duration: 250 }))
+        );
+      },
+      comeback: () => {
+        setComebackVisible(true);
+        comebackOpacity.value = withSequence(
+          withTiming(1, { duration: 200 }),
+          withDelay(2200, withTiming(0, { duration: 400 }))
+        );
+        setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
+      },
+      allIn: () => {
+        setAllInVisible(true);
+        allInOpacity.value = withSequence(
+          withTiming(1, { duration: 150 }),
+          withDelay(900, withTiming(0, { duration: 250 }))
+        );
+        setTimeout(() => setAllInVisible(false), 1300); // 150+900+250
+      },
     },
     clearEvents
   );
 
-  // Redirect to BettingScreen when Next Hand transitions phase back to betting.
+  // Redirect when phase changes away from the in-hand phases.
   useEffect(() => {
-    if (!loading && engine && engine.phase === "betting") {
-      navigation.replace("BlackjackBetting");
-    }
+    if (loading || !engine) return;
+    if (engine.phase === "betting") navigation.replace("BlackjackBetting");
+    else if (engine.phase === "victory") navigation.replace("BlackjackVictory");
   }, [loading, engine, navigation]);
 
   const currentPhase = engine?.phase;
@@ -132,6 +189,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     navigation.replace("BlackjackBetting");
   }, [handlePlayAgain, navigation]);
 
+  // Derive active table config so the HUD can show the right accent colour and milestones.
+  const activeTable =
+    TABLE_CONFIGS.find((c) => c.betMin === engine?.betMin && c.betMax === engine?.betMax) ??
+    TABLE_CONFIGS[0]!;
+  const tableAccentColor = colors[activeTable.accentKey];
+
   const isSplit = (state?.player_hands?.length ?? 0) > 1;
 
   const handleHit = () => apply(engineHit, "hit");
@@ -149,71 +212,81 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
-      rightSlot={
-        state ? (
-          <View style={styles.bankroll}>
-            <Text style={[styles.bankrollLabel, { color: colors.textMuted }]}>
-              {t("header.bankrollLabel")}
-            </Text>
-            <Text
-              style={[styles.bankrollValue, { color: colors.text }]}
-              accessibilityLabel={t("header.bankrollAccessibilityLabel", {
-                chips: state.chips,
-              })}
-            >
-              {state.chips.toLocaleString()}
-            </Text>
-          </View>
-        ) : undefined
-      }
     >
-      {/* Phase label */}
-      {state && (
-        <Text style={[styles.phaseLabel, { color: colors.textMuted }]}>
-          {t(`blackjack:phase.${state.phase}` as Parameters<typeof t>[0])}
-        </Text>
+      {/* Full-width run HUD — table name pill, chip/goal, progress bar */}
+      {state && engine?.runGoal != null && (
+        <View style={styles.hudContainer}>
+          <HudSidebar
+            chips={engine.chips}
+            startingChips={engine.startingChips}
+            runGoal={engine.runGoal}
+            milestones={activeTable.milestones}
+            tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
+            tableAccentColor={tableAccentColor}
+            winStreak={sessionStats.winStreak}
+          />
+        </View>
       )}
 
       {/* New Game */}
       <View style={styles.actionRow}>
         <Pressable
           onPress={handleNewGamePress}
-          style={[styles.newGameBtn, { borderColor: colors.accent }]}
+          style={[styles.newGameBtn, { borderColor: tableAccentColor }]}
           accessibilityRole="button"
           accessibilityLabel={t("common:newGame.button")}
         >
-          <Text style={[styles.newGameText, { color: colors.accent }]}>
+          <Text style={[styles.newGameText, { color: tableAccentColor }]}>
             {t("common:newGame.button")}
           </Text>
         </Pressable>
       </View>
 
-      {/* Table + HUD sidebar */}
+      {/* Table */}
       {state && (
-        <View style={styles.tableRow}>
-          {/* Left sidebar HUD */}
-          <View style={styles.sidebarLeft}>
-            <HudSidebar currentPot={state.bet} lastWin={state.last_win} />
-          </View>
-
-          <View style={styles.tableArea}>
-            <BlackjackTable
-              playerHand={state.player_hand}
-              dealerHand={state.dealer_hand}
-              phase={state.phase}
-              playerHands={state.player_hands}
-              activeHandIndex={state.active_hand_index}
-              handBets={state.hand_bets}
-              handOutcomes={state.hand_outcomes}
-              handPayouts={state.hand_payouts}
-              compact={isCompact}
-            />
-            <Animated.View style={bustFlashStyle} />
-            <Animated.View style={winFlashStyle} />
-          </View>
-
-          {/* Right spacer to balance the sidebar — collapsed on split so both hands fit */}
-          {!isSplit && <View style={styles.sidebarRight} />}
+        <View style={styles.tableArea}>
+          <BlackjackTable
+            playerHand={state.player_hand}
+            dealerHand={state.dealer_hand}
+            phase={state.phase}
+            playerHands={state.player_hands}
+            activeHandIndex={state.active_hand_index}
+            handBets={state.hand_bets}
+            handOutcomes={state.hand_outcomes}
+            handPayouts={state.hand_payouts}
+            compact={isCompact}
+          />
+          <Animated.View style={bustFlashStyle} />
+          <Animated.View style={winFlashStyle} />
+          {milestoneChips !== null && (
+            <Animated.View
+              style={[styles.milestoneToast, milestoneStyle, { backgroundColor: tableAccentColor }]}
+            >
+              <Text style={[styles.toastText, { color: colors.surface }]}>
+                {t("blackjack:milestone.toast", { chips: milestoneChips })}
+              </Text>
+            </Animated.View>
+          )}
+          {comebackVisible && (
+            <Animated.View
+              style={[styles.comebackBanner, comebackStyle, { backgroundColor: colors.bonus }]}
+              accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
+            >
+              <Text style={[styles.comebackText, { color: colors.surface }]}>
+                {t("blackjack:comeback.banner")}
+              </Text>
+            </Animated.View>
+          )}
+          {allInVisible && (
+            <Animated.View
+              style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
+              accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
+            >
+              <Text style={[styles.allInText, { color: colors.surface }]}>
+                {t("blackjack:allIn.badge")}
+              </Text>
+            </Animated.View>
+          )}
         </View>
       )}
 
@@ -225,7 +298,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
             <View style={styles.resultActions}>
               <Pressable
-                style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+                style={[styles.actionBtn, { backgroundColor: tableAccentColor }]}
                 onPress={handleNextHand}
                 accessibilityRole="button"
                 accessibilityLabel={t("blackjack:actions.nextHandLabel")}
@@ -293,14 +366,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  phaseLabel: {
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 4,
-    marginBottom: 4,
+  hudContainer: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
   },
   actionRow: {
     flexDirection: "row",
@@ -322,31 +390,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  tableRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-    // minHeight: 0 allows this flex child to actually shrink below its
-    // intrinsic content height on constrained viewports (Galaxy Fold
-    // landscape etc.); overflow:hidden guarantees any residual overflow
-    // from the table contents can't visually bleed into the controls row
-    // below.
-    minHeight: 0,
-    overflow: "hidden",
-  },
-  sidebarLeft: {
-    width: 88,
-    justifyContent: "center",
-    paddingLeft: 12,
-    paddingVertical: 8,
-  },
-  sidebarRight: {
-    width: 88,
-  },
   tableArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    // minHeight: 0 lets this flex child shrink below intrinsic content height
+    // on compact viewports (Galaxy Fold landscape, etc.)
+    minHeight: 0,
+    overflow: "hidden",
   },
   controls: {
     alignItems: "center",
@@ -387,18 +438,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: "center",
   },
-  bankroll: {
-    alignItems: "flex-end",
+  milestoneToast: {
+    position: "absolute",
+    top: 8,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 10,
   },
-  bankrollLabel: {
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "500",
-  },
-  bankrollValue: {
-    fontSize: 16,
+  toastText: {
+    fontSize: 14,
     fontWeight: "700",
-    lineHeight: 20,
+  },
+  comebackBanner: {
+    position: "absolute",
+    top: "35%",
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    zIndex: 10,
+  },
+  comebackText: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  allInBadge: {
+    position: "absolute",
+    bottom: 12,
+    alignSelf: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  allInText: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
 });

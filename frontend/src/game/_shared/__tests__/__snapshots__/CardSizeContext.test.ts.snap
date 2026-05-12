@@ -1,0 +1,50 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`computeCardSize snapshot at viewport width 320 1`] = `
+{
+  "cardHeight": 59,
+  "cardWidth": 42,
+}
+`;
+
+exports[`computeCardSize snapshot at viewport width 360 1`] = `
+{
+  "cardHeight": 67,
+  "cardWidth": 47,
+}
+`;
+
+exports[`computeCardSize snapshot at viewport width 1024 1`] = `
+{
+  "cardHeight": 74,
+  "cardWidth": 52,
+}
+`;
+
+exports[`computeCardSize snapshot at viewport width 1440 1`] = `
+{
+  "cardHeight": 74,
+  "cardWidth": 52,
+}
+`;
+
+exports[`useResponsiveCardSize math (via computeCardSize) — three viewports snapshot at viewport width 320 with Solitaire params 1`] = `
+{
+  "cardHeight": 55,
+  "cardWidth": 38,
+}
+`;
+
+exports[`useResponsiveCardSize math (via computeCardSize) — three viewports snapshot at viewport width 768 with Solitaire params 1`] = `
+{
+  "cardHeight": 74,
+  "cardWidth": 52,
+}
+`;
+
+exports[`useResponsiveCardSize math (via computeCardSize) — three viewports snapshot at viewport width 1280 with Solitaire params 1`] = `
+{
+  "cardHeight": 74,
+  "cardWidth": 52,
+}
+`;

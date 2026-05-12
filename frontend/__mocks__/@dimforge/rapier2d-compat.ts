@@ -8,6 +8,10 @@ export class MockRigidBody {
   _x: number;
   _y: number;
   _angle = 0;
+  _vx = 0;
+  _vy = 0;
+  _wakeUpCount = 0;
+  _impulses: Array<{ x: number; y: number }> = [];
   _colliders: MockCollider[] = [];
 
   constructor(handle: number, x: number, y: number) {
@@ -22,6 +26,20 @@ export class MockRigidBody {
   rotation() {
     return this._angle;
   }
+  linvel() {
+    return { x: this._vx, y: this._vy };
+  }
+  setLinvel(vel: { x: number; y: number }) {
+    this._vx = vel.x;
+    this._vy = vel.y;
+  }
+  wakeUp() {
+    this._wakeUpCount++;
+  }
+  applyImpulse(impulse: { x: number; y: number }, wakeUp: boolean) {
+    this._impulses.push({ ...impulse });
+    if (wakeUp) this._wakeUpCount++;
+  }
   numColliders() {
     return this._colliders.length;
   }
@@ -35,8 +53,12 @@ export class MockRigidBody {
 
 export class MockCollider {
   handle: number;
+  _collisionGroups = 0xffffffff;
   constructor(handle: number) {
     this.handle = handle;
+  }
+  setCollisionGroups(groups: number) {
+    this._collisionGroups = groups;
   }
 }
 
@@ -57,6 +79,7 @@ export class MockWorld {
   _bodyHandleCounter = 0;
   _colliderHandleCounter = 1000;
   _activeEventQueue: MockEventQueue | null = null;
+  integrationParameters = { numSolverIterations: 4, dt: 1 / 60 };
 
   createRigidBody(desc: { x: number; y: number }) {
     const handle = this._bodyHandleCounter++;
@@ -65,10 +88,14 @@ export class MockWorld {
     return rb;
   }
 
-  createCollider(_desc: unknown, rb?: MockRigidBody) {
+  createCollider(desc: unknown, rb?: MockRigidBody) {
     const handle = this._colliderHandleCounter++;
     const c = new MockCollider(handle);
     if (rb) rb._addCollider(c);
+    // Propagate collision groups from the builder desc if available
+    if (desc && typeof (desc as { _getGroups?: () => number })._getGroups === "function") {
+      c._collisionGroups = (desc as { _getGroups: () => number })._getGroups();
+    }
     return c;
   }
 
@@ -101,13 +128,22 @@ export class MockWorld {
   }
 }
 
-const mockColliderDescBuilder = () => ({
-  setRestitution: () => mockColliderDescBuilder(),
-  setFriction: () => mockColliderDescBuilder(),
-  setDensity: () => mockColliderDescBuilder(),
-  setActiveEvents: () => mockColliderDescBuilder(),
-  setTranslation: () => mockColliderDescBuilder(),
-});
+const mockColliderDescBuilder = (initialGroups = 0xffffffff) => {
+  let _groups = initialGroups;
+  const builder = {
+    _getGroups: () => _groups,
+    setRestitution: () => builder,
+    setFriction: () => builder,
+    setDensity: () => builder,
+    setActiveEvents: () => builder,
+    setTranslation: () => builder,
+    setCollisionGroups: (groups: number) => {
+      _groups = groups;
+      return builder;
+    },
+  };
+  return builder;
+};
 
 const RAPIER_MOCK = {
   init: jest.fn().mockResolvedValue(undefined),
@@ -131,6 +167,10 @@ const RAPIER_MOCK = {
         },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         setCcdEnabled(_enabled: boolean) {
+          return builder;
+        },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        setCanSleep(_enabled: boolean) {
           return builder;
         },
       };

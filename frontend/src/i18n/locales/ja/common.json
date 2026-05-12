@@ -44,5 +44,8 @@
   "overflow.abandon.title": "現在のゲームを終了しますか？",
   "overflow.abandon.body": "新しいゲームを始めると、このラウンドの進行状況が失われます。累計の成績には影響しません。",
   "overflow.abandon.keepPlaying": "続ける",
-  "overflow.abandon.startNew": "新しく始める"
+  "overflow.abandon.startNew": "新しく始める",
+  "home.locked.buttonLabel": "アンロック",
+  "home.locked.cardLabel": "{{title}} — 近日公開",
+  "home.locked.comingSoon": "このゲームは近日公開予定です"
 }

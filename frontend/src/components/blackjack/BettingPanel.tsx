@@ -7,13 +7,12 @@ import { GameRules } from "../../game/blackjack/types";
 import BettingCircle from "./BettingCircle";
 import ChipButton from "./ChipButton";
 
-const MIN_BET = 5;
-const MAX_BET = 500;
-
-const CHIP_DENOMINATIONS = [5, 25, 100, 500] as const;
-
 interface Props {
   chips: number;
+  betMin: number;
+  betMax: number;
+  chipDenominations: readonly number[];
+  accentColor?: string;
   onDeal: (amount: number) => void;
   loading: boolean;
   error: string | null;
@@ -23,6 +22,10 @@ interface Props {
 
 export default function BettingPanel({
   chips,
+  betMin,
+  betMax,
+  chipDenominations,
+  accentColor,
   onDeal,
   loading,
   error,
@@ -31,7 +34,9 @@ export default function BettingPanel({
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
-  const maxBet = Math.min(MAX_BET, chips);
+  const maxBet = Math.min(betMax, chips);
+  const effectiveMin = Math.min(betMin, chips);
+  const effectiveDenominations = chips < betMin ? [chips] : chipDenominations;
   const [bet, setBet] = useState<number>(0);
   const [rulesOpen, setRulesOpen] = useState(false);
 
@@ -43,7 +48,8 @@ export default function BettingPanel({
     setBet(0);
   }
 
-  const canDeal = bet >= MIN_BET && bet <= maxBet && !loading;
+  const canDeal = bet >= effectiveMin && bet <= maxBet && !loading;
+  const resolvedAccent = accentColor ?? colors.accent;
 
   const chipColors = [colors.accent, colors.secondary, colors.tertiary, colors.secondary] as const;
   const chipTextColors = [
@@ -56,11 +62,11 @@ export default function BettingPanel({
   return (
     <View style={styles.container}>
       {/* Betting circle */}
-      <BettingCircle bet={bet} />
+      <BettingCircle bet={bet} accentColor={resolvedAccent} />
 
       {/* Chip denomination row */}
       <View style={styles.chipRow}>
-        {CHIP_DENOMINATIONS.map((denom, i) => (
+        {effectiveDenominations.map((denom, i) => (
           <ChipButton
             key={denom}
             amount={denom}
@@ -68,14 +74,13 @@ export default function BettingPanel({
             disabled={bet + denom > maxBet || loading}
             chipColor={chipColors[i] ?? colors.accent}
             textColor={chipTextColors[i] ?? colors.textOnAccent}
-            sublabel={denom === 500 ? t("chip.vipCredits") : undefined}
           />
         ))}
       </View>
 
       {/* Table limits */}
       <Text style={[styles.limits, { color: colors.textMuted, fontFamily: typography.label }]}>
-        {t("betting.tableLimits")}: {t("betting.tableLimitsRange", { min: MIN_BET, max: MAX_BET })}
+        {t("betting.tableLimits")}: {t("betting.tableLimitsRange", { min: betMin, max: betMax })}
       </Text>
 
       {/* Action buttons */}
@@ -99,7 +104,7 @@ export default function BettingPanel({
         </Pressable>
 
         <Pressable
-          style={[styles.dealBtn, { backgroundColor: canDeal ? colors.accent : colors.border }]}
+          style={[styles.dealBtn, { backgroundColor: canDeal ? resolvedAccent : colors.border }]}
           onPress={() => onDeal(bet)}
           disabled={!canDeal}
           accessibilityRole="button"

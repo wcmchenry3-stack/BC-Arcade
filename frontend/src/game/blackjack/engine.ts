@@ -46,6 +46,24 @@ export const DEFAULT_RULES: GameRules = {
   penetration: 0.75,
 };
 
+export interface RunConfig {
+  startingChips: number;
+  /** null = no goal; game runs until chips are exhausted (legacy mode). */
+  runGoal: number | null;
+  betMin: number;
+  betMax: number;
+  milestones: readonly number[];
+  rules?: GameRules;
+}
+
+export const DEFAULT_RUN_CONFIG: RunConfig = {
+  startingChips: 1000,
+  runGoal: null,
+  betMin: 5,
+  betMax: 500,
+  milestones: [],
+};
+
 /**
  * Full engine state — kept in memory + AsyncStorage. The UI never sees
  * this directly; it consumes `toViewState(engineState)` instead.
@@ -53,7 +71,7 @@ export const DEFAULT_RULES: GameRules = {
 export interface EngineState {
   chips: number;
   bet: number;
-  phase: "betting" | "player" | "result";
+  phase: "betting" | "player" | "result" | "victory";
   outcome: "blackjack" | "win" | "lose" | "push" | null;
   payout: number;
   /** Net chip delta from the previously completed hand. Null until at least one hand resolves. */
@@ -72,6 +90,17 @@ export interface EngineState {
   split_from_aces: boolean[];
   rules: GameRules;
   events?: readonly BlackjackGameEvent[];
+  // Run-mode fields
+  runGoal: number | null;
+  startingChips: number;
+  betMin: number;
+  betMax: number;
+  milestones: readonly number[];
+  milestones_reached: number[];
+  /** True once chips have dropped below 25% of startingChips during this run. */
+  hitLowChips: boolean;
+  /** True after the comeback event has been emitted once for this run. */
+  comebackEmitted: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +219,39 @@ function deal(deck: Card[], deckCount: number = 1): { deck: Card[]; card: Card }
 }
 
 // ---------------------------------------------------------------------------
+// Milestone helpers
+// ---------------------------------------------------------------------------
+
+function advanceMilestonesReached(s: EngineState, newChips: number): number[] {
+  if (s.milestones.length === 0) return s.milestones_reached;
+  const newly = s.milestones.filter((t) => !s.milestones_reached.includes(t) && newChips >= t);
+  return newly.length > 0 ? [...s.milestones_reached, ...newly] : s.milestones_reached;
+}
+
+function pendingMilestoneEvents(prev: EngineState, next: EngineState): BlackjackGameEvent[] {
+  if (prev.milestones_reached.length === next.milestones_reached.length) return [];
+  return next.milestones_reached
+    .filter((t) => !prev.milestones_reached.includes(t))
+    .map((value) => ({ type: "milestone" as const, value }));
+}
+
+function pendingComebackEvents(prev: EngineState, next: EngineState): BlackjackGameEvent[] {
+  if (next.comebackEmitted && !prev.comebackEmitted) return [{ type: "comeback" as const }];
+  return [];
+}
+
+function applyLowChipsTracking(
+  s: EngineState,
+  newChips: number
+): Pick<EngineState, "hitLowChips" | "comebackEmitted"> {
+  const threshold25 = s.startingChips * 0.25;
+  const threshold75 = s.startingChips * 0.75;
+  const hitLowChips = s.hitLowChips || newChips < threshold25;
+  const triggerComeback = !s.comebackEmitted && hitLowChips && newChips >= threshold75;
+  return { hitLowChips, comebackEmitted: s.comebackEmitted || triggerComeback };
+}
+
+// ---------------------------------------------------------------------------
 // Event helpers
 // ---------------------------------------------------------------------------
 
@@ -293,6 +355,9 @@ export function toViewState(s: EngineState): BlackjackState {
     hand_payouts: isSplit ? [...s.hand_payouts] : s.payout !== 0 ? [s.payout] : [],
     rules: s.rules,
     events: s.events,
+    run_goal: s.runGoal,
+    run_starting_chips: s.startingChips,
+    run_complete: s.phase === "victory",
   };
 }
 
@@ -321,10 +386,11 @@ function emptySplitState(): Pick<
   };
 }
 
-export function newGame(deck?: Card[], rules?: GameRules): EngineState {
-  const r = rules ?? DEFAULT_RULES;
+export function newGame(deck?: Card[], runConfig?: Partial<RunConfig>): EngineState {
+  const rc = { ...DEFAULT_RUN_CONFIG, ...runConfig };
+  const r = rc.rules ?? DEFAULT_RULES;
   return {
-    chips: 1000,
+    chips: rc.startingChips,
     bet: 0,
     phase: "betting",
     outcome: null,
@@ -335,6 +401,14 @@ export function newGame(deck?: Card[], rules?: GameRules): EngineState {
     dealer_hand: [],
     doubled: false,
     rules: r,
+    runGoal: rc.runGoal,
+    startingChips: rc.startingChips,
+    betMin: rc.betMin,
+    betMax: rc.betMax,
+    milestones: rc.milestones ?? [],
+    milestones_reached: [],
+    hitLowChips: false,
+    comebackEmitted: false,
     ...emptySplitState(),
   };
 }
@@ -345,19 +419,24 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
   else if (outcome === "win") delta = s.bet;
   else if (outcome === "lose") delta = -s.bet;
   // push: delta 0
+  const newChips = Math.max(0, s.chips + delta);
+  const phase = s.runGoal !== null && newChips >= s.runGoal ? "victory" : "result";
   return {
     ...s,
     outcome,
     payout: delta,
-    chips: Math.max(0, s.chips + delta),
-    phase: "result",
+    chips: newChips,
+    phase,
+    milestones_reached: advanceMilestonesReached(s, newChips),
+    ...applyLowChipsTracking(s, newChips),
   };
 }
 
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
-  if (amount < 5 || amount > 500) {
-    throw new Error("Bet must be between 5 and 500.");
+  const effectiveMin = s.chips < s.betMin ? s.chips : s.betMin;
+  if (amount < effectiveMin || amount > s.betMax) {
+    throw new Error(`Bet must be between ${effectiveMin} and ${s.betMax}.`);
   }
   if (amount > s.chips) throw new Error("Insufficient chips.");
 
@@ -387,19 +466,30 @@ export function placeBet(s: EngineState, amount: number): EngineState {
     ...emptySplitState(),
   };
 
+  const allInEvents: BlackjackGameEvent[] = amount === s.chips ? [{ type: "allIn" as const }] : [];
+
   // Natural blackjack check
   if (isNaturalBlackjack(playerHand)) {
     const outcome = isNaturalBlackjack(dealerHand) ? "push" : "blackjack";
     const settled = settleWith(afterDeal, outcome);
+    const msEvents = pendingMilestoneEvents(afterDeal, settled);
+    const cbEvents = pendingComebackEvents(afterDeal, settled);
     return {
       ...settled,
-      events: [{ type: "cardDeal" }, { type: "cardDeal" }, outcomeEvent(outcome)],
+      events: [
+        ...allInEvents,
+        { type: "cardDeal" },
+        { type: "cardDeal" },
+        outcomeEvent(outcome),
+        ...msEvents,
+        ...cbEvents,
+      ],
     };
   }
   return {
     ...afterDeal,
     phase: "player",
-    events: [{ type: "cardDeal" }, { type: "cardDeal" }],
+    events: [...allInEvents, { type: "cardDeal" }, { type: "cardDeal" }],
   };
 }
 
@@ -481,12 +571,17 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
   else if (totalPayout < 0) overallOutcome = "lose";
   else overallOutcome = "push";
 
+  const finalChips = Math.max(0, working.chips + totalPayout);
+  const finalPhase =
+    working.runGoal !== null && finalChips >= working.runGoal ? "victory" : "result";
   return {
     ...working,
     payout: totalPayout,
-    chips: Math.max(0, working.chips + totalPayout),
+    chips: finalChips,
     outcome: overallOutcome,
-    phase: "result",
+    phase: finalPhase,
+    milestones_reached: advanceMilestonesReached(working, finalChips),
+    ...applyLowChipsTracking(working, finalChips),
   };
 }
 
@@ -513,7 +608,11 @@ export function hit(s: EngineState): EngineState {
     let next: EngineState = { ...s, deck, player_hands: newHands, events };
     if (busted) {
       next = settleHand(next, s.active_hand_index, "lose");
-      return { ...advanceHand(next), events };
+      const advanced = advanceHand(next);
+      const msEvents = pendingMilestoneEvents(s, advanced);
+      const cbEvents = pendingComebackEvents(s, advanced);
+      const extras = [...msEvents, ...cbEvents];
+      return { ...advanced, events: extras.length > 0 ? [...events, ...extras] : events };
     }
     return next;
   }
@@ -525,7 +624,13 @@ export function hit(s: EngineState): EngineState {
     player_hand: [...s.player_hand, card],
   };
   if (handValue(next.player_hand) > 21) {
-    return { ...settleWith(next, "lose"), events: [{ type: "cardDeal" }, { type: "bust" }] };
+    const settled = settleWith(next, "lose");
+    const msEvents = pendingMilestoneEvents(next, settled);
+    const cbEvents = pendingComebackEvents(next, settled);
+    return {
+      ...settled,
+      events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents, ...cbEvents],
+    };
   }
   return { ...next, events: [{ type: "cardDeal" }] };
 }
@@ -535,12 +640,22 @@ export function stand(s: EngineState): EngineState {
   if (s.split_count > 0) {
     const next = advanceHand({ ...s, events: undefined });
     if (next.phase === "result" && next.outcome !== null) {
-      return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push")] };
+      const msEvents = pendingMilestoneEvents(s, next);
+      const cbEvents = pendingComebackEvents(s, next);
+      return {
+        ...next,
+        events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents, ...cbEvents],
+      };
     }
     return next;
   }
   const next = determineAndSettle(dealerPlay({ ...s, events: undefined }));
-  return { ...next, events: [outcomeEvent(next.outcome as "win" | "lose" | "push")] };
+  const msEvents = pendingMilestoneEvents(s, next);
+  const cbEvents = pendingComebackEvents(s, next);
+  return {
+    ...next,
+    events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents, ...cbEvents],
+  };
 }
 
 export function doubleDown(s: EngineState): EngineState {
@@ -585,13 +700,20 @@ export function doubleDown(s: EngineState): EngineState {
       next = settleHand(next, idx, "lose");
     }
     const advanced = advanceHand(next);
+    const msEvents = pendingMilestoneEvents(s, advanced);
+    const cbEvents = pendingComebackEvents(s, advanced);
     if (advanced.phase === "result" && advanced.outcome !== null && !busted) {
       return {
         ...advanced,
-        events: [...splitDoubleEvents, outcomeEvent(advanced.outcome as "win" | "lose" | "push")],
+        events: [
+          ...splitDoubleEvents,
+          outcomeEvent(advanced.outcome as "win" | "lose" | "push"),
+          ...msEvents,
+          ...cbEvents,
+        ],
       };
     }
-    return { ...advanced, events: splitDoubleEvents };
+    return { ...advanced, events: [...splitDoubleEvents, ...msEvents, ...cbEvents] };
   }
 
   if (s.player_hand.length !== 2) {
@@ -610,15 +732,25 @@ export function doubleDown(s: EngineState): EngineState {
   };
 
   if (handValue(afterDouble.player_hand) > 21) {
+    const settled = settleWith(afterDouble, "lose");
+    const msEvents = pendingMilestoneEvents(afterDouble, settled);
+    const cbEvents = pendingComebackEvents(afterDouble, settled);
     return {
-      ...settleWith(afterDouble, "lose"),
-      events: [{ type: "cardDeal" }, { type: "bust" }],
+      ...settled,
+      events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents, ...cbEvents],
     };
   }
   const settled = determineAndSettle(dealerPlay(afterDouble));
+  const msEvents = pendingMilestoneEvents(s, settled);
+  const cbEvents = pendingComebackEvents(s, settled);
   return {
     ...settled,
-    events: [{ type: "cardDeal" }, outcomeEvent(settled.outcome as "win" | "lose" | "push")],
+    events: [
+      { type: "cardDeal" },
+      outcomeEvent(settled.outcome as "win" | "lose" | "push"),
+      ...msEvents,
+      ...cbEvents,
+    ],
   };
 }
 
@@ -725,7 +857,7 @@ function reshuffleThreshold(rules: GameRules): number {
 }
 
 export function newHand(s: EngineState): EngineState {
-  if (s.phase !== "result") throw new Error("Not in result phase.");
+  if (s.phase !== "result" && s.phase !== "victory") throw new Error("Not in result phase.");
   const deck =
     s.deck.length < reshuffleThreshold(s.rules) ? freshShuffledDeck(s.rules.deck_count) : s.deck;
   return {

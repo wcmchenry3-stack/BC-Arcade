@@ -39,6 +39,8 @@ class GameType(str, Enum):
     MAHJONG = "mahjong"
     STARSWARM = "starswarm"
     FREECELL = "freecell"
+    SORT = "sort"
+    DAILY_WORD = "daily_word"
 
 
 class GameOutcome(str, Enum):

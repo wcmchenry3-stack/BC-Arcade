@@ -44,5 +44,8 @@
   "overflow.abandon.title": "Abandon current game?",
   "overflow.abandon.body": "Starting a new game will discard your progress in this round. Your lifetime stats won't be affected.",
   "overflow.abandon.keepPlaying": "Keep Playing",
-  "overflow.abandon.startNew": "Start New"
+  "overflow.abandon.startNew": "Start New",
+  "home.locked.buttonLabel": "Unlock",
+  "home.locked.cardLabel": "{{title}} — Coming soon",
+  "home.locked.comingSoon": "This game is coming soon"
 }

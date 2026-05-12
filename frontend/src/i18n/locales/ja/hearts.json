@@ -57,5 +57,11 @@
 
   "events.heartsBroken": "ハートが解禁",
   "events.moonShot": "{{name}}が月を射抜いた！",
-  "events.queenOfSpades": "{{name}}がスペードのQを取った！"
+  "events.queenOfSpades": "{{name}}がスペードのQを取った！",
+
+  "difficulty.groupLabel": "難易度",
+  "difficulty.easy": "かんたん",
+  "difficulty.medium": "ふつう",
+  "difficulty.hard": "むずかしい",
+  "game.startGame": "ゲームスタート"
 }

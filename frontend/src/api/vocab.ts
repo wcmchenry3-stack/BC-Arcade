@@ -20,6 +20,8 @@ export const GAME_TYPES = [
   "mahjong",
   "starswarm",
   "freecell",
+  "sort",
+  "daily_word",
 ] as const;
 
 export type GameType = (typeof GAME_TYPES)[number];

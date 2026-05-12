@@ -28,3 +28,17 @@ export async function gotoMahjong(page: Page): Promise<void> {
     .getByRole("img", { name: /Mahjong Solitaire/i })
     .waitFor({ timeout: 15_000 });
 }
+
+/** Inject a MahjongState snapshot into localStorage and reload the home page. */
+export async function injectMahjongState(
+  page: Page,
+  partial: Record<string, unknown>,
+): Promise<void> {
+  await page.goto("/");
+  await page.evaluate(
+    ([key, state]) =>
+      localStorage.setItem(key as string, JSON.stringify(state)),
+    ["mahjong_game", partial] as const,
+  );
+  await page.goto("/");
+}

@@ -98,6 +98,6 @@ async def _clean_db_tables():
 
     engine = get_engine()
     async with engine.begin() as conn:
-        for table in ("game_events", "games", "bug_logs"):
+        for table in ("game_events", "games", "game_entitlements", "bug_logs"):
             await conn.execute(text(f"DELETE FROM {table}"))
     yield

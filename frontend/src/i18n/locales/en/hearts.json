@@ -73,5 +73,11 @@
 
   "events.heartsBroken": "Hearts broken",
   "events.moonShot": "{{name}} shot the moon!",
-  "events.queenOfSpades": "{{name}} takes the Queen of Spades!"
+  "events.queenOfSpades": "{{name}} takes the Queen of Spades!",
+
+  "difficulty.groupLabel": "AI Difficulty",
+  "difficulty.easy": "Easy",
+  "difficulty.medium": "Medium",
+  "difficulty.hard": "Hard",
+  "game.startGame": "Start Game"
 }

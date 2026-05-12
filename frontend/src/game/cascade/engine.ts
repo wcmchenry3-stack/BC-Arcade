@@ -8,11 +8,24 @@ export {
   WALL_THICKNESS,
   DANGER_LINE_RATIO,
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
+  FIXED_STEP_MS,
+  RAPIER_SOLVER_ITERATIONS,
+  MATTER_POSITION_ITERATIONS,
+  MATTER_VELOCITY_ITERATIONS,
+  MATTER_SLEEP_THRESHOLD,
+  MAX_FRUIT_SPEED_PX_S,
+  SPAWN_GRACE_TICKS,
+  COLLISION_GROUP_WALL,
+  COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
 export type {
   FruitBody,
@@ -25,13 +38,23 @@ export type { GameEvent } from "./types";
 
 import {
   GAME_OVER_GRACE_MS,
+  GAME_OVER_CONSECUTIVE_TICKS,
+  GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  WALL_FRICTION,
+  POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
   SCALE,
   GRAVITY_Y,
   WALL_THICKNESS,
   DANGER_LINE_RATIO,
+  FIXED_STEP_MS,
+  RAPIER_SOLVER_ITERATIONS,
+  MAX_FRUIT_SPEED_PX_S,
+  SPAWN_GRACE_TICKS,
+  COLLISION_GROUP_WALL,
+  COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
 import type { FruitBody, BodySnapshot, EngineHandle } from "./engine.shared";
 import type { GameEvent } from "./types";
@@ -77,17 +100,31 @@ const COMBO_THRESHOLD = 3;
 export async function createEngine(
   W: number,
   H: number,
-  fruitSet: FruitSet
+  fruitSet: FruitSet,
+  nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
   const R = await getRapier();
 
   const world = new R.World({ x: 0.0, y: GRAVITY_Y });
+  // Rapier defaults to 4 solver iterations; 8 resolves penetration in 15-deep stacks.
+  world.integrationParameters.numSolverIterations = RAPIER_SOLVER_ITERATIONS;
+  // Fix the timestep so every sub-step runs at exactly 60 Hz.
+  world.integrationParameters.dt = FIXED_STEP_MS / 1000;
   const eventQueue = new R.EventQueue(true);
 
   // fruitMap: rigidBody.handle → FruitBody metadata
   const fruitMap = new Map<number, FruitBody>();
   // collider.handle → rigidBody.handle (for collision event lookup)
   const colliderToBody = new Map<number, number>();
+  // rigidBody.handle → primary Collider (for collision-group restoration after grace period)
+  const bodyToCollider = new Map<number, RAPIER_TYPE.Collider>();
+
+  // Packed InteractionGroups constants for Rapier:
+  //   normal: membership=DYNAMIC, filter=WALL|DYNAMIC
+  //   grace:  membership=DYNAMIC, filter=WALL only (no dynamic-vs-dynamic for SPAWN_GRACE_TICKS)
+  const NORMAL_GROUPS =
+    COLLISION_GROUP_DYNAMIC | ((COLLISION_GROUP_WALL | COLLISION_GROUP_DYNAMIC) << 16);
+  const GRACE_GROUPS = COLLISION_GROUP_DYNAMIC | (COLLISION_GROUP_WALL << 16);
 
   // --- Static walls and floor ---
   // Rapier cuboid takes half-extents, so divide sizes by 2.
@@ -95,30 +132,31 @@ export async function createEngine(
 
   // Floor (top surface at H - WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((W / 2) * SCALE, (WALL_THICKNESS / 2) * SCALE).setTranslation(
-      (W / 2) * SCALE,
-      (H - WALL_THICKNESS / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((W / 2) * SCALE, (WALL_THICKNESS / 2) * SCALE)
+      .setTranslation((W / 2) * SCALE, (H - WALL_THICKNESS / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
   // Left wall (inner surface at WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE).setTranslation(
-      (WALL_THICKNESS / 2) * SCALE,
-      (H / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE)
+      .setTranslation((WALL_THICKNESS / 2) * SCALE, (H / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
   // Right wall (inner surface at W - WALL_THICKNESS)
   world.createCollider(
-    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE).setTranslation(
-      (W - WALL_THICKNESS / 2) * SCALE,
-      (H / 2) * SCALE
-    )
+    R.ColliderDesc.cuboid((WALL_THICKNESS / 2) * SCALE, H * SCALE)
+      .setTranslation((W - WALL_THICKNESS / 2) * SCALE, (H / 2) * SCALE)
+      .setFriction(WALL_FRICTION)
   );
 
   const dangerY = H * DANGER_LINE_RATIO; // pixels
   let gameOverFired = false;
+  let dangerTicksAbove = 0;
+  let ticksSinceLastMerge = GAME_OVER_MERGE_COOLDOWN_TICKS;
   let comboMergeCount = 0;
   let comboFired = false;
+  // Accumulator for the fixed-step loop; carries leftover ms across frames.
+  let accumulatorMs = 0;
 
   // Merges are queued during collision events and processed synchronously after draining.
   // The third element is the tier snapshotted at enqueue time; processMerges re-verifies
@@ -127,11 +165,24 @@ export async function createEngine(
   // body, making fruitMap.get(handle) return the wrong tier in subsequent queue entries).
   const mergeQueue: Array<[number, number, number]> = []; // [handleA, handleB, tier]
 
-  function spawnAt(def: FruitDefinition, setId: string, x: number, y: number): FruitBody {
+  function spawnAt(
+    def: FruitDefinition,
+    setId: string,
+    x: number,
+    y: number,
+    graceTicks = 0
+  ): FruitBody {
     const rbDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(x * SCALE, y * SCALE)
-      .setCcdEnabled(true);
+      .setCcdEnabled(true)
+      .setCanSleep(true);
     const rb = world.createRigidBody(rbDesc);
+
+    if (graceTicks > 0) {
+      // Explicitly zero velocity so penetration-correction impulses from the
+      // spawn midpoint don't give the new body an initial kick.
+      rb.setLinvel({ x: 0, y: 0 }, true);
+    }
 
     const nameKey = (def as { nameKey?: string }).nameKey ?? def.name.toLowerCase();
     const verts = getVerticesForFruit(setId, nameKey);
@@ -168,14 +219,25 @@ export async function createEngine(
       );
     }
 
+    // Grace bodies (merge-spawned) filter out dynamic-vs-dynamic collisions for
+    // SPAWN_GRACE_TICKS to prevent phantom merges. Normal player drops use the
+    // Rapier default (all groups) — explicit NORMAL_GROUPS suppresses CollisionStart
+    // for deeply-overlapping bodies and breaks E2E tests.
+    if (graceTicks > 0) {
+      collider.setCollisionGroups(GRACE_GROUPS);
+    }
+
+    bodyToCollider.set(rb.handle, collider);
+
     const fb: FruitBody = {
       handle: rb.handle,
       fruitTier: def.tier,
       fruitSetId: setId,
       isMerging: false,
-      createdAt: Date.now(),
+      createdAt: nowProvider(),
       fruitRadius: def.radius,
       collisionVerts: verts,
+      graceTicksRemaining: graceTicks,
     };
     fruitMap.set(rb.handle, fb);
     colliderToBody.set(collider.handle, rb.handle);
@@ -185,7 +247,6 @@ export async function createEngine(
   function removeBody(bodyHandle: number): void {
     const rb = world.getRigidBody(bodyHandle);
     if (rb) {
-      // Unmap all colliders attached to this body
       const numColliders = rb.numColliders();
       for (let i = 0; i < numColliders; i++) {
         const c = rb.collider(i);
@@ -193,6 +254,7 @@ export async function createEngine(
       }
       world.removeRigidBody(rb);
     }
+    bodyToCollider.delete(bodyHandle);
     fruitMap.delete(bodyHandle);
   }
 
@@ -200,7 +262,9 @@ export async function createEngine(
     for (const [ha, hb, enqueuedTier] of mergeQueue) {
       const fa = fruitMap.get(ha);
       const fb = fruitMap.get(hb);
-      if (!fa || !fb || fa.isMerging || fb.isMerging) continue;
+      // isMerging is guaranteed true for all queued entries (set atomically at enqueue).
+      // The !fa/!fb guard catches the edge case where a body was already removed.
+      if (!fa || !fb) continue;
       // Re-verify tiers against the snapshot captured at enqueue time.
       // Rapier's generational arena can reuse a handle after removeRigidBody,
       // so fruitMap.get(ha) may now point to a newly spawned body with a
@@ -227,7 +291,28 @@ export async function createEngine(
       if (tier < 10) {
         const nextDef = fruitSet.fruits[(tier + 1) as FruitTier];
         if (nextDef !== undefined) {
-          spawnAt(nextDef, fruitSet.id, midX, midY);
+          const newFb = spawnAt(nextDef, fruitSet.id, midX, midY, SPAWN_GRACE_TICKS);
+          // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
+          // them out of the merge zone, preventing stuck overlaps after spawn.
+          const wakeRadiusSq = (nextDef.radius * 2) ** 2;
+          fruitMap.forEach((_fb2, wHandle) => {
+            if (wHandle === newFb.handle) return;
+            const wrb = world.getRigidBody(wHandle);
+            if (!wrb) return;
+            const wpos = wrb.translation();
+            const dx = wpos.x / SCALE - midX;
+            const dy = wpos.y / SCALE - midY;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < wakeRadiusSq) {
+              const dist = Math.sqrt(distSq);
+              if (dist > 0) {
+                const mag = nextDef.radius * POP_IMPULSE_SCALE * SCALE;
+                wrb.applyImpulse({ x: (dx / dist) * mag, y: (dy / dist) * mag }, true);
+              } else {
+                wrb.wakeUp();
+              }
+            }
+          });
         }
       }
     }
@@ -243,13 +328,20 @@ export async function createEngine(
 
       const events: GameEvent[] = [];
 
-      if (dt !== undefined) {
-        // Clamp: min 1/120s (avoid micro-steps), max 1/30s (avoid spiral of death on slow frames)
-        world.integrationParameters.dt = Math.max(1 / 120, Math.min(dt, 1 / 30));
+      // Fixed-step accumulator: clamp total elapsed to 1/6 s to prevent a spiral of death
+      // on backgrounded tabs, then consume whole 60 Hz sub-steps from the accumulator.
+      // Using ms throughout avoids the float-precision gap between 1/60*1000 and 1000/60.
+      const rawElapsedMs = Math.min((dt ?? 1 / 60) * 1000, 1000 / 6);
+      accumulatorMs += rawElapsedMs;
+      while (accumulatorMs >= FIXED_STEP_MS - 0.001) {
+        world.step(eventQueue);
+        accumulatorMs = Math.max(0, accumulatorMs - FIXED_STEP_MS);
       }
-      world.step(eventQueue);
 
-      // Drain collision events → queue same-tier pairs for merging
+      // Drain collision events → queue same-tier pairs for merging.
+      // isMerging is set atomically here (before any positional read) so that
+      // a pair queued in a prior sub-step cannot enter a second queue entry
+      // during subsequent sub-steps of the same step() call.
       eventQueue.drainCollisionEvents((h1: number, h2: number, started: boolean) => {
         if (!started) return;
         const rbh1 = colliderToBody.get(h1);
@@ -258,7 +350,11 @@ export async function createEngine(
         const fa = fruitMap.get(rbh1);
         const fb = fruitMap.get(rbh2);
         if (!fa || !fb || fa.isMerging || fb.isMerging) return;
+        // Skip merges during grace period — the body is immune to dynamic collisions.
+        if (fa.graceTicksRemaining > 0 || fb.graceTicksRemaining > 0) return;
         if (fa.fruitTier === fb.fruitTier) {
+          fa.isMerging = true;
+          fb.isMerging = true;
           mergeQueue.push([rbh1, rbh2, fa.fruitTier]); // snapshot tier at enqueue
         }
       });
@@ -267,33 +363,70 @@ export async function createEngine(
       const mergesThisStep = mergeQueue.length;
       processMerges(events);
 
-      // Cascade combo: fire when a chain of consecutive-step merges reaches COMBO_THRESHOLD.
+      // Grace-tick decrement: restore normal collision groups when the grace period expires.
+      fruitMap.forEach((fb, handle) => {
+        if (fb.graceTicksRemaining <= 0) return;
+        fb.graceTicksRemaining--;
+        if (fb.graceTicksRemaining === 0) {
+          const c = bodyToCollider.get(handle);
+          if (c) c.setCollisionGroups(NORMAL_GROUPS);
+        }
+      });
+
+      // Cascade combo and merge-cooldown tracking.
       if (mergesThisStep > 0) {
         comboMergeCount += mergesThisStep;
         if (!comboFired && comboMergeCount >= COMBO_THRESHOLD) {
           events.push({ type: "cascadeCombo", count: comboMergeCount });
           comboFired = true;
         }
+        ticksSinceLastMerge = 0;
       } else {
         comboMergeCount = 0;
         comboFired = false;
+        ticksSinceLastMerge++;
       }
 
-      // Game-over: a settled fruit (past grace period) with its top above the danger line
+      // Velocity clamp: prevent unbounded free-fall from producing tunneling speeds.
+      // Runs after the sub-step loop; maxPhysSpeed is in Rapier physics units/s (px/s × SCALE).
+      {
+        const maxPhysSpeed = MAX_FRUIT_SPEED_PX_S * SCALE;
+        const maxPhysSpeedSq = maxPhysSpeed * maxPhysSpeed;
+        fruitMap.forEach((_fb, handle) => {
+          const rb = world.getRigidBody(handle);
+          if (!rb) return;
+          const vel = rb.linvel();
+          const speedSq = vel.x * vel.x + vel.y * vel.y;
+          if (speedSq > maxPhysSpeedSq) {
+            const factor = maxPhysSpeed / Math.sqrt(speedSq);
+            rb.setLinvel({ x: vel.x * factor, y: vel.y * factor }, true);
+          }
+        });
+      }
+
+      // Game-over: requires GAME_OVER_CONSECUTIVE_TICKS consecutive ticks above the danger line
+      // AND no merge in the last GAME_OVER_MERGE_COOLDOWN_TICKS ticks.
       if (!gameOverFired) {
-        const now = Date.now();
+        const now = nowProvider();
+        let anyAbove = false;
         fruitMap.forEach((fb, handle) => {
-          if (gameOverFired || fb.isMerging) return;
+          if (anyAbove || fb.isMerging) return;
           if (now - fb.createdAt < GAME_OVER_GRACE_MS) return;
           const rb = world.getRigidBody(handle);
           if (!rb) return;
           const pos = rb.translation();
-          const topY = pos.y / SCALE - fb.fruitRadius; // top edge in pixels
-          if (topY < dangerY) {
-            gameOverFired = true;
-            events.push({ type: "gameOver" });
-          }
+          const topY = pos.y / SCALE - fb.fruitRadius;
+          if (topY < dangerY) anyAbove = true;
         });
+        if (anyAbove) dangerTicksAbove++;
+        else dangerTicksAbove = 0;
+        if (
+          dangerTicksAbove >= GAME_OVER_CONSECUTIVE_TICKS &&
+          ticksSinceLastMerge >= GAME_OVER_MERGE_COOLDOWN_TICKS
+        ) {
+          gameOverFired = true;
+          events.push({ type: "gameOver" });
+        }
       }
 
       // Per-step fruit-count delta check
@@ -348,6 +481,7 @@ export async function createEngine(
       disposed = true;
       fruitMap.clear();
       colliderToBody.clear();
+      bodyToCollider.clear();
       try {
         eventQueue.free();
       } catch {

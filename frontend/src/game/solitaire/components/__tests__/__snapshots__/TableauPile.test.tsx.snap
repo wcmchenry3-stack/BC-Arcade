@@ -1,0 +1,8 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TableauPile — cascade offsets (#1247) 12-card column height snapshot (6 face-down + 6 face-up, natural card size) 1`] = `
+{
+  "height": 334,
+  "width": 52,
+}
+`;

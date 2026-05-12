@@ -5,10 +5,14 @@
  * engine, AI, UI components, and persistence layer alike.
  */
 
+export type AiDifficulty = "easy" | "medium" | "hard";
+export const AI_DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];
+
 /** UI events emitted by the engine and consumed by the animation layer. */
 export type GameEvent =
   | { readonly type: "moonShot"; readonly shooter: number }
   | { readonly type: "heartsBroken" }
+  | { readonly type: "queenOfSpadesPlayed" }
   | { readonly type: "queenOfSpades"; readonly takerSeat: number };
 
 export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
@@ -43,9 +47,11 @@ export type HeartsPhase =
  * Players: index 0 = human, 1 = left AI, 2 = top AI, 3 = right AI.
  * `_v` is a schema version so persisted saves can be migrated or rejected.
  * v2 adds `scoreHistory` so per-round deltas survive screen unmount (#745).
+ * v3 adds `aiDifficulty` for the Easy/Medium/Hard AI difficulty selector (#1168).
  */
 export interface HeartsState {
-  readonly _v: 2;
+  readonly _v: 3;
+  readonly aiDifficulty: AiDifficulty;
   readonly phase: HeartsPhase;
   /** 1-based. Pass direction = getPassDirection(handNumber). */
   readonly handNumber: number;

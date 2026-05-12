@@ -4,47 +4,29 @@
  * Rendered via HTML Canvas 2D.
  * Metro uses this file automatically on the web platform.
  *
- * Tile geometry (grid → pixels):
- *   pixel_x = PAD_X + (col / 2) * TILE_W + layer * LAYER_DX
- *   pixel_y = PAD_Y + row * TILE_H − layer * LAYER_DY
+ * World→screen conversion is delegated to BoardCamera.tileToScreen().
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
-import { hasFreePairs, isFreeTile, tilesMatch } from "../../game/mahjong/engine";
+import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
-import { MAHJONG_TILE_FACE_SELECTED, MAHJONG_GLOW_SHADOW } from "../../theme/theme.constants";
-
-// ---------------------------------------------------------------------------
-// Layout constants (mirror GameCanvas.tsx exactly)
-// ---------------------------------------------------------------------------
-
-export const TILE_W = 44;
-export const TILE_H = 56;
-const SIDE_W = 5;
-const LAYER_DX = 6;
-const LAYER_DY = 5;
-const PAD_X = 10;
-const PAD_Y = 30;
-
-export const BOARD_W = PAD_X + 12 * TILE_W + 4 * LAYER_DX + PAD_X; // 572
-export const BOARD_H = PAD_Y + 8 * TILE_H + 4 * LAYER_DY + PAD_Y; // 508
-
-function tileX(col: number, layer: number): number {
-  return PAD_X + (col / 2) * TILE_W + layer * LAYER_DX;
-}
-function tileY(row: number, layer: number): number {
-  return PAD_Y + row * TILE_H - layer * LAYER_DY;
-}
+import {
+  MAHJONG_BOARD_BG,
+  MAHJONG_GLOW_SHADOW,
+  MAHJONG_HINT_GLOW_SHADOW,
+  MAHJONG_TILE_FACE_SELECTED,
+} from "../../theme/theme.constants";
+import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------
 
-const BG = "#1a3a1a";
+const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
 const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
 const TILE_FACE_LOCKED = "#d0c8b8";
@@ -65,16 +47,51 @@ const SUIT_COLOR: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Felt texture
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a 64×64 random-noise canvas pattern that simulates felt grain.
+ * Drawn at ~7% opacity over the board background. Generated once per session
+ * and cached by the caller — never called on every frame.
+ */
+function makeFeltPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  try {
+    const size = 64;
+    const offscreen = document.createElement("canvas");
+    offscreen.width = size;
+    offscreen.height = size;
+    const oc = offscreen.getContext("2d");
+    if (!oc) return null;
+    const id = oc.createImageData(size, size);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = Math.floor(Math.random() * 30);
+      id.data[i] = v;
+      id.data[i + 1] = v;
+      id.data[i + 2] = v;
+      id.data[i + 3] = 18; // ~7% opacity
+    }
+    oc.putImageData(id, 0, 0);
+    return ctx.createPattern(offscreen, "repeat");
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hit-testing
 // ---------------------------------------------------------------------------
 
-function hitTest(tiles: readonly SlotTile[], tapX: number, tapY: number): number | null {
-  const fw = TILE_W - SIDE_W;
-  const fh = TILE_H - SIDE_W;
+function hitTest(
+  tiles: readonly SlotTile[],
+  tapX: number,
+  tapY: number,
+  cam: BoardCamera
+): number | null {
+  const { faceWidth: fw, faceHeight: fh } = cam;
   const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
   for (const tile of sorted) {
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
     }
@@ -90,16 +107,25 @@ function drawBoard(
   ctx: CanvasRenderingContext2D,
   state: MahjongState,
   freeTiles: ReadonlySet<number>,
-  tileImages: readonly (HTMLImageElement | null)[]
+  matchingIds: ReadonlySet<number>,
+  tileImages: readonly (HTMLImageElement | null)[],
+  cam: BoardCamera,
+  feltPattern: CanvasPattern | null,
+  debugShowFree: boolean
 ): void {
-  ctx.clearRect(0, 0, BOARD_W, BOARD_H);
+  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } = cam;
 
-  // Background
+  ctx.clearRect(0, 0, boardWidth, boardHeight);
+
+  // Background — solid colour then subtle felt-grain overlay.
   ctx.fillStyle = BG;
-  ctx.fillRect(0, 0, BOARD_W, BOARD_H);
+  ctx.fillRect(0, 0, boardWidth, boardHeight);
+  if (feltPattern) {
+    ctx.fillStyle = feltPattern;
+    ctx.fillRect(0, 0, boardWidth, boardHeight);
+  }
 
   const selectedId = state.selected?.id ?? null;
-  const hasSelection = selectedId !== null;
 
   // Draw tiles lowest layer → highest so higher layers appear on top.
   const sorted = [...state.tiles].sort((a, b) => a.layer - b.layer || a.row - b.row);
@@ -107,58 +133,62 @@ function drawBoard(
   for (const tile of sorted) {
     ctx.save();
 
-    const x = tileX(tile.col, tile.layer);
-    const y = tileY(tile.row, tile.layer);
+    const { x: rawX, y: rawY } = cam.tileToScreen(tile.col, tile.row, tile.layer);
+    const x = Math.round(rawX);
+    const y = Math.round(rawY);
     const isSelected = tile.id === selectedId;
     const isFree = freeTiles.has(tile.id);
-    const fw = TILE_W - SIDE_W;
-    const fh = TILE_H - SIDE_W;
+    const isHint = matchingIds.has(tile.id);
 
-    // Lift selected tile upward/outward for a "picked up" cue.
-    const liftX = isSelected ? 4 : 0;
-    const liftY = isSelected ? -5 : 0;
+    // Lift selected tile upward/outward — scale with tile size.
+    const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
+    const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
     // 2 px border on selected for visibility at small tile sizes.
     const borderInset = isSelected ? 2 : 1;
 
-    // Hints only on tiles that actually match the selection, not all free tiles.
-    const isHint =
-      isFree && hasSelection && state.selected !== null && tilesMatch(tile, state.selected);
     const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
     const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
     const suitColor = SUIT_COLOR[tile.suit] ?? "#888888";
 
-    // Drop shadow
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(x + SIDE_W + 2 + liftX, y + SIDE_W + 2 + liftY, fw, fh);
-
     // Right 3-D side
     ctx.fillStyle = SIDE_R;
-    ctx.fillRect(x + fw + liftX, y + SIDE_W + liftY, SIDE_W, fh);
+    ctx.fillRect(x + faceWidth + liftX, y + sideWidth + liftY, sideWidth, faceHeight);
 
     // Bottom 3-D side
     ctx.fillStyle = SIDE_B;
-    ctx.fillRect(x + SIDE_W + liftX, y + fh + liftY, fw, SIDE_W);
+    ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
 
-    // Gold glow behind selected tile — applied to the border rect only.
+    // Shadow/glow on the border rect: selected → gold glow + drop shadow,
+    // hint → blue glow + drop shadow, normal → soft feathered drop shadow.
+    ctx.shadowOffsetX = sideWidth + 2;
+    ctx.shadowOffsetY = sideWidth + 2;
     if (isSelected) {
       ctx.shadowColor = MAHJONG_GLOW_SHADOW;
       ctx.shadowBlur = 10;
+    } else if (isHint) {
+      ctx.shadowColor = MAHJONG_HINT_GLOW_SHADOW;
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 3;
     }
 
     // Border
     ctx.fillStyle = borderColor;
-    ctx.fillRect(x + liftX, y + liftY, fw, fh);
+    ctx.fillRect(x + liftX, y + liftY, faceWidth, faceHeight);
 
-    // Clear glow before drawing face so inner fills stay crisp.
+    // Clear shadow before drawing face so inner fills stay crisp.
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
 
     // Face
     ctx.fillStyle = faceColor;
     ctx.fillRect(
       x + borderInset + liftX,
       y + borderInset + liftY,
-      fw - 2 * borderInset,
-      fh - 2 * borderInset
+      faceWidth - 2 * borderInset,
+      faceHeight - 2 * borderInset
     );
 
     // SVG face art — fall back to suit-color rect while image is loading.
@@ -167,10 +197,17 @@ function drawBoard(
     const img = tileImages[tile.faceId - 1];
     ctx.globalAlpha = isFree ? 1 : 0.35;
     if (img !== null) {
-      ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, fw - 4, fh - 4);
+      ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     } else {
       ctx.fillStyle = suitColor;
-      ctx.fillRect(x + 8 + liftX, y + 10 + liftY, fw - 16, fh - 20);
+      ctx.fillRect(x + 8 + liftX, y + 10 + liftY, faceWidth - 16, faceHeight - 20);
+    }
+
+    // Debug: green tint over free tiles when dev overlay is active.
+    if (debugShowFree && isFree) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = "#00cc44";
+      ctx.fillRect(x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     }
 
     ctx.restore();
@@ -183,16 +220,35 @@ function drawBoard(
 
 interface Props {
   state: MahjongState;
+  camera: BoardCamera;
+  hintIds?: ReadonlySet<number>;
+  debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
   onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
-export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGamePress }: Props) {
+const EMPTY_SET: ReadonlySet<number> = new Set();
+
+export default function GameCanvas({
+  state,
+  camera,
+  hintIds = EMPTY_SET,
+  debugShowFree = false,
+  onTilePress,
+  onShufflePress,
+  onNewGamePress,
+}: Props) {
   const { t } = useTranslation("mahjong");
+  const { boardWidth, boardHeight } = camera;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
+  const feltPatternRef = useRef<CanvasPattern | null>(null);
   const [imagesVersion, setImagesVersion] = useState(0);
+  const [dpr, setDpr] = useState(() =>
+    typeof window !== "undefined" ? (window.devicePixelRatio ?? 1) : 1
+  );
 
   const freeTiles = useMemo(() => {
     const s = new Set<number>();
@@ -201,6 +257,16 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
     }
     return s;
   }, [state.tiles]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
+
+  const allHintIds = useMemo(() => {
+    if (hintIds.size === 0) return matchingIds;
+    const merged = new Set(matchingIds);
+    for (const id of hintIds) merged.add(id);
+    return merged as ReadonlySet<number>;
+  }, [matchingIds, hintIds]);
 
   const noFreePairs = useMemo(
     () => !state.isComplete && !hasFreePairs(state.tiles),
@@ -218,6 +284,29 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
     const timer = setTimeout(() => setShowDeadlockOverlay(true), 500);
     return () => clearTimeout(timer);
   }, [state.isDeadlocked]);
+
+  // Reset felt pattern on unmount so a remount regenerates it against the new context.
+  useEffect(
+    () => () => {
+      feltPatternRef.current = null;
+    },
+    []
+  );
+
+  // Reactive DPR — re-renders when the user moves the window between screens or
+  // changes browser zoom. The query matches the current DPR; when it stops matching
+  // (DPR changed), we update state which triggers a redraw via the deps array below.
+  // Re-registering on [dpr] keeps the query in sync after each change.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    function handler() {
+      feltPatternRef.current = null; // invalidate pattern for new scale
+      setDpr(window.devicePixelRatio ?? 1);
+    }
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [dpr]);
 
   // Load all 42 SVG tile images once on mount.
   useEffect(() => {
@@ -256,14 +345,54 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
     };
   }, []);
 
-  // Redraw whenever state or tile images change.
+  // Redraw whenever state, tile images, layout, or DPR changes.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Scale the backing buffer to physical pixels so the canvas is crisp on
+    // high-DPI / Retina screens. CSS display size stays at logical pixels.
+    const physW = Math.round(boardWidth * dpr);
+    const physH = Math.round(boardHeight * dpr);
+    canvas.style.width = `${boardWidth}px`;
+    canvas.style.height = `${boardHeight}px`;
+    if (canvas.width !== physW) canvas.width = physW;
+    if (canvas.height !== physH) canvas.height = physH;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawBoard(ctx, state, freeTiles, tileImagesRef.current);
-  }, [state, freeTiles, imagesVersion]);
+
+    // Map all drawing coordinates to physical pixels and use high-quality
+    // filtering when scaling SVG art.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    // Generate the felt-grain pattern once; reuse on every subsequent draw.
+    if (!feltPatternRef.current) {
+      feltPatternRef.current = makeFeltPattern(ctx);
+    }
+
+    const drawT0 = __DEV__ ? performance.now() : 0;
+    drawBoard(
+      ctx,
+      state,
+      freeTiles,
+      allHintIds,
+      tileImagesRef.current,
+      camera,
+      feltPatternRef.current,
+      debugShowFree
+    );
+    if (__DEV__) {
+      const elapsed = performance.now() - drawT0;
+      // eslint-disable-next-line no-console
+      if (elapsed > 2)
+        console.warn(
+          `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
+        );
+    }
+  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree, dpr]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -271,20 +400,24 @@ export default function GameCanvas({ state, onTilePress, onShufflePress, onNewGa
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const tapX = e.clientX - rect.left;
-      const tapY = e.clientY - rect.top;
-      const tileId = hitTest(state.tiles, tapX, tapY);
+      // getBoundingClientRect reflects the parent's CSS scale transform, so
+      // divide by the visual/native ratio to get canvas drawing coordinates.
+      const scaleX = rect.width / camera.boardWidth;
+      const scaleY = rect.height / camera.boardHeight;
+      const tapX = (e.clientX - rect.left) / scaleX;
+      const tapY = (e.clientY - rect.top) / scaleY;
+      const tileId = hitTest(state.tiles, tapX, tapY, camera);
       if (tileId !== null) onTilePress(tileId);
     },
-    [state.tiles, onTilePress, gameActive]
+    [state.tiles, onTilePress, gameActive, camera]
   );
 
   return (
-    <View style={{ width: BOARD_W, height: BOARD_H }}>
+    <View style={{ width: boardWidth, height: boardHeight }}>
       <canvas
         ref={canvasRef}
-        width={BOARD_W}
-        height={BOARD_H}
+        width={boardWidth}
+        height={boardHeight}
         onClick={handleClick}
         style={{ display: "block", cursor: gameActive ? "pointer" : "default" }}
         aria-label={t("game.canvasLabel")}

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hearts Analysis Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    header { background: #1a1f2e; border-bottom: 1px solid #2d3748; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header h1 { font-size: 1.25rem; font-weight: 700; color: #f7fafc; }
+    header .badge { background: #2d3748; border-radius: 9999px; padding: 0.25rem 0.75rem; font-size: 0.75rem; color: #a0aec0; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; }
+
+    section { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 0.75rem; padding: 1.5rem; }
+    section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #90cdf4; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Simulation controls */
+    .controls-grid { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+    .control-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    .control-group label { font-size: 0.75rem; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .control-group input, .control-group select {
+      background: #0f1117; border: 1px solid #2d3748; border-radius: 0.375rem;
+      color: #e2e8f0; padding: 0.5rem 0.75rem; font-size: 0.875rem; min-width: 100px;
+    }
+    .control-group input:focus, .control-group select:focus { outline: 2px solid #4299e1; }
+    #run-btn {
+      background: #3182ce; color: white; border: none; border-radius: 0.375rem;
+      padding: 0.5rem 1.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    #run-btn:hover:not(:disabled) { background: #2b6cb0; }
+    #run-btn:disabled { background: #4a5568; cursor: not-allowed; }
+    #sim-status { font-size: 0.875rem; color: #a0aec0; padding: 0.5rem 0; }
+    #sim-status.error { color: #fc8181; }
+
+    /* Summary cards */
+    .cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .player-col { display: flex; flex-direction: column; gap: 0.5rem; }
+    .player-label { font-size: 0.75rem; font-weight: 700; text-align: center; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #a0aec0; margin-bottom: 0.25rem; }
+    .metric-card { background: #0f1117; border: 1px solid #2d3748; border-radius: 0.5rem; padding: 0.75rem; text-align: center; }
+    .metric-card .label { font-size: 0.65rem; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
+    .metric-card .value { font-size: 1.1rem; font-weight: 700; }
+    .metric-card.best .value { color: #68d391; }
+    .metric-card.worst .value { color: #fc8181; }
+
+    /* Charts */
+    .chart-wrap { position: relative; height: 280px; }
+    .chart-wrap-sm { position: relative; height: 240px; }
+
+    /* Missed dumps table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { background: #0f1117; color: #718096; text-align: left; padding: 0.5rem 0.75rem;
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #2d3748;
+      cursor: pointer; user-select: none; }
+    th:hover { color: #90cdf4; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1a202c; color: #cbd5e0; }
+    tr:hover td { background: #2d3748; }
+    .sort-asc::after { content: " ↑"; }
+    .sort-desc::after { content: " ↓"; }
+
+    .empty-state { color: #4a5568; text-align: center; padding: 2rem; font-size: 0.875rem; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Hearts Analysis</h1>
+    <span class="badge" id="game-count-badge">0 games</span>
+  </header>
+
+  <main>
+    <!-- Simulation Controls -->
+    <section>
+      <h2>Simulation</h2>
+      <div class="controls-grid">
+        <div class="control-group">
+          <label>Games</label>
+          <input type="number" id="ctrl-count" value="10" min="1" max="500" style="width:80px">
+        </div>
+        <div class="control-group">
+          <label>P0</label>
+          <select id="ctrl-d0"><option>easy</option><option selected>medium</option><option>hard</option></select>
+        </div>
+        <div class="control-group">
+          <label>P1</label>
+          <select id="ctrl-d1"><option>easy</option><option selected>medium</option><option>hard</option></select>
+        </div>
+        <div class="control-group">
+          <label>P2</label>
+          <select id="ctrl-d2"><option>easy</option><option selected>medium</option><option>hard</option></select>
+        </div>
+        <div class="control-group">
+          <label>P3</label>
+          <select id="ctrl-d3"><option>easy</option><option selected>medium</option><option>hard</option></select>
+        </div>
+        <button id="run-btn">Run Simulation</button>
+      </div>
+      <div id="sim-status"></div>
+    </section>
+
+    <!-- Summary Cards -->
+    <section>
+      <h2>Summary</h2>
+      <div class="cards-grid" id="summary-cards">
+        <div class="empty-state" style="grid-column:1/-1">No data — run a simulation</div>
+      </div>
+    </section>
+
+    <!-- Score by Game -->
+    <section>
+      <h2>Score by Game</h2>
+      <div class="chart-wrap"><canvas id="score-chart"></canvas></div>
+    </section>
+
+    <!-- Safe Discard Rate -->
+    <section>
+      <h2>Safe Discard Rate</h2>
+      <div class="chart-wrap-sm"><canvas id="discard-chart"></canvas></div>
+    </section>
+
+    <!-- Q♠ Dump Timing -->
+    <section>
+      <h2>Q♠ Dump Timing Distribution</h2>
+      <div class="chart-wrap-sm"><canvas id="qs-timing-chart"></canvas></div>
+    </section>
+
+    <!-- Moon Eligibility -->
+    <section>
+      <h2>Moon Eligibility Outcomes</h2>
+      <p id="moon-header" style="font-size:0.8rem;color:#718096;margin-bottom:0.75rem;"></p>
+      <div class="chart-wrap-sm"><canvas id="moon-chart"></canvas></div>
+    </section>
+
+    <!-- Pass Direction -->
+    <section>
+      <h2>Avg Points by Pass Direction</h2>
+      <div class="chart-wrap-sm"><canvas id="pass-chart"></canvas></div>
+    </section>
+
+    <!-- Missed Q♠ Dumps -->
+    <section>
+      <h2>Missed Q♠ Dumps</h2>
+      <div class="table-wrap">
+        <table id="missed-table">
+          <thead>
+            <tr>
+              <th data-col="game">Game</th>
+              <th data-col="hand">Hand</th>
+              <th data-col="trick">Trick</th>
+              <th data-col="qs_holder">Player</th>
+              <th data-col="covering_card">Covering Card</th>
+              <th data-col="played_instead">Played Instead</th>
+              <th data-col="hand_pts_taken" class="sort-desc">Pts Taken</th>
+            </tr>
+          </thead>
+          <tbody id="missed-tbody">
+            <tr><td colspan="7" class="empty-state">No data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const PLAYER_COLORS = ["#4299e1", "#68d391", "#f6ad55", "#fc8181"];
+    const PLAYER_DASHES = [[], [5, 3], [10, 4], [3, 3, 10, 3]];
+
+    let charts = {};
+    let missedData = [];
+    let sortCol = "hand_pts_taken";
+    let sortDir = -1; // -1 = desc
+
+    // ---------------------------------------------------------------------------
+    // Fetch all
+    // ---------------------------------------------------------------------------
+    async function loadAll() {
+      const [summary, discard, qsTiming, moon, passDir, missed, scores] = await Promise.all([
+        fetch("/api/summary").then(r => r.json()),
+        fetch("/api/discard-rate").then(r => r.json()),
+        fetch("/api/qs-timing").then(r => r.json()),
+        fetch("/api/moon").then(r => r.json()),
+        fetch("/api/pass-direction").then(r => r.json()),
+        fetch("/api/missed-dumps").then(r => r.json()),
+        fetch("/api/game-scores").then(r => r.json()),
+      ]);
+      renderSummary(summary);
+      renderScoreChart(scores);
+      renderDiscardChart(discard);
+      renderQsTimingChart(qsTiming);
+      renderMoonChart(moon);
+      renderPassChart(passDir);
+      missedData = missed;
+      renderMissedTable();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Summary cards
+    // ---------------------------------------------------------------------------
+    function renderSummary(data) {
+      const players = ["0","1","2","3"];
+      if (!data || !data["0"]) {
+        document.getElementById("summary-cards").innerHTML =
+          '<div class="empty-state" style="grid-column:1/-1">No data — run a simulation</div>';
+        return;
+      }
+
+      const metrics = [
+        { key: "avg_final_score", label: "Avg Score", lowerBetter: true, fmt: v => v.toFixed(1) },
+        { key: "games_won", label: "Wins", lowerBetter: false, fmt: v => v },
+        { key: "avg_pts_per_hand", label: "Pts/Hand", lowerBetter: true, fmt: v => v.toFixed(2) },
+        { key: "total_qs_taken", label: "Q♠ Taken", lowerBetter: true, fmt: v => v },
+      ];
+
+      const gameCount = players.reduce((s, p) => s + (data[p]?.games_won || 0), 0);
+      document.getElementById("game-count-badge").textContent = `${gameCount} games`;
+
+      const cols = players.map(p => {
+        const col = document.createElement("div");
+        col.className = "player-col";
+        col.innerHTML = `<div class="player-label">Player ${p}</div>`;
+
+        metrics.forEach(m => {
+          const vals = players.map(pp => data[pp]?.[m.key] ?? 0);
+          const best = m.lowerBetter ? Math.min(...vals) : Math.max(...vals);
+          const worst = m.lowerBetter ? Math.max(...vals) : Math.min(...vals);
+          const v = data[p]?.[m.key] ?? 0;
+          const cls = v === best ? "best" : v === worst ? "worst" : "";
+          const card = document.createElement("div");
+          card.className = `metric-card ${cls}`;
+          card.innerHTML = `<div class="label">${m.label}</div><div class="value">${m.fmt(v)}</div>`;
+          col.appendChild(card);
+        });
+        return col;
+      });
+
+      const grid = document.getElementById("summary-cards");
+      grid.innerHTML = "";
+      cols.forEach(c => grid.appendChild(c));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Score by game (line chart)
+    // ---------------------------------------------------------------------------
+    function renderScoreChart(scores) {
+      destroyChart("score-chart");
+      if (!scores || !scores.length) return;
+      const labels = scores.map((_, i) => `G${i + 1}`);
+      const datasets = [0,1,2,3].map(p => ({
+        label: `P${p}`,
+        data: scores.map(g => g[p]),
+        borderColor: PLAYER_COLORS[p],
+        backgroundColor: "transparent",
+        borderDash: PLAYER_DASHES[p],
+        tension: 0.3,
+        pointRadius: 3,
+      }));
+      charts["score-chart"] = new Chart(document.getElementById("score-chart"), {
+        type: "line",
+        data: { labels, datasets },
+        options: chartOptions("Score", true),
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Discard rate (stacked bar)
+    // ---------------------------------------------------------------------------
+    function renderDiscardChart(data) {
+      destroyChart("discard-chart");
+      if (!data || !data["0"]) return;
+      const labels = ["P0","P1","P2","P3"];
+      charts["discard-chart"] = new Chart(document.getElementById("discard-chart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            { label: "Hearts Dumped", data: [0,1,2,3].map(p => data[p]?.hearts_dumped ?? 0), backgroundColor: "#fc8181" },
+            { label: "Q♠ Dumped", data: [0,1,2,3].map(p => data[p]?.qs_dumped ?? 0), backgroundColor: "#f6ad55" },
+            { label: "Wasted", data: [0,1,2,3].map(p => data[p]?.wasted ?? 0), backgroundColor: "#4a5568" },
+          ],
+        },
+        options: {
+          ...darkChartBase(),
+          plugins: { ...darkChartBase().plugins, tooltip: {
+            callbacks: {
+              footer: (items) => {
+                const p = items[0].dataIndex;
+                const rate = data[p]?.penalty_dump_rate ?? 0;
+                return `Penalty dump rate: ${(rate * 100).toFixed(1)}%`;
+              }
+            }
+          }},
+          scales: { x: darkAxis(), y: { ...darkAxis(), stacked: true } },
+        },
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Q♠ timing (line chart)
+    // ---------------------------------------------------------------------------
+    function renderQsTimingChart(data) {
+      destroyChart("qs-timing-chart");
+      if (!data || !data["0"]) return;
+      const labels = Array.from({length: 13}, (_, i) => `T${i+1}`);
+      const datasets = [0,1,2,3].map(p => ({
+        label: `P${p} (avg T${data[p]?.avg_trick ?? 0})`,
+        data: labels.map((_, i) => data[p]?.distribution?.[i+1] ?? 0),
+        borderColor: PLAYER_COLORS[p],
+        backgroundColor: "transparent",
+        borderDash: PLAYER_DASHES[p],
+        tension: 0.3,
+        pointRadius: 3,
+      }));
+      charts["qs-timing-chart"] = new Chart(document.getElementById("qs-timing-chart"), {
+        type: "line",
+        data: { labels, datasets },
+        options: chartOptions("Frequency"),
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Moon eligibility (stacked bar)
+    // ---------------------------------------------------------------------------
+    function renderMoonChart(data) {
+      destroyChart("moon-chart");
+      if (!data || !data["0"]) return;
+      const totalShots = [0,1,2,3].reduce((s, p) => s + (data[p]?.shots_made ?? 0), 0);
+      document.getElementById("moon-header").textContent =
+        totalShots === 0 ? "No moon shots made across any game." : `${totalShots} moon shot(s) made.`;
+
+      const buckets = ["0", "1-5", "6-12", "13-19", "20-26"];
+      const colors = ["#68d391", "#90cdf4", "#f6ad55", "#fc8181", "#b794f4"];
+      charts["moon-chart"] = new Chart(document.getElementById("moon-chart"), {
+        type: "bar",
+        data: {
+          labels: ["P0","P1","P2","P3"],
+          datasets: buckets.map((b, i) => ({
+            label: `${b} pts`,
+            data: [0,1,2,3].map(p => data[p]?.outcome_buckets?.[b] ?? 0),
+            backgroundColor: colors[i],
+          })),
+        },
+        options: {
+          ...darkChartBase(),
+          scales: { x: darkAxis(), y: { ...darkAxis(), stacked: true } },
+        },
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Pass direction (grouped bar)
+    // ---------------------------------------------------------------------------
+    function renderPassChart(data) {
+      destroyChart("pass-chart");
+      if (!data || !data["0"]) return;
+      const dirs = ["left","right","across","none"];
+      const dirColors = ["#4299e1","#68d391","#f6ad55","#a0aec0"];
+      charts["pass-chart"] = new Chart(document.getElementById("pass-chart"), {
+        type: "bar",
+        data: {
+          labels: ["P0","P1","P2","P3"],
+          datasets: dirs.map((d, i) => ({
+            label: d,
+            data: [0,1,2,3].map(p => data[p]?.[d]?.avg_pts ?? 0),
+            backgroundColor: dirColors[i],
+          })),
+        },
+        options: { ...darkChartBase(), scales: { x: darkAxis(), y: darkAxis() } },
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Missed dumps table
+    // ---------------------------------------------------------------------------
+    function cardStr(c) {
+      if (!c) return "—";
+      const suits = { hearts: "♥", spades: "♠", clubs: "♣", diamonds: "♦" };
+      const rankMap = { 1: "A", 11: "J", 12: "Q", 13: "K" };
+      return `${rankMap[c.rank] || c.rank}${suits[c.suit] || c.suit}`;
+    }
+
+    function colSortVal(row, col) {
+      const v = row[col];
+      if (v && typeof v === "object") return v.rank === 1 ? 14 : (v.rank ?? 0);
+      return v ?? 0;
+    }
+
+    function renderMissedTable() {
+      const tbody = document.getElementById("missed-tbody");
+      if (!missedData.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No missed Q♠ dump incidents found</td></tr>';
+        return;
+      }
+      const sorted = [...missedData].sort((a, b) => sortDir * (colSortVal(b, sortCol) - colSortVal(a, sortCol)));
+      tbody.innerHTML = sorted.map(d => `
+        <tr>
+          <td>G${d.game + 1}</td>
+          <td>${d.hand}</td>
+          <td>${d.trick}</td>
+          <td>P${d.qs_holder}</td>
+          <td>${cardStr(d.covering_card)}</td>
+          <td>${cardStr(d.played_instead)}</td>
+          <td>${d.hand_pts_taken}</td>
+        </tr>
+      `).join("");
+    }
+
+    // Sort table on header click
+    document.querySelectorAll("#missed-table th[data-col]").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortDir *= -1;
+        else { sortCol = col; sortDir = -1; }
+        document.querySelectorAll("#missed-table th").forEach(h => h.classList.remove("sort-asc","sort-desc"));
+        th.classList.add(sortDir === -1 ? "sort-desc" : "sort-asc");
+        renderMissedTable();
+      });
+    });
+
+    // ---------------------------------------------------------------------------
+    // Chart helpers
+    // ---------------------------------------------------------------------------
+    function destroyChart(id) {
+      if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    }
+
+    function darkChartBase() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#a0aec0", font: { size: 11 } } },
+          tooltip: { backgroundColor: "#2d3748", titleColor: "#e2e8f0", bodyColor: "#a0aec0" },
+        },
+      };
+    }
+
+    function darkAxis() {
+      return { ticks: { color: "#718096" }, grid: { color: "#2d3748" }, stacked: false };
+    }
+
+    function chartOptions(yLabel, stacked = false) {
+      return {
+        ...darkChartBase(),
+        scales: {
+          x: darkAxis(),
+          y: { ...darkAxis(), title: { display: true, text: yLabel, color: "#718096" } },
+        },
+      };
+    }
+
+    // ---------------------------------------------------------------------------
+    // Simulate button
+    // ---------------------------------------------------------------------------
+    document.getElementById("run-btn").addEventListener("click", async () => {
+      const count = parseInt(document.getElementById("ctrl-count").value, 10);
+      const difficulties = [0,1,2,3].map(i => document.getElementById(`ctrl-d${i}`).value);
+      const btn = document.getElementById("run-btn");
+      const status = document.getElementById("sim-status");
+
+      btn.disabled = true;
+      btn.textContent = "Running…";
+      status.className = "";
+      status.textContent = `Simulating ${count} game(s)…`;
+
+      try {
+        const res = await fetch("/api/simulate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count, difficulties }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Simulation failed");
+        }
+        const { games_loaded } = await res.json();
+        status.textContent = `Done — ${games_loaded} game(s) loaded`;
+        await loadAll();
+      } catch (e) {
+        status.className = "error";
+        status.textContent = `Error: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Run Simulation";
+      }
+    });
+
+    // ---------------------------------------------------------------------------
+    // Boot
+    // ---------------------------------------------------------------------------
+    loadAll();
+  </script>
+</body>
+</html>

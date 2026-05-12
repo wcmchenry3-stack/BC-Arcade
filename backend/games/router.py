@@ -10,6 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from db.base import get_session_factory
+from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from session import get_session_id
 
@@ -193,6 +194,7 @@ async def create_game(request: Request, body: CreateGameRequest) -> CreateGameRe
     players = [p.model_dump() for p in body.players] if body.players else [{"player_id": sid}]
     factory = get_session_factory()
     async with factory() as db:
+        await check_entitlement(db, sid, body.game_type)
         try:
             game = await service.create_game(
                 db,

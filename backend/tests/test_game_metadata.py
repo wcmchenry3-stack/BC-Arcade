@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from blackjack.models import BlackjackMetadata
 from cascade.models import CascadeMetadata
+from daily_word.models import DailyWordMetadata
 from games.schemas import CreateGameRequest
 from hearts.models import HeartsMetadata
 from solitaire.models import SolitaireMetadata
@@ -28,6 +29,46 @@ def test_blackjack_metadata_empty_dict_valid() -> None:
 def test_blackjack_metadata_rejects_unknown_field() -> None:
     with pytest.raises(ValidationError):
         BlackjackMetadata.model_validate({"deck_count": 6})
+
+
+def test_blackjack_metadata_run_fields_accepted() -> None:
+    m = BlackjackMetadata.model_validate(
+        {
+            "best_run_chips": 2500,
+            "total_runs": 10,
+            "runs_completed": 3,
+            "current_table": "intermediate",
+        }
+    )
+    assert m.best_run_chips == 2500
+    assert m.total_runs == 10
+    assert m.runs_completed == 3
+    assert m.current_table == "intermediate"
+
+
+def test_blackjack_metadata_run_fields_default_to_none() -> None:
+    m = BlackjackMetadata.model_validate({})
+    assert m.best_run_chips is None
+    assert m.total_runs is None
+    assert m.runs_completed is None
+    assert m.current_table is None
+
+
+def test_blackjack_metadata_partial_run_fields_accepted() -> None:
+    m = BlackjackMetadata.model_validate({"total_runs": 5})
+    assert m.total_runs == 5
+    assert m.best_run_chips is None
+
+
+def test_blackjack_metadata_all_table_tiers_accepted() -> None:
+    for tier in ("beginner", "intermediate", "high_roller"):
+        m = BlackjackMetadata.model_validate({"current_table": tier})
+        assert m.current_table == tier
+
+
+def test_blackjack_metadata_invalid_current_table_rejected() -> None:
+    with pytest.raises(ValidationError):
+        BlackjackMetadata.model_validate({"current_table": "hacker_table"})
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +186,42 @@ def test_sudoku_metadata_rejects_unknown_field() -> None:
 
 
 # ---------------------------------------------------------------------------
+# DailyWordMetadata unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_daily_word_metadata_valid_en() -> None:
+    m = DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en", "language": "en"})
+    assert m.puzzle_id == "2026-05-02:en"
+    assert m.language == "en"
+
+
+def test_daily_word_metadata_valid_hi() -> None:
+    m = DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:hi", "language": "hi"})
+    assert m.language == "hi"
+
+
+def test_daily_word_metadata_default_language_is_en() -> None:
+    m = DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en"})
+    assert m.language == "en"
+
+
+def test_daily_word_metadata_rejects_invalid_language() -> None:
+    with pytest.raises(ValidationError):
+        DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en", "language": "fr"})
+
+
+def test_daily_word_metadata_rejects_unknown_field() -> None:
+    with pytest.raises(ValidationError):
+        DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en", "score": 9999})
+
+
+def test_daily_word_metadata_puzzle_id_required() -> None:
+    with pytest.raises(ValidationError):
+        DailyWordMetadata.model_validate({"language": "en"})
+
+
+# ---------------------------------------------------------------------------
 # CreateGameRequest metadata validation
 # ---------------------------------------------------------------------------
 
@@ -241,8 +318,15 @@ def test_post_games_invalid_metadata_returns_422(client) -> None:
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-def test_post_games_valid_cascade_metadata_accepted(client) -> None:
+async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
+    from db.base import get_session_factory
+    from db.models import GameEntitlement
+
     sid = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=sid, game_slug="cascade"))
+        await db.commit()
     r = client.post(
         "/games",
         headers=_headers(sid),

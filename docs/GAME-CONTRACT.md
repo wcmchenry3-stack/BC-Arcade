@@ -133,6 +133,7 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 |---|---|---|
 | Blackjack | `BlackjackMetadata` | *(none — state is in-memory)* |
 | Cascade | `CascadeMetadata` | `player_name: str = ""` (max 64 chars) |
+| Daily Word | `DailyWordMetadata` | `puzzle_id: str`, `language: Literal["en","hi"] = "en"` |
 | Pachisi | `PachisiMetadata` | *(none — state is in-memory)* |
 
 **Adding a metadata model:**

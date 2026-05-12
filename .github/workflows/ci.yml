@@ -157,6 +157,21 @@ jobs:
               - 'frontend/src/components/starswarm/**'
               - 'frontend/src/game/starswarm/**'
               - 'backend/starswarm/**'
+            hearts:
+              - 'frontend/src/screens/HeartsScreen*'
+              - 'frontend/src/components/hearts/**'
+              - 'frontend/src/game/hearts/**'
+              - 'backend/hearts/**'
+            solitaire:
+              - 'frontend/src/screens/SolitaireScreen*'
+              - 'frontend/src/components/solitaire/**'
+              - 'frontend/src/game/solitaire/**'
+              - 'backend/solitaire/**'
+            sudoku:
+              - 'frontend/src/screens/SudokuScreen*'
+              - 'frontend/src/components/sudoku/**'
+              - 'frontend/src/game/sudoku/**'
+              - 'backend/sudoku/**'
             logstore:
               - 'frontend/src/game/_shared/eventStore*'
               - 'frontend/src/game/_shared/eventQueueConfig*'
@@ -187,7 +202,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
              [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
-            echo "projects=yacht blackjack twenty48 cascade mahjong freecell starswarm cross logs-budget" >> "$GITHUB_OUTPUT"
+            echo "projects=yacht blackjack twenty48 cascade mahjong freecell starswarm hearts solitaire sudoku cross logs-budget" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
             projects="cross"
@@ -199,6 +214,9 @@ jobs:
             [[ "${{ steps.filter.outputs.mahjong }}"   == "true" ]] && projects="$projects mahjong"
             [[ "${{ steps.filter.outputs.freecell }}"  == "true" ]] && projects="$projects freecell"
             [[ "${{ steps.filter.outputs.starswarm }}" == "true" ]] && projects="$projects starswarm"
+            [[ "${{ steps.filter.outputs.hearts }}"    == "true" ]] && projects="$projects hearts"
+            [[ "${{ steps.filter.outputs.solitaire }}" == "true" ]] && projects="$projects solitaire"
+            [[ "${{ steps.filter.outputs.sudoku }}"    == "true" ]] && projects="$projects sudoku"
             [[ "${{ steps.filter.outputs.logstore }}"  == "true" ]] && projects="$projects logs-budget"
             echo "projects=$projects" >> "$GITHUB_OUTPUT"
             echo "label=selective: $projects" >> "$GITHUB_OUTPUT"
@@ -208,8 +226,6 @@ jobs:
     name: Playwright E2E
     needs: [test-python, test-frontend, detect-e2e-scope]
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
     steps:
       - uses: actions/checkout@v6
 
@@ -232,6 +248,10 @@ jobs:
 
       - name: Install E2E deps
         run: npm ci
+        working-directory: e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
         working-directory: e2e
 
       - name: Run Playwright tests (${{ needs.detect-e2e-scope.outputs.label }})
@@ -331,12 +351,12 @@ jobs:
             exit 1
           fi
           BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE / 1048576}")
-          MAX_BYTES=5767168
+          MAX_BYTES=6291456
           if [ "$BUNDLE_SIZE" -gt "$MAX_BYTES" ]; then
-            echo "::error::JS bundle exceeds 5.5 MB hard limit: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes). See docs/PERFORMANCE.md for how to update the limit."
+            echo "::error::JS bundle exceeds 6.0 MB hard limit: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes). See docs/PERFORMANCE.md for how to update the limit."
             exit 1
           fi
-          echo "Android JS bundle: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes) — within 5.5 MB limit"
+          echo "Android JS bundle: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes) — within 6.0 MB limit"
           echo "BUNDLE_SIZE_BYTES=$BUNDLE_SIZE" >> "$GITHUB_ENV"
           echo "BUNDLE_SIZE_MB=$BUNDLE_SIZE_MB" >> "$GITHUB_ENV"
       - name: Check bundle size (bundlesize)

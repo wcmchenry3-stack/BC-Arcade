@@ -17,7 +17,9 @@ jest.mock("expo-blur", () => ({
 jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),
-  loadGame: jest.fn().mockResolvedValue(null),
+  loadGame: jest.fn(),
+  saveRun: jest.fn().mockResolvedValue(undefined),
+  loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
 function mockNav() {
@@ -38,8 +40,13 @@ function renderScreen(nav = mockNav()) {
   );
 }
 
+// Default: return a beginner-table-selected game so most tests see the betting panel.
+const beginnerGame = () =>
+  newGame(undefined, { startingChips: 100, runGoal: 250, betMin: 5, betMax: 25 });
+
 beforeEach(() => {
   jest.clearAllMocks();
+  (loadGame as jest.Mock).mockResolvedValue(beginnerGame());
 });
 
 // ---------------------------------------------------------------------------
@@ -47,9 +54,18 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("BlackjackBettingScreen — initial load", () => {
-  it("renders BettingPanel after mount (no saved game)", async () => {
+  it("renders BettingPanel when a table-selected game is loaded", async () => {
     renderScreen();
     expect(await screen.findByText("Deal")).toBeTruthy();
+  });
+
+  it("renders TableSelectPanel when no saved game exists (fresh install)", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    renderScreen();
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(screen.getByText("Beginner")).toBeTruthy();
+    expect(screen.getByText("Intermediate")).toBeTruthy();
+    expect(screen.getByText("High Roller")).toBeTruthy();
   });
 });
 
@@ -111,12 +127,12 @@ describe("BlackjackBettingScreen — phase redirect", () => {
     const nav = mockNav();
     renderScreen(nav);
     await screen.findByText("Deal");
-    // Place a chip first so Deal becomes enabled
+    // Place a chip first so Deal becomes enabled (beginner table: max bet 25)
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(/add 100 to bet/i));
+      fireEvent.press(screen.getByLabelText(/add 25 to bet/i));
     });
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(/deal cards with 100-chip bet/i));
+      fireEvent.press(screen.getByLabelText(/deal cards with 25-chip bet/i));
     });
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
@@ -129,10 +145,11 @@ describe("BlackjackBettingScreen — phase redirect", () => {
 // ---------------------------------------------------------------------------
 
 describe("BlackjackBettingScreen — chip balance visibility (GH #227)", () => {
-  it("bankroll is visible in header during betting phase", async () => {
+  it("chip/goal progress is visible in HUD during betting phase", async () => {
     renderScreen();
     await screen.findByText("Deal");
-    expect(screen.getByLabelText(/bankroll: 1000 chips/i)).toBeTruthy();
+    // HUD shows goal progress when a table with a runGoal is active
+    expect(screen.getByLabelText(/goal progress:/i)).toBeTruthy();
   });
 });
 

@@ -22,6 +22,7 @@ import {
   dealGame,
   getHintMoves,
   hasLegalMoves,
+  isProductiveMove,
   setRng,
   undoMove,
   validateMove,
@@ -697,6 +698,180 @@ describe("getHintMoves", () => {
       freeCells: [c("spades", 5), null, null, null],
     });
     expect(getHintMoves(state)).toHaveLength(0);
+  });
+
+  it("excludes reversible single-card swap when it is the only move (#1295)", () => {
+    // 7♥ sits on 8♠; 8♣ is in another column. Freecells full — no parking.
+    // Moving 7♥ between the two black 8s is the only legal move, but non-productive.
+    const state = mkState({
+      tableau: [
+        [c("spades", 8), c("hearts", 7)], // col 0: 8♠ then 7♥ on top
+        [c("clubs", 8)], // col 1: 8♣ alone
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+      freeCells: [c("hearts", 3), c("diamonds", 3), c("clubs", 3), c("spades", 3)],
+    });
+    expect(getHintMoves(state)).toHaveLength(0);
+  });
+
+  it("excludes reversible multi-card swap (7♥+6♠ between two black 8s) (#1295)", () => {
+    // Freecells full — no parking available. Only move is the reversible swap.
+    const state = mkState({
+      tableau: [
+        [c("spades", 8), c("hearts", 7), c("spades", 6)], // col 0
+        [c("clubs", 8)], // col 1: 8♣ alone
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+      freeCells: [c("hearts", 3), c("diamonds", 3), c("clubs", 3), c("spades", 3)],
+    });
+    expect(getHintMoves(state)).toHaveLength(0);
+  });
+
+  it("includes productive move alongside reversible swap (#1295)", () => {
+    // 7♥ can swap between 8♠ (col 0) and 8♣ (col 1) — non-productive.
+    // 5♠ (col 3, alone) can move onto 6♥ (col 2, top) — productive.
+    // Freecells full to remove parking noise.
+    const state = mkState({
+      tableau: [
+        [c("spades", 8), c("hearts", 7)], // col 0: reversible swap source
+        [c("clubs", 8)], // col 1: reversible swap dest
+        [c("hearts", 6)], // col 2: 6♥ exposed (target for 5♠)
+        [c("spades", 5)], // col 3: 5♠ alone — can move to 6♥ (productive, fromIndex=0)
+        [],
+        [],
+        [],
+        [],
+      ],
+      freeCells: [c("hearts", 3), c("diamonds", 3), c("clubs", 3), c("spades", 3)],
+    });
+    const hints = getHintMoves(state);
+    // The productive 5♠→6♥ move (col 3 → col 2) must appear
+    expect(hints.some((m) => m.type === "tableau-to-tableau" && m.fromCol === 3)).toBe(true);
+    // The reversible swap from col 0 must not appear
+    expect(hints.every((m) => m.type !== "tableau-to-tableau" || m.fromCol !== 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isProductiveMove (#1295)
+// ---------------------------------------------------------------------------
+
+describe("isProductiveMove", () => {
+  it("returns true for non-tableau moves", () => {
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], [], []],
+    });
+    expect(isProductiveMove(state, { type: "tableau-to-foundation", fromCol: 0 })).toBe(true);
+    expect(isProductiveMove(state, { type: "tableau-to-freecell", fromCol: 0, toCell: 0 })).toBe(
+      true
+    );
+  });
+
+  it("returns false for single-card reversible swap (canonical 7♥/8♠/8♣ position)", () => {
+    // 7♥ on 8♠ in col 0; 8♣ in col 1. Moving 7♥ to col 1 is non-productive.
+    const state = mkState({
+      tableau: [[c("spades", 8), c("hearts", 7)], [c("clubs", 8)], [], [], [], [], [], []],
+    });
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 1, toCol: 1 };
+    expect(isProductiveMove(state, move)).toBe(false);
+  });
+
+  it("returns false for multi-card reversible swap (7♥+6♠ between two black 8s)", () => {
+    const state = mkState({
+      tableau: [
+        [c("spades", 8), c("hearts", 7), c("spades", 6)],
+        [c("clubs", 8)],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 1, toCol: 1 };
+    expect(isProductiveMove(state, move)).toBe(false);
+  });
+
+  it("returns true when the move exposes a foundation play", () => {
+    // 7♥ on A♠; A♠ can go to foundation after 7♥ is moved.
+    // (A♠ has rank 1; foundations.spades is empty — rank 1 can go to empty foundation)
+    const state = mkState({
+      tableau: [
+        [c("clubs", 8), c("spades", 1), c("hearts", 7)], // col 0: …8♣, A♠, 7♥
+        [c("diamonds", 8)], // col 1: 8♦ (red, so 7♥ can land here)
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    // Moving 7♥ (fromIndex 2) to col 1. Parent of 7♥ is A♠ which can go to foundation.
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 2, toCol: 1 };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+
+  it("returns true when moving from the column base (creates empty column)", () => {
+    const state = mkState({
+      tableau: [
+        [c("hearts", 7)], // col 0: single card (moving it empties the column)
+        [c("spades", 8)],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 0, toCol: 1 };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+
+  it("returns true when parent and destination differ in color", () => {
+    // 6♦ on 7♠ in col 0; 7♥ in col 1.
+    // Moving 6♦ to col 1: parent is 7♠ (black), dest is 7♥ (red) — different colors.
+    // Not a reversible swap even though ranks match (black ≠ red).
+    // Note: this move is invalid per validateMove (6♦ red cannot stack on 7♥ red),
+    // but isProductiveMove is a pure predicate tested independently of validateMove.
+    const state = mkState({
+      tableau: [
+        [c("spades", 7), c("diamonds", 6)], // col 0: 7♠ then 6♦ on top
+        [c("hearts", 7)], // col 1: 7♥ — different color from parent 7♠
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 1, toCol: 1 };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+
+  it("returns true when player manually executes non-productive move (applyMove accepts it)", () => {
+    const state = mkState({
+      tableau: [[c("spades", 8), c("hearts", 7)], [c("clubs", 8)], [], [], [], [], [], []],
+    });
+    const move = { type: "tableau-to-tableau" as const, fromCol: 0, fromIndex: 1, toCol: 1 };
+    // isProductiveMove returns false (hint would skip it), but applyMove still accepts it
+    expect(isProductiveMove(state, move)).toBe(false);
+    const next = applyMove(state, move);
+    expect(next).not.toBe(state);
+    expect(next.tableau[1]).toEqual([c("clubs", 8), c("hearts", 7)]);
   });
 });
 

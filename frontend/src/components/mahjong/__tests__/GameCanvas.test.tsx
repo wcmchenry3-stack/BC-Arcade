@@ -11,6 +11,7 @@ import { create, act } from "react-test-renderer";
 import type { MahjongState } from "../../../game/mahjong/types";
 import { createGame } from "../../../game/mahjong/engine";
 import { TURTLE_LAYOUT } from "../../../game/mahjong/layouts/turtle";
+import { calculateMahjongLayout, makeBoardCamera } from "../../../game/mahjong/layout";
 
 // Skia requires a native module — stub the whole package.
 jest.mock("@shopify/react-native-skia", () => ({
@@ -38,6 +39,18 @@ jest.mock("expo-asset", () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { default: GameCanvas } = require("../GameCanvas.web");
 
+const testCamera = makeBoardCamera(
+  calculateMahjongLayout({
+    screenWidth: 768,
+    screenHeight: 1024,
+    safeAreaTop: 0,
+    safeAreaBottom: 0,
+    boardRows: 8,
+    boardCols: 12,
+    boardLayers: 4,
+  })
+);
+
 function makeState(overrides: Partial<MahjongState> = {}): MahjongState {
   return { ...createGame(TURTLE_LAYOUT, 12345), ...overrides };
 }
@@ -51,6 +64,7 @@ describe("GameCanvas (web)", () => {
         create(
           <GameCanvas
             state={makeState()}
+            camera={testCamera}
             onTilePress={noop}
             onShufflePress={noop}
             onNewGamePress={noop}
@@ -65,7 +79,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          camera={testCamera}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // i18n returns keys in tests — check for the key, not the translated string.
@@ -78,7 +98,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          camera={testCamera}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // Overlay is intentionally delayed — not visible before the timer fires.
@@ -101,7 +127,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          camera={testCamera}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     // Shuffle CTA shows the noMoves key + shuffle button
@@ -115,7 +147,13 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     act(() => {
       tree = create(
-        <GameCanvas state={state} onTilePress={noop} onShufflePress={noop} onNewGamePress={noop} />
+        <GameCanvas
+          state={state}
+          camera={testCamera}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
       );
     });
     const str = JSON.stringify(tree!.toJSON());

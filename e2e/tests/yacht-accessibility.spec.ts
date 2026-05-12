@@ -12,7 +12,7 @@
  *   - The axe-core WCAG 2.2 AA audit finds no critical/serious violations
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 async function assertNoA11yViolations(

@@ -1,0 +1,101 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`BallView matches snapshot with colorblind mode 1`] = `
+<View
+  accessibilityLabel="Blue"
+  accessible={true}
+  style={
+    [
+      {
+        "overflow": "hidden",
+      },
+      {
+        "backgroundColor": "#3b82f6",
+        "borderRadius": 18,
+        "height": 36,
+        "width": 36,
+      },
+    ]
+  }
+>
+  <RNSVGSvgView
+    accessibilityElementsHidden={true}
+    align="xMidYMid"
+    bbHeight={21.599999999999998}
+    bbWidth={21.599999999999998}
+    focusable={false}
+    height={21.599999999999998}
+    importantForAccessibility="no-hide-descendants"
+    meetOrSlice={0}
+    minX={0}
+    minY={0}
+    style={
+      [
+        {
+          "backgroundColor": "transparent",
+          "borderWidth": 0,
+        },
+        {
+          "left": 7.2,
+          "position": "absolute",
+          "top": 7.2,
+        },
+        {
+          "flex": 0,
+          "height": 21,
+          "width": 21,
+        },
+      ]
+    }
+    vbHeight={100}
+    vbWidth={100}
+    width={21.599999999999998}
+  >
+    <RNSVGGroup
+      fill={
+        {
+          "payload": 4278190080,
+          "type": 0,
+        }
+      }
+    >
+      <RNSVGCircle
+        cx="50"
+        cy="50"
+        fill={
+          {
+            "payload": 4294967295,
+            "type": 0,
+          }
+        }
+        propList={
+          [
+            "fill",
+          ]
+        }
+        r="38"
+      />
+    </RNSVGGroup>
+  </RNSVGSvgView>
+</View>
+`;
+
+exports[`BallView matches snapshot without colorblind mode 1`] = `
+<View
+  accessibilityLabel="Blue"
+  accessible={true}
+  style={
+    [
+      {
+        "overflow": "hidden",
+      },
+      {
+        "backgroundColor": "#3b82f6",
+        "borderRadius": 18,
+        "height": 36,
+        "width": 36,
+      },
+    ]
+  }
+/>
+`;

@@ -11,11 +11,15 @@ import {
 } from "@expo-google-fonts/manrope";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { NavigationContainer, useNavigation } from "@react-navigation/native";
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationProp,
+} from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import * as Sentry from "@sentry/react-native";
 import HomeScreen from "./src/screens/HomeScreen";
+import LockedGameScreen from "./src/screens/LockedGameScreen";
 import GameScreen from "./src/screens/GameScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import BottomTabBar from "./src/components/shared/BottomTabBar";
@@ -23,6 +27,7 @@ import { GameState } from "./src/game/yacht/types";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
+import { EntitlementProvider, useEntitlements } from "./src/entitlements/EntitlementContext";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
@@ -67,12 +72,16 @@ export type HomeStackParamList = {
   StarSwarm: undefined;
   BlackjackBetting: undefined;
   BlackjackTable: undefined;
+  BlackjackVictory: undefined;
+  BlackjackStats: undefined;
   Twenty48: undefined;
   Solitaire: undefined;
   FreeCell: undefined;
   Hearts: undefined;
   Sudoku: undefined;
   Mahjong: undefined;
+  Sort: undefined;
+  DailyWord: undefined;
   Scoreboard: {
     gameKey:
       | "hearts"
@@ -146,16 +155,60 @@ function withSuspense<P extends object>(
   return Wrapped;
 }
 
-const LazyCascadeScreen = withSuspense(LazyScreens.Cascade, "cascade");
-const LazyStarSwarmScreen = withSuspense(LazyScreens.StarSwarm, "starswarm");
+// Guard wrapper for premium screens: renders LockedGameScreen for unentitled
+// sessions without loading the actual game chunk (issue #1055). The check runs
+// at navigation time (inside the component) so React context is available.
+// Trade-off vs. factory-level guard: the lazy factory is defined at module
+// scope where context is absent, so a render-time check is the only way to
+// block chunk loading without restructuring the entire lazy/prefetch setup.
+function makePremiumScreen<P extends object>(
+  slug: string,
+  Screen: React.ComponentType<P>
+): React.FC<P> {
+  const PremiumScreen = (props: P) => {
+    const { canPlay, isLoading } = useEntitlements();
+    const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+    const wasEntitledRef = useRef<boolean | null>(null);
+
+    useEffect(() => {
+      if (isLoading) return;
+      const entitled = canPlay(slug);
+      if (wasEntitledRef.current === true && !entitled) {
+        navigation.navigate("Home");
+      }
+      wasEntitledRef.current = entitled;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- slug is a factory constant, stable for the component's lifetime
+    }, [canPlay, isLoading, navigation]);
+
+    if (isLoading) return <ActivityIndicator style={{ flex: 1 }} />;
+    if (!canPlay(slug)) return <LockedGameScreen />;
+    return <Screen {...props} />;
+  };
+  PremiumScreen.displayName = `Premium(${slug})`;
+  return PremiumScreen;
+}
+
+const GuardedGameScreen = makePremiumScreen("yacht", GameScreen);
+const LazyCascadeScreen = makePremiumScreen(
+  "cascade",
+  withSuspense(LazyScreens.Cascade, "cascade")
+);
+const LazyStarSwarmScreen = makePremiumScreen(
+  "starswarm",
+  withSuspense(LazyScreens.StarSwarm, "starswarm")
+);
 const LazyBlackjackBettingScreen = withSuspense(LazyScreens.BlackjackBetting, "blackjack_betting");
 const LazyBlackjackTableScreen = withSuspense(LazyScreens.BlackjackTable, "blackjack_table");
+const LazyBlackjackVictoryScreen = withSuspense(LazyScreens.BlackjackVictory, "blackjack_victory");
+const LazyBlackjackStatsScreen = withSuspense(LazyScreens.BlackjackStats, "blackjack_stats");
 const LazyTwenty48Screen = withSuspense(LazyScreens.Twenty48, "twenty48");
 const LazySolitaireScreen = withSuspense(LazyScreens.Solitaire, "solitaire");
 const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
-const LazyHeartsScreen = withSuspense(LazyScreens.Hearts, "hearts");
-const LazySudokuScreen = withSuspense(LazyScreens.Sudoku, "sudoku");
+const LazyHeartsScreen = makePremiumScreen("hearts", withSuspense(LazyScreens.Hearts, "hearts"));
+const LazySudokuScreen = makePremiumScreen("sudoku", withSuspense(LazyScreens.Sudoku, "sudoku"));
 const LazyMahjongScreen = withSuspense(LazyScreens.Mahjong, "mahjong");
+const LazySortScreen = makePremiumScreen("sort", withSuspense(LazyScreens.Sort, "sort"));
+const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
@@ -170,17 +223,21 @@ function LobbyStack() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Home" component={HomeScreen} />
-      <HomeStack.Screen name="Game" component={GameScreen} />
+      <HomeStack.Screen name="Game" component={GuardedGameScreen} />
       <HomeStack.Screen name="Cascade" component={LazyCascadeScreen} />
       <HomeStack.Screen name="StarSwarm" component={LazyStarSwarmScreen} />
       <HomeStack.Screen name="BlackjackBetting" component={LazyBlackjackBettingScreen} />
       <HomeStack.Screen name="BlackjackTable" component={LazyBlackjackTableScreen} />
+      <HomeStack.Screen name="BlackjackVictory" component={LazyBlackjackVictoryScreen} />
+      <HomeStack.Screen name="BlackjackStats" component={LazyBlackjackStatsScreen} />
       <HomeStack.Screen name="Twenty48" component={LazyTwenty48Screen} />
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />
       <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />
       <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
+      <HomeStack.Screen name="Sort" component={LazySortScreen} />
+      <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
     </HomeStack.Navigator>
   );
@@ -199,7 +256,7 @@ function MainTabs() {
   return (
     <Tab.Navigator
       tabBar={(props) => <BottomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, tabBarPosition: "bottom" }}
     >
       <Tab.Screen name="Lobby" component={LobbyStack} />
       <Tab.Screen name="Ranks" component={LazyLeaderboardScreen} />
@@ -224,33 +281,35 @@ function AppInner() {
   useHtmlAttributes();
   return (
     <NetworkProvider>
-      <SoundProvider>
-        <ThemeProvider>
-          <CardDeckProvider>
-            <BlackjackGameProvider>
-              <HeartsRoundsProvider>
-                <YachtScorecardProvider>
-                  <Twenty48ScoreboardProvider>
-                    <SolitaireScoreboardProvider>
-                      <SudokuScoreboardProvider>
-                        <CascadeScoreboardProvider>
-                          <MahjongScoreboardProvider>
-                            <NavigationContainer>
-                              <Stack.Navigator screenOptions={{ headerShown: false }}>
-                                <Stack.Screen name="MainTabs" component={MainTabs} />
-                              </Stack.Navigator>
-                            </NavigationContainer>
-                          </MahjongScoreboardProvider>
-                        </CascadeScoreboardProvider>
-                      </SudokuScoreboardProvider>
-                    </SolitaireScoreboardProvider>
-                  </Twenty48ScoreboardProvider>
-                </YachtScorecardProvider>
-              </HeartsRoundsProvider>
-            </BlackjackGameProvider>
-          </CardDeckProvider>
-        </ThemeProvider>
-      </SoundProvider>
+      <EntitlementProvider>
+        <SoundProvider>
+          <ThemeProvider>
+            <CardDeckProvider>
+              <BlackjackGameProvider>
+                <HeartsRoundsProvider>
+                  <YachtScorecardProvider>
+                    <Twenty48ScoreboardProvider>
+                      <SolitaireScoreboardProvider>
+                        <SudokuScoreboardProvider>
+                          <CascadeScoreboardProvider>
+                            <MahjongScoreboardProvider>
+                              <NavigationContainer>
+                                <Stack.Navigator screenOptions={{ headerShown: false }}>
+                                  <Stack.Screen name="MainTabs" component={MainTabs} />
+                                </Stack.Navigator>
+                              </NavigationContainer>
+                            </MahjongScoreboardProvider>
+                          </CascadeScoreboardProvider>
+                        </SudokuScoreboardProvider>
+                      </SolitaireScoreboardProvider>
+                    </Twenty48ScoreboardProvider>
+                  </YachtScorecardProvider>
+                </HeartsRoundsProvider>
+              </BlackjackGameProvider>
+            </CardDeckProvider>
+          </ThemeProvider>
+        </SoundProvider>
+      </EntitlementProvider>
     </NetworkProvider>
   );
 }

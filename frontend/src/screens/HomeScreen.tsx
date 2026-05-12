@@ -1,5 +1,13 @@
 import React, { useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, useWindowDimensions } from "react-native";
+import {
+  Alert,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -15,12 +23,14 @@ import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import OfflineBanner from "../components/OfflineBanner";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
+import { useEntitlements } from "../entitlements/EntitlementContext";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
 
 interface GameCard {
   key: string;
+  slug: string;
   emoji: string;
   title: string;
   description: string;
@@ -41,9 +51,12 @@ export default function HomeScreen() {
     "sudoku",
     "starswarm",
     "mahjong",
+    "sort",
+    "daily_word",
     "errors",
   ]);
   const { colors } = useTheme();
+  const { canPlay } = useEntitlements();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -59,10 +72,12 @@ export default function HomeScreen() {
   // Warm lobby game chunks once Home has painted so nav doesn't show a
   // Suspense fallback on tap (issue #706). setTimeout(0) defers past the
   // current frame without the InteractionManager deprecation in RN 0.83.
+  // canPlay is stable until entitlements change, so re-running on change
+  // ensures premium chunks are prefetched as soon as a session is entitled.
   useEffect(() => {
-    const id = setTimeout(prefetchLobbyGameScreens, 0);
+    const id = setTimeout(() => prefetchLobbyGameScreens(canPlay), 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [canPlay]);
 
   async function startYacht() {
     const saved = await loadYachtGame();
@@ -73,6 +88,7 @@ export default function HomeScreen() {
   const games: GameCard[] = [
     {
       key: "yacht",
+      slug: "yacht",
       emoji: "🎲",
       title: t("yacht:game.title"),
       description: t("yacht:game.description"),
@@ -80,6 +96,7 @@ export default function HomeScreen() {
     },
     {
       key: "cascade",
+      slug: "cascade",
       emoji: "🍉",
       title: t("cascade:game.title"),
       description: t("cascade:game.description"),
@@ -87,6 +104,7 @@ export default function HomeScreen() {
     },
     {
       key: "blackjack",
+      slug: "blackjack",
       emoji: "🃏",
       title: t("blackjack:game.title"),
       description: t("blackjack:game.description"),
@@ -94,6 +112,7 @@ export default function HomeScreen() {
     },
     {
       key: "twenty48",
+      slug: "twenty48",
       emoji: "🔢",
       title: t("twenty48:game.title"),
       description: t("twenty48:game.description"),
@@ -101,6 +120,7 @@ export default function HomeScreen() {
     },
     {
       key: "solitaire",
+      slug: "solitaire",
       emoji: "♠",
       title: t("solitaire:game.title"),
       description: t("solitaire:game.description"),
@@ -108,6 +128,7 @@ export default function HomeScreen() {
     },
     {
       key: "freecell",
+      slug: "freecell",
       emoji: "🂡",
       title: t("freecell:game.title"),
       description: t("freecell:game.description"),
@@ -115,6 +136,7 @@ export default function HomeScreen() {
     },
     {
       key: "hearts",
+      slug: "hearts",
       emoji: "♥",
       title: t("hearts:game.title"),
       description: t("hearts:game.description"),
@@ -122,6 +144,7 @@ export default function HomeScreen() {
     },
     {
       key: "sudoku",
+      slug: "sudoku",
       // twenty48 already owns 🔢 in the lobby; the puzzle-piece glyph
       // keeps Sudoku visually distinct while staying puzzle-coded.
       emoji: "🧩",
@@ -131,6 +154,7 @@ export default function HomeScreen() {
     },
     {
       key: "starswarm",
+      slug: "starswarm",
       emoji: "👾",
       title: t("starswarm:game.title"),
       description: t("starswarm:game.description"),
@@ -138,10 +162,27 @@ export default function HomeScreen() {
     },
     {
       key: "mahjong",
+      slug: "mahjong",
       emoji: "🀄",
       title: t("mahjong:game.title"),
       description: t("mahjong:game.description"),
       action: () => navigation.navigate("Mahjong"),
+    },
+    {
+      key: "sort",
+      slug: "sort",
+      emoji: "🍾",
+      title: t("sort:game.title"),
+      description: t("sort:game.description"),
+      action: () => navigation.navigate("Sort"),
+    },
+    {
+      key: "daily_word",
+      slug: "daily_word",
+      emoji: "📝",
+      title: t("daily_word:game.title"),
+      description: t("daily_word:game.description"),
+      action: () => navigation.navigate("DailyWord"),
     },
   ];
 
@@ -156,6 +197,8 @@ export default function HomeScreen() {
     [t("sudoku:game.title")]: t("sudoku:game.playLabel"),
     [t("starswarm:game.title")]: t("starswarm:game.playLabel"),
     [t("mahjong:game.title")]: t("mahjong:game.playLabel"),
+    [t("sort:game.title")]: t("sort:game.playLabel"),
+    [t("daily_word:game.title")]: t("daily_word:game.playLabel"),
   };
 
   // Cycle through BC Arcade accent colors for the gradient top border on each card.
@@ -172,13 +215,19 @@ export default function HomeScreen() {
       colors.accent,
     ];
     const [gradStart, gradEnd] = gradient;
+    const isLocked = !canPlay(item.slug);
+
     return (
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
         <Pressable
           style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
-          onPress={item.action}
+          onPress={isLocked ? () => Alert.alert(t("common:home.locked.comingSoon")) : item.action}
           accessibilityRole="button"
-          accessibilityLabel={playLabels[item.title] ?? item.title}
+          accessibilityLabel={
+            isLocked
+              ? t("common:home.locked.cardLabel", { title: item.title })
+              : (playLabels[item.title] ?? item.title)
+          }
           accessibilityHint={item.description}
         >
           {/* Gradient top border */}
@@ -204,18 +253,33 @@ export default function HomeScreen() {
             {item.description}
           </Text>
 
-          {/* Play button */}
-          <LinearGradient
-            colors={[gradStart, gradEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.playBtn}
-          >
-            <Text style={[styles.playBtnText, { color: colors.textOnAccent }]}>
-              {playLabels[item.title] ?? t("common:play", "Play")}
-            </Text>
-          </LinearGradient>
+          {/* Play / Unlock button */}
+          {isLocked ? (
+            <View style={[styles.playBtn, styles.playBtnLocked, { borderColor: colors.border }]}>
+              <Text style={[styles.playBtnText, { color: colors.textMuted }]}>
+                {t("common:home.locked.buttonLabel")}
+              </Text>
+            </View>
+          ) : (
+            <LinearGradient
+              colors={[gradStart, gradEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.playBtn}
+            >
+              <Text style={[styles.playBtnText, { color: colors.textOnAccent }]}>
+                {playLabels[item.title] ?? t("common:play", "Play")}
+              </Text>
+            </LinearGradient>
+          )}
         </Pressable>
+
+        {/* Lock badge — outside Pressable to avoid overflow:hidden clipping */}
+        {isLocked && (
+          <View style={styles.lockBadge} pointerEvents="none">
+            <Text style={styles.lockEmoji}>🔒</Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -332,5 +396,16 @@ const styles = StyleSheet.create({
     fontSize: 9,
     textTransform: "uppercase",
     letterSpacing: 1,
+  },
+  playBtnLocked: {
+    borderWidth: 1,
+  },
+  lockBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+  },
+  lockEmoji: {
+    fontSize: 18,
   },
 });
