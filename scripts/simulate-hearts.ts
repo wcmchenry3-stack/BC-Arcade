@@ -228,14 +228,42 @@ function sigLabel(z: number): string {
 // CLI dispatch
 // ---------------------------------------------------------------------------
 
-const logGamesArg = process.argv.indexOf("--log-games");
-if (logGamesArg !== -1) {
-  const count = parseInt(process.argv[logGamesArg + 1] ?? "0", 10);
-  if (!count || count < 1) {
-    process.stderr.write("Usage: --log-games <N>  (N must be a positive integer)\n");
+const VALID_DIFFICULTIES = new Set<AiDifficulty>(["easy", "medium", "hard"]);
+
+function parseCount(args: string[], flag: string): number | null {
+  const idx = args.indexOf(flag);
+  if (idx === -1) return null;
+  const n = parseInt(args[idx + 1] ?? "", 10);
+  return isNaN(n) ? null : n;
+}
+
+function parseDifficulties(args: string[]): Difficulties | null {
+  const idx = args.indexOf("--difficulties");
+  if (idx === -1) return null;
+  const parts = (args[idx + 1] ?? "").split(",");
+  if (parts.length !== 4) return null;
+  for (const p of parts) {
+    if (!VALID_DIFFICULTIES.has(p as AiDifficulty)) return null;
+  }
+  return parts as unknown as Difficulties;
+}
+
+// --count N is the primary flag; --log-games N is a deprecated alias
+const count = parseCount(process.argv, "--count") ?? parseCount(process.argv, "--log-games");
+if (count !== null) {
+  if (count < 1) {
+    process.stderr.write("Error: count must be a positive integer\n");
     process.exit(1);
   }
-  const logDifficulties: Difficulties = ["medium", "medium", "medium", "medium"];
+  const difficultiesArg = parseDifficulties(process.argv);
+  if (process.argv.includes("--difficulties") && difficultiesArg === null) {
+    process.stderr.write(
+      "Error: --difficulties must be 4 comma-separated values of easy/medium/hard\n" +
+        "  Example: --difficulties easy,medium,hard,medium\n"
+    );
+    process.exit(1);
+  }
+  const logDifficulties: Difficulties = difficultiesArg ?? ["medium", "medium", "medium", "medium"];
   for (let i = 0; i < count; i++) {
     const log = simulateGameLogged(logDifficulties, i);
     process.stdout.write(JSON.stringify(log) + "\n");
