@@ -83,7 +83,7 @@ function passSafeFilter(selected: Card[]): (c: Card) => boolean {
   return (c: Card) => {
     if (selected.some((s) => s.suit === c.suit && s.rank === c.rank)) return false;
     if (c.suit === "clubs" && c.rank === 2) return false;
-    if (c.suit === "clubs" && c.rank < 6) return false;
+    if (c.suit === "clubs" && c.rank > 1 && c.rank < 6) return false;
     return true;
   };
 }
