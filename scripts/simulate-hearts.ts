@@ -18,8 +18,15 @@ import {
   selectPassCard,
   setRng,
 } from "../frontend/src/game/hearts/engine";
-import { selectCardToPlay, selectCardsToPass } from "../frontend/src/game/hearts/ai";
-import type { AiDifficulty, Card, HeartsState } from "../frontend/src/game/hearts/types";
+import {
+  selectCardToPlay,
+  selectCardsToPass,
+} from "../frontend/src/game/hearts/ai";
+import type {
+  AiDifficulty,
+  Card,
+  HeartsState,
+} from "../frontend/src/game/hearts/types";
 
 // ---------------------------------------------------------------------------
 // Simulation
@@ -38,6 +45,16 @@ interface GameResult {
 function simulateGame(difficulties: Difficulties, seed: number): GameResult {
   setRng(createSeededRng(seed));
   let state: HeartsState = dealGame(difficulties[0]); // aiDifficulty field is informational
+
+  // Accumulate hand-scoped events before dealNextHand resets them (#1539).
+  let totalMoonShots = 0;
+  let qSpadeOnHuman = 0;
+  function collectHandEvents(s: HeartsState) {
+    const ev = s.events ?? [];
+    totalMoonShots += ev.filter((e) => e.type === "moonShot").length;
+    if (ev.some((e) => e.type === "queenOfSpades" && e.takerSeat === 0))
+      qSpadeOnHuman = 1;
+  }
 
   while (state.phase !== "game_over") {
     if (state.phase === "passing") {
@@ -58,19 +75,17 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
       const card = selectCardToPlay(hand, trick, state, playerIndex, diff);
       state = playCard(state, playerIndex, card);
     } else if (state.phase === "dealing") {
+      collectHandEvents(state);
       state = dealNextHand(state);
     }
   }
-
-  const events = state.events ?? [];
-  const moonShots = events.filter((e) => e.type === "moonShot").length;
-  const qSpadeOnHuman = events.some((e) => e.type === "queenOfSpades" && e.takerSeat === 0) ? 1 : 0;
+  collectHandEvents(state); // collect the final hand's events
 
   return {
     win: state.winnerIndex === 0 ? 1 : 0,
     player0Score: state.cumulativeScores[0] ?? 0,
     handsPlayed: state.handNumber,
-    moonShots,
+    moonShots: totalMoonShots,
     qSpadeOnHuman,
   };
 }
@@ -132,12 +147,14 @@ function simulateGameLogged(difficulties: Difficulties, seed: number): GameLog {
           state = selectPassCard(state, i, card);
         }
       }
-      const handsBeforeCommit = state.playerHands.map((h) => new Set(h.map((c) => `${c.suit}:${c.rank}`)));
+      const handsBeforeCommit = state.playerHands.map(
+        (h) => new Set(h.map((c) => `${c.suit}:${c.rank}`)),
+      );
       state = commitPass(state);
       currentHand.passed = pendingPasses.map((p) => [...p]);
       for (let i = 0; i < 4; i++) {
         currentHand.received[i] = (state.playerHands[i] ?? []).filter(
-          (c) => !handsBeforeCommit[i]!.has(`${c.suit}:${c.rank}`)
+          (c) => !handsBeforeCommit[i]!.has(`${c.suit}:${c.rank}`),
         );
       }
     } else if (state.phase === "playing") {
@@ -203,7 +220,8 @@ function mean(values: number[]): number {
 }
 
 function stdDev(values: number[], avg: number): number {
-  const variance = values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
+  const variance =
+    values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
   return Math.sqrt(variance);
 }
 
@@ -249,7 +267,9 @@ function parseDifficulties(args: string[]): Difficulties | null {
 }
 
 // --count N is the primary flag; --log-games N is a deprecated alias
-const count = parseCount(process.argv, "--count") ?? parseCount(process.argv, "--log-games");
+const count =
+  parseCount(process.argv, "--count") ??
+  parseCount(process.argv, "--log-games");
 if (count !== null) {
   if (count < 1) {
     process.stderr.write("Error: count must be a positive integer\n");
@@ -259,11 +279,16 @@ if (count !== null) {
   if (process.argv.includes("--difficulties") && difficultiesArg === null) {
     process.stderr.write(
       "Error: --difficulties must be 4 comma-separated values of easy/medium/hard\n" +
-        "  Example: --difficulties easy,medium,hard,medium\n"
+        "  Example: --difficulties easy,medium,hard,medium\n",
     );
     process.exit(1);
   }
-  const logDifficulties: Difficulties = difficultiesArg ?? ["medium", "medium", "medium", "medium"];
+  const logDifficulties: Difficulties = difficultiesArg ?? [
+    "medium",
+    "medium",
+    "medium",
+    "medium",
+  ];
   for (let i = 0; i < count; i++) {
     const log = simulateGameLogged(logDifficulties, i);
     process.stdout.write(JSON.stringify(log) + "\n");
@@ -343,9 +368,15 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 
   console.log(label);
   console.log(`  Games: ${n}`);
-  console.log(`  Player 0 Win Rate: ${pct(winRate)} (95% CI: [${pct(ciLow)}, ${pct(ciHigh)}])`);
-  console.log(`  Player 0 Avg Score: ${avgScore.toFixed(1)} ± ${sdScore.toFixed(1)} (std dev)`);
-  console.log(`  Hands per Game: ${avgHands.toFixed(1)} ± ${sdHands.toFixed(1)}`);
+  console.log(
+    `  Player 0 Win Rate: ${pct(winRate)} (95% CI: [${pct(ciLow)}, ${pct(ciHigh)}])`,
+  );
+  console.log(
+    `  Player 0 Avg Score: ${avgScore.toFixed(1)} ± ${sdScore.toFixed(1)} (std dev)`,
+  );
+  console.log(
+    `  Hands per Game: ${avgHands.toFixed(1)} ± ${sdHands.toFixed(1)}`,
+  );
   console.log(`  Moon Shots (any player): ${moonPct}%`);
   console.log(`  Q♠ on Human: ${qPct}%`);
   console.log();
@@ -355,27 +386,39 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 // Interpretation
 // ---------------------------------------------------------------------------
 
-const [easyWr, easyVsMedWr, easyVsHardWr, medVs3HardWr, hardVsMedNeutralWr, medVsHardNeutralWr] =
-  batchWinRates as [number, number, number, number, number, number];
+const [
+  easyWr,
+  easyVsMedWr,
+  easyVsHardWr,
+  medVs3HardWr,
+  hardVsMedNeutralWr,
+  medVsHardNeutralWr,
+] = batchWinRates as [number, number, number, number, number, number];
 
 const zEM = zTest(easyWr, easyVsMedWr, GAMES_PER_BATCH);
 const zEH = zTest(easyWr, easyVsHardWr, GAMES_PER_BATCH);
 const zMHFull = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
 // Direct Hard vs Medium comparison: Hard (batch 5) vs Medium (batch 6) — same game, seat swapped.
-const zHvM_direct = zTest(hardVsMedNeutralWr, medVsHardNeutralWr, GAMES_PER_BATCH);
+const zHvM_direct = zTest(
+  hardVsMedNeutralWr,
+  medVsHardNeutralWr,
+  GAMES_PER_BATCH,
+);
 const check = (cond: boolean) => (cond ? "✓" : "✗");
 
 console.log("Interpretation:");
 console.log(
-  `  ${check(easyWr > 0.2 && easyWr < 0.3)} Easy baseline win rate near 25% (got ${(easyWr * 100).toFixed(1)}%)`
-);
-console.log(`  ${check(easyVsMedWr < easyWr)} Easy vs Medium: win rate drops (${sigLabel(zEM)})`);
-console.log(
-  `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`
+  `  ${check(easyWr > 0.2 && easyWr < 0.3)} Easy baseline win rate near 25% (got ${(easyWr * 100).toFixed(1)}%)`,
 );
 console.log(
-  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMHFull)} vs Easy batches)`
+  `  ${check(easyVsMedWr < easyWr)} Easy vs Medium: win rate drops (${sigLabel(zEM)})`,
 );
 console.log(
-  `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`
+  `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`,
+);
+console.log(
+  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMHFull)} vs Easy batches)`,
+);
+console.log(
+  `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`,
 );
