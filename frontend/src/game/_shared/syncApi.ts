@@ -15,6 +15,8 @@ import { Platform } from "react-native";
 
 import { getOrCreateSessionId } from "./session";
 
+const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface SyncResponse {
@@ -41,7 +43,6 @@ function resolveBaseUrl(): string {
   const raw = process.env.EXPO_PUBLIC_API_URL;
   if (raw) {
     const resolved = raw.startsWith("http") ? raw : `https://${raw}`;
-    const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
     if (!__DEV__ && !isTestBuild && isLocalhost(resolved)) {
       const msg =
         "EXPO_PUBLIC_API_URL resolves to localhost in a non-dev build (syncApi). " +
