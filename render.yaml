@@ -40,9 +40,11 @@ services:
     branch: main
     rootDir: frontend
     autoDeploy: true
-    buildCommand: npm ci && node scripts/fetch-render-env.js && npx expo export --platform web
+    buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
+      - key: APP_ENV
+        value: production
       - key: EXPO_PUBLIC_API_URL
         value: "https://games-api.buffingchi.com"
       - key: EXPO_PUBLIC_SENTRY_DSN
@@ -92,9 +94,11 @@ services:
     rootDir: frontend
     # fetch-render-env.js merges EXPO_PUBLIC_API_URL (and SENTRY_DSN if set)
     # into .env before Expo bakes them into the static bundle.
-    buildCommand: npm ci && node scripts/fetch-render-env.js && npx expo export --platform web
+    buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
+      - key: APP_ENV
+        value: staging
       - key: EXPO_PUBLIC_API_URL
         value: "https://dev-games-api.buffingchi.com"
       - key: EXPO_PUBLIC_SENTRY_DSN
