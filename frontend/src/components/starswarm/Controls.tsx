@@ -233,6 +233,8 @@ const styles = StyleSheet.create({
   pauseNewGameBtnText: {
     color: "rgba(255,255,255,0.55)",
     fontSize: 12,
+    fontWeight: "normal",
+    letterSpacing: 0,
   },
   gameOverActions: {
     position: "absolute",

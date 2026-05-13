@@ -13,7 +13,6 @@
   "score.display": "Score: {{score}}",
   "controls.chargeShotLabel": "Charge shot — hold and release to fire",
   "controls.paused": "PAUSED",
-  "controls.tapToResume": "Tap to resume",
   "controls.resume": "RESUME",
   "controls.pauseLabel": "Pause game",
   "controls.resumeLabel": "Resume game",
