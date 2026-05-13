@@ -907,7 +907,7 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
     expect([1, 13]).toContain(pick.rank); // A♠ or K♠ (non-point winners)
   });
 
-  it("plays non-Q♠ winner when forced to win a point trick with A♠+K♠+Q♠", () => {
+  it("plays non-Q♠ winner when forced to win a point trick with K♠+Q♠ (not last)", () => {
     // Hearts trick has points; spade player must win (all spades beat current winner).
     // Should prefer K♠ over Q♠.
     const hand = [c("spades", 13), c("spades", 12)];
@@ -923,6 +923,26 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
       heartsBroken: true,
     });
     // K♠ (13) and Q♠ (12) both beat 10♠; trick has points. Should play K♠ not Q♠.
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 13)); // K♠, not Q♠
+  });
+
+  it("plays non-Q♠ winner when forced to win a point trick with K♠+Q♠ (last to play)", () => {
+    // Same scenario but player 1 is last (3 cards already in trick → isLastToPlay = true).
+    const hand = [c("spades", 13), c("spades", 12)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 5), playerIndex: 0 },  // 5♠ leads
+      { card: c("hearts", 7), playerIndex: 2 },  // heart discard — pts > 0
+      { card: c("spades", 6), playerIndex: 3 },  // low spade — current winner
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 7,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+    });
+    // trick.length === 3 → isLastToPlay = true; pts = 1 (7♥). K♠ and Q♠ both beat 6♠.
     const pick = selectCardToPlay(hand, trick, state, 1, "medium");
     expect(pick).toEqual(c("spades", 13)); // K♠, not Q♠
   });

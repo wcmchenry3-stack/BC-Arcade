@@ -549,6 +549,11 @@ function chooseLeadHard(valid: Card[], seenKeys: Set<string>): Card {
   return lowest(pool) ?? valid[0]!;
 }
 
+/** Lowest card scoring 0 points, or undefined if every card in the array scores points. */
+function lowestNonPoint(cards: Card[]): Card | undefined {
+  return lowest(cards.filter((c) => cardPoints(c) === 0));
+}
+
 function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt = false): Card {
   const first = trick[0];
   if (!first) return valid[0]!;
@@ -595,9 +600,7 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
       return highest(losing) ?? valid[0]!;
     }
     // Must win a point trick — play lowest non-point winner to avoid self-dumping Q♠
-    const safeMustWin = inSuit.filter((c) => cardPoints(c) === 0);
-    if (safeMustWin.length > 0) return lowest(safeMustWin) ?? valid[0]!;
-    return lowest(inSuit) ?? valid[0]!;
+    return lowestNonPoint(inSuit) ?? lowest(inSuit) ?? valid[0]!;
   }
 
   // No points, not last — exhaust highest card that still loses (unless moon-attempt must keep Q♠)
@@ -607,9 +610,7 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
     return highest(losing) ?? valid[0]!;
   }
   // When forced to win a 0-pt trick, prefer non-point winners to avoid self-dumping Q♠
-  const safeMustWin = inSuit.filter((c) => cardPoints(c) === 0);
-  if (safeMustWin.length > 0) return lowest(safeMustWin) ?? valid[0]!;
-  return lowest(inSuit) ?? valid[0]!;
+  return lowestNonPoint(inSuit) ?? lowest(inSuit) ?? valid[0]!;
 }
 
 function chooseDiscard(valid: Card[]): Card {
