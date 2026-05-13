@@ -36,8 +36,14 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
 };
 
 // bgMusicActive should be false when the game is over so the track stops.
-export function useStarSwarmAudio(bgMusicActive: boolean, volumes?: Partial<SfxVolumes>) {
-  useBackgroundMusic(BG_KEYS as unknown as string[], bgMusicActive);
+// newGameTick should increment on every new-game start (e.g. resetTick from the screen)
+// to guarantee a fresh music session even when bgMusicActive doesn't transition false→true.
+export function useStarSwarmAudio(
+  bgMusicActive: boolean,
+  volumes?: Partial<SfxVolumes>,
+  newGameTick?: number
+) {
+  useBackgroundMusic(BG_KEYS as unknown as string[], bgMusicActive, newGameTick);
 
   const v = { ...DEFAULT_SFX_VOLUMES, ...volumes };
 

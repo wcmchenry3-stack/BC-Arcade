@@ -94,7 +94,7 @@ export default function StarSwarmScreen() {
     playChallengingStage,
     playBonusLife,
     playPerfect,
-  } = useStarSwarmAudio(phase !== "GameOver", devVolumes);
+  } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);

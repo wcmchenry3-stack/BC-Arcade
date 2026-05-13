@@ -7,7 +7,18 @@ const BG_VOLUME = 0.2;
 
 // Picks a random track from keys on each active→true transition (new game session).
 // Volume is kept low (BG_VOLUME) to sit behind SFX.
-export function useBackgroundMusic(keys: SoundKey[], active: boolean): void {
+//
+// newGameTick: increment this on every new-game start (e.g. resetTick from the parent
+// screen) to guarantee a fresh session even when active stays true (e.g. new game
+// started from the pause screen) or when the active false→true transition misfires on
+// some native audio sessions.  The [newGameTick] effect runs before [active] so that
+// when both fire in the same React commit the [active] resume-branch plays the track
+// that [newGameTick] already started rather than launching a second session.
+export function useBackgroundMusic(
+  keys: SoundKey[],
+  active: boolean,
+  newGameTick?: number
+): void {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
   const mutedRef = useRef(muted);
@@ -22,6 +33,26 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean): void {
     keysRef.current = keys;
   }, [keys]);
 
+  // Force a new session on every new-game tick.  Declared before [active] so that
+  // prevActiveRef is updated to the incoming active value before [active] reads it —
+  // this causes [active] to see wasActive === true (resume path) rather than
+  // wasActive === false (new-session path), preventing a redundant second session.
+  useEffect(() => {
+    if (newGameTick == null || newGameTick === 0) return;
+    // Squash the pending active transition so [active] takes the resume path.
+    prevActiveRef.current = active;
+    if (!active) {
+      try {
+        playerRef.current?.remove();
+      } catch {}
+      playerRef.current = null;
+      return;
+    }
+    pickAndPlay(playerRef, keysRef, mutedRef);
+    // active intentionally omitted: we read its value at call-time when newGameTick fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newGameTick]);
+
   // React to active changing: pause on false, start new track on false→true.
   useEffect(() => {
     const wasActive = prevActiveRef.current;
@@ -33,7 +64,7 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean): void {
     }
 
     if (wasActive === true) {
-      // Resuming (e.g. unpause) — continue the existing track if not muted.
+      // Resuming (e.g. unpause) or continuing after a newGameTick session — play existing.
       if (!mutedRef.current && playerRef.current) {
         try {
           playerRef.current.play();
@@ -45,28 +76,7 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean): void {
     }
 
     // New session (null→true on mount, or false→true after game over): pick a new track.
-    playerRef.current?.remove();
-
-    const currentKeys = keysRef.current;
-    const key = currentKeys[Math.floor(Math.random() * currentKeys.length)];
-    const source = key != null ? SOUND_REGISTRY[key] : undefined;
-    if (!source) {
-      playerRef.current = null;
-      return;
-    }
-
-    const player = createAudioPlayer(source);
-    player.loop = true;
-    player.volume = BG_VOLUME;
-    playerRef.current = player;
-
-    if (!mutedRef.current) {
-      try {
-        player.play();
-      } catch {
-        // web AudioContext suspended — fail silently
-      }
-    }
+    pickAndPlay(playerRef, keysRef, mutedRef);
   }, [active]);
 
   // React to mute toggle independently of active.
@@ -95,4 +105,33 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean): void {
       playerRef.current = null;
     };
   }, []);
+}
+
+function pickAndPlay(
+  playerRef: { current: AudioPlayer | null },
+  keysRef: { current: SoundKey[] },
+  mutedRef: { current: boolean }
+): void {
+  try {
+    playerRef.current?.remove();
+  } catch {}
+  playerRef.current = null;
+
+  const currentKeys = keysRef.current;
+  const key = currentKeys[Math.floor(Math.random() * currentKeys.length)];
+  const source = key != null ? SOUND_REGISTRY[key] : undefined;
+  if (!source) return;
+
+  const player = createAudioPlayer(source);
+  player.loop = true;
+  player.volume = BG_VOLUME;
+  playerRef.current = player;
+
+  if (!mutedRef.current) {
+    try {
+      player.play();
+    } catch {
+      // web AudioContext suspended — fail silently
+    }
+  }
 }
