@@ -39,9 +39,13 @@ export async function loadGame(): Promise<HeartsState | null> {
       p.cumulativeScores.length !== 4 ||
       !Array.isArray(p.handScores) ||
       p.handScores.length !== 4 ||
+      !p.handScores.every((v) => typeof v === "number" && v >= 0 && v <= 26) ||
       !Array.isArray(p.scoreHistory) ||
       !p.scoreHistory.every(
-        (row) => Array.isArray(row) && row.length === 4 && row.every((v) => typeof v === "number")
+        (row) =>
+          Array.isArray(row) &&
+          row.length === 4 &&
+          row.every((v) => typeof v === "number" && v >= 0 && v <= 26)
       ) ||
       !Array.isArray(p.currentTrick) ||
       !Array.isArray(p.wonCards) ||

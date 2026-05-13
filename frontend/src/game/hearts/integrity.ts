@@ -47,7 +47,7 @@ interface Finding {
  */
 export function checkHeartsIntegrity(state: HeartsState): readonly Finding[] {
   const findings: Finding[] = [];
-  const { scoreHistory, cumulativeScores, handNumber, phase } = state;
+  const { scoreHistory, cumulativeScores, handNumber, phase, handScores } = state;
 
   // ── Per-round checks ────────────────────────────────────────────────────
   for (let r = 0; r < scoreHistory.length; r++) {
@@ -72,7 +72,16 @@ export function checkHeartsIntegrity(state: HeartsState): readonly Finding[] {
           findings.push({
             key: "round_player_over_26",
             message: "hearts.integrity: per-player round score > 26",
-            extra: { round: r + 1, playerIndex: i, score: v, handNumber },
+            // handScores reflects the current hand's accumulated points; when the
+            // corrupt row is the most-recently completed hand (before dealNextHand
+            // resets it), this captures the raw accumulator that produced the bad delta.
+            extra: {
+              round: r + 1,
+              playerIndex: i,
+              score: v,
+              handNumber,
+              handScores: [...(handScores ?? [])],
+            },
           });
           break; // one per round
         }
