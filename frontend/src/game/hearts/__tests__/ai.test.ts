@@ -885,6 +885,50 @@ describe("chooseFollow — Q♠ priority over K♠ when both lose (#1510)", () =
 });
 
 // ---------------------------------------------------------------------------
+// Regression: protected Q♠ (A♠+K♠+Q♠) must-win — never self-dump Q♠
+// ---------------------------------------------------------------------------
+describe("chooseFollow — protected Q♠ never self-taken when non-point winner available", () => {
+  it("plays K♠ not Q♠ when A♠+K♠+Q♠ all win a 0-pt trick (not last to play)", () => {
+    // Low spade leads; A♠, K♠, Q♠ all win. Should play K♠ (lowest non-point winner), not Q♠.
+    const hand = [c("spades", 1), c("spades", 13), c("spades", 12), c("clubs", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 4), playerIndex: 0 }, // 4♠ leads
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+    });
+    // Player 1 follows; players 2 and 3 still to play → not last
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).not.toEqual(c("spades", 12)); // Q♠ must not be played
+    expect(pick.suit).toBe("spades"); // must follow suit
+    expect([1, 13]).toContain(pick.rank); // A♠ or K♠ (non-point winners)
+  });
+
+  it("plays non-Q♠ winner when forced to win a point trick with A♠+K♠+Q♠", () => {
+    // Hearts trick has points; spade player must win (all spades beat current winner).
+    // Should prefer K♠ over Q♠.
+    const hand = [c("spades", 13), c("spades", 12)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 10), playerIndex: 0 }, // 10♠ leads
+      { card: c("hearts", 3), playerIndex: 2 },  // heart discard — pts > 0
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+    });
+    // K♠ (13) and Q♠ (12) both beat 10♠; trick has points. Should play K♠ not Q♠.
+    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    expect(pick).toEqual(c("spades", 13)); // K♠, not Q♠
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Regression: #1501 — medium AI avoids leading K♠/A♠ when Q♠ still live
 // ---------------------------------------------------------------------------
 describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {

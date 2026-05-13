@@ -594,7 +594,9 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
       if (qSpade) return qSpade;
       return highest(losing) ?? valid[0]!;
     }
-    // Must win — play lowest to minimize damage
+    // Must win a point trick — play lowest non-point winner to avoid self-dumping Q♠
+    const safeMustWin = inSuit.filter((c) => cardPoints(c) === 0);
+    if (safeMustWin.length > 0) return lowest(safeMustWin) ?? valid[0]!;
     return lowest(inSuit) ?? valid[0]!;
   }
 
@@ -604,6 +606,9 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
     if (qSpade) return qSpade;
     return highest(losing) ?? valid[0]!;
   }
+  // When forced to win a 0-pt trick, prefer non-point winners to avoid self-dumping Q♠
+  const safeMustWin = inSuit.filter((c) => cardPoints(c) === 0);
+  if (safeMustWin.length > 0) return lowest(safeMustWin) ?? valid[0]!;
   return lowest(inSuit) ?? valid[0]!;
 }
 
