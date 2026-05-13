@@ -40,6 +40,10 @@ export class ApiError extends Error {
  * a clear message instead of pretending to work and then breaking on every
  * score submit.
  */
+// Baked in at export time — true only in E2E test builds. Used to suppress
+// Sentry noise from intentional localhost API usage during tests.
+const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
+
 function isLocalhost(url: string): boolean {
   try {
     const { hostname } = new URL(url);
@@ -53,7 +57,6 @@ function resolveBaseUrl(): string {
   const raw = process.env.EXPO_PUBLIC_API_URL;
   if (raw) {
     const resolved = raw.startsWith("http") ? raw : `https://${raw}`;
-    const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
     if (!__DEV__ && isLocalhost(resolved)) {
       const msg = isTestBuild
         ? "EXPO_PUBLIC_TEST_HOOKS=1 is set and EXPO_PUBLIC_API_URL resolves to localhost. " +
@@ -61,15 +64,14 @@ function resolveBaseUrl(): string {
         : "EXPO_PUBLIC_API_URL resolves to localhost in a non-dev build. " +
           "This means the env var was set to a local address at bundle time. " +
           "Set EXPO_PUBLIC_API_URL to the production API URL on the Render service.";
-      Sentry.captureMessage(msg, {
-        level: isTestBuild ? "warning" : "fatal",
-        tags: {
-          subsystem: "httpClient",
-          issue: isTestBuild ? "test-hooks-localhost" : "localhost-in-prod",
-        },
-        extra: { raw, isTestBuild },
-      });
-      if (!isTestBuild) {
+      if (isTestBuild) {
+        console.warn("[httpClient]", msg);
+      } else {
+        Sentry.captureMessage(msg, {
+          level: "fatal",
+          tags: { subsystem: "httpClient", issue: "localhost-in-prod" },
+          extra: { raw },
+        });
         throw new Error(msg);
       }
     }
@@ -175,7 +177,7 @@ export function createGameClient(options: HttpClientOptions) {
         // In dev mode, network failures against localhost are expected
         // (backend not running) — skip Sentry to avoid flooding the
         // dashboard with dev noise (#571).
-        if (!__DEV__) {
+        if (!__DEV__ && !isTestBuild) {
           Sentry.captureMessage(`API ${apiTag} network failure: ${method} ${path}`, {
             level: "warning",
             tags: { api: apiTag, errorType: "network" },
