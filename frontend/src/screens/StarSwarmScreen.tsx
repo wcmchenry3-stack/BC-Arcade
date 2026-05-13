@@ -40,8 +40,11 @@ import {
   savePausedState,
   clearSavedPausedState,
 } from "../game/starswarm/pauseStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
 import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+
+const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
@@ -71,11 +74,23 @@ export default function StarSwarmScreen() {
   const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
   const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
 
-  // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session)
+  // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
+  // Defaults to Ensign for new users; AsyncStorage load below promotes it to the last-played tier.
   const [difficulty, setDifficulty] = useState<DifficultyTier>(
-    savedPauseRef.current?.difficulty ?? "LieutenantJG"
+    savedPauseRef.current?.difficulty ?? "Ensign"
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
+
+  // On mount, restore the last-used difficulty from local storage (skipped when a saved-pause
+  // session supplies its own difficulty, which takes precedence).
+  useEffect(() => {
+    if (savedPauseRef.current !== null) return;
+    AsyncStorage.getItem(DIFFICULTY_STORAGE_KEY).then((stored) => {
+      if (stored !== null && (DIFFICULTY_TIERS as readonly string[]).includes(stored)) {
+        setDifficulty(stored as DifficultyTier);
+      }
+    });
+  }, []);
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -166,6 +181,7 @@ export default function StarSwarmScreen() {
 
   // Confirm difficulty selection and start the game
   const handleConfirmDifficulty = useCallback(() => {
+    AsyncStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty).catch(() => {});
     clearSavedPausedState();
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
@@ -173,7 +189,7 @@ export default function StarSwarmScreen() {
     setPhase("SwoopIn");
     setIsPaused(false);
     setResetTick((t) => t + 1);
-  }, []);
+  }, [difficulty]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);
