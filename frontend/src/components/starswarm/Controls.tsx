@@ -153,7 +153,9 @@ export default function Controls({
               accessibilityLabel={t("controls.newGameFromPauseLabel")}
               accessibilityRole="button"
             >
-              <Text style={[styles.newGameBtnText, styles.pauseNewGameBtnText]}>{t("controls.newGameFromPause")}</Text>
+              <Text style={[styles.newGameBtnText, styles.pauseNewGameBtnText]}>
+                {t("controls.newGameFromPause")}
+              </Text>
             </Pressable>
           </View>
         )}
