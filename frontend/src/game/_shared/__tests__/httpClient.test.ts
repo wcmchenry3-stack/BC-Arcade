@@ -83,6 +83,22 @@ describe("httpClient — BASE_URL configuration", () => {
     }
   });
 
+  it("does not throw and suppresses Sentry when EXPO_PUBLIC_TEST_HOOKS=1 and localhost URL", () => {
+    process.env.EXPO_PUBLIC_API_URL = "http://localhost:8000";
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    try {
+      expect(() => loadClient()).not.toThrow();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    } finally {
+      g.__DEV__ = originalDev;
+    }
+  });
+
   it("throws at module load when EXPO_PUBLIC_API_URL is not set in a non-dev build (#511)", () => {
     delete process.env.EXPO_PUBLIC_API_URL;
     const g = globalThis as { __DEV__?: boolean };
@@ -297,6 +313,25 @@ describe("httpClient — Sentry reporting (#513)", () => {
     // __DEV__ is true in the test environment — network failures are
     // suppressed to avoid flooding Sentry with dev-mode localhost noise.
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("network failure skips captureMessage in test builds (EXPO_PUBLIC_TEST_HOOKS=1)", async () => {
+    process.env.EXPO_PUBLIC_API_URL = "http://localhost:8000";
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    try {
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toThrow("Failed to fetch");
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    } finally {
+      g.__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
   });
 
   it("genuine unexpected JS error (non-Api, non-Type) is captured as an exception with stack", async () => {

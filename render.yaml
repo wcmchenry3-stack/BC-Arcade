@@ -43,6 +43,9 @@ services:
     buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
+      # APP_ENV is read by check-build-env.js from process.env (not from the
+      # .env file that fetch-render-env.js writes). Must be set here so the
+      # isProduction guard in the script fires during the Render build.
       - key: APP_ENV
         value: production
       - key: EXPO_PUBLIC_API_URL
@@ -97,6 +100,9 @@ services:
     buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
+      # APP_ENV is read by check-build-env.js from process.env (not from the
+      # .env file that fetch-render-env.js writes). Must be set here so the
+      # isProduction guard in the script fires during the Render build.
       - key: APP_ENV
         value: staging
       - key: EXPO_PUBLIC_API_URL
