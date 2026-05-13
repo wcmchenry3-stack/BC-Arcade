@@ -145,7 +145,7 @@ export default function Controls({
               accessibilityLabel={t("controls.resumeLabel")}
               accessibilityRole="button"
             >
-              <Text style={styles.pauseHint}>{t("controls.tapToResume")}</Text>
+              <Text style={styles.pauseResumeBtnText}>{t("controls.resume")}</Text>
             </Pressable>
             <Pressable
               style={[styles.newGameBtn, styles.pauseNewGameBtn]}
@@ -153,7 +153,7 @@ export default function Controls({
               accessibilityLabel={t("controls.newGameFromPauseLabel")}
               accessibilityRole="button"
             >
-              <Text style={styles.newGameBtnText}>{t("controls.newGameFromPause")}</Text>
+              <Text style={[styles.newGameBtnText, styles.pauseNewGameBtnText]}>{t("controls.newGameFromPause")}</Text>
             </Pressable>
           </View>
         )}
@@ -210,16 +210,29 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   pauseResumeBtn: {
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 24,
+    marginTop: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: "#00ffcc",
   },
-  pauseHint: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 13,
+  pauseResumeBtnText: {
+    color: "#000010",
+    fontWeight: "bold",
+    fontSize: 16,
+    letterSpacing: 1,
   },
   pauseNewGameBtn: {
-    marginTop: 24,
+    marginTop: 20,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+  },
+  pauseNewGameBtnText: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
   },
   gameOverActions: {
     position: "absolute",
