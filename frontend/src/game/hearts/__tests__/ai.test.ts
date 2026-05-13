@@ -913,7 +913,7 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
     const hand = [c("spades", 13), c("spades", 12)];
     const trick: TrickCard[] = [
       { card: c("spades", 10), playerIndex: 0 }, // 10♠ leads
-      { card: c("hearts", 3), playerIndex: 2 },  // heart discard — pts > 0
+      { card: c("hearts", 3), playerIndex: 2 }, // heart discard — pts > 0
     ];
     const state = mkState({
       playerHands: [[], hand, [], []],
@@ -931,9 +931,9 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
     // Same scenario but player 1 is last (3 cards already in trick → isLastToPlay = true).
     const hand = [c("spades", 13), c("spades", 12)];
     const trick: TrickCard[] = [
-      { card: c("spades", 5), playerIndex: 0 },  // 5♠ leads
-      { card: c("hearts", 7), playerIndex: 2 },  // heart discard — pts > 0
-      { card: c("spades", 6), playerIndex: 3 },  // low spade — current winner
+      { card: c("spades", 5), playerIndex: 0 }, // 5♠ leads
+      { card: c("hearts", 7), playerIndex: 2 }, // heart discard — pts > 0
+      { card: c("spades", 6), playerIndex: 3 }, // low spade — current winner
     ];
     const state = mkState({
       playerHands: [[], hand, [], []],
