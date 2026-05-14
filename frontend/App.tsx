@@ -53,6 +53,7 @@ if (!dsn) {
   try {
     Sentry.init({
       dsn,
+      environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
       sendDefaultPii: true,
     });
     installSentryConsoleErrorCapture();
