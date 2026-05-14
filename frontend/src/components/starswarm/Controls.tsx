@@ -70,11 +70,7 @@ export default function Controls({
       const hw = PLAYER_W / 2;
       const rawX = shipXAtDragStartRef.current + e.translationX / scale;
       const newX = clamp(rawX, hw, CANVAS_W - hw);
-      // When the finger overshoots an edge, rawX diverges from newX. Slide
-      // shipXAtDragStartRef so that for the current translationX the formula
-      // yields newX exactly — the ship then responds immediately when the user
-      // reverses direction instead of requiring them to drag back through the
-      // accumulated overshoot first (the "rope" / "sticky edge" feeling).
+      // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
       if (rawX !== newX) {
         shipXAtDragStartRef.current = newX - e.translationX / scale;
       }

@@ -1,15 +1,3 @@
-/**
- * Tests for the Controls.tsx drag movement logic.
- *
- * The core formula (onChange handler) is:
- *   rawX  = shipXAtDragStart + translationX / scale
- *   newX  = clamp(rawX, hw, CANVAS_W - hw)
- *   if rawX !== newX → shipXAtDragStart = newX - translationX / scale
- *
- * This file exercises that logic as a pure function so we can catch
- * regressions without needing a mounted React component.
- */
-
 import { CANVAS_W, PLAYER_W } from "../engine";
 
 const hw = PLAYER_W / 2; // 17
@@ -20,10 +8,6 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/**
- * Mirrors the onChange logic in Controls.tsx.
- * Returns the new ship position and the updated drag-start reference.
- */
 function applyDrag(
   shipXAtDragStart: number,
   translationX: number,
@@ -97,24 +81,18 @@ describe("applyDrag — right-edge overshoot", () => {
     expect(newX).toBeCloseTo(MAX_X - 1 / scale, 5);
   });
 
-  it("without the fix, 50px overshoot would create a ~33 canvas-unit dead zone", () => {
-    // Demonstrate what OLD behaviour looked like: nextDragStart unchanged at startX.
-    // Reversal would need to undo 50px of translationX before ship moves left.
-    const translationX_overshoot = 50;
-    // OLD: nextDragStart stays at startX (340)
-    const oldNextDragStart = startX;
-    // After reversing 49px (barely back, translationX = 1):
-    const rawXOld = oldNextDragStart + 1 / scale;
+  it("without the fix, reversing 1px after a 50px overshoot does not move the ship", () => {
+    // OLD behaviour: nextDragStart stays at startX (340) after an overshoot.
+    // Peak overshoot: translationX = 50. User reverses 1 screen px → translationX = 49.
+    const rawXOld = startX + 49 / scale; // 340 + 32.67 = 372.67 → still past MAX_X
     const newXOld = clamp(rawXOld, MIN_X, MAX_X);
-    // Ship is STILL stuck at MAX_X — hasn't moved yet
-    expect(newXOld).toBe(MAX_X);
-    // After reversing all 50px (translationX = 0):
-    const rawXOld2 = oldNextDragStart + 0 / scale;
+    expect(newXOld).toBe(MAX_X); // ship is still stuck at the edge
+
+    // Only after reversing far enough that rawX drops below MAX_X does the ship move.
+    // translationX = 0 → rawX = 340, which is below 343, so the ship finally leaves the edge.
+    const rawXOld2 = startX + 0 / scale;
     const newXOld2 = clamp(rawXOld2, MIN_X, MAX_X);
-    // Ship still at startX, not MAX_X — but translationX had to reach 0 first
-    expect(newXOld2).toBe(startX);
-    // Proof: 50px of reversal was required before ship moved. With our fix, 0px needed.
-    expect(translationX_overshoot).toBeGreaterThan(0);
+    expect(newXOld2).toBe(startX); // ship jumps back to startX, not MAX_X
   });
 });
 
@@ -153,8 +131,7 @@ describe("applyDrag — sustained right-edge press", () => {
   const scale = 1;
 
   it("ship stays at MAX_X across many increasing-translationX events", () => {
-    let dragStart = MAX_X - 5; // 338, close to edge
-    let nextDragStart = dragStart;
+    let nextDragStart = MAX_X; // ship starts at the edge
 
     for (let tx = 0; tx <= 200; tx += 5) {
       const { newX, nextDragStart: nd } = applyDrag(nextDragStart, tx, scale);
@@ -164,11 +141,11 @@ describe("applyDrag — sustained right-edge press", () => {
   });
 
   it("after sustained press, reversal by 1 moves the ship left by 1", () => {
-    let nextDragStart = MAX_X - 5;
+    let nextDragStart = MAX_X; // ship starts at the edge
     for (let tx = 0; tx <= 200; tx += 5) {
       ({ nextDragStart } = applyDrag(nextDragStart, tx, scale));
     }
-    // translationX drops by 1 from last value (201 → 200)
+    // translationX drops by 1 from last value (200 → 199)
     const { newX } = applyDrag(nextDragStart, 199, scale);
     expect(newX).toBeCloseTo(MAX_X - 1, 5);
   });
