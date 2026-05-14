@@ -84,6 +84,11 @@ export default function StarSwarmScreen() {
     }));
   }, []);
 
+  const scoreRef = useRef(0);
+  const highScoreRef = useRef(0);
+  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
+  const [resetTick, setResetTick] = useState(0);
+
   const {
     playLaser,
     playPowerUpCollect,
@@ -95,11 +100,6 @@ export default function StarSwarmScreen() {
     playBonusLife,
     playPerfect,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
-
-  const scoreRef = useRef(0);
-  const highScoreRef = useRef(0);
-  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
-  const [resetTick, setResetTick] = useState(0);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
