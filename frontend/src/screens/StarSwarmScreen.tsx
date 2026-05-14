@@ -85,11 +85,13 @@ export default function StarSwarmScreen() {
   // session supplies its own difficulty, which takes precedence).
   useEffect(() => {
     if (savedPauseRef.current !== null) return;
-    AsyncStorage.getItem(DIFFICULTY_STORAGE_KEY).then((stored) => {
-      if (stored !== null && (DIFFICULTY_TIERS as readonly string[]).includes(stored)) {
-        setDifficulty(stored as DifficultyTier);
-      }
-    });
+    AsyncStorage.getItem(DIFFICULTY_STORAGE_KEY)
+      .then((stored) => {
+        if (stored !== null && (DIFFICULTY_TIERS as readonly string[]).includes(stored)) {
+          setDifficulty(stored as DifficultyTier);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
