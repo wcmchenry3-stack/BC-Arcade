@@ -245,6 +245,7 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: http://localhost:8000
           EXPO_PUBLIC_TEST_HOOKS: "1"
+          EXPO_PUBLIC_SENTRY_DSN: ""
 
       - name: Install E2E deps
         run: npm ci
