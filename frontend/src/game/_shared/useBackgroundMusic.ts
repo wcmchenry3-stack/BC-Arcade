@@ -14,11 +14,7 @@ const BG_VOLUME = 0.2;
 // some native audio sessions.  The [newGameTick] effect runs before [active] so that
 // when both fire in the same React commit the [active] resume-branch plays the track
 // that [newGameTick] already started rather than launching a second session.
-export function useBackgroundMusic(
-  keys: SoundKey[],
-  active: boolean,
-  newGameTick?: number
-): void {
+export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTick?: number): void {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
   const mutedRef = useRef(muted);
