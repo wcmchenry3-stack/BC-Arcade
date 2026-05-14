@@ -67,10 +67,13 @@ export default function Controls({
     })
     .onChange((e) => {
       if (!activeDragRef.current) return;
-      // newX = shipX_at_touch_start + (currentTouchX - touchStartX)
-      // Clamp to engine's half-width margins so playerXRef never diverges from the rendered position.
       const hw = PLAYER_W / 2;
-      const newX = clamp(shipXAtDragStartRef.current + e.translationX / scale, hw, CANVAS_W - hw);
+      const rawX = shipXAtDragStartRef.current + e.translationX / scale;
+      const newX = clamp(rawX, hw, CANVAS_W - hw);
+      // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
+      if (rawX !== newX) {
+        shipXAtDragStartRef.current = newX - e.translationX / scale;
+      }
       playerXRef.current = newX;
       canvasRef.current?.setPlayerX(newX);
     })
