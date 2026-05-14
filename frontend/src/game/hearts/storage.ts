@@ -53,6 +53,15 @@ export async function loadGame(): Promise<HeartsState | null> {
       typeof p.heartsBroken !== "boolean" ||
       typeof p.isComplete !== "boolean"
     ) {
+      Sentry.captureMessage("hearts.storage: invalid game state, discarding", {
+        level: "warning",
+        tags: { subsystem: "hearts.storage", op: "load" },
+        extra: {
+          _v: p._v,
+          handScores: p.handScores,
+          scoreHistoryLength: Array.isArray(p.scoreHistory) ? p.scoreHistory.length : null,
+        },
+      });
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
