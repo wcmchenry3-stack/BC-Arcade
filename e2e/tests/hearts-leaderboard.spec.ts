@@ -13,20 +13,26 @@
 import { test, expect } from "./fixtures";
 import { mockHeartsApi, injectHeartsState } from "./helpers/hearts";
 
-// Player 0 wins with 45 points (lowest). Player 1 triggers game-over at 102.
+// Player 0 wins with 45 points (lowest). Player 1 triggers game-over at 100.
+// scoreHistory rows must be valid: each value in [0,26], each row sums to 26
+// (normal hand) or 78 with exactly one 0 and three 26s (moon shot). Column
+// sums must equal cumulativeScores. P0 shoots the moon twice (rows 0–1) so
+// their delta stays 0 while others accumulate; normal hands fill the rest.
 const GAME_OVER_STATE = {
   _v: 2,
   phase: "game_over",
-  handNumber: 5,
+  handNumber: 7,
   passDirection: "none",
   playerHands: [[], [], [], []],
-  cumulativeScores: [45, 102, 78, 65],
+  cumulativeScores: [45, 100, 63, 52],
   handScores: [0, 0, 0, 0],
   scoreHistory: [
-    [9, 26, 16, 10],
-    [10, 23, 14, 14],
-    [12, 27, 18, 17],
-    [14, 26, 30, 24],
+    [0, 26, 26, 26], // P0 shoots moon — sum 78
+    [0, 26, 26, 26], // P0 shoots moon — sum 78
+    [12, 12, 2, 0], // normal — sum 26
+    [12, 12, 2, 0], // normal — sum 26
+    [12, 12, 2, 0], // normal — sum 26
+    [9, 12, 5, 0], // normal — sum 26
   ],
   passSelections: [[], [], [], []],
   passingComplete: true,
