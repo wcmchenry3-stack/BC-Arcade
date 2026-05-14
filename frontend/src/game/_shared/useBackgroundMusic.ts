@@ -33,18 +33,22 @@ export function useBackgroundMusic(
     keysRef.current = keys;
   }, [keys]);
 
-  // Force a new session on every new-game tick.  Declared before [active] so that
-  // prevActiveRef is updated to the incoming active value before [active] reads it —
-  // this causes [active] to see wasActive === true (resume path) rather than
-  // wasActive === false (new-session path), preventing a redundant second session.
+  // Force a new session on every new-game tick.
+  // IMPORTANT: keep this effect declared before [active]. When both deps change in the
+  // same commit React flushes effects in declaration order, so this runs first and sets
+  // prevActiveRef.current = active before [active] reads it. That causes [active] to see
+  // wasActive === active (no transition) and take the resume path rather than launching
+  // a redundant second session. Moving this effect after [active] would break that guarantee.
   useEffect(() => {
-    if (newGameTick == null || newGameTick === 0) return;
-    // Squash the pending active transition so [active] takes the resume path.
+    if (newGameTick == null || newGameTick <= 0) return;
+    // Sync prevActiveRef now so [active] (running next in this flush) skips new-session logic.
     prevActiveRef.current = active;
     if (!active) {
       try {
         playerRef.current?.remove();
-      } catch {}
+      } catch {
+        // audio cleanup, failure is safe
+      }
       playerRef.current = null;
       return;
     }
@@ -114,7 +118,9 @@ function pickAndPlay(
 ): void {
   try {
     playerRef.current?.remove();
-  } catch {}
+  } catch {
+    // audio cleanup, failure is safe
+  }
   playerRef.current = null;
 
   const currentKeys = keysRef.current;

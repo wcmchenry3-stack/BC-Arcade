@@ -116,6 +116,13 @@ describe("useBackgroundMusic — active flag", () => {
   });
 });
 
+describe("useBackgroundMusic — empty / missing keys", () => {
+  it("does not crash and does not play when keys array is empty", () => {
+    renderHook(() => useBackgroundMusic([], true), { wrapper });
+    expect(mockPlay).not.toHaveBeenCalled();
+  });
+});
+
 describe("useBackgroundMusic — newGameTick", () => {
   it("starts a new session when newGameTick increments while active", () => {
     const { rerender } = renderHook(
