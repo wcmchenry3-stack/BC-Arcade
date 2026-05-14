@@ -97,6 +97,20 @@ describe("hearts storage", () => {
     expect(loaded?.aiDifficulty).toBe("hard");
   });
 
+  it("loadGame rejects handScores with out-of-range values (#1540)", async () => {
+    const bad = { ...dealGame(), handScores: [27, 0, 0, 0] };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
+    expect(await loadGame()).toBeNull();
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
+  });
+
+  it("loadGame rejects scoreHistory rows with out-of-range values (#1540)", async () => {
+    const bad = { ...dealGame(), scoreHistory: [[27, 0, 0, 0]] };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
+    expect(await loadGame()).toBeNull();
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
+  });
+
   it("clearGame removes the storage key", async () => {
     await clearGame();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
