@@ -298,3 +298,62 @@ class TestDuplicateNames:
         scores = client.get("/cascade/scores", headers=SESSION_HEADERS).json()["scores"]
         alice_scores = [s["score"] for s in scores if s["player_name"] == "Alice"]
         assert alice_scores == [200, 100]
+
+
+# ---------------------------------------------------------------------------
+# Error paths
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPaths:
+    def test_no_final_score_returns_400(self):
+        """PATCH /cascade/score fails with 400 when the game has no final_score."""
+        gid = _create_game()
+        # Deliberately skip _complete_game so final_score stays None.
+        res = _set_name(gid, "Alice")
+        assert res.status_code == 400
+        body = res.json()
+        assert "detail" in body
+        assert body["detail"] != "Internal Server Error"
+
+    async def test_db_commit_failure_returns_structured_500(self, monkeypatch):
+        """A SQLAlchemy error during db.commit() returns a structured 500, not a bare traceback."""
+        from sqlalchemy.exc import SQLAlchemyError
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        gid = _create_game()
+        _complete_game(gid, 500)
+
+        async def _fail_commit(self):
+            raise SQLAlchemyError("simulated commit failure")
+
+        monkeypatch.setattr(AsyncSession, "commit", _fail_commit)
+        res = _set_name(gid, "Alice")
+        assert res.status_code == 500
+        body = res.json()
+        assert "detail" in body
+        assert body["detail"] != "Internal Server Error"
+
+    async def test_rank_query_failure_returns_structured_500(self, monkeypatch):
+        """A SQLAlchemy error during the rank SELECT returns a structured 500."""
+        from sqlalchemy.exc import SQLAlchemyError
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        gid = _create_game()
+        _complete_game(gid, 500)
+
+        original_execute = AsyncSession.execute
+
+        async def _execute_fail_on_count(self, *args, **kwargs):
+            stmt = args[0] if args else None
+            # Identify the rank query by presence of COUNT in the compiled SQL.
+            if stmt is not None and "count" in str(stmt).lower():
+                raise SQLAlchemyError("simulated rank query failure")
+            return await original_execute(self, *args, **kwargs)
+
+        monkeypatch.setattr(AsyncSession, "execute", _execute_fail_on_count)
+        res = _set_name(gid, "Alice")
+        assert res.status_code == 500
+        body = res.json()
+        assert "detail" in body
+        assert body["detail"] != "Internal Server Error"
