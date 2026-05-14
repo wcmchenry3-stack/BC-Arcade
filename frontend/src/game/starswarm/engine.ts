@@ -1762,6 +1762,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
         phase: "WaveClear",
         phaseTimer: CHALLENGING_CLEAR_PAUSE,
         challengingPerfect: perfect,
+        bombFlashTimer: 0,
       };
     }
     return state;
@@ -1777,6 +1778,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
         score: state.score + waveClearBonus,
         phase: "WaveClear",
         phaseTimer: WAVE_CLEAR_PAUSE,
+        bombFlashTimer: 0,
       };
     }
     return state;
