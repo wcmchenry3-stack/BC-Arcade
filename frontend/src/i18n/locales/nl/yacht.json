@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "Jouw beurt",
   "vsMode.computerTurn": "Computer is aan beurt",
   "gameOver.youWin": "Jij wint!",
-  "gameOver.computerWins": "Computer wint!"
+  "gameOver.computerWins": "Computer wint!",
+  "gameOver.tie": "Gelijkspel!",
+  "vsMode.vs": "vs"
 }

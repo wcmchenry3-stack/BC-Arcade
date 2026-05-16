@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "תורך",
   "vsMode.computerTurn": "תור המחשב",
   "gameOver.youWin": "ניצחת!",
-  "gameOver.computerWins": "המחשב ניצח!"
+  "gameOver.computerWins": "המחשב ניצח!",
+  "gameOver.tie": "תיקו!",
+  "vsMode.vs": "vs"
 }

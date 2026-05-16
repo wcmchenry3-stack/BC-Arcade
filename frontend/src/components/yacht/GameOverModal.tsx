@@ -83,7 +83,7 @@ export default function GameOverModal({
                 ? t("gameOver.youWin")
                 : vsResult === "lose"
                   ? t("gameOver.computerWins")
-                  : t("gameOver.title")}
+                  : t("gameOver.tie")}
             </Text>
           ) : (
             <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">

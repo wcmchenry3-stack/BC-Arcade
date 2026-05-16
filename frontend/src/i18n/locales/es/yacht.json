@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "Tu turno",
   "vsMode.computerTurn": "Turno del ordenador",
   "gameOver.youWin": "¡Ganaste!",
-  "gameOver.computerWins": "¡Gana la computadora!"
+  "gameOver.computerWins": "¡Gana la computadora!",
+  "gameOver.tie": "¡Empate!",
+  "vsMode.vs": "vs"
 }

@@ -69,7 +69,7 @@ export default function GameScreen({ navigation, route }: Props) {
     route.params.initialState.round === 1 &&
     route.params.initialState.rolls_used === 0 &&
     !route.params.initialState.game_over;
-  const [difficultyChosen, setDifficultyChosen] = useState(!isFreshGame);
+  const [difficultyChosen, setDifficultyChosen] = useState(!isFreshGame || route.params.aiDifficulty !== undefined);
   const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
@@ -293,8 +293,7 @@ export default function GameScreen({ navigation, route }: Props) {
     const outcome = prev.game_over ? "completed" : "abandoned";
     syncComplete({ finalScore: prev.total_score, outcome }, endedPayload(prev, outcome));
     await clearGame();
-    const freshState = newGame();
-    setGameState(freshState);
+    setGameState(newGame());
     // Reset AI game state for replay — keep the same difficulty.
     setAiGameState(aiDifficultyRef.current ? newGame() : null);
     setIsAiTurn(false);
@@ -403,6 +402,7 @@ export default function GameScreen({ navigation, route }: Props) {
               styles.turnText,
               { color: isAiTurn ? colors.textMuted : colors.accent },
             ]}
+            accessibilityLiveRegion="polite"
           >
             {isAiTurn ? t("vsMode.computerTurn") : t("vsMode.yourTurn")}
           </Text>
@@ -431,7 +431,7 @@ export default function GameScreen({ navigation, route }: Props) {
               {gameState.total_score}
             </Text>
           </View>
-          <Text style={[styles.vsSep, { color: colors.textMuted }]}>vs</Text>
+          <Text style={[styles.vsSep, { color: colors.textMuted }]}>{t("vsMode.vs")}</Text>
           <View style={[styles.vsScoreBlock, styles.vsScoreBlockRight]}>
             <Text style={[styles.vsScoreLabel, { color: colors.textMuted }]}>
               {t("score.opponent")}

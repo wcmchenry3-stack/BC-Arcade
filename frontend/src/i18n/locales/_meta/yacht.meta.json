@@ -493,5 +493,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "gameOver.tie": {
+    "component": "GameOverModal",
+    "description": "Title shown in the game-over modal when the game ends in a tie (equal scores) in VS mode.",
+    "tone": "neutral, short",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.vs": {
+    "component": "GameScreen",
+    "description": "Short separator label between the two player scores in the VS score banner.",
+    "tone": "neutral, abbreviated",
+    "characterLimit": 5,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Typically 'vs' — very short, often kept as-is across languages."
   }
 }

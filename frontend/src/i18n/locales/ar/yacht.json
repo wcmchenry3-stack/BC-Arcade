@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "دورك",
   "vsMode.computerTurn": "دور الكمبيوتر",
   "gameOver.youWin": "فزت!",
-  "gameOver.computerWins": "فاز الكمبيوتر!"
+  "gameOver.computerWins": "فاز الكمبيوتر!",
+  "gameOver.tie": "تعادل!",
+  "vsMode.vs": "vs"
 }

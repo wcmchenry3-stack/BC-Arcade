@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "あなたのターン",
   "vsMode.computerTurn": "コンピュータのターン",
   "gameOver.youWin": "あなたの勝ち！",
-  "gameOver.computerWins": "コンピュータの勝ち！"
+  "gameOver.computerWins": "コンピュータの勝ち！",
+  "gameOver.tie": "引き分け！",
+  "vsMode.vs": "vs"
 }

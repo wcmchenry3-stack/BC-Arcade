@@ -69,5 +69,7 @@
   "vsMode.yourTurn": "Ваш ход",
   "vsMode.computerTurn": "Ход компьютера",
   "gameOver.youWin": "Вы выиграли!",
-  "gameOver.computerWins": "Компьютер выиграл!"
+  "gameOver.computerWins": "Компьютер выиграл!",
+  "gameOver.tie": "Ничья!",
+  "vsMode.vs": "vs"
 }
