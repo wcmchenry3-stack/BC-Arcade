@@ -420,6 +420,7 @@ function selectCardToPlayHard(
   const myHasQ = hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
   const myPoints = state.handScores[playerIndex] ?? 0;
+  // 5-trick minimum: in the final 4 tricks, completing the moon becomes speculative (#1593).
   const isMoonAttempt = totalHearts >= 8 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
 
   // Moon blocking (skip if we're the one attempting)
