@@ -41,6 +41,7 @@ export function computePanBounds(
   viewportHeight: number,
   scale: number
 ): { maxTranslateX: number; maxTranslateY: number } {
+  "worklet";
   return {
     maxTranslateX: Math.max(0, (boardWidth * scale - viewportWidth) / 2),
     maxTranslateY: Math.max(0, (boardHeight * scale - viewportHeight) / 2),
