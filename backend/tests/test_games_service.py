@@ -8,11 +8,23 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
+from db.models import GameType
+from games.service import (
+    GameServiceError,
+    append_events,
+    complete_game,
+    create_game,
+    get_game_detail,
+    get_stats_for_session,
+    list_games_for_session,
+    patch_game_type,
+)
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -31,9 +43,7 @@ def _sid() -> str:
     return str(uuid.uuid4())
 
 
-async def _make_game(db, session_id: str, game_type: str = "yacht"):
-    from games.service import create_game
-
+async def _make_game(db, session_id: str, game_type: str = "yacht", started_at=None):
     return await create_game(
         db,
         session_id=session_id,
@@ -41,12 +51,11 @@ async def _make_game(db, session_id: str, game_type: str = "yacht"):
         game_type_name=game_type,
         metadata={},
         players=[],
+        started_at=started_at,
     )
 
 
 async def _complete(db, game_id, session_id: str, score: int = 100):
-    from games.service import complete_game
-
     return await complete_game(
         db,
         game_id=game_id,
@@ -63,8 +72,6 @@ async def _complete(db, game_id, session_id: str, score: int = 100):
 
 
 async def test_create_game_unknown_type_raises(db):
-    from games.service import GameServiceError, create_game
-
     with pytest.raises(GameServiceError) as exc:
         await create_game(
             db,
@@ -78,8 +85,6 @@ async def test_create_game_unknown_type_raises(db):
 
 
 async def test_create_game_client_id_idempotent(db):
-    from games.service import create_game
-
     sid = _sid()
     cid = uuid.uuid4()
     g1 = await create_game(
@@ -92,8 +97,6 @@ async def test_create_game_client_id_idempotent(db):
 
 
 async def test_create_game_cross_session_raises(db):
-    from games.service import GameServiceError, create_game
-
     cid = uuid.uuid4()
     sid1, sid2 = _sid(), _sid()
     await create_game(
@@ -107,8 +110,6 @@ async def test_create_game_cross_session_raises(db):
 
 
 async def test_create_game_started_at_in_window_accepted(db):
-    from games.service import create_game
-
     sid = _sid()
     started = datetime(2026, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
     g = await create_game(
@@ -125,8 +126,6 @@ async def test_create_game_started_at_in_window_accepted(db):
 
 
 async def test_create_game_started_at_out_of_window_ignored(db):
-    from games.service import create_game
-
     sid = _sid()
     started = datetime(2020, 1, 1, tzinfo=timezone.utc)  # over 1 year ago
     g = await create_game(
@@ -138,7 +137,8 @@ async def test_create_game_started_at_out_of_window_ignored(db):
         players=[],
         started_at=started,
     )
-    assert g.started_at != started
+    # Server-stamps a fresh time; compare naive values so tzinfo stripping doesn't mask a bug
+    assert g.started_at.replace(tzinfo=None) != started.replace(tzinfo=None)
 
 
 # ---------------------------------------------------------------------------
@@ -147,16 +147,12 @@ async def test_create_game_started_at_out_of_window_ignored(db):
 
 
 async def test_append_events_game_not_found_raises(db):
-    from games.service import GameServiceError, append_events
-
     with pytest.raises(GameServiceError) as exc:
         await append_events(db, game_id=uuid.uuid4(), session_id=_sid(), events=[])
     assert exc.value.status_code == 404
 
 
 async def test_append_events_cross_session_raises(db):
-    from games.service import GameServiceError, append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     with pytest.raises(GameServiceError) as exc:
@@ -165,8 +161,6 @@ async def test_append_events_cross_session_raises(db):
 
 
 async def test_append_events_game_already_completed_raises(db):
-    from games.service import GameServiceError, append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     await _complete(db, game.id, sid)
@@ -181,8 +175,6 @@ async def test_append_events_game_already_completed_raises(db):
 
 
 async def test_append_events_unknown_type_raises(db):
-    from games.service import GameServiceError, append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     with pytest.raises(GameServiceError) as exc:
@@ -197,8 +189,6 @@ async def test_append_events_unknown_type_raises(db):
 
 
 async def test_append_events_happy_path(db):
-    from games.service import append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     result = await append_events(
@@ -216,8 +206,6 @@ async def test_append_events_happy_path(db):
 
 
 async def test_append_events_cross_batch_duplicates_counted(db):
-    from games.service import append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     events = [
@@ -234,8 +222,6 @@ async def test_append_events_cross_batch_duplicates_counted(db):
 
 
 async def test_append_events_intra_batch_dedup(db):
-    from games.service import append_events
-
     sid = _sid()
     game = await _make_game(db, sid)
     # Same event_index twice in one batch — second occurrence silently dropped
@@ -258,8 +244,6 @@ async def test_append_events_intra_batch_dedup(db):
 
 
 async def test_complete_game_sets_fields(db):
-    from games.service import complete_game
-
     sid = _sid()
     game = await _make_game(db, sid)
     g = await complete_game(
@@ -277,8 +261,6 @@ async def test_complete_game_sets_fields(db):
 
 
 async def test_complete_game_idempotent(db):
-    from games.service import complete_game
-
     sid = _sid()
     game = await _make_game(db, sid)
     g1 = await complete_game(
@@ -293,8 +275,6 @@ async def test_complete_game_idempotent(db):
 
 
 async def test_complete_game_invalid_outcome_raises(db):
-    from games.service import GameServiceError, complete_game
-
     sid = _sid()
     game = await _make_game(db, sid)
     with pytest.raises(GameServiceError) as exc:
@@ -310,8 +290,6 @@ async def test_complete_game_invalid_outcome_raises(db):
 
 
 async def test_complete_game_not_found_raises(db):
-    from games.service import GameServiceError, complete_game
-
     with pytest.raises(GameServiceError) as exc:
         await complete_game(
             db,
@@ -325,8 +303,6 @@ async def test_complete_game_not_found_raises(db):
 
 
 async def test_complete_game_cross_session_raises(db):
-    from games.service import GameServiceError, complete_game
-
     sid = _sid()
     game = await _make_game(db, sid)
     with pytest.raises(GameServiceError) as exc:
@@ -342,8 +318,6 @@ async def test_complete_game_cross_session_raises(db):
 
 
 async def test_complete_game_completed_at_in_window_accepted(db):
-    from games.service import complete_game
-
     sid = _sid()
     game = await _make_game(db, sid)
     ts = datetime(2026, 5, 14, 10, 0, 0, tzinfo=timezone.utc)
@@ -366,8 +340,6 @@ async def test_complete_game_completed_at_in_window_accepted(db):
 
 
 async def test_get_stats_empty_session(db):
-    from games.service import get_stats_for_session
-
     stats = await get_stats_for_session(db, session_id=_sid())
     assert stats.total_games == 0
     assert stats.by_game == {}
@@ -375,8 +347,6 @@ async def test_get_stats_empty_session(db):
 
 
 async def test_get_stats_aggregates_completed_games(db):
-    from games.service import get_stats_for_session
-
     sid = _sid()
     g1 = await _make_game(db, sid)
     g2 = await _make_game(db, sid)
@@ -394,8 +364,6 @@ async def test_get_stats_aggregates_completed_games(db):
 
 
 async def test_get_stats_excludes_incomplete_games(db):
-    from games.service import get_stats_for_session
-
     sid = _sid()
     await _make_game(db, sid)  # not completed
     stats = await get_stats_for_session(db, session_id=sid)
@@ -403,8 +371,6 @@ async def test_get_stats_excludes_incomplete_games(db):
 
 
 async def test_get_stats_multi_game_type_favorite(db):
-    from games.service import get_stats_for_session
-
     sid = _sid()
     for _ in range(3):
         g = await _make_game(db, sid, game_type="yacht")
@@ -424,8 +390,6 @@ async def test_get_stats_multi_game_type_favorite(db):
 
 
 async def test_list_games_no_cursor_no_overflow(db):
-    from games.service import list_games_for_session
-
     sid = _sid()
     for _ in range(3):
         await _make_game(db, sid)
@@ -436,8 +400,6 @@ async def test_list_games_no_cursor_no_overflow(db):
 
 
 async def test_list_games_next_cursor_set_when_overflow(db):
-    from games.service import list_games_for_session
-
     sid = _sid()
     for _ in range(3):
         await _make_game(db, sid)
@@ -448,21 +410,24 @@ async def test_list_games_next_cursor_set_when_overflow(db):
 
 
 async def test_list_games_cursor_filters_results(db):
-    from datetime import timedelta
-
-    from games.service import list_games_for_session
-
     sid = _sid()
-    for _ in range(3):
-        await _make_game(db, sid)
+    # Pin explicit timestamps so ordering is deterministic regardless of
+    # SQLite clock precision — each game is 1 hour older than the previous.
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    for i in range(4):
+        await _make_game(db, sid, started_at=base - timedelta(hours=i))
+    # Descending order: base, base-1h, base-2h, base-3h
+    # page1 (limit=2): items=[base, base-1h], peek-ahead=base-2h → cursor=base-2h
+    # page2 (started_at < base-2h): items=[base-3h] → exactly 1
 
     page1 = await list_games_for_session(db, session_id=sid, limit=2, cursor=None)
+    assert len(page1.items) == 2
     assert page1.next_cursor is not None
 
-    # Parse the ISO cursor and use it to fetch the next page
     cursor_dt = datetime.fromisoformat(page1.next_cursor)
     page2 = await list_games_for_session(db, session_id=sid, limit=2, cursor=cursor_dt)
-    assert len(page2.items) >= 1
+    assert len(page2.items) == 1
+    assert page2.next_cursor is None
 
 
 # ---------------------------------------------------------------------------
@@ -471,8 +436,6 @@ async def test_list_games_cursor_filters_results(db):
 
 
 async def test_get_game_detail_happy_path(db):
-    from games.service import get_game_detail
-
     sid = _sid()
     game = await _make_game(db, sid)
     await _complete(db, game.id, sid, score=150)
@@ -484,8 +447,6 @@ async def test_get_game_detail_happy_path(db):
 
 
 async def test_get_game_detail_include_events(db):
-    from games.service import append_events, get_game_detail
-
     sid = _sid()
     game = await _make_game(db, sid)
     await append_events(
@@ -506,16 +467,12 @@ async def test_get_game_detail_include_events(db):
 
 
 async def test_get_game_detail_not_found_raises(db):
-    from games.service import GameServiceError, get_game_detail
-
     with pytest.raises(GameServiceError) as exc:
         await get_game_detail(db, game_id=uuid.uuid4(), session_id=_sid(), include_events=False)
     assert exc.value.status_code == 404
 
 
 async def test_get_game_detail_cross_session_raises(db):
-    from games.service import GameServiceError, get_game_detail
-
     sid = _sid()
     game = await _make_game(db, sid)
     with pytest.raises(GameServiceError) as exc:
@@ -529,43 +486,32 @@ async def test_get_game_detail_cross_session_raises(db):
 
 
 async def test_patch_game_type_not_found_raises(db):
-    from games.service import GameServiceError, patch_game_type
-
     with pytest.raises(GameServiceError) as exc:
         await patch_game_type(db, game_type_id=9999, is_premium=None, category=None)
     assert exc.value.status_code == 404
 
 
 async def test_patch_game_type_updates_is_premium(db):
-    from sqlalchemy import select
-
-    from db.models import GameType
-    from games.service import patch_game_type
-
     gt_row = (await db.execute(select(GameType).where(GameType.name == "yacht"))).scalar_one()
     original_premium = gt_row.is_premium
-    updated = await patch_game_type(
-        db, game_type_id=gt_row.id, is_premium=not original_premium, category=None
-    )
-    assert updated.is_premium is not original_premium
-
-    # Restore
-    await patch_game_type(
-        db, game_type_id=gt_row.id, is_premium=original_premium, category=None
-    )
+    try:
+        updated = await patch_game_type(
+            db, game_type_id=gt_row.id, is_premium=not original_premium, category=None
+        )
+        assert updated.is_premium != original_premium
+    finally:
+        await patch_game_type(
+            db, game_type_id=gt_row.id, is_premium=original_premium, category=None
+        )
 
 
 async def test_patch_game_type_updates_category(db):
-    from sqlalchemy import select
-
-    from db.models import GameType
-    from games.service import patch_game_type
-
     gt_row = (await db.execute(select(GameType).where(GameType.name == "yacht"))).scalar_one()
     original_cat = gt_row.category
-
-    updated = await patch_game_type(db, game_type_id=gt_row.id, is_premium=None, category="dice")
-    assert updated.category == "dice"
-
-    # Restore
-    await patch_game_type(db, game_type_id=gt_row.id, is_premium=None, category=original_cat)
+    try:
+        updated = await patch_game_type(
+            db, game_type_id=gt_row.id, is_premium=None, category="dice"
+        )
+        assert updated.category == "dice"
+    finally:
+        await patch_game_type(db, game_type_id=gt_row.id, is_premium=None, category=original_cat)
