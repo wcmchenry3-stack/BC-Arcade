@@ -58,5 +58,16 @@
   "gameOver.dismiss": "괜찮습니다",
   "gameOver.dismissLabel": "닫고 현재 점수를 계속 표시",
   "tab.upper": "상단",
-  "tab.lower": "하단"
+  "tab.lower": "하단",
+  "difficulty.groupLabel": "AI 난이도",
+  "difficulty.easy": "쉬움",
+  "difficulty.medium": "보통",
+  "difficulty.hard": "어려움",
+  "vsMode.title": "모드 선택",
+  "vsMode.solo": "솔로",
+  "vsMode.vsComputer": "컴퓨터 대전",
+  "vsMode.yourTurn": "당신의 턴",
+  "vsMode.computerTurn": "컴퓨터 턴",
+  "gameOver.youWin": "당신이 이겼습니다!",
+  "gameOver.computerWins": "컴퓨터가 이겼습니다!"
 }

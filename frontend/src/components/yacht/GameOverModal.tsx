@@ -20,6 +20,8 @@ interface GameOverModalProps {
   yachtBonusTotal: number;
   onPlayAgain: () => void;
   onDismiss: () => void;
+  vsResult?: "win" | "lose" | "tie";
+  aiTotalScore?: number;
 }
 
 export default function GameOverModal({
@@ -30,6 +32,8 @@ export default function GameOverModal({
   yachtBonusTotal,
   onPlayAgain,
   onDismiss,
+  vsResult,
+  aiTotalScore,
 }: GameOverModalProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
@@ -60,9 +64,32 @@ export default function GameOverModal({
             },
           ]}
         >
-          <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">
-            {t("gameOver.title")}
-          </Text>
+          {vsResult ? (
+            <Text
+              style={[
+                styles.title,
+                {
+                  color:
+                    vsResult === "win"
+                      ? colors.bonus
+                      : vsResult === "lose"
+                        ? colors.textMuted
+                        : colors.text,
+                },
+              ]}
+              accessibilityRole="header"
+            >
+              {vsResult === "win"
+                ? t("gameOver.youWin")
+                : vsResult === "lose"
+                  ? t("gameOver.computerWins")
+                  : t("gameOver.title")}
+            </Text>
+          ) : (
+            <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">
+              {t("gameOver.title")}
+            </Text>
+          )}
           <Text style={[styles.scoreLabel, { color: colors.textMuted }]}>
             {t("gameOver.finalScore")}
           </Text>
@@ -72,6 +99,11 @@ export default function GameOverModal({
           >
             {totalScore}
           </Text>
+          {vsResult !== undefined && aiTotalScore !== undefined && (
+            <Text style={[styles.aiScoreRow, { color: colors.textMuted }]}>
+              {t("score.opponent")}: {aiTotalScore}
+            </Text>
+          )}
           {(upperBonus > 0 || yachtBonusTotal > 0) && (
             <View style={styles.bonusStack}>
               {upperBonus > 0 && (
@@ -208,5 +240,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",
+  },
+  aiScoreRow: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 8,
+    marginTop: -4,
   },
 });

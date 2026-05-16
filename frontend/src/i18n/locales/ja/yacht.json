@@ -58,5 +58,16 @@
   "gameOver.dismiss": "いいえ",
   "gameOver.dismissLabel": "閉じて現在のスコアを表示したままにする",
   "tab.upper": "上部",
-  "tab.lower": "下部"
+  "tab.lower": "下部",
+  "difficulty.groupLabel": "AI難易度",
+  "difficulty.easy": "簡単",
+  "difficulty.medium": "普通",
+  "difficulty.hard": "難しい",
+  "vsMode.title": "モードを選択",
+  "vsMode.solo": "ソロ",
+  "vsMode.vsComputer": "コンピュータ対戦",
+  "vsMode.yourTurn": "あなたのターン",
+  "vsMode.computerTurn": "コンピュータのターン",
+  "gameOver.youWin": "あなたの勝ち！",
+  "gameOver.computerWins": "コンピュータの勝ち！"
 }

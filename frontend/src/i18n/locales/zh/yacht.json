@@ -58,5 +58,16 @@
   "gameOver.dismiss": "不用了",
   "gameOver.dismissLabel": "关闭并保持当前分数可见",
   "tab.upper": "上半区",
-  "tab.lower": "下半区"
+  "tab.lower": "下半区",
+  "difficulty.groupLabel": "AI难度",
+  "difficulty.easy": "简单",
+  "difficulty.medium": "普通",
+  "difficulty.hard": "困难",
+  "vsMode.title": "选择模式",
+  "vsMode.solo": "单人",
+  "vsMode.vsComputer": "对战电脑",
+  "vsMode.yourTurn": "你的回合",
+  "vsMode.computerTurn": "电脑回合",
+  "gameOver.youWin": "你赢了！",
+  "gameOver.computerWins": "电脑赢了！"
 }

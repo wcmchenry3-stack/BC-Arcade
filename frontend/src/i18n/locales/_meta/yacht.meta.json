@@ -394,5 +394,104 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "difficulty.groupLabel": {
+    "component": "AiDifficultySelector",
+    "description": "Accessibility label for the AI difficulty radio group.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.easy": {
+    "component": "AiDifficultySelector",
+    "description": "Easy difficulty option label.",
+    "tone": "functional, concise",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.medium": {
+    "component": "AiDifficultySelector",
+    "description": "Medium difficulty option label.",
+    "tone": "functional, concise",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.hard": {
+    "component": "AiDifficultySelector",
+    "description": "Hard difficulty option label.",
+    "tone": "functional, concise",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.title": {
+    "component": "GameScreen",
+    "description": "Title of the pre-game mode selector modal.",
+    "tone": "neutral, direct",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.solo": {
+    "component": "GameScreen",
+    "description": "Button to start a single-player game with no AI opponent.",
+    "tone": "concise",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.vsComputer": {
+    "component": "GameScreen",
+    "description": "Button / section label to play against the AI computer.",
+    "tone": "concise",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.yourTurn": {
+    "component": "GameScreen",
+    "description": "Turn indicator shown when it is the human player's turn.",
+    "tone": "casual, short",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.computerTurn": {
+    "component": "GameScreen",
+    "description": "Turn indicator shown when the AI is taking its turn.",
+    "tone": "casual, short",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "gameOver.youWin": {
+    "component": "GameOverModal",
+    "description": "Title shown in the game-over modal when the human wins VS mode.",
+    "tone": "celebratory, punchy",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "gameOver.computerWins": {
+    "component": "GameOverModal",
+    "description": "Title shown in the game-over modal when the AI wins VS mode.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

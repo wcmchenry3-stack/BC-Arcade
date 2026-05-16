@@ -58,5 +58,16 @@
   "gameOver.dismiss": "Nein danke",
   "gameOver.dismissLabel": "Schließen und aktuelle Punktzahl sichtbar lassen",
   "tab.upper": "Oben",
-  "tab.lower": "Unten"
+  "tab.lower": "Unten",
+  "difficulty.groupLabel": "KI-Schwierigkeitsgrad",
+  "difficulty.easy": "Leicht",
+  "difficulty.medium": "Mittel",
+  "difficulty.hard": "Schwer",
+  "vsMode.title": "Modus wählen",
+  "vsMode.solo": "Solo",
+  "vsMode.vsComputer": "Gegen Computer",
+  "vsMode.yourTurn": "Dein Zug",
+  "vsMode.computerTurn": "Computer am Zug",
+  "gameOver.youWin": "Du gewinnst!",
+  "gameOver.computerWins": "Computer gewinnt!"
 }
