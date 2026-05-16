@@ -1971,4 +1971,52 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
     expect(passed).toHaveLength(3);
     expect(passed).not.toContainEqual(c("spades", 12));
   });
+
+  it("passes Q♠ to seat 0 in moon-viable mode via across pass from seat 2", () => {
+    // Seat 2 passes across → (2+2)%4=0 → targeting seat 0.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("hearts", 7),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 1),
+      c("diamonds", 8),
+      c("clubs", 8),
+      c("diamonds", 7),
+      c("clubs", 7),
+      c("diamonds", 6),
+    ];
+    const passed = selectCardsToPass(hand, "across", "hard", 2);
+    expect(passed).toHaveLength(3);
+    expect(passed).toContainEqual(c("spades", 12));
+  });
+});
+
+describe("selectCardToPlay — Hard difficulty, adversarial void discard (edge cases)", () => {
+  it("falls through to normal discard when seat 0 is winning but Hard holds no Q♠ or hearts", () => {
+    // Player 1 holds only non-point cards — nothing to target seat 0 with.
+    // Should fall through and discard normally (highest non-point card).
+    const hand = [c("diamonds", 10), c("clubs", 9), c("diamonds", 6)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 13), playerIndex: 0 }, // seat 0 winning with K♠
+      { card: c("spades", 3), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // No Q♠ or hearts to dump — adversarial block falls through; normal discard fires.
+    expect(pick.suit).not.toBe("hearts");
+    expect(pick).not.toEqual(c("spades", 12));
+  });
 });

@@ -271,6 +271,7 @@ function selectCardsToPassHard(
   const voidInSpades = spades.length === 0;
 
   // Adversarial targeting (#1638): when passing to seat 0, always send Q♠ — skip moon-viable.
+  // Standard mode already passes Q♠ first, so only moon-viable needs suppressing.
   const targetingHuman = passingToSeat0(playerIndex, direction);
 
   // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass dangerous non-hearts.
@@ -389,6 +390,8 @@ function selectCardsToPassHard(
 /**
  * Select exactly 3 cards to pass.
  * `difficulty` defaults to "medium" (current behaviour) so existing callers are unchanged.
+ * `playerIndex` defaults to 0 (human seat) — seat 0 never passes so the default never
+ * triggers adversarial targeting; pass the actual AI seat index (1–3) for Hard targeting.
  */
 export function selectCardsToPass(
   hand: Card[],
@@ -669,6 +672,7 @@ function selectCardToPlayHard(
             .filter((c) => c.suit === "hearts")
             .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
           if (heartsDesc.length > 0) return heartsDesc[0]!;
+          // No Q♠ or hearts to target with — fall through to normal discard.
         } else {
           // Another AI is winning — prefer non-point discard; save Q♠/hearts for seat 0.
           const nonPts = valid.filter((c) => cardPoints(c) === 0);
@@ -678,9 +682,8 @@ function selectCardToPlayHard(
             .filter((c) => c.suit === "hearts")
             .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
           if (heartsAsc.length > 0) return heartsAsc[0]!;
-          // No hearts either — must play Q♠ (no safe alternative).
+          // No hearts either — must play Q♠ (no safe alternative); fall through.
         }
-        // Fall through to chooseDiscard via chooseFollow for remaining edge cases.
       }
     }
   }
