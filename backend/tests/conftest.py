@@ -31,7 +31,15 @@ def pytest_configure(config: pytest.Config) -> None:
     We must set DATABASE_URL before collection so module-level
     `pytestmark = pytest.mark.skipif(not os.environ.get("DATABASE_URL"), ...)`
     resolves correctly.
+
+    Also neutralise ENTITLEMENT_DEV_OVERRIDE so that .env's dev shortcut
+    doesn't bypass entitlement checks in the test suite.  dotenv's
+    load_dotenv() (called in main.py at import time) only sets variables
+    that are *absent* from os.environ, so setting the key here — before
+    any test module is imported — prevents the .env value from taking effect.
     """
+    os.environ.setdefault("ENTITLEMENT_DEV_OVERRIDE", "")
+
     global _TEST_DB_FILE
     if os.environ.get("DATABASE_URL"):
         # Caller provided a DB (e.g. Render Postgres for smoke tests).
