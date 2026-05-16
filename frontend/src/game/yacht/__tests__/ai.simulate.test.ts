@@ -79,8 +79,9 @@ describe("Yacht AI simulator smoke tests", () => {
 
   it("Easy vs Easy win rate is near 50%", () => {
     const wr = runBatch("easy", "easy", SMOKE_GAMES, 0);
-    expect(wr).toBeGreaterThan(0.35);
-    expect(wr).toBeLessThan(0.65);
+    // Bounds are wide because n=20 gives high variance (95% CI ≈ ±0.22).
+    expect(wr).toBeGreaterThan(0.2);
+    expect(wr).toBeLessThan(0.8);
   });
 
   it("Medium beats Easy more than half the time", () => {
@@ -98,8 +99,9 @@ describe("Yacht AI simulator smoke tests", () => {
 
   it("Hard vs Hard win rate is near 50%", () => {
     const wr = runBatch("hard", "hard", SMOKE_GAMES, 40000);
-    expect(wr).toBeGreaterThan(0.35);
-    expect(wr).toBeLessThan(0.65);
+    // Bounds are wide because n=20 gives high variance (95% CI ≈ ±0.22).
+    expect(wr).toBeGreaterThan(0.2);
+    expect(wr).toBeLessThan(0.8);
   });
 
   it("produces valid final scores (non-negative, plausible ceiling)", () => {
