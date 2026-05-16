@@ -528,10 +528,7 @@ describe("shuffleBoard", () => {
     const shuffled = shuffleBoard(state);
     const byKey = new Map<string, SlotTile[]>();
     for (const t of shuffled.tiles) {
-      const key =
-        t.suit === "flowers" || t.suit === "seasons"
-          ? t.suit
-          : `${t.suit}:${t.rank}`;
+      const key = t.suit === "flowers" || t.suit === "seasons" ? t.suit : `${t.suit}:${t.rank}`;
       const g = byKey.get(key) ?? [];
       g.push(t);
       byKey.set(key, g);
