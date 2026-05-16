@@ -40,6 +40,12 @@ interface GameResult {
   handsPlayed: number;
   moonShots: number;
   qSpadeOnHuman: number;
+  // Behavioral metrics (#1632)
+  qSpadeByPlayer: [number, number, number, number]; // hands each seat took Q♠
+  voidsByPlayer: [number, number, number, number];  // passing rounds each seat voided a suit
+  passingRounds: number;                            // total non-"none" passing rounds
+  moonShotsByPlayer: [number, number, number, number]; // rounds each seat shot the moon
+  handScoreSumByPlayer: [number, number, number, number]; // sum of per-hand scores
 }
 
 function simulateGame(difficulties: Difficulties, seed: number): GameResult {
@@ -49,15 +55,33 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
   // Accumulate hand-scoped events before dealNextHand resets them (#1539).
   let totalMoonShots = 0;
   let qSpadeOnHuman = 0;
+  const qSpadeByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  const moonShotsByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  const handScoreSumByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+
   function collectHandEvents(s: HeartsState) {
     const ev = s.events ?? [];
-    totalMoonShots += ev.filter((e) => e.type === "moonShot").length;
-    if (ev.some((e) => e.type === "queenOfSpades" && e.takerSeat === 0))
-      qSpadeOnHuman = 1;
+    for (const e of ev) {
+      if (e.type === "moonShot") {
+        totalMoonShots++;
+        moonShotsByPlayer[e.shooter]++;
+      }
+      if (e.type === "queenOfSpades") {
+        qSpadeByPlayer[e.takerSeat]++;
+        if (e.takerSeat === 0) qSpadeOnHuman = 1;
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      handScoreSumByPlayer[i] += s.handScores[i] ?? 0;
+    }
   }
+
+  const voidsByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  let passingRounds = 0;
 
   while (state.phase !== "game_over") {
     if (state.phase === "passing") {
+      const isRealPass = state.passDirection !== "none";
       for (let i = 0; i < 4; i++) {
         const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
@@ -67,6 +91,13 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
         }
       }
       state = commitPass(state);
+      if (isRealPass) {
+        passingRounds++;
+        for (let i = 0; i < 4; i++) {
+          const suits = new Set((state.playerHands[i] ?? []).map((c) => c.suit));
+          if (suits.size < 4) voidsByPlayer[i]++;
+        }
+      }
     } else if (state.phase === "playing") {
       const playerIndex = state.currentPlayerIndex;
       const diff = difficulties[playerIndex]!;
@@ -87,6 +118,11 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
     handsPlayed: state.handNumber,
     moonShots: totalMoonShots,
     qSpadeOnHuman,
+    qSpadeByPlayer,
+    voidsByPlayer,
+    passingRounds,
+    moonShotsByPlayer,
+    handScoreSumByPlayer,
   };
 }
 
@@ -297,6 +333,19 @@ if (count !== null) {
 }
 
 // ---------------------------------------------------------------------------
+// Reporting helpers
+// ---------------------------------------------------------------------------
+
+function fmt4pct(vals: number[], denom: number): string {
+  if (denom === 0) return "  n/a     n/a     n/a     n/a";
+  return vals.map((v) => `${((v / denom) * 100).toFixed(1)}%`.padStart(7)).join(" ");
+}
+
+function fmt4score(vals: number[], denom: number): string {
+  return vals.map((v) => (v / denom).toFixed(1).padStart(7)).join(" ");
+}
+
+// ---------------------------------------------------------------------------
 // Batches
 // ---------------------------------------------------------------------------
 
@@ -364,6 +413,22 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   const moonPct = (mean(moonShotsAll) * 100).toFixed(1);
   const qPct = (mean(qOnHuman) * 100).toFixed(1);
 
+  // Behavioral metrics (#1632)
+  const totalHands = results.reduce((s, r) => s + r.handsPlayed, 0);
+  const totalPassRounds = results.reduce((s, r) => s + r.passingRounds, 0);
+  const qByPlayerAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.qSpadeByPlayer[i]!, 0),
+  );
+  const voidsAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.voidsByPlayer[i]!, 0),
+  );
+  const moonAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.moonShotsByPlayer[i]!, 0),
+  );
+  const handScoreAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.handScoreSumByPlayer[i]!, 0),
+  );
+
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
   console.log(label);
@@ -379,6 +444,11 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   );
   console.log(`  Moon Shots (any player): ${moonPct}%`);
   console.log(`  Q♠ on Human: ${qPct}%`);
+  console.log(`  Behavioral Metrics      s0      s1      s2      s3`);
+  console.log(`  Q♠/Hand by Seat:    ${fmt4pct(qByPlayerAgg, totalHands)}`);
+  console.log(`  Void Rate by Seat:  ${fmt4pct(voidsAgg, totalPassRounds)}`);
+  console.log(`  Moon Shots/Round:   ${fmt4pct(moonAgg, totalHands)}`);
+  console.log(`  Avg Hand Score:     ${fmt4score(handScoreAgg, totalHands)}`);
   console.log();
 }
 
