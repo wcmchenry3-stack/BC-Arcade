@@ -23,7 +23,7 @@ import LockedGameScreen from "./src/screens/LockedGameScreen";
 import GameScreen from "./src/screens/GameScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import BottomTabBar from "./src/components/shared/BottomTabBar";
-import { GameState } from "./src/game/yacht/types";
+import { AiDifficulty, GameState } from "./src/game/yacht/types";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
@@ -68,7 +68,7 @@ export type RootStackParamList = {
 
 export type HomeStackParamList = {
   Home: undefined;
-  Game: { initialState: GameState };
+  Game: { initialState: GameState; aiDifficulty?: AiDifficulty };
   Cascade: undefined;
   StarSwarm: undefined;
   BlackjackBetting: undefined;
