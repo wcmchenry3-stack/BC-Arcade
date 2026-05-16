@@ -219,7 +219,9 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   if (selected.length < 3) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
-      const card = hand.find((c) => c.suit === "clubs" && c.rank === rank && safe(c) && notSelected(c));
+      const card = hand.find(
+        (c) => c.suit === "clubs" && c.rank === rank && safe(c) && notSelected(c)
+      );
       if (card) selected.push(card);
     }
   }
