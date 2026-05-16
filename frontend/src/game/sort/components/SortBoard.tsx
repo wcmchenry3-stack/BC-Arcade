@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -37,6 +37,8 @@ export interface SortBoardProps {
   readonly availableHeight?: number;
   /** Total flow duration in ms (POUR_PER_UNIT_MS × unitCount); computed by SortScreen. */
   readonly pourHoldMs?: number;
+  /** Called when the pour animation fully completes (ghost returns to origin). */
+  readonly onPourComplete?: () => void;
 }
 
 interface GhostInfo {
@@ -85,6 +87,7 @@ export default function SortBoard({
   pouringTo = null,
   availableHeight,
   pourHoldMs = POUR_PER_UNIT_MS,
+  onPourComplete,
 }: SortBoardProps) {
   const { t } = useTranslation("sort");
   const { width: screenW } = useWindowDimensions();
@@ -156,6 +159,14 @@ export default function SortBoard({
     rx: splashRx.value,
     opacity: splashOpacity.value,
   }));
+
+  // Stable wrapper so the worklet can invoke onPourComplete via runOnJS without
+  // capturing a stale closure — the ref is updated on every render.
+  const onPourCompleteRef = useRef(onPourComplete);
+  onPourCompleteRef.current = onPourComplete;
+  const notifyPourComplete = useCallback(() => {
+    onPourCompleteRef.current?.();
+  }, []);
 
   // Stable ref for values read inside the effect (avoids stale closure without
   // adding them to the dep array, which would re-trigger on every state change)
@@ -250,6 +261,7 @@ export default function SortBoard({
                 if (!finished) return;
                 runOnJS(setGhost)(null);
                 runOnJS(setUnitsEmitted)(0);
+                runOnJS(notifyPourComplete)();
               });
             }
           );

@@ -85,4 +85,26 @@ describe("SortBoard", () => {
     );
     expect(UNSAFE_getAllByType(Svg).length).toBeGreaterThan(0);
   });
+
+  it("accepts onPourComplete prop and does not call it on initial render", () => {
+    // Guards that the prop exists in the interface and is not spuriously invoked.
+    // The Reanimated jest mock does not execute animation callbacks, so the actual
+    // call-through (runOnJS(notifyPourComplete)() at animation end) is covered by
+    // the SortScreen regression test for issue #1567.
+    const onPourComplete = jest.fn();
+    const state = mkState([["red", "red", "blue", "blue"], []]);
+    render(
+      withTheme(
+        <SortBoard
+          state={state}
+          onBottleTap={jest.fn()}
+          pouringFrom={0}
+          pouringTo={1}
+          pourHoldMs={380}
+          onPourComplete={onPourComplete}
+        />
+      )
+    );
+    expect(onPourComplete).not.toHaveBeenCalled();
+  });
 });

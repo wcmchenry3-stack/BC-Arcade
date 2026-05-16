@@ -30,12 +30,7 @@ import {
 } from "../game/sort/engine";
 import { getNextHint } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
-import SortBoard, {
-  POUR_LIFT_MS,
-  POUR_TILT_MS,
-  POUR_PER_UNIT_MS,
-  POUR_RETURN_MS,
-} from "../game/sort/components/SortBoard";
+import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
@@ -85,6 +80,7 @@ export default function SortScreen() {
   const [isPouring, setIsPouring] = useState(false);
   const [boardHeight, setBoardHeight] = useState(0);
   const pourTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPourRef = useRef<{ snapshot: SortState; from: number; to: number } | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
 
   // Win modal
@@ -182,6 +178,20 @@ export default function SortScreen() {
   // Game handlers
   // ---------------------------------------------------------------------------
 
+  const handlePourComplete = useCallback(() => {
+    const pending = pendingPourRef.current;
+    if (!pending) return;
+    pendingPourRef.current = null;
+    const nextState = applyPour(pending.snapshot, pending.from, pending.to);
+    setGameState(nextState);
+    setIsPouring(false);
+    setPouringFrom(null);
+    setPouringTo(null);
+    if (nextState.isComplete) {
+      audio.playWin();
+    }
+  }, [audio]);
+
   function handleBottleTap(index: number) {
     if (!gameState || gameState.isComplete || isPouring) return;
     const { selectedBottleIndex } = gameState;
@@ -202,10 +212,6 @@ export default function SortScreen() {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       const holdMs = POUR_PER_UNIT_MS * units;
-      // Reduce-motion: BottleView does a fixed tilt-only animation (no ghost overlay).
-      const totalMs = reduceMotion
-        ? TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50
-        : POUR_LIFT_MS + POUR_TILT_MS + holdMs + POUR_RETURN_MS + 50;
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
       setPouringFrom(selectedBottleIndex);
@@ -213,16 +219,26 @@ export default function SortScreen() {
       setPourHoldMs(holdMs);
       setGameState({ ...gameState, selectedBottleIndex: null });
       audio.playPour();
-      pourTimerRef.current = setTimeout(() => {
-        const nextState = applyPour(snapshot, selectedBottleIndex, index);
-        setGameState(nextState);
-        setIsPouring(false);
-        setPouringFrom(null);
-        setPouringTo(null);
-        if (nextState.isComplete) {
-          audio.playWin();
-        }
-      }, totalMs);
+      if (reduceMotion) {
+        // Reduce-motion: BottleView does a tilt-only animation with no ghost overlay,
+        // so there is no onPourComplete callback from SortBoard — drive state update
+        // with a timer instead.
+        const totalMs = TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50;
+        pourTimerRef.current = setTimeout(() => {
+          const nextState = applyPour(snapshot, selectedBottleIndex, index);
+          setGameState(nextState);
+          setIsPouring(false);
+          setPouringFrom(null);
+          setPouringTo(null);
+          if (nextState.isComplete) {
+            audio.playWin();
+          }
+        }, totalMs);
+      } else {
+        // Full animation: state update is driven by onPourComplete fired from SortBoard
+        // the moment the ghost overlay is removed, so both happen in the same render.
+        pendingPourRef.current = { snapshot, from: selectedBottleIndex, to: index };
+      }
     } else {
       setGameState({ ...gameState, selectedBottleIndex: null });
     }
@@ -646,6 +662,7 @@ export default function SortScreen() {
             pouringTo={pouringTo}
             availableHeight={boardHeight}
             pourHoldMs={pourHoldMs}
+            onPourComplete={handlePourComplete}
           />
         )}
       </View>
