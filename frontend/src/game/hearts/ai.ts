@@ -410,14 +410,10 @@ function selectCardToPlayMedium(
 }
 
 /**
- * Hard: extends Medium with moon-attempt mode, card counting, and three play-phase
+ * Hard: extends Medium with moon-attempt mode, card counting, and play-phase
  * improvements that widen the Hard/Medium skill gap (#1626):
- *   - Q♠ live awareness: avoids winning 0-point spade tricks when Q♠ is still unplayed
- *     (winning puts Hard in lead, risking Q♠ dump on the next forced spade lead).
  *   - High-point trick conservation: plays lowest losing card (not highest) when the
  *     trick already holds ≥3 hearts, preserving high cards for future use.
- *   - Heart flushing: when leading with Q♠ gone + hearts broken + all own hearts ≤ 9,
- *     leads the lowest heart to draw A♥/K♥ out of opponents.
  * Moon-attempt fires when the AI has accumulated 8+ hearts (hand + wonCards) plus Q♠,
  * holds all collected points, and ≥5 tricks remain.
  */
@@ -533,33 +529,7 @@ function selectCardToPlayHard(
   for (const tc of state.currentTrick) seenKeys.add(`${tc.card.suit}:${tc.card.rank}`);
 
   if (isLeading) {
-    // Flush opponent danger hearts: when Q♠ is gone and hearts are broken and all our
-    // hearts are low (≤ 9), lead the lowest to draw out A♥/K♥ from opponents (#1626).
-    if (seenKeys.has("spades:12") && state.heartsBroken) {
-      const myHearts = valid.filter((c) => c.suit === "hearts");
-      const maxHeartRank = myHearts.reduce((max, c) => Math.max(max, aceHigh(c.rank)), 0);
-      if (myHearts.length > 0 && maxHeartRank <= 9) {
-        return lowest(myHearts) ?? valid[0]!;
-      }
-    }
     return chooseLeadHard(valid, seenKeys);
-  }
-
-  // Q♠ live + following spades + 0-point trick: avoid winning and becoming leader —
-  // as leader with Q♠ unplayed we risk getting it dumped on a forced spade lead (#1626).
-  if (!isMoonAttempt && !seenKeys.has("spades:12")) {
-    const first = trick[0];
-    if (first?.card.suit === "spades" && trickPoints(trick) === 0) {
-      const inSpades = valid.filter((c) => c.suit === "spades");
-      let winningRank = 0;
-      for (const tc of trick) {
-        if (tc.card.suit === "spades" && aceHigh(tc.card.rank) > winningRank) {
-          winningRank = aceHigh(tc.card.rank);
-        }
-      }
-      const losing = inSpades.filter((c) => aceHigh(c.rank) < winningRank);
-      if (losing.length > 0) return highest(losing) ?? valid[0]!;
-    }
   }
 
   // High-point trick: 3+ hearts already in the trick — play the lowest losing card to
