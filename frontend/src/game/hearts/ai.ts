@@ -96,14 +96,17 @@ function selectCardsToPassEasy(hand: Card[]): Card[] {
 
 /**
  * Medium: select exactly 3 cards to pass. Priority order:
- * 1. Q♠ — unless protected (holding A♠ + K♠) or void in spades
+ * 1. Q♠ — pass unless protected; protection threshold varies by direction (#1595):
+ *    - "right"/"across": pass even with A♠ or K♠ (Q♠ travels far enough to be safe).
+ *      Note: "right" (1 seat) and "across" (2 seats) are treated identically for simplicity.
+ *    - "left": keep Q♠ if holding either A♠ or K♠ (left neighbor plays close — higher risk)
+ *    - "none": baseline — pass unless holding both A♠ and K♠
  * 2. A♥, K♥ — highest hearts first
  * 3. A♠, K♠ — if not needed to protect Q♠
  * 3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early
  * 4. Highest remaining safe card (never 2♣ or clubs below 6)
  */
 function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[] {
-  void direction;
   const selected: Card[] = [];
 
   const has = (suit: string, rank: number) => hand.some((c) => c.suit === suit && c.rank === rank);
@@ -112,8 +115,19 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
   const hasQSpades = spades.some(isQueenOfSpades);
   const hasASpades = has("spades", 1);
   const hasKSpades = has("spades", 13);
-  const qSpadeProtected = hasASpades && hasKSpades;
   const voidInSpades = spades.length === 0;
+
+  // Direction changes how boldly we pass Q♠.
+  // "right"/"across": Q♠ lands on an opponent who plays farther from us — pass freely.
+  // "left": left neighbor plays adjacent to us and gets more opportunities to dump Q♠ back;
+  //         keep Q♠ if we hold any high-spade cover (A♠ or K♠ alone suffices).
+  // "none": no pass this hand — use baseline protection (A♠ and K♠ both required).
+  const qSpadeProtected =
+    direction === "right" || direction === "across"
+      ? false // always willing to pass Q♠ when it goes far
+      : direction === "left"
+        ? hasASpades || hasKSpades // keep Q♠ if we have any high-spade protection
+        : hasASpades && hasKSpades; // "none": baseline protection check
 
   if (hasQSpades && !qSpadeProtected && !voidInSpades) {
     selected.push({ suit: "spades", rank: 12 });
@@ -169,8 +183,10 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  * Hard: dangerous-cards-first passing with opportunistic void creation.
  *
  * Priority:
- *   1. Q♠ (always pass, even when protected — unlike Medium).
+ *   1. Q♠ (always pass unless spade-void — more aggressive than Medium).
+ *      Direction does not change Q♠ behavior for Hard (always pass it) (#1595).
  *   2. A♥, K♥, Q♥, J♥ (high hearts, highest first).
+ *      Going "right": also include 10♥ as an additional danger heart (#1595).
  *   3. A♠, K♠ (if Q♠ not present).
  *   3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early.
  *   4. If any slots remain, complete a void in the shortest eligible suit (1 card only,
@@ -179,7 +195,6 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  *   5. Fill any remaining slots with the highest safe cards.
  */
 function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
-  void direction;
   const selected: Card[] = [];
 
   const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
@@ -188,16 +203,19 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   const hasQSpades = spades.some(isQueenOfSpades);
   const voidInSpades = spades.length === 0;
 
-  // 1. Q♠ (pass even when holding A♠ + K♠)
+  // 1. Q♠ — Hard always passes Q♠ regardless of direction.
   if (hasQSpades && !voidInSpades) {
     selected.push({ suit: "spades", rank: 12 });
   }
 
   const safe = passSafeFilter(selected);
 
-  // 2. High hearts
+  // 2. High hearts — going right, also include 10♥ as an extra danger card (#1595).
+  const heartDangerThreshold = direction === "right" ? 10 : 11;
   const dangerHearts = hand
-    .filter((c) => c.suit === "hearts" && (c.rank === 1 || c.rank >= 11) && safe(c))
+    .filter(
+      (c) => c.suit === "hearts" && (c.rank === 1 || c.rank >= heartDangerThreshold) && safe(c)
+    )
     .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
   for (const c of dangerHearts) {
     if (selected.length >= 3) break;
