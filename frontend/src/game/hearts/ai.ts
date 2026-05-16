@@ -79,6 +79,13 @@ function bySuitDescending(cards: Card[]): Array<[string, Card[]]> {
 // Passing strategy
 // ---------------------------------------------------------------------------
 
+/** Returns true when playerIndex's pass lands on seat 0 for the given direction. */
+function passingToSeat0(playerIndex: number, direction: PassDirection): boolean {
+  if (direction === "none") return false;
+  const offset = direction === "left" ? 1 : direction === "right" ? 3 : 2;
+  return (playerIndex + offset) % 4 === 0;
+}
+
 function passSafeFilter(selected: Card[]): (c: Card) => boolean {
   return (c: Card) => {
     if (selected.some((s) => s.suit === c.suit && s.rank === c.rank)) return false;
@@ -249,7 +256,11 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  *   4. Void creation: use ALL remaining slots to eliminate the shortest eligible suit.
  *   5. Fill any remaining slots with the highest safe cards.
  */
-function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
+function selectCardsToPassHard(
+  hand: Card[],
+  direction: PassDirection,
+  playerIndex: number
+): Card[] {
   const selected: Card[] = [];
 
   const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
@@ -259,9 +270,13 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   const hasQSpades = spades.some(isQueenOfSpades);
   const voidInSpades = spades.length === 0;
 
+  // Adversarial targeting (#1638): when passing to seat 0, always send Q♠ — skip moon-viable.
+  // Standard mode already passes Q♠ first, so only moon-viable needs suppressing.
+  const targetingHuman = passingToSeat0(playerIndex, direction);
+
   // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass dangerous non-hearts.
   const moonViable = heartsInHand >= 5 && hasQSpades; // hasQSpades implies !voidInSpades
-  if (moonViable) {
+  if (moonViable && !targetingHuman) {
     const notSel = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
     const moonSafe = (c: Card) =>
       c.suit !== "hearts" &&
@@ -375,14 +390,17 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
 /**
  * Select exactly 3 cards to pass.
  * `difficulty` defaults to "medium" (current behaviour) so existing callers are unchanged.
+ * `playerIndex` defaults to 0 (human seat) — seat 0 never passes so the default never
+ * triggers adversarial targeting; pass the actual AI seat index (1–3) for Hard targeting.
  */
 export function selectCardsToPass(
   hand: Card[],
   direction: PassDirection,
-  difficulty: AiDifficulty = "medium"
+  difficulty: AiDifficulty = "medium",
+  playerIndex = 0
 ): Card[] {
   if (difficulty === "easy") return selectCardsToPassEasy(hand);
-  if (difficulty === "hard") return selectCardsToPassHard(hand, direction);
+  if (difficulty === "hard") return selectCardsToPassHard(hand, direction, playerIndex);
   return selectCardsToPassMedium(hand, direction);
 }
 
@@ -633,6 +651,38 @@ function selectCardToPlayHard(
             .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
           if (lowestHeart.length > 0) return lowestHeart[0]!;
           if (withoutQ.length > 0) return withoutQ[0]!;
+        }
+      }
+    }
+  }
+
+  // Adversarial targeting (#1638): when void in led suit, prefer dumping Q♠/high hearts on
+  // seat 0 (human). When another AI is winning the trick, save Q♠/hearts for seat 0's tricks.
+  if (!isMoonAttempt && !inEndgame && !isLeading) {
+    const first = trick[0];
+    if (first) {
+      const followSuit = valid.filter((c) => c.suit === first.card.suit);
+      if (followSuit.length === 0) {
+        const winner = currentTrickWinner(trick);
+        if (winner === 0) {
+          // Seat 0 is winning — dump Q♠ first, then highest heart.
+          const q = valid.find(isQueenOfSpades);
+          if (q) return q;
+          const heartsDesc = valid
+            .filter((c) => c.suit === "hearts")
+            .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+          if (heartsDesc.length > 0) return heartsDesc[0]!;
+          // No Q♠ or hearts to target with — fall through to normal discard.
+        } else {
+          // Another AI is winning — prefer non-point discard; save Q♠/hearts for seat 0.
+          const nonPts = valid.filter((c) => cardPoints(c) === 0);
+          if (nonPts.length > 0) return highest(nonPts) ?? valid[0]!;
+          // Only point cards remain — dump lowest heart, keep Q♠ in reserve.
+          const heartsAsc = valid
+            .filter((c) => c.suit === "hearts")
+            .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
+          if (heartsAsc.length > 0) return heartsAsc[0]!;
+          // No hearts either — must play Q♠ (no safe alternative); fall through.
         }
       }
     }

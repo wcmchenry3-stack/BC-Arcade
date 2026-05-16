@@ -360,7 +360,8 @@ export default function HeartsScreen() {
       const aiCards = selectCardsToPass(
         [...(s.playerHands[i] ?? [])],
         s.passDirection,
-        s.aiDifficulty
+        s.aiDifficulty,
+        i
       );
       for (const c of aiCards) {
         s = selectPassCard(s, i, c);
