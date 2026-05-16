@@ -12,7 +12,7 @@
  */
 
 import { AiDifficulty, GameState } from "./types";
-import { CATEGORIES, UPPER_CATEGORIES, Category, calculateScore } from "./engine";
+import { CATEGORIES, UPPER_CATEGORIES, Category, calculateScore, possibleScores } from "./engine";
 
 // ─── Local maps ──────────────────────────────────────────────────────────────
 
@@ -36,10 +36,6 @@ function diceSum(dice: readonly number[]): number {
   return dice.reduce((a, b) => a + b, 0);
 }
 
-function openCategories(scores: GameState["scores"]): Category[] {
-  return CATEGORIES.filter(c => scores[c] === null || scores[c] === undefined);
-}
-
 function upperSubtotal(scores: GameState["scores"]): number {
   let s = 0;
   for (const cat of UPPER_CATEGORIES) {
@@ -53,17 +49,14 @@ function isOpen(scores: GameState["scores"], cat: Category): boolean {
   return scores[cat] === null || scores[cat] === undefined;
 }
 
-function bestScoringCategory(
-  dice: readonly number[],
-  scores: GameState["scores"],
-): Category | null {
+/** Returns the highest-scoring category from a pre-computed legal move set. */
+function bestInLegal(legal: Record<string, number>): Category | null {
   let bestCat: Category | null = null;
   let bestVal = -1;
-  for (const cat of openCategories(scores)) {
-    const v = calculateScore(cat, dice);
-    if (v > bestVal) {
-      bestVal = v;
-      bestCat = cat;
+  for (const [cat, val] of Object.entries(legal)) {
+    if (val > bestVal) {
+      bestVal = val;
+      bestCat = cat as Category;
     }
   }
   return bestCat;
@@ -201,8 +194,9 @@ function holdMedium(
   const run4 = longestRunFaces(dice, 4);
   if (run4) return holdForRun(dice, run4);
 
-  // Upper bonus pursuit: hold an open upper face that appears ≥ 2 times
-  if (toBonus > 0 && toBonus <= 40) {
+  // Upper bonus pursuit: hold an open upper face that appears ≥ 2 times.
+  // Threshold of 55 keeps this active early in the game (all cats open → toBonus=63).
+  if (toBonus > 0 && toBonus <= 55) {
     let bestFace = 0;
     let bestCnt = 0;
     for (const [face, cnt] of counts) {
@@ -243,9 +237,11 @@ function holdHard(
   scores: GameState["scores"],
   rollsUsed: number,
 ): boolean[] {
-  if (rollsUsed === 1) {
-    // Two more rolls remain — medium heuristic is a strong proxy;
-    // full 2-step lookahead is O(6^10) and infeasible at runtime.
+  if (rollsUsed !== 2) {
+    // Only the final hold (rollsUsed === 2) warrants full EV enumeration.
+    // For earlier holds — or if called unexpectedly at rollsUsed === 0 —
+    // fall back to the medium heuristic. 2-step lookahead is O(6^10) and
+    // infeasible at runtime.
     return holdMedium(dice, scores);
   }
 
@@ -271,48 +267,50 @@ function holdHard(
 }
 
 // ─── Score strategies ─────────────────────────────────────────────────────────
+//
+// All three functions receive `legal` — the output of engine.possibleScores(state).
+// This is the single source of truth for which categories are legally available
+// (it enforces Joker priority rules) and the scores already account for
+// calculateJokerScore when a Joker is active.
 
-function scoreEasy(dice: readonly number[], scores: GameState["scores"]): Category {
+function scoreEasy(dice: readonly number[], legal: Record<string, number>): Category {
   // Use Chance early when sum is decent (no strategy — purely reactive).
-  const open = openCategories(scores);
+  const open = Object.keys(legal) as Category[];
   const s = diceSum(dice);
-  if (isOpen(scores, "chance") && s >= 20 && open.length > 6) return "chance";
-  return bestScoringCategory(dice, scores) ?? open[0]!;
+  if ("chance" in legal && s >= 20 && open.length > 6) return "chance";
+  return bestInLegal(legal) ?? open[0]!;
 }
 
-function scoreMedium(dice: readonly number[], scores: GameState["scores"]): Category {
-  const open = openCategories(scores);
-  const toBonus = Math.max(0, 63 - upperSubtotal(scores));
+function scoreMedium(
+  dice: readonly number[],
+  scores: GameState["scores"],
+  legal: Record<string, number>,
+): Category {
+  const open = Object.keys(legal) as Category[];
+  const upper = upperSubtotal(scores);
+  const toBonus = Math.max(0, 63 - upper);
   const s = diceSum(dice);
 
   // Yacht — always take 50 pts
-  if (isOpen(scores, "yacht") && calculateScore("yacht", dice) === 50) return "yacht";
+  if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
 
   // Large straight — always take 40 pts
-  if (isOpen(scores, "large_straight") && calculateScore("large_straight", dice) > 0)
-    return "large_straight";
+  if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
 
   // Four of a kind — take when sum is high
-  if (isOpen(scores, "four_of_a_kind")) {
-    const sc = calculateScore("four_of_a_kind", dice);
-    if (sc > 20) return "four_of_a_kind";
-  }
+  if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 20) return "four_of_a_kind";
 
   // Full house — always take
-  if (isOpen(scores, "full_house") && calculateScore("full_house", dice) > 0)
-    return "full_house";
+  if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
 
   // Three of a kind — take when sum is decent
-  if (isOpen(scores, "three_of_a_kind")) {
-    const sc = calculateScore("three_of_a_kind", dice);
-    if (sc > 15) return "three_of_a_kind";
-  }
+  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) > 15) return "three_of_a_kind";
 
-  // Upper bonus: score an upper category when we're hitting par (3× the face)
+  // Upper bonus: score an upper category when hitting par (3× the face)
   if (toBonus > 0 && toBonus <= 40) {
     const counts = faceCounts(dice);
     for (const cat of ["sixes", "fives", "fours", "threes"] as Category[]) {
-      if (isOpen(scores, cat)) {
+      if (cat in legal) {
         const face = UPPER_FACE[cat]!;
         if ((counts.get(face) ?? 0) >= 3) return cat;
       }
@@ -320,86 +318,78 @@ function scoreMedium(dice: readonly number[], scores: GameState["scores"]): Cate
   }
 
   // Small straight — take 30 pts
-  if (isOpen(scores, "small_straight") && calculateScore("small_straight", dice) > 0)
-    return "small_straight";
+  if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";
 
-  // Chance — use when sum is solid and there are enough rounds left to avoid wasting it
-  if (isOpen(scores, "chance") && s >= 22 && open.length > 4) return "chance";
+  // Chance — use when sum is solid and enough rounds remain
+  if ("chance" in legal && s >= 22 && open.length > 4) return "chance";
 
-  // Sacrifice: if upper bonus is unreachable, dump ones/twos early
-  const canReachBonus = toBonus <= 30;
-  if (!canReachBonus) {
-    if (isOpen(scores, "ones")) return "ones";
-    if (isOpen(scores, "twos")) return "twos";
+  // Sacrifice: only when the bonus is mathematically unreachable
+  const openUpperCats = (["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[])
+    .filter(c => c in legal);
+  const maxReachable = upper + openUpperCats.reduce((acc, c) => acc + (UPPER_FACE[c] ?? 0) * 5, 0);
+  if (maxReachable < 63) {
+    if ("ones" in legal) return "ones";
+    if ("twos" in legal) return "twos";
   }
 
-  return bestScoringCategory(dice, scores) ?? open[0]!;
+  return bestInLegal(legal) ?? open[0]!;
 }
 
 function scoreHard(
   dice: readonly number[],
   scores: GameState["scores"],
   opponentScore: number,
+  legal: Record<string, number>,
 ): Category {
-  const open = openCategories(scores);
+  const open = Object.keys(legal) as Category[];
   const counts = faceCounts(dice);
   const s = diceSum(dice);
   const upper = upperSubtotal(scores);
   const toBonus = Math.max(0, 63 - upper);
 
-  // Rough estimate of my current total (sum of scored categories)
   const myScore = Object.values(scores).reduce<number>((acc, v) => acc + (v ?? 0), 0);
   const trailing = myScore < opponentScore - 30;
   const leading = myScore > opponentScore + 50;
 
   // Always take Yacht
-  if (isOpen(scores, "yacht") && calculateScore("yacht", dice) === 50) return "yacht";
+  if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
 
   // Always take Large Straight
-  if (isOpen(scores, "large_straight") && calculateScore("large_straight", dice) > 0)
-    return "large_straight";
+  if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
 
-  // Trailing: take high-variance plays before medium-value ones
+  // Trailing: take high-variance plays before medium-value ones.
+  // Floor of 16 avoids counting four-1s (score=4) as a meaningful high-variance play.
   if (trailing) {
-    if (isOpen(scores, "four_of_a_kind") && calculateScore("four_of_a_kind", dice) > 0)
+    if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 16)
       return "four_of_a_kind";
-    if (isOpen(scores, "full_house") && calculateScore("full_house", dice) > 0)
-      return "full_house";
-    if (isOpen(scores, "small_straight") && calculateScore("small_straight", dice) > 0)
-      return "small_straight";
+    if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
+    if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";
   }
 
   // Leading: lock in sure points
   if (leading) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
-      if (isOpen(scores, cat)) {
+      if (cat in legal) {
         const face = UPPER_FACE[cat]!;
         if ((counts.get(face) ?? 0) >= 3) return cat;
       }
     }
-    if (isOpen(scores, "chance") && s >= 20) return "chance";
+    if ("chance" in legal && s >= 20) return "chance";
   }
 
   // Four of a kind
-  if (isOpen(scores, "four_of_a_kind")) {
-    const sc = calculateScore("four_of_a_kind", dice);
-    if (sc > 18) return "four_of_a_kind";
-  }
+  if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 18) return "four_of_a_kind";
 
   // Full house
-  if (isOpen(scores, "full_house") && calculateScore("full_house", dice) > 0)
-    return "full_house";
+  if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
 
   // Three of a kind with high sum
-  if (isOpen(scores, "three_of_a_kind")) {
-    const sc = calculateScore("three_of_a_kind", dice);
-    if (sc >= 18) return "three_of_a_kind";
-  }
+  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) >= 18) return "three_of_a_kind";
 
   // Aggressively pursue upper bonus (worth 35 pts — highest EV in the game)
   if (toBonus > 0 && toBonus <= 50) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
-      if (isOpen(scores, cat)) {
+      if (cat in legal) {
         const face = UPPER_FACE[cat]!;
         const cnt = counts.get(face) ?? 0;
         if (cnt >= 3 || (face >= 5 && cnt >= 2)) return cat;
@@ -408,24 +398,24 @@ function scoreHard(
   }
 
   // Small straight
-  if (isOpen(scores, "small_straight") && calculateScore("small_straight", dice) > 0)
-    return "small_straight";
+  if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";
 
   // Chance: use when sum is high, or few open categories remain
-  if (isOpen(scores, "chance") && (s >= 24 || (open.length <= 3 && s >= 18))) return "chance";
+  if ("chance" in legal && (s >= 24 || (open.length <= 3 && s >= 18))) return "chance";
 
-  // Sacrifice: if bonus is mathematically unreachable, dump lowest upper cats
+  // Sacrifice: only when bonus is mathematically unreachable
   const openUpperCats = (["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[])
-    .filter(c => isOpen(scores, c));
-  const maxPossibleUpperFromRemaining = openUpperCats.reduce((acc, c) => {
-    return acc + (UPPER_FACE[c] ?? 0) * 5;
-  }, 0);
+    .filter(c => c in legal);
+  const maxPossibleUpperFromRemaining = openUpperCats.reduce(
+    (acc, c) => acc + (UPPER_FACE[c] ?? 0) * 5,
+    0,
+  );
   if (upper + maxPossibleUpperFromRemaining < 63) {
-    if (isOpen(scores, "ones")) return "ones";
-    if (isOpen(scores, "twos")) return "twos";
+    if ("ones" in legal) return "ones";
+    if ("twos" in legal) return "twos";
   }
 
-  return bestScoringCategory(dice, scores) ?? open[0]!;
+  return bestInLegal(legal) ?? open[0]!;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -452,7 +442,9 @@ export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolea
  * Returns the category the AI should score into.
  *
  * Call when the AI decides to stop rolling (rolls_used >= 3 or elects to bank).
- * `opponentScore` is the human player's current total — used by Hard for
+ * Uses engine.possibleScores() as the legal move set — this enforces Joker
+ * priority rules automatically, preventing illegal category selections.
+ * `opponentScore` is the human player's current total, used by Hard for
  * adversarial awareness (high-variance plays when trailing, conservative when
  * leading).
  */
@@ -462,12 +454,15 @@ export function scoreStrategy(
   opponentScore = 0,
 ): Category {
   const { dice, scores } = state;
+  // possibleScores is the single source of truth for legal categories — it
+  // handles Joker priority rules so we never suggest an illegal move.
+  const legal = possibleScores(state);
   switch (difficulty) {
     case "easy":
-      return scoreEasy(dice, scores);
+      return scoreEasy(dice, legal);
     case "medium":
-      return scoreMedium(dice, scores);
+      return scoreMedium(dice, scores, legal);
     case "hard":
-      return scoreHard(dice, scores, opponentScore);
+      return scoreHard(dice, scores, opponentScore, legal);
   }
 }
