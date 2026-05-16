@@ -88,6 +88,52 @@ function passSafeFilter(selected: Card[]): (c: Card) => boolean {
   };
 }
 
+/**
+ * After high-priority cards fill some pass slots, use remaining slots to void a short suit.
+ * Finds the shortest eligible suit whose total remaining cards fit within `limit` slots and
+ * pushes those cards into `selected`.
+ *
+ * Uses a looser filter than passSafeFilter: allows clubs <6 so low clubs can complete a void
+ * (they're normally deprioritised as filler but are fine to pass for void purposes).
+ *
+ * @param maxSuitSize - Medium passes 2 (doubletons + singletons); Hard passes up to `remaining`.
+ */
+function voidOneSuit(
+  hand: Card[],
+  selected: Card[],
+  has2Clubs: boolean,
+  keepingQSpade: boolean,
+  maxSuitSize: number
+): void {
+  const remaining = 3 - selected.length;
+  if (remaining <= 0 || maxSuitSize <= 0) return;
+  const limit = Math.min(remaining, maxSuitSize);
+
+  const bySuit = new Map<string, Card[]>();
+  for (const c of hand) {
+    if (c.suit === "clubs" && c.rank === 2) continue;
+    if (selected.some((s) => s.suit === c.suit && s.rank === c.rank)) continue;
+    const group = bySuit.get(c.suit) ?? [];
+    group.push(c);
+    bySuit.set(c.suit, group);
+  }
+
+  let best: Card[] | null = null;
+  for (const [suit, cards] of bySuit) {
+    if (suit === "clubs" && has2Clubs) continue;
+    if (suit === "spades" && keepingQSpade) continue;
+    if (cards.length > limit) continue;
+    if (best === null || cards.length < best.length) best = cards;
+  }
+
+  if (best !== null) {
+    for (const c of best) {
+      if (selected.length >= 3) break;
+      selected.push(c);
+    }
+  }
+}
+
 /** Easy: pass the first 3 safe cards with no strategic logic. Never passes 2♣. */
 function selectCardsToPassEasy(hand: Card[]): Card[] {
   const safe = hand.filter((c) => !(c.suit === "clubs" && c.rank === 2));
@@ -104,13 +150,15 @@ function selectCardsToPassEasy(hand: Card[]): Card[] {
  * 2. A♥, K♥ — highest hearts first
  * 3. A♠, K♠ — if not needed to protect Q♠
  * 3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early
- * 4. Highest remaining safe card (never 2♣ or clubs below 6)
+ * 4. Void creation — use remaining slots to eliminate a short suit (≤ 2 cards) (#1636)
+ * 5. Highest remaining safe card (never 2♣ or clubs below 6)
  */
 function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[] {
   const selected: Card[] = [];
 
   const has = (suit: string, rank: number) => hand.some((c) => c.suit === suit && c.rank === rank);
 
+  const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
   const spades = hand.filter((c) => c.suit === "spades");
   const hasQSpades = spades.some(isQueenOfSpades);
   const hasASpades = has("spades", 1);
@@ -164,6 +212,12 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
     }
   }
 
+  // Void creation: use remaining slots to eliminate a 1–2 card suit (#1636).
+  // Don't target spades when keeping Q♠ — A♠/K♠ are needed as cover cards.
+  const keepingQSpade = hasQSpades && !selected.some(isQueenOfSpades);
+  voidOneSuit(hand, selected, has2Clubs, keepingQSpade, 2);
+
+  // Filler: highest remaining safe card.
   if (selected.length < 3) {
     const candidates = hand.filter(safe).sort((a, b) => {
       const ra = a.rank === 1 ? 14 : a.rank;
@@ -180,7 +234,7 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
 }
 
 /**
- * Hard: dangerous-cards-first passing with opportunistic void creation.
+ * Hard: dangerous-cards-first passing with aggressive void creation (#1636).
  *
  * Priority:
  *   1. Q♠ (always pass unless spade-void — more aggressive than Medium).
@@ -189,9 +243,9 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  *      Going "right": also include 10♥ as an additional danger heart (#1595).
  *   3. A♠, K♠ (if Q♠ not present).
  *   3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early.
- *   4. If any slots remain, complete a void in the shortest eligible suit (1 card only,
- *      not 2♣ holder's clubs). Voiding a suit gives Hard a free discard opportunity on
- *      every future lead of that suit without sacrificing a dangerous-card slot.
+ *   4. Void creation: use ALL remaining slots to eliminate the shortest eligible suit.
+ *      More aggressive than Medium (which caps at 2-card suits). Voiding gives Hard a
+ *      free discard on every future lead of that suit.
  *   5. Fill any remaining slots with the highest safe cards.
  */
 function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
@@ -244,21 +298,9 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
     }
   }
 
-  // 4. Opportunistic void: if exactly 1 slot remains, use it to void a single-card suit.
-  if (selected.length === 2) {
-    const bySuit = new Map<string, Card[]>();
-    for (const c of hand) {
-      if (!bySuit.has(c.suit)) bySuit.set(c.suit, []);
-      bySuit.get(c.suit)!.push(c);
-    }
-    for (const [suit, cards] of bySuit) {
-      if (suit === "clubs" && has2Clubs) continue;
-      if (cards.length === 1 && notSelected(cards[0]!)) {
-        selected.push(cards[0]!);
-        break;
-      }
-    }
-  }
+  // 4. Void creation: use all remaining slots to void the shortest eligible suit (#1636).
+  // Hard always passes Q♠ when possible, so keepingQSpade is never true here.
+  voidOneSuit(hand, selected, has2Clubs, false, 3 - selected.length);
 
   // 5. Fill remaining slots with highest safe cards
   if (selected.length < 3) {

@@ -735,10 +735,10 @@ describe("selectCardToPlay — Hard difficulty, score-aware endgame", () => {
 // Hard AI — opportunistic void in passing
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — Hard difficulty, opportunistic void", () => {
-  it("voids a 1-card suit when exactly 1 pass slot remains after dangerous cards", () => {
-    // Q♠ fills slot 1, A♥ fills slot 2 (high heart). 1 slot remains.
-    // ♦7 is the only diamond → void fires and ♦7 fills the last slot.
+describe("selectCardsToPass — #1636 void creation (Hard)", () => {
+  it("voids a 1-card suit when 1 slot remains after dangerous cards", () => {
+    // Q♠ fills slot 1, A♥ fills slot 2. 1 slot remains.
+    // ♦7 is the only diamond → void fires, ♦7 fills slot 3.
     const hand = [
       c("spades", 12),
       c("hearts", 1),
@@ -756,6 +756,152 @@ describe("selectCardsToPass — Hard difficulty, opportunistic void", () => {
     ];
     const passed = selectCardsToPass(hand, "left", "hard");
     expect(passed).toContainEqual(c("diamonds", 7));
+  });
+
+  it("voids a 2-card suit when 2 slots remain after Q♠ alone", () => {
+    // Q♠ fills slot 1. No danger hearts (J♥ threshold not met), no A/K spades, no A/K clubs.
+    // 2 slots remain. ♦4 and ♦6 are the only 2 diamonds → void fires, both pass.
+    const hand = [
+      c("spades", 12),
+      c("diamonds", 4),
+      c("diamonds", 6),
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("diamonds", 4));
+    expect(passed).toContainEqual(c("diamonds", 6));
+  });
+
+  it("voids a 3-card suit when all 3 slots remain (no high-priority cards)", () => {
+    // No Q♠, no danger hearts (hearts are 2-5), no high spades, no high clubs.
+    // All 3 slots available. ♦3, ♦4, ♦5 are the only 3 diamonds → full void.
+    const hand = [
+      c("diamonds", 3),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("diamonds", 3));
+    expect(passed).toContainEqual(c("diamonds", 4));
+    expect(passed).toContainEqual(c("diamonds", 5));
+  });
+});
+
+describe("selectCardsToPass — #1636 void creation (Medium)", () => {
+  it("voids a 1-card suit when 1 slot remains after Q♠ and 1 danger heart", () => {
+    // Q♠ → slot 1, A♥ → slot 2. 1 slot remains.
+    // ♦7 is the only diamond → Medium voids it (1 ≤ maxSuitSize 2).
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("diamonds", 7),
+      c("clubs", 6),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("hearts", 4),
+      c("hearts", 5),
+      c("hearts", 6),
+    ];
+    const passed = selectCardsToPass(hand, "left", "medium");
+    expect(passed).toContainEqual(c("diamonds", 7));
+  });
+
+  it("voids a 2-card suit when 2 slots remain after Q♠ alone", () => {
+    // Q♠ → slot 1. 2 slots remain. ♦4, ♦6 are the only diamonds → Medium voids (2 ≤ maxSuitSize 2).
+    const hand = [
+      c("spades", 12),
+      c("diamonds", 4),
+      c("diamonds", 6),
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left", "medium");
+    expect(passed).toContainEqual(c("diamonds", 4));
+    expect(passed).toContainEqual(c("diamonds", 6));
+  });
+
+  it("does NOT void a 3-card suit — Medium caps at 2", () => {
+    // No high-priority cards → 3 slots available. Shortest suit has 3 cards (diamonds).
+    // Medium maxSuitSize=2 → can't void a 3-card suit → falls back to high-card filler.
+    const hand = [
+      c("diamonds", 3),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left", "medium");
+    // Should NOT void diamonds (3 cards > maxSuitSize 2) — uses high-card filler instead
+    expect(passed).not.toContainEqual(c("diamonds", 3));
+    expect(passed).not.toContainEqual(c("diamonds", 4));
+    expect(passed).not.toContainEqual(c("diamonds", 5));
+  });
+
+  it("does NOT target spades for void when Q♠ is kept (cover cards protected)", () => {
+    // Direction=left, has A♠+K♠ → Q♠ kept. Spades left: A♠, K♠ (2 cards).
+    // Medium should NOT void spades (keepingQSpade=true) — A♠/K♠ are Q♠ cover.
+    // Hearts 5♥ is a singleton → hearts void fires instead.
+    const hand = [
+      c("spades", 12),
+      c("spades", 1),
+      c("spades", 13),
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 5),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+    ];
+    // direction=left: hasASpades=true → Q♠ protected (kept)
+    const passed = selectCardsToPass(hand, "left", "medium");
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
+    expect(passed).not.toContainEqual(c("spades", 1)); // A♠ kept (cover)
+    expect(passed).not.toContainEqual(c("spades", 13)); // K♠ kept (cover)
+    // Void fires on 5♥ (singleton heart) instead — positive assertion that the guard redirects correctly
+    expect(passed).toContainEqual(c("hearts", 5));
   });
 });
 
