@@ -6,10 +6,11 @@
  * are tracked and reported.
  *
  * Usage:
- *   npx tsx scripts/simulate-yacht.ts                  # aggregate stats
- *   npx tsx scripts/simulate-yacht.ts --count 500      # 500 games per batch
- *   npx tsx scripts/simulate-yacht.ts --difficulty hard # only Hard-AI matchups
- *   npx tsx scripts/simulate-yacht.ts --log-games 10   # 10 fully-logged games (NDJSON)
+ *   npx tsx scripts/simulate-yacht.ts                       # aggregate stats
+ *   npx tsx scripts/simulate-yacht.ts --count 500           # 500 games per batch
+ *   npx tsx scripts/simulate-yacht.ts --ai-difficulty hard  # only Hard-AI matchups
+ *   npx tsx scripts/simulate-yacht.ts --log-games 10        # 10 NDJSON game logs (medium vs medium)
+ *   npx tsx scripts/simulate-yacht.ts --log-games 10 --difficulty hard  # hard vs hard logs
  */
 
 import {
@@ -21,6 +22,60 @@ import {
 } from "../frontend/src/game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../frontend/src/game/yacht/ai";
 import type { AiDifficulty } from "../frontend/src/game/yacht/types";
+import type { GameState } from "../frontend/src/game/yacht/types";
+
+// ---------------------------------------------------------------------------
+// Core game runner
+// ---------------------------------------------------------------------------
+
+interface TwoPlayerStates {
+  humanState: GameState;
+  aiState: GameState;
+}
+
+/**
+ * Play one complete 13-round game between two AI-driven players.
+ *
+ * Both players draw from a single shared RNG seeded at `seed`. Outcomes are
+ * fully deterministic for a given seed, but the two players' rolls are not
+ * statistically independent — a favorable roll for the human consumes RNG
+ * state that shifts the AI's rolls. This is acceptable for a validation tool
+ * where we only care about aggregate win rates across many seeds.
+ */
+function playGame(
+  humanDiff: AiDifficulty,
+  aiDiff: AiDifficulty,
+  seed: number,
+): TwoPlayerStates {
+  setRng(createSeededRng(seed));
+
+  let humanState = newGame();
+  let aiState = newGame();
+
+  // Human goes first each round so Hard AI can see the updated human score
+  // when making adversarial high-variance play decisions.
+  for (let _round = 0; _round < 13; _round++) {
+    humanState = roll(humanState, [false, false, false, false, false]);
+    while (humanState.rolls_used < 3) {
+      humanState = roll(humanState, holdStrategy(humanState, humanDiff));
+    }
+    humanState = score(
+      humanState,
+      scoreStrategy(humanState, humanDiff, aiState.total_score),
+    );
+
+    aiState = roll(aiState, [false, false, false, false, false]);
+    while (aiState.rolls_used < 3) {
+      aiState = roll(aiState, holdStrategy(aiState, aiDiff));
+    }
+    aiState = score(
+      aiState,
+      scoreStrategy(aiState, aiDiff, humanState.total_score),
+    );
+  }
+
+  return { humanState, aiState };
+}
 
 // ---------------------------------------------------------------------------
 // Simulation
@@ -42,30 +97,7 @@ function simulateGame(
   aiDiff: AiDifficulty,
   seed: number,
 ): GameResult {
-  setRng(createSeededRng(seed));
-
-  let humanState = newGame();
-  let aiState = newGame();
-
-  // Players alternate rounds; human goes first each round so AI can see the
-  // updated human score when making adversarial Hard decisions.
-  for (let round = 0; round < 13; round++) {
-    // Human turn
-    humanState = roll(humanState, [false, false, false, false, false]);
-    while (humanState.rolls_used < 3) {
-      humanState = roll(humanState, holdStrategy(humanState, humanDiff));
-    }
-    const humanCat = scoreStrategy(humanState, humanDiff, aiState.total_score);
-    humanState = score(humanState, humanCat);
-
-    // AI turn
-    aiState = roll(aiState, [false, false, false, false, false]);
-    while (aiState.rolls_used < 3) {
-      aiState = roll(aiState, holdStrategy(aiState, aiDiff));
-    }
-    const aiCat = scoreStrategy(aiState, aiDiff, humanState.total_score);
-    aiState = score(aiState, aiCat);
-  }
+  const { humanState, aiState } = playGame(humanDiff, aiDiff, seed);
 
   const humanScore = humanState.total_score;
   const aiScore = aiState.total_score;
@@ -76,6 +108,8 @@ function simulateGame(
     winner: humanScore >= aiScore ? 0 : 1,
     upperBonusHuman: humanState.upper_bonus === 35,
     upperBonusAi: aiState.upper_bonus === 35,
+    // yacht_bonus_count counts bonus Yahtzees only (2nd, 3rd, …).
+    // Adding 1 when scores["yacht"] === 50 includes the first Yahtzee.
     yahtzeeCountHuman:
       humanState.yacht_bonus_count +
       (humanState.scores["yacht"] === 50 ? 1 : 0),
@@ -107,30 +141,7 @@ function simulateGameLogged(
   aiDiff: AiDifficulty,
   seed: number,
 ): GameLog {
-  setRng(createSeededRng(seed));
-
-  let humanState = newGame();
-  let aiState = newGame();
-
-  for (let round = 0; round < 13; round++) {
-    humanState = roll(humanState, [false, false, false, false, false]);
-    while (humanState.rolls_used < 3) {
-      humanState = roll(humanState, holdStrategy(humanState, humanDiff));
-    }
-    humanState = score(
-      humanState,
-      scoreStrategy(humanState, humanDiff, aiState.total_score),
-    );
-
-    aiState = roll(aiState, [false, false, false, false, false]);
-    while (aiState.rolls_used < 3) {
-      aiState = roll(aiState, holdStrategy(aiState, aiDiff));
-    }
-    aiState = score(
-      aiState,
-      scoreStrategy(aiState, aiDiff, humanState.total_score),
-    );
-  }
+  const { humanState, aiState } = playGame(humanDiff, aiDiff, seed);
 
   return {
     seed,
@@ -190,14 +201,16 @@ function parseCount(args: string[], flag: string): number | null {
   return isNaN(n) ? null : n;
 }
 
-function parseDifficulty(args: string[]): AiDifficulty | null {
-  const idx = args.indexOf("--difficulty");
+function parseDifficulty(args: string[], flag: string): AiDifficulty | null {
+  const idx = args.indexOf(flag);
   if (idx === -1) return null;
   const val = args[idx + 1] ?? "";
   if (!VALID_DIFFICULTIES.has(val as AiDifficulty)) return null;
   return val as AiDifficulty;
 }
 
+// --log-games N: emit N NDJSON game logs and exit.
+// --difficulty sets both players to the same tier (default: medium).
 const logCount = parseCount(process.argv, "--log-games");
 if (logCount !== null) {
   if (logCount < 1) {
@@ -206,9 +219,9 @@ if (logCount !== null) {
     );
     process.exit(1);
   }
-  const aiDiff = parseDifficulty(process.argv) ?? "medium";
+  const diff = parseDifficulty(process.argv, "--difficulty") ?? "medium";
   for (let i = 0; i < logCount; i++) {
-    const log = simulateGameLogged("hard", aiDiff, i);
+    const log = simulateGameLogged(diff, diff, i);
     process.stdout.write(JSON.stringify(log) + "\n");
   }
   process.exit(0);
@@ -225,7 +238,8 @@ if (GAMES_PER_BATCH < 1) {
   process.exit(1);
 }
 
-const filterDiff = parseDifficulty(process.argv);
+// --ai-difficulty filters which matchups to run (by the AI player's tier).
+const filterAiDiff = parseDifficulty(process.argv, "--ai-difficulty");
 
 interface Batch {
   label: string;
@@ -274,8 +288,8 @@ const ALL_BATCHES: Batch[] = [
   },
 ];
 
-const batches = filterDiff
-  ? ALL_BATCHES.filter((b) => b.aiDiff === filterDiff)
+const batches = filterAiDiff
+  ? ALL_BATCHES.filter((b) => b.aiDiff === filterAiDiff)
   : ALL_BATCHES;
 
 // ---------------------------------------------------------------------------
@@ -285,7 +299,7 @@ const batches = filterDiff
 console.log("Yacht AI Difficulty Simulation Results");
 console.log("======================================\n");
 console.log(`Games per batch: ${GAMES_PER_BATCH}`);
-if (filterDiff) console.log(`Filtering to AI difficulty: ${filterDiff}`);
+if (filterAiDiff) console.log(`Filtering to AI difficulty: ${filterAiDiff}`);
 console.log();
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;

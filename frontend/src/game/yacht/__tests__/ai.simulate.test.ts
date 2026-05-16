@@ -27,7 +27,7 @@ function simulateGame(
   let humanState = newGame();
   let aiState = newGame();
 
-  for (let round = 0; round < 13; round++) {
+  for (let _round = 0; _round < 13; _round++) {
     humanState = roll(humanState, [false, false, false, false, false]);
     while (humanState.rolls_used < 3) {
       humanState = roll(humanState, holdStrategy(humanState, humanDiff));
@@ -81,12 +81,13 @@ describe("Yacht AI simulator smoke tests", () => {
   });
 
   it("Medium beats Easy more than half the time", () => {
+    // Assert against a fixed 0.50 baseline rather than a second noisy sample.
     const medVsEasy = runBatch("medium", "easy", SMOKE_GAMES, 20000);
-    const easyVsEasy = runBatch("easy", "easy", SMOKE_GAMES, 0);
-    expect(medVsEasy).toBeGreaterThan(easyVsEasy);
+    expect(medVsEasy).toBeGreaterThan(0.5);
   });
 
   it("Hard beats Easy more than Medium beats Easy", () => {
+    // ~0.80 vs ~0.65 — a ~15-point gap is stable at 200 games each.
     const hardVsEasy = runBatch("hard", "easy", SMOKE_GAMES, 30000);
     const medVsEasy = runBatch("medium", "easy", SMOKE_GAMES, 20000);
     expect(hardVsEasy).toBeGreaterThan(medVsEasy);
@@ -103,7 +104,7 @@ describe("Yacht AI simulator smoke tests", () => {
       const r = simulateGame("hard", "hard", i * 777);
       expect(r.humanScore).toBeGreaterThanOrEqual(0);
       expect(r.aiScore).toBeGreaterThanOrEqual(0);
-      // Theoretical max is 13*50 (yacht every round) + 35 bonus + 12*100 bonus = 1935.
+      // Theoretical max: 13*50 (yacht every round) + 35 bonus + 12*100 joker bonus = 1935.
       // Realistically < 700 for a strong game.
       expect(r.humanScore).toBeLessThan(2000);
       expect(r.aiScore).toBeLessThan(2000);
