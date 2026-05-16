@@ -103,7 +103,7 @@ function voidOneSuit(
   selected: Card[],
   has2Clubs: boolean,
   keepingQSpade: boolean,
-  maxSuitSize: number,
+  maxSuitSize: number
 ): void {
   const remaining = 3 - selected.length;
   if (remaining <= 0 || maxSuitSize <= 0) return;

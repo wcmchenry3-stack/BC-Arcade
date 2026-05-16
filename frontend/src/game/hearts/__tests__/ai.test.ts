@@ -898,7 +898,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
     // direction=left: hasASpades=true → Q♠ protected (kept)
     const passed = selectCardsToPass(hand, "left", "medium");
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
-    expect(passed).not.toContainEqual(c("spades", 1));  // A♠ kept (cover)
+    expect(passed).not.toContainEqual(c("spades", 1)); // A♠ kept (cover)
     expect(passed).not.toContainEqual(c("spades", 13)); // K♠ kept (cover)
     // Void fires on 5♥ (singleton heart) instead — positive assertion that the guard redirects correctly
     expect(passed).toContainEqual(c("hearts", 5));
