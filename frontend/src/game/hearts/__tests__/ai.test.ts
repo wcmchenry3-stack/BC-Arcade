@@ -198,6 +198,55 @@ describe("selectCardsToPass", () => {
 });
 
 // ---------------------------------------------------------------------------
+// selectCardsToPass — Medium difficulty, high clubs (A♣/K♣)
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — Medium difficulty, high clubs", () => {
+  it("passes A♣ when slots remain after higher-priority cards", () => {
+    // Q♠ → slot 1, A♥ → slot 2, A♣ → slot 3 (step 3.5).
+    // Confirms rank 1 is not caught by the 'clubs below 6' guard (which checks rank > 1).
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("clubs", 1),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("diamonds", 8),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left");
+    expect(passed).toContainEqual(c("clubs", 1));
+  });
+
+  it("passes K♣ when slots remain after higher-priority cards", () => {
+    // Q♠ → slot 1, A♥ → slot 2, K♣ → slot 3 (step 3.5).
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("clubs", 13),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("diamonds", 8),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left");
+    expect(passed).toContainEqual(c("clubs", 13));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // selectCardToPlay — void (discarding)
 // ---------------------------------------------------------------------------
 
@@ -707,6 +756,55 @@ describe("selectCardsToPass — Hard difficulty, opportunistic void", () => {
     ];
     const passed = selectCardsToPass(hand, "left", "hard");
     expect(passed).toContainEqual(c("diamonds", 7));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hard AI — high clubs in passing (A♣/K♣)
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — Hard difficulty, high clubs", () => {
+  it("passes A♣ before opportunistic void creation", () => {
+    // Q♠ → slot 1, A♥ → slot 2, A♣ → slot 3 (step 3.5 fires before step 4).
+    // ♦7 is the sole diamond and would be a void candidate, but A♣ fills the slot first.
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("clubs", 1),
+      c("diamonds", 7),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("hearts", 3),
+      c("hearts", 4),
+      c("hearts", 5),
+      c("hearts", 6),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("clubs", 1));
+  });
+
+  it("passes K♣ when slots remain after higher-priority cards", () => {
+    // Q♠ → slot 1, A♥ → slot 2, K♣ → slot 3 (step 3.5).
+    const hand = [
+      c("spades", 12),
+      c("hearts", 1),
+      c("clubs", 13),
+      c("spades", 3),
+      c("spades", 4),
+      c("spades", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("diamonds", 8),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("clubs", 13));
   });
 });
 

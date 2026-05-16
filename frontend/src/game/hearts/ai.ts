@@ -99,8 +99,8 @@ function selectCardsToPassEasy(hand: Card[]): Card[] {
  * 1. Q♠ — unless protected (holding A♠ + K♠) or void in spades
  * 2. A♥, K♥ — highest hearts first
  * 3. A♠, K♠ — if not needed to protect Q♠
- * 4. High cards of suit being voided (longest suit)
- * 5. Never pass: 2♣ or clubs below 6
+ * 3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early
+ * 4. Highest remaining safe card (never 2♣ or clubs below 6)
  */
 function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[] {
   void direction;
@@ -141,14 +141,20 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
     }
   }
 
+  // High clubs: A♣ and K♣ are dangerous to hold because clubs are led early.
+  if (selected.length < 3) {
+    for (const rank of [1, 13] as const) {
+      if (selected.length >= 3) break;
+      const card = hand.find((c) => c.suit === "clubs" && c.rank === rank && safe(c));
+      if (card) selected.push(card);
+    }
+  }
+
   if (selected.length < 3) {
     const candidates = hand.filter(safe).sort((a, b) => {
       const ra = a.rank === 1 ? 14 : a.rank;
       const rb = b.rank === 1 ? 14 : b.rank;
-      if (rb !== ra) return rb - ra;
-      if (a.suit === "clubs" && b.suit !== "clubs") return 1;
-      if (b.suit === "clubs" && a.suit !== "clubs") return -1;
-      return 0;
+      return rb - ra;
     });
     for (const c of candidates) {
       if (selected.length >= 3) break;
@@ -166,6 +172,7 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  *   1. Q♠ (always pass, even when protected — unlike Medium).
  *   2. A♥, K♥, Q♥, J♥ (high hearts, highest first).
  *   3. A♠, K♠ (if Q♠ not present).
+ *   3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early.
  *   4. If any slots remain, complete a void in the shortest eligible suit (1 card only,
  *      not 2♣ holder's clubs). Voiding a suit gives Hard a free discard opportunity on
  *      every future lead of that suit without sacrificing a dangerous-card slot.
@@ -208,6 +215,17 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
 
   const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
 
+  // 3.5. High clubs: A♣ and K♣ are dangerous to hold because clubs are led early.
+  if (selected.length < 3) {
+    for (const rank of [1, 13] as const) {
+      if (selected.length >= 3) break;
+      const card = hand.find(
+        (c) => c.suit === "clubs" && c.rank === rank && safe(c) && notSelected(c)
+      );
+      if (card) selected.push(card);
+    }
+  }
+
   // 4. Opportunistic void: if exactly 1 slot remains, use it to void a single-card suit.
   if (selected.length === 2) {
     const bySuit = new Map<string, Card[]>();
@@ -228,13 +246,7 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   if (selected.length < 3) {
     const candidates = hand
       .filter((c) => safe(c) && notSelected(c))
-      .sort((a, b) => {
-        const diff = aceHigh(b.rank) - aceHigh(a.rank);
-        if (diff !== 0) return diff;
-        if (a.suit === "clubs" && b.suit !== "clubs") return 1;
-        if (b.suit === "clubs" && a.suit !== "clubs") return -1;
-        return 0;
-      });
+      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
