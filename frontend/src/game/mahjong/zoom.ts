@@ -26,6 +26,28 @@ export function computeZoomBounds(
   return { minZoom, maxZoom };
 }
 
+/**
+ * Compute the maximum allowed pan translation for each axis at a given zoom level.
+ *
+ * At minZoom the board fits the viewport exactly, so both bounds are 0.
+ * At higher zoom levels the board overflows the viewport; the board edge may
+ * travel at most halfExcess pixels from center before it crosses the viewport
+ * edge and the black background becomes visible.
+ */
+export function computePanBounds(
+  boardWidth: number,
+  boardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  scale: number
+): { maxTranslateX: number; maxTranslateY: number } {
+  "worklet";
+  return {
+    maxTranslateX: Math.max(0, (boardWidth * scale - viewportWidth) / 2),
+    maxTranslateY: Math.max(0, (boardHeight * scale - viewportHeight) / 2),
+  };
+}
+
 export function clamp(value: number, min: number, max: number): number {
   "worklet";
   return Math.min(Math.max(value, min), max);
