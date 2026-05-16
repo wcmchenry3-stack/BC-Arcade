@@ -40,7 +40,7 @@ export const BOTTLE_LIQUID_COLORS: Record<Theme, Record<Color, string>> = {
     navy:   "#228899",
     blue:   "#1166aa",
     indigo: "#8866ee",
-    purple: "#330044",
+    purple: "#6611aa",
     pink:   "#cc0088",
   },
 };

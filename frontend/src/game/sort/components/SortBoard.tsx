@@ -547,9 +547,12 @@ interface OverlayProps {
   readonly visible: boolean;
 }
 
+const CONFETTI_KEYS: Color[] = ["red", "orange", "green", "blue", "purple", "pink"];
+
 function SortWinOverlay({ visible }: OverlayProps) {
   const { theme } = useTheme();
-  const particleColors = Object.values(LIQUID_COLORS[theme]).slice(0, 6);
+  const liquidColors = LIQUID_COLORS[theme];
+  const particleColors = CONFETTI_KEYS.map((k) => liquidColors[k]);
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {

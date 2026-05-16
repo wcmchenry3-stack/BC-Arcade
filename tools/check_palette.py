@@ -19,8 +19,6 @@ background hex to BG_PER_THEME.  No other changes needed.
 
 import sys
 import warnings
-warnings.filterwarnings("ignore")
-
 import numpy as np
 import colour
 
@@ -37,6 +35,7 @@ BG_PER_THEME: dict[str, str] = {
 
 # ---------------------------------------------------------------------------
 # Current palettes (for reference / regression)
+# Keep these in sync with theme.bottle.ts whenever palettes are updated.
 # ---------------------------------------------------------------------------
 CURRENT: dict[str, dict[str, str]] = {
     "dark": {
@@ -57,7 +56,8 @@ CURRENT: dict[str, dict[str, str]] = {
         "indigo": "#818cf8",
     },
     "light": {
-        # Light-mode palette does not exist yet — using dark palette as placeholder
+        # Pre-PR state: light palette did not exist; dark palette was used as a placeholder.
+        # This section documents what was failing — not a valid light-mode palette.
         "red":    "#ff716c",
         "blue":   "#5b8cff",
         "green":  "#4ade80",
@@ -118,7 +118,7 @@ PROPOSED: dict[str, dict[str, str]] = {
         "navy":   "#228899",  # H=218°  L*=52  C*=28
         "blue":   "#1166aa",  # H=273°  L*=42  C*=43
         "indigo": "#8866ee",  # H=305°  L*=53  C*=78
-        "purple": "#330044",  # H=320°  L*=10  C*=46
+        "purple": "#6611aa",  # H=314°  L*=30  C*=87
         "pink":   "#cc0088",  # H=348°  L*=45  C*=76
     },
 }

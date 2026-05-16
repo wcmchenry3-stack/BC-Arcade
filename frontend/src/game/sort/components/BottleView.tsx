@@ -25,6 +25,7 @@ import type { Bottle, Color } from "../types";
 import { BOTTLE_DEPTH } from "../types";
 import { isBottleSolved } from "../engine";
 import { useTheme } from "../../../theme/ThemeContext";
+import type { Theme } from "../../../theme/ThemeContext";
 import {
   BOTTLE_LIQUID_COLORS,
   BOTTLE_STROKE_SELECTED,
@@ -55,7 +56,7 @@ export const FLASK_CAVITY = `M 18 ${PAD_TOP} L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOT
 const FLASK_OUTLINE = `M 18 0 L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_BOTTOM} L 38 ${BODY_BOTTOM} Q 50 ${BODY_BOTTOM} 50 154 Q 50 52 38 36 L 38 0 Z`;
 
 // Per-theme liquid color map — subscribers select by theme key.
-export const LIQUID_COLORS = BOTTLE_LIQUID_COLORS;
+export const LIQUID_COLORS: Record<Theme, Record<Color, string>> = BOTTLE_LIQUID_COLORS;
 
 const COLORBLIND_SYMBOLS: Record<Color, string> = {
   red: "▲",
