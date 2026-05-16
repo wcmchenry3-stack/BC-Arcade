@@ -3,25 +3,10 @@ import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path, Polygon, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import type { Color } from "../types";
+import { useTheme } from "../../../theme/ThemeContext";
+import { BOTTLE_LIQUID_COLORS } from "../../../theme/theme.bottle";
 
 export const BALL_SIZE = 36;
-
-export const BALL_COLORS: Record<Color, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#22c55e",
-  yellow: "#eab308",
-  orange: "#f97316",
-  purple: "#a855f7",
-  pink: "#ec4899",
-  teal: "#14b8a6",
-  brown: "#92400e",
-  lime: "#84cc16",
-  navy: "#1e40af",
-  maroon: "#9f1239",
-  gold: "#d97706",
-  indigo: "#4f46e5",
-};
 
 // White symbols on a 100×100 viewBox — one per color for colorblind mode.
 // Chosen to be distinct in shape even in greyscale.
@@ -126,6 +111,8 @@ export default function BallView({
   size = BALL_SIZE,
 }: BallViewProps) {
   const { t } = useTranslation("sort");
+  const { theme } = useTheme();
+  const ballColors = BOTTLE_LIQUID_COLORS[theme];
   const Symbol = SYMBOLS[color];
 
   return (
@@ -134,7 +121,7 @@ export default function BallView({
       accessibilityLabel={t(`color.${color}` as const)}
       style={[
         styles.ball,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: BALL_COLORS[color] },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: ballColors[color] },
       ]}
     >
       {colorblindMode && (

@@ -15,6 +15,7 @@ import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, Rect } from "react-nativ
 import { useTranslation } from "react-i18next";
 import type { Bottle, Color, SortState } from "../types";
 import { BOTTLE_DEPTH } from "../types";
+import { useTheme } from "../../../theme/ThemeContext";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
@@ -90,6 +91,8 @@ export default function SortBoard({
   onPourComplete,
 }: SortBoardProps) {
   const { t } = useTranslation("sort");
+  const { theme } = useTheme();
+  const liquidColors = LIQUID_COLORS[theme];
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
@@ -344,7 +347,7 @@ export default function SortBoard({
     const ctrlY = (spoutY + streamEndY) / 2 + arcSag;
     streamPath = `M ${spoutX} ${spoutY} Q ${ctrlX} ${ctrlY} ${spoutX} ${streamEndY}`;
     const topColor = ghost.bottle[ghost.bottle.length - 1];
-    streamColor = topColor ? LIQUID_COLORS[topColor] : "transparent";
+    streamColor = topColor ? liquidColors[topColor] : "transparent";
   }
 
   // Draining ghost contents: slice from top as units emit
@@ -439,7 +442,7 @@ export default function SortBoard({
                 <G clipPath={`url(#dst-fill-${ghost.bottleIndex}-${ghost.dstX})`}>
                   {(() => {
                     const unitHVb = INNER_H_VB / BOTTLE_DEPTH;
-                    const fillColor = LIQUID_COLORS[ghost.pourColor];
+                    const fillColor = liquidColors[ghost.pourColor];
                     return Array.from({ length: unitsLanded }).map((_, k) => {
                       const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
                       return (
@@ -540,13 +543,16 @@ export default function SortBoard({
 // Win overlay — liquid-coloured confetti cascades down when the puzzle is solved
 // ---------------------------------------------------------------------------
 
-const PARTICLE_COLORS = Object.values(LIQUID_COLORS).slice(0, 6);
-
 interface OverlayProps {
   readonly visible: boolean;
 }
 
+const CONFETTI_KEYS: Color[] = ["red", "orange", "green", "blue", "purple", "pink"];
+
 function SortWinOverlay({ visible }: OverlayProps) {
+  const { theme } = useTheme();
+  const liquidColors = LIQUID_COLORS[theme];
+  const particleColors = CONFETTI_KEYS.map((k) => liquidColors[k]);
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
@@ -629,22 +635,22 @@ function SortWinOverlay({ visible }: OverlayProps) {
       importantForAccessibility="no-hide-descendants"
     >
       <Animated.View
-        style={[styles.particle, styles.p0, { backgroundColor: PARTICLE_COLORS[0] }, a0]}
+        style={[styles.particle, styles.p0, { backgroundColor: particleColors[0] }, a0]}
       />
       <Animated.View
-        style={[styles.particle, styles.p1, { backgroundColor: PARTICLE_COLORS[1] }, a1]}
+        style={[styles.particle, styles.p1, { backgroundColor: particleColors[1] }, a1]}
       />
       <Animated.View
-        style={[styles.particle, styles.p2, { backgroundColor: PARTICLE_COLORS[2] }, a2]}
+        style={[styles.particle, styles.p2, { backgroundColor: particleColors[2] }, a2]}
       />
       <Animated.View
-        style={[styles.particle, styles.p3, { backgroundColor: PARTICLE_COLORS[3] }, a3]}
+        style={[styles.particle, styles.p3, { backgroundColor: particleColors[3] }, a3]}
       />
       <Animated.View
-        style={[styles.particle, styles.p4, { backgroundColor: PARTICLE_COLORS[4] }, a4]}
+        style={[styles.particle, styles.p4, { backgroundColor: particleColors[4] }, a4]}
       />
       <Animated.View
-        style={[styles.particle, styles.p5, { backgroundColor: PARTICLE_COLORS[5] }, a5]}
+        style={[styles.particle, styles.p5, { backgroundColor: particleColors[5] }, a5]}
       />
     </View>
   );

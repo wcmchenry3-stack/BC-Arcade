@@ -10,7 +10,7 @@ exports[`BallView matches snapshot with colorblind mode 1`] = `
         "overflow": "hidden",
       },
       {
-        "backgroundColor": "#3b82f6",
+        "backgroundColor": "#3366dd",
         "borderRadius": 18,
         "height": 36,
         "width": 36,
@@ -90,7 +90,7 @@ exports[`BallView matches snapshot without colorblind mode 1`] = `
         "overflow": "hidden",
       },
       {
-        "backgroundColor": "#3b82f6",
+        "backgroundColor": "#3366dd",
         "borderRadius": 18,
         "height": 36,
         "width": 36,
