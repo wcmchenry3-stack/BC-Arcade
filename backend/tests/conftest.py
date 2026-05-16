@@ -33,7 +33,7 @@ def pytest_configure(config: pytest.Config) -> None:
     resolves correctly.
 
     Also neutralise ENTITLEMENT_DEV_OVERRIDE so that .env's dev shortcut
-    doesn't bypass entitlement checks in the test suite.  dotenv's
+    doesn't bypass entitlement checks in the test suite. dotenv's
     load_dotenv() (called in main.py at import time) only sets variables
     that are *absent* from os.environ, so setting the key here — before
     any test module is imported — prevents the .env value from taking effect.
