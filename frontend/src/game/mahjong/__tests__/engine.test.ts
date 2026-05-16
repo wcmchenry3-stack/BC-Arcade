@@ -180,6 +180,14 @@ describe("isFreeTile", () => {
     const otherRow = tile({ id: 1, col: 2, row: 3, layer: 0 });
     expect(isFreeTile(t, [t, otherRow])).toBe(true);
   });
+
+  it("is blocked by a tile two layers above after layer+1 is removed (gap blindness fix)", () => {
+    // layer 0 tile covered by a tile at layer 2; the layer 1 tile has been removed.
+    // Before the fix, only layer+1 was checked so the layer 0 tile was wrongly free.
+    const t = tile({ id: 0, col: 4, row: 2, layer: 0 });
+    const abovePlus2 = tile({ id: 1, col: 4, row: 2, layer: 2 });
+    expect(isFreeTile(t, [t, abovePlus2])).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

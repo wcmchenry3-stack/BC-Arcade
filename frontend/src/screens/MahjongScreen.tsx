@@ -302,6 +302,8 @@ export default function MahjongScreen() {
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [noHintVisible, setNoHintVisible] = useState(false);
+  const noHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
   const [devPanelOpen, setDevPanelOpen] = useState(false);
@@ -667,7 +669,12 @@ export default function MahjongScreen() {
   const handleHint = useCallback(() => {
     if (!state) return;
     const pair = getAnyFreePair(state.tiles);
-    if (!pair) return;
+    if (!pair) {
+      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
+      setNoHintVisible(true);
+      noHintTimerRef.current = setTimeout(() => setNoHintVisible(false), 2000);
+      return;
+    }
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
@@ -676,6 +683,7 @@ export default function MahjongScreen() {
   useEffect(
     () => () => {
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
     },
     []
   );
@@ -816,6 +824,16 @@ export default function MahjongScreen() {
               </Pressable>
             )}
           </View>
+
+          {noHintVisible && (
+            <Text
+              style={[styles.noHintToast, { color: "#5dbcd2" }]}
+              accessibilityLiveRegion="polite"
+              testID="no-hint-toast"
+            >
+              {t("action.noHint")}
+            </Text>
+          )}
 
           {/* Viewport container — clips the board during zoom/pan */}
           <View
@@ -1101,6 +1119,12 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     paddingHorizontal: 4,
     paddingVertical: 8,
+  },
+  noHintToast: {
+    fontFamily: typography.heading,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    paddingBottom: 4,
   },
   hudText: {
     fontFamily: typography.heading,

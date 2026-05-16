@@ -71,7 +71,7 @@ export function tilesMatch(a: SlotTile, b: SlotTile): boolean {
 export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean {
   for (const t of tiles) {
     if (t.id === tile.id) continue;
-    if (t.layer === tile.layer + 1 && t.col === tile.col && t.row === tile.row) return false;
+    if (t.layer > tile.layer && t.col === tile.col && t.row === tile.row) return false;
   }
 
   let leftBlocked = false;

@@ -15,6 +15,7 @@
   "action.undoLabel": "Undo last matched pair",
   "action.hint": "HINT",
   "action.hintLabel": "Show a hint — highlights one valid pair for 2 seconds",
+  "action.noHint": "No hints available",
   "overlay.noMoves": "NO MOVES",
   "overlay.noMovesDetail": "No matches available. Shuffle to continue.",
   "overlay.deadlocked": "NO MORE MOVES",
