@@ -333,6 +333,19 @@ if (count !== null) {
 }
 
 // ---------------------------------------------------------------------------
+// Reporting helpers
+// ---------------------------------------------------------------------------
+
+function fmt4pct(vals: number[], denom: number): string {
+  if (denom === 0) return "  n/a     n/a     n/a     n/a";
+  return vals.map((v) => `${((v / denom) * 100).toFixed(1)}%`.padStart(7)).join(" ");
+}
+
+function fmt4score(vals: number[], denom: number): string {
+  return vals.map((v) => (v / denom).toFixed(1).padStart(7)).join(" ");
+}
+
+// ---------------------------------------------------------------------------
 // Batches
 // ---------------------------------------------------------------------------
 
@@ -403,23 +416,18 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   // Behavioral metrics (#1632)
   const totalHands = results.reduce((s, r) => s + r.handsPlayed, 0);
   const totalPassRounds = results.reduce((s, r) => s + r.passingRounds, 0);
-  const qByPlayer = [0, 1, 2, 3].map((i) =>
+  const qByPlayerAgg = [0, 1, 2, 3].map((i) =>
     results.reduce((s, r) => s + r.qSpadeByPlayer[i]!, 0),
   );
-  const voidsByPlayer = [0, 1, 2, 3].map((i) =>
+  const voidsAgg = [0, 1, 2, 3].map((i) =>
     results.reduce((s, r) => s + r.voidsByPlayer[i]!, 0),
   );
-  const moonByPlayer = [0, 1, 2, 3].map((i) =>
+  const moonAgg = [0, 1, 2, 3].map((i) =>
     results.reduce((s, r) => s + r.moonShotsByPlayer[i]!, 0),
   );
-  const handScoreSumByPlayer = [0, 1, 2, 3].map((i) =>
+  const handScoreAgg = [0, 1, 2, 3].map((i) =>
     results.reduce((s, r) => s + r.handScoreSumByPlayer[i]!, 0),
   );
-
-  const fmt4 = (vals: number[], denom: number, scale = 100, decimals = 1) =>
-    vals.map((v) => `${((v / denom) * scale).toFixed(decimals)}%`).join("  ");
-  const fmt4score = (vals: number[], denom: number) =>
-    vals.map((v) => (v / denom).toFixed(1)).join("  ");
 
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
@@ -436,11 +444,11 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   );
   console.log(`  Moon Shots (any player): ${moonPct}%`);
   console.log(`  Q♠ on Human: ${qPct}%`);
-  console.log(`  --- Behavioral Metrics (s0  s1  s2  s3) ---`);
-  console.log(`  Q♠/Hand by Seat:    ${fmt4(qByPlayer, totalHands)}`);
-  console.log(`  Void Rate by Seat:  ${fmt4(voidsByPlayer, totalPassRounds)}`);
-  console.log(`  Moon Shots/Round:   ${fmt4(moonByPlayer, totalHands)}`);
-  console.log(`  Avg Hand Score:     ${fmt4score(handScoreSumByPlayer, totalHands)}`);
+  console.log(`  Behavioral Metrics      s0      s1      s2      s3`);
+  console.log(`  Q♠/Hand by Seat:    ${fmt4pct(qByPlayerAgg, totalHands)}`);
+  console.log(`  Void Rate by Seat:  ${fmt4pct(voidsAgg, totalPassRounds)}`);
+  console.log(`  Moon Shots/Round:   ${fmt4pct(moonAgg, totalHands)}`);
+  console.log(`  Avg Hand Score:     ${fmt4score(handScoreAgg, totalHands)}`);
   console.log();
 }
 
