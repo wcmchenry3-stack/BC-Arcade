@@ -641,6 +641,89 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick.suit).toBe("diamonds");
   });
+
+  it("leads highest non-heart (A♦) in earlyMoon to stay in control", () => {
+    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 9 cards remaining (trick 4)
+    const hand = [
+      c("hearts", 2),
+      c("hearts", 4),
+      c("hearts", 6),
+      c("hearts", 8),
+      c("hearts", 10),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 8),
+      c("clubs", 13),
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 4,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    // Moon attempt: lead highest non-heart (A♦, aceHigh=14) to win the trick.
+    // Normal Hard would lead lowest of longest safe suit (8♦).
+    expect(pick).toEqual(c("diamonds", 1));
+  });
+
+  it("leads highest heart when only hearts and Q♠ remain in midMoon", () => {
+    // midMoon: totalHearts=5, Q♠ in hand, myPoints=0=totalPointsTaken, 6 cards left
+    const hand = [
+      c("hearts", 2),
+      c("hearts", 4),
+      c("hearts", 6),
+      c("hearts", 8),
+      c("hearts", 10),
+      c("spades", 12),
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 7,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    // No non-hearts besides Q♠ — fall back to highest heart (10♥) to force wins.
+    expect(pick).toEqual(c("hearts", 10));
+  });
+
+  it("wins point trick with lowest winning card (10♥) in earlyMoon", () => {
+    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 8 cards remaining (trick 5)
+    const hand = [
+      c("hearts", 10),
+      c("hearts", 8),
+      c("hearts", 6),
+      c("hearts", 4),
+      c("hearts", 2),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 13),
+    ];
+    const trick: TrickCard[] = [
+      { card: c("hearts", 3), playerIndex: 0 },
+      { card: c("hearts", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Moon attempt: play lowest card that beats current winner (9♥) → 10♥.
+    // Normal Hard would play highest loser (8♥) to avoid winning points.
+    expect(pick).toEqual(c("hearts", 10));
+  });
 });
 
 // ---------------------------------------------------------------------------

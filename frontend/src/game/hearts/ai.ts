@@ -260,7 +260,7 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   const voidInSpades = spades.length === 0;
 
   // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass dangerous non-hearts.
-  const moonViable = heartsInHand >= 5 && hasQSpades && !voidInSpades;
+  const moonViable = heartsInHand >= 5 && hasQSpades; // hasQSpades implies !voidInSpades
   if (moonViable) {
     const notSel = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
     const moonSafe = (c: Card) =>
@@ -510,7 +510,7 @@ function selectCardToPlayMedium(
 /**
  * Hard: extends Medium with moon-attempt mode and card counting (#1637).
  * Moon-attempt fires in two modes:
- *   Early: dealt 7+ hearts + Q♠ at the start of a hand — commits from trick 1.
+ *   Early: dealt 5+ hearts + Q♠ at the start of a hand — commits from trick 1.
  *   Mid-game: accumulated 5+ hearts + Q♠ and holds every point taken so far.
  * Tracking across wonCards lets the attempt persist after winning the first hearts.
  * Card counting: infers seen cards from wonCards + currentTrick to identify
@@ -733,11 +733,6 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   const isVoid = inSuit.length === 0;
 
   if (isVoid) {
-    if (isMoonAttempt) {
-      // Keep hearts and Q♠ — dump highest junk card instead.
-      const junk = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
-      if (junk.length > 0) return highest(junk) ?? valid[0]!;
-    }
     return chooseDiscard(valid);
   }
 
