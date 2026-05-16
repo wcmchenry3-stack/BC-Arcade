@@ -4,6 +4,8 @@
 
 import type { GameOutcome, GameSession } from "../_shared/types";
 
+export type AiDifficulty = "easy" | "medium" | "hard";
+
 export type GameEvent =
   | { readonly type: "diceRoll"; readonly rolledIndices: readonly number[] }
   | { readonly type: "dieHold"; readonly index: number }
