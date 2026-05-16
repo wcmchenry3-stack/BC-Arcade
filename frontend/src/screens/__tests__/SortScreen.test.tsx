@@ -245,9 +245,13 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
     // Select bottle 1 (["red","blue"], 2 balls), then pour into bottle 3 (empty).
     // This sets pendingPourRef so onPourComplete can apply the state update.
     const bottle1 = await findByLabelText(/^Bottle 1, 2 of/);
-    await act(async () => { fireEvent.press(bottle1); });
+    await act(async () => {
+      fireEvent.press(bottle1);
+    });
     const bottle3 = await findByLabelText("Bottle 3, empty");
-    await act(async () => { fireEvent.press(bottle3); });
+    await act(async () => {
+      fireEvent.press(bottle3);
+    });
 
     // Simulate the moment SortBoard's return animation finishes and fires
     // onPourComplete (in production this is via runOnJS inside the worklet;
