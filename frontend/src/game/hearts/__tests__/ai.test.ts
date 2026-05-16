@@ -1151,3 +1151,238 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
     expect(pick).not.toEqual(c("spades", 12));
   });
 });
+
+// ---------------------------------------------------------------------------
+// #1592 — Easy AI: basic moon blocking
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
+  it("dumps highest point card when an opponent is threatening a moon", () => {
+    // Player 0 has taken all 5 points — potential moon detected.
+    // Player 3 (Easy) is void in spades; should dump hearts 9 to disrupt.
+    const allHearts5 = Array.from({ length: 5 }, (_, i) => c("hearts", (i + 1) as Rank));
+    const hand = [c("hearts", 9), c("diamonds", 3), c("diamonds", 4)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 4), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 6), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      handScores: [5, 0, 0, 0],
+      wonCards: [allHearts5, [], [], []],
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
+    expect(pick).toEqual(c("hearts", 9));
+  });
+
+  it("dumps A♥ before lower hearts when blocking a moon", () => {
+    const allHearts5 = Array.from({ length: 5 }, (_, i) => c("hearts", (i + 2) as Rank));
+    const hand = [c("hearts", 1), c("hearts", 3), c("diamonds", 4)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 4), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 6), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      handScores: [5, 0, 0, 0],
+      wonCards: [allHearts5, [], [], []],
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
+    expect(pick).toEqual(c("hearts", 1));
+  });
+
+  it("dumps a point card when LEADING and an opponent is threatening a moon", () => {
+    // Easy AI (player 1) is leading its turn. Player 0 has all 5 points — moon threat.
+    // Hearts are broken, so hearts 9 is a valid lead and the moon-block should fire.
+    const allHearts5 = Array.from({ length: 5 }, (_, i) => c("hearts", (i + 1) as Rank));
+    const hand = [c("hearts", 9), c("diamonds", 3), c("diamonds", 4)];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 5,
+      heartsBroken: true,
+      handScores: [5, 0, 0, 0],
+      wonCards: [allHearts5, [], [], []],
+      currentPlayerIndex: 1,
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "easy");
+    expect(pick).toEqual(c("hearts", 9));
+  });
+
+  it("plays normally (lowest) when no moon threat", () => {
+    const hand = [c("hearts", 9), c("diamonds", 3), c("diamonds", 4)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 4), playerIndex: 0 },
+      { card: c("spades", 5), playerIndex: 1 },
+      { card: c("spades", 6), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      currentPlayerIndex: 3,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
+    // No moon threat → Easy dumps lowest card
+    expect(pick).toEqual(c("diamonds", 3));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1593 — Hard AI: moonshot extended tracking + tricks-remaining guard
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
+  it("stays in moon-attempt mode when AI has collected all points so far (5+ tricks left)", () => {
+    // AI (player 1) has already won 2 hearts; still holds 8 hearts + Q♠ + 1 club.
+    // aiHasAllPoints: handScores[1]=2 === totalPointsTaken=2. hand.length=10 >= 5.
+    const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
+    const heartsAlreadyWon = [c("hearts", 10), c("hearts", 11)];
+    const hand = [...heartsInHand, c("spades", 12), c("clubs", 7)]; // 10 cards
+    const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }]; // AI void in diamonds
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      handScores: [0, 2, 0, 0],
+      wonCards: [[], heartsAlreadyWon, [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Moon attempt active: discard highest non-hearts/non-Q♠ = clubs 7
+    expect(pick).toEqual(c("clubs", 7));
+  });
+
+  it("does not enter moon-attempt mode when fewer than 5 tricks remain", () => {
+    // AI (player 1) has already won 6 hearts; holds 2 hearts + Q♠ + 1 diamond in hand (4 cards).
+    // hand.length=4 < 5 → not feasible → isMoonAttempt=false → normal discard fires (Q♠ first).
+    const heartsInHand = [c("hearts", 2), c("hearts", 3)];
+    const heartsAlreadyWon = Array.from({ length: 6 }, (_, i) => c("hearts", (i + 4) as Rank));
+    const hand = [...heartsInHand, c("spades", 12), c("diamonds", 7)]; // 4 cards
+    const trick: TrickCard[] = [{ card: c("clubs", 3), playerIndex: 0 }]; // AI void in clubs
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 9,
+      currentPlayerIndex: 1,
+      handScores: [0, 6, 0, 0],
+      wonCards: [[], heartsAlreadyWon, [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Not in moon mode → chooseDiscard fires → dumps Q♠ first
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("maintains moon-attempt mode when Q♠ is already in wonCards (not in hand)", () => {
+    // AI (player 1) has already won Q♠ + 5 hearts; still holds 8 hearts + 2 clubs.
+    // myHasQ = true via wonCards. totalHearts = 8+5 = 13. hand.length = 10 >= 5.
+    // handScores[1] = 18 (13+5) === totalPointsTaken = 18 → aiHasAllPoints.
+    const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
+    const heartsWon = [
+      c("hearts", 10),
+      c("hearts", 11),
+      c("hearts", 12),
+      c("hearts", 13),
+      c("hearts", 1),
+    ];
+    const alreadyWon = [c("spades", 12), ...heartsWon]; // Q♠ + 5 hearts
+    const hand = [...heartsInHand, c("clubs", 7), c("clubs", 8)]; // 10 cards
+    const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }]; // AI void in diamonds
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      handScores: [0, 18, 0, 0],
+      wonCards: [[], alreadyWon, [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Moon attempt active: void in diamonds → discard highest non-hearts/non-Q♠ = clubs 8
+    expect(pick).toEqual(c("clubs", 8));
+  });
+
+  it("exits moon-attempt mode when another player also has points (split points)", () => {
+    // AI has 8 hearts in hand + 2 won; opponent also has 2 points → aiHasAllPoints=false.
+    const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
+    const heartsAlreadyWon = [c("hearts", 10), c("hearts", 11)];
+    const hand = [...heartsInHand, c("spades", 12), c("clubs", 7)];
+    const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      handScores: [0, 2, 2, 0], // player 2 also has points — AI doesn't have all points
+      wonCards: [[], heartsAlreadyWon, [c("hearts", 12), c("hearts", 13)], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Not in moon mode (split points) → void in diamonds → chooseDiscard → dumps Q♠
+    expect(pick).toEqual(c("spades", 12));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1594 — Hard AI: chooseLeadHard never leads Q♠ as fallback
+// ---------------------------------------------------------------------------
+
+describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
+  it("leads K♠ (not Q♠) when safe pool is exhausted and spades outnumber hearts", () => {
+    // valid = [Q♠, K♠, 2♥]: Q♠ not gone → K♠ and hearts both unsafe → safe=[]. pool=valid.
+    // Before fix: bySuitDescending picks spades(2 cards) over hearts(1) → lowest spade = Q♠. Bug.
+    // After fix: strip Q♠ first → pickFrom=[K♠, 2♥]. spades(1) tied with hearts(1);
+    //   map preserves insertion order → spades first → lowest([K♠]) = K♠.
+    const hand = [c("spades", 12), c("spades", 13), c("hearts", 2)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 8,
+      heartsBroken: true,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []], // Q♠ not yet played
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).not.toEqual(c("spades", 12));
+    expect(pick).toEqual(c("spades", 13)); // K♠: lowest of longest group after Q♠ stripped
+  });
+
+  it("leads Q♠ only when it is the sole remaining card", () => {
+    const hand = [c("spades", 12)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 12,
+      heartsBroken: true,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("leads lowest heart (not Q♠) when hearts outnumber other unsafe cards in fallback pool", () => {
+    // valid = [Q♠, K♠, 3♥, 5♥]: safe=[]. poolWithoutQ=[K♠, 3♥, 5♥].
+    // bySuitDescending: hearts(2) > spades(1) → longestGroup = hearts → lowest = 3♥.
+    const hand = [c("spades", 12), c("spades", 13), c("hearts", 3), c("hearts", 5)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 5,
+      heartsBroken: true,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).not.toEqual(c("spades", 12));
+    expect(pick).toEqual(c("hearts", 3)); // lowest of longest group (hearts) after Q♠ stripped
+  });
+});
