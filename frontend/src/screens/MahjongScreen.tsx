@@ -827,7 +827,7 @@ export default function MahjongScreen() {
 
           {noHintVisible && (
             <Text
-              style={[styles.noHintToast, { color: "#5dbcd2" }]}
+              style={styles.noHintToast}
               accessibilityLiveRegion="polite"
               testID="no-hint-toast"
             >
@@ -1125,6 +1125,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
     paddingBottom: 4,
+    color: "#5dbcd2",
   },
   hudText: {
     fontFamily: typography.heading,

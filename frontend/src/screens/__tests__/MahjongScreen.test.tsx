@@ -348,7 +348,8 @@ describe("MahjongScreen — hint button", () => {
   });
 
   it("shows the no-hint toast when no free pair is available", async () => {
-    // A state with a covered tile — the only matching tile is blocked above.
+    // id:0 (layer 0) is blocked by id:1 (layer 1); id:1 is free but has no second
+    // free match, so getAnyFreePair returns null.
     const blockedState: MahjongState = {
       _v: 1,
       tiles: [
