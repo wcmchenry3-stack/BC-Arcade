@@ -1288,7 +1288,13 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
     // myHasQ = true via wonCards. totalHearts = 8+5 = 13. hand.length = 10 >= 5.
     // handScores[1] = 18 (13+5) === totalPointsTaken = 18 → aiHasAllPoints.
     const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
-    const heartsWon = [c("hearts", 10), c("hearts", 11), c("hearts", 12), c("hearts", 13), c("hearts", 1)];
+    const heartsWon = [
+      c("hearts", 10),
+      c("hearts", 11),
+      c("hearts", 12),
+      c("hearts", 13),
+      c("hearts", 1),
+    ];
     const alreadyWon = [c("spades", 12), ...heartsWon]; // Q♠ + 5 hearts
     const hand = [...heartsInHand, c("clubs", 7), c("clubs", 8)]; // 10 cards
     const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }]; // AI void in diamonds
