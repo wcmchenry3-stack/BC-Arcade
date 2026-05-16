@@ -1,6 +1,6 @@
 """Sort Puzzle leaderboard (#1173).
 
-GET /sort/levels  — load and return all 20 handcrafted levels.
+GET /sort/levels  — load and return all 23 generated levels.
 POST /sort/score  — record highest level reached; returns rank.
 GET /sort/scores  — top-10 entries by level_reached desc (ties: older wins).
 """

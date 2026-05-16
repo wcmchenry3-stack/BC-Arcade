@@ -18,6 +18,12 @@ export const BOTTLE_LIQUID_COLORS: Record<Color, string> = {
   purple: "#d674ff",
   pink: "#ff5fa8",
   teal: "#8ff5ff",
+  brown: "#b45309",
+  lime: "#a3e635",
+  navy: "#3b5bdb",
+  maroon: "#c2255c",
+  gold: "#f59e0b",
+  indigo: "#818cf8",
 };
 
 /** Bottle stroke color when selected (teal highlight). */

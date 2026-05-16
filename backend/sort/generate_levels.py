@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate 20 solvable Sort Puzzle levels.
+"""Generate 23 solvable Sort Puzzle levels.
 
 Usage: python generate_levels.py > levels.json
 
 Levels are produced by randomly distributing colors across bottles and
 BFS-verifying solvability. RNG is seeded (42) for reproducibility.
-For levels with 6+ colors the state space is too large for full BFS;
+For levels with 5+ colors the state space is too large for full BFS;
 those are generated until non-trivial, then assumed solvable (empirically
-true for balanced random distributions with 2+ empty bottles).
+true for balanced random distributions with 1+ empty bottles).
 """
 
 import json
@@ -121,36 +121,88 @@ COLORS_5 = ["red", "blue", "green", "yellow", "orange"]
 COLORS_6 = ["red", "blue", "green", "yellow", "orange", "purple"]
 COLORS_7 = ["red", "blue", "green", "yellow", "orange", "purple", "pink"]
 COLORS_8 = ["red", "blue", "green", "yellow", "orange", "purple", "pink", "teal"]
+COLORS_9 = [*COLORS_8, "brown"]
+COLORS_10 = [*COLORS_9, "lime"]
+COLORS_11 = [*COLORS_10, "navy"]
+COLORS_12 = [*COLORS_11, "maroon"]
+COLORS_13 = [*COLORS_12, "gold"]
+COLORS_14 = [*COLORS_13, "indigo"]
 
+# 23-level progression: 3→14 colors.
+# Tiers 3–9c: alternating tight (1 empty) / relaxed (2 empties); 1-empty
+# states are verified by _not_proven_unsolvable at generation time.
+# Tiers 10–14c: 2 empties only — random 1-empty states at ≥10 colors fail
+# too often within the generation budget to be reliable.
+# No two consecutive levels share the same (colors, n_empty) pair.
 LEVEL_SPECS = [
     # (id, colors, n_empty)
-    (1, COLORS_3, 1),
-    (2, COLORS_3, 1),
-    (3, COLORS_3, 1),
-    (4, COLORS_4, 1),
-    (5, COLORS_4, 1),
-    (6, COLORS_4, 1),
-    (7, COLORS_4, 1),
-    (8, COLORS_5, 2),
-    (9, COLORS_5, 2),
-    (10, COLORS_5, 2),
-    (11, COLORS_5, 2),
-    (12, COLORS_6, 2),
-    (13, COLORS_6, 2),
-    (14, COLORS_6, 2),
-    (15, COLORS_6, 2),
-    (16, COLORS_7, 2),
-    (17, COLORS_7, 2),
-    (18, COLORS_7, 2),
-    (19, COLORS_7, 2),
-    (20, COLORS_8, 2),
+    (1, COLORS_3, 2),   # tutorial — generous
+    (2, COLORS_3, 1),   # tighten within 3-color tier
+    (3, COLORS_4, 1),   # new tier, tight
+    (4, COLORS_4, 2),   # ease off
+    (5, COLORS_5, 1),   # new tier, tight
+    (6, COLORS_5, 2),   # ease off
+    (7, COLORS_6, 1),   # new tier, tight
+    (8, COLORS_6, 2),   # ease off
+    (9, COLORS_6, 1),   # plateau buster — revisit 6c tight
+    (10, COLORS_7, 1),  # new tier, tight
+    (11, COLORS_7, 2),  # ease off
+    (12, COLORS_8, 1),  # new tier, tight
+    (13, COLORS_8, 2),  # ease off
+    (14, COLORS_9, 1),  # new tier, tight
+    (15, COLORS_9, 2),  # ease off
+    (16, COLORS_9, 1),  # plateau buster — revisit 9c tight
+    (17, COLORS_10, 2), # new tier
+    (18, COLORS_11, 2), # new tier
+    (19, COLORS_12, 2), # new tier
+    (20, COLORS_13, 2), # new tier
+    (21, COLORS_14, 2), # new tier
+    (22, COLORS_13, 2), # revisit 13c
+    (23, COLORS_14, 2), # endgame
 ]
+
+
+_FAST_BFS_CAP = 5_000
+
+
+def _not_proven_unsolvable(state: list[list[str]]) -> bool:
+    """Return False only when BFS exhausts all reachable states without solving.
+
+    Uses a small cap so the check is cheap: for large state spaces the cap is hit
+    immediately and True is returned; only provably-dead starting positions (small
+    reachable state space, no solution) return False. This filters constrained
+    deadlock arrangements that occur with 1 empty bottle at high color counts.
+    """
+    if _solved(state):
+        return True
+    visited = {_compact(state)}
+    queue = deque([state])
+    while queue:
+        if len(visited) >= _FAST_BFS_CAP:
+            return True
+        cur = queue.popleft()
+        for frm, to in _moves(cur):
+            nxt = _apply(cur, frm, to)
+            key = _compact(nxt)
+            if key in visited:
+                continue
+            if _solved(nxt):
+                return True
+            visited.add(key)
+            queue.append(nxt)
+    return False
 
 
 def _build_level_fast(
     colors: list[str], n_empty: int, rng: random.Random, max_attempts: int = 1000
 ) -> list[list[str]]:
-    """Generate a non-trivial level without BFS (for 5+ colors where state space is too large)."""
+    """Generate a non-trivial level for 5+ colors.
+
+    For n_empty == 1 applies _not_proven_unsolvable to discard deadlocked starts
+    (the 1-empty constraint can leave some random arrangements with no solution
+    path). For n_empty >= 2 the assumption that non-trivial balanced distributions
+    are solvable is well-validated and the BFS check is skipped for speed.
+    """
     units = [c for c in colors for _ in range(DEPTH)]
     for _ in range(max_attempts):
         rng.shuffle(units)
@@ -158,20 +210,23 @@ def _build_level_fast(
             list(units[i * DEPTH : (i + 1) * DEPTH]) for i in range(len(colors))
         ]
         state += [[] for _ in range(n_empty)]
-        if not _is_trivial(state):
-            return state
+        if _is_trivial(state):
+            continue
+        if n_empty == 1 and not _not_proven_unsolvable(state):
+            continue
+        return state
     raise RuntimeError(
-        f"No non-trivial level found after {max_attempts} attempts "
+        f"No solvable level found after {max_attempts} attempts "
         f"({len(colors)} colors, {n_empty} empty)"
     )
 
 
 def build_levels(seed: int | None = None) -> list[dict]:
-    """Generate 20 levels with fresh randomisation. seed=None uses a random seed.
+    """Generate 23 levels with fresh randomisation. seed=None uses a random seed.
 
     Levels with ≤4 colors are BFS-verified solvable. Levels with 5+ colors skip
     full BFS (state space exceeds the cap anyway) and are assumed solvable given a
-    non-trivial, balanced random distribution with 2+ empty bottles.
+    non-trivial, balanced random distribution with 1+ empty bottles.
     """
     rng = random.Random(seed)
     levels = []

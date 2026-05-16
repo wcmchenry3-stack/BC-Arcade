@@ -4,7 +4,21 @@
  * Pure data. No React, no side effects.
  */
 
-export type Color = "red" | "blue" | "green" | "yellow" | "orange" | "purple" | "pink" | "teal";
+export type Color =
+  | "red"
+  | "blue"
+  | "green"
+  | "yellow"
+  | "orange"
+  | "purple"
+  | "pink"
+  | "teal"
+  | "brown"
+  | "lime"
+  | "navy"
+  | "maroon"
+  | "gold"
+  | "indigo";
 
 /** Max units per bottle — must match DEPTH in backend/sort/generate_levels.py. */
 export const BOTTLE_DEPTH = 4;

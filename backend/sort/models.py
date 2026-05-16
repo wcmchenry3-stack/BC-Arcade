@@ -8,7 +8,7 @@ class SortMetadata(BaseModel):
 
 class ScoreSubmitRequest(BaseModel):
     player_name: str = Field(..., min_length=1, max_length=32)
-    level_reached: int = Field(..., ge=1, le=20)
+    level_reached: int = Field(..., ge=1, le=23)
 
 
 class ScoreEntry(BaseModel):
