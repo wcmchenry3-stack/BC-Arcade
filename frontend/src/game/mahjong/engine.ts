@@ -542,7 +542,14 @@ export function shuffleBoard(state: MahjongState): MahjongState {
       candidate.push({ ...pair[0], id: id++, col: sA.col, row: sA.row, layer: sA.layer });
       candidate.push({ ...pair[1], id: id++, col: sB.col, row: sB.row, layer: sB.layer });
     }
-    if (hasFreePairs(candidate)) {
+    // Reject if any matching pair shares (col, row): removing the top tile
+    // would leave the bottom tile with no partner, making the game unwinnable.
+    const hasStackedMatch = shuffledPairs.some((_, i) => {
+      const sA = shuffledSlots[i * 2]!;
+      const sB = shuffledSlots[i * 2 + 1]!;
+      return sA.col === sB.col && sA.row === sB.row;
+    });
+    if (!hasStackedMatch && hasFreePairs(candidate)) {
       newTiles = candidate;
       break;
     }

@@ -522,6 +522,25 @@ describe("shuffleBoard", () => {
     const shuffled = shuffleBoard(state);
     expect(shuffled.undoStack.length).toBe(1);
   });
+
+  it("never places both tiles of a pair at the same (col, row)", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const shuffled = shuffleBoard(state);
+    const byKey = new Map<string, SlotTile[]>();
+    for (const t of shuffled.tiles) {
+      const key = t.suit === "flowers" || t.suit === "seasons" ? t.suit : `${t.suit}:${t.rank}`;
+      const g = byKey.get(key) ?? [];
+      g.push(t);
+      byKey.set(key, g);
+    }
+    for (const group of byKey.values()) {
+      for (let i = 0; i + 1 < group.length; i += 2) {
+        const a = group[i]!;
+        const b = group[i + 1]!;
+        expect(a.col === b.col && a.row === b.row).toBe(false);
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

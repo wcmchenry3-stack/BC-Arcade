@@ -392,7 +392,17 @@ export default function GameCanvas({
           `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
         );
     }
-  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree, dpr]);
+  }, [
+    state,
+    freeTiles,
+    allHintIds,
+    imagesVersion,
+    camera,
+    boardWidth,
+    boardHeight,
+    debugShowFree,
+    dpr,
+  ]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
