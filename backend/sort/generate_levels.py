@@ -18,7 +18,7 @@ from itertools import takewhile
 
 DEPTH = 4
 BFS_CAP = 200_000
-_FAST_BFS_CAP = 5_000   # cap for the lightweight deadlock check in _is_likely_solvable
+_FAST_BFS_CAP = 5_000  # cap for the lightweight deadlock check in _is_likely_solvable
 
 
 def _top_color(bottle: list[str]) -> str | None:
@@ -138,15 +138,15 @@ COLORS_14 = [*COLORS_13, "indigo"]
 # No two consecutive levels share the same (colors, n_empty) pair.
 LEVEL_SPECS = [
     # (id, colors, n_empty)
-    (1, COLORS_3, 2),   # tutorial — generous
-    (2, COLORS_3, 1),   # tighten within 3-color tier
-    (3, COLORS_4, 1),   # new tier, tight
-    (4, COLORS_4, 2),   # ease off
-    (5, COLORS_5, 1),   # new tier, tight
-    (6, COLORS_5, 2),   # ease off
-    (7, COLORS_6, 1),   # new tier, tight
-    (8, COLORS_6, 2),   # ease off
-    (9, COLORS_6, 1),   # plateau buster — revisit 6c tight
+    (1, COLORS_3, 2),  # tutorial — generous
+    (2, COLORS_3, 1),  # tighten within 3-color tier
+    (3, COLORS_4, 1),  # new tier, tight
+    (4, COLORS_4, 2),  # ease off
+    (5, COLORS_5, 1),  # new tier, tight
+    (6, COLORS_5, 2),  # ease off
+    (7, COLORS_6, 1),  # new tier, tight
+    (8, COLORS_6, 2),  # ease off
+    (9, COLORS_6, 1),  # plateau buster — revisit 6c tight
     (10, COLORS_7, 1),  # new tier, tight
     (11, COLORS_7, 2),  # ease off
     (12, COLORS_8, 1),  # new tier, tight
@@ -154,16 +154,16 @@ LEVEL_SPECS = [
     (14, COLORS_9, 1),  # new tier, tight
     (15, COLORS_9, 2),  # ease off
     (16, COLORS_9, 1),  # plateau buster — revisit 9c tight
-    (17, COLORS_10, 2), # new tier
-    (18, COLORS_11, 2), # new tier
-    (19, COLORS_12, 2), # new tier
-    (20, COLORS_13, 2), # new tier
-    (21, COLORS_14, 2), # new tier
+    (17, COLORS_10, 2),  # new tier
+    (18, COLORS_11, 2),  # new tier
+    (19, COLORS_12, 2),  # new tier
+    (20, COLORS_13, 2),  # new tier
+    (21, COLORS_14, 2),  # new tier
     # Levels 22–23 revisit 13c then 14c: the color count briefly dips then peaks,
     # providing a slight ease before the true endgame. Consecutive constraint holds
     # because 14c separates the two 13c entries and 13c separates the two 14c entries.
-    (22, COLORS_13, 2), # revisit 13c — brief ease before endgame
-    (23, COLORS_14, 2), # endgame
+    (22, COLORS_13, 2),  # revisit 13c — brief ease before endgame
+    (23, COLORS_14, 2),  # endgame
 ]
 
 

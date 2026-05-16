@@ -38,9 +38,9 @@ def test_fast_generation_non_trivial_low_tiers(colors: list[str], n_empty: int) 
     rng = random.Random(42)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, n_empty, rng)
-        assert not _is_trivial(state), (
-            f"{len(colors)} colors, {n_empty} empty: got trivially-solved state"
-        )
+        assert not _is_trivial(
+            state
+        ), f"{len(colors)} colors, {n_empty} empty: got trivially-solved state"
 
 
 @pytest.mark.parametrize("colors", _TWO_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
@@ -49,9 +49,7 @@ def test_fast_generation_non_trivial_high_tiers(colors: list[str]) -> None:
     rng = random.Random(42)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, 2, rng)
-        assert not _is_trivial(state), (
-            f"{len(colors)} colors, 2 empty: got trivially-solved state"
-        )
+        assert not _is_trivial(state), f"{len(colors)} colors, 2 empty: got trivially-solved state"
 
 
 @pytest.mark.parametrize("colors", _ONE_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
@@ -82,9 +80,9 @@ def test_fast_generation_1e_is_likely_solvable(colors: list[str]) -> None:
     rng = random.Random(99)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, 1, rng)
-        assert _is_likely_solvable(state), (
-            f"{len(colors)} colors, 1 empty: generated state failed solvability check"
-        )
+        assert _is_likely_solvable(
+            state
+        ), f"{len(colors)} colors, 1 empty: generated state failed solvability check"
 
 
 @pytest.mark.parametrize("colors", _TWO_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
@@ -93,6 +91,6 @@ def test_fast_generation_2e_is_likely_solvable(colors: list[str]) -> None:
     rng = random.Random(99)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, 2, rng)
-        assert _is_likely_solvable(state), (
-            f"{len(colors)} colors, 2 empty: generated state failed solvability check"
-        )
+        assert _is_likely_solvable(
+            state
+        ), f"{len(colors)} colors, 2 empty: generated state failed solvability check"
