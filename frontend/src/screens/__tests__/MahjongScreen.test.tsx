@@ -21,18 +21,21 @@ import type { MahjongState } from "../../game/mahjong/types";
 
 jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { View, Pressable } = require("react-native");
+  const { View, Pressable, Text } = require("react-native");
   function MockGameCanvas({
     onNewGamePress,
+    hintIds,
   }: {
     onTilePress: (id: number) => void;
     onShufflePress: () => void;
     onNewGamePress: () => void;
+    hintIds: ReadonlySet<number>;
     layout: object;
   }) {
     return (
       <View testID="game-canvas">
         <Pressable accessibilityLabel="mock-new-game" onPress={onNewGamePress} />
+        <Text testID="hint-ids-size">{hintIds?.size ?? 0}</Text>
       </View>
     );
   }
@@ -304,6 +307,75 @@ describe("MahjongScreen — stats tracking", () => {
       const stats = raw ? JSON.parse(raw) : { gamesWon: 1 };
       expect(stats.gamesWon).toBe(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint button
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — hint button", () => {
+  /** Minimal in-progress state with two free matching tiles so getAnyFreePair returns a pair. */
+  function makeHintableState(): MahjongState {
+    return {
+      _v: 1,
+      tiles: [
+        { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
+      ] as MahjongState["tiles"],
+      selected: null,
+      pairsRemoved: 0,
+      score: 0,
+      shufflesLeft: 3,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    } as unknown as MahjongState;
+  }
+
+  it("passes hintIds to GameCanvas when a valid pair exists", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeHintableState()));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("action.hintLabel"));
+    });
+
+    expect(api.getByTestId("hint-ids-size").props.children).toBe(2);
+  });
+
+  it("shows the no-hint toast when no free pair is available", async () => {
+    // id:0 (layer 0) is blocked by id:1 (layer 1); id:1 is free but has no second
+    // free match, so getAnyFreePair returns null.
+    const blockedState: MahjongState = {
+      _v: 1,
+      tiles: [
+        { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      ] as MahjongState["tiles"],
+      selected: null,
+      pairsRemoved: 0,
+      score: 0,
+      shufflesLeft: 3,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    } as unknown as MahjongState;
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(blockedState));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("action.hintLabel"));
+    });
+
+    expect(api.getByTestId("no-hint-toast")).toBeTruthy();
+    expect(api.getByTestId("hint-ids-size").props.children).toBe(0);
   });
 });
 
