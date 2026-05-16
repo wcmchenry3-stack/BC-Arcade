@@ -1557,3 +1557,173 @@ describe("selectCardsToPass — #1595 across direction (Medium)", () => {
     expect(passed).toHaveLength(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// selectCardToPlay — #1626 Hard play-phase improvements
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — #1626 Q♠-live spade following (Hard)", () => {
+  it("plays highest losing spade instead of winning when Q♠ is still live and trick has 0 pts", () => {
+    // Trick: 6♠→p1, K♠→p2, J♠→p3. AI (p0) is last to play with [A♠, 4♠].
+    // Q♠ not in wonCards or currentTrick → still live.
+    // Without fix: 0-pt trick last-to-play → chooseFollow picks highest safe = A♠ (wins).
+    // With fix: Q♠ live + spades led + 0 pts → highest losing = 4♠ (loses to K♠).
+    const hand = [c("spades", 1), c("spades", 4), c("hearts", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 6), playerIndex: 1 },
+      { card: c("spades", 13), playerIndex: 2 },
+      { card: c("spades", 11), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []], // Q♠ not yet played
+      heartsBroken: false,
+      tricksPlayedInHand: 5,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    expect(pick).toEqual(c("spades", 4)); // loses to K♠, avoids winning while Q♠ live
+    expect(pick).not.toEqual(c("spades", 1)); // A♠ would win — avoided
+  });
+
+  it("still wins spade trick when Q♠ has already been played", () => {
+    // Same setup but Q♠ is in wonCards[1] → no longer live.
+    // Without the Q♠-live guard, chooseFollow fires and picks highest safe = A♠.
+    const hand = [c("spades", 1), c("spades", 4), c("hearts", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 6), playerIndex: 1 },
+      { card: c("spades", 13), playerIndex: 2 },
+      { card: c("spades", 11), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 0,
+      wonCards: [[], [c("spades", 12)], [], []], // Q♠ already played by p1
+      heartsBroken: false,
+      tricksPlayedInHand: 5,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    expect(pick).toEqual(c("spades", 1)); // Q♠ gone → safe to win with A♠
+  });
+
+  it("does not apply Q♠-live guard when trick has points", () => {
+    // Trick has Q♠ in it — trickPoints > 0, so the pts===0 guard doesn't fire.
+    // chooseFollow handles it (tries to lose, pts > 0 path).
+    const hand = [c("spades", 1), c("spades", 4)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 6), playerIndex: 1 },
+      { card: c("spades", 12), playerIndex: 2 }, // Q♠ in current trick
+      { card: c("spades", 11), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+      heartsBroken: false,
+      tricksPlayedInHand: 5,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    expect(pick).toEqual(c("spades", 4)); // pts > 0 → try to lose (4♠ < Q♠)
+  });
+});
+
+describe("selectCardToPlay — #1626 high-point trick conservation (Hard)", () => {
+  it("plays lowest losing card when trick holds 3+ hearts", () => {
+    // Trick: A♥(p1), 3♥(p2), 5♥(p3) = 3 points, led suit = hearts.
+    // AI has [K♥, 7♥, 4♥]. K♥ loses to A♥ (aceHigh 13 < 14).
+    // Without fix: pts > 0 → highest(losing) = K♥.
+    // With fix: pts >= 3 → lowest(losing) = 4♥ (saves K♥ for future).
+    const hand = [c("hearts", 13), c("hearts", 7), c("hearts", 4)];
+    const trick: TrickCard[] = [
+      { card: c("hearts", 1), playerIndex: 1 }, // A♥ leads, wins
+      { card: c("hearts", 3), playerIndex: 2 },
+      { card: c("hearts", 5), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+      heartsBroken: true,
+      tricksPlayedInHand: 6,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    expect(pick).toEqual(c("hearts", 4)); // lowest losing — saves K♥
+    expect(pick).not.toEqual(c("hearts", 13)); // K♥ conserved
+  });
+
+  it("plays highest losing when trick has only 1-2 points (standard behavior preserved)", () => {
+    // Trick: 2♥(p1), 3♥(p2), 4♥(p3) = 3 hearts… wait, that IS 3 pts. Use 1 heart trick.
+    // Trick: A♦(p1), 2♦(p2), 3♦(p3) = 0 pts. AI has [K♦, 7♦, 4♦].
+    // chooseFollow: 0 pts, not last → highest(losing). Guard doesn't fire (pts < 3).
+    const hand = [c("diamonds", 13), c("diamonds", 7), c("diamonds", 4)];
+    const trick: TrickCard[] = [
+      { card: c("diamonds", 1), playerIndex: 1 }, // A♦ leads, wins
+      { card: c("diamonds", 2), playerIndex: 2 },
+      { card: c("diamonds", 3), playerIndex: 3 },
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 0,
+      wonCards: [[], [c("spades", 12)], [], []], // Q♠ gone
+      heartsBroken: false,
+      tricksPlayedInHand: 4,
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    expect(pick).toEqual(c("diamonds", 13)); // pts = 0 (<3) → highest losing (K♦)
+  });
+});
+
+describe("selectCardToPlay — #1626 heart flushing when leading (Hard)", () => {
+  it("leads lowest heart when Q♠ gone, hearts broken, and all own hearts are low", () => {
+    // Q♠ in wonCards, hearts broken. Hand has only 3♥ and 5♥ (both ≤ 9).
+    // Expected: lead 3♥ to flush opponent danger hearts.
+    const hand = [c("hearts", 3), c("hearts", 5), c("clubs", 7), c("clubs", 8)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      wonCards: [[], [c("spades", 12)], [], []], // Q♠ already played
+      heartsBroken: true,
+      tricksPlayedInHand: 7,
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).toEqual(c("hearts", 3));
+  });
+
+  it("does not flush hearts when highest heart is above 9", () => {
+    // Hand has J♥ (rank 11 > 9) — Hard avoids leading it (too risky to win).
+    const hand = [c("hearts", 3), c("hearts", 11), c("clubs", 7), c("clubs", 8)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      wonCards: [[], [c("spades", 12)], [], []],
+      heartsBroken: true,
+      tricksPlayedInHand: 7,
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).not.toEqual(c("hearts", 3)); // no heart flush when J♥ present
+    expect(pick).not.toEqual(c("hearts", 11));
+  });
+
+  it("does not flush hearts when Q♠ is still live", () => {
+    // Q♠ not seen → heart flush guard doesn't fire.
+    const hand = [c("hearts", 3), c("hearts", 5), c("clubs", 7), c("clubs", 8)];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []], // Q♠ not played
+      heartsBroken: true,
+      tricksPlayedInHand: 7,
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    expect(pick).not.toEqual(c("hearts", 3));
+    expect(pick).not.toEqual(c("hearts", 5));
+  });
+});
