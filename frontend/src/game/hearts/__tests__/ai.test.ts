@@ -1386,3 +1386,171 @@ describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
     expect(pick).toEqual(c("hearts", 3)); // lowest of longest group (hearts) after Q♠ stripped
   });
 });
+
+// ---------------------------------------------------------------------------
+// selectCardsToPass — #1595 pass direction awareness
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
+  it("passes Q♠ going right even when protected by A♠+K♠", () => {
+    // Medium normally keeps Q♠ when holding both A♠ and K♠.
+    // Going right relaxes protection — Q♠ should be passed.
+    const hand = [
+      c("spades", 12),
+      c("spades", 1),
+      c("spades", 13),
+      c("hearts", 5),
+      c("hearts", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("hearts", 2),
+    ];
+    const passed = selectCardsToPass(hand, "right", "medium");
+    expect(passed).toContainEqual(c("spades", 12));
+  });
+
+  it("keeps Q♠ going left when holding A♠ or K♠ alone", () => {
+    // Going left with A♠ alone counts as protection — Q♠ kept.
+    // A♥+K♥ fill slots 1-2 (danger hearts); A♠ fills slot 3; Q♠ never reaches filler.
+    const hand = [
+      c("spades", 12), // Q♠ — protected by A♠ going left
+      c("spades", 1), // A♠ — enough protection going left
+      c("hearts", 1), // A♥ → slot 1
+      c("hearts", 13), // K♥ → slot 2
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("diamonds", 8),
+      c("hearts", 2),
+    ];
+    const passed = selectCardsToPass(hand, "left", "medium");
+    expect(passed).not.toContainEqual(c("spades", 12));
+  });
+
+  it("left vs right produce different selections for same hand when Q♠ protection differs", () => {
+    // Hand: Q♠ + A♠ (no K♠) + A♥ + K♥ (danger hearts fill slots).
+    // Left: Q♠ protected (A♠ present); [A♥, K♥, A♠] passed, Q♠ stays.
+    // Right: Q♠ not protected; [Q♠, A♥, K♥] passed, Q♠ gone.
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 1), // A♠
+      c("hearts", 1), // A♥ → danger heart
+      c("hearts", 13), // K♥ → danger heart
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("diamonds", 8),
+      c("hearts", 2),
+    ];
+    const passedLeft = selectCardsToPass(hand, "left", "medium");
+    const passedRight = selectCardsToPass(hand, "right", "medium");
+    expect(passedLeft).not.toContainEqual(c("spades", 12));
+    expect(passedRight).toContainEqual(c("spades", 12));
+  });
+});
+
+describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
+  it("passes Q♠ going right (always)", () => {
+    const hand = [
+      c("spades", 12),
+      c("spades", 1),
+      c("spades", 13),
+      c("hearts", 5),
+      c("hearts", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("hearts", 2),
+    ];
+    const passed = selectCardsToPass(hand, "right", "hard");
+    expect(passed).toContainEqual(c("spades", 12));
+  });
+
+  it("includes 10♥ as a danger heart when passing right but not left", () => {
+    // Going right: Q♠ passed (slot 1), A♥ passed (slot 2), 10♥ passes danger threshold → slot 3.
+    // Going left: Q♠ passed (slot 1), A♥ passed (slot 2), 10♥ below threshold of 11 → K♦ fills slot 3.
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 13), // K♠ (kept regardless — step 3 skipped when Q♠ in hand)
+      c("hearts", 1), // A♥ — danger both directions
+      c("hearts", 10), // 10♥ — danger only going right
+      c("diamonds", 13), // K♦ — high filler
+      c("diamonds", 9),
+      c("diamonds", 8),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+    ];
+    const passedRight = selectCardsToPass(hand, "right", "hard");
+    const passedLeft = selectCardsToPass(hand, "left", "hard");
+    expect(passedRight).toContainEqual(c("hearts", 10));
+    expect(passedLeft).not.toContainEqual(c("hearts", 10));
+  });
+});
+
+describe("selectCardsToPass — #1595 across direction (Medium)", () => {
+  it("passes Q♠ going across even when holding A♠+K♠", () => {
+    // "across" is treated the same as "right" — Q♠ protection threshold is relaxed.
+    const hand = [
+      c("spades", 12),
+      c("spades", 1),
+      c("spades", 13),
+      c("hearts", 5),
+      c("hearts", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("hearts", 2),
+    ];
+    const passed = selectCardsToPass(hand, "across", "medium");
+    expect(passed).toContainEqual(c("spades", 12));
+    expect(passed).toHaveLength(3);
+  });
+
+  it("none direction uses baseline protection (A♠+K♠ keeps Q♠)", () => {
+    // "none" = no-pass hand; still uses baseline A♠+K♠ protection.
+    // A♥+K♥ fill slots 1-2; A♠ fills slot 3; Q♠ never reaches filler.
+    const hand = [
+      c("spades", 12),
+      c("spades", 1),
+      c("spades", 13),
+      c("hearts", 1), // A♥ → slot 1
+      c("hearts", 13), // K♥ → slot 2
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("hearts", 2),
+    ];
+    const passed = selectCardsToPass(hand, "none", "medium");
+    expect(passed).not.toContainEqual(c("spades", 12));
+    expect(passed).toHaveLength(3);
+  });
+});
