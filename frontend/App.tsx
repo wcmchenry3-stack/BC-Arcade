@@ -68,7 +68,7 @@ export type RootStackParamList = {
 
 export type HomeStackParamList = {
   Home: undefined;
-  Game: { initialState: GameState; aiDifficulty?: AiDifficulty | null };
+  Game: { initialState: GameState; aiDifficulty?: AiDifficulty };
   Cascade: undefined;
   StarSwarm: undefined;
   BlackjackBetting: undefined;
