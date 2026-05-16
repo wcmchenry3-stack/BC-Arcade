@@ -17,11 +17,21 @@ import { CATEGORIES, UPPER_CATEGORIES, Category, calculateScore, possibleScores 
 // ─── Local maps ──────────────────────────────────────────────────────────────
 
 const UPPER_FACE: Partial<Record<Category, number>> = {
-  ones: 1, twos: 2, threes: 3, fours: 4, fives: 5, sixes: 6,
+  ones: 1,
+  twos: 2,
+  threes: 3,
+  fours: 4,
+  fives: 5,
+  sixes: 6,
 };
 
 const FACE_TO_CAT: Record<number, Category> = {
-  1: "ones", 2: "twos", 3: "threes", 4: "fours", 5: "fives", 6: "sixes",
+  1: "ones",
+  2: "twos",
+  3: "threes",
+  4: "fours",
+  5: "fives",
+  6: "sixes",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -76,7 +86,7 @@ function mostFrequentFace(dice: readonly number[]): number {
 }
 
 function holdFace(dice: readonly number[], face: number): boolean[] {
-  return dice.map(d => d === face);
+  return dice.map((d) => d === face);
 }
 
 function holdForRun(dice: readonly number[], runFaces: Set<number>): boolean[] {
@@ -114,10 +124,7 @@ function longestRunFaces(dice: readonly number[], minLength: number): Set<number
  * Returns the maximum immediate score available for `dice` across all open
  * categories. This is what the AI would get if it stopped rolling now.
  */
-function maxImmediateScore(
-  dice: readonly number[],
-  scores: GameState["scores"],
-): number {
+function maxImmediateScore(dice: readonly number[], scores: GameState["scores"]): number {
   let best = 0;
   for (const cat of CATEGORIES) {
     if (isOpen(scores, cat)) {
@@ -135,9 +142,9 @@ function maxImmediateScore(
 function evForHold(
   dice: readonly number[],
   keptIndices: readonly number[],
-  scores: GameState["scores"],
+  scores: GameState["scores"]
 ): number {
-  const keptValues = keptIndices.map(i => dice[i]!);
+  const keptValues = keptIndices.map((i) => dice[i]!);
   const freeCount = 5 - keptIndices.length;
   if (freeCount === 0) return maxImmediateScore(keptValues, scores);
 
@@ -164,10 +171,7 @@ function holdEasy(dice: readonly number[]): boolean[] {
   return holdFace(dice, mostFrequentFace(dice));
 }
 
-function holdMedium(
-  dice: readonly number[],
-  scores: GameState["scores"],
-): boolean[] {
+function holdMedium(dice: readonly number[], scores: GameState["scores"]): boolean[] {
   const counts = faceCounts(dice);
   const toBonus = Math.max(0, 63 - upperSubtotal(scores));
 
@@ -235,7 +239,7 @@ function holdMedium(
 function holdHard(
   dice: readonly number[],
   scores: GameState["scores"],
-  rollsUsed: number,
+  rollsUsed: number
 ): boolean[] {
   if (rollsUsed !== 2) {
     // Only the final hold (rollsUsed === 2) warrants full EV enumeration.
@@ -284,7 +288,7 @@ function scoreEasy(dice: readonly number[], legal: Record<string, number>): Cate
 function scoreMedium(
   dice: readonly number[],
   scores: GameState["scores"],
-  legal: Record<string, number>,
+  legal: Record<string, number>
 ): Category {
   const open = Object.keys(legal) as Category[];
   const upper = upperSubtotal(scores);
@@ -324,8 +328,9 @@ function scoreMedium(
   if ("chance" in legal && s >= 22 && open.length > 4) return "chance";
 
   // Sacrifice: only when the bonus is mathematically unreachable
-  const openUpperCats = (["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[])
-    .filter(c => c in legal);
+  const openUpperCats = (
+    ["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[]
+  ).filter((c) => c in legal);
   const maxReachable = upper + openUpperCats.reduce((acc, c) => acc + (UPPER_FACE[c] ?? 0) * 5, 0);
   if (maxReachable < 63) {
     if ("ones" in legal) return "ones";
@@ -339,7 +344,7 @@ function scoreHard(
   dice: readonly number[],
   scores: GameState["scores"],
   opponentScore: number,
-  legal: Record<string, number>,
+  legal: Record<string, number>
 ): Category {
   const open = Object.keys(legal) as Category[];
   const counts = faceCounts(dice);
@@ -360,8 +365,7 @@ function scoreHard(
   // Trailing: take high-variance plays before medium-value ones.
   // Floor of 16 avoids counting four-1s (score=4) as a meaningful high-variance play.
   if (trailing) {
-    if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 16)
-      return "four_of_a_kind";
+    if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 16) return "four_of_a_kind";
     if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
     if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";
   }
@@ -404,11 +408,12 @@ function scoreHard(
   if ("chance" in legal && (s >= 24 || (open.length <= 3 && s >= 18))) return "chance";
 
   // Sacrifice: only when bonus is mathematically unreachable
-  const openUpperCats = (["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[])
-    .filter(c => c in legal);
+  const openUpperCats = (
+    ["ones", "twos", "threes", "fours", "fives", "sixes"] as Category[]
+  ).filter((c) => c in legal);
   const maxPossibleUpperFromRemaining = openUpperCats.reduce(
     (acc, c) => acc + (UPPER_FACE[c] ?? 0) * 5,
-    0,
+    0
   );
   if (upper + maxPossibleUpperFromRemaining < 63) {
     if ("ones" in legal) return "ones";
@@ -451,7 +456,7 @@ export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolea
 export function scoreStrategy(
   state: GameState,
   difficulty: AiDifficulty,
-  opponentScore = 0,
+  opponentScore = 0
 ): Category {
   const { dice, scores } = state;
   // possibleScores is the single source of truth for legal categories — it
