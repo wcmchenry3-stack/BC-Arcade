@@ -97,9 +97,10 @@ function selectCardsToPassEasy(hand: Card[]): Card[] {
 /**
  * Medium: select exactly 3 cards to pass. Priority order:
  * 1. Q♠ — pass unless protected; protection threshold varies by direction (#1595):
- *    - "right"/"across": pass even with A♠ or K♠ (Q♠ travels far enough to be safe)
- *    - "left": keep Q♠ unless completely unprotected (needs both A♠ AND K♠ to protect)
- *    - "none": baseline — pass unless holding A♠ + K♠
+ *    - "right"/"across": pass even with A♠ or K♠ (Q♠ travels far enough to be safe).
+ *      Note: "right" (1 seat) and "across" (2 seats) are treated identically for simplicity.
+ *    - "left": keep Q♠ if holding either A♠ or K♠ (left neighbor plays close — higher risk)
+ *    - "none": baseline — pass unless holding both A♠ and K♠
  * 2. A♥, K♥ — highest hearts first
  * 3. A♠, K♠ — if not needed to protect Q♠
  * 3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early
@@ -117,9 +118,10 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
   const voidInSpades = spades.length === 0;
 
   // Direction changes how boldly we pass Q♠.
-  // "right"/"across": Q♠ travels far — pass if we have any high spade cover at all.
-  // "left": Q♠ may cycle back quickly — only pass if truly unprotected (neither A♠ nor K♠).
-  // "none": baseline — pass unless holding both A♠ and K♠.
+  // "right"/"across": Q♠ lands on an opponent who plays farther from us — pass freely.
+  // "left": left neighbor plays adjacent to us and gets more opportunities to dump Q♠ back;
+  //         keep Q♠ if we hold any high-spade cover (A♠ or K♠ alone suffices).
+  // "none": no pass this hand — use baseline protection (A♠ and K♠ both required).
   const qSpadeProtected =
     direction === "right" || direction === "across"
       ? false // always willing to pass Q♠ when it goes far
@@ -201,10 +203,8 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   const hasQSpades = spades.some(isQueenOfSpades);
   const voidInSpades = spades.length === 0;
 
-  // 1. Q♠ — Hard always wants to pass Q♠; only keep it when passing left AND spade-void
-  // (receiving player would be spade-void too, making Q♠ dangerous to pass there).
-  const skipQSpade = voidInSpades || (direction === "left" && voidInSpades);
-  if (hasQSpades && !skipQSpade) {
+  // 1. Q♠ — Hard always passes Q♠ regardless of direction.
+  if (hasQSpades && !voidInSpades) {
     selected.push({ suit: "spades", rank: 12 });
   }
 

@@ -1463,7 +1463,8 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
 });
 
 describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
-  it("passes Q♠ going right (always)", () => {
+  it("passes Q♠ regardless of direction (left and right both always pass Q♠)", () => {
+    // Hard is more aggressive than Medium — direction does not protect Q♠.
     const hand = [
       c("spades", 12),
       c("spades", 1),
@@ -1479,8 +1480,10 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
       c("diamonds", 7),
       c("hearts", 2),
     ];
-    const passed = selectCardsToPass(hand, "right", "hard");
-    expect(passed).toContainEqual(c("spades", 12));
+    const passedLeft = selectCardsToPass(hand, "left", "hard");
+    const passedRight = selectCardsToPass(hand, "right", "hard");
+    expect(passedLeft).toContainEqual(c("spades", 12));
+    expect(passedRight).toContainEqual(c("spades", 12));
   });
 
   it("includes 10♥ as a danger heart when passing right but not left", () => {
