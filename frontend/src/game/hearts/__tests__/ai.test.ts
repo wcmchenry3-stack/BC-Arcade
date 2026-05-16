@@ -641,6 +641,89 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick.suit).toBe("diamonds");
   });
+
+  it("leads highest non-heart (A♦) in earlyMoon to stay in control", () => {
+    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 9 cards remaining (trick 4)
+    const hand = [
+      c("hearts", 2),
+      c("hearts", 4),
+      c("hearts", 6),
+      c("hearts", 8),
+      c("hearts", 10),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 8),
+      c("clubs", 13),
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 4,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    // Moon attempt: lead highest non-heart (A♦, aceHigh=14) to win the trick.
+    // Normal Hard would lead lowest of longest safe suit (8♦).
+    expect(pick).toEqual(c("diamonds", 1));
+  });
+
+  it("leads highest heart when only hearts and Q♠ remain in midMoon", () => {
+    // midMoon: totalHearts=5, Q♠ in hand, myPoints=0=totalPointsTaken, 6 cards left
+    const hand = [
+      c("hearts", 2),
+      c("hearts", 4),
+      c("hearts", 6),
+      c("hearts", 8),
+      c("hearts", 10),
+      c("spades", 12),
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 7,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    // No non-hearts besides Q♠ — fall back to highest heart (10♥) to force wins.
+    expect(pick).toEqual(c("hearts", 10));
+  });
+
+  it("wins point trick with lowest winning card (10♥) in earlyMoon", () => {
+    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 8 cards remaining (trick 5)
+    const hand = [
+      c("hearts", 10),
+      c("hearts", 8),
+      c("hearts", 6),
+      c("hearts", 4),
+      c("hearts", 2),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 13),
+    ];
+    const trick: TrickCard[] = [
+      { card: c("hearts", 3), playerIndex: 0 },
+      { card: c("hearts", 9), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 5,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Moon attempt: play lowest card that beats current winner (9♥) → 10♥.
+    // Normal Hard would play highest loser (8♥) to avoid winning points.
+    expect(pick).toEqual(c("hearts", 10));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -902,6 +985,89 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
     expect(passed).not.toContainEqual(c("spades", 13)); // K♠ kept (cover)
     // Void fires on 5♥ (singleton heart) instead — positive assertion that the guard redirects correctly
     expect(passed).toContainEqual(c("hearts", 5));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hard AI — moon-viable passing (#1637)
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
+  it("keeps Q♠ and all hearts when dealt 5+ hearts + Q♠", () => {
+    // 5 hearts + Q♠ → moon-viable. Hard passes A♦, K♦, A♣ (danger non-hearts) instead.
+    const hand = [
+      c("spades", 12), // Q♠ — kept for moon attempt
+      c("hearts", 1), // A♥ — kept
+      c("hearts", 13), // K♥ — kept
+      c("hearts", 11), // J♥ — kept
+      c("hearts", 9),
+      c("hearts", 7),
+      c("diamonds", 1), // A♦ — dangerous, should be passed
+      c("diamonds", 13), // K♦ — dangerous, should be passed
+      c("clubs", 1), // A♣ — dangerous, should be passed
+      c("clubs", 7),
+      c("clubs", 8),
+      c("spades", 3),
+      c("spades", 5),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
+    expect(passed).not.toContainEqual(c("hearts", 1)); // A♥ kept
+    expect(passed).not.toContainEqual(c("hearts", 13)); // K♥ kept
+    expect(passed).toContainEqual(c("diamonds", 1)); // A♦ passed
+    expect(passed).toContainEqual(c("diamonds", 13)); // K♦ passed
+    expect(passed).toContainEqual(c("clubs", 1)); // A♣ passed
+  });
+
+  it("uses standard passing when fewer than 5 hearts (no moon-viable)", () => {
+    // 4 hearts → NOT moon-viable. Standard Hard passing: Q♠ always passed.
+    const hand = [
+      c("spades", 12), // Q♠ — passed in standard mode
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 9),
+      c("hearts", 7),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("spades", 3),
+      c("spades", 5),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed (standard mode)
+  });
+
+  it("falls back to lowest hearts when not enough safe non-hearts to fill 3 slots", () => {
+    // 8 hearts + Q♠ → moon-viable. Only 2 safe non-hearts available (A♣, 2♣ excluded).
+    // Must pass lowest hearts to fill the 3rd slot.
+    const hand = [
+      c("spades", 12), // Q♠
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 11),
+      c("hearts", 9),
+      c("hearts", 7),
+      c("hearts", 5),
+      c("hearts", 3),
+      c("hearts", 2),
+      c("clubs", 2), // 2♣ — never passed
+      c("clubs", 3), // 3♣ — excluded by moonSafe (clubs < 6)
+      c("clubs", 4),
+      c("clubs", 1), // A♣ — passable
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
+    expect(passed).not.toContainEqual(c("clubs", 2)); // 2♣ never passed
+    expect(passed).toContainEqual(c("clubs", 1)); // A♣ passed (safe non-heart)
+    expect(passed).toHaveLength(3); // always exactly 3
+    // Third slot filled with a low heart (2♥ or 3♥)
+    const heartsPassed = passed.filter((c) => c.suit === "hearts");
+    expect(heartsPassed.length).toBeGreaterThanOrEqual(1);
+    const highHeartKept = passed.every((p) => !(p.suit === "hearts" && p.rank === 1));
+    expect(highHeartKept).toBe(true); // A♥ kept (high heart preserved)
   });
 });
 
@@ -1633,22 +1799,23 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
   });
 
   it("includes 10♥ as a danger heart when passing right but not left", () => {
-    // Going right: Q♠ passed (slot 1), A♥ passed (slot 2), 10♥ passes danger threshold → slot 3.
-    // Going left: Q♠ passed (slot 1), A♥ passed (slot 2), 10♥ below threshold of 11 → K♦ fills slot 3.
+    // Going right: Q♠ (slot 1), A♥ (slot 2), 10♥ passes danger threshold → slot 3.
+    // Going left: Q♠ (slot 1), A♥ (slot 2), 10♥ below threshold of 11 → void/filler fills slot 3.
+    // 4 hearts total so moon-viable mode does NOT fire (requires 5+).
     const hand = [
       c("spades", 12), // Q♠
-      c("spades", 13), // K♠ (kept regardless — step 3 skipped when Q♠ in hand)
+      c("spades", 13), // K♠
       c("hearts", 1), // A♥ — danger both directions
       c("hearts", 10), // 10♥ — danger only going right
-      c("diamonds", 13), // K♦ — high filler
+      c("hearts", 2),
+      c("hearts", 3),
+      c("diamonds", 13), // K♦
       c("diamonds", 9),
       c("diamonds", 8),
+      c("diamonds", 7),
       c("clubs", 7),
       c("clubs", 8),
       c("clubs", 9),
-      c("hearts", 2),
-      c("hearts", 3),
-      c("hearts", 4),
     ];
     const passedRight = selectCardsToPass(hand, "right", "hard");
     const passedLeft = selectCardsToPass(hand, "left", "hard");

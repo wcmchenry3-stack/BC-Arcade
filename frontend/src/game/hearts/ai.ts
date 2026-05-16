@@ -236,26 +236,82 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
 /**
  * Hard: dangerous-cards-first passing with aggressive void creation (#1636).
  *
- * Priority:
- *   1. Q♠ (always pass unless spade-void — more aggressive than Medium).
- *      Direction does not change Q♠ behavior for Hard (always pass it) (#1595).
+ * Moon-viable mode (#1637): if dealt 5+ hearts + Q♠, keep both for a moon attempt.
+ * Pass dangerous non-hearts (A♣/K♣, A♠/K♠, A♦/K♦) and fill with highest safe
+ * non-hearts; hearts and Q♠ are untouched.
+ *
+ * Standard mode priority:
+ *   1. Q♠ (always pass unless spade-void).
  *   2. A♥, K♥, Q♥, J♥ (high hearts, highest first).
- *      Going "right": also include 10♥ as an additional danger heart (#1595).
+ *      Going "right": also include 10♥ as an extra danger card (#1595).
  *   3. A♠, K♠ (if Q♠ not present).
  *   3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early.
  *   4. Void creation: use ALL remaining slots to eliminate the shortest eligible suit.
- *      More aggressive than Medium (which caps at 2-card suits). Voiding gives Hard a
- *      free discard on every future lead of that suit.
  *   5. Fill any remaining slots with the highest safe cards.
  */
 function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   const selected: Card[] = [];
 
   const has2Clubs = hand.some((c) => c.suit === "clubs" && c.rank === 2);
+  const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
 
   const spades = hand.filter((c) => c.suit === "spades");
   const hasQSpades = spades.some(isQueenOfSpades);
   const voidInSpades = spades.length === 0;
+
+  // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass dangerous non-hearts.
+  const moonViable = heartsInHand >= 5 && hasQSpades; // hasQSpades implies !voidInSpades
+  if (moonViable) {
+    const notSel = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
+    const moonSafe = (c: Card) =>
+      c.suit !== "hearts" &&
+      !isQueenOfSpades(c) &&
+      !(c.suit === "clubs" && c.rank === 2) &&
+      !(c.suit === "clubs" && c.rank > 1 && c.rank < 6) &&
+      notSel(c);
+
+    // Pass high danger cards first: clubs, spades, diamonds (high-rank first per suit).
+    for (const [suit, ranks] of [
+      ["clubs", [1, 13]],
+      ["spades", [1, 13]],
+      ["diamonds", [1, 13]],
+    ] as const) {
+      for (const rank of ranks) {
+        if (selected.length >= 3) break;
+        const card = hand.find((c) => c.suit === suit && c.rank === rank && moonSafe(c));
+        if (card) selected.push(card);
+      }
+      if (selected.length >= 3) break;
+    }
+
+    // Fill remaining slots with highest safe non-hearts.
+    if (selected.length < 3) {
+      const candidates = hand.filter(moonSafe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+      for (const c of candidates) {
+        if (selected.length >= 3) break;
+        selected.push(c);
+      }
+    }
+
+    // Last resort: not enough non-hearts to fill 3 slots (e.g., 7+ hearts dealt).
+    // Pass lowest hearts — give up the least valuable cards for the moon attempt.
+    if (selected.length < 3) {
+      const lowestHearts = hand
+        .filter(
+          (c) =>
+            c.suit === "hearts" && !selected.some((s) => s.suit === c.suit && s.rank === c.rank)
+        )
+        .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
+      for (const c of lowestHearts) {
+        if (selected.length >= 3) break;
+        selected.push(c);
+      }
+    }
+
+    return selected.slice(0, 3);
+  }
+
+  // Standard Hard passing — Q♠ first, then danger cards.
 
   // 1. Q♠ — Hard always passes Q♠ regardless of direction.
   if (hasQSpades && !voidInSpades) {
@@ -299,7 +355,7 @@ function selectCardsToPassHard(hand: Card[], direction: PassDirection): Card[] {
   }
 
   // 4. Void creation: use all remaining slots to void the shortest eligible suit (#1636).
-  // Hard always passes Q♠ when possible, so keepingQSpade is never true here.
+  // Hard always passes Q♠ in standard mode, so keepingQSpade is never true here.
   voidOneSuit(hand, selected, has2Clubs, false, 3 - selected.length);
 
   // 5. Fill remaining slots with highest safe cards
@@ -452,9 +508,10 @@ function selectCardToPlayMedium(
 }
 
 /**
- * Hard: extends Medium with moon-attempt mode and card counting.
- * Moon-attempt fires when the AI has accumulated 8+ hearts total (in hand or
- * already won) plus Q♠, holds all collected points, and ≥5 tricks remain.
+ * Hard: extends Medium with moon-attempt mode and card counting (#1637).
+ * Moon-attempt fires in two modes:
+ *   Early: dealt 5+ hearts + Q♠ at the start of a hand — commits from trick 1.
+ *   Mid-game: accumulated 5+ hearts + Q♠ and holds every point taken so far.
  * Tracking across wonCards lets the attempt persist after winning the first hearts.
  * Card counting: infers seen cards from wonCards + currentTrick to identify
  * safe spade leads once all high spades have been played.
@@ -471,7 +528,7 @@ function selectCardToPlayHard(
   const moonTarget = detectPotentialMoon(state);
   const isLeading = trick.length === 0;
 
-  // Detect if this AI player should attempt a moon shot.
+  // Detect if this AI player should attempt a moon shot (#1637).
   // Track hearts + Q♠ across both hand and already-won cards so moon mode persists
   // through tricks the AI wins. Require 5+ tricks remaining for feasibility.
   const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
@@ -481,9 +538,12 @@ function selectCardToPlayHard(
     hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
   const myPoints = state.handScores[playerIndex] ?? 0;
-  // 5-trick minimum: in the final 4 tricks, completing the moon becomes speculative (#1593).
-  const isMoonAttempt =
-    totalHearts >= 8 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
+  // Early moon: dealt 5+ hearts + Q♠ — commit from trick 1 before points accumulate.
+  // Active for the first 5 tricks (hand.length >= 8); hands off to midMoon after.
+  const earlyMoon = heartsInHand >= 5 && myHasQ && heartsWon === 0 && hand.length >= 8;
+  // Mid-game moon: accumulated hearts + Q♠ and hold every point taken so far.
+  const midMoon = totalHearts >= 5 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
+  const isMoonAttempt = earlyMoon || midMoon;
 
   // Moon blocking (skip if we're the one attempting)
   if (moonTarget !== null && moonTarget !== playerIndex && !isMoonAttempt) {
@@ -493,18 +553,33 @@ function selectCardToPlayHard(
     if (pointCards.length > 0) return pointCards[0]!;
   }
 
-  // Moon attempt mode: keep hearts and Q♠, discard everything else
+  // Moon attempt mode: keep hearts and Q♠, discard everything else.
   if (isMoonAttempt) {
     if (isLeading) {
       const nonHearts = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
-      if (nonHearts.length > 0) return lowest(nonHearts) ?? valid[0]!;
+      if (nonHearts.length > 0) {
+        // Lead HIGHEST non-heart to WIN the trick and keep the lead.
+        // Controlling the lead exhausts suits quickly, forcing opponents to discard hearts.
+        return highest(nonHearts) ?? valid[0]!;
+      }
+      // Only hearts/Q♠ remain — lead highest heart to force wins.
+      const heartsOnly = valid
+        .filter((c) => c.suit === "hearts")
+        .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+      if (heartsOnly.length > 0) return heartsOnly[0]!;
     }
     const first = trick[0];
     if (first) {
       const inSuit = valid.filter((c) => c.suit === first.card.suit);
       if (inSuit.length === 0) {
-        const nonHearts = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
-        if (nonHearts.length > 0) return highest(nonHearts) ?? valid[0]!;
+        // Void in led suit — dump highest junk, never hearts or Q♠.
+        const junk = valid.filter((c) => c.suit !== "hearts" && !isQueenOfSpades(c));
+        if (junk.length > 0) return highest(junk) ?? valid[0]!;
+        // All remaining are hearts/Q♠ — give up lowest heart to minimize damage.
+        const heartsOnly = valid
+          .filter((c) => c.suit === "hearts")
+          .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
+        return heartsOnly[0] ?? valid[0]!;
       }
     }
   }
@@ -687,6 +762,13 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   }
 
   if (pts > 0) {
+    if (isMoonAttempt) {
+      // Moon attempt: WIN point tricks — play lowest card that beats the current winner.
+      const winning = inSuit.filter((c) => aceHigh(c.rank) > winningRank);
+      if (winning.length > 0) return lowest(winning) ?? valid[0]!;
+      // Can't win — play lowest in-suit (moon shot likely failing; save high cards).
+      return lowest(inSuit) ?? valid[0]!;
+    }
     // Trick has points — try to lose
     if (losing.length > 0) {
       // Shed Q♠ before K♠: Q♠ is more dangerous even though K♠ has higher rank
