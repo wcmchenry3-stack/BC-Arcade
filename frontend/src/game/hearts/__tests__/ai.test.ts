@@ -2019,4 +2019,28 @@ describe("selectCardToPlay — Hard difficulty, adversarial void discard (edge c
     expect(pick.suit).not.toBe("hearts");
     expect(pick).not.toEqual(c("spades", 12));
   });
+
+  it("does not apply adversarial targeting when Hard is seat 0 (never happens in real game)", () => {
+    // Regression: Hard at seat 0 must NOT save Q♠ waiting for a 'seat 0 win' that can never
+    // fire from its own void plays — it would hold Q♠ indefinitely and hurt its own score.
+    // Hard at seat 0 should dump Q♠ normally (chooseDiscard) regardless of who is winning.
+    const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 3), playerIndex: 1 },
+      { card: c("clubs", 13), playerIndex: 2 }, // seat 2 winning — not seat 0
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 0,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    // Adversarial targeting inactive for playerIndex=0; chooseDiscard dumps Q♠ normally.
+    expect(pick).toEqual(c("spades", 12));
+  });
 });
