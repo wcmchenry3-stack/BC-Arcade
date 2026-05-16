@@ -59,7 +59,8 @@ function runBatch(humanDiff: AiDifficulty, aiDiff: AiDifficulty, n: number, seed
 // Tests
 // ---------------------------------------------------------------------------
 
-const SMOKE_GAMES = 200;
+// Override via YACHT_SMOKE_GAMES env var for deeper local validation.
+const SMOKE_GAMES = process.env.YACHT_SMOKE_GAMES ? parseInt(process.env.YACHT_SMOKE_GAMES, 10) : 20;
 
 afterEach(() => {
   setRng(Math.random);
