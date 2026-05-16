@@ -14,12 +14,13 @@ import { injectGameState, blankScores } from "./helpers/yacht";
 test.describe("Yacht — localStorage persistence (#183)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
   });
 
   test("game state is saved after scoring a category", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
@@ -28,13 +29,13 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
 
     // Verify the key was written to localStorage
     const stored = await page.evaluate(() =>
-      localStorage.getItem("yacht_game_v1"),
+      localStorage.getItem("yacht_game_v2"),
     );
     expect(stored).not.toBeNull();
 
-    const state = JSON.parse(stored!);
-    expect(state.round).toBe(2); // after scoring round 1, engine advances to round 2
-    expect(state.scores.chance).not.toBeNull();
+    const saved = JSON.parse(stored!);
+    expect(saved.state.round).toBe(2); // after scoring round 1, engine advances to round 2
+    expect(saved.state.scores.chance).not.toBeNull();
   });
 
   test("navigating away and returning to Yacht resumes the saved game", async ({
@@ -42,6 +43,7 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
   }) => {
     // Play through one scoring action
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
@@ -66,6 +68,7 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
@@ -113,12 +116,18 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
     };
 
     await page.evaluate(
-      (s) => localStorage.setItem("yacht_game_v1", JSON.stringify(s)),
+      (s) =>
+        localStorage.setItem(
+          "yacht_game_v2",
+          JSON.stringify({ state: s, aiDifficulty: null, aiState: null }),
+        ),
       gameOverState,
     );
     await page.goto("/");
 
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    // HomeScreen rejects game-over saves → fresh game → mode picker shown
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     // Should start a fresh game, not resume the game-over state
     await expect(page.getByText("Round 1 / 13")).toBeVisible();

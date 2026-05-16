@@ -12,9 +12,10 @@ import { test, expect } from "./fixtures";
 test.describe("Yacht — dice hold/unhold (#182)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
   });
 

@@ -17,12 +17,13 @@ import { injectGameState, blankScores } from "./helpers/yacht";
 test.describe("Yacht — error paths and navigation", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
   });
 
   test("navigating away from Yacht returns to Home", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Navigate home via URL (Lobby tab pop-to-root not reliable on web)
@@ -33,6 +34,7 @@ test.describe("Yacht — error paths and navigation", () => {
 
   test("cannot roll a 4th time in the same turn", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     const rollBtn = page.getByRole("button", { name: /Roll/i });
@@ -52,6 +54,7 @@ test.describe("Yacht — error paths and navigation", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Before any roll, possibleScores is empty → every ScoreRow shows "not available"
@@ -67,6 +70,7 @@ test.describe("Yacht — error paths and navigation", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Score Chance in round 1
@@ -113,9 +117,9 @@ test.describe("Yacht — error paths and navigation", () => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
 
     // game_over state is loaded → starts a fresh game (HomeScreen rejects game-over saves)
-    // So we land on Round 1 with a fresh state — Roll should be enabled
+    // VS mode picker appears for fresh games — dismiss it.
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
-    // Dismiss the modal if it appears (shouldn't for fresh game)
     const rollBtn = page.getByRole("button", { name: /Roll/i });
     await expect(rollBtn).toBeVisible();
     await expect(rollBtn).not.toBeDisabled();
@@ -141,6 +145,7 @@ test.describe("Yacht — error paths and navigation", () => {
     ];
 
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     // Play all 13 rounds
     for (let round = 0; round < 13; round++) {
@@ -162,6 +167,7 @@ test.describe("Yacht — error paths and navigation", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Roll dice and score "Ones" — if no ones were rolled, this scratches it at 0
@@ -219,13 +225,14 @@ const CATEGORY_LABELS_IN_ORDER = [
 test.describe("Yacht — Play Again reset regression (GH #225)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
   });
 
   /** Helper: play a full 13-round game and reach the game-over modal. */
   async function playFullGame(page: Parameters<Parameters<typeof test>[1]>[0]) {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     for (let round = 0; round < 13; round++) {
       await page
         .getByText(`Round ${round + 1} / 13`)
@@ -290,14 +297,14 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     });
 
     const stored = await page.evaluate(() =>
-      localStorage.getItem("yacht_game_v1"),
+      localStorage.getItem("yacht_game_v2"),
     );
     expect(stored).not.toBeNull();
-    const state = JSON.parse(stored!);
-    expect(state.round).toBe(1);
-    expect(state.game_over).toBe(false);
+    const saved = JSON.parse(stored!);
+    expect(saved.state.round).toBe(1);
+    expect(saved.state.game_over).toBe(false);
     // All scores should be null
-    for (const v of Object.values(state.scores)) {
+    for (const v of Object.values(saved.state.scores)) {
       expect(v).toBeNull();
     }
   });
