@@ -301,7 +301,7 @@ export function detectPotentialMoon(state: HeartsState): number | null {
 // Play strategy
 // ---------------------------------------------------------------------------
 
-/** Easy: always play the lowest valid card; no strategic logic. */
+/** Easy: always play the lowest valid card; blocks obvious moonshot attempts. */
 function selectCardToPlayEasy(
   hand: Card[],
   trick: TrickCard[],
@@ -311,6 +311,16 @@ function selectCardToPlayEasy(
   void hand;
   const valid = getValidPlays(state, playerIndex);
   if (valid.length === 1) return valid[0]!;
+
+  const moonTarget = detectPotentialMoon(state);
+
+  // Basic moon blocking — dump highest point card when an opponent is threatening
+  if (moonTarget !== null && moonTarget !== playerIndex) {
+    const pointCards = valid
+      .filter((c) => cardPoints(c) > 0)
+      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+    if (pointCards.length > 0) return pointCards[0]!;
+  }
 
   const isLeading = trick.length === 0;
 
@@ -383,8 +393,9 @@ function selectCardToPlayMedium(
 
 /**
  * Hard: extends Medium with moon-attempt mode and card counting.
- * When the AI holds 8+ hearts and Q♠ with no points yet taken, it switches
- * to moon-shot mode: preserve hearts/Q♠ and discard everything else.
+ * Moon-attempt fires when the AI has accumulated 8+ hearts total (in hand or
+ * already won) plus Q♠, holds all collected points, and ≥5 tricks remain.
+ * Tracking across wonCards lets the attempt persist after winning the first hearts.
  * Card counting: infers seen cards from wonCards + currentTrick to identify
  * safe spade leads once all high spades have been played.
  */
@@ -400,11 +411,16 @@ function selectCardToPlayHard(
   const moonTarget = detectPotentialMoon(state);
   const isLeading = trick.length === 0;
 
-  // Detect if this AI player should attempt a moon shot
-  const myHearts = hand.filter((c) => c.suit === "hearts").length;
-  const myHasQ = hand.some(isQueenOfSpades);
+  // Detect if this AI player should attempt a moon shot.
+  // Track hearts + Q♠ across both hand and already-won cards so moon mode persists
+  // through tricks the AI wins. Require 5+ tricks remaining for feasibility.
+  const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
+  const heartsWon = (state.wonCards[playerIndex] ?? []).filter((c) => c.suit === "hearts").length;
+  const totalHearts = heartsInHand + heartsWon;
+  const myHasQ = hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
-  const isMoonAttempt = myHearts >= 8 && myHasQ && totalPointsTaken === 0;
+  const myPoints = state.handScores[playerIndex] ?? 0;
+  const isMoonAttempt = totalHearts >= 8 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
 
   // Moon blocking (skip if we're the one attempting)
   if (moonTarget !== null && moonTarget !== playerIndex && !isMoonAttempt) {
@@ -551,14 +567,18 @@ function chooseLeadHard(valid: Card[], seenKeys: Set<string>): Card {
   });
   const pool = safe.length > 0 ? safe : valid;
 
-  const suitGroups = bySuitDescending(pool);
+  // Q♠ is last resort — exclude it so it never surfaces as the lowest of any group.
+  const poolWithoutQ = pool.filter((c) => !isQueenOfSpades(c));
+  const pickFrom = poolWithoutQ.length > 0 ? poolWithoutQ : pool;
+
+  const suitGroups = bySuitDescending(pickFrom);
   const longestGroup = suitGroups[0];
   if (longestGroup) {
     const card = lowest(longestGroup[1]);
     if (card) return card;
   }
 
-  return lowest(pool) ?? valid[0]!;
+  return lowest(pickFrom) ?? valid[0]!;
 }
 
 /** Lowest card scoring 0 points, or undefined if every card in the array scores points. */
