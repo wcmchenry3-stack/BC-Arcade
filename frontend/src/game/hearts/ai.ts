@@ -658,7 +658,10 @@ function selectCardToPlayHard(
 
   // Adversarial targeting (#1638): when void in led suit, prefer dumping Q♠/high hearts on
   // seat 0 (human). When another AI is winning the trick, save Q♠/hearts for seat 0's tricks.
-  if (!isMoonAttempt && !inEndgame && !isLeading) {
+  // Guard playerIndex !== 0: in the real game Hard is never seat 0 (human); without this guard
+  // a simulation placing Hard at seat 0 causes Hard to withhold Q♠ indefinitely (no seat-0
+  // trick ever fires for Hard's own void plays), tanking its own score.
+  if (!isMoonAttempt && !inEndgame && !isLeading && playerIndex !== 0) {
     const first = trick[0];
     if (first) {
       const followSuit = valid.filter((c) => c.suit === first.card.suit);

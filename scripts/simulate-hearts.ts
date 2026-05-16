@@ -85,7 +85,7 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
       for (let i = 0; i < 4; i++) {
         const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
-        const cards = selectCardsToPass(hand, state.passDirection, diff);
+        const cards = selectCardsToPass(hand, state.passDirection, diff, i);
         for (const card of cards) {
           state = selectPassCard(state, i, card);
         }
@@ -177,7 +177,7 @@ function simulateGameLogged(difficulties: Difficulties, seed: number): GameLog {
       for (let i = 0; i < 4; i++) {
         const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
-        const cards = selectCardsToPass(hand, state.passDirection, diff);
+        const cards = selectCardsToPass(hand, state.passDirection, diff, i);
         pendingPasses[i] = cards;
         for (const card of cards) {
           state = selectPassCard(state, i, card);
