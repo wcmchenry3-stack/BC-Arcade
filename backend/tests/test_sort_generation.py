@@ -14,24 +14,27 @@ from sort.generate_levels import (
     COLORS_12,
     COLORS_13,
     COLORS_14,
+    COLORS_5,
+    COLORS_6,
+    COLORS_7,
+    COLORS_8,
     COLORS_9,
     _build_level_fast,
+    _is_likely_solvable,
     _is_trivial,
-    _not_proven_unsolvable,
 )
 
-# 1-empty is used for tiers 5–9c; 2-empty for 10–14c.
-_ONE_EMPTY_TIERS = [COLORS_9]         # highest 1-empty tier in LEVEL_SPECS
+# Tiers that use 1-empty in LEVEL_SPECS and go through _build_level_fast
+# (≤4c use generate_level with full BFS and are not covered here).
+_ONE_EMPTY_TIERS = [COLORS_5, COLORS_6, COLORS_7, COLORS_8, COLORS_9]
 _TWO_EMPTY_TIERS = [COLORS_10, COLORS_11, COLORS_12, COLORS_13, COLORS_14]
-_NEW_TIERS = _ONE_EMPTY_TIERS + _TWO_EMPTY_TIERS
-_EMPTY_COUNTS = [1, 2]
 _N_SAMPLES = 15
 
 
 @pytest.mark.parametrize("colors", _ONE_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
-@pytest.mark.parametrize("n_empty", _EMPTY_COUNTS, ids=lambda e: f"{e}e")
+@pytest.mark.parametrize("n_empty", [1, 2], ids=lambda e: f"{e}e")
 def test_fast_generation_non_trivial_low_tiers(colors: list[str], n_empty: int) -> None:
-    """_build_level_fast must produce non-trivial states for 9c (both empty counts)."""
+    """_build_level_fast must produce non-trivial states for 5–9c (both empty counts)."""
     rng = random.Random(42)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, n_empty, rng)
@@ -52,9 +55,9 @@ def test_fast_generation_non_trivial_high_tiers(colors: list[str]) -> None:
 
 
 @pytest.mark.parametrize("colors", _ONE_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
-@pytest.mark.parametrize("n_empty", _EMPTY_COUNTS, ids=lambda e: f"{e}e")
+@pytest.mark.parametrize("n_empty", [1, 2], ids=lambda e: f"{e}e")
 def test_fast_generation_correct_bottle_count_low_tiers(colors: list[str], n_empty: int) -> None:
-    """Generated state must have len(colors) + n_empty bottles (9c tiers)."""
+    """Generated state must have len(colors) + n_empty bottles (5–9c tiers)."""
     rng = random.Random(7)
     state = _build_level_fast(colors, n_empty, rng)
     assert len(state) == len(colors) + n_empty
@@ -69,27 +72,27 @@ def test_fast_generation_correct_bottle_count_high_tiers(colors: list[str]) -> N
 
 
 @pytest.mark.parametrize("colors", _ONE_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
-def test_fast_generation_1e_not_proven_unsolvable(colors: list[str]) -> None:
-    """Every 1-empty state returned by _build_level_fast must pass _not_proven_unsolvable.
+def test_fast_generation_1e_is_likely_solvable(colors: list[str]) -> None:
+    """Every 1-empty state returned by _build_level_fast must pass _is_likely_solvable.
 
-    Only tests tiers ≤9c that actually use 1-empty in LEVEL_SPECS. Tiers ≥10c
-    are excluded because random 1-empty generation is unreliable there (too few
-    valid starting positions survive the filter within the attempt budget).
+    Covers all 5–9c tiers that use n_empty=1 in LEVEL_SPECS. Tiers ≥10c are
+    excluded: random 1-empty generation is unreliable there, so LEVEL_SPECS
+    only assigns them 2-empty slots.
     """
     rng = random.Random(99)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, 1, rng)
-        assert _not_proven_unsolvable(state), (
-            f"{len(colors)} colors, 1 empty: generated state was proven unsolvable"
+        assert _is_likely_solvable(state), (
+            f"{len(colors)} colors, 1 empty: generated state failed solvability check"
         )
 
 
 @pytest.mark.parametrize("colors", _TWO_EMPTY_TIERS, ids=lambda c: f"{len(c)}c")
-def test_fast_generation_2e_not_proven_unsolvable(colors: list[str]) -> None:
-    """Every 2-empty state at 10–14c must pass _not_proven_unsolvable."""
+def test_fast_generation_2e_is_likely_solvable(colors: list[str]) -> None:
+    """Every 2-empty state at 10–14c must pass _is_likely_solvable."""
     rng = random.Random(99)
     for _ in range(_N_SAMPLES):
         state = _build_level_fast(colors, 2, rng)
-        assert _not_proven_unsolvable(state), (
-            f"{len(colors)} colors, 2 empty: generated state was proven unsolvable"
+        assert _is_likely_solvable(state), (
+            f"{len(colors)} colors, 2 empty: generated state failed solvability check"
         )

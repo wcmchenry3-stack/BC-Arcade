@@ -67,10 +67,10 @@ const COLORBLIND_SYMBOLS: Record<Color, string> = {
   teal: "✚",
   brown: "↑",
   lime: "♥",
-  navy: "⛉",
+  navy: "△",
   maroon: "⚡",
   gold: "◎",
-  indigo: "⧖",
+  indigo: "⊕",
 };
 
 export const DEFAULT_BOTTLE_WIDTH = 52;

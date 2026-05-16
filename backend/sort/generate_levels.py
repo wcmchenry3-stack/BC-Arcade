@@ -5,9 +5,10 @@ Usage: python generate_levels.py > levels.json
 
 Levels are produced by randomly distributing colors across bottles and
 BFS-verifying solvability. RNG is seeded (42) for reproducibility.
-For levels with 5+ colors the state space is too large for full BFS;
-those are generated until non-trivial, then assumed solvable (empirically
-true for balanced random distributions with 1+ empty bottles).
+For 5–9 colors the state space is too large for full BFS; those levels
+are generated with a lightweight deadlock check (_FAST_BFS_CAP). For
+10–14 colors even the lightweight check is too slow to filter reliably,
+so only 2-empty levels are generated for those tiers (assumed solvable).
 """
 
 import json
@@ -17,6 +18,7 @@ from itertools import takewhile
 
 DEPTH = 4
 BFS_CAP = 200_000
+_FAST_BFS_CAP = 5_000   # cap for the lightweight deadlock check in _is_likely_solvable
 
 
 def _top_color(bottle: list[str]) -> str | None:
@@ -157,21 +159,21 @@ LEVEL_SPECS = [
     (19, COLORS_12, 2), # new tier
     (20, COLORS_13, 2), # new tier
     (21, COLORS_14, 2), # new tier
-    (22, COLORS_13, 2), # revisit 13c
+    # Levels 22–23 revisit 13c then 14c: the color count briefly dips then peaks,
+    # providing a slight ease before the true endgame. Consecutive constraint holds
+    # because 14c separates the two 13c entries and 13c separates the two 14c entries.
+    (22, COLORS_13, 2), # revisit 13c — brief ease before endgame
     (23, COLORS_14, 2), # endgame
 ]
 
 
-_FAST_BFS_CAP = 5_000
-
-
-def _not_proven_unsolvable(state: list[list[str]]) -> bool:
+def _is_likely_solvable(state: list[list[str]]) -> bool:
     """Return False only when BFS exhausts all reachable states without solving.
 
-    Uses a small cap so the check is cheap: for large state spaces the cap is hit
-    immediately and True is returned; only provably-dead starting positions (small
-    reachable state space, no solution) return False. This filters constrained
-    deadlock arrangements that occur with 1 empty bottle at high color counts.
+    Uses _FAST_BFS_CAP so the check is cheap: for large state spaces the cap is
+    hit immediately and True is returned; only provably-dead starting positions
+    (small reachable state space, no solution path) return False. This filters
+    the constrained deadlock arrangements that occur with 1 empty bottle.
     """
     if _solved(state):
         return True
@@ -212,7 +214,7 @@ def _build_level_fast(
         state += [[] for _ in range(n_empty)]
         if _is_trivial(state):
             continue
-        if n_empty == 1 and not _not_proven_unsolvable(state):
+        if n_empty == 1 and not _is_likely_solvable(state):
             continue
         return state
     raise RuntimeError(
@@ -224,9 +226,10 @@ def _build_level_fast(
 def build_levels(seed: int | None = None) -> list[dict]:
     """Generate 23 levels with fresh randomisation. seed=None uses a random seed.
 
-    Levels with ≤4 colors are BFS-verified solvable. Levels with 5+ colors skip
-    full BFS (state space exceeds the cap anyway) and are assumed solvable given a
-    non-trivial, balanced random distribution with 1+ empty bottles.
+    Levels with ≤4 colors are BFS-verified solvable. Levels with 5–9 colors
+    use _build_level_fast with a lightweight deadlock filter for 1-empty tiers;
+    levels with 10–14 colors use 2 empties and skip the deadlock check (assumed
+    solvable for non-trivial balanced distributions with 2+ empty bottles).
     """
     rng = random.Random(seed)
     levels = []
