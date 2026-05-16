@@ -69,14 +69,14 @@ export default function GameScreen({ navigation, route }: Props) {
     route.params.initialState.round === 1 &&
     route.params.initialState.rolls_used === 0 &&
     !route.params.initialState.game_over;
-  const [difficultyChosen, setDifficultyChosen] = useState(!isFreshGame || route.params.aiDifficulty !== undefined);
+  const [difficultyChosen, setDifficultyChosen] = useState(
+    !isFreshGame || route.params.aiDifficulty !== undefined
+  );
   const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
   );
-  const [aiGameState, setAiGameState] = useState<GameState | null>(
-    route.params.aiState ?? null
-  );
+  const [aiGameState, setAiGameState] = useState<GameState | null>(route.params.aiState ?? null);
   const [isAiTurn, setIsAiTurn] = useState(false);
 
   // Keep refs in sync for use inside async AI turn loop and callbacks.
@@ -344,8 +344,7 @@ export default function GameScreen({ navigation, route }: Props) {
       : undefined;
 
   // Modal visible only when both players have finished in VS mode.
-  const gameReallyOver =
-    gameState.game_over && (!aiDifficulty || aiGameState?.game_over === true);
+  const gameReallyOver = gameState.game_over && (!aiDifficulty || aiGameState?.game_over === true);
 
   const roundPill = (
     <View
@@ -398,10 +397,7 @@ export default function GameScreen({ navigation, route }: Props) {
           ]}
         >
           <Text
-            style={[
-              styles.turnText,
-              { color: isAiTurn ? colors.textMuted : colors.accent },
-            ]}
+            style={[styles.turnText, { color: isAiTurn ? colors.textMuted : colors.accent }]}
             accessibilityLiveRegion="polite"
           >
             {isAiTurn ? t("vsMode.computerTurn") : t("vsMode.yourTurn")}
@@ -424,9 +420,7 @@ export default function GameScreen({ navigation, route }: Props) {
       {aiDifficulty && difficultyChosen && aiGameState && (
         <View style={[styles.vsScoreRow, { borderColor: colors.border }]}>
           <View style={styles.vsScoreBlock}>
-            <Text style={[styles.vsScoreLabel, { color: colors.textMuted }]}>
-              {t("score.you")}
-            </Text>
+            <Text style={[styles.vsScoreLabel, { color: colors.textMuted }]}>{t("score.you")}</Text>
             <Text style={[styles.vsScoreValue, { color: colors.accent }]}>
               {gameState.total_score}
             </Text>
@@ -510,10 +504,7 @@ export default function GameScreen({ navigation, route }: Props) {
                 },
               ]}
             >
-              <Text
-                style={[styles.modeTitle, { color: colors.text }]}
-                accessibilityRole="header"
-              >
+              <Text style={[styles.modeTitle, { color: colors.text }]} accessibilityRole="header">
                 {t("vsMode.title")}
               </Text>
 
@@ -523,9 +514,7 @@ export default function GameScreen({ navigation, route }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.solo")}
               >
-                <Text style={[styles.modeBtnText, { color: colors.text }]}>
-                  {t("vsMode.solo")}
-                </Text>
+                <Text style={[styles.modeBtnText, { color: colors.text }]}>{t("vsMode.solo")}</Text>
               </Pressable>
 
               <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
