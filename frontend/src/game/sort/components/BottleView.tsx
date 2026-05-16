@@ -65,6 +65,12 @@ const COLORBLIND_SYMBOLS: Record<Color, string> = {
   purple: "◆",
   pink: "✦",
   teal: "✚",
+  brown: "↑",
+  lime: "♥",
+  navy: "△",
+  maroon: "⚡",
+  gold: "◎",
+  indigo: "⊕",
 };
 
 export const DEFAULT_BOTTLE_WIDTH = 52;

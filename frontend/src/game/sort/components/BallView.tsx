@@ -15,6 +15,12 @@ export const BALL_COLORS: Record<Color, string> = {
   purple: "#a855f7",
   pink: "#ec4899",
   teal: "#14b8a6",
+  brown: "#92400e",
+  lime: "#84cc16",
+  navy: "#1e40af",
+  maroon: "#9f1239",
+  gold: "#d97706",
+  indigo: "#4f46e5",
 };
 
 // White symbols on a 100×100 viewBox — one per color for colorblind mode.
@@ -56,6 +62,40 @@ function CrossSymbol() {
 function PentagonSymbol() {
   return <Polygon points="50,10 88,38 73,82 27,82 12,38" fill={SYMBOL_FILL} />;
 }
+function ArrowSymbol() {
+  return <Polygon points="50,5 80,42 65,42 65,90 35,90 35,42 20,42" fill={SYMBOL_FILL} />;
+}
+function HeartSymbol() {
+  return (
+    <Path
+      d="M50,80 C25,62 5,44 5,30 C5,15 16,8 30,8 C40,8 48,16 50,20 C52,16 60,8 70,8 C84,8 95,15 95,30 C95,44 75,62 50,80 Z"
+      fill={SYMBOL_FILL}
+    />
+  );
+}
+function ShieldSymbol() {
+  return (
+    <Path
+      d="M50,5 L88,22 L88,55 C88,75 50,95 50,95 C50,95 12,75 12,55 L12,22 Z"
+      fill={SYMBOL_FILL}
+    />
+  );
+}
+function BoltSymbol() {
+  return <Polygon points="60,5 22,55 48,55 40,95 78,45 52,45" fill={SYMBOL_FILL} />;
+}
+function RingSymbol() {
+  return (
+    <Path
+      fillRule="evenodd"
+      d="M50,8 C71,8 92,29 92,50 C92,71 71,92 50,92 C29,92 8,71 8,50 C8,29 29,8 50,8 Z M50,30 C39,30 30,39 30,50 C30,61 39,70 50,70 C61,70 70,61 70,50 C70,39 61,30 50,30 Z"
+      fill={SYMBOL_FILL}
+    />
+  );
+}
+function HourglassSymbol() {
+  return <Polygon points="10,8 90,8 55,50 90,92 10,92 45,50" fill={SYMBOL_FILL} />;
+}
 
 const SYMBOLS: Record<Color, React.FC> = {
   red: TriangleSymbol,
@@ -66,6 +106,12 @@ const SYMBOLS: Record<Color, React.FC> = {
   purple: DiamondSymbol,
   pink: CrossSymbol,
   teal: PentagonSymbol,
+  brown: ArrowSymbol,
+  lime: HeartSymbol,
+  navy: ShieldSymbol,
+  maroon: BoltSymbol,
+  gold: RingSymbol,
+  indigo: HourglassSymbol,
 };
 
 export interface BallViewProps {
