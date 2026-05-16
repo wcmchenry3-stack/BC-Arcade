@@ -6,24 +6,43 @@
  * component files.
  */
 
+import type { Theme } from "./ThemeContext";
 import type { Color } from "../game/sort/types";
 
-/** Liquid colors for each bottle color variant. */
-export const BOTTLE_LIQUID_COLORS: Record<Color, string> = {
-  red: "#ff716c",
-  blue: "#5b8cff",
-  green: "#4ade80",
-  yellow: "#ffae3b",
-  orange: "#ff9f3b",
-  purple: "#d674ff",
-  pink: "#ff5fa8",
-  teal: "#8ff5ff",
-  brown: "#b45309",
-  lime: "#a3e635",
-  navy: "#3b5bdb",
-  maroon: "#c2255c",
-  gold: "#f59e0b",
-  indigo: "#818cf8",
+/** Liquid colors per theme, validated: ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 vs bg. */
+export const BOTTLE_LIQUID_COLORS: Record<Theme, Record<Color, string>> = {
+  dark: {
+    red:    "#ff7777",
+    orange: "#ff8800",
+    brown:  "#aa5533",
+    gold:   "#886600",
+    yellow: "#ffee00",
+    lime:   "#66ff00",
+    green:  "#008844",
+    teal:   "#00ddcc",
+    navy:   "#22aadd",
+    blue:   "#3366dd",
+    indigo: "#cc99ff",
+    purple: "#aa00dd",
+    pink:   "#ff33bb",
+    maroon: "#cc0055",
+  },
+  light: {
+    maroon: "#770033",
+    red:    "#dd0033",
+    brown:  "#662200",
+    orange: "#bb5500",
+    gold:   "#554400",
+    yellow: "#998800",
+    lime:   "#336600",
+    green:  "#009977",
+    teal:   "#004444",
+    navy:   "#228899",
+    blue:   "#1166aa",
+    indigo: "#8866ee",
+    purple: "#330044",
+    pink:   "#cc0088",
+  },
 };
 
 /** Bottle stroke color when selected (teal highlight). */
