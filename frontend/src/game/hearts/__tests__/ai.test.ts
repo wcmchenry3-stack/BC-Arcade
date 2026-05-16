@@ -1870,3 +1870,105 @@ describe("selectCardsToPass — #1595 across direction (Medium)", () => {
     expect(passed).toHaveLength(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hard AI — adversarial targeting (#1638)
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — Hard difficulty, adversarial void discard", () => {
+  it("dumps Q♠ on seat 0 when seat 0 is winning the trick and Hard is void", () => {
+    // Player 1 (Hard) is void in clubs and holds Q♠ + hearts.
+    // Seat 0 is currently winning the trick with K♣.
+    const hand = [c("spades", 12), c("hearts", 5), c("hearts", 9), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 13), playerIndex: 0 }, // seat 0 winning
+      { card: c("clubs", 3), playerIndex: 2 },
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10], // below endgame threshold
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Seat 0 is winning — adversarial: dump Q♠ on human.
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("saves Q♠ when an AI opponent (not seat 0) is winning the trick", () => {
+    // Player 1 (Hard) is void in clubs. Seat 2 is winning with K♣ (not seat 0).
+    // Hard holds Q♠, hearts, and a diamond — should discard the non-point card.
+    const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 3), playerIndex: 0 },
+      { card: c("clubs", 13), playerIndex: 2 }, // seat 2 winning
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: true,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // Another AI is winning — save Q♠ for seat 0; dump non-point card (7♦).
+    expect(pick).toEqual(c("diamonds", 7));
+    expect(pick).not.toEqual(c("spades", 12));
+  });
+});
+
+describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
+  it("passes Q♠ to seat 0 even in moon-viable mode (left pass from seat 3)", () => {
+    // Seat 3 passes left → recipient is seat 0. Hand is moon-viable (5+ hearts + Q♠).
+    // Without targeting, moonViable keeps Q♠; with targeting, Q♠ is passed to seat 0.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("hearts", 7),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 1),
+      c("diamonds", 8),
+      c("clubs", 8),
+      c("diamonds", 7),
+      c("clubs", 7),
+      c("diamonds", 6),
+    ];
+    // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
+    const passed = selectCardsToPass(hand, "left", "hard", 3);
+    expect(passed).toHaveLength(3);
+    expect(passed).toContainEqual(c("spades", 12));
+  });
+
+  it("keeps Q♠ in moon-viable mode when NOT passing to seat 0 (left pass from seat 1)", () => {
+    // Seat 1 passes left → recipient is seat 2 (not seat 0). Moon-viable should activate.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("hearts", 7),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 1),
+      c("diamonds", 8),
+      c("clubs", 8),
+      c("diamonds", 7),
+      c("clubs", 7),
+      c("diamonds", 6),
+    ];
+    // playerIndex=1, direction="left" → (1+1)%4=2 → not targeting seat 0
+    const passed = selectCardsToPass(hand, "left", "hard", 1);
+    expect(passed).toHaveLength(3);
+    expect(passed).not.toContainEqual(c("spades", 12));
+  });
+});
