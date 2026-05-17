@@ -82,5 +82,7 @@
   "difficulty.schemer.desc": "Creates suit voids, deflects the Queen of Spades",
   "difficulty.daring": "Daring",
   "difficulty.daring.desc": "Swings for moon shots, targets you with the Queen",
+  "difficulty.mixed": "Mixed Table",
+  "difficulty.mixed.desc": "One of each: Cautious left, Schemer across, Daring right",
   "game.startGame": "Start Game"
 }

@@ -27,7 +27,8 @@ import {
   selectPassCard,
   setRng,
 } from "../engine";
-import type { Card, HeartsState, Suit, Rank } from "../types";
+import type { AiPreset, Card, HeartsState, Suit, Rank } from "../types";
+import { resolvePersona } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1125,4 +1126,27 @@ describe("dealNextHand", () => {
     const next = dealNextHand(state);
     expect(next.scoreHistory).toEqual(history);
   });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePersona (#1654) — Mixed Table seat-to-persona routing
+// ---------------------------------------------------------------------------
+
+describe("resolvePersona", () => {
+  it.each<[AiPreset, number, string]>([
+    ["mixed", 1, "cautious"],
+    ["mixed", 2, "schemer"],
+    ["mixed", 3, "daring"],
+  ])("mixed seat %i → %s", (preset, seat, expected) => {
+    expect(resolvePersona(preset, seat)).toBe(expected);
+  });
+
+  it.each<AiPreset>(["cautious", "schemer", "daring"])(
+    "non-mixed preset '%s' passes through unchanged",
+    (persona) => {
+      expect(resolvePersona(persona, 1)).toBe(persona);
+      expect(resolvePersona(persona, 2)).toBe(persona);
+      expect(resolvePersona(persona, 3)).toBe(persona);
+    }
+  );
 });
