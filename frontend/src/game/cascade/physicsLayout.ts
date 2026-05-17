@@ -34,12 +34,7 @@ export function calculateBinDimensions(maxRadius: number): {
  * Mass-weighted centroid of two merging bodies. Equal masses → exact midpoint.
  * Returns the midpoint when total mass is zero to avoid NaN.
  */
-export function calculateMergeCentroid(
-  posA: Vec2,
-  massA: number,
-  posB: Vec2,
-  massB: number,
-): Vec2 {
+export function calculateMergeCentroid(posA: Vec2, massA: number, posB: Vec2, massB: number): Vec2 {
   const totalMass = massA + massB;
   if (totalMass <= 0) {
     return { x: (posA.x + posB.x) / 2, y: (posA.y + posB.y) / 2 };
@@ -54,11 +49,7 @@ export function calculateMergeCentroid(
  * Radius of a fruit at the given tier: baseRadius × factor^tier.
  * Defaults to factor 1.25, matching RADII[n] = 18 × 1.25^n.
  */
-export function calculateTierRadius(
-  tier: number,
-  baseRadius: number,
-  factor = 1.25,
-): number {
+export function calculateTierRadius(tier: number, baseRadius: number, factor = 1.25): number {
   return baseRadius * Math.pow(factor, tier);
 }
 

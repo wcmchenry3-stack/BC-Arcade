@@ -26,7 +26,9 @@ test.describe("Cascade — seed determinism", () => {
     await mockLeaderboard(page);
   });
 
-  test("same seed produces identical fruit positions after fastForward", async ({ page }) => {
+  test("same seed produces identical fruit positions after fastForward", async ({
+    page,
+  }) => {
     // Run 1
     await gotoCascade(page);
     await setSeed(page, SEED);
@@ -66,5 +68,4 @@ test.describe("Cascade — seed determinism", () => {
 
     expect(s1.nextFruitTier).toBe(s2.nextFruitTier);
   });
-
 });
