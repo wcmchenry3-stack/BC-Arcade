@@ -161,7 +161,9 @@ class TestGetScores:
     def test_returns_submitted_entries_for_difficulty(self, variant):
         _submit("Alice", 90, "easy", variant)
         _submit("Bob", 60, "easy", variant)
-        scores = client.get(f"/sudoku/scores/easy?variant={variant}", headers=SESSION_HEADERS).json()["scores"]
+        scores = client.get(
+            f"/sudoku/scores/easy?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert len(scores) == 2
 
     @pytest.mark.parametrize("variant", ["classic", "mini"])
@@ -174,7 +176,9 @@ class TestGetScores:
         _submit("Bob", 180, "medium", variant)
         limiter.reset()
         _submit("Carol", 120, "medium", variant)
-        scores = client.get(f"/sudoku/scores/medium?variant={variant}", headers=SESSION_HEADERS).json()["scores"]
+        scores = client.get(
+            f"/sudoku/scores/medium?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert [s["score"] for s in scores] == [180, 120, 40]
 
     def test_invalid_difficulty_path_returns_422(self):
@@ -187,7 +191,9 @@ class TestGetScores:
         for i in range(15):
             limiter.reset()
             _submit(f"Player{i}", i * 10, "hard", variant)
-        scores = client.get(f"/sudoku/scores/hard?variant={variant}", headers=SESSION_HEADERS).json()["scores"]
+        scores = client.get(
+            f"/sudoku/scores/hard?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 140
 
@@ -235,12 +241,16 @@ class TestDifficultyIsolation:
 class TestVariantIsolation:
     def test_mini_score_absent_from_classic_leaderboard(self):
         _submit("MiniPlayer", 100, "easy", "mini")
-        scores = client.get("/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS).json()["scores"]
+        scores = client.get("/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS).json()[
+            "scores"
+        ]
         assert not any(s["player_name"] == "MiniPlayer" for s in scores)
 
     def test_classic_score_absent_from_mini_leaderboard(self):
         _submit("ClassicPlayer", 100, "easy", "classic")
-        scores = client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()["scores"]
+        scores = client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()[
+            "scores"
+        ]
         assert not any(s["player_name"] == "ClassicPlayer" for s in scores)
 
     def test_classic_and_mini_partitioned(self):
@@ -253,11 +263,15 @@ class TestVariantIsolation:
 
         classic_names = {
             s["player_name"]
-            for s in client.get("/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS).json()["scores"]
+            for s in client.get(
+                "/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS
+            ).json()["scores"]
         }
         mini_names = {
             s["player_name"]
-            for s in client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()["scores"]
+            for s in client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()[
+                "scores"
+            ]
         }
 
         assert "Classic1" in classic_names
