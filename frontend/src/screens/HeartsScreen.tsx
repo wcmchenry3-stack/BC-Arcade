@@ -462,7 +462,7 @@ export default function HeartsScreen() {
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
         onEditPlayerNames={handleOpenRename}
       >
-        <View style={styles.preGameContainer}>
+        <ScrollView contentContainerStyle={styles.preGameContainer}>
           <Text style={[styles.preGameTitle, { color: colors.text }]}>
             {t("difficulty.groupLabel", { defaultValue: "Opponent Style" })}
           </Text>
@@ -477,7 +477,7 @@ export default function HeartsScreen() {
               {t("game.startGame", { defaultValue: "Start Game" })}
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </GameShell>
     );
   }
@@ -577,28 +577,34 @@ export default function HeartsScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
               ]}
             >
-              <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
-              {moonShooter !== null && (
-                <Text style={[styles.moonText, { color: colors.accent }]}>
-                  {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
-                </Text>
-              )}
-              <HeartsScoreboard
-                playerLabels={playerLabels}
-                cumulativeScores={[...gameState.cumulativeScores]}
-                scoreHistory={scoreHistory}
-                compact
-              />
-              <Pressable
-                style={[styles.btn, { backgroundColor: colors.accent }]}
-                onPress={handleNextHand}
-                accessibilityRole="button"
-                accessibilityLabel={t("hand_end.next")}
+              <ScrollView
+                style={styles.panelScroll}
+                contentContainerStyle={styles.panelScrollContent}
+                showsVerticalScrollIndicator={false}
               >
-                <Text style={[styles.btnText, { color: colors.textOnAccent }]}>
-                  {t("hand_end.next")}
-                </Text>
-              </Pressable>
+                <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
+                {moonShooter !== null && (
+                  <Text style={[styles.moonText, { color: colors.accent }]}>
+                    {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
+                  </Text>
+                )}
+                <HeartsScoreboard
+                  playerLabels={playerLabels}
+                  cumulativeScores={[...gameState.cumulativeScores]}
+                  scoreHistory={scoreHistory}
+                  compact
+                />
+                <Pressable
+                  style={[styles.btn, { backgroundColor: colors.accent }]}
+                  onPress={handleNextHand}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("hand_end.next")}
+                >
+                  <Text style={[styles.btnText, { color: colors.textOnAccent }]}>
+                    {t("hand_end.next")}
+                  </Text>
+                </Pressable>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -614,113 +620,119 @@ export default function HeartsScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
               ]}
             >
-              <Text style={[styles.panelTitle, { color: colors.text }]}>
-                {t("game_over.title")}
-              </Text>
-              <Text style={[styles.winnerText, { color: colors.accent }]}>
-                {gameState.winnerIndex === 0
-                  ? t("game_over.you_win")
-                  : t("game_over.winner", {
-                      label: playerLabels[gameState.winnerIndex ?? 0] ?? "",
-                    })}
-              </Text>
-              <HeartsScoreboard
-                playerLabels={playerLabels}
-                cumulativeScores={[...gameState.cumulativeScores]}
-                scoreHistory={scoreHistory}
-                compact
-              />
+              <ScrollView
+                style={styles.panelScroll}
+                contentContainerStyle={styles.panelScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={[styles.panelTitle, { color: colors.text }]}>
+                  {t("game_over.title")}
+                </Text>
+                <Text style={[styles.winnerText, { color: colors.accent }]}>
+                  {gameState.winnerIndex === 0
+                    ? t("game_over.you_win")
+                    : t("game_over.winner", {
+                        label: playerLabels[gameState.winnerIndex ?? 0] ?? "",
+                      })}
+                </Text>
+                <HeartsScoreboard
+                  playerLabels={playerLabels}
+                  cumulativeScores={[...gameState.cumulativeScores]}
+                  scoreHistory={scoreHistory}
+                  compact
+                />
 
-              {submitState !== "done" && (
-                <>
-                  <TextInput
-                    style={[
-                      styles.nameInput,
-                      {
-                        color: colors.text,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surfaceAlt,
-                      },
-                    ]}
-                    value={playerName}
-                    onChangeText={setPlayerName}
-                    placeholder={t("game_over.name_placeholder")}
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={MAX_NAME_LENGTH}
-                    accessibilityLabel={t("game_over.name_placeholder")}
-                    editable={submitState !== "submitting"}
-                  />
-                  <Pressable
-                    style={[
-                      styles.btn,
-                      {
-                        backgroundColor:
-                          playerName.trim() && submitState !== "submitting"
-                            ? colors.accent
-                            : colors.surfaceAlt,
-                      },
-                    ]}
-                    onPress={() => void handleSubmitScore()}
-                    disabled={!playerName.trim() || submitState === "submitting"}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      submitState === "submitting"
-                        ? t("game_over.submitting")
-                        : submitState === "error"
-                          ? t("game_over.retry")
-                          : t("game_over.submit")
-                    }
-                    accessibilityState={{
-                      disabled: !playerName.trim() || submitState === "submitting",
-                    }}
-                  >
-                    <Text
+                {submitState !== "done" && (
+                  <>
+                    <TextInput
                       style={[
-                        styles.btnText,
+                        styles.nameInput,
                         {
-                          color:
-                            playerName.trim() && submitState !== "submitting"
-                              ? colors.textOnAccent
-                              : colors.textMuted,
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceAlt,
                         },
                       ]}
+                      value={playerName}
+                      onChangeText={setPlayerName}
+                      placeholder={t("game_over.name_placeholder")}
+                      placeholderTextColor={colors.textMuted}
+                      maxLength={MAX_NAME_LENGTH}
+                      accessibilityLabel={t("game_over.name_placeholder")}
+                      editable={submitState !== "submitting"}
+                    />
+                    <Pressable
+                      style={[
+                        styles.btn,
+                        {
+                          backgroundColor:
+                            playerName.trim() && submitState !== "submitting"
+                              ? colors.accent
+                              : colors.surfaceAlt,
+                        },
+                      ]}
+                      onPress={() => void handleSubmitScore()}
+                      disabled={!playerName.trim() || submitState === "submitting"}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        submitState === "submitting"
+                          ? t("game_over.submitting")
+                          : submitState === "error"
+                            ? t("game_over.retry")
+                            : t("game_over.submit")
+                      }
+                      accessibilityState={{
+                        disabled: !playerName.trim() || submitState === "submitting",
+                      }}
                     >
-                      {submitState === "submitting"
-                        ? t("game_over.submitting")
-                        : submitState === "error"
-                          ? t("game_over.retry")
-                          : t("game_over.submit")}
-                    </Text>
-                  </Pressable>
-                  {isInitialized && !isOnline ? (
-                    <OfflineBanner />
-                  ) : (
-                    submitState === "error" && (
-                      <Text style={[styles.errorText, { color: colors.error }]}>
-                        {t("game_over.submit_error")}
+                      <Text
+                        style={[
+                          styles.btnText,
+                          {
+                            color:
+                              playerName.trim() && submitState !== "submitting"
+                                ? colors.textOnAccent
+                                : colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {submitState === "submitting"
+                          ? t("game_over.submitting")
+                          : submitState === "error"
+                            ? t("game_over.retry")
+                            : t("game_over.submit")}
                       </Text>
-                    )
-                  )}
-                </>
-              )}
-              {submitState === "done" && (
-                <Text style={[styles.successText, { color: colors.accent }]}>
-                  {t("game_over.submitted")}
-                </Text>
-              )}
+                    </Pressable>
+                    {isInitialized && !isOnline ? (
+                      <OfflineBanner />
+                    ) : (
+                      submitState === "error" && (
+                        <Text style={[styles.errorText, { color: colors.error }]}>
+                          {t("game_over.submit_error")}
+                        </Text>
+                      )
+                    )}
+                  </>
+                )}
+                {submitState === "done" && (
+                  <Text style={[styles.successText, { color: colors.accent }]}>
+                    {t("game_over.submitted")}
+                  </Text>
+                )}
 
-              <HeartsAiDifficultySelector
-                value={selectedDifficulty}
-                onChange={setSelectedDifficulty}
-              />
-              <Pressable
-                style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
-                onPress={handlePlayAgain}
-                accessibilityRole="button"
-                accessibilityLabel={t("game_over.again")}
-              >
-                <Text style={[styles.btnText, { color: colors.text }]}>{t("game_over.again")}</Text>
-              </Pressable>
+                <HeartsAiDifficultySelector
+                  value={selectedDifficulty}
+                  onChange={setSelectedDifficulty}
+                />
+                <Pressable
+                  style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
+                  onPress={handlePlayAgain}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("game_over.again")}
+                >
+                  <Text style={[styles.btnText, { color: colors.text }]}>{t("game_over.again")}</Text>
+                </Pressable>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -834,9 +846,17 @@ const styles = StyleSheet.create({
   panel: {
     width: "90%",
     maxWidth: 400,
+    maxHeight: "85%",
     borderRadius: 16,
     borderWidth: 1,
     padding: 24,
+    gap: 16,
+    alignItems: "center",
+  },
+  panelScroll: {
+    width: "100%",
+  },
+  panelScrollContent: {
     gap: 16,
     alignItems: "center",
   },
@@ -918,7 +938,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   preGameContainer: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 32,
