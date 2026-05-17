@@ -1022,9 +1022,7 @@ describe("UC2 — warm-spawn merge", () => {
     // After merge: the two tier-0 bodies are removed; the tier-1 warm body is the only survivor.
     // After 1 warm frame (applied in the merge step) the body is at 55% radius.
     // area(55% r) = (0.55)² × area(r) ≈ 0.3025 × full area — well under 50%.
-    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     expect(dynBodies).toHaveLength(1);
     const tier1Body = dynBodies[0]!;
 

@@ -100,7 +100,10 @@ export async function createEngine(
   const fruitMap = new Map<number, FruitBody>();
 
   // body.id → warm-spawn state: grows from 50% to 100% radius over WARM_SPAWN_FRAMES ticks
-  const warmBodies = new Map<number, { framesLeft: number; targetRadius: number; currentRadius: number }>();
+  const warmBodies = new Map<
+    number,
+    { framesLeft: number; targetRadius: number; currentRadius: number }
+  >();
 
   // Dedup set for NaN/Inf merge-position Sentry warnings — one per tier per engine lifetime
   const nanSpawnDeduped = new Set<string>();
