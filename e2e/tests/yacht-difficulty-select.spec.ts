@@ -55,7 +55,9 @@ test.describe("Yacht — VS mode picker (#1602)", () => {
     ).not.toBeVisible();
   });
 
-  test("VS Computer starts a VS game after selecting Easy", async ({ page }) => {
+  test("VS Computer starts a VS game after selecting Easy", async ({
+    page,
+  }) => {
     await page.getByRole("radio", { name: /^Easy$/i }).click();
     await page.getByRole("button", { name: /^VS Computer$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();

@@ -30,7 +30,9 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
   });
 
   test("Roll button is enabled on the player's turn", async ({ page }) => {
-    await expect(page.getByRole("button", { name: /Roll dice/i })).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: /Roll dice/i }),
+    ).toBeEnabled();
   });
 
   test("shows Computer's Turn banner and disables Roll after player scores", async ({
@@ -40,14 +42,18 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
     // Score into Chance (always legal)
-    const chanceBtn = page.getByRole("button", { name: /Chance: potential score/i });
+    const chanceBtn = page.getByRole("button", {
+      name: /Chance: potential score/i,
+    });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
     // AI turn banner must appear immediately
     await expect(page.getByText(/Computer'?s Turn/i)).toBeVisible();
     // Roll button must be disabled while AI plays
-    await expect(page.getByRole("button", { name: /Roll dice/i })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: /Roll dice/i }),
+    ).toBeDisabled();
   });
 
   test("control returns to player after AI completes its turn", async ({
@@ -55,21 +61,25 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
   }) => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
-    const chanceBtn = page.getByRole("button", { name: /Chance: potential score/i });
+    const chanceBtn = page.getByRole("button", {
+      name: /Chance: potential score/i,
+    });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
     // Wait for AI to finish — Easy AI takes up to ~2.5 s per turn; allow 10 s
     await expect(page.getByText(/Your Turn/i)).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByRole("button", { name: /Roll dice/i }),
-    ).toBeEnabled({ timeout: 10000 });
+    await expect(page.getByRole("button", { name: /Roll dice/i })).toBeEnabled({
+      timeout: 10000,
+    });
   });
 
   test("round advances after both players score", async ({ page }) => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
-    const chanceBtn = page.getByRole("button", { name: /Chance: potential score/i });
+    const chanceBtn = page.getByRole("button", {
+      name: /Chance: potential score/i,
+    });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
