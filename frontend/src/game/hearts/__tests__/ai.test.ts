@@ -1519,6 +1519,73 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #1647 — Hard AI: chooseFollow moon-attempt 0-pt trick behaviour
+// ---------------------------------------------------------------------------
+
+describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
+  it("wins 0-pt trick with lowest winning card when last to play in earlyMoon", () => {
+    // earlyMoon: 5 hearts + Q♠ in hand, 9 cards, no hearts won.
+    // Clubs led (0-pt trick). Player 3 is last; should win with lowest winner (9♣)
+    // rather than exhausting a high card, to conserve trick-control resources.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 11),
+      c("hearts", 9),
+      c("hearts", 7),
+      c("spades", 12), // Q♠
+      c("clubs", 9),
+      c("clubs", 10),
+      c("clubs", 11),
+    ];
+    const trick: TrickCard[] = [
+      { card: c("clubs", 5), playerIndex: 0 },
+      { card: c("clubs", 6), playerIndex: 1 },
+      { card: c("clubs", 8), playerIndex: 2 }, // current winner (rank 8)
+    ];
+    const state = mkState({
+      playerHands: [[], [], [], hand],
+      currentTrick: trick,
+      currentPlayerIndex: 3,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 3, "hard");
+    // Should win with lowest card above rank 8 → 9♣, not 10♣ or J♣
+    expect(pick).toEqual(c("clubs", 9));
+  });
+
+  it("wins 0-pt trick but guards Q♠ when not last to play in earlyMoon", () => {
+    // earlyMoon: player 1 holds 5 hearts + Q♠ + K♠ + A♠, 9 cards, 0 hearts won.
+    // Spades led (0-pt). Player 1 is NOT last (players 2 and 3 still to play).
+    // Should win with lowest non-Q♠ winner (K♠), keeping Q♠ safe from later K♠/A♠.
+    const hand = [
+      c("hearts", 2),
+      c("hearts", 4),
+      c("hearts", 6),
+      c("hearts", 8),
+      c("hearts", 10), // 5 hearts
+      c("spades", 12), // Q♠ — must NOT be played (not last)
+      c("spades", 13), // K♠
+      c("spades", 1), // A♠
+      c("clubs", 7),
+    ];
+    const trick: TrickCard[] = [{ card: c("spades", 5), playerIndex: 0 }];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      currentPlayerIndex: 1,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    // K♠ and A♠ both beat 5♠; Q♠ excluded (not last); lowest non-Q♠ winner = K♠
+    expect(pick).not.toEqual(c("spades", 12)); // Q♠ protected
+    expect(pick).toEqual(c("spades", 13)); // K♠ — lowest non-Q♠ winner
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #1592 — Easy AI: basic moon blocking
 // ---------------------------------------------------------------------------
 
@@ -2113,6 +2180,31 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
     const passed = selectCardsToPass(hand, "across", "hard", 2);
     expect(passed).toHaveLength(3);
     expect(passed).toContainEqual(c("spades", 12));
+  });
+
+  it("keeps Q♠ when targeting seat 0 with strongMoon (7+ hearts)", () => {
+    // Seat 3 passes left → targeting seat 0. Normally Q♠ is passed adversarially.
+    // But 7+ hearts + Q♠ (strongMoon) → bypasses suppression → moon-viable keeps Q♠.
+    // Moon attempt is impossible without Q♠, so passing it away is self-defeating.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 11),
+      c("hearts", 9),
+      c("hearts", 7),
+      c("hearts", 5),
+      c("hearts", 3), // 7 hearts → strongMoon threshold
+      c("spades", 12), // Q♠ — must be kept
+      c("diamonds", 1),
+      c("diamonds", 8),
+      c("clubs", 8),
+      c("clubs", 7),
+      c("clubs", 6),
+    ];
+    // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
+    const passed = selectCardsToPass(hand, "left", "hard", 3);
+    expect(passed).toHaveLength(3);
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept for moon attempt
   });
 });
 

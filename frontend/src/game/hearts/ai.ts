@@ -289,7 +289,9 @@ function selectCardsToPassHard(
   const targetingHuman = passingToSeat0(playerIndex, direction);
 
   // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass lowest non-hearts.
-  // With 7+ hearts, attempt even when targeting seat 0 — moon value (26 pts) > Q♠ (13 pts).
+  // strongMoon bypasses adversarial targeting: a moon attempt is impossible without Q♠,
+  // so passing it to the human prevents any attempt. At 7+ hearts the completion odds
+  // justify keeping Q♠ over the guaranteed adversarial damage.
   const moonViable = heartsInHand >= 5 && hasQSpades; // hasQSpades implies !voidInSpades
   const strongMoon = heartsInHand >= 7 && hasQSpades;
   if (moonViable && (!targetingHuman || strongMoon)) {
@@ -855,8 +857,9 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
     const qSpade = inSuit.find(isQueenOfSpades);
     if (!isMoonAttempt && qSpade && aceHigh(qSpade.rank) < winningRank) return qSpade;
     // Moon attempt: win with lowest possible card to conserve high cards for future trick control.
+    // pts === 0 implies all inSuit cards have 0 points, so no cardPoints filter needed.
     if (isMoonAttempt) {
-      const winningCards = inSuit.filter((c) => aceHigh(c.rank) > winningRank && cardPoints(c) === 0);
+      const winningCards = inSuit.filter((c) => aceHigh(c.rank) > winningRank);
       if (winningCards.length > 0) return lowest(winningCards) ?? valid[0]!;
       return lowest(inSuit) ?? valid[0]!; // can't win — minimize waste
     }
@@ -888,7 +891,8 @@ function chooseFollow(valid: Card[], trick: readonly TrickCard[], isMoonAttempt 
   // Moon attempt: win every trick to maintain control, even 0-pt ones (#1647).
   if (isMoonAttempt) {
     const winning = inSuit.filter((c) => aceHigh(c.rank) > winningRank);
-    // Don't risk Q♠ unless last — a later K♠/A♠ would take it and kill the attempt.
+    // Guard Q♠ when not last — a later K♠/A♠ could take it and kill the attempt.
+    // If Q♠ is the ONLY winner, accept the risk rather than cede board control.
     const safeWinning = isLastToPlay ? winning : winning.filter((c) => !isQueenOfSpades(c));
     const pickFrom = safeWinning.length > 0 ? safeWinning : winning;
     if (pickFrom.length > 0) return lowest(pickFrom) ?? valid[0]!;
