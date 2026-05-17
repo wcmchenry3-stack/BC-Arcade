@@ -48,13 +48,12 @@ test.describe("Mahjong — error paths", () => {
 
     const canvas = page.getByRole("img", { name: /Mahjong Solitaire/i });
     const box = await canvas.boundingBox();
-    if (box) {
-      const cx = box.x + box.width / 2;
-      const cy = box.y + box.height / 2;
-      // Rapid taps at offset positions unlikely to hit a matching pair
-      for (let i = 0; i < 5; i++) {
-        await page.mouse.click(cx + i * 20 - 40, cy);
-      }
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+    // Rapid taps at offset positions unlikely to hit a matching pair
+    for (let i = 0; i < 5; i++) {
+      await page.mouse.click(cx + i * 20 - 40, cy);
     }
 
     // HUD must remain visible — game did not crash
@@ -115,9 +114,8 @@ test.describe("Mahjong — error paths", () => {
     // Interact with the board
     const canvas = page.getByRole("img", { name: /Mahjong Solitaire/i });
     const box = await canvas.boundingBox();
-    if (box) {
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    }
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 
     // HUD still visible — game continues despite earlier server error
     await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible({

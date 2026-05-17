@@ -55,9 +55,8 @@ test.describe("Cascade — error paths", () => {
     // Click the canvas area behind the overlay — game-over must not be dismissed
     const canvas = page.getByRole("img", { name: /Cascade game/i });
     const box = await canvas.boundingBox();
-    if (box) {
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    }
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 
     // Overlay remains; engine still reports game-over
     await expect(page.getByRole("heading", { name: "Game Over" })).toBeVisible({

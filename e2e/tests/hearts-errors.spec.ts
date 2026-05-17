@@ -7,13 +7,30 @@
  *   - Navigation (back to Home)
  *   - Invalid input: pass-phase confirm button disabled with < 3 cards selected
  *   - Server error display: 500 on hearts API — game hand still renders
- *   - Graceful recovery: hand area visible and playable after server error
+ *   - Graceful recovery: hand area and trick area visible after server error
  *   - Corrupted localStorage fallback
  */
 
 import { test, expect } from "@playwright/test";
-import { mockHeartsApi, gotoHearts, injectHeartsState } from "./helpers/hearts";
+import { mockHeartsApi, gotoHearts } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
+
+const API_BASE = "http://localhost:8000";
+
+/** Navigate to Hearts and start a fresh game, bypassing the difficulty picker. */
+async function startFreshHearts(
+  page: Parameters<Parameters<typeof test>[1]>[0],
+): Promise<void> {
+  await installEntitlementsMock(page);
+  await page.goto("/");
+  await page.evaluate(() => localStorage.removeItem("hearts_game"));
+  await page.getByRole("button", { name: "Play Hearts" }).click();
+  await page
+    .getByRole("heading", { name: "Hearts", exact: true })
+    .waitFor({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Start Game" }).click();
+  await page.getByLabel("Your hand, 13 cards").waitFor({ timeout: 5_000 });
+}
 
 test.describe("Hearts — error paths", () => {
   // ---------------------------------------------------------------------------
@@ -31,109 +48,75 @@ test.describe("Hearts — error paths", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Invalid input rejection
+  // Invalid input rejection — shared setup via nested describe
   // ---------------------------------------------------------------------------
 
-  test("pass-phase confirm button is disabled when fewer than 3 cards are selected", async ({
-    page,
-  }) => {
-    await mockHeartsApi(page);
-    await installEntitlementsMock(page);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("hearts_game"));
-    await page.getByRole("button", { name: "Play Hearts" }).click();
-    await page
-      .getByRole("heading", { name: "Hearts", exact: true })
-      .waitFor({ timeout: 10_000 });
-    // Dismiss difficulty picker to start fresh game
-    await page.getByRole("button", { name: "Start Game" }).click();
-
-    await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
-      timeout: 5_000,
+  test.describe("pass-phase confirm button", () => {
+    test.beforeEach(async ({ page }) => {
+      await mockHeartsApi(page);
+      await startFreshHearts(page);
     });
 
-    // Select only 1 card — confirm should remain disabled
-    const handArea = page.getByLabel("Your hand, 13 cards");
-    await handArea.getByRole("button").first().click();
-
-    const confirmBtn = page.getByRole("button", {
-      name: "Confirm — pass 3 selected cards",
-    });
-    await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
-  });
-
-  test("pass-phase confirm button is disabled when 0 cards are selected", async ({
-    page,
-  }) => {
-    await mockHeartsApi(page);
-    await installEntitlementsMock(page);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("hearts_game"));
-    await page.getByRole("button", { name: "Play Hearts" }).click();
-    await page
-      .getByRole("heading", { name: "Hearts", exact: true })
-      .waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Start Game" }).click();
-
-    await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
-      timeout: 5_000,
+    test("is disabled when 0 cards are selected", async ({ page }) => {
+      const confirmBtn = page.getByRole("button", {
+        name: "Confirm — pass 3 selected cards",
+      });
+      await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
     });
 
-    // No cards selected — confirm must be disabled immediately
-    const confirmBtn = page.getByRole("button", {
-      name: "Confirm — pass 3 selected cards",
-    });
-    await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
-  });
+    test("is disabled when fewer than 3 cards are selected", async ({
+      page,
+    }) => {
+      // Select only 1 card — confirm must remain disabled
+      await page.getByLabel("Your hand, 13 cards").getByRole("button").first().click();
 
-  // ---------------------------------------------------------------------------
-  // Server error display
-  // ---------------------------------------------------------------------------
-
-  test("hearts API 500 — game still loads and hand renders", async ({ page }) => {
-    await page.route("**/hearts/**", async (route) => {
-      await route.fulfill({ status: 500, body: "Internal Server Error" });
-    });
-    await installEntitlementsMock(page);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("hearts_game"));
-    await page.getByRole("button", { name: "Play Hearts" }).click();
-    await page
-      .getByRole("heading", { name: "Hearts", exact: true })
-      .waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Start Game" }).click();
-
-    // Despite API 500, game logic runs client-side — hand is dealt
-    await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
-      timeout: 5_000,
+      const confirmBtn = page.getByRole("button", {
+        name: "Confirm — pass 3 selected cards",
+      });
+      await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Graceful recovery
+  // Server error display — shared setup via nested describe
   // ---------------------------------------------------------------------------
 
-  test("trick area remains visible after hearts API 500", async ({ page }) => {
-    await page.route("**/hearts/**", async (route) => {
-      await route.fulfill({ status: 500, body: "Internal Server Error" });
+  test.describe("hearts API 500", () => {
+    test.beforeEach(async ({ page }) => {
+      await page.route(`${API_BASE}/hearts/**`, async (route) => {
+        await route.fulfill({ status: 500, body: "Internal Server Error" });
+      });
+      await startFreshHearts(page);
     });
-    await installEntitlementsMock(page);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("hearts_game"));
-    await page.getByRole("button", { name: "Play Hearts" }).click();
-    await page
-      .getByRole("heading", { name: "Hearts", exact: true })
-      .waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Start Game" }).click();
 
-    // Both the hand and the trick area remain accessible for play
-    await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
-      timeout: 5_000,
+    test("game still loads and hand renders despite server error", async ({
+      page,
+    }) => {
+      // Game logic runs client-side — hand is dealt even with a backend 500
+      await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
+        timeout: 5_000,
+      });
     });
-    await expect(page.getByLabel("Current trick")).toBeVisible({
-      timeout: 5_000,
+
+    // -------------------------------------------------------------------------
+    // Graceful recovery
+    // -------------------------------------------------------------------------
+
+    test("trick area remains visible — game is fully playable after server error", async ({
+      page,
+    }) => {
+      await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
+        timeout: 5_000,
+      });
+      await expect(page.getByLabel("Current trick")).toBeVisible({
+        timeout: 5_000,
+      });
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Corrupted localStorage fallback
+  // ---------------------------------------------------------------------------
 
   test("corrupted hearts_game localStorage — fresh game loads with difficulty picker", async ({
     page,
