@@ -133,7 +133,7 @@ function FruitBodySkia({
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
-  ({ fruitSet, nextDef, onEvents, onTap, onReady, onSetSeed, width, height, scale }, ref) => {
+  ({ fruitSet, nextDef, onEvents, onTap, onReady, width, height, scale }, ref) => {
     const { colors } = useTheme();
     const { t } = useTranslation("cascade");
 
