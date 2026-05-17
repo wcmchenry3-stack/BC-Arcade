@@ -581,8 +581,12 @@ export default function HeartsScreen() {
                 style={styles.panelScroll}
                 contentContainerStyle={styles.panelScrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
               >
-                <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
+                <Text style={[styles.panelTitle, { color: colors.text }]}>
+                  {t("hand_end.title")}
+                </Text>
                 {moonShooter !== null && (
                   <Text style={[styles.moonText, { color: colors.accent }]}>
                     {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
@@ -624,6 +628,8 @@ export default function HeartsScreen() {
                 style={styles.panelScroll}
                 contentContainerStyle={styles.panelScrollContent}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
               >
                 <Text style={[styles.panelTitle, { color: colors.text }]}>
                   {t("game_over.title")}
@@ -730,7 +736,9 @@ export default function HeartsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={t("game_over.again")}
                 >
-                  <Text style={[styles.btnText, { color: colors.text }]}>{t("game_over.again")}</Text>
+                  <Text style={[styles.btnText, { color: colors.text }]}>
+                    {t("game_over.again")}
+                  </Text>
                 </Pressable>
               </ScrollView>
             </View>
@@ -850,7 +858,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     padding: 24,
-    gap: 16,
     alignItems: "center",
   },
   panelScroll: {

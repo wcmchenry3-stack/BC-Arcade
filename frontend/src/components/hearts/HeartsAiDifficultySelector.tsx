@@ -40,7 +40,11 @@ function PersonaBtn({
       accessibilityRole="radio"
       accessibilityLabel={t(`difficulty.${preset}`, { defaultValue: defaults.label })}
       accessibilityState={{ selected }}
-      style={[full ? styles.btnFull : styles.btn, { backgroundColor: selected ? colors.accent : colors.surface }]}
+      style={[
+        styles.btn,
+        full && styles.btnFull,
+        { backgroundColor: selected ? colors.accent : colors.surface },
+      ]}
     >
       <Text style={[styles.label, { color: selected ? colors.textOnAccent : colors.text }]}>
         {t(`difficulty.${preset}`, { defaultValue: defaults.label })}
@@ -94,11 +98,6 @@ const styles = StyleSheet.create({
   },
   btnFull: {
     alignSelf: "stretch",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
   },
   label: {
     fontSize: 15,
