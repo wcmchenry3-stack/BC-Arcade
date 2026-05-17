@@ -79,7 +79,7 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
+import { clamp, computeZoomBounds } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
 
@@ -357,15 +357,10 @@ export default function MahjongScreen() {
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      // Allow rubber-band overshoot past limits; onEnd springs back.
-      zoomScale.value = rubberClamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
+      zoomScale.value = clamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
     })
     .onEnd(() => {
-      const target = clamp(zoomScale.value, minZoom.value, maxZoom.value);
-      baseScale.value = target;
-      if (Math.abs(zoomScale.value - target) > 1e-6) {
-        zoomScale.value = withSpring(target, { damping: 20, stiffness: 300 });
-      }
+      baseScale.value = zoomScale.value;
     });
 
   const panGesture = Gesture.Pan()
