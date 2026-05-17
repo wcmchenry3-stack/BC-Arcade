@@ -71,6 +71,8 @@ export interface GameCanvasHandle {
   fastForward?: (ms: number) => void;
   /** True once the physics engine has finished async init (Rapier WASM loaded). */
   isReady?: () => boolean;
+  /** Seed the spawn-queue RNG. Only present when EXPO_PUBLIC_TEST_HOOKS=1. */
+  setSeed?: (seed: number) => void;
 }
 
 interface Props {
@@ -81,6 +83,8 @@ interface Props {
   onTap: (x: number) => void;
   /** Fires once after createEngine() resolves. */
   onReady?: () => void;
+  /** Callback that rebuilds the spawn queue with a seeded RNG. Test-only. */
+  onSetSeed?: (seed: number) => void;
   width: number; // world width (px) — physics coordinate space
   height: number; // world height (px) — physics coordinate space
   scale: number; // display scale: canvas CSS size = world * scale
@@ -129,7 +133,7 @@ function FruitBodySkia({
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
-  ({ fruitSet, nextDef, onEvents, onTap, onReady, width, height, scale }, ref) => {
+  ({ fruitSet, nextDef, onEvents, onTap, onReady, onSetSeed, width, height, scale }, ref) => {
     const { colors } = useTheme();
     const { t } = useTranslation("cascade");
 
@@ -229,8 +233,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         restoreFruits() {
           // no-op
         },
+        setSeed(seed: number) {
+          onSetSeed?.(seed);
+        },
       }),
-      [initEngine, width]
+      [initEngine, width, onSetSeed]
     );
 
     const dangerY = height * DANGER_LINE_RATIO;

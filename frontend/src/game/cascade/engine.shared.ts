@@ -1,6 +1,15 @@
 import { FruitDefinition, FruitTier } from "../../theme/fruitSets.engine";
 import type { GameEvent } from "./types";
 
+export {
+  PACKING_HEIGHT_FACTOR,
+  calculateBinDimensions,
+  calculateMergeCentroid,
+  calculateScalingIndex,
+  packingTheoremClearance,
+} from "./physicsLayout";
+export type { Vec2 } from "./physicsLayout";
+
 // --- Canonical physics world dimensions (px) ---
 // Physics always runs at this fixed size. The renderer scales the canvas to fit
 // the device container — see CascadeScreen for the scale computation.
