@@ -1,14 +1,31 @@
 import {
   PACKING_HEIGHT_FACTOR,
+  BIN_WALL_RATIO,
+  BIN_INNER_DIAMETERS,
+  BIN_ASPECT_RATIO,
   calculateBinDimensions,
   calculateMergeCentroid,
-  calculateScalingIndex,
+  calculateTierRadius,
   packingTheoremClearance,
 } from "../physicsLayout";
 
 describe("PACKING_HEIGHT_FACTOR", () => {
   it("equals 2 + sqrt(3)", () => {
     expect(PACKING_HEIGHT_FACTOR).toBeCloseTo(2 + Math.sqrt(3), 10);
+  });
+});
+
+describe("exported layout constants", () => {
+  it("BIN_WALL_RATIO is 0.4", () => {
+    expect(BIN_WALL_RATIO).toBe(0.4);
+  });
+
+  it("BIN_INNER_DIAMETERS is 4", () => {
+    expect(BIN_INNER_DIAMETERS).toBe(4);
+  });
+
+  it("BIN_ASPECT_RATIO is 1.75", () => {
+    expect(BIN_ASPECT_RATIO).toBe(1.75);
   });
 });
 
@@ -62,23 +79,30 @@ describe("calculateMergeCentroid", () => {
     expect(centroid.x).toBeCloseTo(5);
     expect(centroid.y).toBeCloseTo(7);
   });
+
+  it("zero total mass → returns midpoint instead of NaN", () => {
+    const centroid = calculateMergeCentroid({ x: 2, y: 4 }, 0, { x: 6, y: 8 }, 0);
+    expect(centroid.x).toBe(4);
+    expect(centroid.y).toBe(6);
+    expect(isNaN(centroid.x)).toBe(false);
+  });
 });
 
-describe("calculateScalingIndex", () => {
+describe("calculateTierRadius", () => {
   it("tier 0 → baseRadius (factor has no effect)", () => {
-    expect(calculateScalingIndex(0, 18)).toBe(18);
+    expect(calculateTierRadius(0, 18)).toBe(18);
   });
 
   it("tier 10, baseRadius=18, factor=1.25 → ~168 px", () => {
-    expect(calculateScalingIndex(10, 18, 1.25)).toBeCloseTo(18 * Math.pow(1.25, 10), 5);
+    expect(calculateTierRadius(10, 18, 1.25)).toBeCloseTo(18 * Math.pow(1.25, 10), 5);
   });
 
   it("defaults to factor 1.25", () => {
-    expect(calculateScalingIndex(1, 18)).toBeCloseTo(18 * 1.25);
+    expect(calculateTierRadius(1, 18)).toBeCloseTo(18 * 1.25);
   });
 
   it("accepts a custom factor", () => {
-    expect(calculateScalingIndex(2, 10, 2)).toBeCloseTo(40);
+    expect(calculateTierRadius(2, 10, 2)).toBeCloseTo(40);
   });
 });
 

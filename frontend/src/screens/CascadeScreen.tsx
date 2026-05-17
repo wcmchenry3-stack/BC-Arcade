@@ -504,7 +504,7 @@ function CascadeGame() {
       nextFruitTier: queueRef.current.peek(),
       ...canvasRef.current?.getEngineState?.(),
     });
-    g.__cascade_setSeed = (seed: number) => handleSetSeed(seed);
+    g.__cascade_setSeed = handleSetSeed;
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
       const tier = queueRef.current.consume();
@@ -613,7 +613,7 @@ function CascadeGame() {
               onEvents={handleEvents}
               onTap={handleTap}
               onReady={handleCanvasReady}
-              onSetSeed={handleSetSeed}
+              onSetSeed={process.env.EXPO_PUBLIC_TEST_HOOKS === "1" ? handleSetSeed : undefined}
               width={WORLD_W}
               height={WORLD_H}
               scale={scale}

@@ -233,11 +233,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         restoreFruits() {
           // no-op
         },
-        setSeed(seed: number) {
-          onSetSeed?.(seed);
-        },
       }),
-      [initEngine, width, onSetSeed]
+      [initEngine, width]
     );
 
     const dangerY = height * DANGER_LINE_RATIO;

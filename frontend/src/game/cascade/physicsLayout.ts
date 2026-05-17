@@ -7,11 +7,11 @@ export interface Vec2 {
 export const PACKING_HEIGHT_FACTOR = 2 + Math.sqrt(3);
 
 // Wall proportional to maxRadius — prevents fruit penetration at terminal velocity.
-const WALL_RATIO = 0.4;
+export const BIN_WALL_RATIO = 0.4;
 // Inner bin: 4 max-diameter slots wide (enough for drop targeting without wall crowding).
-const BIN_INNER_DIAMETERS = 4;
+export const BIN_INNER_DIAMETERS = 4;
 // Height-to-width aspect ratio for Suika-style gameplay feel.
-const BIN_ASPECT_RATIO = 1.75;
+export const BIN_ASPECT_RATIO = 1.75;
 
 /**
  * Derive bin outer dimensions and wall thickness from the largest fruit radius.
@@ -23,14 +23,17 @@ export function calculateBinDimensions(maxRadius: number): {
   height: number;
   wallThickness: number;
 } {
-  const wallThickness = Math.max(4, Math.round(maxRadius * WALL_RATIO));
+  const wallThickness = Math.max(4, Math.round(maxRadius * BIN_WALL_RATIO));
   const innerWidth = Math.round(maxRadius * 2 * BIN_INNER_DIAMETERS);
   const width = innerWidth + 2 * wallThickness;
   const height = Math.round(width * BIN_ASPECT_RATIO);
   return { width, height, wallThickness };
 }
 
-/** Mass-weighted centroid of two merging bodies. Equal masses → exact midpoint. */
+/**
+ * Mass-weighted centroid of two merging bodies. Equal masses → exact midpoint.
+ * Returns the midpoint when total mass is zero to avoid NaN.
+ */
 export function calculateMergeCentroid(
   posA: Vec2,
   massA: number,
@@ -38,6 +41,9 @@ export function calculateMergeCentroid(
   massB: number,
 ): Vec2 {
   const totalMass = massA + massB;
+  if (totalMass <= 0) {
+    return { x: (posA.x + posB.x) / 2, y: (posA.y + posB.y) / 2 };
+  }
   return {
     x: (posA.x * massA + posB.x * massB) / totalMass,
     y: (posA.y * massA + posB.y * massB) / totalMass,
@@ -45,10 +51,10 @@ export function calculateMergeCentroid(
 }
 
 /**
- * Radius of a fruit at the given tier.
+ * Radius of a fruit at the given tier: baseRadius × factor^tier.
  * Defaults to factor 1.25, matching RADII[n] = 18 × 1.25^n.
  */
-export function calculateScalingIndex(
+export function calculateTierRadius(
   tier: number,
   baseRadius: number,
   factor = 1.25,

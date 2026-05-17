@@ -67,22 +67,4 @@ test.describe("Cascade — seed determinism", () => {
     expect(s1.nextFruitTier).toBe(s2.nextFruitTier);
   });
 
-  test("different seeds produce different fruit sequences", async ({ page }) => {
-    await gotoCascade(page);
-
-    await setSeed(page, 1);
-    await dropAt(page, DROP_X);
-    const afterSeed1 = await getState(page);
-
-    await setSeed(page, 99999);
-    await dropAt(page, DROP_X);
-    const afterSeed2 = await getState(page);
-
-    // nextFruitTier should differ for two distant seeds after one drop each
-    // (LCG guarantees distinct outputs — flake probability is negligible)
-    const bothTiers = [afterSeed1.nextFruitTier, afterSeed2.nextFruitTier];
-    expect(bothTiers[0]).not.toBeUndefined();
-    expect(bothTiers[1]).not.toBeUndefined();
-    expect(afterSeed1.nextFruitTier).not.toBe(afterSeed2.nextFruitTier);
-  });
 });

@@ -3,9 +3,12 @@ import type { GameEvent } from "./types";
 
 export {
   PACKING_HEIGHT_FACTOR,
+  BIN_WALL_RATIO,
+  BIN_INNER_DIAMETERS,
+  BIN_ASPECT_RATIO,
   calculateBinDimensions,
   calculateMergeCentroid,
-  calculateScalingIndex,
+  calculateTierRadius,
   packingTheoremClearance,
 } from "./physicsLayout";
 export type { Vec2 } from "./physicsLayout";
