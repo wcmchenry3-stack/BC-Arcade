@@ -31,7 +31,7 @@ const DEBUG_COLLISION = __DEV__;
 export interface CascadeEngineState {
   fruitCount: number;
   dangerRatio: number;
-  fruits: Array<{ id: number; tier: number; x: number; y: number }>;
+  fruits: Array<{ id: number; tier: number; x: number; y: number; angle: number }>;
 }
 
 export interface SavedFruitInput {
@@ -453,6 +453,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             tier: b.tier,
             x: Math.round(b.x),
             y: Math.round(b.y),
+            angle: b.angle,
           })),
         };
       };

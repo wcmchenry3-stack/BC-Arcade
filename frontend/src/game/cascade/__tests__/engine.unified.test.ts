@@ -18,6 +18,8 @@ import {
   COLLISION_GROUP_WALL,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
+  FRUIT_ANGULAR_DAMPING,
+  FRUIT_FRICTION_AIR,
 } from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 
@@ -906,5 +908,93 @@ describe("determinism — nowProvider injection removes Date.now() non-determini
     const run1 = await run();
     const run2 = await run();
     expect(run1).toEqual(run2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC1 — angular damping, air friction, body sleeping (#1610)
+// ---------------------------------------------------------------------------
+
+describe("UC1 — angular damping and air friction", () => {
+  it("spawned body has angularDamping = FRUIT_ANGULAR_DAMPING", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    const body = dynBodies[0];
+    expect(body).toBeDefined();
+    // Matter.js accepts unknown body options via Common.extend; the property is set
+    // at runtime even though the @types/matter-js typings don't declare it.
+    expect((body as unknown as { angularDamping: number }).angularDamping).toBe(
+      FRUIT_ANGULAR_DAMPING
+    );
+
+    handle.cleanup();
+  });
+
+  it("spawned body has frictionAir = FRUIT_FRICTION_AIR", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    const body = dynBodies[0];
+    expect(body).toBeDefined();
+    expect(body!.frictionAir).toBe(FRUIT_FRICTION_AIR);
+
+    handle.cleanup();
+  });
+
+  it("body angular velocity drops below 0.01 rad/step after settling on the floor", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Drop close to the floor so it settles quickly
+    handle.drop(fruit(0), "fruits", W / 2, H - 80);
+
+    // Impart angular velocity to simulate spinning
+    handle.step(1 / 60);
+    const dynBodies = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    const body = dynBodies()[0];
+    if (!body) throw new Error("Expected fruit body");
+    Matter.Body.setAngularVelocity(body, 2); // spin it hard
+
+    // Step 3000ms worth of ticks (180 ticks at 60 Hz)
+    for (let i = 0; i < 180; i++) handle.step(1 / 60);
+
+    expect(Math.abs(body.angularVelocity)).toBeLessThan(0.01);
+
+    handle.cleanup();
+  });
+
+  it("sleeping body count > 0 after 3000ms fast-forward with a settled fruit", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, H - 80);
+
+    // Step 180 ticks (≈3000ms) to let the body settle and sleep
+    for (let i = 0; i < 180; i++) handle.step(1 / 60);
+
+    const sleepingCount = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic && b.isSleeping
+    ).length;
+    expect(sleepingCount).toBeGreaterThan(0);
+
+    handle.cleanup();
   });
 });

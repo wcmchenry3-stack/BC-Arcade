@@ -13,6 +13,8 @@ export {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  FRUIT_ANGULAR_DAMPING,
+  FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
@@ -44,6 +46,8 @@ import {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  FRUIT_ANGULAR_DAMPING,
+  FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
   MATTER_GRAVITY_Y,
@@ -149,6 +153,8 @@ export async function createEngine(
     const bodyOpts = {
       restitution: FRUIT_RESTITUTION,
       friction: FRUIT_FRICTION,
+      angularDamping: FRUIT_ANGULAR_DAMPING,
+      frictionAir: FRUIT_FRICTION_AIR,
       density: 0.001, // matter.js density is per-pixel-area; tuned for natural feel
       sleepThreshold: MATTER_SLEEP_THRESHOLD,
       collisionFilter: {

@@ -34,6 +34,10 @@ export const GAME_OVER_MERGE_COOLDOWN_TICKS = 90;
 export const FRUIT_RESTITUTION = 0.1;
 /** Low friction = fruits slide and settle naturally (spec: 0.05–0.1). */
 export const FRUIT_FRICTION = 0.08;
+/** Angular damping kills residual spin so fruits stop rotating after landing (UC1). */
+export const FRUIT_ANGULAR_DAMPING = 0.05;
+/** Air friction slows bodies in free-fall so they decelerate smoothly (UC1). */
+export const FRUIT_FRICTION_AIR = 0.01;
 /** Wall/floor friction (spec: ~0.2) — higher than fruit friction so fruits grip walls but slide freely on each other. */
 export const WALL_FRICTION = 0.2;
 /** Radial pop impulse applied to neighbors on merge: magnitude = nextTierRadius × this. Tunable. */
