@@ -13,6 +13,8 @@ export {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  FRUIT_ANGULAR_DAMPING,
+  FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
   FRUIT_DENSITY,
@@ -44,6 +46,8 @@ import {
   GAME_OVER_MERGE_COOLDOWN_TICKS,
   FRUIT_RESTITUTION,
   FRUIT_FRICTION,
+  FRUIT_ANGULAR_DAMPING,
+  FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
   MATTER_GRAVITY_Y,
@@ -149,6 +153,7 @@ export async function createEngine(
     const bodyOpts = {
       restitution: FRUIT_RESTITUTION,
       friction: FRUIT_FRICTION,
+      frictionAir: FRUIT_FRICTION_AIR,
       density: 0.001, // matter.js density is per-pixel-area; tuned for natural feel
       sleepThreshold: MATTER_SLEEP_THRESHOLD,
       collisionFilter: {
@@ -345,6 +350,16 @@ export async function createEngine(
             body.collisionFilter.mask = COLLISION_GROUP_WALL | COLLISION_GROUP_DYNAMIC;
           }
         }
+      });
+
+      // Angular damping: Matter.js applies frictionAir to angular velocity, but at only
+      // 1%/step that alone is insufficient for snappy spin-decay. This post-step pass
+      // applies an additional FRUIT_ANGULAR_DAMPING fraction per tick so fruits stop
+      // rotating naturally without tuning frictionAir to an unrealistic value.
+      fruitMap.forEach((_fb, bodyId) => {
+        const body = bodyById.get(bodyId);
+        if (!body || body.isSleeping || body.angularVelocity === 0) return;
+        Matter.Body.setAngularVelocity(body, body.angularVelocity * (1 - FRUIT_ANGULAR_DAMPING));
       });
 
       // Velocity clamp: cap per-step speed so no body can tunnel through a 16px wall.

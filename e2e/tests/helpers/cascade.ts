@@ -19,7 +19,7 @@ export interface CascadeState {
   dangerRatio: number;
   gameOver: boolean;
   nextFruitTier: number;
-  fruits: Array<{ id: number; tier: number; x: number; y: number }>;
+  fruits: Array<{ id: number; tier: number; x: number; y: number; angle: number }>;
 }
 
 /** Mock leaderboard endpoint so tests don't depend on a running backend. */
@@ -70,7 +70,7 @@ export async function getState(page: Page): Promise<CascadeState> {
         dangerRatio: 0,
         gameOver: false,
         nextFruitTier: 0,
-        fruits: [],
+        fruits: [] as CascadeState["fruits"],
       },
   );
 }

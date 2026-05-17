@@ -44,7 +44,7 @@ const DROP_Y = 30;
 export interface CascadeEngineState {
   fruitCount: number;
   dangerRatio: number;
-  fruits: Array<{ id: number; tier: number; x: number; y: number }>;
+  fruits: Array<{ id: number; tier: number; x: number; y: number; angle: number }>;
 }
 
 export interface SavedFruitInput {
