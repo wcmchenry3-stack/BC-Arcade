@@ -73,6 +73,10 @@ export const MATTER_SLEEP_THRESHOLD = 30;
 /** Max fruit speed in px/s. Capped so max travel per 1/60s sub-step (15 px) stays below WALL_THICKNESS (16 px). */
 export const MAX_FRUIT_SPEED_PX_S = 900;
 
+// --- Warm spawn ---
+/** Number of physics ticks over which a merge-spawned body grows from 50% to 100% radius. */
+export const WARM_SPAWN_FRAMES = 10;
+
 // --- Spawn grace period ---
 /** Number of physics ticks a merge-spawned body is immune to dynamic-vs-dynamic collisions. */
 export const SPAWN_GRACE_TICKS = 3;
