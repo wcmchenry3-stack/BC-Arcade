@@ -269,8 +269,8 @@ def test_create_game_request_invalid_sudoku_metadata_raises_422() -> None:
 
 
 def test_create_game_request_unregistered_game_type_skips_validation() -> None:
-    # yacht/twenty48 are in GameType but not yet in the registry — should not raise
-    req = CreateGameRequest(game_type="yacht", metadata={"anything": True})
+    # twenty48 is in GameType but not yet in the registry — should not raise
+    req = CreateGameRequest(game_type="twenty48", metadata={"anything": True})
     assert req.metadata == {"anything": True}
 
 
