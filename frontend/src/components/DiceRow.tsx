@@ -85,7 +85,7 @@ export default function DiceRow({
             value={val}
             held={held[i] ?? false}
             onPress={() => onToggleHold(i)}
-            disabled={(!locked && rollsUsed === 0) || gameOver}
+            disabled={locked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
             reduceMotion={reduceMotion}
           />

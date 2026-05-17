@@ -72,5 +72,5 @@
   "gameOver.computerWins": "¡Gana la computadora!",
   "gameOver.tie": "¡Empate!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Tiro {{count}} / 3"
+  "vsMode.rollCounter": "Tiro {{n}} / 3"
 }

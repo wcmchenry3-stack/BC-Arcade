@@ -72,5 +72,5 @@
   "gameOver.computerWins": "Компьютер выиграл!",
   "gameOver.tie": "Ничья!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Бросок {{count}} / 3"
+  "vsMode.rollCounter": "Бросок {{n}} / 3"
 }

@@ -72,5 +72,5 @@
   "gameOver.computerWins": "コンピュータの勝ち！",
   "gameOver.tie": "引き分け！",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "ロール {{count}} / 3"
+  "vsMode.rollCounter": "ロール {{n}} / 3"
 }

@@ -72,5 +72,5 @@
   "gameOver.computerWins": "电脑赢了！",
   "gameOver.tie": "平局！",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "第{{count}}掷 / 3"
+  "vsMode.rollCounter": "第{{n}}掷 / 3"
 }

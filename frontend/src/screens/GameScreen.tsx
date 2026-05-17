@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Modal, ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
+import {
+  Modal,
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -45,6 +53,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const VS_WIDE_BREAKPOINT = 700;
+
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
@@ -55,7 +65,7 @@ export default function GameScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const isVsWide = screenWidth >= 700;
+  const isVsWide = screenWidth >= VS_WIDE_BREAKPOINT;
   const [gameState, setGameState] = useState<GameState>(route.params.initialState);
   const [possibleScores, setPossibleScores] = useState<Record<string, number>>({});
   const [gameKey, setGameKey] = useState(0);
@@ -205,7 +215,10 @@ export default function GameScreen({ navigation, route }: Props) {
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
         const holds = holdStrategy(s, diff);
-        const rolledIdxs = holds.reduce<number[]>((acc, h, i) => { if (!h) acc.push(i); return acc; }, []);
+        const rolledIdxs = holds.reduce<number[]>((acc, h, i) => {
+          if (!h) acc.push(i);
+          return acc;
+        }, []);
         setAiRollingIndices(rolledIdxs);
         await delay(650);
         if (cancelled) return;
@@ -362,6 +375,26 @@ export default function GameScreen({ navigation, route }: Props) {
   // Modal visible only when both players have finished in VS mode.
   const gameReallyOver = gameState.game_over && (!aiDifficulty || aiGameState?.game_over === true);
 
+  function renderScorecard(which: "player" | "opponent") {
+    const s = which === "player" ? gameState : aiGameState!;
+    return (
+      <Scorecard
+        key={which === "player" ? gameKey : `ai-${gameKey}`}
+        scores={s.scores}
+        possibleScores={which === "player" ? possibleScores : {}}
+        rollsUsed={s.rolls_used}
+        gameOver={s.game_over}
+        upperSubtotal={s.upper_subtotal}
+        upperBonus={s.upper_bonus}
+        yachtBonusCount={s.yacht_bonus_count}
+        yachtBonusTotal={s.yacht_bonus_total}
+        totalScore={s.total_score}
+        onScore={which === "player" ? handleScore : () => {}}
+        locked={which === "opponent" || isAiTurn}
+      />
+    );
+  }
+
   const roundPill = (
     <View
       style={[styles.roundPill, { backgroundColor: colors.surfaceAlt, borderColor: colors.accent }]}
@@ -420,7 +453,7 @@ export default function GameScreen({ navigation, route }: Props) {
           </Text>
           {isAiTurn && aiGameState && aiGameState.rolls_used > 0 && (
             <Text style={[styles.rollCounterText, { color: colors.textMuted }]}>
-              {t("vsMode.rollCounter", { count: aiGameState.rolls_used })}
+              {t("vsMode.rollCounter", { n: aiGameState.rolls_used })}
             </Text>
           )}
         </View>
@@ -479,7 +512,9 @@ export default function GameScreen({ navigation, route }: Props) {
                     accessibilityState={{ selected: isActive }}
                     accessibilityLabel={tab === "player" ? t("score.you") : t("score.opponent")}
                   >
-                    <Text style={[styles.vsTabText, { color: isActive ? tabColor : colors.textMuted }]}>
+                    <Text
+                      style={[styles.vsTabText, { color: isActive ? tabColor : colors.textMuted }]}
+                    >
                       {tab === "player" ? t("score.you") : t("score.opponent")}
                     </Text>
                   </Pressable>
@@ -493,94 +528,21 @@ export default function GameScreen({ navigation, route }: Props) {
                 <Text style={[styles.vsScorecardLabel, { color: colors.accent }]}>
                   {t("score.you")}
                 </Text>
-                <Scorecard
-                  key={gameKey}
-                  scores={gameState.scores}
-                  possibleScores={possibleScores}
-                  rollsUsed={gameState.rolls_used}
-                  gameOver={gameState.game_over}
-                  upperSubtotal={gameState.upper_subtotal}
-                  upperBonus={gameState.upper_bonus}
-                  yachtBonusCount={gameState.yacht_bonus_count}
-                  yachtBonusTotal={gameState.yacht_bonus_total}
-                  totalScore={gameState.total_score}
-                  onScore={handleScore}
-                  locked={isAiTurn}
-                />
+                {renderScorecard("player")}
               </View>
               <View style={styles.vsWideCol}>
                 <Text style={[styles.vsScorecardLabel, { color: colors.secondary }]}>
                   {t("score.opponent")}
                 </Text>
-                <Scorecard
-                  key={`ai-${gameKey}`}
-                  scores={aiGameState.scores}
-                  possibleScores={{}}
-                  rollsUsed={aiGameState.rolls_used}
-                  gameOver={aiGameState.game_over}
-                  upperSubtotal={aiGameState.upper_subtotal}
-                  upperBonus={aiGameState.upper_bonus}
-                  yachtBonusCount={aiGameState.yacht_bonus_count}
-                  yachtBonusTotal={aiGameState.yacht_bonus_total}
-                  totalScore={aiGameState.total_score}
-                  onScore={() => {}}
-                  locked
-                />
+                {renderScorecard("opponent")}
               </View>
             </View>
           ) : (
-            <View style={styles.scorecardContainer}>
-              {vsScorecardTab === "player" ? (
-                <Scorecard
-                  key={gameKey}
-                  scores={gameState.scores}
-                  possibleScores={possibleScores}
-                  rollsUsed={gameState.rolls_used}
-                  gameOver={gameState.game_over}
-                  upperSubtotal={gameState.upper_subtotal}
-                  upperBonus={gameState.upper_bonus}
-                  yachtBonusCount={gameState.yacht_bonus_count}
-                  yachtBonusTotal={gameState.yacht_bonus_total}
-                  totalScore={gameState.total_score}
-                  onScore={handleScore}
-                  locked={isAiTurn}
-                />
-              ) : (
-                <Scorecard
-                  key={`ai-${gameKey}`}
-                  scores={aiGameState.scores}
-                  possibleScores={{}}
-                  rollsUsed={aiGameState.rolls_used}
-                  gameOver={aiGameState.game_over}
-                  upperSubtotal={aiGameState.upper_subtotal}
-                  upperBonus={aiGameState.upper_bonus}
-                  yachtBonusCount={aiGameState.yacht_bonus_count}
-                  yachtBonusTotal={aiGameState.yacht_bonus_total}
-                  totalScore={aiGameState.total_score}
-                  onScore={() => {}}
-                  locked
-                />
-              )}
-            </View>
+            <View style={styles.scorecardContainer}>{renderScorecard(vsScorecardTab)}</View>
           )}
         </View>
       ) : (
-        <View style={styles.scorecardContainer}>
-          <Scorecard
-            key={gameKey}
-            scores={gameState.scores}
-            possibleScores={possibleScores}
-            rollsUsed={gameState.rolls_used}
-            gameOver={gameState.game_over}
-            upperSubtotal={gameState.upper_subtotal}
-            upperBonus={gameState.upper_bonus}
-            yachtBonusCount={gameState.yacht_bonus_count}
-            yachtBonusTotal={gameState.yacht_bonus_total}
-            totalScore={gameState.total_score}
-            onScore={handleScore}
-            locked={isAiTurn}
-          />
-        </View>
+        <View style={styles.scorecardContainer}>{renderScorecard("player")}</View>
       )}
 
       <YachtCelebrationAnimation

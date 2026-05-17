@@ -72,5 +72,5 @@
   "gameOver.computerWins": "L'ordinateur gagne !",
   "gameOver.tie": "Égalité !",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Lancé {{count}} / 3"
+  "vsMode.rollCounter": "Lancé {{n}} / 3"
 }
