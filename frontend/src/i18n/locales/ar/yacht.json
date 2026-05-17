@@ -71,5 +71,6 @@
   "gameOver.youWin": "فزت!",
   "gameOver.computerWins": "فاز الكمبيوتر!",
   "gameOver.tie": "تعادل!",
-  "vsMode.vs": "vs"
+  "vsMode.vs": "vs",
+  "vsMode.rollCounter": "رمية {{count}} / 3"
 }

@@ -88,4 +88,44 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     // Both players have now scored round 1 → should be Round 2
     await expect(page.getByText("Round 2 / 13")).toBeVisible({ timeout: 5000 });
   });
+
+  test("opponent scorecard label is visible in VS mode", async ({ page }) => {
+    // On Desktop Chrome (1280px wide) both scorecards render side-by-side.
+    // The "Opp." label above the AI scorecard should be visible immediately.
+    await expect(page.getByText("Opp.", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("You", { exact: true }).first()).toBeVisible();
+  });
+
+  test("shows AI roll counter during computer turn", async ({ page }) => {
+    await page.getByRole("button", { name: /Roll dice/i }).click();
+
+    const chanceBtn = page.getByRole("button", {
+      name: /Chance: potential score/i,
+    });
+    await expect(chanceBtn).toBeVisible();
+    await chanceBtn.click();
+
+    // AI starts its turn — roll counter should appear after first roll (~700 ms)
+    await expect(page.getByText(/Roll [123] \/ 3/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test("AI dice are visible during computer turn", async ({ page }) => {
+    await page.getByRole("button", { name: /Roll dice/i }).click();
+
+    const chanceBtn = page.getByRole("button", {
+      name: /Chance: potential score/i,
+    });
+    await expect(chanceBtn).toBeVisible();
+    await chanceBtn.click();
+
+    // Computer's Turn banner must appear
+    await expect(page.getByText(/Computer'?s Turn/i)).toBeVisible();
+
+    // After the first AI roll, at least one die should show a numeric value.
+    // Die accessibility labels contain "Die N: showing V" — wait for any die label
+    // that includes "showing" to appear (confirming dice values are rendered).
+    await expect(
+      page.getByRole("button", { name: /Die [1-5]: showing [1-6]/i }).first(),
+    ).toBeVisible({ timeout: 5000 });
+  });
 });
