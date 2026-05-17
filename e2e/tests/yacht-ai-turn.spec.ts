@@ -26,7 +26,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
   });
 
   test("shows Your Turn banner at game start", async ({ page }) => {
-    await expect(page.getByText(/Your Turn/i)).toBeVisible();
+    await expect(page.getByText("Your Turn", { exact: true })).toBeVisible();
   });
 
   test("Roll button is enabled on the player's turn", async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await chanceBtn.click();
 
     // Wait for AI to finish — Easy AI takes up to ~2.5 s per turn; allow 10 s
-    await expect(page.getByText(/Your Turn/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Your Turn", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("button", { name: /Roll dice/i })).toBeEnabled({
       timeout: 10000,
     });
@@ -84,7 +84,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await chanceBtn.click();
 
     // Wait for AI turn to complete
-    await expect(page.getByText(/Your Turn/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Your Turn", { exact: true })).toBeVisible({ timeout: 10000 });
     // Both players have now scored round 1 → should be Round 2
     await expect(page.getByText("Round 2 / 13")).toBeVisible({ timeout: 5000 });
   });
