@@ -1,45 +1,29 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Platform,
+} from "react-native";
+import type { DimensionValue } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-
-const UPPER_KEYS = ["ones", "twos", "threes", "fours", "fives", "sixes"] as const;
-const LOWER_KEYS = [
-  "three_of_a_kind",
-  "four_of_a_kind",
-  "full_house",
-  "small_straight",
-  "large_straight",
-  "yacht",
-  "chance",
-] as const;
-
-const CATEGORY_I18N_KEY: Record<string, string> = {
-  ones: "category.ones",
-  twos: "category.twos",
-  threes: "category.threes",
-  fours: "category.fours",
-  fives: "category.fives",
-  sixes: "category.sixes",
-  three_of_a_kind: "category.threeOfAKind",
-  four_of_a_kind: "category.fourOfAKind",
-  full_house: "category.fullHouse",
-  small_straight: "category.smallStraight",
-  large_straight: "category.largeStraight",
-  yacht: "category.yacht",
-  chance: "category.chance",
-};
+import {
+  UPPER_CATEGORY_KEYS,
+  LOWER_CATEGORY_KEYS,
+  CATEGORY_I18N_KEY,
+} from "../../game/yacht/categories";
 
 export interface VsScorecardProps {
   playerScores: Record<string, number | null>;
   playerPossibleScores: Record<string, number>;
   playerRollsUsed: number;
   playerGameOver: boolean;
-  playerUpperSubtotal: number;
   playerUpperBonus: number;
   playerTotalScore: number;
   cpuScores: Record<string, number | null>;
-  cpuUpperSubtotal: number;
   cpuUpperBonus: number;
   cpuTotalScore: number;
   isAiTurn: boolean;
@@ -51,11 +35,9 @@ export default function VsScorecard({
   playerPossibleScores,
   playerRollsUsed,
   playerGameOver,
-  playerUpperSubtotal,
   playerUpperBonus,
   playerTotalScore,
   cpuScores,
-  cpuUpperSubtotal,
   cpuUpperBonus,
   cpuTotalScore,
   isAiTurn,
@@ -65,14 +47,25 @@ export default function VsScorecard({
   const { colors } = useTheme();
   const canScore = playerRollsUsed > 0 && !playerGameOver && !isAiTurn;
 
-  const playerLowerSubtotal = (LOWER_KEYS as readonly string[]).reduce(
+  // All subtotals computed locally from scores for consistency — avoids mixing
+  // backend-sourced upper_subtotal with a locally-computed lower subtotal.
+  const playerUpperSubtotal = (UPPER_CATEGORY_KEYS as readonly string[]).reduce(
     (acc, key) => acc + (playerScores[key] ?? 0),
     0
   );
-  const cpuLowerSubtotal = (LOWER_KEYS as readonly string[]).reduce(
+  const cpuUpperSubtotal = (UPPER_CATEGORY_KEYS as readonly string[]).reduce(
     (acc, key) => acc + (cpuScores[key] ?? 0),
     0
   );
+  const playerLowerSubtotal = (LOWER_CATEGORY_KEYS as readonly string[]).reduce(
+    (acc, key) => acc + (playerScores[key] ?? 0),
+    0
+  );
+  const cpuLowerSubtotal = (LOWER_CATEGORY_KEYS as readonly string[]).reduce(
+    (acc, key) => acc + (cpuScores[key] ?? 0),
+    0
+  );
+
   const playerLeading = playerTotalScore > cpuTotalScore;
   const cpuLeading = cpuTotalScore > playerTotalScore;
 
@@ -97,7 +90,7 @@ export default function VsScorecard({
           </Text>
         </View>
 
-        {/* YOU cell */}
+        {/* YOU cell — tappable when open and it is the player's turn */}
         <Pressable
           onPress={isHot ? () => onScore(key) : undefined}
           disabled={!isHot}
@@ -133,7 +126,7 @@ export default function VsScorecard({
           </Text>
         </Pressable>
 
-        {/* CPU cell */}
+        {/* CPU cell — read-only */}
         <View
           style={[
             styles.vsCell,
@@ -171,20 +164,18 @@ export default function VsScorecard({
           <Text style={[styles.vsSubtotalLbl, { color: colors.textMuted }]}>{label}</Text>
           {withProgress && (
             <View style={[styles.vsBarTrack, { backgroundColor: colors.surfaceAlt }]}>
-              {/* Player bar — full 4px height */}
+              {/* Player bar — full 4 px height */}
               <View
                 style={[
                   styles.vsBarFill,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  { width: `${playerPct * 100}%` as any, backgroundColor: playerBarColor },
+                  { width: `${playerPct * 100}%` as DimensionValue, backgroundColor: playerBarColor },
                 ]}
               />
-              {/* CPU bar — bottom 2px */}
+              {/* CPU bar — bottom 2 px */}
               <View
                 style={[
                   styles.vsBarFillCpu,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  { width: `${cpuPct * 100}%` as any, backgroundColor: cpuBarColor },
+                  { width: `${cpuPct * 100}%` as DimensionValue, backgroundColor: cpuBarColor },
                 ]}
               />
             </View>
@@ -204,7 +195,9 @@ export default function VsScorecard({
     const toGo = Math.max(0, 63 - playerUpperSubtotal);
     const playerBonusUnlocked = playerUpperBonus > 0;
     const cpuBonusUnlocked = cpuUpperBonus > 0;
-
+    // The label tracks the player's progress toward the bonus. The CPU's bonus
+    // status is shown in its cell (+35 / —) without a separate label, matching
+    // the design spec where the label is intentionally player-scoped.
     return (
       <View style={[styles.vsRow, styles.vsBonusRow, { borderBottomColor: colors.border }]}>
         <View style={styles.vsRowLeft}>
@@ -245,7 +238,7 @@ export default function VsScorecard({
 
       {/* Table card */}
       <View style={[styles.vsTable, { backgroundColor: colors.surface }]}>
-        {(UPPER_KEYS as readonly string[]).map((key) =>
+        {(UPPER_CATEGORY_KEYS as readonly string[]).map((key) =>
           renderCategoryRow(key, "upper", false)
         )}
         {renderSubtotalRow(t("vsMode.upperSubtotal"), playerUpperSubtotal, cpuUpperSubtotal, true)}
@@ -253,8 +246,8 @@ export default function VsScorecard({
         <Text style={[styles.vsSectionDivider, { color: colors.textMuted }]}>
           {t("vsMode.lower")}
         </Text>
-        {(LOWER_KEYS as readonly string[]).map((key, i) =>
-          renderCategoryRow(key, "lower", i === LOWER_KEYS.length - 1)
+        {(LOWER_CATEGORY_KEYS as readonly string[]).map((key, i) =>
+          renderCategoryRow(key, "lower", i === LOWER_CATEGORY_KEYS.length - 1)
         )}
         {renderSubtotalRow(t("vsMode.lowerSubtotal"), playerLowerSubtotal, cpuLowerSubtotal, false)}
       </View>

@@ -53,7 +53,6 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
@@ -470,11 +469,9 @@ export default function GameScreen({ navigation, route }: Props) {
             playerPossibleScores={possibleScores}
             playerRollsUsed={gameState.rolls_used}
             playerGameOver={gameState.game_over}
-            playerUpperSubtotal={gameState.upper_subtotal}
             playerUpperBonus={gameState.upper_bonus}
             playerTotalScore={gameState.total_score}
             cpuScores={aiGameState.scores}
-            cpuUpperSubtotal={aiGameState.upper_subtotal}
             cpuUpperBonus={aiGameState.upper_bonus}
             cpuTotalScore={aiGameState.total_score}
             isAiTurn={isAiTurn}
