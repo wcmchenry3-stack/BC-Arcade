@@ -926,9 +926,7 @@ describe("UC1 — angular damping and air friction", () => {
     handle.drop(fruit(0), "fruits", W / 2, 50);
     handle.step(1 / 60);
 
-    const body = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    )[0];
+    const body = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic)[0];
     if (!body) throw new Error("Expected fruit body");
 
     const initialOmega = 1.0;
@@ -951,9 +949,7 @@ describe("UC1 — angular damping and air friction", () => {
     handle.drop(fruit(0), "fruits", W / 2, 50);
     handle.step(1 / 60);
 
-    const body = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    )[0];
+    const body = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic)[0];
     expect(body).toBeDefined();
     expect(body!.frictionAir).toBe(FRUIT_FRICTION_AIR);
 
@@ -968,9 +964,7 @@ describe("UC1 — angular damping and air friction", () => {
     handle.drop(fruit(0), "fruits", W / 2, H - 80);
     handle.step(1 / 60);
 
-    const body = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    )[0];
+    const body = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic)[0];
     if (!body) throw new Error("Expected fruit body");
     Matter.Body.setAngularVelocity(body, 2); // spin it hard
 
