@@ -66,7 +66,9 @@ class TestSubmitScore:
         assert res.status_code == 201
 
     def test_missing_player_name_returns_422(self):
-        res = client.post("/yacht/score", json={"score": 200, "difficulty": "easy"}, headers=_HEADERS)
+        res = client.post(
+            "/yacht/score", json={"score": 200, "difficulty": "easy"}, headers=_HEADERS
+        )
         assert res.status_code == 422
 
     def test_missing_score_returns_422(self):
@@ -168,11 +170,11 @@ class TestGetScores:
         from limiter import limiter
 
         limiter.reset()
-        _submit("Carol", 300)   # transformed 100
+        _submit("Carol", 300)  # transformed 100
         limiter.reset()
-        _submit("Alice", 100)   # transformed 300
+        _submit("Alice", 100)  # transformed 300
         limiter.reset()
-        _submit("Bob", 200)     # transformed 200
+        _submit("Bob", 200)  # transformed 200
         scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
         assert [s["score"] for s in scores] == [300, 200, 100]
 
@@ -204,9 +206,9 @@ class TestSubmitRank:
         from limiter import limiter
 
         limiter.reset()
-        _submit("Alice", 100)   # transformed 300
+        _submit("Alice", 100)  # transformed 300
         limiter.reset()
-        body = _submit("Bob", 200).json()   # transformed 200 → rank 2
+        body = _submit("Bob", 200).json()  # transformed 200 → rank 2
         assert body["rank"] == 2
 
     def test_off_leaderboard_returns_rank_11(self):
@@ -214,9 +216,9 @@ class TestSubmitRank:
 
         for i in range(10):
             limiter.reset()
-            _submit(f"Top{i}", 0)   # all transformed to 400
+            _submit(f"Top{i}", 0)  # all transformed to 400
         limiter.reset()
-        body = _submit("Lowly", 399).json()   # transformed 1 → off board
+        body = _submit("Lowly", 399).json()  # transformed 1 → off board
         assert body["rank"] == 11
 
 
@@ -246,9 +248,9 @@ class TestTieBreak:
         from limiter import limiter
 
         limiter.reset()
-        _submit("Alice", 200)   # transformed 200, submitted first
+        _submit("Alice", 200)  # transformed 200, submitted first
         limiter.reset()
-        _submit("Bob", 200)     # transformed 200, submitted second
+        _submit("Bob", 200)  # transformed 200, submitted second
 
         scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
         assert scores[0]["player_name"] == "Alice"
