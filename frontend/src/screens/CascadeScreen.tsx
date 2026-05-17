@@ -487,6 +487,11 @@ function CascadeGame() {
     [gameOver, activeFruitSet, saveGameThrottled, syncEnqueue, syncMarkStarted]
   );
 
+  const handleSetSeed = useCallback((seed: number) => {
+    queueRef.current = new FruitQueue(new ControlledSpawnSelector(createSeededRng(seed)));
+    setQueueVersion((v) => v + 1);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Test seam — window.__cascade_* hooks (only when EXPO_PUBLIC_TEST_HOOKS=1)
   // -------------------------------------------------------------------------
@@ -499,10 +504,7 @@ function CascadeGame() {
       nextFruitTier: queueRef.current.peek(),
       ...canvasRef.current?.getEngineState?.(),
     });
-    g.__cascade_setSeed = (seed: number) => {
-      queueRef.current = new FruitQueue(new ControlledSpawnSelector(createSeededRng(seed)));
-      setQueueVersion((v) => v + 1);
-    };
+    g.__cascade_setSeed = handleSetSeed;
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
       const tier = queueRef.current.consume();
@@ -611,6 +613,7 @@ function CascadeGame() {
               onEvents={handleEvents}
               onTap={handleTap}
               onReady={handleCanvasReady}
+              onSetSeed={process.env.EXPO_PUBLIC_TEST_HOOKS === "1" ? handleSetSeed : undefined}
               width={WORLD_W}
               height={WORLD_H}
               scale={scale}
