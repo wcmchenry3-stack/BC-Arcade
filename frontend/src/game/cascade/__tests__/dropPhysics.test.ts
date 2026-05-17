@@ -6,15 +6,13 @@
  * (sprite shoots sideways, escapes the bin, bounces wildly) the multi-sprite
  * pile is a lost cause too.
  *
- * Tests the matter.js (native) engine because it runs in pure JS — Jest can
- * step a real simulation without a WASM binary or mock.
+ * Tests the unified Matter.js engine — pure JS, runs in Jest without a WASM binary.
  *
  * Each scenario is a high-level invariant: positions inside the bin,
- * velocities settled, drift bounded. Sub-pixel parity with Rapier is not
- * asserted; that's covered by physics-parity.test.ts.
+ * velocities settled, drift bounded.
  */
 import Matter from "matter-js";
-import { createEngine } from "../engine.native";
+import { createEngine } from "../engine";
 import type { EngineHandle, BodySnapshot } from "../engine.shared";
 import { WALL_THICKNESS, MAX_FRUIT_SPEED_PX_S } from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";

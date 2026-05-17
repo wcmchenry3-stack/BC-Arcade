@@ -34,7 +34,7 @@
       "\\.worktrees/"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@dimforge)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend)"
     ],
     "coverageThreshold": {
       "global": {
@@ -47,7 +47,6 @@
     }
   },
   "dependencies": {
-    "@dimforge/rapier2d-compat": "^0.19.3",
     "@expo-google-fonts/manrope": "^0.4.2",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/vector-icons": "^15.1.1",

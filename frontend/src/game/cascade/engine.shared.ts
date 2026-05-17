@@ -40,23 +40,23 @@ export const WALL_FRICTION = 0.2;
 export const POP_IMPULSE_SCALE = 2.0;
 export const FRUIT_DENSITY = 1.0;
 
-// --- Rapier-specific constants (used only by engine.ts / web) ---
-export const SCALE = 0.01;
-export const GRAVITY_Y = 18.0;
+// --- Matter.js gravity ---
+// Equivalent to ~1800 px/s² at 60 Hz (matches Rapier GRAVITY_Y=18 × SCALE=0.01 × 1/SCALE).
+// matter.js applies gravity as: velocity += gravity.y * gravity.scale per tick.
+// Default gravity.scale = 0.001, so y=1.8 gives snappy arcade freefall.
+export const MATTER_GRAVITY_Y = 1.8;
 
 // --- Fixed physics timestep ---
-/** Fixed physics sub-step duration (ms). Both engines run at 60 Hz regardless of frame rate. */
+/** Fixed physics sub-step duration (ms). Engine runs at 60 Hz regardless of frame rate. */
 export const FIXED_STEP_MS = 1000 / 60;
 
 // --- Solver iteration counts ---
 // O(N × iterations) cost per step — raise to fix penetration in deep stacks,
 // lower if the physics budget grows tight on low-end devices.
 // Validated against 15-deep piles; these counts resolve cleanly without visible jitter.
-/** Rapier constraint solver iterations (default 4). 8 resolves 15-deep stacks cleanly. */
-export const RAPIER_SOLVER_ITERATIONS = 8;
 /** Matter.js position correction iterations (default 6). 10 prevents jitter in deep stacks. */
 export const MATTER_POSITION_ITERATIONS = 10;
-/** Matter.js velocity correction iterations (default 4). 6 matches Rapier's constraint budget. */
+/** Matter.js velocity correction iterations (default 4). 6 resolves constraint budget cleanly. */
 export const MATTER_VELOCITY_ITERATIONS = 6;
 
 // --- Body sleeping ---
@@ -76,7 +76,7 @@ export const SPAWN_GRACE_TICKS = 3;
  *  duration so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz. */
 export const SPAWN_GRACE_MS = SPAWN_GRACE_TICKS * FIXED_STEP_MS; // ≈ 50 ms
 
-// --- Collision group bitmasks (shared by Rapier and Matter.js implementations) ---
+// --- Collision group bitmasks ---
 export const COLLISION_GROUP_WALL = 0x0001;
 export const COLLISION_GROUP_DYNAMIC = 0x0002;
 
