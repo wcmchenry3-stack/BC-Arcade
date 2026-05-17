@@ -465,7 +465,9 @@ describe("stacked merge — spawn grace period", () => {
 
     // On the step immediately after the merge, measure all body velocities.
     handle.step(DT);
-    const MAX_OUTWARD_SPEED = 50; // px/s — generous threshold; explosions reach 500+ px/s
+    // 90 px/s accounts for mass-weighted velocity inheritance (merged body carries ~60 px/s
+    // downward momentum from the falling parents). Explosions still reach 500+ px/s.
+    const MAX_OUTWARD_SPEED = 90; // px/s
     const bodiesAfterMerge = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic
     );
