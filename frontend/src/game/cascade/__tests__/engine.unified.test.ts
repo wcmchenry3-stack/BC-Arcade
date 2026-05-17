@@ -1,11 +1,11 @@
 /**
- * engine.native.test.ts — matter.js native engine tests
+ * engine.unified.test.ts — unified Matter.js engine tests
  *
- * Uses the real matter.js library (pure JS, no mocks needed).
- * Explicitly imports engine.native.ts to bypass Jest's default resolution.
+ * Tests the single Matter.js engine now used on all platforms (web + native).
+ * Uses the real matter-js library — no mocks needed (pure JS, no WASM).
  */
 import Matter from "matter-js";
-import { createEngine } from "../engine.native";
+import { createEngine } from "../engine";
 import type { EngineHandle } from "../engine.shared";
 import {
   MATTER_POSITION_ITERATIONS,
@@ -285,7 +285,7 @@ describe("velocity clamp", () => {
 describe("merge detection — extended", () => {
   it("does NOT spawn a new fruit when merging tier-10 (watermelon disappears)", async () => {
     const handle = await buildEngine();
-    const tier10 = fruit(10); // radius = 98
+    const tier10 = fruit(10); // radius = 168
     let mergeEvents: { type: string; tier?: number }[] = [];
 
     // Drop two tier-10 fruits nearly on top of each other — overlap triggers immediate collision
@@ -363,7 +363,7 @@ describe("game-over detection — extended", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Game-over hysteresis (CASCADE-PHYS-07) — Matter.js engine
+// Game-over hysteresis (CASCADE-PHYS-07)
 // ---------------------------------------------------------------------------
 // Tiny dt (1e-7 s) is used so physics sub-steps don't execute
 // (remainingMs < 0.01 ms threshold), keeping body positions frozen
@@ -589,10 +589,6 @@ describe("boundary escape", () => {
     handle.cleanup();
   });
 
-  // CASCADE-PHYS-09 removed: without the hard-clamp band-aid, a body spawned
-  // just below the floor surface is not snapped to innerBottom. Gravity pulls
-  // it further down until it crosses H + escapeMargin, at which point the
-  // escape-detection pass removes it from the world.
   it("a body spawned just below the floor drifts out and is escape-removed", async () => {
     const handle = await buildEngine();
     const tier0 = fruit(0);
@@ -618,20 +614,14 @@ describe("boundary escape", () => {
 
 describe("boundary containment — wall-adjacent merges", () => {
   it("merged fruit spawn position is clamped inside left wall", async () => {
-    // Simulate a merge where both fruits are against the left wall so the
-    // midpoint would be inside (or touching) the wall. The spawned tier+1
-    // body should have its centre at innerLeft = WALL_THICKNESS + radius.
     const handle = await buildEngine();
     const tier0 = fruit(0);
 
-    // Drop two tier-0 fruits very close to the left wall so their midpoint
-    // could be ≤ WALL_THICKNESS from the left edge.
     handle.drop(tier0, "fruits", 5, 30);
     handle.drop(tier0, "fruits", 5, 50);
 
     for (let i = 0; i < 300; i++) {
       const { snapshots: snaps } = handle.step(1 / 60);
-      // Once we get a tier-1 body, verify its x is inside the wall boundary
       const tier1 = snaps.filter((s) => s.tier === 1);
       if (tier1.length > 0) {
         const tier1Def = fruit(1);
@@ -691,16 +681,11 @@ describe("wall containment — velocity clamp", () => {
     handle.cleanup();
   });
 
-  // CASCADE-PHYS-09 removed: verify that without the hard-clamp band-aid, a
-  // merged fruit spawned near the left wall does not penetrate it. The
-  // velocity clamp (CASCADE-PHYS-08) and spawn clamping in processMerges
-  // together must keep the body inside the wall.
   it("no hard-clamp: merged fruit spawned near left wall does not penetrate it", async () => {
     const handle = await buildEngine();
     const tier0 = fruit(0);
     const innerLeft = 16 + fruit(1).radius; // WALL_THICKNESS + tier-1 radius
 
-    // Two tier-0 fruits close to the left wall — midpoint is near the wall.
     handle.drop(tier0, "fruits", 20, 30);
     handle.drop(tier0, "fruits", 20, 50);
 
@@ -709,8 +694,6 @@ describe("wall containment — velocity clamp", () => {
       const tier1 = snaps.filter((s) => s.tier === 1);
       if (tier1.length > 0) {
         for (const snap of tier1) {
-          // Spawn clamping ensures the body starts at innerLeft, and without
-          // the hard clamp it must still stay there (no drift through the wall).
           expect(snap.x).toBeGreaterThanOrEqual(innerLeft - 1);
         }
         break;
@@ -721,8 +704,7 @@ describe("wall containment — velocity clamp", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Physics sub-stepping (#499) — large frame deltas must be broken into
-// ≤16.67ms sub-steps so fast bodies can't tunnel through static walls.
+// Physics sub-stepping (#499)
 // ---------------------------------------------------------------------------
 
 describe("physics sub-stepping", () => {
@@ -754,10 +736,8 @@ describe("physics sub-stepping", () => {
 // Merge pipeline hardening (#1224)
 // ---------------------------------------------------------------------------
 
-describe("merge pipeline hardening — Matter tier snapshot guard", () => {
+describe("merge pipeline hardening — tier snapshot guard", () => {
   it("rejects stale pair when collisionStart fires twice for the same pair", async () => {
-    // Emit the same collision pair twice (simulating two sub-steps firing the same event).
-    // With isMerging set atomically at enqueue, the second emission should be a no-op.
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const handle = await buildEngine();
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
@@ -784,7 +764,7 @@ describe("merge pipeline hardening — Matter tier snapshot guard", () => {
     handle.cleanup();
   });
 
-  it("no duplicate fruitMerge when collisionStart fires twice for same pair", async () => {
+  it("no duplicate fruitMerge when collisionStart fires multiple times for same pair", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const handle = await buildEngine();
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
@@ -815,7 +795,7 @@ describe("merge pipeline hardening — Matter tier snapshot guard", () => {
 // Spawn grace period (#1226)
 // ---------------------------------------------------------------------------
 
-describe("spawn grace — Matter.js", () => {
+describe("spawn grace", () => {
   it("merge-spawned body has collision filter excluding dynamic for SPAWN_GRACE_TICKS ticks", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const handle = await buildEngine();
@@ -883,7 +863,6 @@ describe("spawn grace — Matter.js", () => {
   it("player-dropped body is not in grace (can collide with other dynamic bodies immediately)", async () => {
     const handle = await buildEngine();
 
-    // Drop two tier-0 fruits close together — they should be able to collide/merge immediately
     const tier0 = fruit(0);
     handle.drop(tier0, "fruits", W / 2 - 5, 30);
     handle.drop(tier0, "fruits", W / 2 + 5, 30);
