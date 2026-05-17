@@ -29,6 +29,7 @@ export default function AiDifficultySelector({ value, onChange }: Props) {
             accessibilityRole="radio"
             accessibilityLabel={t(`difficulty.${d}`)}
             accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             style={[styles.btn, { backgroundColor: selected ? colors.accent : colors.surface }]}
           >
             <Text style={[styles.label, { color: selected ? colors.textOnAccent : colors.text }]}>
