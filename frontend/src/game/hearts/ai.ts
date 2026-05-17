@@ -520,10 +520,30 @@ function selectCardToPlayMedium(
   const moonTarget = detectPotentialMoon(state);
   const isLeading = trick.length === 0;
 
-  // Moon blocking — dump points cards ASAP
-  if (moonTarget !== null && moonTarget !== playerIndex) {
+  // Moon blocking — dump highest safe point card on the moon-shooter's trick.
+  // Skip when leading: we'd start the trick and could win it back (e.g. Q♠ discarded to our lead).
+  // When following, skip any card that would win a trick already containing Q♠ (self-take),
+  // or that is Q♠ and would win the spade trick outright.
+  if (moonTarget !== null && moonTarget !== playerIndex && !isLeading) {
+    const first = trick[0]!;
+    const ledSuit = first.card.suit;
+    const inSuit = valid.filter((c) => c.suit === ledSuit);
+    const isVoid = inSuit.length === 0;
+    const qInTrick = trick.some((tc) => isQueenOfSpades(tc.card));
+    let currentWinRank = 0;
+    for (const tc of trick) {
+      if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > currentWinRank)
+        currentWinRank = aceHigh(tc.card.rank);
+    }
     const pointCards = valid
-      .filter((c) => cardPoints(c) > 0)
+      .filter((c) => {
+        if (cardPoints(c) === 0) return false;
+        if (isVoid) return true; // off-suit discard can't win the trick
+        const rank = aceHigh(c.rank);
+        if (isQueenOfSpades(c) && rank > currentWinRank) return false; // Q♠ self-win on spade trick
+        if (qInTrick && rank > currentWinRank) return false; // would take a trick with Q♠ in it
+        return true;
+      })
       .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     if (pointCards.length > 0) return pointCards[0]!;
   }
@@ -578,10 +598,30 @@ function selectCardToPlayHard(
   const midMoon = totalHearts >= 5 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
   const isMoonAttempt = earlyMoon || midMoon;
 
-  // Moon blocking (skip if we're the one attempting)
-  if (moonTarget !== null && moonTarget !== playerIndex && !isMoonAttempt) {
+  // Moon blocking — dump highest safe point card on the moon-shooter's trick.
+  // Skip when leading (we'd start the trick and could win it back) or moon-attempting ourselves.
+  // When following, skip cards that would win a trick already containing Q♠, or Q♠ itself
+  // if it would win the spade trick outright — both cause Q♠ self-take.
+  if (moonTarget !== null && moonTarget !== playerIndex && !isMoonAttempt && !isLeading) {
+    const first = trick[0]!;
+    const ledSuit = first.card.suit;
+    const inSuit = valid.filter((c) => c.suit === ledSuit);
+    const isVoid = inSuit.length === 0;
+    const qInTrick = trick.some((tc) => isQueenOfSpades(tc.card));
+    let currentWinRank = 0;
+    for (const tc of trick) {
+      if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > currentWinRank)
+        currentWinRank = aceHigh(tc.card.rank);
+    }
     const pointCards = valid
-      .filter((c) => cardPoints(c) > 0)
+      .filter((c) => {
+        if (cardPoints(c) === 0) return false;
+        if (isVoid) return true; // off-suit discard can't win the trick
+        const rank = aceHigh(c.rank);
+        if (isQueenOfSpades(c) && rank > currentWinRank) return false; // Q♠ self-win on spade trick
+        if (qInTrick && rank > currentWinRank) return false; // would take a trick with Q♠ in it
+        return true;
+      })
       .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     if (pointCards.length > 0) return pointCards[0]!;
   }
@@ -737,7 +777,7 @@ export function selectCardToPlay(
 }
 
 function chooseLead(valid: Card[], qSpadeGone: boolean): Card {
-  // Avoid leading hearts, Q♠, and (until Q♠ is gone) K♠/A♠
+  // Avoid leading hearts, Q♠, and (until Q♠ is gone) K♠/A♠.
   const safe = valid.filter((c) => {
     if (c.suit === "hearts" || isQueenOfSpades(c)) return false;
     if (c.suit === "spades" && (c.rank === 13 || c.rank === 1) && !qSpadeGone) return false;
@@ -745,11 +785,14 @@ function chooseLead(valid: Card[], qSpadeGone: boolean): Card {
   });
   const pool = safe.length > 0 ? safe : valid;
 
-  // Lead lowest of longest non-heart suit (exhaust safe suits first)
-  const suitGroups = bySuitDescending(pool);
-  const longestGroup = suitGroups[0];
-  if (longestGroup) {
-    const card = lowest(longestGroup[1]);
+  // When holding Q♠, lead shortest non-spade suit to create a void faster (more Q♠ discard opportunities).
+  // Otherwise lead longest suit (exhaust safe suits first).
+  const holdingQ = valid.some(isQueenOfSpades);
+  const leadPool = holdingQ ? pool.filter((c) => c.suit !== "spades") : pool;
+  const suitGroups = bySuitDescending(leadPool.length > 0 ? leadPool : pool);
+  const targetGroup = holdingQ ? suitGroups[suitGroups.length - 1] : suitGroups[0];
+  if (targetGroup) {
+    const card = lowest(targetGroup[1]);
     if (card) return card;
   }
 
@@ -757,17 +800,15 @@ function chooseLead(valid: Card[], qSpadeGone: boolean): Card {
 }
 
 /**
- * Hard lead: same as Medium but prefers to lead the suit where high cards
- * are known to be exhausted (card counting via seenKeys).
+ * Hard lead: same as Medium but uses card counting (seenKeys) to infer safe suits.
  */
 function chooseLeadHard(valid: Card[], seenKeys: Set<string>): Card {
   const qSpadeGone = seenKeys.has("spades:12");
 
-  // If Q♠ is gone, K♠/A♠ are safe to lead — include them in safe pool
+  // Avoid leading hearts, Q♠, and (until Q♠ is gone) K♠/A♠.
   const safe = valid.filter((c) => {
     if (c.suit === "hearts") return false;
     if (isQueenOfSpades(c)) return false;
-    // K♠ or A♠ are safe to lead only once Q♠ has been played
     if (c.suit === "spades" && (c.rank === 13 || c.rank === 1) && !qSpadeGone) return false;
     return true;
   });
@@ -777,10 +818,13 @@ function chooseLeadHard(valid: Card[], seenKeys: Set<string>): Card {
   const poolWithoutQ = pool.filter((c) => !isQueenOfSpades(c));
   const pickFrom = poolWithoutQ.length > 0 ? poolWithoutQ : pool;
 
-  const suitGroups = bySuitDescending(pickFrom);
-  const longestGroup = suitGroups[0];
-  if (longestGroup) {
-    const card = lowest(longestGroup[1]);
+  // When holding Q♠, lead shortest non-spade suit to create a void faster (more Q♠ discard opportunities).
+  const holdingQ = valid.some(isQueenOfSpades);
+  const leadPool = holdingQ ? pickFrom.filter((c) => c.suit !== "spades") : pickFrom;
+  const suitGroups = bySuitDescending(leadPool.length > 0 ? leadPool : pickFrom);
+  const targetGroup = holdingQ ? suitGroups[suitGroups.length - 1] : suitGroups[0];
+  if (targetGroup) {
+    const card = lowest(targetGroup[1]);
     if (card) return card;
   }
 

@@ -1698,11 +1698,9 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
 // ---------------------------------------------------------------------------
 
 describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
-  it("leads K♠ (not Q♠) when safe pool is exhausted and spades outnumber hearts", () => {
-    // valid = [Q♠, K♠, 2♥]: Q♠ not gone → K♠ and hearts both unsafe → safe=[]. pool=valid.
-    // Before fix: bySuitDescending picks spades(2 cards) over hearts(1) → lowest spade = Q♠. Bug.
-    // After fix: strip Q♠ first → pickFrom=[K♠, 2♥]. spades(1) tied with hearts(1);
-    //   map preserves insertion order → spades first → lowest([K♠]) = K♠.
+  it("leads 2♥ (not Q♠ or K♠) when holding Q♠ — avoids spades to create void for dump (#1646)", () => {
+    // valid = [Q♠, K♠, 2♥]: hearts broken. holdingQ=true → exclude spades from lead pool.
+    // Only non-spade non-Q♠ option is 2♥ → lead 2♥ to void hearts and get a Q♠ dump opportunity.
     const hand = [c("spades", 12), c("spades", 13), c("hearts", 2)];
     const state = mkState({
       playerHands: [hand, [], [], []],
@@ -1714,7 +1712,7 @@ describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
     });
     const pick = selectCardToPlay(hand, [], state, 0, "hard");
     expect(pick).not.toEqual(c("spades", 12));
-    expect(pick).toEqual(c("spades", 13)); // K♠: lowest of longest group after Q♠ stripped
+    expect(pick).toEqual(c("hearts", 2)); // only non-spade option when holding Q♠
   });
 
   it("leads Q♠ only when it is the sole remaining card", () => {
@@ -1746,6 +1744,53 @@ describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
     const pick = selectCardToPlay(hand, [], state, 0, "hard");
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick).toEqual(c("hearts", 3)); // lowest of longest group (hearts) after Q♠ stripped
+  });
+
+  it("leads shortest non-spade suit when holding Q♠ — Hard (#1646)", () => {
+    // hand = [Q♠, K♦, 2♦, 7♣, 8♣, 9♣]: holdingQ → lead shortest non-spade suit = diamonds (2)
+    // Without Q♠: would lead longest suit = clubs (3).
+    const hand = [
+      c("spades", 12),
+      c("diamonds", 13),
+      c("diamonds", 2),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 3,
+      heartsBroken: false,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    // Shortest non-spade suit is diamonds (2 cards) → lowest = 2♦
+    expect(pick).toEqual(c("diamonds", 2));
+  });
+
+  it("leads shortest non-spade suit when holding Q♠ — Medium (#1646)", () => {
+    // same hand: holdingQ → lead shortest non-spade suit = diamonds (2)
+    const hand = [
+      c("spades", 12),
+      c("diamonds", 13),
+      c("diamonds", 2),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 3,
+      heartsBroken: false,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    // Shortest non-spade suit is diamonds (2 cards) → lowest = 2♦
+    expect(pick).toEqual(c("diamonds", 2));
   });
 });
 
