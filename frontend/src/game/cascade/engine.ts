@@ -28,6 +28,7 @@ export {
   SPAWN_GRACE_TICKS,
   SPAWN_GRACE_MS,
   WARM_SPAWN_FRAMES,
+  WARM_SPAWN_START_SCALE,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -60,6 +61,7 @@ import {
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_MS,
   WARM_SPAWN_FRAMES,
+  WARM_SPAWN_START_SCALE,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -224,6 +226,8 @@ export async function createEngine(
       Matter.Composite.remove(world, body);
     }
     fruitMap.delete(bodyId);
+    // warmBodies entry for this id (if any) is cleaned up one step later when the
+    // warm-advancement loop detects bodyById.get(bodyId) === undefined. Harmless lag.
   }
 
   // processMerges receives the per-step bodyById map (built once in step()) so it
@@ -308,7 +312,7 @@ export async function createEngine(
             spawnX,
             spawnY,
             graceTicks,
-            0.5
+            WARM_SPAWN_START_SCALE
           );
 
           // Apply mass-weighted velocity: (mA·vA + mB·vB) / (mA + mB)
@@ -318,7 +322,7 @@ export async function createEngine(
           warmBodies.set(newFb.handle, {
             framesLeft: WARM_SPAWN_FRAMES,
             targetRadius: nextDef.radius,
-            currentRadius: nextDef.radius * 0.5,
+            currentRadius: nextDef.radius * WARM_SPAWN_START_SCALE,
           });
 
           bodyById.set(newFb.handle, newBody);
@@ -387,7 +391,7 @@ export async function createEngine(
           warmBodies.delete(bodyId);
           return;
         }
-        const radiusStep = (state.targetRadius * 0.5) / WARM_SPAWN_FRAMES;
+        const radiusStep = (state.targetRadius * (1 - WARM_SPAWN_START_SCALE)) / WARM_SPAWN_FRAMES;
         const newRadius = state.currentRadius + radiusStep;
         const scaleFactor = newRadius / state.currentRadius;
         Matter.Body.scale(body, scaleFactor, scaleFactor);

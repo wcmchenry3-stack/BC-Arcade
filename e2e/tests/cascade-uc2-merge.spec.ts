@@ -49,15 +49,16 @@ test.describe("Cascade UC2 — warm-spawn merge", () => {
     expect(tier1Bodies.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("no explosive ejection — neighboring body not displaced more than 2× merge-target radius", async ({
+  test("no explosive ejection — neighboring body not displaced more than 3× merge-target radius", async ({
     page,
   }) => {
-    // Place a bystander tier-2 fruit to the side; it should not be launched far
-    // by the merge spawn of the tier-1 body.
-    const bystander_x = MERGE_X + TIER_1_RADIUS * 3; // well outside merge epicentre
+    // Place a bystander tier-2 fruit just inside the pop-impulse wake zone (1.5× tier-1 radius
+    // from the merge epicentre ≈ 35 px < 46 px wake-zone radius) so it receives the pop impulse.
+    // Warm spawn should still keep total displacement modest.
+    const bystanderX = MERGE_X + TIER_1_RADIUS * 1.5; // inside 2× wake zone (46 px)
 
     // Drop the bystander first so it settles before the merge pair arrives
-    await spawnTierAt(page, 2, bystander_x);
+    await spawnTierAt(page, 2, bystanderX);
     await fastForward(page, 2000);
 
     const before = await getState(page);
@@ -80,8 +81,8 @@ test.describe("Cascade UC2 — warm-spawn merge", () => {
     const dx = bystanderAfter.x - bystanderStartX;
     const dy = bystanderAfter.y - bystanderStartY;
     const displacement = Math.sqrt(dx * dx + dy * dy);
-    // Warm spawn should keep displacement well under 2× the tier-1 merge-target radius
-    expect(displacement).toBeLessThan(TIER_1_RADIUS * 2);
+    // Warm spawn limits ejection: bystander inside wake zone should not travel more than 3× merge radius
+    expect(displacement).toBeLessThan(TIER_1_RADIUS * 3);
   });
 
   test("fruitCount decreases by 1 after a merge (2 parents → 1 child)", async ({ page }) => {

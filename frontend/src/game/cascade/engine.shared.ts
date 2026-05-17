@@ -73,16 +73,16 @@ export const MATTER_SLEEP_THRESHOLD = 30;
 /** Max fruit speed in px/s. Capped so max travel per 1/60s sub-step (15 px) stays below WALL_THICKNESS (16 px). */
 export const MAX_FRUIT_SPEED_PX_S = 900;
 
-// --- Warm spawn ---
-/** Number of physics ticks over which a merge-spawned body grows from 50% to 100% radius. */
-export const WARM_SPAWN_FRAMES = 10;
-
-// --- Spawn grace period ---
+// --- Spawn grace period + warm spawn ---
 /** Number of physics ticks a merge-spawned body is immune to dynamic-vs-dynamic collisions. */
 export const SPAWN_GRACE_TICKS = 3;
 /** Wall-clock duration of spawn grace (ms). Converted to ticks at spawn time based on actual step
  *  duration so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz. */
 export const SPAWN_GRACE_MS = SPAWN_GRACE_TICKS * FIXED_STEP_MS; // ≈ 50 ms
+/** Number of physics ticks over which a merge-spawned body grows from WARM_SPAWN_START_SCALE to 100% radius. */
+export const WARM_SPAWN_FRAMES = 10;
+/** Initial radius scale for merge-spawned bodies — starts at 50% to prevent explosive ejection. */
+export const WARM_SPAWN_START_SCALE = 0.5;
 
 // --- Collision group bitmasks ---
 export const COLLISION_GROUP_WALL = 0x0001;

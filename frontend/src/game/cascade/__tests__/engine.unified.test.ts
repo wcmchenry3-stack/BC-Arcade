@@ -1102,7 +1102,8 @@ describe("UC2 — warm-spawn merge", () => {
     const fakePair = { bodyA, bodyB, activeContacts: [], separation: 0, isActive: true };
     Matter.Events.trigger(engineInstance, "collisionStart", { pairs: [fakePair] });
 
-    // Use tiny dt so physics doesn't run — only processMerges and warm advancement fire
+    // Use tiny dt so physics doesn't run — only processMerges and warm advancement fire.
+    // dt < 0.01ms → physics loop skips; only processMerges + warm advancement fire.
     handle.step(1e-9);
 
     // The spawned tier-1 body should have near-zero x velocity (average of +10 and -10)
@@ -1145,6 +1146,7 @@ describe("UC2 — warm-spawn merge", () => {
 
     const fakePair = { bodyA, bodyB, activeContacts: [], separation: 0, isActive: true };
     Matter.Events.trigger(engineInstance, "collisionStart", { pairs: [fakePair] });
+    // dt < 0.01ms → physics loop skips; only processMerges + warm advancement fire.
     handle.step(1e-9);
 
     const spawnedBodies = Matter.Composite.allBodies(engineInstance.world).filter(
