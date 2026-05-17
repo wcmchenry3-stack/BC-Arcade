@@ -1795,13 +1795,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
 
   it("leads longest suit when NOT holding Q♠ — longest path unchanged (#1646)", () => {
     // Without Q♠: holdingQ=false → pick longest suit. Clubs (3) > diamonds (2).
-    const hand = [
-      c("diamonds", 13),
-      c("diamonds", 2),
-      c("clubs", 7),
-      c("clubs", 8),
-      c("clubs", 9),
-    ];
+    const hand = [c("diamonds", 13), c("diamonds", 2), c("clubs", 7), c("clubs", 8), c("clubs", 9)];
     const state = mkState({
       playerHands: [hand, [], [], []],
       currentTrick: [],
