@@ -85,22 +85,23 @@ describe("VsScorecard — scoring interaction", () => {
 
   it("does not call onScore when rollsUsed === 0", () => {
     const onScore = jest.fn();
-    const { getAllByRole } = renderVs({ playerRollsUsed: 0, onScore });
-    const buttons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
-    fireEvent.press(buttons[0]!);
+    const { queryAllByRole } = renderVs({ playerRollsUsed: 0, onScore });
+    // No rolls yet → cells render as "text", not "button"
+    expect(queryAllByRole("button").length).toBe(0);
     expect(onScore).not.toHaveBeenCalled();
   });
 
   it("does not call onScore for an already-scored category", () => {
     const onScore = jest.fn();
-    const { getAllByRole } = renderVs({
+    const { queryAllByRole } = renderVs({
       playerRollsUsed: 1,
       playerScores: { ...emptyScores, ones: 5 },
       playerPossibleScores: { twos: 8 },
       onScore,
     });
-    const onesButtons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
-    fireEvent.press(onesButtons[0]!);
+    // "ones" is already scored → its cell renders as "text", not "button"
+    const onesButtons = queryAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
+    expect(onesButtons.length).toBe(0);
     expect(onScore).not.toHaveBeenCalled();
   });
 });
@@ -108,27 +109,26 @@ describe("VsScorecard — scoring interaction", () => {
 describe("VsScorecard — AI turn lock", () => {
   it("disables all YOU cells during the AI turn", () => {
     const onScore = jest.fn();
-    const { getAllByRole } = renderVs({
+    const { queryAllByRole } = renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 3, twos: 6 },
       isAiTurn: true,
       onScore,
     });
-    const buttons = getAllByRole("button");
+    // AI turn → cells render as "text", not "button"
+    const buttons = queryAllByRole("button");
     buttons.forEach((b) => fireEvent.press(b));
     expect(onScore).not.toHaveBeenCalled();
   });
 
   it("marks YOU cells as disabled when isAiTurn", () => {
-    const { getAllByRole } = renderVs({
+    const { queryAllByRole } = renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 3 },
       isAiTurn: true,
     });
-    const hotCells = getAllByRole("button").filter(
-      (b) => b.props.accessibilityState?.disabled === false
-    );
-    expect(hotCells.length).toBe(0);
+    // No interactive buttons should be rendered during AI turn
+    expect(queryAllByRole("button").length).toBe(0);
   });
 });
 
