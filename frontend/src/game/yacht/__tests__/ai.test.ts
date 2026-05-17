@@ -102,11 +102,21 @@ describe("holdStrategy — Medium", () => {
   });
 
   it("holds a pair, preferring the higher face on a tie", () => {
-    const state = makeGame([1, 1, 3, 3, 2]);
+    // [1,1,4,4,2]: two pairs, unique sorted [1,2,4] → max run is [1,2] (length 2),
+    // so no 3-run fires; falls through to highest-pair logic → holds 4s.
+    const state = makeGame([1, 1, 4, 4, 2]);
     const held = holdStrategy(state, "medium");
     const heldDice = state.dice.filter((_, i) => held[i]);
-    // Medium should hold the 3s (higher pair)
-    expect(heldDice.every((d) => d === 3)).toBe(true);
+    expect(heldDice.every((d) => d === 4)).toBe(true);
+  });
+
+  it("pursues upper bonus when within 55 pts — holds open face appearing ≥2 times", () => {
+    // upperSubtotal = ones(3)+twos(6) = 9 → toBonus = 54 ≤ 55
+    // dice [4,4,1,6,2]: no run ≥3, no trips; fours is open and appears twice → hold 4s
+    const state = withScores(makeGame([4, 4, 1, 6, 2]), { ones: 3, twos: 6 });
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 4)).toBe(true);
   });
 });
 
@@ -202,6 +212,12 @@ describe("scoreStrategy — Medium", () => {
     expect(scoreStrategy(state, "medium")).toBe("full_house");
   });
 
+  it("takes Three of a Kind when score > 15", () => {
+    // [5,5,5,1,2]: no yacht/straight/four-of-a-kind/full-house; three_of_a_kind = 18 > 15
+    const state = makeGame([5, 5, 5, 1, 2], 3);
+    expect(scoreStrategy(state, "medium")).toBe("three_of_a_kind");
+  });
+
   it("sacrifices ones when upper bonus is mathematically unreachable", () => {
     // All upper cats filled with 0 except ones; bonus max = 1×5 = 5 < 63
     const state = withScores(makeGame([1, 2, 4, 5, 6], 3), {
@@ -235,6 +251,13 @@ describe("scoreStrategy — Hard", () => {
     // [6,6,6,6,1]: four_of_a_kind = 25 > 16 threshold
     const state = makeGame([6, 6, 6, 6, 1], 3);
     expect(scoreStrategy(state, "hard", 50)).toBe("four_of_a_kind");
+  });
+
+  it("trailing: takes full_house when four_of_a_kind is unavailable", () => {
+    // [3,3,3,6,6]: full_house=25, no four_of_a_kind (only 3 threes)
+    // myScore=0 < opponentScore(50)-30=20 → trailing
+    const state = makeGame([3, 3, 3, 6, 6], 3);
+    expect(scoreStrategy(state, "hard", 50)).toBe("full_house");
   });
 
   it("leading: takes safe upper category (sixes with 3+ count)", () => {

@@ -86,6 +86,6 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     // Wait for AI turn to complete
     await expect(page.getByText(/Your Turn/i)).toBeVisible({ timeout: 10000 });
     // Both players have now scored round 1 → should be Round 2
-    await expect(page.getByText("Round 2 / 13")).toBeVisible();
+    await expect(page.getByText("Round 2 / 13")).toBeVisible({ timeout: 5000 });
   });
 });
