@@ -58,5 +58,18 @@
   "gameOver.dismiss": "لا شكرًا",
   "gameOver.dismissLabel": "إغلاق وإبقاء النتيجة الحالية ظاهرة",
   "tab.upper": "علوي",
-  "tab.lower": "سفلي"
+  "tab.lower": "سفلي",
+  "difficulty.groupLabel": "مستوى الذكاء الاصطناعي",
+  "difficulty.easy": "سهل",
+  "difficulty.medium": "متوسط",
+  "difficulty.hard": "صعب",
+  "vsMode.title": "اختر الوضع",
+  "vsMode.solo": "فردي",
+  "vsMode.vsComputer": "ضد الكمبيوتر",
+  "vsMode.yourTurn": "دورك",
+  "vsMode.computerTurn": "دور الكمبيوتر",
+  "gameOver.youWin": "فزت!",
+  "gameOver.computerWins": "فاز الكمبيوتر!",
+  "gameOver.tie": "تعادل!",
+  "vsMode.vs": "vs"
 }

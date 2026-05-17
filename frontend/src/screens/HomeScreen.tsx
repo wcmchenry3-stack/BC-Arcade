@@ -81,8 +81,15 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    const state = saved && !saved.game_over ? saved : newYachtGame();
-    navigation.navigate("Game", { initialState: state });
+    if (saved && !saved.state.game_over) {
+      navigation.navigate("Game", {
+        initialState: saved.state,
+        aiDifficulty: saved.aiDifficulty ?? undefined,
+        aiState: saved.aiState ?? undefined,
+      });
+    } else {
+      navigation.navigate("Game", { initialState: newYachtGame() });
+    }
   }
 
   const games: GameCard[] = [

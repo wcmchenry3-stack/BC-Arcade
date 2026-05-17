@@ -58,5 +58,18 @@
   "gameOver.dismiss": "नहीं धन्यवाद",
   "gameOver.dismissLabel": "बंद करें और वर्तमान स्कोर दिखाए रखें",
   "tab.upper": "ऊपरी",
-  "tab.lower": "निचला"
+  "tab.lower": "निचला",
+  "difficulty.groupLabel": "AI कठिनाई",
+  "difficulty.easy": "आसान",
+  "difficulty.medium": "मध्यम",
+  "difficulty.hard": "कठिन",
+  "vsMode.title": "मोड चुनें",
+  "vsMode.solo": "अकेले",
+  "vsMode.vsComputer": "कंप्यूटर से",
+  "vsMode.yourTurn": "आपकी बारी",
+  "vsMode.computerTurn": "कंप्यूटर की बारी",
+  "gameOver.youWin": "आप जीते!",
+  "gameOver.computerWins": "कंप्यूटर जीता!",
+  "gameOver.tie": "बराबरी!",
+  "vsMode.vs": "vs"
 }

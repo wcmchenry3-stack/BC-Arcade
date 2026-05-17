@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/react-native";
 import { saveGame, loadGame, clearGame } from "../storage";
 import { newGame } from "../engine";
 
-const STORAGE_KEY = "yacht_game_v1";
+const STORAGE_KEY = "yacht_game_v2";
 
 describe("yacht storage", () => {
   beforeEach(async () => {
@@ -16,7 +16,7 @@ describe("yacht storage", () => {
     const g = newGame();
     await saveGame(g);
     const loaded = await loadGame();
-    expect(loaded).toEqual(g);
+    expect(loaded).toEqual({ state: g, aiDifficulty: null, aiState: null });
   });
 
   it("returns null when no saved game exists", async () => {

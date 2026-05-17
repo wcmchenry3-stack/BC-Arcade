@@ -54,6 +54,8 @@ interface ScorecardProps {
   yachtBonusTotal: number;
   totalScore: number;
   onScore: (category: string) => void;
+  /** When true, prevents scoring regardless of rollsUsed (used during AI turn). */
+  locked?: boolean;
 }
 
 type ActiveTab = "upper" | "lower";
@@ -77,12 +79,13 @@ export default function Scorecard({
   yachtBonusTotal,
   totalScore,
   onScore,
+  locked = false,
 }: ScorecardProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<ActiveTab>("upper");
-  const canScore = rollsUsed > 0 && !gameOver;
+  const canScore = rollsUsed > 0 && !gameOver && !locked;
   const isWide = width >= WIDE_BREAKPOINT;
 
   function renderScoreRow(categoryKey: string, tone: "upper" | "lower") {

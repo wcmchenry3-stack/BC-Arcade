@@ -58,5 +58,18 @@
   "gameOver.dismiss": "Nee bedankt",
   "gameOver.dismissLabel": "Sluiten en huidige score zichtbaar houden",
   "tab.upper": "Boven",
-  "tab.lower": "Onder"
+  "tab.lower": "Onder",
+  "difficulty.groupLabel": "AI-moeilijkheidsgraad",
+  "difficulty.easy": "Makkelijk",
+  "difficulty.medium": "Gemiddeld",
+  "difficulty.hard": "Moeilijk",
+  "vsMode.title": "Kies modus",
+  "vsMode.solo": "Solo",
+  "vsMode.vsComputer": "VS Computer",
+  "vsMode.yourTurn": "Jouw beurt",
+  "vsMode.computerTurn": "Computer is aan beurt",
+  "gameOver.youWin": "Jij wint!",
+  "gameOver.computerWins": "Computer wint!",
+  "gameOver.tie": "Gelijkspel!",
+  "vsMode.vs": "vs"
 }

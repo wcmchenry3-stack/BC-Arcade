@@ -58,5 +58,18 @@
   "gameOver.dismiss": "Não, obrigado",
   "gameOver.dismissLabel": "Fechar e manter a pontuação atual visível",
   "tab.upper": "Superior",
-  "tab.lower": "Inferior"
+  "tab.lower": "Inferior",
+  "difficulty.groupLabel": "Dificuldade da IA",
+  "difficulty.easy": "Fácil",
+  "difficulty.medium": "Médio",
+  "difficulty.hard": "Difícil",
+  "vsMode.title": "Escolher modo",
+  "vsMode.solo": "Solo",
+  "vsMode.vsComputer": "VS Computador",
+  "vsMode.yourTurn": "Sua vez",
+  "vsMode.computerTurn": "Vez do computador",
+  "gameOver.youWin": "Você venceu!",
+  "gameOver.computerWins": "O computador venceu!",
+  "gameOver.tie": "Empate!",
+  "vsMode.vs": "vs"
 }

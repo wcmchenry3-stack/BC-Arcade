@@ -58,5 +58,18 @@
   "gameOver.dismiss": "No Thanks",
   "gameOver.dismissLabel": "Dismiss and keep current score visible",
   "tab.upper": "Upper",
-  "tab.lower": "Lower"
+  "tab.lower": "Lower",
+  "difficulty.groupLabel": "AI Difficulty",
+  "difficulty.easy": "Easy",
+  "difficulty.medium": "Medium",
+  "difficulty.hard": "Hard",
+  "vsMode.title": "Choose Mode",
+  "vsMode.solo": "Solo",
+  "vsMode.vsComputer": "VS Computer",
+  "vsMode.yourTurn": "Your Turn",
+  "vsMode.computerTurn": "Computer's Turn",
+  "gameOver.youWin": "You Win!",
+  "gameOver.computerWins": "Computer Wins!",
+  "gameOver.tie": "It's a Tie!",
+  "vsMode.vs": "vs"
 }

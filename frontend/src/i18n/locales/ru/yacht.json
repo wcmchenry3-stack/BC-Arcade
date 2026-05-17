@@ -58,5 +58,18 @@
   "gameOver.dismiss": "Нет, спасибо",
   "gameOver.dismissLabel": "Закрыть и оставить текущий счёт видимым",
   "tab.upper": "Верхняя",
-  "tab.lower": "Нижняя"
+  "tab.lower": "Нижняя",
+  "difficulty.groupLabel": "Уровень ИИ",
+  "difficulty.easy": "Лёгкий",
+  "difficulty.medium": "Средний",
+  "difficulty.hard": "Сложный",
+  "vsMode.title": "Выбор режима",
+  "vsMode.solo": "Соло",
+  "vsMode.vsComputer": "Против ИИ",
+  "vsMode.yourTurn": "Ваш ход",
+  "vsMode.computerTurn": "Ход компьютера",
+  "gameOver.youWin": "Вы выиграли!",
+  "gameOver.computerWins": "Компьютер выиграл!",
+  "gameOver.tie": "Ничья!",
+  "vsMode.vs": "vs"
 }
