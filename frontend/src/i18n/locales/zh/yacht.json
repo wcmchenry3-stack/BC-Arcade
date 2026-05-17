@@ -72,5 +72,12 @@
   "gameOver.computerWins": "电脑赢了！",
   "gameOver.tie": "平局！",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "第{{n}}掷 / 3"
+  "vsMode.rollCounter": "第{{n}}掷 / 3",
+  "vsMode.category": "类别",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "下部",
+  "vsMode.upperSubtotal": "上区小计",
+  "vsMode.lowerSubtotal": "下区小计",
+  "vsMode.bonusProgress": "奖励 · 还差{{n}}",
+  "vsMode.bonusUnlocked": "奖励 ✓ 已获得"
 }

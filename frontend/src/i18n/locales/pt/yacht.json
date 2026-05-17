@@ -72,5 +72,12 @@
   "gameOver.computerWins": "O computador venceu!",
   "gameOver.tie": "Empate!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Lance {{n}} / 3"
+  "vsMode.rollCounter": "Lance {{n}} / 3",
+  "vsMode.category": "Categoria",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "Baixo",
+  "vsMode.upperSubtotal": "Subtotal sup.",
+  "vsMode.lowerSubtotal": "Subtotal inf.",
+  "vsMode.bonusProgress": "Bônus · {{n}} para 63",
+  "vsMode.bonusUnlocked": "Bônus ✓ desbloqueado"
 }
