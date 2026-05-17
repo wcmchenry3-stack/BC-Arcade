@@ -27,6 +27,7 @@ from daily_word.router import router as daily_word_router
 from freecell.router import router as freecell_router
 from hearts.router import router as hearts_router
 from mahjong.router import router as mahjong_router
+from yacht.router import router as yacht_router
 from solitaire.router import router as solitaire_router
 from sort.router import router as sort_router
 from sudoku.router import router as sudoku_router
@@ -66,6 +67,7 @@ app.include_router(daily_word_router, prefix="/daily-word")
 app.include_router(freecell_router, prefix="/freecell")
 app.include_router(hearts_router, prefix="/hearts")
 app.include_router(mahjong_router, prefix="/mahjong")
+app.include_router(yacht_router, prefix="/yacht")
 app.include_router(solitaire_router, prefix="/solitaire")
 app.include_router(sort_router, prefix="/sort")
 app.include_router(sudoku_router, prefix="/sudoku")
