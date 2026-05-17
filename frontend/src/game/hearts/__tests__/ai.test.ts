@@ -934,9 +934,9 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
     expect(passed).toContainEqual(c("diamonds", 6));
   });
 
-  it("does NOT void a 3-card suit — Medium caps at 2", () => {
-    // No high-priority cards → 3 slots available. Shortest suit has 3 cards (diamonds).
-    // Medium maxSuitSize=2 → can't void a 3-card suit → falls back to high-card filler.
+  it("voids a 3-card suit — Medium uses maxSuitSize=3 (#1645)", () => {
+    // No Q♠, no A♥ → 3 slots go to void. Shortest suit is diamonds (3 cards).
+    // Medium maxSuitSize=3 → voids 3-card suits aggressively (#1645 regression fix).
     const hand = [
       c("diamonds", 3),
       c("diamonds", 4),
@@ -953,10 +953,10 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("hearts", 4),
     ];
     const passed = selectCardsToPass(hand, "left", "medium");
-    // Should NOT void diamonds (3 cards > maxSuitSize 2) — uses high-card filler instead
-    expect(passed).not.toContainEqual(c("diamonds", 3));
-    expect(passed).not.toContainEqual(c("diamonds", 4));
-    expect(passed).not.toContainEqual(c("diamonds", 5));
+    // Medium DOES void the 3-card diamond suit (shortest eligible)
+    expect(passed).toContainEqual(c("diamonds", 3));
+    expect(passed).toContainEqual(c("diamonds", 4));
+    expect(passed).toContainEqual(c("diamonds", 5));
   });
 
   it("does NOT target spades for void when Q♠ is kept (cover cards protected)", () => {
@@ -1799,23 +1799,26 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
   });
 
   it("includes 10♥ as a danger heart when passing right but not left", () => {
-    // Going right: Q♠ (slot 1), A♥ (slot 2), 10♥ passes danger threshold → slot 3.
-    // Going left: Q♠ (slot 1), A♥ (slot 2), 10♥ below threshold of 11 → void/filler fills slot 3.
-    // 4 hearts total so moon-viable mode does NOT fire (requires 5+).
+    // Hand designed so no suit is voidable after Q♠ passes (all remaining suits have 3+ cards)
+    // → void creation falls through, danger hearts fill slots 2-3.
+    // Going right: Q♠ (slot 1), A♥ (slot 2), 10♥ (slot 3) — threshold=10 includes 10♥.
+    // Going left: Q♠ (slot 1), A♥ (slot 2), filler (slot 3) — threshold=11 excludes 10♥.
+    // Q♠ is the only spade (no K♠ singleton for void to consume).
+    // 4 hearts total → moon-viable mode does NOT fire (requires 5+).
     const hand = [
-      c("spades", 12), // Q♠
-      c("spades", 13), // K♠
+      c("spades", 12), // Q♠ — only spade; after passing, no spades remain for void
       c("hearts", 1), // A♥ — danger both directions
       c("hearts", 10), // 10♥ — danger only going right
       c("hearts", 2),
       c("hearts", 3),
       c("diamonds", 13), // K♦
+      c("diamonds", 12), // Q♦
       c("diamonds", 9),
-      c("diamonds", 8),
-      c("diamonds", 7),
       c("clubs", 7),
       c("clubs", 8),
       c("clubs", 9),
+      c("clubs", 10),
+      c("clubs", 11), // J♣
     ];
     const passedRight = selectCardsToPass(hand, "right", "hard");
     const passedLeft = selectCardsToPass(hand, "left", "hard");
