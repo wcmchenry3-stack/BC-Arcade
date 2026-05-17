@@ -6,7 +6,7 @@
  * on each transition — state is immutable.
  */
 
-import type { AiPersona, AiPreset, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
+import type { AiPreset, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
 import { RANKS, SUITS } from "./types";
 
 // ---------------------------------------------------------------------------

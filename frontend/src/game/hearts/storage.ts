@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { AiPreset, HeartsState } from "./types";
+import { AI_PRESETS } from "./types";
 
 const GAME_KEY = "hearts_game";
-const AI_PRESET_VALUES: readonly string[] = ["cautious", "schemer", "daring", "mixed"];
 const LEGACY_PERSONA_MAP: Record<string, string> = {
   easy: "cautious",
   medium: "schemer",
@@ -43,7 +43,7 @@ export async function loadGame(): Promise<HeartsState | null> {
     const p = parsed as Partial<HeartsState>;
     if (
       p._v !== 3 ||
-      !AI_PRESET_VALUES.includes(p.aiDifficulty as string) ||
+      !(AI_PRESETS as readonly string[]).includes(p.aiDifficulty as string) ||
       !Array.isArray(p.playerHands) ||
       p.playerHands.length !== 4 ||
       !Array.isArray(p.cumulativeScores) ||

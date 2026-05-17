@@ -13,11 +13,15 @@ export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring
 export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
 
 // Mixed table canonical seat assignment (seats 1–3 are AI; seat 0 is human).
-const MIXED_PERSONAS: readonly AiPersona[] = ["schemer", "cautious", "schemer", "daring"];
+const MIXED_PERSONAS: Readonly<Record<1 | 2 | 3, AiPersona>> = {
+  1: "cautious",
+  2: "schemer",
+  3: "daring",
+};
 
 export function resolvePersona(preset: AiPreset, seatIndex: number): AiPersona {
   if (preset !== "mixed") return preset;
-  return MIXED_PERSONAS[seatIndex] ?? "schemer";
+  return MIXED_PERSONAS[seatIndex as 1 | 2 | 3] ?? "schemer";
 }
 
 /** UI events emitted by the engine and consumed by the animation layer. */
