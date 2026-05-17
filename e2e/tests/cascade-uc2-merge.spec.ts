@@ -89,8 +89,9 @@ test.describe("Cascade UC2 — warm-spawn merge", () => {
     await spawnTierAt(page, 0, MERGE_X - 4);
     await spawnTierAt(page, 0, MERGE_X + 4);
 
-    // Snapshot just after drop (before merge)
-    await fastForward(page, 200);
+    // Snapshot before merge: advance less than the ~50ms spawn-grace window so
+    // the two bodies exist but cannot yet merge (grace blocks dynamic collisions).
+    await fastForward(page, 30);
     const before = await getState(page);
     const preCount = before.fruitCount;
     expect(preCount).toBeGreaterThanOrEqual(2);
