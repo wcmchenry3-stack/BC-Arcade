@@ -1697,7 +1697,7 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
 // #1594 — Hard AI: chooseLeadHard never leads Q♠ as fallback
 // ---------------------------------------------------------------------------
 
-describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
+describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit lead when holding Q♠ (#1646)", () => {
   it("leads 2♥ (not Q♠ or K♠) when holding Q♠ — avoids spades to create void for dump (#1646)", () => {
     // valid = [Q♠, K♠, 2♥]: hearts broken. holdingQ=true → exclude spades from lead pool.
     // Only non-spade non-Q♠ option is 2♥ → lead 2♥ to void hearts and get a Q♠ dump opportunity.
@@ -1791,6 +1791,30 @@ describe("chooseLeadHard — Q♠ is last-resort fallback (#1594)", () => {
     const pick = selectCardToPlay(hand, [], state, 0, "medium");
     // Shortest non-spade suit is diamonds (2 cards) → lowest = 2♦
     expect(pick).toEqual(c("diamonds", 2));
+  });
+
+  it("leads longest suit when NOT holding Q♠ — longest path unchanged (#1646)", () => {
+    // Without Q♠: holdingQ=false → pick longest suit. Clubs (3) > diamonds (2).
+    const hand = [
+      c("diamonds", 13),
+      c("diamonds", 2),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+    ];
+    const state = mkState({
+      playerHands: [hand, [], [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 3,
+      heartsBroken: false,
+      currentPlayerIndex: 0,
+      wonCards: [[], [], [], []],
+    });
+    // Both Hard and Medium should lead lowest of longest non-heart suit = 7♣
+    const pickHard = selectCardToPlay(hand, [], state, 0, "hard");
+    const pickMedium = selectCardToPlay(hand, [], state, 0, "medium");
+    expect(pickHard).toEqual(c("clubs", 7));
+    expect(pickMedium).toEqual(c("clubs", 7));
   });
 });
 
