@@ -87,9 +87,9 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
   it("Mixed Table can be selected and reflects selected state", async () => {
     const { getAllByRole } = renderScreen();
     await waitFor(() =>
-      expect(getAllByRole("radio").some((r) => /mixed table/i.test(r.props.accessibilityLabel))).toBe(
-        true
-      )
+      expect(
+        getAllByRole("radio").some((r) => /mixed table/i.test(r.props.accessibilityLabel))
+      ).toBe(true)
     );
     const mixedBtn = getAllByRole("radio").find((r) =>
       /mixed table/i.test(r.props.accessibilityLabel)
