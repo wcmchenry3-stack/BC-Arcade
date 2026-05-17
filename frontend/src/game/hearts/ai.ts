@@ -364,8 +364,7 @@ function selectCardsToPassHard(
   const heartDangerThreshold = direction === "right" ? 10 : 11;
   const dangerHearts = hand
     .filter(
-      (c) =>
-        c.suit === "hearts" && (c.rank === 1 || c.rank >= heartDangerThreshold) && safe(c)
+      (c) => c.suit === "hearts" && (c.rank === 1 || c.rank >= heartDangerThreshold) && safe(c)
     )
     .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
   for (const c of dangerHearts) {
@@ -393,9 +392,7 @@ function selectCardsToPassHard(
 
   // 5. Fill remaining slots with highest safe cards.
   if (selected.length < 3) {
-    const candidates = hand
-      .filter(safe)
-      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+    const candidates = hand.filter(safe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
