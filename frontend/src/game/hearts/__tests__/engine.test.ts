@@ -50,7 +50,7 @@ function h4(
 function mkState(overrides: Partial<HeartsState> = {}): HeartsState {
   return {
     _v: 3,
-    aiDifficulty: "medium",
+    aiDifficulty: "schemer",
     phase: "playing",
     handNumber: 1,
     passDirection: "left",

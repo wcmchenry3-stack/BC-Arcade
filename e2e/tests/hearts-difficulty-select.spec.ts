@@ -16,7 +16,7 @@ const c = (suit: string, rank: number) => ({ suit: suit, rank: rank });
 // so the state passes loadGame's bounds validation (#1540).
 const GAME_OVER_STATE = {
   _v: 3,
-  aiDifficulty: "medium",
+  aiDifficulty: "schemer",
   phase: "game_over",
   handNumber: 5,
   passDirection: "none",
@@ -42,7 +42,7 @@ const GAME_OVER_STATE = {
 };
 
 test.describe("Hearts — difficulty selector (#1168)", () => {
-  test("pre-game picker shows Easy / Medium / Hard radio buttons", async ({
+  test("pre-game picker shows Cautious / Schemer / Daring radio buttons", async ({
     page,
   }) => {
     await mockHeartsApi(page);
@@ -54,14 +54,14 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    const group = page.getByRole("radiogroup", { name: "AI Difficulty" });
+    const group = page.getByRole("radiogroup", { name: "Opponent Style" });
     await expect(group).toBeVisible({ timeout: 5_000 });
-    await expect(group.getByRole("radio", { name: "Easy" })).toBeVisible();
-    await expect(group.getByRole("radio", { name: "Medium" })).toBeVisible();
-    await expect(group.getByRole("radio", { name: "Hard" })).toBeVisible();
+    await expect(group.getByRole("radio", { name: "Cautious" })).toBeVisible();
+    await expect(group.getByRole("radio", { name: "Schemer" })).toBeVisible();
+    await expect(group.getByRole("radio", { name: "Daring" })).toBeVisible();
   });
 
-  test("selecting Easy and clicking Start Game launches a game", async ({
+  test("selecting Cautious and clicking Start Game launches a game", async ({
     page,
   }) => {
     await mockHeartsApi(page);
@@ -73,7 +73,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    await page.getByRole("radio", { name: "Easy" }).click();
+    await page.getByRole("radio", { name: "Cautious" }).click();
     await page.getByRole("button", { name: "Start Game" }).click();
 
     await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
@@ -81,7 +81,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
     });
   });
 
-  test("selecting Hard and clicking Start Game launches a game", async ({
+  test("selecting Daring and clicking Start Game launches a game", async ({
     page,
   }) => {
     await mockHeartsApi(page);
@@ -93,7 +93,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    await page.getByRole("radio", { name: "Hard" }).click();
+    await page.getByRole("radio", { name: "Daring" }).click();
     await page.getByRole("button", { name: "Start Game" }).click();
 
     await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
@@ -116,7 +116,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
 
     // Difficulty selector appears in game_over panel
     await expect(
-      page.getByRole("radiogroup", { name: "AI Difficulty" }),
+      page.getByRole("radiogroup", { name: "Opponent Style" }),
     ).toBeVisible({
       timeout: 3_000,
     });
@@ -124,7 +124,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
     // Click Play Again — goes back to pre-game picker
     await page.getByRole("button", { name: "Play Again" }).click();
     await expect(
-      page.getByRole("radiogroup", { name: "AI Difficulty" }),
+      page.getByRole("radiogroup", { name: "Opponent Style" }),
     ).toBeVisible({
       timeout: 5_000,
     });
@@ -133,7 +133,7 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
     ).toBeVisible();
   });
 
-  test("difficulty selector in game_over panel shows Easy / Medium / Hard", async ({
+  test("difficulty selector in game_over panel shows Cautious / Schemer / Daring", async ({
     page,
   }) => {
     await mockHeartsApi(page);
@@ -145,16 +145,16 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
 
     await expect(page.getByText("Game Over")).toBeVisible({ timeout: 5_000 });
 
-    const groups = page.getByRole("radiogroup", { name: "AI Difficulty" });
+    const groups = page.getByRole("radiogroup", { name: "Opponent Style" });
     await expect(groups.first()).toBeVisible({ timeout: 3_000 });
     await expect(
-      groups.first().getByRole("radio", { name: "Easy" }),
+      groups.first().getByRole("radio", { name: "Cautious" }),
     ).toBeVisible();
     await expect(
-      groups.first().getByRole("radio", { name: "Medium" }),
+      groups.first().getByRole("radio", { name: "Schemer" }),
     ).toBeVisible();
     await expect(
-      groups.first().getByRole("radio", { name: "Hard" }),
+      groups.first().getByRole("radio", { name: "Daring" }),
     ).toBeVisible();
   });
 

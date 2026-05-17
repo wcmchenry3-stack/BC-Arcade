@@ -23,7 +23,7 @@ import {
   selectCardsToPass,
 } from "../frontend/src/game/hearts/ai";
 import type {
-  AiDifficulty,
+  AiPersona,
   Card,
   HeartsState,
 } from "../frontend/src/game/hearts/types";
@@ -32,7 +32,7 @@ import type {
 // Simulation
 // ---------------------------------------------------------------------------
 
-type Difficulties = [AiDifficulty, AiDifficulty, AiDifficulty, AiDifficulty];
+type Difficulties = [AiPersona, AiPersona, AiPersona, AiPersona];
 
 interface GameResult {
   win: number;
@@ -282,7 +282,7 @@ function sigLabel(z: number): string {
 // CLI dispatch
 // ---------------------------------------------------------------------------
 
-const VALID_DIFFICULTIES = new Set<AiDifficulty>(["easy", "medium", "hard"]);
+const VALID_DIFFICULTIES = new Set<AiPersona>(["cautious", "schemer", "daring"]);
 
 function parseCount(args: string[], flag: string): number | null {
   const idx = args.indexOf(flag);
@@ -297,7 +297,7 @@ function parseDifficulties(args: string[]): Difficulties | null {
   const parts = (args[idx + 1] ?? "").split(",");
   if (parts.length !== 4) return null;
   for (const p of parts) {
-    if (!VALID_DIFFICULTIES.has(p as AiDifficulty)) return null;
+    if (!VALID_DIFFICULTIES.has(p as AiPersona)) return null;
   }
   return parts as unknown as Difficulties;
 }
@@ -314,16 +314,16 @@ if (count !== null) {
   const difficultiesArg = parseDifficulties(process.argv);
   if (process.argv.includes("--difficulties") && difficultiesArg === null) {
     process.stderr.write(
-      "Error: --difficulties must be 4 comma-separated values of easy/medium/hard\n" +
-        "  Example: --difficulties easy,medium,hard,medium\n",
+      "Error: --difficulties must be 4 comma-separated values of cautious/schemer/daring\n" +
+        "  Example: --difficulties cautious,schemer,daring,schemer\n",
     );
     process.exit(1);
   }
   const logDifficulties: Difficulties = difficultiesArg ?? [
-    "medium",
-    "medium",
-    "medium",
-    "medium",
+    "schemer",
+    "schemer",
+    "schemer",
+    "schemer",
   ];
   for (let i = 0; i < count; i++) {
     const log = simulateGameLogged(logDifficulties, i);
@@ -353,36 +353,36 @@ const GAMES_PER_BATCH = 3000;
 
 const batches: Array<{ label: string; difficulties: Difficulties }> = [
   {
-    label: "Easy vs Easy vs Easy (baseline)",
-    difficulties: ["easy", "easy", "easy", "easy"],
+    label: "Cautious vs Cautious vs Cautious (baseline)",
+    difficulties: ["cautious", "cautious", "cautious", "cautious"],
   },
   {
-    label: "Easy vs Medium vs Medium vs Medium",
-    difficulties: ["easy", "medium", "medium", "medium"],
+    label: "Cautious vs Schemer vs Schemer vs Schemer",
+    difficulties: ["cautious", "schemer", "schemer", "schemer"],
   },
   {
-    label: "Easy vs Hard vs Hard vs Hard",
-    difficulties: ["easy", "hard", "hard", "hard"],
+    label: "Cautious vs Daring vs Daring vs Daring",
+    difficulties: ["cautious", "daring", "daring", "daring"],
   },
   {
-    label: "Medium vs Hard vs Hard vs Hard",
-    difficulties: ["medium", "hard", "hard", "hard"],
+    label: "Schemer vs Daring vs Daring vs Daring",
+    difficulties: ["schemer", "daring", "daring", "daring"],
   },
   {
-    // Hard vs Medium, with 2 Easy neutrals to reduce field noise.
-    // If Hard beats Medium, player 0 (Hard) should win > player 1 (Medium).
-    label: "Hard vs Medium + 2 Easy neutrals (player 0 = Hard)",
-    difficulties: ["hard", "medium", "easy", "easy"],
+    // Daring vs Schemer, with 2 Cautious neutrals to reduce field noise.
+    // If Daring beats Schemer, player 0 (Daring) should win > player 1 (Schemer).
+    label: "Daring vs Schemer + 2 Cautious neutrals (player 0 = Daring)",
+    difficulties: ["daring", "schemer", "cautious", "cautious"],
   },
   {
-    // Mirror of the above — player 0 is now Medium.
-    // Comparing batch 5 win rate vs batch 6 win rate isolates Hard vs Medium.
-    label: "Medium vs Hard + 2 Easy neutrals (player 0 = Medium)",
-    difficulties: ["medium", "hard", "easy", "easy"],
+    // Mirror of the above — player 0 is now Schemer.
+    // Comparing batch 5 win rate vs batch 6 win rate isolates Daring vs Schemer.
+    label: "Schemer vs Daring + 2 Cautious neutrals (player 0 = Schemer)",
+    difficulties: ["schemer", "daring", "cautious", "cautious"],
   },
 ];
 
-console.log("Hearts AI Difficulty Simulation Results");
+console.log("Hearts AI Persona Simulation Results");
 console.log("=======================================\n");
 
 const batchWinRates: number[] = [];
@@ -457,38 +457,38 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 // ---------------------------------------------------------------------------
 
 const [
-  easyWr,
-  easyVsMedWr,
-  easyVsHardWr,
-  medVs3HardWr,
-  hardVsMedNeutralWr,
-  medVsHardNeutralWr,
+  cautiousWr,
+  cautiousVsSchemerWr,
+  cautiousVsDaringWr,
+  schemerVs3DaringWr,
+  daringVsSchemerNeutralWr,
+  schemerVsDaringNeutralWr,
 ] = batchWinRates as [number, number, number, number, number, number];
 
-const zEM = zTest(easyWr, easyVsMedWr, GAMES_PER_BATCH);
-const zEH = zTest(easyWr, easyVsHardWr, GAMES_PER_BATCH);
-const zMHFull = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
-// Direct Hard vs Medium comparison: Hard (batch 5) vs Medium (batch 6) — same game, seat swapped.
-const zHvM_direct = zTest(
-  hardVsMedNeutralWr,
-  medVsHardNeutralWr,
+const zCS = zTest(cautiousWr, cautiousVsSchemerWr, GAMES_PER_BATCH);
+const zCD = zTest(cautiousWr, cautiousVsDaringWr, GAMES_PER_BATCH);
+const zSDFull = zTest(cautiousVsSchemerWr, cautiousVsDaringWr, GAMES_PER_BATCH);
+// Direct Daring vs Schemer comparison: Daring (batch 5) vs Schemer (batch 6) — same game, seat swapped.
+const zDvS_direct = zTest(
+  daringVsSchemerNeutralWr,
+  schemerVsDaringNeutralWr,
   GAMES_PER_BATCH,
 );
 const check = (cond: boolean) => (cond ? "✓" : "✗");
 
 console.log("Interpretation:");
 console.log(
-  `  ${check(easyWr > 0.2 && easyWr < 0.3)} Easy baseline win rate near 25% (got ${(easyWr * 100).toFixed(1)}%)`,
+  `  ${check(cautiousWr > 0.2 && cautiousWr < 0.3)} Cautious baseline win rate near 25% (got ${(cautiousWr * 100).toFixed(1)}%)`,
 );
 console.log(
-  `  ${check(easyVsMedWr < easyWr)} Easy vs Medium: win rate drops (${sigLabel(zEM)})`,
+  `  ${check(cautiousVsSchemerWr < cautiousWr)} Cautious vs Schemer: win rate drops (${sigLabel(zCS)})`,
 );
 console.log(
-  `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`,
+  `  ${check(cautiousVsDaringWr < cautiousVsSchemerWr)} Cautious vs Daring: win rate drops further (${sigLabel(zCD)})`,
 );
 console.log(
-  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMHFull)} vs Easy batches)`,
+  `  ${check(schemerVs3DaringWr < 0.25)} Schemer vs 3 Daring: Schemer below 25% (got ${(schemerVs3DaringWr * 100).toFixed(1)}%, ${sigLabel(zSDFull)} vs Cautious batches)`,
 );
 console.log(
-  `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`,
+  `  ${check(daringVsSchemerNeutralWr > schemerVsDaringNeutralWr)} Daring vs Schemer (neutral field): Daring ${(daringVsSchemerNeutralWr * 100).toFixed(1)}% vs Schemer ${(schemerVsDaringNeutralWr * 100).toFixed(1)}% (${sigLabel(zDvS_direct)})`,
 );

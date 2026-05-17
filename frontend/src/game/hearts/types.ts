@@ -5,8 +5,10 @@
  * engine, AI, UI components, and persistence layer alike.
  */
 
-export type AiDifficulty = "easy" | "medium" | "hard";
-export const AI_DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];
+export type AiPersona = "cautious" | "schemer" | "daring";
+/** @deprecated Use AiPersona */
+export type AiDifficulty = AiPersona;
+export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
 
 /** UI events emitted by the engine and consumed by the animation layer. */
 export type GameEvent =
@@ -47,7 +49,8 @@ export type HeartsPhase =
  * Players: index 0 = human, 1 = left AI, 2 = top AI, 3 = right AI.
  * `_v` is a schema version so persisted saves can be migrated or rejected.
  * v2 adds `scoreHistory` so per-round deltas survive screen unmount (#745).
- * v3 adds `aiDifficulty` for the Easy/Medium/Hard AI difficulty selector (#1168).
+ * v3 adds `aiDifficulty` for the AI persona selector (#1168). Values renamed to
+ * "cautious"/"schemer"/"daring" (#1653); old "easy"/"medium"/"hard" are migrated on load.
  */
 export interface HeartsState {
   readonly _v: 3;

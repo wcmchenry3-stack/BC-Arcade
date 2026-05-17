@@ -1,9 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import type { AiDifficulty, HeartsState } from "./types";
+import type { AiPersona, HeartsState } from "./types";
 
 const GAME_KEY = "hearts_game";
-const AI_DIFFICULTY_VALUES: readonly string[] = ["easy", "medium", "hard"];
+const AI_PERSONA_VALUES: readonly string[] = ["cautious", "schemer", "daring"];
+const LEGACY_PERSONA_MAP: Record<string, string> = {
+  easy: "cautious",
+  medium: "schemer",
+  hard: "daring",
+};
 
 export async function saveGame(state: HeartsState): Promise<void> {
   try {
@@ -23,16 +28,22 @@ export async function loadGame(): Promise<HeartsState | null> {
     // v2 → v3 migration: add aiDifficulty default
     if (rawV === 2) {
       parsed["_v"] = 3;
-      parsed["aiDifficulty"] = "medium";
+      parsed["aiDifficulty"] = "schemer";
     } else if (rawV !== 3) {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
 
+    // Migrate pre-#1653 persona values ("easy"→"cautious", etc.)
+    const storedPersona = parsed["aiDifficulty"];
+    if (typeof storedPersona === "string" && storedPersona in LEGACY_PERSONA_MAP) {
+      parsed["aiDifficulty"] = LEGACY_PERSONA_MAP[storedPersona];
+    }
+
     const p = parsed as Partial<HeartsState>;
     if (
       p._v !== 3 ||
-      !AI_DIFFICULTY_VALUES.includes(p.aiDifficulty as string) ||
+      !AI_PERSONA_VALUES.includes(p.aiDifficulty as string) ||
       !Array.isArray(p.playerHands) ||
       p.playerHands.length !== 4 ||
       !Array.isArray(p.cumulativeScores) ||
@@ -65,7 +76,7 @@ export async function loadGame(): Promise<HeartsState | null> {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    return { ...p, aiDifficulty: p.aiDifficulty as AiDifficulty } as HeartsState;
+    return { ...p, aiDifficulty: p.aiDifficulty as AiPersona } as HeartsState;
   } catch (e) {
     Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
       level: "warning",
