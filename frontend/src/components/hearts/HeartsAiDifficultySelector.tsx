@@ -23,12 +23,14 @@ function PersonaBtn({
   onChange,
   colors,
   t,
+  full = false,
 }: {
   preset: AiPreset;
   value: AiPreset;
   onChange: (d: AiPreset) => void;
   colors: ReturnType<typeof useTheme>["colors"];
   t: ReturnType<typeof useTranslation>["t"];
+  full?: boolean;
 }) {
   const selected = preset === value;
   const defaults = PRESET_DEFAULTS[preset];
@@ -38,7 +40,11 @@ function PersonaBtn({
       accessibilityRole="radio"
       accessibilityLabel={t(`difficulty.${preset}`, { defaultValue: defaults.label })}
       accessibilityState={{ selected }}
-      style={[styles.btn, { backgroundColor: selected ? colors.accent : colors.surface }]}
+      style={[
+        styles.btn,
+        full && styles.btnFull,
+        { backgroundColor: selected ? colors.accent : colors.surface },
+      ]}
     >
       <Text style={[styles.label, { color: selected ? colors.textOnAccent : colors.text }]}>
         {t(`difficulty.${preset}`, { defaultValue: defaults.label })}
@@ -66,13 +72,14 @@ export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
           <PersonaBtn key={d} preset={d} {...shared} />
         ))}
       </View>
-      <PersonaBtn preset="mixed" {...shared} />
+      <PersonaBtn preset="mixed" full {...shared} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    width: "100%",
     borderWidth: 1,
     borderRadius: 8,
     overflow: "hidden",
@@ -88,6 +95,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
+  },
+  btnFull: {
+    alignSelf: "stretch",
   },
   label: {
     fontSize: 15,
