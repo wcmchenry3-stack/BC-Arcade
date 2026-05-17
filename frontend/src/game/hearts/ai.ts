@@ -103,7 +103,8 @@ function passSafeFilter(selected: Card[]): (c: Card) => boolean {
  * Uses a looser filter than passSafeFilter: allows clubs <6 so low clubs can complete a void
  * (they're normally deprioritised as filler but are fine to pass for void purposes).
  *
- * @param maxSuitSize - Medium passes 2 (doubletons + singletons); Hard passes up to `remaining`.
+ * @param maxSuitSize - Both tiers pass `3` (Medium) or `3 - selected.length` (Hard); the binding
+ *   constraint is always `remaining = 3 - selected.length`, so the effective limit is `remaining`.
  */
 function voidOneSuit(
   hand: Card[],
@@ -154,11 +155,14 @@ function selectCardsToPassEasy(hand: Card[]): Card[] {
  *      Note: "right" (1 seat) and "across" (2 seats) are treated identically for simplicity.
  *    - "left": keep Q♠ if holding either A♠ or K♠ (left neighbor plays close — higher risk)
  *    - "none": baseline — pass unless holding both A♠ and K♠
- * 2. A♥, K♥ — highest hearts first
- * 3. A♠, K♠ — if not needed to protect Q♠
- * 3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early
- * 4. Void creation — use remaining slots to eliminate a short suit (≤ 2 cards) (#1636)
- * 5. Highest remaining safe card (never 2♣ or clubs below 6)
+ * 2. A♥ only (highest danger heart — always wins heart tricks, most likely to cause damage)
+ * 3. Void creation — use remaining slots to eliminate a short suit (≤ 3 cards) (#1636, #1645)
+ *    Only A♥ precedes void — K♥/Q♥/J♥ fill slots AFTER voiding. A void provides guaranteed
+ *    discard opportunities for the entire hand; a single extra danger heart is less valuable.
+ * 4. K♥, Q♥, J♥ — remaining danger hearts fill slots after void
+ * 4.5. A♠, K♠ — if not needed to protect Q♠
+ * 5. A♣, K♣ — high clubs are dangerous since clubs cycle early
+ * 6. Highest remaining safe card (never 2♣ or clubs below 6)
  */
 function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[] {
   const selected: Card[] = [];
@@ -190,18 +194,35 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
 
   const safe = passSafeFilter(selected);
 
-  const dangerHearts = hand
-    .filter((c) => c.suit === "hearts" && (c.rank === 1 || c.rank >= 11) && safe(c))
-    .sort((a, b) => {
-      const ra = a.rank === 1 ? 14 : a.rank;
-      const rb = b.rank === 1 ? 14 : b.rank;
-      return rb - ra;
-    });
-  for (const c of dangerHearts) {
+  // 2. A♥ only — always wins heart tricks; the single most dangerous heart to hold.
+  const aceHearts = hand.filter((c) => c.suit === "hearts" && c.rank === 1 && safe(c));
+  for (const c of aceHearts) {
     if (selected.length >= 3) break;
     selected.push(c);
   }
 
+  // 3. Void creation — fires before remaining danger hearts so it gets more slots (#1645).
+  // Loop to handle e.g. singleton + doubleton in separate eligible suits.
+  // Don't target spades when keeping Q♠ — A♠/K♠ are needed as cover cards.
+  const keepingQSpade = hasQSpades && !selected.some(isQueenOfSpades);
+  {
+    let prevLen = -1;
+    while (selected.length < 3 && selected.length !== prevLen) {
+      prevLen = selected.length;
+      voidOneSuit(hand, selected, has2Clubs, keepingQSpade, 3);
+    }
+  }
+
+  // 4. Remaining danger hearts — K♥, Q♥, J♥ fill slots after void creation.
+  const remainingDangerHearts = hand
+    .filter((c) => c.suit === "hearts" && c.rank >= 11 && safe(c))
+    .sort((a, b) => b.rank - a.rank);
+  for (const c of remainingDangerHearts) {
+    if (selected.length >= 3) break;
+    selected.push(c);
+  }
+
+  // 4.5. A♠/K♠ — if not needed to protect Q♠.
   if (selected.length < 3 && !hasQSpades) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
@@ -210,7 +231,7 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
     }
   }
 
-  // High clubs: A♣ and K♣ are dangerous to hold because clubs are led early.
+  // 5. A♣/K♣ fill any remaining slots.
   if (selected.length < 3) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
@@ -219,18 +240,9 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
     }
   }
 
-  // Void creation: use remaining slots to eliminate a 1–2 card suit (#1636).
-  // Don't target spades when keeping Q♠ — A♠/K♠ are needed as cover cards.
-  const keepingQSpade = hasQSpades && !selected.some(isQueenOfSpades);
-  voidOneSuit(hand, selected, has2Clubs, keepingQSpade, 2);
-
-  // Filler: highest remaining safe card.
+  // 6. Filler: highest remaining safe card.
   if (selected.length < 3) {
-    const candidates = hand.filter(safe).sort((a, b) => {
-      const ra = a.rank === 1 ? 14 : a.rank;
-      const rb = b.rank === 1 ? 14 : b.rank;
-      return rb - ra;
-    });
+    const candidates = hand.filter(safe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
@@ -249,11 +261,13 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
  *
  * Standard mode priority:
  *   1. Q♠ (always pass unless spade-void).
- *   2. A♥, K♥, Q♥, J♥ (high hearts, highest first).
+ *   2. Void creation: use ALL remaining slots to eliminate the shortest eligible suit (#1645).
+ *      Immediately after Q♠ so it always gets 2 slots — enough to void a doubleton in ~87%
+ *      of hands. Danger hearts fill the slots that remain after voiding.
+ *   3. A♥, K♥, Q♥, J♥ (high hearts, highest first) — fill remaining after void.
  *      Going "right": also include 10♥ as an extra danger card (#1595).
- *   3. A♠, K♠ (if Q♠ not present).
- *   3.5. A♣, K♣ — high clubs are dangerous since clubs cycle early.
- *   4. Void creation: use ALL remaining slots to eliminate the shortest eligible suit.
+ *   4. A♠, K♠ (if Q♠ not present).
+ *   4.5. A♣, K♣ — fill remaining slots.
  *   5. Fill any remaining slots with the highest safe cards.
  */
 function selectCardsToPassHard(
@@ -335,7 +349,18 @@ function selectCardsToPassHard(
 
   const safe = passSafeFilter(selected);
 
-  // 2. High hearts — going right, also include 10♥ as an extra danger card (#1595).
+  // 2. Void creation — immediately after Q♠; loop until no more voids fire (#1645).
+  // Handles: Q♠ + two singletons (uses all 3 slots), no-Q♠ + doubleton + singleton, etc.
+  // Hard always passes Q♠ in standard mode so keepingQSpade is never true here.
+  {
+    let prevLen = -1;
+    while (selected.length < 3 && selected.length !== prevLen) {
+      prevLen = selected.length;
+      voidOneSuit(hand, selected, has2Clubs, false, 3 - selected.length);
+    }
+  }
+
+  // 3. High hearts — fill slots remaining after void. Going right, include 10♥ (#1595).
   const heartDangerThreshold = direction === "right" ? 10 : 11;
   const dangerHearts = hand
     .filter(
@@ -347,7 +372,7 @@ function selectCardsToPassHard(
     selected.push(c);
   }
 
-  // 3. High spades if no Q♠
+  // 4. High spades if no Q♠.
   if (selected.length < 3 && !hasQSpades) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
@@ -356,28 +381,18 @@ function selectCardsToPassHard(
     }
   }
 
-  const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
-
-  // 3.5. High clubs: A♣ and K♣ are dangerous to hold because clubs are led early.
+  // 4.5. A♣, K♣ — fill remaining slots.
   if (selected.length < 3) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
-      const card = hand.find(
-        (c) => c.suit === "clubs" && c.rank === rank && safe(c) && notSelected(c)
-      );
+      const card = hand.find((c) => c.suit === "clubs" && c.rank === rank && safe(c));
       if (card) selected.push(card);
     }
   }
 
-  // 4. Void creation: use all remaining slots to void the shortest eligible suit (#1636).
-  // Hard always passes Q♠ in standard mode, so keepingQSpade is never true here.
-  voidOneSuit(hand, selected, has2Clubs, false, 3 - selected.length);
-
-  // 5. Fill remaining slots with highest safe cards
+  // 5. Fill remaining slots with highest safe cards.
   if (selected.length < 3) {
-    const candidates = hand
-      .filter((c) => safe(c) && notSelected(c))
-      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+    const candidates = hand.filter(safe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
