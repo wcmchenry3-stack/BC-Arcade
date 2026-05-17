@@ -4,8 +4,6 @@ import {
   computeZoomBounds,
   MIN_READABLE_TILE_PX,
   MIN_ZOOM_HEADROOM,
-  rubberClamp,
-  RUBBER_FACTOR,
 } from "../zoom";
 
 describe("computeZoomBounds", () => {
@@ -101,36 +99,6 @@ describe("computePanBounds", () => {
     //   should equal viewportWidth / 2
     const boardRightEdge = (boardWidth * scale) / 2 - maxTranslateX;
     expect(boardRightEdge).toBeCloseTo(viewportWidth / 2, 5);
-  });
-});
-
-describe("rubberClamp", () => {
-  it("passes through values within [min, max]", () => {
-    expect(rubberClamp(1.0, 0.5, 2.0)).toBe(1.0);
-  });
-
-  it("at-min boundary returns min exactly", () => {
-    expect(rubberClamp(0.5, 0.5, 2.0)).toBe(0.5);
-  });
-
-  it("at-max boundary returns max exactly", () => {
-    expect(rubberClamp(2.0, 0.5, 2.0)).toBe(2.0);
-  });
-
-  it("allows overshoot below min with RUBBER_FACTOR resistance", () => {
-    // min + (value - min) * RUBBER_FACTOR = 0.5 + (0.2 - 0.5) * 0.3 = 0.41
-    const result = rubberClamp(0.2, 0.5, 2.0);
-    expect(result).toBeCloseTo(0.5 + (0.2 - 0.5) * RUBBER_FACTOR, 10);
-    expect(result).toBeLessThan(0.5);
-    expect(result).toBeGreaterThan(0.2);
-  });
-
-  it("allows overshoot above max with RUBBER_FACTOR resistance", () => {
-    // max + (value - max) * RUBBER_FACTOR = 2.0 + (3.0 - 2.0) * 0.3 = 2.3
-    const result = rubberClamp(3.0, 0.5, 2.0);
-    expect(result).toBeCloseTo(2.0 + (3.0 - 2.0) * RUBBER_FACTOR, 10);
-    expect(result).toBeGreaterThan(2.0);
-    expect(result).toBeLessThan(3.0);
   });
 });
 
