@@ -78,7 +78,9 @@ describe("VsScorecard — scoring interaction", () => {
       playerPossibleScores: { ones: 3 },
       onScore,
     });
-    const buttons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
+    const buttons = getAllByRole("button").filter((b) =>
+      b.props.accessibilityLabel?.startsWith("Ones:")
+    );
     fireEvent.press(buttons[0]!);
     expect(onScore).toHaveBeenCalledWith("ones");
   });
@@ -100,8 +102,8 @@ describe("VsScorecard — scoring interaction", () => {
       onScore,
     });
     // "ones" is already scored → its cell renders as "text", not "button"
-    const onesButtons = queryAllByRole("button").filter(
-      (b) => b.props.accessibilityLabel === "Ones"
+    const onesButtons = queryAllByRole("button").filter((b) =>
+      b.props.accessibilityLabel?.startsWith("Ones:")
     );
     expect(onesButtons.length).toBe(0);
     expect(onScore).not.toHaveBeenCalled();

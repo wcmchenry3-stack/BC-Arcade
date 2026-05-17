@@ -104,7 +104,14 @@ export default function VsScorecard({
                 : { backgroundColor: colors.surfaceAlt },
           ]}
           accessibilityRole={isHot ? "button" : "text"}
-          accessibilityLabel={t(CATEGORY_I18N_KEY[key] ?? "")}
+          accessibilityLabel={t("score.label", {
+            category: t(CATEGORY_I18N_KEY[key] ?? ""),
+            state: playerFilled
+              ? t("score.scored", { score: playerScore })
+              : isHot && possible !== undefined
+                ? t("score.potential", { potential: possible })
+                : t("score.notAvailable"),
+          })}
           accessibilityState={{ disabled: !isHot }}
         >
           <Text
