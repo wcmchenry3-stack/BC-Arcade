@@ -72,5 +72,12 @@
   "gameOver.computerWins": "L'ordinateur gagne !",
   "gameOver.tie": "Égalité !",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Lancé {{n}} / 3"
+  "vsMode.rollCounter": "Lancé {{n}} / 3",
+  "vsMode.category": "Catégorie",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "Bas",
+  "vsMode.upperSubtotal": "Sous-total sup.",
+  "vsMode.lowerSubtotal": "Sous-total inf.",
+  "vsMode.bonusProgress": "Bonus · {{n}} pour 63",
+  "vsMode.bonusUnlocked": "Bonus ✓ débloqué"
 }

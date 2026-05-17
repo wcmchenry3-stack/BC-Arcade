@@ -67,7 +67,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
-    // Wait for AI to finish — Easy AI takes up to ~2.5 s per turn; allow 10 s
+    // Wait for AI to finish — Easy AI takes up to ~4 s per turn; allow 10 s
     await expect(page.getByText("Your Turn", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("button", { name: /Roll dice/i })).toBeEnabled({
       timeout: 10000,
@@ -90,9 +90,8 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
   });
 
   test("opponent scorecard label is visible in VS mode", async ({ page }) => {
-    // On Desktop Chrome (1280px wide) both scorecards render side-by-side.
-    // The "Opp." label above the AI scorecard should be visible immediately.
-    await expect(page.getByText("Opp.", { exact: true }).first()).toBeVisible();
+    // The unified 3-column VsScorecard renders "YOU" and "CPU" column headers.
+    await expect(page.getByText("CPU", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("You", { exact: true }).first()).toBeVisible();
   });
 

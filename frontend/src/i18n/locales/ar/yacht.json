@@ -72,5 +72,12 @@
   "gameOver.computerWins": "فاز الكمبيوتر!",
   "gameOver.tie": "تعادل!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "رمية {{n}} / 3"
+  "vsMode.rollCounter": "رمية {{n}} / 3",
+  "vsMode.category": "الفئة",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "سفلي",
+  "vsMode.upperSubtotal": "المجموع الفرعي العلوي",
+  "vsMode.lowerSubtotal": "المجموع الفرعي السفلي",
+  "vsMode.bonusProgress": "مكافأة · {{n}} إلى 63",
+  "vsMode.bonusUnlocked": "مكافأة ✓ مفتوحة"
 }

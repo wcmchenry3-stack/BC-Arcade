@@ -72,5 +72,12 @@
   "gameOver.computerWins": "המחשב ניצח!",
   "gameOver.tie": "תיקו!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "הטלה {{n}} / 3"
+  "vsMode.rollCounter": "הטלה {{n}} / 3",
+  "vsMode.category": "קטגוריה",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "תחתון",
+  "vsMode.upperSubtotal": "סיכום עליון",
+  "vsMode.lowerSubtotal": "סיכום תחתון",
+  "vsMode.bonusProgress": "בונוס · {{n}} ל-63",
+  "vsMode.bonusUnlocked": "בונוס ✓ הושג"
 }

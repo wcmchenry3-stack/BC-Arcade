@@ -72,5 +72,12 @@
   "gameOver.computerWins": "Computer wint!",
   "gameOver.tie": "Gelijkspel!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "Gooi {{n}} / 3"
+  "vsMode.rollCounter": "Gooi {{n}} / 3",
+  "vsMode.category": "Categorie",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "Laag",
+  "vsMode.upperSubtotal": "Subtotaal boven",
+  "vsMode.lowerSubtotal": "Subtotaal onder",
+  "vsMode.bonusProgress": "Bonus · {{n}} tot 63",
+  "vsMode.bonusUnlocked": "Bonus ✓ behaald"
 }

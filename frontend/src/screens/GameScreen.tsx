@@ -1,13 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Modal,
-  ScrollView,
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  useWindowDimensions,
-} from "react-native";
+import { Modal, ScrollView, View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -34,6 +26,7 @@ import { useSound } from "../game/_shared/useSound";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
+import VsScorecard from "../components/yacht/VsScorecard";
 import GameOverModal from "../components/yacht/GameOverModal";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
@@ -53,8 +46,6 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const VS_WIDE_BREAKPOINT = 700;
-
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
@@ -64,8 +55,6 @@ export default function GameScreen({ navigation, route }: Props) {
   const { t } = useTranslation(["yacht", "common"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const isVsWide = screenWidth >= VS_WIDE_BREAKPOINT;
   const [gameState, setGameState] = useState<GameState>(route.params.initialState);
   const [possibleScores, setPossibleScores] = useState<Record<string, number>>({});
   const [gameKey, setGameKey] = useState(0);
@@ -91,7 +80,6 @@ export default function GameScreen({ navigation, route }: Props) {
   const [aiGameState, setAiGameState] = useState<GameState | null>(route.params.aiState ?? null);
   const [isAiTurn, setIsAiTurn] = useState(false);
   const [aiRollingIndices, setAiRollingIndices] = useState<readonly number[]>([]);
-  const [vsScorecardTab, setVsScorecardTab] = useState<"player" | "opponent">("player");
 
   // Keep refs in sync for use inside async AI turn loop and callbacks.
   const gameStateRef = useRef(gameState);
@@ -108,12 +96,6 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     aiGameStateRef.current = aiGameState;
   }, [aiGameState]);
-
-  // Auto-switch VS scorecard tab to show the active player's scorecard.
-  useEffect(() => {
-    if (!aiDifficulty) return;
-    setVsScorecardTab(isAiTurn ? "opponent" : "player");
-  }, [isAiTurn, aiDifficulty]);
 
   // Game event instrumentation (#368 / #549).
   const {
@@ -211,6 +193,9 @@ export default function GameScreen({ navigation, route }: Props) {
       s = engineRoll(s, [false, false, false, false, false]);
       setAiGameState(s);
       setAiRollingIndices([]);
+      // Settle pause: let the player read the dice values before the next roll
+      await delay(450);
+      if (cancelled) return;
 
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
@@ -220,15 +205,17 @@ export default function GameScreen({ navigation, route }: Props) {
           return acc;
         }, []);
         setAiRollingIndices(rolledIdxs);
-        await delay(650);
+        await delay(700);
         if (cancelled) return;
         s = engineRoll(s, holds);
         setAiGameState(s);
         setAiRollingIndices([]);
+        await delay(450);
+        if (cancelled) return;
       }
 
-      // Score using opponent's current total for strategic decisions
-      await delay(500);
+      // Beat before the AI locks in its category
+      await delay(600);
       if (cancelled) return;
       const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
       s = engineScore(s, cat);
@@ -471,75 +458,23 @@ export default function GameScreen({ navigation, route }: Props) {
         locked={isAiTurn}
       />
 
-      {/* VS mode score comparison */}
-      {aiDifficulty && difficultyChosen && aiGameState && (
-        <View style={[styles.vsScoreRow, { borderColor: colors.border }]}>
-          <View style={styles.vsScoreBlock}>
-            <Text style={[styles.vsScoreLabel, { color: colors.textMuted }]}>{t("score.you")}</Text>
-            <Text style={[styles.vsScoreValue, { color: colors.accent }]}>
-              {gameState.total_score}
-            </Text>
-          </View>
-          <Text style={[styles.vsSep, { color: colors.textMuted }]}>{t("vsMode.vs")}</Text>
-          <View style={[styles.vsScoreBlock, styles.vsScoreBlockRight]}>
-            <Text style={[styles.vsScoreLabel, { color: colors.textMuted }]}>
-              {t("score.opponent")}
-            </Text>
-            <Text style={[styles.vsScoreValue, { color: colors.secondary }]}>
-              {aiGameState.total_score}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Scorecard — VS mode shows both scorecards; solo shows just the player's */}
+      {/* Scorecard — VS mode shows unified 3-column head-to-head; solo shows player's only */}
       {aiDifficulty && difficultyChosen && aiGameState ? (
-        <View style={styles.vsScorecardWrapper}>
-          {!isVsWide && (
-            <View style={[styles.vsTabRow, { borderBottomColor: colors.border }]}>
-              {(["player", "opponent"] as const).map((tab) => {
-                const isActive = vsScorecardTab === tab;
-                const tabColor = tab === "player" ? colors.accent : colors.secondary;
-                return (
-                  <Pressable
-                    key={tab}
-                    style={[
-                      styles.vsTabButton,
-                      { borderBottomColor: isActive ? tabColor : "transparent" },
-                    ]}
-                    onPress={() => setVsScorecardTab(tab)}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: isActive }}
-                    accessibilityLabel={tab === "player" ? t("score.you") : t("score.opponent")}
-                  >
-                    <Text
-                      style={[styles.vsTabText, { color: isActive ? tabColor : colors.textMuted }]}
-                    >
-                      {tab === "player" ? t("score.you") : t("score.opponent")}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-          {isVsWide ? (
-            <View style={styles.vsWideRow}>
-              <View style={styles.vsWideCol}>
-                <Text style={[styles.vsScorecardLabel, { color: colors.accent }]}>
-                  {t("score.you")}
-                </Text>
-                {renderScorecard("player")}
-              </View>
-              <View style={styles.vsWideCol}>
-                <Text style={[styles.vsScorecardLabel, { color: colors.secondary }]}>
-                  {t("score.opponent")}
-                </Text>
-                {renderScorecard("opponent")}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.scorecardContainer}>{renderScorecard(vsScorecardTab)}</View>
-          )}
+        <View style={styles.scorecardContainer}>
+          <VsScorecard
+            key={gameKey}
+            playerScores={gameState.scores}
+            playerPossibleScores={possibleScores}
+            playerRollsUsed={gameState.rolls_used}
+            playerGameOver={gameState.game_over}
+            playerUpperBonus={gameState.upper_bonus}
+            playerTotalScore={gameState.total_score}
+            cpuScores={aiGameState.scores}
+            cpuUpperBonus={aiGameState.upper_bonus}
+            cpuTotalScore={aiGameState.total_score}
+            isAiTurn={isAiTurn}
+            onScore={handleScore}
+          />
         </View>
       ) : (
         <View style={styles.scorecardContainer}>{renderScorecard("player")}</View>
@@ -795,48 +730,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 2,
   },
-  vsScorecardWrapper: {
-    flex: 1,
-    minHeight: 0,
-    marginHorizontal: 12,
-    marginBottom: 12,
-  },
-  vsTabRow: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    marginBottom: 8,
-  },
-  vsTabButton: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 36,
-    borderBottomWidth: 2,
-    paddingBottom: 6,
-  },
-  vsTabText: {
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  vsWideRow: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 8,
-  },
-  vsWideCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  vsScorecardLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    textAlign: "center",
-    marginBottom: 4,
-  },
   // VS mode styles
   turnBanner: {
     marginHorizontal: 12,
@@ -852,41 +745,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.8,
     textTransform: "uppercase",
-  },
-  vsScoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 12,
-    marginBottom: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  vsScoreBlock: {
-    flex: 1,
-    alignItems: "flex-start",
-  },
-  vsScoreBlockRight: {
-    alignItems: "flex-end",
-  },
-  vsScoreLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  vsScoreValue: {
-    fontSize: 20,
-    fontWeight: "900",
-  },
-  vsSep: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    paddingHorizontal: 8,
   },
   // Pre-game mode selector modal
   modeOverlay: {
