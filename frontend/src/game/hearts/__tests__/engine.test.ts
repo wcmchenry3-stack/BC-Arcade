@@ -1025,6 +1025,69 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
     expect(moonEvents).toHaveLength(1);
     expect(state.phase).not.toBe("playing");
   });
+
+  it("does not re-emit moonShot on the next trick after moon is clinched (regression)", () => {
+    // Moon clinched at trick 9 (player 0 takes the last heart + QS they needed).
+    // Trick 10 must NOT re-emit the event even though detectMoon() keeps
+    // returning non-null — this was the bug that caused the fanfare to replay.
+    const hearts12 = Array.from({ length: 12 }, (_, i) => c("hearts", (i + 2) as Rank));
+
+    // State entering trick 9: player 0 holds 12 hearts + Q♠ already, one heart left.
+    // Each player has 2 cards: one for trick 9, one for trick 10.
+    let state = mkState({
+      tricksPlayedInHand: 8,
+      heartsBroken: true,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      wonCards: [[...hearts12, c("spades", 12)], [], [], []],
+      handScores: [25, 0, 0, 0],
+      playerHands: [
+        [c("hearts", 1), c("clubs", 2)],  // P0: Ace-Hearts (trick 9), Clubs-2 (trick 10)
+        [c("clubs", 3), c("clubs", 4)],   // P1: no hearts → discard clubs each trick
+        [c("clubs", 5), c("clubs", 6)],   // P2
+        [c("clubs", 7), c("clubs", 8)],   // P3
+      ],
+    });
+
+    // Trick 9 — player 0 plays the last heart (Ace), clinching the moon.
+    // Others have no hearts so they legally discard clubs.
+    state = playCard(state, 0, c("hearts", 1));
+    state = playCard(state, 1, c("clubs", 3));
+    state = playCard(state, 2, c("clubs", 5));
+    state = playCard(state, 3, c("clubs", 7));
+    expect(state.events).toContainEqual({ type: "moonShot", shooter: 0 });
+    expect(state.phase).toBe("playing");
+
+    // Simulate the AI loop clearing events before processing trick 10.
+    state = { ...state, events: [] };
+
+    // Trick 10 — player 0 leads clubs 2, others follow with clubs.
+    state = playCard(state, 0, c("clubs", 2));
+    state = playCard(state, 1, c("clubs", 4));
+    state = playCard(state, 2, c("clubs", 6));
+    state = playCard(state, 3, c("clubs", 8));
+    const moonEvents = (state.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(0);
+    expect(state.phase).toBe("playing");
+  });
+
+  it("applyHandScoring does not re-emit when mid-hand event was fired and events were cleared", () => {
+    // Simulates the AI-loop scenario: moon was shot mid-hand, events were
+    // cleared between tricks, so state.events is empty when trick 13 ends.
+    // applyHandScoring must not add a second moonShot event.
+    const allHearts = Array.from({ length: 13 }, (_, i) => c("hearts", (i + 1) as Rank));
+    const state = mkState({
+      phase: "hand_end",
+      handScores: [26, 0, 0, 0],
+      cumulativeScores: [0, 0, 0, 0],
+      wonCards: [[...allHearts, c("spades", 12)], [], [], []],
+      events: [], // cleared by AI loop — no moonShot present
+    });
+    // midHandAlreadyFired=true mimics resolveTrick passing prevMoonShooter !== null
+    const next = applyHandScoring(state, true);
+    const moonEvents = (next.events ?? []).filter((e) => e.type === "moonShot");
+    expect(moonEvents).toHaveLength(0);
+  });
 });
 
 describe("applyHandScoring — game over", () => {

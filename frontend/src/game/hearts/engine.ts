@@ -332,7 +332,12 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     ? ([{ type: "queenOfSpades", takerSeat: winnerPlayerIndex }] as const)
     : ([] as const);
 
-  const moonShooterMidHand = detectMoon(newWonCards);
+  // Only fire the moonShot event when the moon is NEWLY clinched this trick
+  // (null → non-null transition). Subsequent tricks keep detectMoon non-null
+  // for the same shooter, so without this guard every trick after clinch would
+  // re-emit and replay the animation.
+  const prevMoonShooter = detectMoon(state.wonCards);
+  const moonShooterMidHand = prevMoonShooter === null ? detectMoon(newWonCards) : null;
   const moonEvent =
     moonShooterMidHand !== null && newTricksPlayed < 13
       ? ([{ type: "moonShot", shooter: moonShooterMidHand }] as const)
@@ -351,7 +356,10 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
 
   if (newTricksPlayed === 13) {
     next = { ...next, phase: "hand_end" };
-    next = applyHandScoring(next);
+    // Pass whether the mid-hand moonShot event was already fired so
+    // applyHandScoring skips re-emitting it (the AI loop clears events between
+    // tricks, so state.events alone cannot be trusted for this check).
+    next = applyHandScoring(next, prevMoonShooter !== null);
   }
 
   return next;
@@ -379,7 +387,7 @@ export function detectMoon(wonCards: readonly (readonly Card[])[]): number | nul
  * Appends the post-moon applied delta to scoreHistory so the per-round table
  * stays consistent with cumulativeScores across remounts (#745).
  */
-export function applyHandScoring(state: HeartsState): HeartsState {
+export function applyHandScoring(state: HeartsState, midHandAlreadyFired = false): HeartsState {
   const moonShooter = detectMoon(state.wonCards);
 
   const newCumulative = state.cumulativeScores.map((s, i) => {
@@ -393,8 +401,9 @@ export function applyHandScoring(state: HeartsState): HeartsState {
   const appliedDelta = newCumulative.map((c, i) => c - (state.cumulativeScores[i] ?? 0));
   const newScoreHistory = [...state.scoreHistory, appliedDelta];
 
-  // Don't re-emit if resolveTrick already fired the event mid-hand
-  const alreadyFired = (state.events ?? []).some((e) => e.type === "moonShot");
+  // midHandAlreadyFired covers the case where the AI loop clears events between
+  // tricks — state.events alone can't be trusted if it was wiped since clinch.
+  const alreadyFired = midHandAlreadyFired || (state.events ?? []).some((e) => e.type === "moonShot");
   const moonEvent =
     moonShooter !== null && !alreadyFired
       ? ([{ type: "moonShot", shooter: moonShooter }] as const)
