@@ -9,7 +9,6 @@ export type AiPersona = "cautious" | "schemer" | "daring";
 /** @deprecated Use AiPersona */
 export type AiDifficulty = AiPersona;
 export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
-export const AI_DIFFICULTIES = AI_PERSONAS;
 
 /** UI events emitted by the engine and consumed by the animation layer. */
 export type GameEvent =

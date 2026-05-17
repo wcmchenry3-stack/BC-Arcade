@@ -90,11 +90,15 @@ describe("hearts storage", () => {
     expect(loaded?.aiDifficulty).toBe("schemer");
   });
 
-  it("loadGame migrates old difficulty values to persona names (#1653)", async () => {
-    const oldState = { ...dealGame(), aiDifficulty: "hard" };
+  it.each([
+    ["easy", "cautious"],
+    ["medium", "schemer"],
+    ["hard", "daring"],
+  ])("loadGame migrates old '%s' to '%s' (#1653)", async (oldValue, newValue) => {
+    const oldState = { ...dealGame(), aiDifficulty: oldValue };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(oldState));
     const loaded = await loadGame();
-    expect(loaded?.aiDifficulty).toBe("daring");
+    expect(loaded?.aiDifficulty).toBe(newValue);
   });
 
   it("loadGame round-trips aiDifficulty: daring", async () => {

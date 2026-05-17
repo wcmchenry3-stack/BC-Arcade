@@ -818,7 +818,7 @@ describe("selectCardToPlay — Daring difficulty, score-aware endgame", () => {
 // Daring AI — opportunistic void in passing
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — #1636 void creation (Hard)", () => {
+describe("selectCardsToPass — #1636 void creation (Daring)", () => {
   it("voids a 1-card suit when 1 slot remains after dangerous cards", () => {
     // Q♠ fills slot 1, A♥ fills slot 2. 1 slot remains.
     // ♦7 is the only diamond → void fires, ♦7 fills slot 3.
@@ -915,7 +915,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
   });
 });
 
-describe("selectCardsToPass — #1636 void creation (Medium)", () => {
+describe("selectCardsToPass — #1636 void creation (Schemer)", () => {
   it("voids a 1-card suit when 1 slot remains after Q♠ and 1 danger heart", () => {
     // Q♠ → slot 1, A♥ → slot 2. 1 slot remains.
     // ♦7 is the only diamond → Schemer voids it (1 ≤ maxSuitSize 2).
@@ -1042,7 +1042,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
 // Daring AI — moon-viable passing (#1637)
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
+describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
   it("keeps Q♠ and all hearts when dealt 5+ hearts + Q♠", () => {
     // 5 hearts + Q♠ → moon-viable. Daring passes LOWEST non-hearts (3♠, 5♠, 7♣) to
     // keep Aces and Kings for trick control during the moon attempt (#1647).
@@ -1887,7 +1887,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
 // selectCardsToPass — #1595 pass direction awareness
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
+describe("selectCardsToPass — #1595 direction awareness (Schemer)", () => {
   it("passes Q♠ going right even when protected by A♠+K♠", () => {
     // Schemer normally keeps Q♠ when holding both A♠ and K♠.
     // Going right relaxes protection — Q♠ should be passed.
@@ -1958,9 +1958,9 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
   });
 });
 
-describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
+describe("selectCardsToPass — #1595 direction awareness (Daring)", () => {
   it("passes Q♠ regardless of direction (left and right both always pass Q♠)", () => {
-    // Daring is more aggressive than Medium — direction does not protect Q♠.
+    // Daring is more aggressive than Schemer — direction does not protect Q♠.
     const hand = [
       c("spades", 12),
       c("spades", 1),
@@ -2012,7 +2012,7 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
   });
 });
 
-describe("selectCardsToPass — #1595 across direction (Medium)", () => {
+describe("selectCardsToPass — #1595 across direction (Schemer)", () => {
   it("passes Q♠ going across even when holding A♠+K♠", () => {
     // "across" is treated the same as "right" — Q♠ protection threshold is relaxed.
     const hand = [
@@ -2112,7 +2112,7 @@ describe("selectCardToPlay — Daring difficulty, adversarial void discard", () 
   });
 });
 
-describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
+describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
   it("passes Q♠ to seat 0 even in moon-viable mode (left pass from seat 3)", () => {
     // Seat 3 passes left → recipient is seat 0. Hand is moon-viable (5+ hearts + Q♠).
     // Without targeting, moonViable keeps Q♠; with targeting, Q♠ is passed to seat 0.

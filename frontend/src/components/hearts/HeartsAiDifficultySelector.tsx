@@ -41,7 +41,9 @@ export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
             <Text style={[styles.label, { color: selected ? colors.textOnAccent : colors.text }]}>
               {t(`difficulty.${d}`, { defaultValue: defaults.label })}
             </Text>
-            <Text style={[styles.desc, { color: selected ? colors.textOnAccent : colors.textMuted }]}>
+            <Text
+              style={[styles.desc, { color: selected ? colors.textOnAccent : colors.textMuted }]}
+            >
               {t(`difficulty.${d}.desc`, { defaultValue: defaults.desc })}
             </Text>
           </Pressable>
