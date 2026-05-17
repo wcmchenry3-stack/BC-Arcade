@@ -1,4 +1,4 @@
-# BC Games — Product Principles
+# BC Arcade — Product Principles
 
 ## North Star
 
@@ -19,49 +19,55 @@ A calm, no-BS arcade of simple games designed for short moments — not long ses
 - Behavior manipulation (dark patterns)
 - Forced ads to continue playing
 - Complex user profiles
-- Multiplayer
-- Subscriptions
 - Cross-game social leaderboards
 - Advanced analytics beyond error reporting
 
-## Game Roster Strategy
+## Game Roster
 
-- Use the app yourself daily. Notice which game you open most and which feels frictionless.
-- Add one game at a time.
+All games are in active development. Nothing is released yet.
 
-## V1 Game Classification
+| Game        | Category | Notes                                   |
+| ----------- | -------- | --------------------------------------- |
+| Yacht       | Dice     | Yahtzee variant, 3 AI difficulty levels |
+| Hearts      | Card     | Trick-taking, avoid hearts + queen      |
+| Blackjack   | Card     | 3 table tiers, chip progression         |
+| Solitaire   | Card     | Klondike, draw-3 mode, undo             |
+| Sudoku      | Puzzle   | 3000 puzzles, 3 difficulty tiers        |
+| Cascade     | Arcade   | Physics fruit-drop, Matter.js + Skia    |
+| 2048        | Puzzle   | Tile-merge puzzle, frontend-only engine |
+| FreeCell    | Card     | Leaderboard by move count               |
+| Mahjong     | Puzzle   | Tile-matching, deadlock detection       |
+| Bottle Sort | Puzzle   | Level-based pour puzzle                 |
+| Daily Word  | Word     | Daily puzzle, en/hi language support    |
+| Starswarm   | Arcade   | In early development                    |
 
-| Game      | Status        | Notes                     |
-| --------- | ------------- | ------------------------- |
-| Yacht     | Public        | Core game                 |
-| Blackjack | Public        | Core game                 |
-| 2048      | Public        | Core game                 |
-| Ludo      | Beta (hidden) | Needs AI/animation polish |
-| Cascade   | Beta (hidden) | Has collision/drop bugs   |
+For individual game rules, scoring, and engine details see [`docs/games/`](games/).
+
+## Monetization
+
+BC Arcade launches with a premium tier — some games require purchase to access (exact free/premium split TBD). Premium access is controlled by a server-issued entitlement JWT; see [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md) for the technical model.
+
+**Golden rules:**
+
+- Never remove free functionality. Only add paid enhancements.
+- Never block gameplay mid-session due to an entitlement change.
+- Free games must always be playable with zero friction — no login, no payment prompt.
 
 ## Identity Tiers
 
-| Tier | Description                 | Status                 |
-| ---- | --------------------------- | ---------------------- |
-| 0    | Anonymous (UUID session)    | Done — ships with V1   |
-| 1    | Optional name input         | Post-launch            |
-| 2    | Google/Apple SSO (optional) | Post-launch — see #144 |
+| Tier | Description                 | Status             |
+| ---- | --------------------------- | ------------------ |
+| 0    | Anonymous (UUID session)    | Implemented        |
+| 1    | Optional name input         | Planned            |
+| 2    | Google/Apple SSO (optional) | Planned — see #144 |
 
 Login is always optional. Never block gameplay behind it. Prompt only after the user has played:
 
 - "Save your progress?" triggers optional login
-- "Try new games early?" triggers optional login
-
-## Monetization (NOT in V1)
-
-- **Phase 1 (launch):** Completely free, no ads, no payments
-- **Phase 2 (after usage data):** Light ads between sessions only + $2.99 Remove Ads IAP
-- **Optional:** $4.99 Premium (themes, etc.)
-- **Golden rule:** Never remove free functionality. Only add paid enhancements.
+- "Want to try new games early?" triggers optional login
 
 ## Beta Testing
 
 - Use feature flags (#142) to gate beta games, not TestFlight
 - TestFlight reserved for unstable features or major changes
 - Initial beta testers: project owner + family
-- Messaging: "Want to try new games early?"
