@@ -7,7 +7,7 @@
  *
  * Requires a test build: EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   gotoCascade,
   getState,
@@ -58,11 +58,11 @@ test.describe("Cascade UC1 — freefall, resting contact, angular damping", () =
   });
 
   test("multiple fruits all come to rest after settling", async ({ page }) => {
-    await setSeed(page, SEED);
-    // Spawn three tier-0 fruits spread across the bin
+    // spawnTierAt bypasses the queue so setSeed has no effect here.
+    // Space drops ≥ 120px apart (> 2× tier-0 radius 18px) to prevent merges.
     await spawnTierAt(page, 0, 100);
-    await spawnTierAt(page, 0, 200);
-    await spawnTierAt(page, 0, 300);
+    await spawnTierAt(page, 0, 220);
+    await spawnTierAt(page, 0, 340);
 
     await fastForward(page, SETTLE_MS);
     const before = await getState(page);

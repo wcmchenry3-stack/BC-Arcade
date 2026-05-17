@@ -916,24 +916,29 @@ describe("determinism — nowProvider injection removes Date.now() non-determini
 // ---------------------------------------------------------------------------
 
 describe("UC1 — angular damping and air friction", () => {
-  it("spawned body has angularDamping = FRUIT_ANGULAR_DAMPING", async () => {
+  it("post-step angular damping reduces spin faster than frictionAir alone", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const handle = await buildEngine();
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
 
+    // Drop in free-fall (not touching floor) so only frictionAir + our post-step
+    // damping act on angular velocity — no contact friction involved.
     handle.drop(fruit(0), "fruits", W / 2, 50);
     handle.step(1 / 60);
 
-    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+    const body = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic
-    );
-    const body = dynBodies[0];
-    expect(body).toBeDefined();
-    // Matter.js accepts unknown body options via Common.extend; the property is set
-    // at runtime even though the @types/matter-js typings don't declare it.
-    expect((body as unknown as { angularDamping: number }).angularDamping).toBe(
-      FRUIT_ANGULAR_DAMPING
-    );
+    )[0];
+    if (!body) throw new Error("Expected fruit body");
+
+    const initialOmega = 1.0;
+    Matter.Body.setAngularVelocity(body, initialOmega);
+    handle.step(1 / 60);
+
+    // frictionAir alone (0.01/step) would leave omega ≈ 0.99.
+    // Our post-step damping (FRUIT_ANGULAR_DAMPING = 0.05) cuts it by at least 5%.
+    // So the combined result must be < (1 - FRUIT_ANGULAR_DAMPING) = 0.95.
+    expect(Math.abs(body.angularVelocity)).toBeLessThan(initialOmega * (1 - FRUIT_ANGULAR_DAMPING));
 
     handle.cleanup();
   });
@@ -946,10 +951,9 @@ describe("UC1 — angular damping and air friction", () => {
     handle.drop(fruit(0), "fruits", W / 2, 50);
     handle.step(1 / 60);
 
-    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+    const body = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic
-    );
-    const body = dynBodies[0];
+    )[0];
     expect(body).toBeDefined();
     expect(body!.frictionAir).toBe(FRUIT_FRICTION_AIR);
 
@@ -961,14 +965,12 @@ describe("UC1 — angular damping and air friction", () => {
     const handle = await buildEngine();
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
 
-    // Drop close to the floor so it settles quickly
     handle.drop(fruit(0), "fruits", W / 2, H - 80);
-
-    // Impart angular velocity to simulate spinning
     handle.step(1 / 60);
-    const dynBodies = () =>
-      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
-    const body = dynBodies()[0];
+
+    const body = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    )[0];
     if (!body) throw new Error("Expected fruit body");
     Matter.Body.setAngularVelocity(body, 2); // spin it hard
 
