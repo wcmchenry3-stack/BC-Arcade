@@ -43,7 +43,8 @@ import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
-import type { AiPersona, Card, HeartsState, TrickCard } from "../game/hearts/types";
+import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
+import { resolvePersona } from "../game/hearts/types";
 
 const HUMAN = 0;
 const MAX_NAME_LENGTH = 32;
@@ -72,7 +73,7 @@ export default function HeartsScreen() {
   const { isOnline, isInitialized } = useNetwork();
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<AiPersona>("schemer");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<AiPreset>("schemer");
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
   const [showMoonShot, setShowMoonShot] = useState(false);
@@ -238,7 +239,7 @@ export default function HeartsScreen() {
             s.currentTrick as TrickCard[],
             s,
             s.currentPlayerIndex,
-            s.aiDifficulty
+            resolvePersona(s.aiDifficulty, s.currentPlayerIndex)
           );
           const completedTrick: readonly TrickCard[] | null = willComplete
             ? [...s.currentTrick, { card, playerIndex: s.currentPlayerIndex }]
@@ -360,7 +361,7 @@ export default function HeartsScreen() {
       const aiCards = selectCardsToPass(
         [...(s.playerHands[i] ?? [])],
         s.passDirection,
-        s.aiDifficulty,
+        resolvePersona(s.aiDifficulty, i),
         i
       );
       for (const c of aiCards) {
@@ -398,7 +399,7 @@ export default function HeartsScreen() {
     }
   }
 
-  function handleStartGame(difficulty: AiPersona) {
+  function handleStartGame(difficulty: AiPreset) {
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);

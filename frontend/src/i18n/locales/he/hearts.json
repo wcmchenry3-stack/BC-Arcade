@@ -66,5 +66,7 @@
   "difficulty.schemer.desc": "יוצר חסרים, מסיט את מלכת הספייד",
   "difficulty.daring": "נועז",
   "difficulty.daring.desc": "מנסה לירות ירח, מכוון אליך עם המלכה",
+  "difficulty.mixed": "שולחן מעורב",
+  "difficulty.mixed.desc": "אחד מכל סוג: זהיר משמאל, מתכנן ממול, נועז מימין",
   "game.startGame": "התחל משחק"
 }

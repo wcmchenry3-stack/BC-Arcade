@@ -2,18 +2,19 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import type { AiPersona } from "../../game/hearts/types";
-import { AI_PERSONAS } from "../../game/hearts/types";
+import type { AiPreset } from "../../game/hearts/types";
+import { AI_PRESETS } from "../../game/hearts/types";
 
 interface Props {
-  value: AiPersona;
-  onChange: (d: AiPersona) => void;
+  value: AiPreset;
+  onChange: (d: AiPreset) => void;
 }
 
-const PERSONA_DEFAULTS: Record<AiPersona, { label: string; desc: string }> = {
+const PRESET_DEFAULTS: Record<AiPreset, { label: string; desc: string }> = {
   cautious: { label: "Cautious", desc: "Plays conservatively, avoids taking points" },
   schemer: { label: "Schemer", desc: "Creates suit voids, deflects the Queen of Spades" },
   daring: { label: "Daring", desc: "Swings for moon shots, targets you with the Queen" },
+  mixed: { label: "Mixed Table", desc: "One of each: Cautious left, Schemer across, Daring right" },
 };
 
 export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
@@ -26,9 +27,9 @@ export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
       accessibilityLabel={t("difficulty.groupLabel", { defaultValue: "Opponent Style" })}
       style={[styles.row, { borderColor: colors.border }]}
     >
-      {AI_PERSONAS.map((d) => {
+      {AI_PRESETS.map((d) => {
         const selected = d === value;
-        const defaults = PERSONA_DEFAULTS[d];
+        const defaults = PRESET_DEFAULTS[d];
         return (
           <Pressable
             key={d}

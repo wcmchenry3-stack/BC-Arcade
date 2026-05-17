@@ -108,6 +108,13 @@ describe("hearts storage", () => {
     expect(loaded?.aiDifficulty).toBe("daring");
   });
 
+  it("loadGame round-trips aiDifficulty: mixed (#1654)", async () => {
+    const state: HeartsState = { ...dealGame(), aiDifficulty: "mixed" };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    const loaded = await loadGame();
+    expect(loaded?.aiDifficulty).toBe("mixed");
+  });
+
   it("loadGame rejects handScores with out-of-range values (#1540)", async () => {
     const bad = { ...dealGame(), handScores: [27, 0, 0, 0] };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));

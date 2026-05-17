@@ -6,7 +6,7 @@
  * on each transition — state is immutable.
  */
 
-import type { AiPersona, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
+import type { AiPersona, AiPreset, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
 import { RANKS, SUITS } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ export function getPassDirection(handNumber: number): PassDirection {
 }
 
 /** Initial game state for a fresh game (hand 1). */
-export function dealGame(difficulty: AiPersona = "schemer"): HeartsState {
+export function dealGame(difficulty: AiPreset = "schemer"): HeartsState {
   const hands = dealHands();
   const passDirection = getPassDirection(1);
   const leaderIndex = passDirection === "none" ? find2ClubsHolder(hands) : 0;

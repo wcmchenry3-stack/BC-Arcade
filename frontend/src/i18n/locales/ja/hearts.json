@@ -66,5 +66,7 @@
   "difficulty.schemer.desc": "スートの欠如を作り、スペードのクイーンをかわす",
   "difficulty.daring": "大胆",
   "difficulty.daring.desc": "月を狙い、あなたをクイーンで標的にする",
+  "difficulty.mixed": "ミックステーブル",
+  "difficulty.mixed.desc": "各1人ずつ：慎重が左、策士が正面、大胆が右",
   "game.startGame": "ゲームスタート"
 }
