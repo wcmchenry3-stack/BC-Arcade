@@ -80,21 +80,28 @@ describe("hearts storage", () => {
     expect(await loadGame()).toBeNull();
   });
 
-  it("loadGame migrates v2 save by defaulting aiDifficulty to medium (#1168)", async () => {
+  it("loadGame migrates v2 save by defaulting aiDifficulty to schemer (#1168, #1653)", async () => {
     const v2Save = { ...dealGame(), _v: 2 } as unknown as Record<string, unknown>;
     delete v2Save["aiDifficulty"];
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(v2Save));
     const loaded = await loadGame();
     expect(loaded).not.toBeNull();
     expect(loaded?._v).toBe(3);
-    expect(loaded?.aiDifficulty).toBe("medium");
+    expect(loaded?.aiDifficulty).toBe("schemer");
   });
 
-  it("loadGame round-trips aiDifficulty: hard", async () => {
-    const state: HeartsState = { ...dealGame(), aiDifficulty: "hard" };
+  it("loadGame migrates old difficulty values to persona names (#1653)", async () => {
+    const oldState = { ...dealGame(), aiDifficulty: "hard" };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(oldState));
+    const loaded = await loadGame();
+    expect(loaded?.aiDifficulty).toBe("daring");
+  });
+
+  it("loadGame round-trips aiDifficulty: daring", async () => {
+    const state: HeartsState = { ...dealGame(), aiDifficulty: "daring" };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
     const loaded = await loadGame();
-    expect(loaded?.aiDifficulty).toBe("hard");
+    expect(loaded?.aiDifficulty).toBe("daring");
   });
 
   it("loadGame rejects handScores with out-of-range values (#1540)", async () => {

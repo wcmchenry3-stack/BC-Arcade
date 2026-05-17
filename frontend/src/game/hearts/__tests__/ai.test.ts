@@ -27,7 +27,7 @@ function c(suit: Suit, rank: Rank): Card {
 function mkState(overrides: Partial<HeartsState> = {}): HeartsState {
   return {
     _v: 3,
-    aiDifficulty: "medium",
+    aiDifficulty: "schemer",
     phase: "playing",
     handNumber: 1,
     passDirection: "left",
@@ -198,10 +198,10 @@ describe("selectCardsToPass", () => {
 });
 
 // ---------------------------------------------------------------------------
-// selectCardsToPass — Medium difficulty, high clubs (A♣/K♣)
+// selectCardsToPass — Schemer difficulty, high clubs (A♣/K♣)
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — Medium difficulty, high clubs", () => {
+describe("selectCardsToPass — Schemer difficulty, high clubs", () => {
   it("passes A♣ when slots remain after higher-priority cards", () => {
     // Q♠ → slot 1, A♥ → slot 2, A♣ → slot 3 (step 3.5).
     // Confirms rank 1 is not caught by the 'clubs below 6' guard (which checks rank > 1).
@@ -498,10 +498,10 @@ describe("selectCardToPlay — ace treated as high card", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Easy AI — selectCardsToPass
+// Cautious AI — selectCardsToPass
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — Easy difficulty", () => {
+describe("selectCardsToPass — Cautious difficulty", () => {
   it("always returns exactly 3 cards", () => {
     const hand = [
       c("spades", 12),
@@ -518,7 +518,7 @@ describe("selectCardsToPass — Easy difficulty", () => {
       c("diamonds", 3),
       c("hearts", 5),
     ];
-    expect(selectCardsToPass(hand, "left", "easy")).toHaveLength(3);
+    expect(selectCardsToPass(hand, "left", "cautious")).toHaveLength(3);
   });
 
   it("never passes 2♣", () => {
@@ -537,7 +537,7 @@ describe("selectCardsToPass — Easy difficulty", () => {
       c("diamonds", 8),
       c("diamonds", 9),
     ];
-    const passed = selectCardsToPass(hand, "left", "easy");
+    const passed = selectCardsToPass(hand, "left", "cautious");
     expect(passed).not.toContainEqual(c("clubs", 2));
   });
 
@@ -557,16 +557,16 @@ describe("selectCardsToPass — Easy difficulty", () => {
       c("clubs", 10),
       c("hearts", 11),
     ];
-    const passed = selectCardsToPass(hand, "right", "easy");
+    const passed = selectCardsToPass(hand, "right", "cautious");
     passed.forEach((p) => expect(hand).toContainEqual(p));
   });
 });
 
 // ---------------------------------------------------------------------------
-// Easy AI — selectCardToPlay
+// Cautious AI — selectCardToPlay
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Easy difficulty", () => {
+describe("selectCardToPlay — Cautious difficulty", () => {
   it("leads the lowest valid card", () => {
     const hand = [c("spades", 1), c("spades", 3), c("diamonds", 5)];
     const state = mkState({
@@ -576,7 +576,7 @@ describe("selectCardToPlay — Easy difficulty", () => {
       heartsBroken: true,
       currentPlayerIndex: 0,
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "easy");
+    const pick = selectCardToPlay(hand, [], state, 0, "cautious");
     // Lowest card (ace-high, so spades 3 is lowest)
     expect(pick).toEqual(c("spades", 3));
   });
@@ -594,8 +594,8 @@ describe("selectCardToPlay — Easy difficulty", () => {
       tricksPlayedInHand: 3,
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
-    // Easy dumps lowest card, not the strategic Q♠
+    const pick = selectCardToPlay(hand, trick, state, 3, "cautious");
+    // Cautious dumps lowest card, not the strategic Q♠
     expect(pick).toEqual(c("diamonds", 3));
   });
 
@@ -611,16 +611,16 @@ describe("selectCardToPlay — Easy difficulty", () => {
       tricksPlayedInHand: 3,
       currentPlayerIndex: 2,
     });
-    const pick = selectCardToPlay(hand, trick, state, 2, "easy");
+    const pick = selectCardToPlay(hand, trick, state, 2, "cautious");
     expect(pick).toEqual(c("spades", 5));
   });
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — moon attempt
+// Daring AI — moon attempt
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
+describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
   it("discards non-hearts when void in led suit and holding 8+ hearts + Q♠ with no points taken", () => {
     // AI player 1 holds 8 hearts + Q♠ + two diamonds (void in clubs); no points taken
     const hearts8 = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
@@ -634,7 +634,7 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Void in clubs → can discard freely. Moon attempt: keep hearts and Q♠.
     // Should discard a diamond (highest of non-hearts/non-Q♠)
     expect(pick.suit).not.toBe("hearts");
@@ -664,9 +664,9 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    const pick = selectCardToPlay(hand, [], state, 1, "daring");
     // Moon attempt: lead highest non-heart (A♦, aceHigh=14) to win the trick.
-    // Normal Hard would lead lowest of longest safe suit (8♦).
+    // Normal Daring would lead lowest of longest safe suit (8♦).
     expect(pick).toEqual(c("diamonds", 1));
   });
 
@@ -689,7 +689,7 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 1, "hard");
+    const pick = selectCardToPlay(hand, [], state, 1, "daring");
     // No non-hearts besides Q♠ — fall back to highest heart (10♥) to force wins.
     expect(pick).toEqual(c("hearts", 10));
   });
@@ -719,18 +719,18 @@ describe("selectCardToPlay — Hard difficulty, moon attempt", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Moon attempt: play lowest card that beats current winner (9♥) → 10♥.
-    // Normal Hard would play highest loser (8♥) to avoid winning points.
+    // Normal Daring would play highest loser (8♥) to avoid winning points.
     expect(pick).toEqual(c("hearts", 10));
   });
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — card counting (leading)
+// Daring AI — card counting (leading)
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Hard difficulty, card counting", () => {
+describe("selectCardToPlay — Daring difficulty, card counting", () => {
   it("avoids leading K♠ when Q♠ is still live", () => {
     const hand = [c("spades", 13), c("spades", 2), c("clubs", 7)];
     const state = mkState({
@@ -741,7 +741,7 @@ describe("selectCardToPlay — Hard difficulty, card counting", () => {
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []], // Q♠ not seen
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     // Should not lead K♠ since Q♠ might be discarded onto it
     expect(pick).not.toEqual(c("spades", 13));
   });
@@ -756,7 +756,7 @@ describe("selectCardToPlay — Hard difficulty, card counting", () => {
       currentPlayerIndex: 0,
       wonCards: [[c("spades", 12)], [], [], []], // Q♠ already taken
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     // Q♠ is gone — K♠ is safe to lead (lowest non-heart in safe pool)
     // clubs 7 is also safe; the algo picks lowest of longest safe suit
     // With Q♠ gone, K♠ is in the safe pool; lowest of spades=[K♠,2♠] is 2♠
@@ -767,13 +767,13 @@ describe("selectCardToPlay — Hard difficulty, card counting", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — score-aware endgame
+// Daring AI — score-aware endgame
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Hard difficulty, score-aware endgame", () => {
+describe("selectCardToPlay — Daring difficulty, score-aware endgame", () => {
   it("dumps Q♠ on score leader when void and score leader is winning the trick", () => {
     // Player 0 has the highest score (70) and is winning the trick.
-    // Hard (player 1) is void in clubs and should dump Q♠ to push player 0 toward 100.
+    // Daring (player 1) is void in clubs and should dump Q♠ to push player 0 toward 100.
     const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 8), playerIndex: 0 },
@@ -787,15 +787,15 @@ describe("selectCardToPlay — Hard difficulty, score-aware endgame", () => {
       currentPlayerIndex: 1,
       cumulativeScores: [70, 20, 10, 15],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     expect(pick).toEqual(c("spades", 12));
   });
 
-  it("holds Q♠ when dumping would push trick winner to 100+ and Hard is not the game leader", () => {
+  it("holds Q♠ when dumping would push trick winner to 100+ and Daring is not the game leader", () => {
     // Player 2 (score 88) is winning the trick; 88 + 13 = 101 ≥ 100 would end the game.
-    // Hard (player 1, score 50) is not the game leader (player 0 has lowest score 30).
+    // Daring (player 1, score 50) is not the game leader (player 0 has lowest score 30).
     // Player 3 is the score leader (92) but is NOT winning the trick — offensive dump doesn't fire.
-    // Hard should hold Q♠ and discard a safe card instead.
+    // Daring should hold Q♠ and discard a safe card instead.
     const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 4), playerIndex: 3 },
@@ -809,13 +809,13 @@ describe("selectCardToPlay — Hard difficulty, score-aware endgame", () => {
       currentPlayerIndex: 1,
       cumulativeScores: [30, 50, 88, 92],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     expect(pick).not.toEqual(c("spades", 12));
   });
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — opportunistic void in passing
+// Daring AI — opportunistic void in passing
 // ---------------------------------------------------------------------------
 
 describe("selectCardsToPass — #1636 void creation (Hard)", () => {
@@ -837,7 +837,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
       c("hearts", 5),
       c("hearts", 6),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("diamonds", 7));
   });
 
@@ -859,7 +859,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
       c("hearts", 3),
       c("hearts", 4),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("diamonds", 4));
     expect(passed).toContainEqual(c("diamonds", 6));
   });
@@ -882,7 +882,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
       c("hearts", 3),
       c("hearts", 4),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("diamonds", 3));
     expect(passed).toContainEqual(c("diamonds", 4));
     expect(passed).toContainEqual(c("diamonds", 5));
@@ -907,7 +907,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
       c("hearts", 6),
       c("hearts", 7),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed
     expect(passed).toContainEqual(c("spades", 13)); // K♠ (spade void)
     expect(passed).toContainEqual(c("diamonds", 5)); // 5♦ (diamond void)
@@ -918,7 +918,7 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
 describe("selectCardsToPass — #1636 void creation (Medium)", () => {
   it("voids a 1-card suit when 1 slot remains after Q♠ and 1 danger heart", () => {
     // Q♠ → slot 1, A♥ → slot 2. 1 slot remains.
-    // ♦7 is the only diamond → Medium voids it (1 ≤ maxSuitSize 2).
+    // ♦7 is the only diamond → Schemer voids it (1 ≤ maxSuitSize 2).
     const hand = [
       c("spades", 12),
       c("hearts", 1),
@@ -934,12 +934,12 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("hearts", 5),
       c("hearts", 6),
     ];
-    const passed = selectCardsToPass(hand, "left", "medium");
+    const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed).toContainEqual(c("diamonds", 7));
   });
 
   it("voids a 2-card suit when 2 slots remain after Q♠ alone", () => {
-    // Q♠ → slot 1. 2 slots remain. ♦4, ♦6 are the only diamonds → Medium voids (2 ≤ maxSuitSize 2).
+    // Q♠ → slot 1. 2 slots remain. ♦4, ♦6 are the only diamonds → Schemer voids (2 ≤ maxSuitSize 2).
     const hand = [
       c("spades", 12),
       c("diamonds", 4),
@@ -955,7 +955,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("hearts", 3),
       c("hearts", 4),
     ];
-    const passed = selectCardsToPass(hand, "left", "medium");
+    const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed).toContainEqual(c("diamonds", 4));
     expect(passed).toContainEqual(c("diamonds", 6));
   });
@@ -978,8 +978,8 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("hearts", 3),
       c("hearts", 4),
     ];
-    const passed = selectCardsToPass(hand, "left", "medium");
-    // Medium DOES void the 3-card diamond suit (shortest eligible)
+    const passed = selectCardsToPass(hand, "left", "schemer");
+    // Schemer DOES void the 3-card diamond suit (shortest eligible)
     expect(passed).toContainEqual(c("diamonds", 3));
     expect(passed).toContainEqual(c("diamonds", 4));
     expect(passed).toContainEqual(c("diamonds", 5));
@@ -987,7 +987,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
 
   it("does NOT target spades for void when Q♠ is kept (cover cards protected)", () => {
     // Direction=left, has A♠+K♠ → Q♠ kept. Spades left: A♠, K♠ (2 cards).
-    // Medium should NOT void spades (keepingQSpade=true) — A♠/K♠ are Q♠ cover.
+    // Schemer should NOT void spades (keepingQSpade=true) — A♠/K♠ are Q♠ cover.
     // Hearts 5♥ is a singleton → hearts void fires instead.
     const hand = [
       c("spades", 12),
@@ -1005,7 +1005,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("diamonds", 7),
     ];
     // direction=left: hasASpades=true → Q♠ protected (kept)
-    const passed = selectCardsToPass(hand, "left", "medium");
+    const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
     expect(passed).not.toContainEqual(c("spades", 1)); // A♠ kept (cover)
     expect(passed).not.toContainEqual(c("spades", 13)); // K♠ kept (cover)
@@ -1031,7 +1031,7 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
       c("hearts", 8),
       c("hearts", 9),
     ];
-    const passed = selectCardsToPass(hand, "left", "medium");
+    const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed).toContainEqual(c("spades", 3));
     expect(passed).toContainEqual(c("diamonds", 5));
     expect(passed).toHaveLength(3);
@@ -1039,12 +1039,12 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — moon-viable passing (#1637)
+// Daring AI — moon-viable passing (#1637)
 // ---------------------------------------------------------------------------
 
 describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
   it("keeps Q♠ and all hearts when dealt 5+ hearts + Q♠", () => {
-    // 5 hearts + Q♠ → moon-viable. Hard passes LOWEST non-hearts (3♠, 5♠, 7♣) to
+    // 5 hearts + Q♠ → moon-viable. Daring passes LOWEST non-hearts (3♠, 5♠, 7♣) to
     // keep Aces and Kings for trick control during the moon attempt (#1647).
     const hand = [
       c("spades", 12), // Q♠ — kept for moon attempt
@@ -1061,7 +1061,7 @@ describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
       c("spades", 3),
       c("spades", 5),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
     expect(passed).not.toContainEqual(c("hearts", 1)); // A♥ kept
     expect(passed).not.toContainEqual(c("hearts", 13)); // K♥ kept
@@ -1074,7 +1074,7 @@ describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
   });
 
   it("uses standard passing when fewer than 5 hearts (no moon-viable)", () => {
-    // 4 hearts → NOT moon-viable. Standard Hard passing: Q♠ always passed.
+    // 4 hearts → NOT moon-viable. Standard Daring passing: Q♠ always passed.
     const hand = [
       c("spades", 12), // Q♠ — passed in standard mode
       c("hearts", 1),
@@ -1090,7 +1090,7 @@ describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
       c("spades", 3),
       c("spades", 5),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed (standard mode)
   });
 
@@ -1112,7 +1112,7 @@ describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
       c("clubs", 4),
       c("clubs", 1), // A♣ — passable
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept
     expect(passed).not.toContainEqual(c("clubs", 2)); // 2♣ never passed
     expect(passed).toContainEqual(c("clubs", 1)); // A♣ passed (safe non-heart)
@@ -1126,10 +1126,10 @@ describe("selectCardsToPass — #1637 moon-viable passing (Hard)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — high clubs in passing (A♣/K♣)
+// Daring AI — high clubs in passing (A♣/K♣)
 // ---------------------------------------------------------------------------
 
-describe("selectCardsToPass — Hard difficulty, high clubs", () => {
+describe("selectCardsToPass — Daring difficulty, high clubs", () => {
   it("passes A♣ (step 4.5) when no void creation opportunity exists", () => {
     // Q♠ → slot 1. Void creation (step 2) can't fire — 3 diamonds need 3 slots but only 2
     // remain. No high hearts (all below J♥). A♣ lands in step 4.5.
@@ -1148,7 +1148,7 @@ describe("selectCardsToPass — Hard difficulty, high clubs", () => {
       c("hearts", 4),
       c("hearts", 5),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("clubs", 1));
   });
 
@@ -1169,7 +1169,7 @@ describe("selectCardsToPass — Hard difficulty, high clubs", () => {
       c("hearts", 3),
       c("hearts", 4),
     ];
-    const passed = selectCardsToPass(hand, "left", "hard");
+    const passed = selectCardsToPass(hand, "left", "daring");
     expect(passed).toContainEqual(c("clubs", 13));
   });
 });
@@ -1285,7 +1285,7 @@ describe("chooseFollow — highest losing card (#1500)", () => {
       tricksPlayedInHand: 5,
       currentPlayerIndex: 1,
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 13));
   });
 
@@ -1301,7 +1301,7 @@ describe("chooseFollow — highest losing card (#1500)", () => {
       tricksPlayedInHand: 5,
       currentPlayerIndex: 1,
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 12)); // Q♠ dumped
   });
 });
@@ -1325,7 +1325,7 @@ describe("chooseFollow — Q♠ priority over K♠ when both lose (#1510)", () =
       currentPlayerIndex: 1,
       heartsBroken: true,
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 12)); // Q♠ not K♠
   });
 
@@ -1343,7 +1343,7 @@ describe("chooseFollow — Q♠ priority over K♠ when both lose (#1510)", () =
       currentPlayerIndex: 1,
     });
     // Player 1 follows; players 2 and 3 still to play → not last
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 12)); // Q♠ not K♠
   });
 });
@@ -1365,7 +1365,7 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
       currentPlayerIndex: 1,
     });
     // Player 1 follows; players 2 and 3 still to play → not last
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).not.toEqual(c("spades", 12)); // Q♠ must not be played
     expect(pick.suit).toBe("spades"); // must follow suit
     expect([1, 13]).toContain(pick.rank); // A♠ or K♠ (non-point winners)
@@ -1387,7 +1387,7 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
       heartsBroken: true,
     });
     // K♠ (13) and Q♠ (12) both beat 10♠; trick has points. Should play K♠ not Q♠.
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 13)); // K♠, not Q♠
   });
 
@@ -1407,7 +1407,7 @@ describe("chooseFollow — protected Q♠ never self-taken when non-point winner
       heartsBroken: true,
     });
     // trick.length === 3 → isLastToPlay = true; pts = 1 (7♥). K♠ and Q♠ both beat 6♠.
-    const pick = selectCardToPlay(hand, trick, state, 1, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 1, "schemer");
     expect(pick).toEqual(c("spades", 13)); // K♠, not Q♠
   });
 });
@@ -1425,7 +1425,7 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
       heartsBroken: false,
       wonCards: [[], [], [], []], // Q♠ not in wonCards
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    const pick = selectCardToPlay(hand, [], state, 0, "schemer");
     expect(pick).not.toEqual(c("spades", 13));
   });
 
@@ -1438,7 +1438,7 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
       heartsBroken: false,
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    const pick = selectCardToPlay(hand, [], state, 0, "schemer");
     expect(pick).not.toEqual(c("spades", 1));
   });
 
@@ -1452,7 +1452,7 @@ describe("chooseLead — medium AI avoids risky spade leads (#1501)", () => {
       heartsBroken: true,
       wonCards: [[c("spades", 12)], [], [], []], // Q♠ has been played
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    const pick = selectCardToPlay(hand, [], state, 0, "schemer");
     expect(pick).toEqual(c("spades", 13));
   });
 });
@@ -1474,7 +1474,7 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
       currentTrick: trick,
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 3, "schemer");
     expect(pick).toEqual(c("spades", 12));
   });
 
@@ -1491,13 +1491,13 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
       currentTrick: trick,
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "medium");
+    const pick = selectCardToPlay(hand, trick, state, 3, "schemer");
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick).toEqual(c("spades", 7));
   });
 
   it("hard AI in moon-attempt mode does not dump Q♠ even when covering card present", () => {
-    // Hard AI holds 8 hearts + Q♠ with 0 pts taken → isMoonAttempt = true.
+    // Daring AI holds 8 hearts + Q♠ with 0 pts taken → isMoonAttempt = true.
     // A♠ is covering; Q♠ should be held to complete the moon shot.
     const hearts8 = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
     const hand = [...hearts8, c("spades", 12), c("spades", 7)];
@@ -1513,13 +1513,13 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 3, "daring");
     expect(pick).not.toEqual(c("spades", 12));
   });
 });
 
 // ---------------------------------------------------------------------------
-// #1647 — Hard AI: chooseFollow moon-attempt 0-pt trick behaviour
+// #1647 — Daring AI: chooseFollow moon-attempt 0-pt trick behaviour
 // ---------------------------------------------------------------------------
 
 describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
@@ -1550,7 +1550,7 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 3, "daring");
     // Should win with lowest card above rank 8 → 9♣, not 10♣ or J♣
     expect(pick).toEqual(c("clubs", 9));
   });
@@ -1578,7 +1578,7 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // K♠ and A♠ both beat 5♠; Q♠ excluded (not last); lowest non-Q♠ winner = K♠
     expect(pick).not.toEqual(c("spades", 12)); // Q♠ protected
     expect(pick).toEqual(c("spades", 13)); // K♠ — lowest non-Q♠ winner
@@ -1586,13 +1586,13 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #1592 — Easy AI: basic moon blocking
+// #1592 — Cautious AI: basic moon blocking
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
+describe("selectCardToPlay — Cautious AI moon blocking (#1592)", () => {
   it("dumps highest point card when an opponent is threatening a moon", () => {
     // Player 0 has taken all 5 points — potential moon detected.
-    // Player 3 (Easy) is void in spades; should dump hearts 9 to disrupt.
+    // Player 3 (Cautious) is void in spades; should dump hearts 9 to disrupt.
     const allHearts5 = Array.from({ length: 5 }, (_, i) => c("hearts", (i + 1) as Rank));
     const hand = [c("hearts", 9), c("diamonds", 3), c("diamonds", 4)];
     const trick: TrickCard[] = [
@@ -1608,7 +1608,7 @@ describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
       wonCards: [allHearts5, [], [], []],
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
+    const pick = selectCardToPlay(hand, trick, state, 3, "cautious");
     expect(pick).toEqual(c("hearts", 9));
   });
 
@@ -1628,12 +1628,12 @@ describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
       wonCards: [allHearts5, [], [], []],
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
+    const pick = selectCardToPlay(hand, trick, state, 3, "cautious");
     expect(pick).toEqual(c("hearts", 1));
   });
 
   it("dumps a point card when LEADING and an opponent is threatening a moon", () => {
-    // Easy AI (player 1) is leading its turn. Player 0 has all 5 points — moon threat.
+    // Cautious AI (player 1) is leading its turn. Player 0 has all 5 points — moon threat.
     // Hearts are broken, so hearts 9 is a valid lead and the moon-block should fire.
     const allHearts5 = Array.from({ length: 5 }, (_, i) => c("hearts", (i + 1) as Rank));
     const hand = [c("hearts", 9), c("diamonds", 3), c("diamonds", 4)];
@@ -1646,7 +1646,7 @@ describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
       wonCards: [allHearts5, [], [], []],
       currentPlayerIndex: 1,
     });
-    const pick = selectCardToPlay(hand, [], state, 1, "easy");
+    const pick = selectCardToPlay(hand, [], state, 1, "cautious");
     expect(pick).toEqual(c("hearts", 9));
   });
 
@@ -1665,17 +1665,17 @@ describe("selectCardToPlay — Easy AI moon blocking (#1592)", () => {
       wonCards: [[], [], [], []],
       currentPlayerIndex: 3,
     });
-    const pick = selectCardToPlay(hand, trick, state, 3, "easy");
-    // No moon threat → Easy dumps lowest card
+    const pick = selectCardToPlay(hand, trick, state, 3, "cautious");
+    // No moon threat → Cautious dumps lowest card
     expect(pick).toEqual(c("diamonds", 3));
   });
 });
 
 // ---------------------------------------------------------------------------
-// #1593 — Hard AI: moonshot extended tracking + tricks-remaining guard
+// #1593 — Daring AI: moonshot extended tracking + tricks-remaining guard
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
+describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
   it("stays in moon-attempt mode when AI has collected all points so far (5+ tricks left)", () => {
     // AI (player 1) has already won 2 hearts; still holds 8 hearts + Q♠ + 1 club.
     // aiHasAllPoints: handScores[1]=2 === totalPointsTaken=2. hand.length=10 >= 5.
@@ -1691,7 +1691,7 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
       handScores: [0, 2, 0, 0],
       wonCards: [[], heartsAlreadyWon, [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Moon attempt active: discard highest non-hearts/non-Q♠ = clubs 7
     expect(pick).toEqual(c("clubs", 7));
   });
@@ -1711,7 +1711,7 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
       handScores: [0, 6, 0, 0],
       wonCards: [[], heartsAlreadyWon, [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Not in moon mode → chooseDiscard fires → dumps Q♠ first
     expect(pick).toEqual(c("spades", 12));
   });
@@ -1739,7 +1739,7 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
       handScores: [0, 18, 0, 0],
       wonCards: [[], alreadyWon, [], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Moon attempt active: void in diamonds → discard highest non-hearts/non-Q♠ = clubs 8
     expect(pick).toEqual(c("clubs", 8));
   });
@@ -1758,14 +1758,14 @@ describe("selectCardToPlay — Hard AI moonshot guard (#1593)", () => {
       handScores: [0, 2, 2, 0], // player 2 also has points — AI doesn't have all points
       wonCards: [[], heartsAlreadyWon, [c("hearts", 12), c("hearts", 13)], []],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Not in moon mode (split points) → void in diamonds → chooseDiscard → dumps Q♠
     expect(pick).toEqual(c("spades", 12));
   });
 });
 
 // ---------------------------------------------------------------------------
-// #1594 — Hard AI: chooseLeadHard never leads Q♠ as fallback
+// #1594 — Daring AI: chooseLeadHard never leads Q♠ as fallback
 // ---------------------------------------------------------------------------
 
 describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit lead when holding Q♠ (#1646)", () => {
@@ -1781,7 +1781,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []], // Q♠ not yet played
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick).toEqual(c("hearts", 2)); // only non-spade option when holding Q♠
   });
@@ -1796,7 +1796,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     expect(pick).toEqual(c("spades", 12));
   });
 
@@ -1812,7 +1812,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     expect(pick).not.toEqual(c("spades", 12));
     expect(pick).toEqual(c("hearts", 3)); // lowest of longest group (hearts) after Q♠ stripped
   });
@@ -1836,7 +1836,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "hard");
+    const pick = selectCardToPlay(hand, [], state, 0, "daring");
     // Shortest non-spade suit is diamonds (2 cards) → lowest = 2♦
     expect(pick).toEqual(c("diamonds", 2));
   });
@@ -1859,7 +1859,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []],
     });
-    const pick = selectCardToPlay(hand, [], state, 0, "medium");
+    const pick = selectCardToPlay(hand, [], state, 0, "schemer");
     // Shortest non-spade suit is diamonds (2 cards) → lowest = 2♦
     expect(pick).toEqual(c("diamonds", 2));
   });
@@ -1875,11 +1875,11 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
       currentPlayerIndex: 0,
       wonCards: [[], [], [], []],
     });
-    // Both Hard and Medium should lead lowest of longest non-heart suit = 7♣
-    const pickHard = selectCardToPlay(hand, [], state, 0, "hard");
-    const pickMedium = selectCardToPlay(hand, [], state, 0, "medium");
-    expect(pickHard).toEqual(c("clubs", 7));
-    expect(pickMedium).toEqual(c("clubs", 7));
+    // Both Daring and Schemer should lead lowest of longest non-heart suit = 7♣
+    const pickDaring = selectCardToPlay(hand, [], state, 0, "daring");
+    const pickSchemer = selectCardToPlay(hand, [], state, 0, "schemer");
+    expect(pickDaring).toEqual(c("clubs", 7));
+    expect(pickSchemer).toEqual(c("clubs", 7));
   });
 });
 
@@ -1889,7 +1889,7 @@ describe("chooseLeadHard — Q♠ last-resort fallback (#1594) + shortest-suit l
 
 describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
   it("passes Q♠ going right even when protected by A♠+K♠", () => {
-    // Medium normally keeps Q♠ when holding both A♠ and K♠.
+    // Schemer normally keeps Q♠ when holding both A♠ and K♠.
     // Going right relaxes protection — Q♠ should be passed.
     const hand = [
       c("spades", 12),
@@ -1906,7 +1906,7 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
       c("diamonds", 7),
       c("hearts", 2),
     ];
-    const passed = selectCardsToPass(hand, "right", "medium");
+    const passed = selectCardsToPass(hand, "right", "schemer");
     expect(passed).toContainEqual(c("spades", 12));
   });
 
@@ -1928,7 +1928,7 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
       c("diamonds", 8),
       c("hearts", 2),
     ];
-    const passed = selectCardsToPass(hand, "left", "medium");
+    const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed).not.toContainEqual(c("spades", 12));
   });
 
@@ -1951,8 +1951,8 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
       c("diamonds", 8),
       c("hearts", 2),
     ];
-    const passedLeft = selectCardsToPass(hand, "left", "medium");
-    const passedRight = selectCardsToPass(hand, "right", "medium");
+    const passedLeft = selectCardsToPass(hand, "left", "schemer");
+    const passedRight = selectCardsToPass(hand, "right", "schemer");
     expect(passedLeft).not.toContainEqual(c("spades", 12));
     expect(passedRight).toContainEqual(c("spades", 12));
   });
@@ -1960,7 +1960,7 @@ describe("selectCardsToPass — #1595 direction awareness (Medium)", () => {
 
 describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
   it("passes Q♠ regardless of direction (left and right both always pass Q♠)", () => {
-    // Hard is more aggressive than Medium — direction does not protect Q♠.
+    // Daring is more aggressive than Medium — direction does not protect Q♠.
     const hand = [
       c("spades", 12),
       c("spades", 1),
@@ -1976,8 +1976,8 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
       c("diamonds", 7),
       c("hearts", 2),
     ];
-    const passedLeft = selectCardsToPass(hand, "left", "hard");
-    const passedRight = selectCardsToPass(hand, "right", "hard");
+    const passedLeft = selectCardsToPass(hand, "left", "daring");
+    const passedRight = selectCardsToPass(hand, "right", "daring");
     expect(passedLeft).toContainEqual(c("spades", 12));
     expect(passedRight).toContainEqual(c("spades", 12));
   });
@@ -2004,8 +2004,8 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
       c("clubs", 10),
       c("clubs", 11), // J♣
     ];
-    const passedRight = selectCardsToPass(hand, "right", "hard");
-    const passedLeft = selectCardsToPass(hand, "left", "hard");
+    const passedRight = selectCardsToPass(hand, "right", "daring");
+    const passedLeft = selectCardsToPass(hand, "left", "daring");
     expect(passedRight).toContainEqual(c("hearts", 10));
     expect(passedLeft).not.toContainEqual(c("hearts", 10));
     expect(passedLeft).toContainEqual(c("hearts", 1)); // A♥ still passes going left
@@ -2030,7 +2030,7 @@ describe("selectCardsToPass — #1595 across direction (Medium)", () => {
       c("diamonds", 7),
       c("hearts", 2),
     ];
-    const passed = selectCardsToPass(hand, "across", "medium");
+    const passed = selectCardsToPass(hand, "across", "schemer");
     expect(passed).toContainEqual(c("spades", 12));
     expect(passed).toHaveLength(3);
   });
@@ -2053,19 +2053,19 @@ describe("selectCardsToPass — #1595 across direction (Medium)", () => {
       c("diamonds", 7),
       c("hearts", 2),
     ];
-    const passed = selectCardsToPass(hand, "none", "medium");
+    const passed = selectCardsToPass(hand, "none", "schemer");
     expect(passed).not.toContainEqual(c("spades", 12));
     expect(passed).toHaveLength(3);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Hard AI — adversarial targeting (#1638)
+// Daring AI — adversarial targeting (#1638)
 // ---------------------------------------------------------------------------
 
-describe("selectCardToPlay — Hard difficulty, adversarial void discard", () => {
-  it("dumps Q♠ on seat 0 when seat 0 is winning the trick and Hard is void", () => {
-    // Player 1 (Hard) is void in clubs and holds Q♠ + hearts.
+describe("selectCardToPlay — Daring difficulty, adversarial void discard", () => {
+  it("dumps Q♠ on seat 0 when seat 0 is winning the trick and Daring is void", () => {
+    // Player 1 (Daring) is void in clubs and holds Q♠ + hearts.
     // Seat 0 is currently winning the trick with K♣.
     const hand = [c("spades", 12), c("hearts", 5), c("hearts", 9), c("diamonds", 7)];
     const trick: TrickCard[] = [
@@ -2082,14 +2082,14 @@ describe("selectCardToPlay — Hard difficulty, adversarial void discard", () =>
       wonCards: [[], [], [], []],
       cumulativeScores: [10, 10, 10, 10], // below endgame threshold
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Seat 0 is winning — adversarial: dump Q♠ on human.
     expect(pick).toEqual(c("spades", 12));
   });
 
   it("saves Q♠ when an AI opponent (not seat 0) is winning the trick", () => {
-    // Player 1 (Hard) is void in clubs. Seat 2 is winning with K♣ (not seat 0).
-    // Hard holds Q♠, hearts, and a diamond — should discard the non-point card.
+    // Player 1 (Daring) is void in clubs. Seat 2 is winning with K♣ (not seat 0).
+    // Daring holds Q♠, hearts, and a diamond — should discard the non-point card.
     const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 3), playerIndex: 0 },
@@ -2105,7 +2105,7 @@ describe("selectCardToPlay — Hard difficulty, adversarial void discard", () =>
       wonCards: [[], [], [], []],
       cumulativeScores: [10, 10, 10, 10],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Another AI is winning — save Q♠ for seat 0; dump non-point card (7♦).
     expect(pick).toEqual(c("diamonds", 7));
     expect(pick).not.toEqual(c("spades", 12));
@@ -2132,7 +2132,7 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
       c("diamonds", 6),
     ];
     // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
-    const passed = selectCardsToPass(hand, "left", "hard", 3);
+    const passed = selectCardsToPass(hand, "left", "daring", 3);
     expect(passed).toHaveLength(3);
     expect(passed).toContainEqual(c("spades", 12));
   });
@@ -2155,7 +2155,7 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
       c("diamonds", 6),
     ];
     // playerIndex=1, direction="left" → (1+1)%4=2 → not targeting seat 0
-    const passed = selectCardsToPass(hand, "left", "hard", 1);
+    const passed = selectCardsToPass(hand, "left", "daring", 1);
     expect(passed).toHaveLength(3);
     expect(passed).not.toContainEqual(c("spades", 12));
   });
@@ -2177,7 +2177,7 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
       c("clubs", 7),
       c("diamonds", 6),
     ];
-    const passed = selectCardsToPass(hand, "across", "hard", 2);
+    const passed = selectCardsToPass(hand, "across", "daring", 2);
     expect(passed).toHaveLength(3);
     expect(passed).toContainEqual(c("spades", 12));
   });
@@ -2202,14 +2202,14 @@ describe("selectCardsToPass — #1638 adversarial targeting (Hard)", () => {
       c("clubs", 6),
     ];
     // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
-    const passed = selectCardsToPass(hand, "left", "hard", 3);
+    const passed = selectCardsToPass(hand, "left", "daring", 3);
     expect(passed).toHaveLength(3);
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept for moon attempt
   });
 });
 
-describe("selectCardToPlay — Hard difficulty, adversarial void discard (edge cases)", () => {
-  it("falls through to normal discard when seat 0 is winning but Hard holds no Q♠ or hearts", () => {
+describe("selectCardToPlay — Daring difficulty, adversarial void discard (edge cases)", () => {
+  it("falls through to normal discard when seat 0 is winning but Daring holds no Q♠ or hearts", () => {
     // Player 1 holds only non-point cards — nothing to target seat 0 with.
     // Should fall through and discard normally (highest non-point card).
     const hand = [c("diamonds", 10), c("clubs", 9), c("diamonds", 6)];
@@ -2227,16 +2227,16 @@ describe("selectCardToPlay — Hard difficulty, adversarial void discard (edge c
       wonCards: [[], [], [], []],
       cumulativeScores: [10, 10, 10, 10],
     });
-    const pick = selectCardToPlay(hand, trick, state, 1, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // No Q♠ or hearts to dump — adversarial block falls through; normal discard fires.
     expect(pick.suit).not.toBe("hearts");
     expect(pick).not.toEqual(c("spades", 12));
   });
 
-  it("does not apply adversarial targeting when Hard is seat 0 (never happens in real game)", () => {
-    // Regression: Hard at seat 0 must NOT save Q♠ waiting for a 'seat 0 win' that can never
+  it("does not apply adversarial targeting when Daring is seat 0 (never happens in real game)", () => {
+    // Regression: Daring at seat 0 must NOT save Q♠ waiting for a 'seat 0 win' that can never
     // fire from its own void plays — it would hold Q♠ indefinitely and hurt its own score.
-    // Hard at seat 0 should dump Q♠ normally (chooseDiscard) regardless of who is winning.
+    // Daring at seat 0 should dump Q♠ normally (chooseDiscard) regardless of who is winning.
     const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 3), playerIndex: 1 },
@@ -2252,7 +2252,7 @@ describe("selectCardToPlay — Hard difficulty, adversarial void discard (edge c
       wonCards: [[], [], [], []],
       cumulativeScores: [10, 10, 10, 10],
     });
-    const pick = selectCardToPlay(hand, trick, state, 0, "hard");
+    const pick = selectCardToPlay(hand, trick, state, 0, "daring");
     // Adversarial targeting inactive for playerIndex=0; chooseDiscard dumps Q♠ normally.
     expect(pick).toEqual(c("spades", 12));
   });

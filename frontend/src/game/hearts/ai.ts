@@ -2,12 +2,12 @@
  * Hearts AI (#606, #1168).
  *
  * Pure TypeScript rule-based strategy for the 3 computer opponents.
- * Supports Easy / Medium / Hard difficulty via the `difficulty` parameter.
+ * Supports Cautious / Schemer / Daring personas via the `difficulty` parameter.
  * No randomness beyond deterministic tie-breaking. No React/AsyncStorage.
  */
 
 import { getValidPlays } from "./engine";
-import type { AiDifficulty, Card, HeartsState, PassDirection, TrickCard } from "./types";
+import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -393,18 +393,18 @@ function selectCardsToPassHard(
 
 /**
  * Select exactly 3 cards to pass.
- * `difficulty` defaults to "medium" (current behaviour) so existing callers are unchanged.
+ * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  * `playerIndex` defaults to 0 (human seat) — seat 0 never passes so the default never
- * triggers adversarial targeting; pass the actual AI seat index (1–3) for Hard targeting.
+ * triggers adversarial targeting; pass the actual AI seat index (1–3) for Daring targeting.
  */
 export function selectCardsToPass(
   hand: Card[],
   direction: PassDirection,
-  difficulty: AiDifficulty = "medium",
+  difficulty: AiPersona = "schemer",
   playerIndex = 0
 ): Card[] {
-  if (difficulty === "easy") return selectCardsToPassEasy(hand);
-  if (difficulty === "hard") return selectCardsToPassHard(hand, direction, playerIndex);
+  if (difficulty === "cautious") return selectCardsToPassEasy(hand);
+  if (difficulty === "daring") return selectCardsToPassHard(hand, direction, playerIndex);
   return selectCardsToPassMedium(hand, direction);
 }
 
@@ -751,17 +751,17 @@ function selectCardToPlayHard(
 
 /**
  * Choose a card to play.
- * `difficulty` defaults to "medium" (current behaviour) so existing callers are unchanged.
+ * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  */
 export function selectCardToPlay(
   hand: Card[],
   trick: TrickCard[],
   state: HeartsState,
   playerIndex: number,
-  difficulty: AiDifficulty = "medium"
+  difficulty: AiPersona = "schemer"
 ): Card {
-  if (difficulty === "easy") return selectCardToPlayEasy(hand, trick, state, playerIndex);
-  if (difficulty === "hard") return selectCardToPlayHard(hand, trick, state, playerIndex);
+  if (difficulty === "cautious") return selectCardToPlayEasy(hand, trick, state, playerIndex);
+  if (difficulty === "daring") return selectCardToPlayHard(hand, trick, state, playerIndex);
   return selectCardToPlayMedium(hand, trick, state, playerIndex);
 }
 

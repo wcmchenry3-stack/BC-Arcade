@@ -43,7 +43,7 @@ import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
-import type { AiDifficulty, Card, HeartsState, TrickCard } from "../game/hearts/types";
+import type { AiPersona, Card, HeartsState, TrickCard } from "../game/hearts/types";
 
 const HUMAN = 0;
 const MAX_NAME_LENGTH = 32;
@@ -72,7 +72,7 @@ export default function HeartsScreen() {
   const { isOnline, isInitialized } = useNetwork();
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<AiDifficulty>("medium");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<AiPersona>("schemer");
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
   const [showMoonShot, setShowMoonShot] = useState(false);
@@ -398,7 +398,7 @@ export default function HeartsScreen() {
     }
   }
 
-  function handleStartGame(difficulty: AiDifficulty) {
+  function handleStartGame(difficulty: AiPersona) {
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
@@ -463,7 +463,7 @@ export default function HeartsScreen() {
       >
         <View style={styles.preGameContainer}>
           <Text style={[styles.preGameTitle, { color: colors.text }]}>
-            {t("difficulty.groupLabel", { defaultValue: "AI Difficulty" })}
+            {t("difficulty.groupLabel", { defaultValue: "Opponent Style" })}
           </Text>
           <HeartsAiDifficultySelector value={selectedDifficulty} onChange={setSelectedDifficulty} />
           <Pressable
