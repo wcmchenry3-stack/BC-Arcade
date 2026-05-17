@@ -887,6 +887,32 @@ describe("selectCardsToPass — #1636 void creation (Hard)", () => {
     expect(passed).toContainEqual(c("diamonds", 4));
     expect(passed).toContainEqual(c("diamonds", 5));
   });
+
+  it("double-void — Q♠ + two singletons uses all 3 pass slots (#1645)", () => {
+    // Q♠ (slot 1); K♠ is a singleton after Q♠ excluded from spades (slot 2);
+    // 5♦ singleton fires in the second loop iteration (slot 3).
+    // 4 hearts → moon-viable mode does NOT fire (requires 5+).
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 13), // K♠ — singleton after Q♠ passes
+      c("diamonds", 5), // 5♦ — singleton
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("clubs", 11),
+      c("hearts", 4),
+      c("hearts", 5),
+      c("hearts", 6),
+      c("hearts", 7),
+    ];
+    const passed = selectCardsToPass(hand, "left", "hard");
+    expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed
+    expect(passed).toContainEqual(c("spades", 13)); // K♠ (spade void)
+    expect(passed).toContainEqual(c("diamonds", 5)); // 5♦ (diamond void)
+    expect(passed).toHaveLength(3);
+  });
 });
 
 describe("selectCardsToPass — #1636 void creation (Medium)", () => {
@@ -985,6 +1011,30 @@ describe("selectCardsToPass — #1636 void creation (Medium)", () => {
     expect(passed).not.toContainEqual(c("spades", 13)); // K♠ kept (cover)
     // Void fires on 5♥ (singleton heart) instead — positive assertion that the guard redirects correctly
     expect(passed).toContainEqual(c("hearts", 5));
+  });
+
+  it("double-void — voids two singletons in one pass (#1645)", () => {
+    // No Q♠, no A♥ → all 3 slots available for void.
+    // Spades singleton (3♠) voids first; diamonds singleton (5♦) voids second iteration.
+    const hand = [
+      c("spades", 3), // singleton
+      c("diamonds", 5), // singleton
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("hearts", 4),
+      c("hearts", 5),
+      c("hearts", 6),
+      c("hearts", 7),
+      c("hearts", 8),
+      c("hearts", 9),
+    ];
+    const passed = selectCardsToPass(hand, "left", "medium");
+    expect(passed).toContainEqual(c("spades", 3));
+    expect(passed).toContainEqual(c("diamonds", 5));
+    expect(passed).toHaveLength(3);
   });
 });
 
@@ -1824,6 +1874,7 @@ describe("selectCardsToPass — #1595 direction awareness (Hard)", () => {
     const passedLeft = selectCardsToPass(hand, "left", "hard");
     expect(passedRight).toContainEqual(c("hearts", 10));
     expect(passedLeft).not.toContainEqual(c("hearts", 10));
+    expect(passedLeft).toContainEqual(c("hearts", 1)); // A♥ still passes going left
   });
 });
 

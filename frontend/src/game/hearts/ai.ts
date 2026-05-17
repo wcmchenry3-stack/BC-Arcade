@@ -103,7 +103,8 @@ function passSafeFilter(selected: Card[]): (c: Card) => boolean {
  * Uses a looser filter than passSafeFilter: allows clubs <6 so low clubs can complete a void
  * (they're normally deprioritised as filler but are fine to pass for void purposes).
  *
- * @param maxSuitSize - Medium passes 2 (doubletons + singletons); Hard passes up to `remaining`.
+ * @param maxSuitSize - Both tiers pass `3` (Medium) or `3 - selected.length` (Hard); the binding
+ *   constraint is always `remaining = 3 - selected.length`, so the effective limit is `remaining`.
  */
 function voidOneSuit(
   hand: Card[],
@@ -347,7 +348,6 @@ function selectCardsToPassHard(
   }
 
   const safe = passSafeFilter(selected);
-  const notSelected = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
 
   // 2. Void creation — immediately after Q♠; loop until no more voids fire (#1645).
   // Handles: Q♠ + two singletons (uses all 3 slots), no-Q♠ + doubleton + singleton, etc.
@@ -365,7 +365,7 @@ function selectCardsToPassHard(
   const dangerHearts = hand
     .filter(
       (c) =>
-        c.suit === "hearts" && (c.rank === 1 || c.rank >= heartDangerThreshold) && safe(c) && notSelected(c)
+        c.suit === "hearts" && (c.rank === 1 || c.rank >= heartDangerThreshold) && safe(c)
     )
     .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
   for (const c of dangerHearts) {
@@ -377,7 +377,7 @@ function selectCardsToPassHard(
   if (selected.length < 3 && !hasQSpades) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
-      const card = hand.find((c) => c.suit === "spades" && c.rank === rank && safe(c) && notSelected(c));
+      const card = hand.find((c) => c.suit === "spades" && c.rank === rank && safe(c));
       if (card) selected.push(card);
     }
   }
@@ -386,9 +386,7 @@ function selectCardsToPassHard(
   if (selected.length < 3) {
     for (const rank of [1, 13] as const) {
       if (selected.length >= 3) break;
-      const card = hand.find(
-        (c) => c.suit === "clubs" && c.rank === rank && safe(c) && notSelected(c)
-      );
+      const card = hand.find((c) => c.suit === "clubs" && c.rank === rank && safe(c));
       if (card) selected.push(card);
     }
   }
@@ -396,7 +394,7 @@ function selectCardsToPassHard(
   // 5. Fill remaining slots with highest safe cards.
   if (selected.length < 3) {
     const candidates = hand
-      .filter((c) => safe(c) && notSelected(c))
+      .filter(safe)
       .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
