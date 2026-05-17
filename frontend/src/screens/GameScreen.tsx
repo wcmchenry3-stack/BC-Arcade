@@ -1,12 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Modal,
-  ScrollView,
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-} from "react-native";
+import { Modal, ScrollView, View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";

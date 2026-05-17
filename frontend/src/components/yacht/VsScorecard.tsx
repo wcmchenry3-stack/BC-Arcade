@@ -1,12 +1,5 @@
 import React from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
 import type { DimensionValue } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
@@ -81,7 +74,10 @@ export default function VsScorecard({
     return (
       <View
         key={key}
-        style={[styles.vsRow, !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+        style={[
+          styles.vsRow,
+          !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border },
+        ]}
       >
         <View style={styles.vsRowLeft}>
           <View style={[styles.sectionDot, { backgroundColor: dotColor }]} />
@@ -99,7 +95,12 @@ export default function VsScorecard({
             playerFilled
               ? { backgroundColor: colors.accent + "1a" }
               : isHot
-                ? { backgroundColor: colors.accent + "33", borderWidth: 1, borderStyle: "dashed", borderColor: colors.accent }
+                ? {
+                    backgroundColor: colors.accent + "33",
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: colors.accent,
+                  }
                 : { backgroundColor: colors.surfaceAlt },
           ]}
           accessibilityRole={isHot ? "button" : "text"}
@@ -130,10 +131,14 @@ export default function VsScorecard({
         <View
           style={[
             styles.vsCell,
-            cpuFilled ? { backgroundColor: colors.secondary + "1a" } : { backgroundColor: colors.surfaceAlt },
+            cpuFilled
+              ? { backgroundColor: colors.secondary + "1a" }
+              : { backgroundColor: colors.surfaceAlt },
           ]}
         >
-          <Text style={[styles.vsCellText, { color: cpuFilled ? colors.secondary : colors.textMuted }]}>
+          <Text
+            style={[styles.vsCellText, { color: cpuFilled ? colors.secondary : colors.textMuted }]}
+          >
             {cpuFilled ? String(cpuScore) : "—"}
           </Text>
         </View>
@@ -168,7 +173,10 @@ export default function VsScorecard({
               <View
                 style={[
                   styles.vsBarFill,
-                  { width: `${playerPct * 100}%` as DimensionValue, backgroundColor: playerBarColor },
+                  {
+                    width: `${playerPct * 100}%` as DimensionValue,
+                    backgroundColor: playerBarColor,
+                  },
                 ]}
               />
               {/* CPU bar — bottom 2 px */}
@@ -208,12 +216,24 @@ export default function VsScorecard({
           </Text>
         </View>
         <View style={[styles.vsCell, { backgroundColor: "transparent" }]}>
-          <Text style={{ color: playerBonusUnlocked ? colors.bonus : colors.textMuted, fontSize: 15, fontWeight: "700" }}>
+          <Text
+            style={{
+              color: playerBonusUnlocked ? colors.bonus : colors.textMuted,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
             {playerBonusUnlocked ? `+${playerUpperBonus}` : "—"}
           </Text>
         </View>
         <View style={[styles.vsCell, { backgroundColor: "transparent" }]}>
-          <Text style={{ color: cpuBonusUnlocked ? colors.bonus : colors.textMuted, fontSize: 15, fontWeight: "700" }}>
+          <Text
+            style={{
+              color: cpuBonusUnlocked ? colors.bonus : colors.textMuted,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
             {cpuBonusUnlocked ? `+${cpuUpperBonus}` : "—"}
           </Text>
         </View>
@@ -259,9 +279,7 @@ export default function VsScorecard({
           { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
         ]}
       >
-        <Text style={[styles.vsTotalsLbl, { color: colors.textMuted }]}>
-          {t("section.total")}
-        </Text>
+        <Text style={[styles.vsTotalsLbl, { color: colors.textMuted }]}>{t("section.total")}</Text>
         <Text style={[styles.vsTotalsYou, { color: playerLeading ? colors.bonus : colors.text }]}>
           {playerTotalScore}
         </Text>
@@ -285,8 +303,20 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   th: { fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
-  vsHeadYou: { width: 54, textAlign: "center", fontSize: 10, fontWeight: "800", letterSpacing: 1.2 },
-  vsHeadCpu: { width: 54, textAlign: "center", fontSize: 10, fontWeight: "800", letterSpacing: 1.2 },
+  vsHeadYou: {
+    width: 54,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  vsHeadCpu: {
+    width: 54,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
 
   vsTable: { borderRadius: 14, paddingHorizontal: 10, paddingVertical: 2 },
 
@@ -323,7 +353,14 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   vsBarFill: { position: "absolute", top: 0, left: 0, bottom: 0, borderRadius: 2 },
-  vsBarFillCpu: { position: "absolute", bottom: 0, left: 0, height: 2, borderRadius: 2, opacity: 0.85 },
+  vsBarFillCpu: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    height: 2,
+    borderRadius: 2,
+    opacity: 0.85,
+  },
 
   vsBonusRow: { paddingVertical: 6, paddingBottom: 8, borderBottomWidth: 1 },
   vsBonusLbl: { fontSize: 11, fontWeight: "700", fontStyle: "italic" },

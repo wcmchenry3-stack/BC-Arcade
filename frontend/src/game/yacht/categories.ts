@@ -1,11 +1,4 @@
-export const UPPER_CATEGORY_KEYS = [
-  "ones",
-  "twos",
-  "threes",
-  "fours",
-  "fives",
-  "sixes",
-] as const;
+export const UPPER_CATEGORY_KEYS = ["ones", "twos", "threes", "fours", "fives", "sixes"] as const;
 
 export const LOWER_CATEGORY_KEYS = [
   "three_of_a_kind",

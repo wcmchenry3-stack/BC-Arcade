@@ -4,9 +4,19 @@ import VsScorecard from "../yacht/VsScorecard";
 import { ThemeProvider } from "../../theme/ThemeContext";
 
 const ALL_CATEGORIES = [
-  "ones", "twos", "threes", "fours", "fives", "sixes",
-  "three_of_a_kind", "four_of_a_kind", "full_house",
-  "small_straight", "large_straight", "yacht", "chance",
+  "ones",
+  "twos",
+  "threes",
+  "fours",
+  "fives",
+  "sixes",
+  "three_of_a_kind",
+  "four_of_a_kind",
+  "full_house",
+  "small_straight",
+  "large_straight",
+  "yacht",
+  "chance",
 ];
 
 const emptyScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, null]));
@@ -68,9 +78,7 @@ describe("VsScorecard — scoring interaction", () => {
       playerPossibleScores: { ones: 3 },
       onScore,
     });
-    const buttons = getAllByRole("button").filter(
-      (b) => b.props.accessibilityLabel === "Ones"
-    );
+    const buttons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
     fireEvent.press(buttons[0]!);
     expect(onScore).toHaveBeenCalledWith("ones");
   });
@@ -78,9 +86,7 @@ describe("VsScorecard — scoring interaction", () => {
   it("does not call onScore when rollsUsed === 0", () => {
     const onScore = jest.fn();
     const { getAllByRole } = renderVs({ playerRollsUsed: 0, onScore });
-    const buttons = getAllByRole("button").filter(
-      (b) => b.props.accessibilityLabel === "Ones"
-    );
+    const buttons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
     fireEvent.press(buttons[0]!);
     expect(onScore).not.toHaveBeenCalled();
   });
@@ -93,9 +99,7 @@ describe("VsScorecard — scoring interaction", () => {
       playerPossibleScores: { twos: 8 },
       onScore,
     });
-    const onesButtons = getAllByRole("button").filter(
-      (b) => b.props.accessibilityLabel === "Ones"
-    );
+    const onesButtons = getAllByRole("button").filter((b) => b.props.accessibilityLabel === "Ones");
     fireEvent.press(onesButtons[0]!);
     expect(onScore).not.toHaveBeenCalled();
   });
@@ -143,7 +147,15 @@ describe("VsScorecard — TOTAL row", () => {
 
 describe("VsScorecard — upper subtotal progress", () => {
   it("shows bonus unlock text when playerUpperBonus > 0", () => {
-    const filledUpper = { ...emptyScores, ones: 3, twos: 6, threes: 9, fours: 12, fives: 15, sixes: 18 };
+    const filledUpper = {
+      ...emptyScores,
+      ones: 3,
+      twos: 6,
+      threes: 9,
+      fours: 12,
+      fives: 15,
+      sixes: 18,
+    };
     const { getByText } = renderVs({
       playerScores: filledUpper,
       playerUpperBonus: 35,
