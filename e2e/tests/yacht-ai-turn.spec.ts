@@ -90,9 +90,8 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
   });
 
   test("opponent scorecard label is visible in VS mode", async ({ page }) => {
-    // On Desktop Chrome (1280px wide) both scorecards render side-by-side.
-    // The "Opp." label above the AI scorecard should be visible immediately.
-    await expect(page.getByText("Opp.", { exact: true }).first()).toBeVisible();
+    // The unified 3-column VsScorecard renders "YOU" and "CPU" column headers.
+    await expect(page.getByText("CPU", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("You", { exact: true }).first()).toBeVisible();
   });
 
