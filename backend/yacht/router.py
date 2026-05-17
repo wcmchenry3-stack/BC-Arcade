@@ -72,7 +72,8 @@ async def _top_scores(db: AsyncSession) -> list[ScoreEntry]:
                 player_name=str(name),
                 raw_score=raw,
                 score=int(g.final_score or 0),
-                difficulty=diff,
+                difficulty=diff,  # type: ignore[arg-type]
+                timestamp=g.completed_at,
                 rank=i + 1,
             )
         )
@@ -83,6 +84,7 @@ async def _top_scores(db: AsyncSession) -> list[ScoreEntry]:
 @limiter.limit("5/minute")
 async def submit_score(request: Request, body: YachtScoreSubmitRequest) -> ScoreEntry:
     transformed = _transform_score(body.score)
+    submitted_at = datetime.now(timezone.utc)
     factory = get_session_factory()
     async with factory() as db:
         gt_id = await _yacht_game_type_id(db)
@@ -90,7 +92,7 @@ async def submit_score(request: Request, body: YachtScoreSubmitRequest) -> Score
             session_id=_YACHT_SESSION,
             game_type_id=gt_id,
             final_score=transformed,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=submitted_at,
             game_metadata={
                 "player_name": body.player_name,
                 "raw_score": body.score,
@@ -114,6 +116,7 @@ async def submit_score(request: Request, body: YachtScoreSubmitRequest) -> Score
         raw_score=body.score,
         score=transformed,
         difficulty=body.difficulty,
+        timestamp=submitted_at,
         rank=LEADERBOARD_LIMIT + 1,
     )
 

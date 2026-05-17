@@ -59,6 +59,7 @@ class TestSubmitScore:
         body = res.json()
         assert body["player_name"] == "Alice"
         assert body["rank"] == 1
+        assert "timestamp" in body
 
     def test_zero_score_accepted(self):
         res = _submit("Alice", 0)
@@ -92,6 +93,18 @@ class TestSubmitScore:
             json={"player_name": "Alice", "score": 200, "difficulty": "legendary"},
             headers=_HEADERS,
         )
+        assert res.status_code == 422
+
+    def test_missing_difficulty_returns_422(self):
+        res = client.post(
+            "/yacht/score",
+            json={"player_name": "Alice", "score": 200},
+            headers=_HEADERS,
+        )
+        assert res.status_code == 422
+
+    def test_score_over_400_returns_422(self):
+        res = _submit("Alice", 401)
         assert res.status_code == 422
 
     def test_difficulty_stored_and_returned(self):
@@ -173,8 +186,9 @@ class TestGetScores:
         assert len(scores) == 10
         # Top entry: raw=0 → transformed=400
         assert scores[0]["score"] == 400
-        # Lowest included: raw=90 → transformed=310; raw=100 → 300 is excluded
+        # Lowest included: raw=90 → transformed=310; raw=100 → 300 excluded
         assert scores[-1]["score"] == 310
+        assert all(s["score"] != 300 for s in scores)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +232,7 @@ class TestRateLimit:
         for i in range(5):
             assert _submit(f"Player{i}", i * 10).status_code == 201
 
-        assert _submit("Excess", 999).status_code == 429
+        assert _submit("Excess", 99).status_code == 429
         limiter.reset()
 
 
