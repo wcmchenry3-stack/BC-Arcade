@@ -4,7 +4,7 @@
 
 ## Stack
 
-- **Backend:** Python 3.13, FastAPI, uvicorn (in-memory, no DB)
+- **Backend:** Python 3.13, FastAPI, uvicorn, PostgreSQL (Alembic migrations)
 - **Frontend:** Expo TypeScript, runs in browser via Expo Web
 - **Setup & runbook:** [`README.md`](README.md)
 - **Docs:** testing, iOS/Android CI, Render, branding — see [`docs/`](docs/)
@@ -32,8 +32,9 @@ Deployment (Render): [`docs/RENDER.md`](docs/RENDER.md). Design system is **BC A
 
 ## Key Conventions
 
-- All rule enforcement is server-side in `backend/<game>/module.py`. Frontend is display only.
-- Frontend replaces state wholesale from each API response.
+- Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- Scoring is server-side; outcomes are queued locally when offline and flushed by `SyncWorker`.
+- Premium access is gated by an RS256 entitlement JWT from `GET /entitlements` (24-hr TTL, 7-day offline grace). See [`docs/ARCHITECTURE.md §10`](docs/ARCHITECTURE.md).
 - Yacht scoring keys: `ones` `twos` `threes` `fours` `fives` `sixes` `three_of_a_kind` `four_of_a_kind` `full_house` `small_straight` `large_straight` `yacht` `chance`.
 - `EXPO_PUBLIC_API_URL` env var overrides `BASE_URL` in `frontend/src/api/client.ts`.
 
@@ -41,8 +42,8 @@ Deployment (Render): [`docs/RENDER.md`](docs/RENDER.md). Design system is **BC A
 
 Project subagents in `.claude/agents/`, invoked via the `Agent` tool. Prefer these over general-purpose:
 
-| Agent | `subagent_type` | When to use |
-|---|---|---|
-| lint-review | `lint-review` | Auto-fix lint issues after a lint-gate hook failure |
-| plan-issues | `plan-issues` | Break a feature/bug/initiative into scoped GitHub issues — investigates code, drafts for confirmation, then `gh issue create` |
-| policy-compliance | `policy-compliance` | Check and fix policy violations after a policy-gate hook failure |
+| Agent             | `subagent_type`     | When to use                                                                                                                   |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| lint-review       | `lint-review`       | Auto-fix lint issues after a lint-gate hook failure                                                                           |
+| plan-issues       | `plan-issues`       | Break a feature/bug/initiative into scoped GitHub issues — investigates code, drafts for confirmation, then `gh issue create` |
+| policy-compliance | `policy-compliance` | Check and fix policy violations after a policy-gate hook failure                                                              |
