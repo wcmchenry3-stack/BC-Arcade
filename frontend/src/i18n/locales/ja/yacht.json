@@ -72,5 +72,12 @@
   "gameOver.computerWins": "コンピュータの勝ち！",
   "gameOver.tie": "引き分け！",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "ロール {{n}} / 3"
+  "vsMode.rollCounter": "ロール {{n}} / 3",
+  "vsMode.category": "カテゴリ",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "下段",
+  "vsMode.upperSubtotal": "上段小計",
+  "vsMode.lowerSubtotal": "下段小計",
+  "vsMode.bonusProgress": "ボーナス · あと{{n}}で63",
+  "vsMode.bonusUnlocked": "ボーナス ✓ 獲得"
 }

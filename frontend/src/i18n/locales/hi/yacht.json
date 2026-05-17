@@ -72,5 +72,12 @@
   "gameOver.computerWins": "कंप्यूटर जीता!",
   "gameOver.tie": "बराबरी!",
   "vsMode.vs": "vs",
-  "vsMode.rollCounter": "रोल {{n}} / 3"
+  "vsMode.rollCounter": "रोल {{n}} / 3",
+  "vsMode.category": "श्रेणी",
+  "vsMode.cpu": "CPU",
+  "vsMode.lower": "निचला",
+  "vsMode.upperSubtotal": "ऊपरी उप-योग",
+  "vsMode.lowerSubtotal": "निचला उप-योग",
+  "vsMode.bonusProgress": "बोनस · {{n}} से 63",
+  "vsMode.bonusUnlocked": "बोनस ✓ मिला"
 }
