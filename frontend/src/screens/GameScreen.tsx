@@ -193,6 +193,9 @@ export default function GameScreen({ navigation, route }: Props) {
       s = engineRoll(s, [false, false, false, false, false]);
       setAiGameState(s);
       setAiRollingIndices([]);
+      // Settle pause: let the player read the dice values before the next roll
+      await delay(450);
+      if (cancelled) return;
 
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
@@ -202,15 +205,17 @@ export default function GameScreen({ navigation, route }: Props) {
           return acc;
         }, []);
         setAiRollingIndices(rolledIdxs);
-        await delay(650);
+        await delay(700);
         if (cancelled) return;
         s = engineRoll(s, holds);
         setAiGameState(s);
         setAiRollingIndices([]);
+        await delay(450);
+        if (cancelled) return;
       }
 
-      // Score using opponent's current total for strategic decisions
-      await delay(500);
+      // Beat before the AI locks in its category
+      await delay(600);
       if (cancelled) return;
       const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
       s = engineScore(s, cat);

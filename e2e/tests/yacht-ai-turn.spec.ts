@@ -67,7 +67,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
-    // Wait for AI to finish — Easy AI takes up to ~2.5 s per turn; allow 10 s
+    // Wait for AI to finish — Easy AI takes up to ~4 s per turn; allow 10 s
     await expect(page.getByText("Your Turn", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("button", { name: /Roll dice/i })).toBeEnabled({
       timeout: 10000,
