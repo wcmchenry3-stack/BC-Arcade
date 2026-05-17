@@ -1042,10 +1042,10 @@ describe("resolveTrick — moonShot event mid-hand (#1364)", () => {
       wonCards: [[...hearts12, c("spades", 12)], [], [], []],
       handScores: [25, 0, 0, 0],
       playerHands: [
-        [c("hearts", 1), c("clubs", 2)],  // P0: Ace-Hearts (trick 9), Clubs-2 (trick 10)
-        [c("clubs", 3), c("clubs", 4)],   // P1: no hearts → discard clubs each trick
-        [c("clubs", 5), c("clubs", 6)],   // P2
-        [c("clubs", 7), c("clubs", 8)],   // P3
+        [c("hearts", 1), c("clubs", 2)], // P0: Ace-Hearts (trick 9), Clubs-2 (trick 10)
+        [c("clubs", 3), c("clubs", 4)], // P1: no hearts → discard clubs each trick
+        [c("clubs", 5), c("clubs", 6)], // P2
+        [c("clubs", 7), c("clubs", 8)], // P3
       ],
     });
 

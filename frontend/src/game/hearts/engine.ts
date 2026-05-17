@@ -403,7 +403,8 @@ export function applyHandScoring(state: HeartsState, midHandAlreadyFired = false
 
   // midHandAlreadyFired covers the case where the AI loop clears events between
   // tricks — state.events alone can't be trusted if it was wiped since clinch.
-  const alreadyFired = midHandAlreadyFired || (state.events ?? []).some((e) => e.type === "moonShot");
+  const alreadyFired =
+    midHandAlreadyFired || (state.events ?? []).some((e) => e.type === "moonShot");
   const moonEvent =
     moonShooter !== null && !alreadyFired
       ? ([{ type: "moonShot", shooter: moonShooter }] as const)
