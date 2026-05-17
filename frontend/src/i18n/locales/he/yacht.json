@@ -71,5 +71,6 @@
   "gameOver.youWin": "ניצחת!",
   "gameOver.computerWins": "המחשב ניצח!",
   "gameOver.tie": "תיקו!",
-  "vsMode.vs": "vs"
+  "vsMode.vs": "vs",
+  "vsMode.rollCounter": "הטלה {{n}} / 3"
 }

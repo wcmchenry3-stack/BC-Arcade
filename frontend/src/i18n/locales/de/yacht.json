@@ -71,5 +71,6 @@
   "gameOver.youWin": "Du gewinnst!",
   "gameOver.computerWins": "Computer gewinnt!",
   "gameOver.tie": "Unentschieden!",
-  "vsMode.vs": "vs"
+  "vsMode.vs": "vs",
+  "vsMode.rollCounter": "Wurf {{n}} / 3"
 }

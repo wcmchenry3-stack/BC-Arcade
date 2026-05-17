@@ -71,5 +71,6 @@
   "gameOver.youWin": "आप जीते!",
   "gameOver.computerWins": "कंप्यूटर जीता!",
   "gameOver.tie": "बराबरी!",
-  "vsMode.vs": "vs"
+  "vsMode.vs": "vs",
+  "vsMode.rollCounter": "रोल {{n}} / 3"
 }
