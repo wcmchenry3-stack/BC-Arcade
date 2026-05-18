@@ -49,15 +49,14 @@ test.describe("Cascade UC6 — overflow/game-over velocity filter", () => {
     expect(state.gameOver).toBe(false);
   });
 
-  test("game-over fires when triggered on a resting body above the danger line", async ({
+  test("triggerGameOver still fires game-over after velocity filter is wired up", async ({
     page,
   }) => {
-    // Spawn a fruit near the top of the bin and let it settle briefly.
     await spawnTierAt(page, 0, WORLD_W / 2);
     await fastForward(page, 500);
 
-    // Bypass the physics check and fire game-over directly — this confirms
-    // the game-over path still works after the velocity filter is applied.
+    // Bypass the physics check and fire game-over directly — confirms the
+    // game-over path still works end-to-end after the velocity filter change.
     await triggerGameOver(page);
 
     const state = await getState(page);

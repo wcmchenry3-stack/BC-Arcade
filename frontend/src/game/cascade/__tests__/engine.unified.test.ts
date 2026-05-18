@@ -1701,29 +1701,6 @@ describe("UC6 — game-over velocity filter", () => {
   });
 
   it("resting body above danger line DOES trigger game-over", async () => {
-    const fakeNow = Date.now();
-    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
-
-    const handle = await buildEngine();
-    handle.drop(fruit(0), "fruits", W / 2, 50);
-    handle.step(1 / 60);
-
-    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
-
-    // Velocity defaults to near-zero after step — well below threshold
-    let fired = false;
-    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
-      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
-        fired = true;
-        break;
-      }
-    }
-
-    expect(fired).toBe(true);
-    handle.cleanup();
-  });
-
-  it("body at exactly the threshold speed does NOT trigger game-over", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const fakeNow = Date.now();
     jest.spyOn(Date, "now").mockReturnValue(fakeNow);
@@ -1739,7 +1716,40 @@ describe("UC6 — game-over velocity filter", () => {
     )[0];
     if (!fruitBody) throw new Error("Expected a fruit body");
 
-    // speed === threshold (not strictly greater): still excluded
+    // Explicitly zero velocity so the body is unambiguously at rest
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: 0 });
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
+
+    expect(fired).toBe(true);
+    handle.cleanup();
+  });
+
+  it("body at exactly the threshold speed DOES trigger game-over", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    const fruitBody = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    )[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    // speed === threshold: speedSq > thresholdSq is false → body IS included in the overflow check
     Matter.Body.setVelocity(fruitBody, { x: 0, y: GAME_OVER_VELOCITY_THRESHOLD });
 
     (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
@@ -1752,8 +1762,6 @@ describe("UC6 — game-over velocity filter", () => {
       }
     }
 
-    // speed == threshold → speed > threshold is false → body IS counted → game-over fires
-    // (threshold is an open upper bound: only speed strictly greater is excluded)
     expect(fired).toBe(true);
     handle.cleanup();
   });
