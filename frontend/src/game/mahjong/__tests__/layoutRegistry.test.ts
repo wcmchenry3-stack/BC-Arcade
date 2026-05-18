@@ -8,6 +8,11 @@
 import { parseLayout } from "../layouts/loader";
 import { LAYOUTS, getLayout, resolveLayoutId } from "../layouts/registry";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { PYRAMID_LAYOUT } from "../layouts/pyramid";
+import { SQUARE_LAYOUT } from "../layouts/square";
+import { ARENA_LAYOUT } from "../layouts/arena";
+import { FOUR_RIVERS_LAYOUT } from "../layouts/four_rivers";
+import type { Layout } from "../types";
 
 // ---------------------------------------------------------------------------
 // parseLayout
@@ -140,6 +145,13 @@ describe("resolveLayoutId", () => {
 
 const TIER1_IDS = ["pyramid", "square", "arena", "four_rivers"] as const;
 
+const TS_SOURCES: Record<string, Layout> = {
+  pyramid: PYRAMID_LAYOUT,
+  square: SQUARE_LAYOUT,
+  arena: ARENA_LAYOUT,
+  four_rivers: FOUR_RIVERS_LAYOUT,
+};
+
 describe.each(TIER1_IDS)("%s layout", (id) => {
   it("loads without throwing", () => {
     expect(() => getLayout(id)).not.toThrow();
@@ -160,7 +172,7 @@ describe.each(TIER1_IDS)("%s layout", (id) => {
     const byLayer = new Map<number, number>();
     for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
     for (const [layer, count] of byLayer) {
-      expect({ layer, count, even: count % 2 === 0 }).toMatchObject({ even: true });
+      expect(count % 2).toBe(0);
     }
   });
 
@@ -170,5 +182,14 @@ describe.each(TIER1_IDS)("%s layout", (id) => {
     expect(meta!.tier).toBe(1);
     expect(meta!.tileCount).toBe(144);
     expect(Array.isArray(meta!.data)).toBe(true);
+  });
+
+  it("matches its .ts source exactly", () => {
+    const json = getLayout(id);
+    const ts = TS_SOURCES[id]!;
+    expect(json.length).toBe(ts.length);
+    for (let i = 0; i < ts.length; i++) {
+      expect(json[i]).toEqual(ts[i]);
+    }
   });
 });
