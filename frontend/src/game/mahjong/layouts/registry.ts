@@ -1,6 +1,10 @@
 import type { LayoutMeta, Layout } from "../types";
 import { parseLayout } from "./loader";
 import turtleData from "../../../../assets/mahjong/layouts/turtle.json";
+import pyramidData from "../../../../assets/mahjong/layouts/pyramid.json";
+import squareData from "../../../../assets/mahjong/layouts/square.json";
+import arenaData from "../../../../assets/mahjong/layouts/arena.json";
+import fourRiversData from "../../../../assets/mahjong/layouts/four_rivers.json";
 
 export const LAYOUTS: LayoutMeta[] = [
   {
@@ -9,6 +13,34 @@ export const LAYOUTS: LayoutMeta[] = [
     tier: 1,
     tileCount: 144,
     data: turtleData,
+  },
+  {
+    id: "pyramid",
+    name: "Pyramid",
+    tier: 1,
+    tileCount: 144,
+    data: pyramidData,
+  },
+  {
+    id: "square",
+    name: "Square",
+    tier: 1,
+    tileCount: 144,
+    data: squareData,
+  },
+  {
+    id: "arena",
+    name: "Arena",
+    tier: 1,
+    tileCount: 144,
+    data: arenaData,
+  },
+  {
+    id: "four_rivers",
+    name: "Four Rivers",
+    tier: 1,
+    tileCount: 144,
+    data: fourRiversData,
   },
 ];
 

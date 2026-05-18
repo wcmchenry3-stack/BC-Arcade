@@ -1,13 +1,18 @@
 /**
- * Tests for the layout JSON infrastructure (#1688):
+ * Tests for the layout JSON infrastructure (#1688, #1690):
  *   - loader.ts  (parseLayout)
  *   - registry.ts (LAYOUTS, getLayout)
- *   - turtle.json (144 valid slots)
+ *   - turtle.json, pyramid.json, square.json, arena.json, four_rivers.json
  */
 
 import { parseLayout } from "../layouts/loader";
 import { LAYOUTS, getLayout, resolveLayoutId } from "../layouts/registry";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { PYRAMID_LAYOUT } from "../layouts/pyramid";
+import { SQUARE_LAYOUT } from "../layouts/square";
+import { ARENA_LAYOUT } from "../layouts/arena";
+import { FOUR_RIVERS_LAYOUT } from "../layouts/four_rivers";
+import type { Layout } from "../types";
 
 // ---------------------------------------------------------------------------
 // parseLayout
@@ -131,5 +136,60 @@ describe("resolveLayoutId", () => {
 
   it("defaults to 'turtle' when currentLayoutId is undefined", () => {
     expect(resolveLayoutId({})).toBe("turtle");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier-1 layouts validity (#1690) — pyramid, square, arena, four_rivers
+// ---------------------------------------------------------------------------
+
+const TIER1_IDS = ["pyramid", "square", "arena", "four_rivers"] as const;
+
+const TS_SOURCES: Record<string, Layout> = {
+  pyramid: PYRAMID_LAYOUT,
+  square: SQUARE_LAYOUT,
+  arena: ARENA_LAYOUT,
+  four_rivers: FOUR_RIVERS_LAYOUT,
+};
+
+describe.each(TIER1_IDS)("%s layout", (id) => {
+  it("loads without throwing", () => {
+    expect(() => getLayout(id)).not.toThrow();
+  });
+
+  it("has exactly 144 slots", () => {
+    expect(getLayout(id).length).toBe(144);
+  });
+
+  it("has no duplicate coordinates", () => {
+    const layout = getLayout(id);
+    const keys = layout.map((s) => `${s.col},${s.row},${s.layer}`);
+    expect(new Set(keys).size).toBe(144);
+  });
+
+  it("has an even tile count per layer (solvability precondition)", () => {
+    const layout = getLayout(id);
+    const byLayer = new Map<number, number>();
+    for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
+    for (const count of byLayer.values()) {
+      expect(count % 2).toBe(0);
+    }
+  });
+
+  it("is present in LAYOUTS registry with correct shape", () => {
+    const meta = LAYOUTS.find((l) => l.id === id);
+    expect(meta).toBeDefined();
+    expect(meta!.tier).toBe(1);
+    expect(meta!.tileCount).toBe(144);
+    expect(Array.isArray(meta!.data)).toBe(true);
+  });
+
+  it("matches its .ts source exactly", () => {
+    const json = getLayout(id);
+    const ts = TS_SOURCES[id]!;
+    expect(json.length).toBe(ts.length);
+    for (let i = 0; i < ts.length; i++) {
+      expect(json[i]).toEqual(ts[i]);
+    }
   });
 });

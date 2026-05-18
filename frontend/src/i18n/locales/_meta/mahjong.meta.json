@@ -206,6 +206,42 @@
     "doNotTranslate": [],
     "notes": "Named after the turtle shape formed by the tile arrangement. Translate the animal name naturally."
   },
+  "layout.pyramid": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Pyramid board layout.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the stepped pyramid shape formed by the tile arrangement. Translate the architectural term naturally."
+  },
+  "layout.square": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Square board layout.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the flat rectangular shape of the tile arrangement. Translate the geometric term naturally."
+  },
+  "layout.arena": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Arena board layout.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the ring/coliseum shape formed by the tile walls. Translate the architectural term naturally."
+  },
+  "layout.four_rivers": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Four Rivers board layout.",
+    "tone": "neutral",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the four parallel vertical columns that resemble rivers. Translate naturally — 'four' + the word for rivers/streams."
+  },
   "layoutSelect.title": {
     "component": "LayoutSelectScreen",
     "description": "Heading on the layout selection screen shown before a new game.",
