@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { Slot } from "./types";
 
 export interface MahjongLayoutInput {
   screenWidth: number;
@@ -199,7 +200,7 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   };
 }
 
-type LayoutSlot = { readonly col: number; readonly row: number; readonly layer: number };
+const TURTLE_BOUNDS = { boardCols: 12, boardRows: 8, boardLayers: 4 };
 
 /**
  * Compute the grid dimensions needed to render a layout without clipping.
@@ -210,11 +211,12 @@ type LayoutSlot = { readonly col: number; readonly row: number; readonly layer: 
  * calculateMahjongLayout adds boardLayers*layerDx/layerDy as the extra
  * space needed for the highest layer's isometric offset, not as a count.
  */
-export function layoutBounds(slots: readonly LayoutSlot[]): {
+export function layoutBounds(slots: readonly Slot[]): {
   boardCols: number;
   boardRows: number;
   boardLayers: number;
 } {
+  if (slots.length === 0) throw new Error("layoutBounds: empty slot array");
   let maxCol = 0,
     maxRow = 0,
     maxLayer = 0;
@@ -230,10 +232,10 @@ export function layoutBounds(slots: readonly LayoutSlot[]): {
   };
 }
 
-export function useMahjongCanvasLayout(slots?: readonly LayoutSlot[]): MahjongLayout {
+export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const bounds = slots ? layoutBounds(slots) : { boardCols: 12, boardRows: 8, boardLayers: 4 };
+  const { boardCols, boardRows, boardLayers } = slots ? layoutBounds(slots) : TURTLE_BOUNDS;
   return useMemo(
     () =>
       calculateMahjongLayout({
@@ -243,24 +245,15 @@ export function useMahjongCanvasLayout(slots?: readonly LayoutSlot[]): MahjongLa
         safeAreaBottom: insets.bottom,
         safeAreaLeft: insets.left,
         safeAreaRight: insets.right,
-        ...bounds,
+        boardCols,
+        boardRows,
+        boardLayers,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      width,
-      height,
-      insets.top,
-      insets.bottom,
-      insets.left,
-      insets.right,
-      bounds.boardCols,
-      bounds.boardRows,
-      bounds.boardLayers,
-    ]
+    [width, height, insets.top, insets.bottom, insets.left, insets.right, boardCols, boardRows, boardLayers]
   );
 }
 
-export function useMahjongCamera(slots?: readonly LayoutSlot[]): BoardCamera {
+export function useMahjongCamera(slots?: readonly Slot[]): BoardCamera {
   const layout = useMahjongCanvasLayout(slots);
   return useMemo(
     () => makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16),
