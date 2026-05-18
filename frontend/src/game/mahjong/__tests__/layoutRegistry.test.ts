@@ -7,6 +7,7 @@
 
 import { parseLayout } from "../layouts/loader";
 import { LAYOUTS, getLayout, resolveLayoutId } from "../layouts/registry";
+import { TURTLE_LAYOUT } from "../layouts/turtle";
 
 // ---------------------------------------------------------------------------
 // parseLayout
@@ -92,7 +93,6 @@ describe("turtle.json", () => {
   });
 
   it("matches TURTLE_LAYOUT from turtle.ts exactly", () => {
-    const { TURTLE_LAYOUT } = require("../layouts/turtle");
     const jsonLayout = getLayout("turtle");
     expect(jsonLayout.length).toBe(TURTLE_LAYOUT.length);
     for (let i = 0; i < TURTLE_LAYOUT.length; i++) {
