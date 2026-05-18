@@ -1295,3 +1295,226 @@ describe("UC3 — per-tier density and restitution", () => {
     handle.cleanup();
   });
 });
+
+// ---------------------------------------------------------------------------
+// UC4 — cascade combo and game-over suppression (S8 / #1613)
+// ---------------------------------------------------------------------------
+// Uses tiny dt (1e-9 s) so physics sub-steps are skipped (remainingMs < 0.01 ms)
+// while still advancing game-tick counters. Synthetic collisionStart events
+// trigger merges programmatically so the cascade is deterministic.
+// SPAWN_GRACE_TICKS = 3: each newly spawned body is immune to dynamic collisions
+// for 3 ticks, so the chain naturally has empty ticks between stages.
+
+describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
+  // `b.parent === b` filters out sub-bodies of compound (polygon) bodies.
+  const getDynamic = (eng: Matter.Engine) =>
+    Matter.Composite.allBodies(eng.world).filter((b) => !b.isStatic && b.parent === b);
+
+  function dropAndTrack(
+    handle: EngineHandle,
+    eng: Matter.Engine,
+    tier: number,
+    x: number,
+    y: number
+  ): Matter.Body {
+    const idsBefore = new Set(getDynamic(eng).map((b) => b.id));
+    handle.drop(fruit(tier), "fruits", x, y);
+    const newBodies = getDynamic(eng).filter((b) => !idsBefore.has(b.id));
+    if (!newBodies[0]) throw new Error(`dropAndTrack: no new body for tier=${tier}`);
+    return newBodies[0];
+  }
+
+  it("cascadeCombo fires after ≥3 merges from a single drop (no reset across empty ticks)", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Drop 3 pairs of tier-0 fruits far apart — they won't auto-merge under tiny dt
+    const b0a = dropAndTrack(handle, engineInstance, 0, 50, 300);
+    const b0b = dropAndTrack(handle, engineInstance, 0, 60, 300);
+    const b1a = dropAndTrack(handle, engineInstance, 0, 150, 300);
+    const b1b = dropAndTrack(handle, engineInstance, 0, 160, 300);
+    const b2a = dropAndTrack(handle, engineInstance, 0, 250, 300);
+    const b2b = dropAndTrack(handle, engineInstance, 0, 260, 300);
+    handle.step(1e-9); // register without physics
+
+    const allEvents: { type: string }[] = [];
+
+    // Trigger merge 1, then step (tiny dt — physics frozen)
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b0a, bodyB: b0b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    allEvents.push(...handle.step(1e-9).events);
+
+    // 3 grace-tick steps between stages — counter must NOT reset during these
+    for (let i = 0; i < SPAWN_GRACE_TICKS; i++) allEvents.push(...handle.step(1e-9).events);
+
+    // Trigger merge 2
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b1a, bodyB: b1b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    allEvents.push(...handle.step(1e-9).events);
+
+    for (let i = 0; i < SPAWN_GRACE_TICKS; i++) allEvents.push(...handle.step(1e-9).events);
+
+    // Trigger merge 3 — cascadeCombo must fire now (count reaches COMBO_THRESHOLD = 3)
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b2a, bodyB: b2b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    allEvents.push(...handle.step(1e-9).events);
+
+    expect(allEvents.some((e) => e.type === "cascadeCombo")).toBe(true);
+    handle.cleanup();
+  });
+
+  it("cascadeCombo does NOT fire when fewer than 3 merges happen in a drop", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    const b0a = dropAndTrack(handle, engineInstance, 0, 50, 300);
+    const b0b = dropAndTrack(handle, engineInstance, 0, 60, 300);
+    const b1a = dropAndTrack(handle, engineInstance, 0, 150, 300);
+    const b1b = dropAndTrack(handle, engineInstance, 0, 160, 300);
+    handle.step(1e-9);
+
+    const allEvents: { type: string }[] = [];
+
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b0a, bodyB: b0b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    allEvents.push(...handle.step(1e-9).events);
+
+    for (let i = 0; i < SPAWN_GRACE_TICKS; i++) allEvents.push(...handle.step(1e-9).events);
+
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b1a, bodyB: b1b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    allEvents.push(...handle.step(1e-9).events);
+
+    expect(allEvents.some((e) => e.type === "cascadeCombo")).toBe(false);
+    handle.cleanup();
+  });
+
+  it("combo counter resets when a new drop occurs — merges from a prior cascade do not carry over", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // First drop: trigger 2 merges (below combo threshold)
+    const b0a = dropAndTrack(handle, engineInstance, 0, 50, 300);
+    const b0b = dropAndTrack(handle, engineInstance, 0, 60, 300);
+    const b1a = dropAndTrack(handle, engineInstance, 0, 150, 300);
+    const b1b = dropAndTrack(handle, engineInstance, 0, 160, 300);
+    handle.step(1e-9);
+
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b0a, bodyB: b0b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    handle.step(1e-9);
+    for (let i = 0; i < SPAWN_GRACE_TICKS; i++) handle.step(1e-9);
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b1a, bodyB: b1b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    handle.step(1e-9); // count = 2 after first drop
+
+    // New drop — resets counter to 0
+    const b2a = dropAndTrack(handle, engineInstance, 0, 250, 300);
+    const b2b = dropAndTrack(handle, engineInstance, 0, 260, 300);
+    handle.step(1e-9);
+
+    // Only 1 merge in second drop — must NOT fire combo (0+1 = 1 < 3)
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: b2a, bodyB: b2b, activeContacts: [], separation: 0, isActive: true }],
+    });
+    const { events } = handle.step(1e-9);
+    expect(events.some((e) => e.type === "cascadeCombo")).toBe(false);
+
+    handle.cleanup();
+  });
+
+  it("synthetic 5-stage chain: all 5 fruitMerge events fire and gameOver is suppressed throughout", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    // Bodies are created 5 s before T0 so GAME_OVER_GRACE_MS (3 s) has already
+    // expired by the time the chain runs. The merge cooldown is then the only
+    // mechanism suppressing gameOver during the chain — exactly what this test
+    // is meant to verify.
+    const T0 = 1_000_000;
+    const fakeNow = { t: T0 - 5000 };
+    const handle = await createEngine(W, H, fruitSet, () => fakeNow.t);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Pre-drop one body of each tier (0-4) to pair with each cascade-spawned body.
+    // Positions are spread widely to prevent accidental auto-merges.
+    const stageBodies: Matter.Body[] = [];
+    for (let tier = 0; tier < 5; tier++) {
+      stageBodies.push(dropAndTrack(handle, engineInstance, tier, 50 + tier * 50, 400));
+      stageBodies.push(dropAndTrack(handle, engineInstance, tier, 60 + tier * 50, 400));
+    }
+    handle.step(1e-9); // register all bodies (createdAt = T0 - 5000)
+
+    // Advance clock past GAME_OVER_GRACE_MS — grace expired, cooldown is sole guard
+    fakeNow.t = T0;
+
+    const allEvents: { type: string }[] = [];
+    let totalTicks = 0;
+
+    // Chain 5 stages: for each stage, trigger collision between the pre-placed pair,
+    // step to process the merge, then wait SPAWN_GRACE_TICKS for the spawned body.
+    for (let stage = 0; stage < 5; stage++) {
+      const bA = stageBodies[stage * 2]!;
+      const bB = stageBodies[stage * 2 + 1]!;
+
+      Matter.Events.trigger(engineInstance, "collisionStart", {
+        pairs: [{ bodyA: bA, bodyB: bB, activeContacts: [], separation: 0, isActive: true }],
+      });
+      allEvents.push(...handle.step(1e-9).events);
+      totalTicks++;
+
+      // Wait out grace period before triggering next stage
+      for (let g = 0; g < SPAWN_GRACE_TICKS; g++) {
+        allEvents.push(...handle.step(1e-9).events);
+        totalTicks++;
+      }
+    }
+
+    const merges = allEvents.filter((e) => e.type === "fruitMerge");
+    expect(merges).toHaveLength(5);
+    expect(allEvents.some((e) => e.type === "cascadeCombo")).toBe(true);
+    expect(allEvents.some((e) => e.type === "gameOver")).toBe(false);
+
+    // Chain completes in ≤ GAME_OVER_MERGE_COOLDOWN_TICKS — no bump to 120 needed
+    expect(totalTicks).toBeLessThanOrEqual(GAME_OVER_MERGE_COOLDOWN_TICKS);
+
+    handle.cleanup();
+  });
+
+  it("all bodies sleep within 300 ticks after a merge", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Drop two tier-0 fruits close together so they collide and merge naturally
+    handle.drop(fruit(0), "fruits", W / 2 - 5, 30);
+    handle.drop(fruit(0), "fruits", W / 2 + 5, 30);
+
+    // Wait for the merge to fire
+    let merged = false;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        merged = true;
+        break;
+      }
+    }
+    expect(merged).toBe(true);
+
+    // Run 300 more real physics ticks (300/60 = 5 s) — all fruit bodies must be sleeping
+    for (let i = 0; i < 300; i++) handle.step(1 / 60);
+
+    const awakeBodies = getDynamic(engineInstance).filter((b) => !b.isSleeping);
+    expect(awakeBodies).toHaveLength(0);
+
+    handle.cleanup();
+  });
+});

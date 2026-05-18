@@ -184,8 +184,13 @@ export interface EngineHandle {
    *   simulated time at 1/6 s to prevent a spiral-of-death after tab suspension.
    */
   step: (dt?: number) => { snapshots: BodySnapshot[]; events: GameEvent[] };
-  /** Drop a fruit at the given pixel coordinates. */
+  /** Drop a fruit at the given pixel coordinates. Resets the cascade combo counter. */
   drop: (def: FruitDefinition, fruitSetId: string, x: number, y: number) => void;
+  /**
+   * Spawn a fruit without resetting the cascade combo counter. Test-only —
+   * used by __cascade_spawnTierAt so combo state survives between spawns.
+   */
+  spawnRaw?: (def: FruitDefinition, fruitSetId: string, x: number, y: number) => void;
   cleanup: () => void;
 }
 

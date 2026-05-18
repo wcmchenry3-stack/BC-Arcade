@@ -63,6 +63,12 @@ export interface GameCanvasHandle {
   isReady?: () => boolean;
   /** Seed the spawn-queue RNG. Only present when EXPO_PUBLIC_TEST_HOOKS=1. */
   setSeed?: (seed: number) => void;
+  /**
+   * Spawn a fruit without resetting the cascade combo counter. Test-only —
+   * used by __cascade_spawnTierAt so RAF-frame merges between spawns don't
+   * cause the subsequent drop() call to wipe the running combo count.
+   */
+  spawnRaw?: (def: FruitDefinition, x: number) => void;
 }
 
 interface Props {
@@ -514,6 +520,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         setSeed(seed: number) {
           onSetSeed?.(seed);
+        },
+        spawnRaw(def: FruitDefinition, x: number) {
+          if (!engineRef.current) return;
+          const clamped = clamp(
+            x,
+            WALL_THICKNESS + def.radius,
+            width - WALL_THICKNESS - def.radius
+          );
+          engineRef.current.spawnRaw?.(def, fruitSetRef.current.id, clamped, DROP_Y);
         },
       };
     }, [initEngine, width, height, onSetSeed]);

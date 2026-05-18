@@ -413,6 +413,10 @@ export async function createEngine(
       });
 
       // Cascade combo and merge-cooldown tracking.
+      // comboMergeCount only resets when the player drops a new fruit (see drop()).
+      // Empty steps during grace periods must not clear the running total so that
+      // multi-stage chains (where each spawned body has a 3-tick grace period)
+      // can accumulate ≥ 3 merges and fire the cascadeCombo event.
       if (mergesThisStep > 0) {
         comboMergeCount += mergesThisStep;
         if (!comboFired && comboMergeCount >= COMBO_THRESHOLD) {
@@ -421,8 +425,6 @@ export async function createEngine(
         }
         ticksSinceLastMerge = 0;
       } else {
-        comboMergeCount = 0;
-        comboFired = false;
         ticksSinceLastMerge++;
       }
 
@@ -524,6 +526,14 @@ export async function createEngine(
     },
 
     drop(def: FruitDefinition, fruitSetId: string, x: number, y: number): void {
+      // Each player drop starts a fresh cascade window — reset so only merges
+      // caused by THIS drop accumulate toward the cascadeCombo threshold.
+      comboMergeCount = 0;
+      comboFired = false;
+      spawnAt(def, fruitSetId, x, y);
+    },
+
+    spawnRaw(def: FruitDefinition, fruitSetId: string, x: number, y: number): void {
       spawnAt(def, fruitSetId, x, y);
     },
 
