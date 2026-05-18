@@ -42,11 +42,7 @@ function ringLayer(layer: number): { col: number; row: number; layer: number }[]
   return out;
 }
 
-export const ARENA_LAYOUT: Layout = [
-  ...ringLayer(0),
-  ...ringLayer(1),
-  ...ringLayer(2),
-];
+export const ARENA_LAYOUT: Layout = [...ringLayer(0), ...ringLayer(1), ...ringLayer(2)];
 
 if (ARENA_LAYOUT.length !== 144) {
   throw new Error(`ARENA_LAYOUT has ${ARENA_LAYOUT.length} slots, expected 144`);
