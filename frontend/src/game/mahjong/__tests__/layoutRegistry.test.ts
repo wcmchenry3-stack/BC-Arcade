@@ -6,7 +6,7 @@
  */
 
 import { parseLayout } from "../layouts/loader";
-import { LAYOUTS, getLayout } from "../layouts/registry";
+import { LAYOUTS, getLayout, resolveLayoutId } from "../layouts/registry";
 
 // ---------------------------------------------------------------------------
 // parseLayout
@@ -113,5 +113,23 @@ describe("getLayout", () => {
 
   it("throws for an unknown id", () => {
     expect(() => getLayout("nonexistent")).toThrow(/Layout not found/);
+  });
+
+  it("returns the same reference on repeated calls (memoized)", () => {
+    expect(getLayout("turtle")).toBe(getLayout("turtle"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveLayoutId
+// ---------------------------------------------------------------------------
+
+describe("resolveLayoutId", () => {
+  it("returns the id when currentLayoutId is set", () => {
+    expect(resolveLayoutId({ currentLayoutId: "turtle" })).toBe("turtle");
+  });
+
+  it("defaults to 'turtle' when currentLayoutId is undefined", () => {
+    expect(resolveLayoutId({})).toBe("turtle");
   });
 });

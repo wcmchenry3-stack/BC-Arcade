@@ -704,7 +704,8 @@ export default function MahjongScreen() {
   const startNewGame = useCallback(() => {
     winRecordedRef.current = false;
     prevCompleteRef.current = false;
-    const fresh = createGame(TURTLE_LAYOUT);
+    const layoutId = "turtle";
+    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
     setState(fresh);
     setStats((prev) => {
       const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };

@@ -15,6 +15,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { MahjongState } from "./types";
+import { resolveLayoutId } from "./layouts/registry";
 
 const GAME_KEY = "mahjong_game";
 const STATS_KEY = "mahjong_stats_v1";
@@ -63,8 +64,8 @@ export async function loadGame(): Promise<MahjongState | null> {
     parsed.startedAt = parsed.startedAt ?? null;
     // dealId added in #943 — fall back gracefully for saves from older builds
     if (typeof parsed.dealId !== "string") parsed.dealId = "0000";
-    // currentLayoutId added in #1688 — fall back gracefully for saves from older builds
-    if (typeof parsed.currentLayoutId !== "string") parsed.currentLayoutId = "turtle";
+    // currentLayoutId added in #1688 — resolveLayoutId() defaults to "turtle" for old saves
+    parsed.currentLayoutId = resolveLayoutId(parsed as { currentLayoutId?: string });
     return parsed as MahjongState;
   } catch (e) {
     Sentry.captureMessage("mahjong.storage: corrupt game payload, discarding", {
