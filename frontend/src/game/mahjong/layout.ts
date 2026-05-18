@@ -246,7 +246,17 @@ export function useMahjongCanvasLayout(slots?: readonly LayoutSlot[]): MahjongLa
         ...bounds,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [width, height, insets.top, insets.bottom, insets.left, insets.right, bounds.boardCols, bounds.boardRows, bounds.boardLayers]
+    [
+      width,
+      height,
+      insets.top,
+      insets.bottom,
+      insets.left,
+      insets.right,
+      bounds.boardCols,
+      bounds.boardRows,
+      bounds.boardLayers,
+    ]
   );
 }
 
