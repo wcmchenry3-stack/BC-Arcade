@@ -56,6 +56,17 @@ export interface Slot {
 /** A layout is a static list of slot positions totalling 144. */
 export type Layout = readonly Slot[];
 
+/** Metadata entry for a named board layout in the registry. */
+export interface LayoutMeta {
+  readonly id: string;
+  readonly name: string;
+  /** 1 = free, 2 = premium. */
+  readonly tier: 1 | 2;
+  readonly tileCount: number;
+  /** Raw JSON data: flat array of {col, row, layer} objects. */
+  readonly data: readonly { col: number; row: number; layer: number }[];
+}
+
 /** Immutable snapshot of a Mahjong Solitaire game. `_v` is a schema version
  * so persisted saves can be migrated or rejected safely. */
 export interface MahjongState {
@@ -81,4 +92,7 @@ export interface MahjongState {
   /** Short 4-char hex identifier computed from the dealt face sequence.
    * Changes on every new deal; lets players confirm they have a fresh shuffle. */
   readonly dealId: string;
+  /** Registry ID of the layout used for this game (e.g. "turtle").
+   * Optional so old persisted saves without this field remain valid. */
+  readonly currentLayoutId?: string;
 }
