@@ -64,16 +64,22 @@ import {
   shuffleBoard,
   undoMove,
 } from "../game/mahjong/engine";
-import { getLayout } from "../game/mahjong/layouts/registry";
+import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
 import {
   clearGame,
   loadGame,
+  loadProgress,
   loadStats,
   saveGame,
+  saveProgress,
   saveStats,
+  unlockNextLayout,
+  DEFAULT_PROGRESS,
+  type MahjongProgress,
   type MahjongStats,
 } from "../game/mahjong/storage";
+import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
 import { useMahjongScoreboard } from "../game/mahjong/MahjongScoreboardContext";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
@@ -290,8 +296,12 @@ export default function MahjongScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const camera = useMahjongCamera();
 
+  const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
+  const [hasSavedGame, setHasSavedGame] = useState(false);
+  const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -488,27 +498,27 @@ export default function MahjongScreen() {
     });
   }, [state, stats, setScoreboardSnapshot]);
 
-  // Mount: restore saved game or deal fresh.
+  // Mount: restore saved game or show layout select.
   useEffect(() => {
     let alive = true;
-    Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
-      if (!alive) return;
-      hasLoadedRef.current = true;
-      if (saved !== null) {
-        setState(saved);
-        if (saved.isComplete) winRecordedRef.current = true;
-      } else {
-        const layoutId = "turtle";
-        setState({ ...createGame(getLayout(layoutId)), currentLayoutId: layoutId });
-        setStats((prev) => {
-          const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-          saveStats(updated).catch(() => {});
-          return updated;
-        });
+    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
+      ([saved, savedStats, savedProgress]) => {
+        if (!alive) return;
+        hasLoadedRef.current = true;
+        progressRef.current = savedProgress;
+        setProgress(savedProgress);
+        if (saved !== null) {
+          setState(saved);
+          setHasSavedGame(!saved.isComplete);
+          if (saved.isComplete) winRecordedRef.current = true;
+          setView("play");
+        } else {
+          setView("select");
+        }
+        setStats(savedStats);
+        setLoading(false);
       }
-      setStats(savedStats);
-      setLoading(false);
-    });
+    );
     return () => {
       alive = false;
     };
@@ -581,7 +591,7 @@ export default function MahjongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  // Win lifecycle: complete sync session, record stats.
+  // Win lifecycle: complete sync session, record stats, unlock next layout.
   useEffect(() => {
     if (state === null) {
       prevCompleteRef.current = false;
@@ -609,6 +619,24 @@ export default function MahjongScreen() {
           return updated;
         });
       }
+      // Unlock the next layout in registry order, then clear the active layout
+      // from progress regardless of whether a new layout was unlocked.
+      const completedId = state.currentLayoutId ?? "turtle";
+      const newUnlocked = unlockNextLayout(
+        completedId,
+        LAYOUTS,
+        progressRef.current.unlockedLayouts
+      );
+      const newProgress: MahjongProgress = {
+        ...progressRef.current,
+        unlockedLayouts: newUnlocked,
+        currentLayoutId: null,
+        currentState: null,
+      };
+      progressRef.current = newProgress;
+      setProgress(newProgress);
+      saveProgress(newProgress).catch(() => {});
+      setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete]);
@@ -637,7 +665,7 @@ export default function MahjongScreen() {
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
-      syncStart({ layout: "turtle" });
+      syncStart({ layout: s.currentLayoutId ?? "turtle" });
       syncMarkStarted();
       if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
@@ -702,27 +730,85 @@ export default function MahjongScreen() {
   }, []);
 
   const startNewGame = useCallback(() => {
-    winRecordedRef.current = false;
-    prevCompleteRef.current = false;
-    const layoutId = "turtle";
-    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
-    setState(fresh);
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated).catch(() => {});
-      return updated;
-    });
     if (syncGetGameId()) {
       syncComplete(
         { outcome: "abandoned", finalScore: 0, durationMs: 0 },
         { outcome: "abandoned" }
       );
     }
-    syncStart({ layout: "turtle" });
-    syncMarkStarted();
-  }, [syncGetGameId, syncComplete, syncStart, syncMarkStarted]);
+    winRecordedRef.current = false;
+    prevCompleteRef.current = false;
+    const s = stateRef.current;
+    setHasSavedGame(s !== null && !s.isComplete);
+    setState(null);
+    setView("select");
+  }, [syncGetGameId, syncComplete]);
+
+  const handleSelectLayout = useCallback((layoutId: string) => {
+    winRecordedRef.current = false;
+    prevCompleteRef.current = false;
+    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
+    setState(fresh);
+    setView("play");
+    setHasSavedGame(false);
+    setStats((prev) => {
+      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
+      saveStats(updated).catch(() => {});
+      return updated;
+    });
+    const newProgress: MahjongProgress = {
+      ...progressRef.current,
+      currentLayoutId: layoutId,
+      currentState: null,
+    };
+    progressRef.current = newProgress;
+    setProgress(newProgress);
+    saveProgress(newProgress).catch(() => {});
+    // Sync session starts on first tile tap via ensureSyncStarted, not here.
+  }, []);
+
+  const handleContinue = useCallback(() => {
+    loadGame()
+      .then((saved) => {
+        if (!saved) {
+          // Storage was cleared or corrupt — dismiss the continue button and stay on select.
+          setHasSavedGame(false);
+          return;
+        }
+        setState(saved);
+        setHasSavedGame(false);
+        setView("play");
+      })
+      .catch(() => {
+        setHasSavedGame(false);
+      });
+  }, []);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
+
+  if (!loading && view === "select") {
+    return (
+      <GameShell
+        title={t("game.title")}
+        requireBack
+        loading={false}
+        onBack={() => navigation.popToTop()}
+        style={{
+          paddingBottom: Math.max(insets.bottom, 16),
+          paddingLeft: Math.max(insets.left, 12),
+          paddingRight: Math.max(insets.right, 12),
+        }}
+      >
+        <LayoutSelectScreen
+          layouts={LAYOUTS}
+          progress={progress}
+          hasContinue={hasSavedGame}
+          onSelectLayout={handleSelectLayout}
+          onContinue={handleContinue}
+        />
+      </GameShell>
+    );
+  }
 
   return (
     <GameShell
