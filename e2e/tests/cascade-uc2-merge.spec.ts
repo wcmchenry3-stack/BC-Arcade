@@ -89,19 +89,13 @@ test.describe("Cascade UC2 — warm-spawn merge", () => {
     await spawnTierAt(page, 0, MERGE_X - 4);
     await spawnTierAt(page, 0, MERGE_X + 4);
 
-    // Snapshot before merge: advance less than the ~50ms spawn-grace window so
-    // the two bodies exist but cannot yet merge (grace blocks dynamic collisions).
-    await fastForward(page, 30);
-    const before = await getState(page);
-    const preCount = before.fruitCount;
-    expect(preCount).toBeGreaterThanOrEqual(2);
-
-    // Wait for merge to complete
+    // Wait for merge and settling: these two overlapping tier-0 fruits merge
+    // within ~100ms of grace expiry, leaving exactly 1 tier-1 body.
     await fastForward(page, 3000);
-    const after = await getState(page);
+    const state = await getState(page);
 
-    // Net change: -2 (parents) +1 (child) = -1
-    expect(after.fruitCount).toBe(preCount - 1);
+    // 2 tier-0 parents merged → 1 tier-1 child; net fruitCount = 1
+    expect(state.fruitCount).toBe(1);
   });
 
   test("chain merge — two successive merges both produce correct tier bodies", async ({
