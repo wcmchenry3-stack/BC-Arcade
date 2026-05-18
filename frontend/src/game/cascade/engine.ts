@@ -2,6 +2,7 @@ import Matter from "matter-js";
 import * as Sentry from "@sentry/react-native";
 import { FruitDefinition, FruitSet, FruitTier } from "../../theme/fruitSets.engine";
 import { getVerticesForFruit } from "./fruitVertices";
+import decomp from "poly-decomp";
 
 // Re-export shared types and constants so imports from './engine' keep working on all platforms
 export {
@@ -88,6 +89,9 @@ export async function createEngine(
   fruitSet: FruitSet,
   nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
+  // setDecomp sets a global reference on Matter.Common — idempotent, safe to call per-instance
+  Matter.Common.setDecomp(decomp);
+
   const engine = Matter.Engine.create({
     gravity: { x: 0, y: MATTER_GRAVITY_Y },
     enableSleeping: true,
@@ -114,6 +118,8 @@ export async function createEngine(
 
   // Dedup set for NaN/Inf merge-position Sentry warnings — one per tier per engine lifetime
   const nanSpawnDeduped = new Set<string>();
+  // Dedup set for polygon decomp-failure Sentry warnings — one per (setId, nameKey) per engine lifetime
+  const decompFailureDeduped = new Set<string>();
 
   // --- Static walls and floor ---
   const floor = Matter.Bodies.rectangle(W / 2, H - WALL_THICKNESS / 2, W, WALL_THICKNESS, {
@@ -198,6 +204,15 @@ export async function createEngine(
         Matter.Body.setPosition(polyBody, { x, y });
         body = polyBody;
       } else {
+        const decompKey = `decomp-${setId}-${nameKey}`;
+        if (!decompFailureDeduped.has(decompKey)) {
+          decompFailureDeduped.add(decompKey);
+          Sentry.captureMessage(`cascade.engine: polygon decomp failed`, {
+            level: "warning",
+            tags: { subsystem: "cascade.engine", op: "spawn.decomp" },
+            extra: { setId, nameKey, tier: def.tier },
+          });
+        }
         body = Matter.Bodies.circle(x, y, def.radius, bodyOpts);
       }
     } else {
@@ -544,6 +559,7 @@ export async function createEngine(
       fruitMap.clear();
       warmBodies.clear();
       nanSpawnDeduped.clear();
+      decompFailureDeduped.clear();
     },
   };
 }
