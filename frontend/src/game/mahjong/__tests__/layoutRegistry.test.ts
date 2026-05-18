@@ -1,8 +1,8 @@
 /**
- * Tests for the layout JSON infrastructure (#1688):
+ * Tests for the layout JSON infrastructure (#1688, #1690):
  *   - loader.ts  (parseLayout)
  *   - registry.ts (LAYOUTS, getLayout)
- *   - turtle.json (144 valid slots)
+ *   - turtle.json, pyramid.json, square.json, arena.json, four_rivers.json
  */
 
 import { parseLayout } from "../layouts/loader";
@@ -131,5 +131,44 @@ describe("resolveLayoutId", () => {
 
   it("defaults to 'turtle' when currentLayoutId is undefined", () => {
     expect(resolveLayoutId({})).toBe("turtle");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier-1 layouts validity (#1690) — pyramid, square, arena, four_rivers
+// ---------------------------------------------------------------------------
+
+const TIER1_IDS = ["pyramid", "square", "arena", "four_rivers"] as const;
+
+describe.each(TIER1_IDS)("%s layout", (id) => {
+  it("loads without throwing", () => {
+    expect(() => getLayout(id)).not.toThrow();
+  });
+
+  it("has exactly 144 slots", () => {
+    expect(getLayout(id).length).toBe(144);
+  });
+
+  it("has no duplicate coordinates", () => {
+    const layout = getLayout(id);
+    const keys = layout.map((s) => `${s.col},${s.row},${s.layer}`);
+    expect(new Set(keys).size).toBe(144);
+  });
+
+  it("has an even tile count per layer (solvability precondition)", () => {
+    const layout = getLayout(id);
+    const byLayer = new Map<number, number>();
+    for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
+    for (const [layer, count] of byLayer) {
+      expect({ layer, count, even: count % 2 === 0 }).toMatchObject({ even: true });
+    }
+  });
+
+  it("is present in LAYOUTS registry with correct shape", () => {
+    const meta = LAYOUTS.find((l) => l.id === id);
+    expect(meta).toBeDefined();
+    expect(meta!.tier).toBe(1);
+    expect(meta!.tileCount).toBe(144);
+    expect(Array.isArray(meta!.data)).toBe(true);
   });
 });
