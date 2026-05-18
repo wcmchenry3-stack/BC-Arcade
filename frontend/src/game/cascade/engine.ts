@@ -498,7 +498,8 @@ export async function createEngine(
           const body = bodyById.get(bodyId);
           if (!body) return;
           const { x: vx, y: vy } = body.velocity;
-          if (vx * vx + vy * vy > GAME_OVER_VELOCITY_THRESHOLD * GAME_OVER_VELOCITY_THRESHOLD) return;
+          if (vx * vx + vy * vy > GAME_OVER_VELOCITY_THRESHOLD * GAME_OVER_VELOCITY_THRESHOLD)
+            return;
           const topY = body.position.y - fb.fruitRadius;
           if (topY < dangerY) anyAbove = true;
         });
