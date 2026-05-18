@@ -32,7 +32,7 @@ export const SPIDER_LAYOUT: Layout = [
   ]),
   // Vertical legs
   ...[0, 1, 2, 3].flatMap((r) => [slot(12, r, 0), slot(14, r, 0)]),
-  ...[10, 11, 12, 13].flatMap((r) => [slot(14, r, 0), slot(16, r, 0)]),
+  ...[10, 11, 12, 13].flatMap((r) => [slot(12, r, 0), slot(14, r, 0)]),
   // Top-left diagonal
   ...(
     [

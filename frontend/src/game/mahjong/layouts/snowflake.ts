@@ -6,7 +6,7 @@
  *
  * Layer breakdown:
  *   Layer 0 — 100 tiles: center (28) + up/down arms (24) + 4 diagonal arms (32) + horizontal (16)
- *   Layer 1 —  36 tiles: center raised (20) + arm inner tips (12) + horiz inner (4)
+ *   Layer 1 —  36 tiles: center raised (20) + arm inner tips (12) + horiz inner symmetric (4)
  *   Layer 2 —   8 tiles: core peak rows 5-6, cols 12-18
  *   Total: 100 + 36 + 8 = 144
  */
@@ -91,7 +91,8 @@ export const SNOWFLAKE_LAYOUT: Layout = [
   ...[4, 5, 6, 7].flatMap((r) => rng(10, 18).map((c) => slot(c, r, 1))),
   ...[2, 3].flatMap((r) => [slot(12, r, 1), slot(14, r, 1), slot(16, r, 1)]),
   ...[8, 9].flatMap((r) => [slot(12, r, 1), slot(14, r, 1), slot(16, r, 1)]),
-  ...[5, 6].flatMap((r) => [slot(22, r, 1), slot(24, r, 1)]),
+  // Symmetric: col 22 right mirrors col 6 left (28 − 22 = 6)
+  ...[5, 6].flatMap((r) => [slot(22, r, 1), slot(6, r, 1)]),
   // Layer 2 — core peak
   ...[5, 6].flatMap((r) => rng(12, 18).map((c) => slot(c, r, 2))),
 ];
