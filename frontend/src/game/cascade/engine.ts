@@ -12,13 +12,14 @@ export {
   GAME_OVER_GRACE_MS,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
-  FRUIT_RESTITUTION,
+  FRUIT_DENSITY_BY_TIER,
+  FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
   FRUIT_ANGULAR_DAMPING,
   FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
-  FRUIT_DENSITY,
+  RESTITUTION_THRESHOLD,
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
@@ -47,12 +48,14 @@ import {
   GAME_OVER_GRACE_MS,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
-  FRUIT_RESTITUTION,
+  FRUIT_DENSITY_BY_TIER,
+  FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
   FRUIT_ANGULAR_DAMPING,
   FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
+  RESTITUTION_THRESHOLD,
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
@@ -93,6 +96,10 @@ export async function createEngine(
   // Higher counts resolve penetration in 15-deep stacks cleanly.
   engine.positionIterations = MATTER_POSITION_ITERATIONS;
   engine.velocityIterations = MATTER_VELOCITY_ITERATIONS;
+  // _restingThresh is a global singleton on Matter.Resolver (not per-engine).
+  // Setting it here is intentionally process-wide — every createEngine call writes
+  // the same constant, so there is no cross-instance divergence risk.
+  (Matter.Resolver as unknown as Record<string, number>)._restingThresh = RESTITUTION_THRESHOLD;
 
   const world = engine.world;
 
@@ -166,10 +173,10 @@ export async function createEngine(
 
     let body: Matter.Body;
     const bodyOpts = {
-      restitution: FRUIT_RESTITUTION,
+      restitution: FRUIT_RESTITUTION_BY_TIER[def.tier],
       friction: FRUIT_FRICTION,
       frictionAir: FRUIT_FRICTION_AIR,
-      density: 0.001, // matter.js density is per-pixel-area; tuned for natural feel
+      density: FRUIT_DENSITY_BY_TIER[def.tier],
       sleepThreshold: MATTER_SLEEP_THRESHOLD,
       collisionFilter: {
         category: COLLISION_GROUP_DYNAMIC,
