@@ -5,6 +5,11 @@ import pyramidData from "../../../../assets/mahjong/layouts/pyramid.json";
 import squareData from "../../../../assets/mahjong/layouts/square.json";
 import arenaData from "../../../../assets/mahjong/layouts/arena.json";
 import fourRiversData from "../../../../assets/mahjong/layouts/four_rivers.json";
+import butterflyData from "../../../../assets/mahjong/layouts/butterfly.json";
+import fishData from "../../../../assets/mahjong/layouts/fish.json";
+import spiderData from "../../../../assets/mahjong/layouts/spider.json";
+import catData from "../../../../assets/mahjong/layouts/cat.json";
+import snowflakeData from "../../../../assets/mahjong/layouts/snowflake.json";
 
 export const LAYOUTS: LayoutMeta[] = [
   {
@@ -41,6 +46,41 @@ export const LAYOUTS: LayoutMeta[] = [
     tier: 1,
     tileCount: 144,
     data: fourRiversData,
+  },
+  {
+    id: "butterfly",
+    name: "Butterfly",
+    tier: 2,
+    tileCount: 144,
+    data: butterflyData,
+  },
+  {
+    id: "fish",
+    name: "Fish",
+    tier: 2,
+    tileCount: 144,
+    data: fishData,
+  },
+  {
+    id: "spider",
+    name: "Spider",
+    tier: 2,
+    tileCount: 144,
+    data: spiderData,
+  },
+  {
+    id: "cat",
+    name: "Cat",
+    tier: 2,
+    tileCount: 144,
+    data: catData,
+  },
+  {
+    id: "snowflake",
+    name: "Snowflake",
+    tier: 2,
+    tileCount: 144,
+    data: snowflakeData,
   },
 ];
 
