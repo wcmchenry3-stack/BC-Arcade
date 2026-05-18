@@ -533,6 +533,10 @@ export async function createEngine(
       spawnAt(def, fruitSetId, x, y);
     },
 
+    spawnRaw(def: FruitDefinition, fruitSetId: string, x: number, y: number): void {
+      spawnAt(def, fruitSetId, x, y);
+    },
+
     cleanup(): void {
       Matter.Events.off(engine, "collisionStart");
       Matter.World.clear(world, false);

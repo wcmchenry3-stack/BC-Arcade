@@ -529,7 +529,10 @@ function CascadeGame() {
       if (gameOverRef.current) return;
       const def = activeFruitSetRef.current.fruits[tier];
       if (!def) return;
-      canvasRef.current?.drop(def, x);
+      // Use spawnRaw (not drop) so the cascade combo counter is not reset
+      // between spawns — drop() resets comboMergeCount, which would wipe
+      // any merges that fired via the RAF loop between await spawnTierAt calls.
+      canvasRef.current?.spawnRaw?.(def, x);
     };
     return () => {
       delete g.__cascade_getState;
