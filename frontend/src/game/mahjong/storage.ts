@@ -120,9 +120,10 @@ export async function saveStats(stats: MahjongStats): Promise<void> {
 const PROGRESS_KEY = "@mahjong/progress";
 
 export interface MahjongProgress {
-  unlockedLayouts: string[];
-  currentLayoutId: string | null;
-  currentState: MahjongState | null;
+  readonly unlockedLayouts: string[];
+  readonly currentLayoutId: string | null;
+  /** Always null — in-progress state is managed by saveGame/loadGame, not here. */
+  readonly currentState: MahjongState | null;
 }
 
 export const DEFAULT_PROGRESS: MahjongProgress = {
@@ -149,7 +150,8 @@ export async function loadProgress(): Promise<MahjongProgress> {
       currentLayoutId: typeof parsed.currentLayoutId === "string" ? parsed.currentLayoutId : null,
       currentState: parsed.currentState ?? null,
     };
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "loadProgress" } });
     return { ...DEFAULT_PROGRESS };
   }
 }

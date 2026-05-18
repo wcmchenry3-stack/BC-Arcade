@@ -619,7 +619,8 @@ export default function MahjongScreen() {
           return updated;
         });
       }
-      // Unlock the next layout in registry order.
+      // Unlock the next layout in registry order, then clear the active layout
+      // from progress regardless of whether a new layout was unlocked.
       const completedId = state.currentLayoutId ?? "turtle";
       const newUnlocked = unlockNextLayout(completedId, LAYOUTS, progressRef.current.unlockedLayouts);
       const newProgress: MahjongProgress = {
@@ -765,12 +766,18 @@ export default function MahjongScreen() {
   const handleContinue = useCallback(() => {
     loadGame()
       .then((saved) => {
-        if (!saved) return;
+        if (!saved) {
+          // Storage was cleared or corrupt — dismiss the continue button and stay on select.
+          setHasSavedGame(false);
+          return;
+        }
         setState(saved);
         setHasSavedGame(false);
         setView("play");
       })
-      .catch(() => {});
+      .catch(() => {
+        setHasSavedGame(false);
+      });
   }, []);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;

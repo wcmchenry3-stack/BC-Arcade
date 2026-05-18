@@ -192,10 +192,14 @@ describe("mahjong progress storage", () => {
     expect(loaded.currentState).toBeNull();
   });
 
-  it("falls back to default on corrupt progress payload", async () => {
+  it("falls back to default and captures exception on corrupt progress payload", async () => {
     await AsyncStorage.setItem("@mahjong/progress", "not-json{");
     const progress = await loadProgress();
     expect(progress).toEqual(DEFAULT_PROGRESS);
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: expect.objectContaining({ subsystem: "mahjong.storage", op: "loadProgress" }) })
+    );
   });
 
   it("coerces missing unlockedLayouts to ['turtle']", async () => {

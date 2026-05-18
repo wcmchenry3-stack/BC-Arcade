@@ -75,10 +75,7 @@ export default function LayoutSelectScreen({
                   accessibilityLabel={
                     isUnlocked
                       ? t(`layout.${layout.id}`)
-                      : t("layoutSelect.lockedLayout", {
-                          name: t(`layout.${layout.id}`),
-                          defaultValue: "{{name}} — locked",
-                        })
+                      : t("layoutSelect.lockedLayout", { name: t(`layout.${layout.id}`) })
                   }
                   accessibilityState={{ disabled: !isUnlocked }}
                 >

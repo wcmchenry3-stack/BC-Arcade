@@ -224,6 +224,15 @@
     "doNotTranslate": [],
     "notes": "Only shown when there is a saved game in progress."
   },
+  "layoutSelect.lockedLayout": {
+    "component": "LayoutSelectScreen",
+    "description": "Accessibility label for a locked layout card.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the translated layout name (e.g. 'Turtle'). Screen-reader only — not visible text."
+  },
   "score.display": {
     "component": "GameCanvas",
     "description": "Accessibility label for the score display.",
