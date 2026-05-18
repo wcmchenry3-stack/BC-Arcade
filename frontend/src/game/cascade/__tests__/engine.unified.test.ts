@@ -1306,16 +1306,10 @@ describe("UC3 — per-tier density and restitution", () => {
 // for 3 ticks, so the chain naturally has empty ticks between stages.
 
 describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
-  /**
-   * Return all non-static Matter.js parent bodies in the world.
-   * `b.parent === b` filters out sub-bodies of compound (polygon) bodies.
-   */
+  // `b.parent === b` filters out sub-bodies of compound (polygon) bodies.
   const getDynamic = (eng: Matter.Engine) =>
     Matter.Composite.allBodies(eng.world).filter((b) => !b.isStatic && b.parent === b);
 
-  /**
-   * Drop a fruit and return the newly added Matter.Body by diffing body IDs.
-   */
   function dropAndTrack(
     handle: EngineHandle,
     eng: Matter.Engine,
@@ -1441,8 +1435,13 @@ describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
 
   it("synthetic 5-stage chain: all 5 fruitMerge events fire and gameOver is suppressed throughout", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
-    const FIXED_NOW = 1_000_000;
-    const handle = await createEngine(W, H, fruitSet, () => FIXED_NOW);
+    // Bodies are created 5 s before T0 so GAME_OVER_GRACE_MS (3 s) has already
+    // expired by the time the chain runs. The merge cooldown is then the only
+    // mechanism suppressing gameOver during the chain — exactly what this test
+    // is meant to verify.
+    const T0 = 1_000_000;
+    const fakeNow = { t: T0 - 5000 };
+    const handle = await createEngine(W, H, fruitSet, () => fakeNow.t);
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
 
     // Pre-drop one body of each tier (0-4) to pair with each cascade-spawned body.
@@ -1452,7 +1451,10 @@ describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
       stageBodies.push(dropAndTrack(handle, engineInstance, tier, 50 + tier * 50, 400));
       stageBodies.push(dropAndTrack(handle, engineInstance, tier, 60 + tier * 50, 400));
     }
-    handle.step(1e-9); // register all bodies
+    handle.step(1e-9); // register all bodies (createdAt = T0 - 5000)
+
+    // Advance clock past GAME_OVER_GRACE_MS — grace expired, cooldown is sole guard
+    fakeNow.t = T0;
 
     const allEvents: { type: string }[] = [];
     let totalTicks = 0;
@@ -1478,6 +1480,7 @@ describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
 
     const merges = allEvents.filter((e) => e.type === "fruitMerge");
     expect(merges).toHaveLength(5);
+    expect(allEvents.some((e) => e.type === "cascadeCombo")).toBe(true);
     expect(allEvents.some((e) => e.type === "gameOver")).toBe(false);
 
     // Chain completes in ≤ GAME_OVER_MERGE_COOLDOWN_TICKS — no bump to 120 needed

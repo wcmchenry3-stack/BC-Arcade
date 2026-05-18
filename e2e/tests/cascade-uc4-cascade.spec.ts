@@ -56,8 +56,6 @@ test.describe("Cascade UC4 — cascade combo and game-over suppression", () => {
     page,
   }) => {
     // Spawn several overlapping pairs that will merge in rapid succession.
-    // The merge cooldown (GAME_OVER_MERGE_COOLDOWN_TICKS) must keep gameOver
-    // suppressed throughout, leaving the game running after the cascade.
     await spawnTierAt(page, 0, WORLD_W / 4);
     await spawnTierAt(page, 0, WORLD_W / 4 + 2);
 
@@ -67,8 +65,10 @@ test.describe("Cascade UC4 — cascade combo and game-over suppression", () => {
     await spawnTierAt(page, 0, (3 * WORLD_W) / 4);
     await spawnTierAt(page, 0, (3 * WORLD_W) / 4 + 2);
 
-    // Advance far enough for merges to chain and settle, but not so far that
-    // the GAME_OVER_GRACE_MS (3 s) expires for the merged fruit.
+    // fastForward advances physics ticks but not Date.now(), so spawned fruits
+    // remain within GAME_OVER_GRACE_MS (3 s). gameOver is blocked by the grace
+    // period here, not by the merge cooldown. The merge-cooldown path is covered
+    // by "merge in last 90 ticks suppresses gameOver" in engine.unified.test.ts.
     await fastForward(page, 2000);
 
     const state = await getState(page);
