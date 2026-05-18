@@ -121,8 +121,7 @@ test.describe("FreeCell — error paths", () => {
     await page.getByLabel("3 of Clubs").click();
     await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
 
-    // Board still accepts valid moves — send 5♥ to an empty free cell
-    await page.getByLabel("5 of Hearts").click();
+    // 5♥ remains selected after the failed move — go straight to the free cell
     await page.getByLabel("Empty free cell 1").click();
 
     // Move counter increments — game recovered from the failed attempt

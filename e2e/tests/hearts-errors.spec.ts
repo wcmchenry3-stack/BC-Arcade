@@ -58,8 +58,9 @@ test.describe("Hearts — error paths", () => {
     });
 
     test("is disabled when 0 cards are selected", async ({ page }) => {
+      // aria-label includes the dynamic count, e.g. "Confirm — pass 0 selected cards"
       const confirmBtn = page.getByRole("button", {
-        name: "Confirm — pass 3 selected cards",
+        name: /Confirm — pass \d+ selected cards/,
       });
       await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
     });
@@ -70,8 +71,9 @@ test.describe("Hearts — error paths", () => {
       // Select only 1 card — confirm must remain disabled
       await page.getByLabel("Your hand, 13 cards").getByRole("button").first().click();
 
+      // aria-label includes the dynamic count, e.g. "Confirm — pass 1 selected cards"
       const confirmBtn = page.getByRole("button", {
-        name: "Confirm — pass 3 selected cards",
+        name: /Confirm — pass \d+ selected cards/,
       });
       await expect(confirmBtn).toBeDisabled({ timeout: 3_000 });
     });
