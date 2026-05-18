@@ -1,4 +1,5 @@
 import Matter from "matter-js";
+import * as Sentry from "@sentry/react-native";
 import { FruitDefinition, FruitSet, FruitTier } from "../../theme/fruitSets.engine";
 import { getVerticesForFruit } from "./fruitVertices";
 
@@ -26,6 +27,8 @@ export {
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_TICKS,
   SPAWN_GRACE_MS,
+  WARM_SPAWN_FRAMES,
+  WARM_SPAWN_START_SCALE,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -57,6 +60,8 @@ import {
   MATTER_SLEEP_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_MS,
+  WARM_SPAWN_FRAMES,
+  WARM_SPAWN_START_SCALE,
   COLLISION_GROUP_WALL,
   COLLISION_GROUP_DYNAMIC,
 } from "./engine.shared";
@@ -93,6 +98,15 @@ export async function createEngine(
 
   // body.id → FruitBody metadata
   const fruitMap = new Map<number, FruitBody>();
+
+  // body.id → warm-spawn state: grows from 50% to 100% radius over WARM_SPAWN_FRAMES ticks
+  const warmBodies = new Map<
+    number,
+    { framesLeft: number; targetRadius: number; currentRadius: number }
+  >();
+
+  // Dedup set for NaN/Inf merge-position Sentry warnings — one per tier per engine lifetime
+  const nanSpawnDeduped = new Set<string>();
 
   // --- Static walls and floor ---
   const floor = Matter.Bodies.rectangle(W / 2, H - WALL_THICKNESS / 2, W, WALL_THICKNESS, {
@@ -144,7 +158,8 @@ export async function createEngine(
     setId: string,
     x: number,
     y: number,
-    graceTicks = 0
+    graceTicks = 0,
+    radiusScale = 1.0
   ): { fb: FruitBody; body: Matter.Body } {
     const nameKey = (def as { nameKey?: string }).nameKey ?? def.name.toLowerCase();
     const verts = getVerticesForFruit(setId, nameKey);
@@ -186,6 +201,12 @@ export async function createEngine(
       Matter.Body.setVelocity(body, { x: 0, y: 0 });
     }
 
+    // Warm spawn: scale physics body down before entering the world to reduce ejection.
+    // fruitRadius always stores the TARGET (full) radius for game-over / escape checks.
+    if (radiusScale !== 1.0) {
+      Matter.Body.scale(body, radiusScale, radiusScale);
+    }
+
     Matter.Composite.add(world, body);
 
     const fb: FruitBody = {
@@ -208,6 +229,8 @@ export async function createEngine(
       Matter.Composite.remove(world, body);
     }
     fruitMap.delete(bodyId);
+    // warmBodies entry for this id (if any) is cleaned up one step later when the
+    // warm-advancement loop detects bodyById.get(bodyId) === undefined. Harmless lag.
   }
 
   // processMerges receives the per-step bodyById map (built once in step()) so it
@@ -237,10 +260,18 @@ export async function createEngine(
       const midX = (bodyA.position.x + bodyB.position.x) / 2;
       const midY = (bodyA.position.y + bodyB.position.y) / 2;
 
+      // Read mass-weighted velocity BEFORE removing bodies.
+      const mA = bodyA.mass;
+      const mB = bodyB.mass;
+      const totalMass = mA + mB;
+      const mergedVx = (mA * bodyA.velocity.x + mB * bodyB.velocity.x) / totalMass;
+      const mergedVy = (mA * bodyA.velocity.y + mB * bodyB.velocity.y) / totalMass;
+
       bodyById.delete(idA);
       bodyById.delete(idB);
       removeBody(idA, bodyA);
       removeBody(idB, bodyB);
+      // fruitMerge fires at warm-spawn start (not at completion).
       events.push({ type: "fruitMerge", tier, x: midX, y: midY });
 
       if (tier < 10) {
@@ -256,18 +287,47 @@ export async function createEngine(
             nextDef.radius,
             Math.min(H - WALL_THICKNESS - nextDef.radius, midY)
           );
+
+          // Sentry guard: NaN/Inf position means the merge centroid was corrupted.
+          // Fire once per tier per engine lifetime (dedup prevents per-frame spam).
+          const nanKey = `nan-spawn-${tier}`;
+          if ((!isFinite(spawnX) || !isFinite(spawnY)) && !nanSpawnDeduped.has(nanKey)) {
+            nanSpawnDeduped.add(nanKey);
+            Sentry.captureMessage(`cascade.engine: NaN/Inf merged-position tier=${tier}`, {
+              level: "warning",
+              tags: { subsystem: "cascade.engine", op: "merge.spawn" },
+              extra: { tier, spawnX, spawnY, midX, midY },
+            });
+          }
+          if (!isFinite(spawnX) || !isFinite(spawnY)) continue;
+
           // Express grace as wall-clock ms → ticks at actual step rate so 120 Hz ProMotion
           // devices get the same wall-clock protection as 60 Hz.
           //   60 Hz: ceil(50 / 16.67) = 3 ticks × 16.67 ms = 50 ms
           //   120 Hz: ceil(50 / 8.33)  = 6 ticks × 8.33 ms  = 50 ms
           const graceTicks = Math.ceil(SPAWN_GRACE_MS / stepMs);
+          // Warm spawn at 50% radius — grows to 100% over WARM_SPAWN_FRAMES ticks,
+          // preventing the explosive ejection that occurs when a full-radius body
+          // suddenly overlaps with settled neighbors.
           const { fb: newFb, body: newBody } = spawnAt(
             nextDef,
             fruitSet.id,
             spawnX,
             spawnY,
-            graceTicks
+            graceTicks,
+            WARM_SPAWN_START_SCALE
           );
+
+          // Apply mass-weighted velocity: (mA·vA + mB·vB) / (mA + mB)
+          Matter.Body.setVelocity(newBody, { x: mergedVx, y: mergedVy });
+
+          // Register for radius interpolation in step()
+          warmBodies.set(newFb.handle, {
+            framesLeft: WARM_SPAWN_FRAMES,
+            targetRadius: nextDef.radius,
+            currentRadius: nextDef.radius * WARM_SPAWN_START_SCALE,
+          });
+
           bodyById.set(newFb.handle, newBody);
 
           // Wake neighbors within 2× spawn radius and apply radial pop impulse to push
@@ -324,6 +384,26 @@ export async function createEngine(
       // game-over, and snapshot sections all reuse it without a second allBodies() call.
       const bodyById = new Map(Matter.Composite.allBodies(world).map((b) => [b.id, b]));
       processMerges(events, bodyById, lastStepMs);
+
+      // Advance warm bodies: each tick the body scales from 50% toward 100% target radius.
+      // Each frame adds (0.5 * targetRadius / WARM_SPAWN_FRAMES) to the current radius,
+      // applied as an incremental Body.scale so mass/inertia stay consistent with geometry.
+      warmBodies.forEach((state, bodyId) => {
+        const body = bodyById.get(bodyId);
+        if (!body) {
+          warmBodies.delete(bodyId);
+          return;
+        }
+        const radiusStep = (state.targetRadius * (1 - WARM_SPAWN_START_SCALE)) / WARM_SPAWN_FRAMES;
+        const newRadius = state.currentRadius + radiusStep;
+        const scaleFactor = newRadius / state.currentRadius;
+        Matter.Body.scale(body, scaleFactor, scaleFactor);
+        state.currentRadius = newRadius;
+        state.framesLeft--;
+        if (state.framesLeft === 0) {
+          warmBodies.delete(bodyId);
+        }
+      });
 
       // Cascade combo and merge-cooldown tracking.
       if (mergesThisStep > 0) {
@@ -445,6 +525,8 @@ export async function createEngine(
       Matter.World.clear(world, false);
       Matter.Engine.clear(engine);
       fruitMap.clear();
+      warmBodies.clear();
+      nanSpawnDeduped.clear();
     },
   };
 }

@@ -14,6 +14,7 @@ import {
   FIXED_STEP_MS,
   WALL_THICKNESS,
   SPAWN_GRACE_TICKS,
+  WARM_SPAWN_FRAMES,
   COLLISION_GROUP_DYNAMIC,
   COLLISION_GROUP_WALL,
   GAME_OVER_CONSECUTIVE_TICKS,
@@ -990,6 +991,218 @@ describe("UC1 — angular damping and air friction", () => {
       (b) => !b.isStatic && b.isSleeping
     ).length;
     expect(sleepingCount).toBeGreaterThan(0);
+
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC2 — warm-spawn merge + mass-weighted velocity (#1611)
+// ---------------------------------------------------------------------------
+
+describe("UC2 — warm-spawn merge", () => {
+  it("merge-spawned body starts at ~50% radius (area well below full-size analytical bound)", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2 - 5, 30);
+    handle.drop(fruit(0), "fruits", W / 2 + 5, 30);
+
+    let mergeStep = -1;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        mergeStep = i;
+        break;
+      }
+    }
+    expect(mergeStep).toBeGreaterThanOrEqual(0);
+
+    // After merge: the two tier-0 bodies are removed; the tier-1 warm body is the only survivor.
+    // After 1 warm frame (applied in the merge step) the body is at 55% radius.
+    // area(55% r) = (0.55)² × area(r) ≈ 0.3025 × full area — well under 50%.
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    expect(dynBodies).toHaveLength(1);
+    const tier1Body = dynBodies[0]!;
+
+    // Analytical upper bound: 50% of the inscribed-circle area for tier-1 radius=23.
+    // For both circle and polygon bodies, area scales as r², so this bound holds.
+    const tier1Radius = fruit(1).radius; // 23
+    const circleUpperBound = Math.PI * tier1Radius * tier1Radius * 0.5;
+    expect(tier1Body.area).toBeLessThan(circleUpperBound);
+
+    handle.cleanup();
+  });
+
+  it("warm body reaches ~100% radius after WARM_SPAWN_FRAMES total warm steps", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2 - 5, 30);
+    handle.drop(fruit(0), "fruits", W / 2 + 5, 30);
+
+    // Step until merge fires (the merge step also applies the first warm advancement)
+    let merged = false;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        merged = true;
+        break;
+      }
+    }
+    expect(merged).toBe(true);
+
+    // After merge: only the tier-1 warm body remains
+    const getDyn = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    const tier1Body = getDyn()[0];
+    expect(tier1Body).toBeDefined();
+    const areaAfterMerge = tier1Body!.area;
+
+    // Apply remaining WARM_SPAWN_FRAMES - 1 tiny steps to complete warm period.
+    // Tiny dt (1e-9) skips physics but still runs processMerges + warm advancement.
+    for (let i = 0; i < WARM_SPAWN_FRAMES - 1; i++) {
+      handle.step(1e-9);
+    }
+
+    // After full warm: radius = targetRadius. Area grew from (0.55r)² to r².
+    // Ratio = (1.0/0.55)² ≈ 3.31 — check it's in the [3.0, 4.0] range.
+    const areaAfterWarm = tier1Body!.area;
+    expect(areaAfterWarm / areaAfterMerge).toBeGreaterThan(3.0);
+    expect(areaAfterWarm / areaAfterMerge).toBeLessThan(4.0);
+
+    handle.cleanup();
+  });
+
+  it("mass-weighted velocity applied — equal-mass bodies: merged body gets average velocity", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Drop far apart so they don't auto-merge
+    handle.drop(fruit(0), "fruits", 80, 300);
+    handle.drop(fruit(0), "fruits", 220, 300);
+    handle.step(1 / 60); // register
+
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic && b.parent === b
+    );
+    const [bodyA, bodyB] = dynBodies;
+    if (!bodyA || !bodyB) throw new Error("Expected two fruit bodies");
+
+    // Set opposing equal velocities — weighted average = (v + (-v)) / 2 = 0
+    Matter.Body.setVelocity(bodyA, { x: 10, y: 0 });
+    Matter.Body.setVelocity(bodyB, { x: -10, y: 0 });
+
+    // Trigger merge programmatically
+    const fakePair = { bodyA, bodyB, activeContacts: [], separation: 0, isActive: true };
+    Matter.Events.trigger(engineInstance, "collisionStart", { pairs: [fakePair] });
+
+    // Use tiny dt so physics doesn't run — only processMerges and warm advancement fire.
+    // dt < 0.01ms → physics loop skips; only processMerges + warm advancement fire.
+    handle.step(1e-9);
+
+    // The spawned tier-1 body should have near-zero x velocity (average of +10 and -10)
+    const spawnedBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    // Two originals removed; one new body spawned
+    expect(spawnedBodies).toHaveLength(1);
+    const merged = spawnedBodies[0];
+    if (merged) {
+      expect(Math.abs(merged.velocity.x)).toBeLessThan(0.5);
+    }
+
+    handle.cleanup();
+  });
+
+  it("mass-weighted velocity applied — unequal masses: heavier body dominates velocity", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", 80, 300);
+    handle.drop(fruit(0), "fruits", 220, 300);
+    handle.step(1 / 60);
+
+    const dynBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic && b.parent === b
+    );
+    const [bodyA, bodyB] = dynBodies;
+    if (!bodyA || !bodyB) throw new Error("Expected two fruit bodies");
+
+    // Triple bodyA's mass to make it dominant
+    const originalMassA = bodyA.mass;
+    Matter.Body.setMass(bodyA, originalMassA * 3);
+
+    // bodyA moves right (+10), bodyB moves left (-10).
+    // Weighted: (3m·10 + m·(-10)) / 4m = 20/4 = +5 → net rightward velocity
+    Matter.Body.setVelocity(bodyA, { x: 10, y: 0 });
+    Matter.Body.setVelocity(bodyB, { x: -10, y: 0 });
+
+    const fakePair = { bodyA, bodyB, activeContacts: [], separation: 0, isActive: true };
+    Matter.Events.trigger(engineInstance, "collisionStart", { pairs: [fakePair] });
+    // dt < 0.01ms → physics loop skips; only processMerges + warm advancement fire.
+    handle.step(1e-9);
+
+    const spawnedBodies = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    );
+    expect(spawnedBodies).toHaveLength(1);
+    const merged = spawnedBodies[0];
+    if (merged) {
+      // Heavier bodyA moving right should push merged velocity positive
+      expect(merged.velocity.x).toBeGreaterThan(0);
+    }
+
+    handle.cleanup();
+  });
+
+  it("tier-10 merge produces no warm body (no spawn)", async () => {
+    const handle = await buildEngine();
+    const tier10 = fruit(10);
+    let mergeEvents: { type: string }[] = [];
+
+    handle.drop(tier10, "fruits", W / 2 - 5, 50);
+    handle.drop(tier10, "fruits", W / 2 + 5, 50);
+
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(1 / 60);
+      mergeEvents = [...mergeEvents, ...events.filter((e) => e.type === "fruitMerge")];
+      if (mergeEvents.length > 0) break;
+    }
+
+    expect(mergeEvents.length).toBeGreaterThan(0);
+    // No bodies remain (tier-10 produces no spawn, no warm body)
+    const { snapshots } = handle.step(1 / 60);
+    expect(snapshots).toHaveLength(0);
+
+    handle.cleanup();
+  });
+
+  it("step() with 20+ bodies including warm bodies completes in <16ms", async () => {
+    const handle = await buildEngine();
+
+    // Pack 20 bodies across the bin
+    for (let i = 0; i < 20; i++) {
+      handle.drop(fruit(i % 5), "fruits", 50 + (i % 8) * 30, 50 + (i % 4) * 40);
+    }
+    // Settle for 60 ticks
+    for (let i = 0; i < 60; i++) handle.step(1 / 60);
+
+    // Trigger a merge to create a warm body
+    handle.drop(fruit(0), "fruits", W / 2 - 4, 30);
+    handle.drop(fruit(0), "fruits", W / 2 + 4, 30);
+    for (let i = 0; i < 50; i++) handle.step(1 / 60);
+
+    // Measure a single step that may include warm body advancement
+    const start = Date.now();
+    handle.step(1 / 60);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(16);
 
     handle.cleanup();
   });
