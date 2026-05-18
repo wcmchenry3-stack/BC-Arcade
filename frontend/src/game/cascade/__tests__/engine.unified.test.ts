@@ -1609,7 +1609,7 @@ describe("UC5 — poly-decomp integration", () => {
     const afterSecond = countDecompWarnings(captureMock);
     handle2.cleanup();
 
-    expect(afterFirst - baseline).toBe(1);    // first engine fires once
+    expect(afterFirst - baseline).toBe(1); // first engine fires once
     expect(afterSecond - afterFirst).toBe(1); // second engine fires again after cleanup reset
 
     fromVerticesSpy.mockRestore();
