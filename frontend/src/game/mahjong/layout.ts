@@ -249,7 +249,17 @@ export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
         boardRows,
         boardLayers,
       }),
-    [width, height, insets.top, insets.bottom, insets.left, insets.right, boardCols, boardRows, boardLayers]
+    [
+      width,
+      height,
+      insets.top,
+      insets.bottom,
+      insets.left,
+      insets.right,
+      boardCols,
+      boardRows,
+      boardLayers,
+    ]
   );
 }
 
