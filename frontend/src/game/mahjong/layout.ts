@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { Slot } from "./types";
 
 export interface MahjongLayoutInput {
   screenWidth: number;
@@ -199,14 +200,42 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   };
 }
 
-// Turtle layout board grid dimensions
-const TURTLE_BOARD_ROWS = 8;
-const TURTLE_BOARD_COLS = 12;
-const TURTLE_BOARD_LAYERS = 4;
+const TURTLE_BOUNDS = { boardCols: 12, boardRows: 8, boardLayers: 4 };
 
-export function useMahjongCanvasLayout(): MahjongLayout {
+/**
+ * Compute the grid dimensions needed to render a layout without clipping.
+ *
+ * col values step by 2 (each tile is 2 grid units wide), so boardCols =
+ * maxCol/2 + 1 gives the number of tile-width columns required.
+ * boardLayers equals maxLayer (not +1) because the formula in
+ * calculateMahjongLayout adds boardLayers*layerDx/layerDy as the extra
+ * space needed for the highest layer's isometric offset, not as a count.
+ */
+export function layoutBounds(slots: readonly Slot[]): {
+  boardCols: number;
+  boardRows: number;
+  boardLayers: number;
+} {
+  if (slots.length === 0) throw new Error("layoutBounds: empty slot array");
+  let maxCol = 0,
+    maxRow = 0,
+    maxLayer = 0;
+  for (const s of slots) {
+    if (s.col > maxCol) maxCol = s.col;
+    if (s.row > maxRow) maxRow = s.row;
+    if (s.layer > maxLayer) maxLayer = s.layer;
+  }
+  return {
+    boardCols: maxCol / 2 + 1,
+    boardRows: maxRow + 1,
+    boardLayers: maxLayer,
+  };
+}
+
+export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { boardCols, boardRows, boardLayers } = slots ? layoutBounds(slots) : TURTLE_BOUNDS;
   return useMemo(
     () =>
       calculateMahjongLayout({
@@ -216,16 +245,26 @@ export function useMahjongCanvasLayout(): MahjongLayout {
         safeAreaBottom: insets.bottom,
         safeAreaLeft: insets.left,
         safeAreaRight: insets.right,
-        boardRows: TURTLE_BOARD_ROWS,
-        boardCols: TURTLE_BOARD_COLS,
-        boardLayers: TURTLE_BOARD_LAYERS,
+        boardCols,
+        boardRows,
+        boardLayers,
       }),
-    [width, height, insets.top, insets.bottom, insets.left, insets.right]
+    [
+      width,
+      height,
+      insets.top,
+      insets.bottom,
+      insets.left,
+      insets.right,
+      boardCols,
+      boardRows,
+      boardLayers,
+    ]
   );
 }
 
-export function useMahjongCamera(): BoardCamera {
-  const layout = useMahjongCanvasLayout();
+export function useMahjongCamera(slots?: readonly Slot[]): BoardCamera {
+  const layout = useMahjongCanvasLayout(slots);
   return useMemo(
     () => makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16),
     [layout]
