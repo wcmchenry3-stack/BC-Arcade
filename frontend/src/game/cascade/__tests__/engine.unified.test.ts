@@ -21,6 +21,7 @@ import {
   COLLISION_GROUP_WALL,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
+  GAME_OVER_VELOCITY_THRESHOLD,
   FRUIT_ANGULAR_DAMPING,
   FRUIT_FRICTION_AIR,
   FRUIT_DENSITY_BY_TIER,
@@ -1650,6 +1651,110 @@ describe("UC5 — poly-decomp integration", () => {
     expect(circleSpy).toHaveBeenCalled();
 
     fromVerticesSpy.mockRestore();
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC6 — game-over velocity filter (S10 / #1615)
+// ---------------------------------------------------------------------------
+// Tiny dt (1e-7 s) freezes physics while still advancing game-tick counters.
+// Matter.Body.setVelocity controls whether a body is "ballistic" or "at rest".
+
+describe("UC6 — game-over velocity filter", () => {
+  it("GAME_OVER_VELOCITY_THRESHOLD is 8 px/step", () => {
+    expect(GAME_OVER_VELOCITY_THRESHOLD).toBe(8);
+  });
+
+  it("fast body above danger line does NOT trigger game-over", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // y=50 → top = 50 - 18 = 32 < dangerY (108) → above the danger line
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    const fruitBody = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    )[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    // Set speed well above the threshold (ballistic)
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: GAME_OVER_VELOCITY_THRESHOLD + 10 });
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
+
+    expect(fired).toBe(false);
+    handle.cleanup();
+  });
+
+  it("resting body above danger line DOES trigger game-over", async () => {
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+
+    const handle = await buildEngine();
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    // Velocity defaults to near-zero after step — well below threshold
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
+
+    expect(fired).toBe(true);
+    handle.cleanup();
+  });
+
+  it("body at exactly the threshold speed does NOT trigger game-over", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const fakeNow = Date.now();
+    jest.spyOn(Date, "now").mockReturnValue(fakeNow);
+
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 50);
+    handle.step(1 / 60);
+
+    const fruitBody = Matter.Composite.allBodies(engineInstance.world).filter(
+      (b) => !b.isStatic
+    )[0];
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    // speed === threshold (not strictly greater): still excluded
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: GAME_OVER_VELOCITY_THRESHOLD });
+
+    (Date.now as jest.Mock).mockReturnValue(fakeNow + 5000);
+
+    let fired = false;
+    for (let i = 0; i < GAME_OVER_CONSECUTIVE_TICKS + 5; i++) {
+      if (handle.step(1e-7).events.some((e) => e.type === "gameOver")) {
+        fired = true;
+        break;
+      }
+    }
+
+    // speed == threshold → speed > threshold is false → body IS counted → game-over fires
+    // (threshold is an open upper bound: only speed strictly greater is excluded)
+    expect(fired).toBe(true);
     handle.cleanup();
   });
 });

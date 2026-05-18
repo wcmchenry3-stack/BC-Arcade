@@ -13,6 +13,7 @@ export {
   GAME_OVER_GRACE_MS,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
+  GAME_OVER_VELOCITY_THRESHOLD,
   FRUIT_DENSITY_BY_TIER,
   FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
@@ -49,6 +50,7 @@ import {
   GAME_OVER_GRACE_MS,
   GAME_OVER_CONSECUTIVE_TICKS,
   GAME_OVER_MERGE_COOLDOWN_TICKS,
+  GAME_OVER_VELOCITY_THRESHOLD,
   FRUIT_DENSITY_BY_TIER,
   FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
@@ -495,6 +497,8 @@ export async function createEngine(
           if (now - fb.createdAt < GAME_OVER_GRACE_MS) return;
           const body = bodyById.get(bodyId);
           if (!body) return;
+          const { x: vx, y: vy } = body.velocity;
+          if (Math.sqrt(vx * vx + vy * vy) > GAME_OVER_VELOCITY_THRESHOLD) return;
           const topY = body.position.y - fb.fruitRadius;
           if (topY < dangerY) anyAbove = true;
         });

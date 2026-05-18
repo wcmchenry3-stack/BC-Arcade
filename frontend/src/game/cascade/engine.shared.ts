@@ -28,6 +28,8 @@ export const GAME_OVER_GRACE_MS = 3000;
 export const GAME_OVER_CONSECUTIVE_TICKS = 180;
 /** Ticks after the last merge before game-over can fire — suppresses spurious loss mid-cascade. */
 export const GAME_OVER_MERGE_COOLDOWN_TICKS = 90;
+/** Speed threshold (px/step) above which a body is treated as ballistic and excluded from the overflow check. */
+export const GAME_OVER_VELOCITY_THRESHOLD = 8;
 
 // --- Physics tuning constants ---
 /** Low friction = fruits slide and settle naturally (spec: 0.05–0.1). */
