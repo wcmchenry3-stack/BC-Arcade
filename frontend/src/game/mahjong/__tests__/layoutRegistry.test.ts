@@ -171,7 +171,7 @@ describe.each(TIER1_IDS)("%s layout", (id) => {
     const layout = getLayout(id);
     const byLayer = new Map<number, number>();
     for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
-    for (const [layer, count] of byLayer) {
+    for (const count of byLayer.values()) {
       expect(count % 2).toBe(0);
     }
   });
