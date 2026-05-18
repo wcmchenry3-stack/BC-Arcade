@@ -5,8 +5,10 @@
  * Uses the real matter-js library — no mocks needed (pure JS, no WASM).
  */
 import Matter from "matter-js";
+import * as Sentry from "@sentry/react-native";
 import { createEngine } from "../engine";
 import type { EngineHandle } from "../engine.shared";
+import { getVerticesForFruit } from "../fruitVertices";
 import {
   MATTER_POSITION_ITERATIONS,
   MATTER_VELOCITY_ITERATIONS,
@@ -44,6 +46,12 @@ function fruit(tier: number): FruitDefinition {
 
 async function buildEngine(): Promise<EngineHandle> {
   return createEngine(W, H, fruitSet);
+}
+
+function countDecompWarnings(mock: jest.MockedFunction<typeof Sentry.captureMessage>): number {
+  return mock.mock.calls.filter(
+    (args) => (args[1] as { tags?: { op?: string } } | undefined)?.tags?.op === "spawn.decomp"
+  ).length;
 }
 
 afterEach(() => {
@@ -1515,6 +1523,121 @@ describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
     const awakeBodies = getDynamic(engineInstance).filter((b) => !b.isSleeping);
     expect(awakeBodies).toHaveLength(0);
 
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UC5 — concave polygon decomposition via poly-decomp (S9 / #1614)
+// ---------------------------------------------------------------------------
+
+describe("UC5 — poly-decomp integration", () => {
+  it("Matter.Common.setDecomp is called once during createEngine", async () => {
+    const setDecompSpy = jest.spyOn(Matter.Common, "setDecomp");
+    const handle = await buildEngine();
+    expect(setDecompSpy).toHaveBeenCalledTimes(1);
+    handle.cleanup();
+  });
+
+  it("getVerticesForFruit — all 22 assets validated: fruit assets return non-null, cosmos may return null for circular bodies", () => {
+    // Fruit set: all 11 tiers have polygon vertex data — must return non-null
+    const fruitsSet = FRUIT_SETS["fruits"]!;
+    for (const def of fruitsSet.fruits) {
+      const nameKey = (def as { nameKey?: string }).nameKey ?? def.name.toLowerCase();
+      const verts = getVerticesForFruit("fruits", nameKey);
+      expect(verts).not.toBeNull();
+      expect(verts!.length).toBeGreaterThanOrEqual(3);
+    }
+
+    // Cosmos set: 11 tiers — spherical bodies (sun, jupiter, saturn, uranus) correctly
+    // return null; non-circular bodies return polygon data. Neither should throw.
+    const cosmosSet = FRUIT_SETS["cosmos"]!;
+    for (const def of cosmosSet.fruits) {
+      const nameKey = def.name.toLowerCase();
+      const verts = getVerticesForFruit("cosmos", nameKey);
+      if (verts !== null) {
+        expect(verts.length).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("decomp failure emits Sentry warning exactly once per asset key, not on subsequent spawns", async () => {
+    const fromVerticesSpy = jest
+      .spyOn(Matter.Bodies, "fromVertices")
+      .mockReturnValue(null as unknown as Matter.Body);
+
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    // Use delta counting so accumulated calls from prior tests don't affect assertions
+    const before = countDecompWarnings(captureMock);
+    const handle = await buildEngine();
+
+    // Drop the same tier twice at different x positions (far enough to avoid merging)
+    // so only one decomp-failure warning fires for that (setId, nameKey) key
+    handle.drop(fruit(0), "fruits", 50, 30);
+    handle.step(1 / 60);
+    handle.drop(fruit(0), "fruits", 250, 30);
+    handle.step(1 / 60);
+
+    expect(countDecompWarnings(captureMock) - before).toBe(1);
+
+    fromVerticesSpy.mockRestore();
+    handle.cleanup();
+  });
+
+  it("decomp failure Sentry warning fires again after cleanup (dedup set reset)", async () => {
+    const fromVerticesSpy = jest
+      .spyOn(Matter.Bodies, "fromVertices")
+      .mockReturnValue(null as unknown as Matter.Body);
+
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    const baseline = countDecompWarnings(captureMock);
+
+    const handle1 = await buildEngine();
+    handle1.drop(fruit(0), "fruits", 50, 30);
+    handle1.step(1 / 60);
+    const afterFirst = countDecompWarnings(captureMock);
+    handle1.cleanup(); // resets decompFailureDeduped
+
+    const handle2 = await buildEngine();
+    handle2.drop(fruit(0), "fruits", 50, 30);
+    handle2.step(1 / 60);
+    const afterSecond = countDecompWarnings(captureMock);
+    handle2.cleanup();
+
+    expect(afterFirst - baseline).toBe(1);    // first engine fires once
+    expect(afterSecond - afterFirst).toBe(1); // second engine fires again after cleanup reset
+
+    fromVerticesSpy.mockRestore();
+  });
+
+  it("decomp failure Sentry warning includes correct tags and falls back to circle", async () => {
+    const fromVerticesSpy = jest
+      .spyOn(Matter.Bodies, "fromVertices")
+      .mockReturnValue(null as unknown as Matter.Body);
+    const circleSpy = jest.spyOn(Matter.Bodies, "circle");
+
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    const beforeCount = captureMock.mock.calls.length;
+    const handle = await buildEngine();
+
+    handle.drop(fruit(0), "fruits", 50, 30);
+    handle.step(1 / 60);
+
+    const decompCall = captureMock.mock.calls
+      .slice(beforeCount)
+      .find(
+        (args) => (args[1] as { tags?: { op?: string } } | undefined)?.tags?.op === "spawn.decomp"
+      );
+    expect(decompCall).toBeDefined();
+    const opts = decompCall![1] as { level: string; tags: Record<string, string> };
+    expect(opts.level).toBe("warning");
+    expect(opts.tags.subsystem).toBe("cascade.engine");
+    expect(opts.tags.op).toBe("spawn.decomp");
+
+    // Confirm circle fallback was used
+    expect(circleSpy).toHaveBeenCalled();
+
+    fromVerticesSpy.mockRestore();
     handle.cleanup();
   });
 });
