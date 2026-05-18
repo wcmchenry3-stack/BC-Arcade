@@ -1,7 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
+import {
+  clearGame,
+  loadGame,
+  saveGame,
+  loadStats,
+  saveStats,
+  loadProgress,
+  saveProgress,
+  unlockNextLayout,
+  DEFAULT_PROGRESS,
+} from "../storage";
 import { createGame } from "../engine";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
 import type { MahjongState } from "../types";
@@ -117,5 +127,80 @@ describe("mahjong stats storage", () => {
     await AsyncStorage.setItem("mahjong_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
     const stats = await loadStats();
     expect(stats).toEqual({ bestScore: 0, bestTimeMs: 0, gamesPlayed: 5, gamesWon: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unlockNextLayout — pure function
+// ---------------------------------------------------------------------------
+
+const FAKE_LAYOUTS = [
+  { id: "a", name: "A", tier: 1 as const, tileCount: 144, data: [] },
+  { id: "b", name: "B", tier: 1 as const, tileCount: 144, data: [] },
+  { id: "c", name: "C", tier: 2 as const, tileCount: 144, data: [] },
+];
+
+describe("unlockNextLayout", () => {
+  it("unlocks the next layout after completing the first", () => {
+    const result = unlockNextLayout("a", FAKE_LAYOUTS, ["a"]);
+    expect(result).toEqual(["a", "b"]);
+  });
+
+  it("does not overflow past the last layout", () => {
+    const result = unlockNextLayout("c", FAKE_LAYOUTS, ["a", "b", "c"]);
+    expect(result).toEqual(["a", "b", "c"]);
+  });
+
+  it("is idempotent when the next layout is already unlocked", () => {
+    const result = unlockNextLayout("a", FAKE_LAYOUTS, ["a", "b"]);
+    expect(result).toEqual(["a", "b"]);
+  });
+
+  it("returns a copy of the array (does not mutate input)", () => {
+    const original = ["a"];
+    const result = unlockNextLayout("a", FAKE_LAYOUTS, original);
+    expect(result).not.toBe(original);
+  });
+
+  it("no-ops for an unknown layout id", () => {
+    const result = unlockNextLayout("unknown", FAKE_LAYOUTS, ["a"]);
+    expect(result).toEqual(["a"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MahjongProgress — load / save
+// ---------------------------------------------------------------------------
+
+describe("mahjong progress storage", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (Sentry.captureException as jest.Mock).mockClear();
+  });
+
+  it("returns the default when no progress is saved", async () => {
+    const progress = await loadProgress();
+    expect(progress).toEqual(DEFAULT_PROGRESS);
+  });
+
+  it("round-trips progress via save → load", async () => {
+    const data = { unlockedLayouts: ["turtle", "dragon"], currentLayoutId: "dragon", currentState: null };
+    await saveProgress(data);
+    const loaded = await loadProgress();
+    expect(loaded.unlockedLayouts).toEqual(["turtle", "dragon"]);
+    expect(loaded.currentLayoutId).toBe("dragon");
+    expect(loaded.currentState).toBeNull();
+  });
+
+  it("falls back to default on corrupt progress payload", async () => {
+    await AsyncStorage.setItem("@mahjong/progress", "not-json{");
+    const progress = await loadProgress();
+    expect(progress).toEqual(DEFAULT_PROGRESS);
+  });
+
+  it("coerces missing unlockedLayouts to ['turtle']", async () => {
+    await AsyncStorage.setItem("@mahjong/progress", JSON.stringify({ currentLayoutId: null }));
+    const progress = await loadProgress();
+    expect(progress.unlockedLayouts).toEqual(["turtle"]);
   });
 });

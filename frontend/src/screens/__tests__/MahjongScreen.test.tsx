@@ -129,11 +129,20 @@ function renderScreen() {
 
 async function mount() {
   const api = renderScreen();
-  // Flush the initial loadGame()/loadStats() promises so the screen renders
-  // its post-load state (mirrors the pattern used in SolitaireScreen tests).
+  // Flush the initial loadGame()/loadStats()/loadProgress() promises.
   await act(async () => {
     await Promise.resolve();
+    await Promise.resolve();
   });
+  // If no saved game exists the screen shows the layout select screen.
+  // Pick the turtle layout so tests that need the play view can proceed.
+  const layoutCard = api.queryByLabelText("layout.turtle");
+  if (layoutCard) {
+    await act(async () => {
+      fireEvent.press(layoutCard);
+      await Promise.resolve(); // flush saveStats / saveProgress
+    });
+  }
   return api;
 }
 
@@ -268,14 +277,18 @@ describe("MahjongScreen — win modal", () => {
     expect(api.getByText(/Score saved/i)).toBeTruthy();
   });
 
-  it("tapping New Game in the win modal resets the board", async () => {
+  it("tapping New Game in the win modal navigates to layout select then starts a fresh game", async () => {
     const api = await mountAtWin();
     await act(async () => {
       fireEvent.press(api.getByLabelText("action.newGameLabel"));
     });
-    // After new game, win modal is gone and fresh game canvas remains.
+    // New Game goes to the layout select screen — win modal is gone.
+    expect(api.queryByText("overlay.youWon")).toBeNull();
+    // Pick a layout to start the fresh game.
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("layout.turtle"));
+    });
     await waitFor(() => {
-      expect(api.queryByText("overlay.youWon")).toBeNull();
       expect(api.getByTestId("game-canvas")).toBeTruthy();
     });
   });

@@ -198,13 +198,31 @@
     "notes": null
   },
   "layout.turtle": {
-    "component": "MahjongScreen",
+    "component": "LayoutSelectScreen",
     "description": "Display name for the Turtle board layout.",
     "tone": "neutral",
     "characterLimit": 12,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Named after the turtle shape formed by the tile arrangement. Translate the animal name naturally."
+  },
+  "layoutSelect.title": {
+    "component": "LayoutSelectScreen",
+    "description": "Heading on the layout selection screen shown before a new game.",
+    "tone": "neutral, brief",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "layoutSelect.continue": {
+    "component": "LayoutSelectScreen",
+    "description": "Button label to resume an in-progress game from the layout select screen.",
+    "tone": "action, brief",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Only shown when there is a saved game in progress."
   },
   "score.display": {
     "component": "GameCanvas",

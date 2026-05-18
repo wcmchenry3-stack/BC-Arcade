@@ -25,6 +25,8 @@
   "overlay.shuffleButton": "__NEEDS_TRANSLATION__",
   "overlay.newGameButton": "__NEEDS_TRANSLATION__",
   "layout.turtle": "__NEEDS_TRANSLATION__",
+  "layoutSelect.title": "__NEEDS_TRANSLATION__",
+  "layoutSelect.continue": "__NEEDS_TRANSLATION__",
   "score.display": "__NEEDS_TRANSLATION__",
   "scoreboard.title": "__NEEDS_TRANSLATION__",
   "scoreboard.rank": "__NEEDS_TRANSLATION__",

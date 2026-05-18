@@ -14,7 +14,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import type { MahjongState } from "./types";
+import type { LayoutMeta, MahjongState } from "./types";
 import { resolveLayoutId } from "./layouts/registry";
 
 const GAME_KEY = "mahjong_game";
@@ -111,4 +111,62 @@ export async function saveStats(stats: MahjongStats): Promise<void> {
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "saveStats" } });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Progress — unlock state for the layout select screen (#1689)
+// ---------------------------------------------------------------------------
+
+const PROGRESS_KEY = "@mahjong/progress";
+
+export interface MahjongProgress {
+  unlockedLayouts: string[];
+  currentLayoutId: string | null;
+  currentState: MahjongState | null;
+}
+
+export const DEFAULT_PROGRESS: MahjongProgress = {
+  unlockedLayouts: ["turtle"],
+  currentLayoutId: null,
+  currentState: null,
+};
+
+export async function saveProgress(data: MahjongProgress): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(data));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "saveProgress" } });
+  }
+}
+
+export async function loadProgress(): Promise<MahjongProgress> {
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESS_KEY);
+    if (!raw) return { ...DEFAULT_PROGRESS };
+    const parsed = JSON.parse(raw);
+    return {
+      unlockedLayouts: Array.isArray(parsed.unlockedLayouts) ? parsed.unlockedLayouts : ["turtle"],
+      currentLayoutId: typeof parsed.currentLayoutId === "string" ? parsed.currentLayoutId : null,
+      currentState: parsed.currentState ?? null,
+    };
+  } catch {
+    return { ...DEFAULT_PROGRESS };
+  }
+}
+
+/**
+ * Return the updated unlockedLayouts array after completing `completedId`.
+ * Unlocks the next layout in registry order; no-ops if already at the last or
+ * the next is already unlocked. Mirrors SortScreen unlock logic (issue #1689).
+ */
+export function unlockNextLayout(
+  completedId: string,
+  layouts: readonly LayoutMeta[],
+  unlockedLayouts: readonly string[]
+): string[] {
+  const idx = layouts.findIndex((l) => l.id === completedId);
+  if (idx === -1 || idx === layouts.length - 1) return [...unlockedLayouts];
+  const nextId = layouts[idx + 1]!.id;
+  if (unlockedLayouts.includes(nextId)) return [...unlockedLayouts];
+  return [...unlockedLayouts, nextId];
 }
