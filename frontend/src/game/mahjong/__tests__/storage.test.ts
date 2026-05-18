@@ -184,7 +184,11 @@ describe("mahjong progress storage", () => {
   });
 
   it("round-trips progress via save → load", async () => {
-    const data = { unlockedLayouts: ["turtle", "dragon"], currentLayoutId: "dragon", currentState: null };
+    const data = {
+      unlockedLayouts: ["turtle", "dragon"],
+      currentLayoutId: "dragon",
+      currentState: null,
+    };
     await saveProgress(data);
     const loaded = await loadProgress();
     expect(loaded.unlockedLayouts).toEqual(["turtle", "dragon"]);
@@ -198,7 +202,9 @@ describe("mahjong progress storage", () => {
     expect(progress).toEqual(DEFAULT_PROGRESS);
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ tags: expect.objectContaining({ subsystem: "mahjong.storage", op: "loadProgress" }) })
+      expect.objectContaining({
+        tags: expect.objectContaining({ subsystem: "mahjong.storage", op: "loadProgress" }),
+      })
     );
   });
 

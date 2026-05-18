@@ -622,7 +622,11 @@ export default function MahjongScreen() {
       // Unlock the next layout in registry order, then clear the active layout
       // from progress regardless of whether a new layout was unlocked.
       const completedId = state.currentLayoutId ?? "turtle";
-      const newUnlocked = unlockNextLayout(completedId, LAYOUTS, progressRef.current.unlockedLayouts);
+      const newUnlocked = unlockNextLayout(
+        completedId,
+        LAYOUTS,
+        progressRef.current.unlockedLayouts
+      );
       const newProgress: MahjongProgress = {
         ...progressRef.current,
         unlockedLayouts: newUnlocked,
