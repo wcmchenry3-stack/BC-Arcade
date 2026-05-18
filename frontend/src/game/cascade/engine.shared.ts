@@ -30,8 +30,6 @@ export const GAME_OVER_CONSECUTIVE_TICKS = 180;
 export const GAME_OVER_MERGE_COOLDOWN_TICKS = 90;
 
 // --- Physics tuning constants ---
-/** Low restitution = THUD feel (original Suika); fruits barely bounce. */
-export const FRUIT_RESTITUTION = 0.1;
 /** Low friction = fruits slide and settle naturally (spec: 0.05–0.1). */
 export const FRUIT_FRICTION = 0.08;
 /** Angular damping kills residual spin so fruits stop rotating after landing (UC1). */
@@ -42,7 +40,45 @@ export const FRUIT_FRICTION_AIR = 0.01;
 export const WALL_FRICTION = 0.2;
 /** Radial pop impulse applied to neighbors on merge: magnitude = nextTierRadius × this. Tunable. */
 export const POP_IMPULSE_SCALE = 2.0;
-export const FRUIT_DENSITY = 1.0;
+
+// --- Per-tier physics (UC3) ---
+// Density (matter-js pixel-area units): heavier for larger fruit so large tiers sink into piles.
+// Tuple type ensures noUncheckedIndexedAccess won't widen to `number | undefined` for FruitTier indices.
+export const FRUIT_DENSITY_BY_TIER: readonly [
+  number, number, number, number, number,
+  number, number, number, number, number, number
+] = [
+  0.0005, // tier-0  (r=18)
+  0.0006, // tier-1  (r=23)
+  0.0007, // tier-2  (r=28)
+  0.0008, // tier-3  (r=35)
+  0.0009, // tier-4  (r=44)
+  0.0010, // tier-5  (r=55)
+  0.0012, // tier-6  (r=69)
+  0.0014, // tier-7  (r=86)
+  0.0016, // tier-8  (r=107)
+  0.0018, // tier-9  (r=134)
+  0.0020, // tier-10 (r=168)
+];
+// Restitution: smaller fruit bounce more; larger fruit thud and settle.
+export const FRUIT_RESTITUTION_BY_TIER: readonly [
+  number, number, number, number, number,
+  number, number, number, number, number, number
+] = [
+  0.50, // tier-0
+  0.42, // tier-1
+  0.35, // tier-2
+  0.29, // tier-3
+  0.24, // tier-4
+  0.20, // tier-5
+  0.16, // tier-6
+  0.13, // tier-7
+  0.10, // tier-8
+  0.07, // tier-9
+  0.05, // tier-10
+];
+/** Approach velocity (px/tick) below which restitution is suppressed — Matter.Resolver._restingThresh. */
+export const RESTITUTION_THRESHOLD = 0.5;
 
 // --- Matter.js gravity ---
 // Equivalent to ~1800 px/s² at 60 Hz (matches Rapier GRAVITY_Y=18 × SCALE=0.01 × 1/SCALE).
