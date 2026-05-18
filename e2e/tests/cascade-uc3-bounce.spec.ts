@@ -98,27 +98,50 @@ test.describe("Cascade UC3 — heterogeneous bounce, per-tier density", () => {
     expect(yDelta).toBeLessThan(5);
   });
 
-  test("tier-0 density is less than tier-10 density (lighter small fruits)", async ({
+  test("tier-0 bounces more times than tier-10 before settling", async ({
     page,
   }) => {
-    // Verify via physics: a tier-0 body dropped into an otherwise empty bin reaches
-    // the floor later than a tier-10 body dropped from the same height (same terminal
-    // velocity from MAX_FRUIT_SPEED_PX_S, so the density difference manifests in how
-    // quickly the body reaches terminal velocity). The test is more conceptual — we
-    // simply assert the fruits exist and have moved under gravity.
+    // Drop tier-0 and tier-10 side by side, both from the same height.
+    // Sample y-positions at two windows (1200–1500 ms and 1500–1800 ms after drop).
+    // tier-0 (restitution=0.5) is still bouncing in both windows → two large deltas.
+    // tier-10 (restitution=0.05) settles before 1200 ms → near-zero deltas in both.
     await spawnTierAt(page, 0, 100);
     await spawnTierAt(page, 10, 300);
 
-    await fastForward(page, 800);
+    await fastForward(page, 1200);
+    const snap1 = await getState(page);
 
-    const state = await getState(page);
-    const tier0 = state.fruits.find((f) => f.tier === 0);
-    const tier10 = state.fruits.find((f) => f.tier === 10);
-    expect(tier0).toBeDefined();
-    expect(tier10).toBeDefined();
+    await fastForward(page, 300);
+    const snap2 = await getState(page);
 
-    // Both fruits have fallen under gravity
-    if (tier0) expect(tier0.y).toBeGreaterThan(50);
-    if (tier10) expect(tier10.y).toBeGreaterThan(50);
+    await fastForward(page, 300);
+    const snap3 = await getState(page);
+
+    const tier0a = snap1.fruits.find((f) => f.tier === 0);
+    const tier0b = snap2.fruits.find((f) => f.tier === 0);
+    const tier0c = snap3.fruits.find((f) => f.tier === 0);
+    const tier10a = snap1.fruits.find((f) => f.tier === 10);
+    const tier10b = snap2.fruits.find((f) => f.tier === 10);
+    const tier10c = snap3.fruits.find((f) => f.tier === 10);
+
+    expect(tier0a).toBeDefined();
+    expect(tier0b).toBeDefined();
+    expect(tier0c).toBeDefined();
+    expect(tier10a).toBeDefined();
+    expect(tier10b).toBeDefined();
+    expect(tier10c).toBeDefined();
+    if (!tier0a || !tier0b || !tier0c || !tier10a || !tier10b || !tier10c)
+      return;
+
+    const tier0Delta1 = Math.abs(tier0b.y - tier0a.y);
+    const tier0Delta2 = Math.abs(tier0c.y - tier0b.y);
+    const tier10Delta1 = Math.abs(tier10b.y - tier10a.y);
+    const tier10Delta2 = Math.abs(tier10c.y - tier10b.y);
+
+    // tier-0 must still be moving visibly in at least one window (bouncing)
+    expect(Math.max(tier0Delta1, tier0Delta2)).toBeGreaterThan(5);
+    // tier-10 must be settled in both windows
+    expect(tier10Delta1).toBeLessThan(5);
+    expect(tier10Delta2).toBeLessThan(5);
   });
 });

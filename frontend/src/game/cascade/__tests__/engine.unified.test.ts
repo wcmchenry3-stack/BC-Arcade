@@ -22,6 +22,7 @@ import {
   FRUIT_ANGULAR_DAMPING,
   FRUIT_FRICTION_AIR,
   FRUIT_DENSITY_BY_TIER,
+  FRUIT_RESTITUTION_BY_TIER,
 } from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 
@@ -1210,13 +1211,29 @@ describe("UC2 — warm-spawn merge", () => {
 });
 
 // ---------------------------------------------------------------------------
-// UC3: per-tier density (S7 / #1612)
+// UC3: per-tier density and restitution (S7 / #1612)
 // ---------------------------------------------------------------------------
 
-describe("UC3 — per-tier density", () => {
+describe("UC3 — per-tier density and restitution", () => {
+  // --- static array invariants ---
+
   it("FRUIT_DENSITY_BY_TIER has exactly 11 entries", () => {
     expect(FRUIT_DENSITY_BY_TIER).toHaveLength(11);
   });
+
+  it("FRUIT_RESTITUTION_BY_TIER has exactly 11 entries", () => {
+    expect(FRUIT_RESTITUTION_BY_TIER).toHaveLength(11);
+  });
+
+  it("tier-0 density is less than tier-10 density (small = lighter)", () => {
+    expect(FRUIT_DENSITY_BY_TIER[0]).toBeLessThan(FRUIT_DENSITY_BY_TIER[10]);
+  });
+
+  it("tier-0 restitution is greater than tier-10 restitution (small = bouncier)", () => {
+    expect(FRUIT_RESTITUTION_BY_TIER[0]).toBeGreaterThan(FRUIT_RESTITUTION_BY_TIER[10]);
+  });
+
+  // --- spawned body properties ---
 
   it("spawnAt tier-0 body has density === FRUIT_DENSITY_BY_TIER[0]", async () => {
     const createSpy = jest.spyOn(Matter.Engine, "create");
@@ -1248,7 +1265,33 @@ describe("UC3 — per-tier density", () => {
     handle.cleanup();
   });
 
-  it("tier-0 density is less than tier-10 density (small = lighter)", () => {
-    expect(FRUIT_DENSITY_BY_TIER[0]).toBeLessThan(FRUIT_DENSITY_BY_TIER[10]);
+  it("spawnAt tier-0 body has restitution === FRUIT_RESTITUTION_BY_TIER[0]", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 30);
+    handle.step(1 / 60);
+
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]!.restitution).toBeCloseTo(FRUIT_RESTITUTION_BY_TIER[0], 6);
+
+    handle.cleanup();
+  });
+
+  it("spawnAt tier-10 body has restitution === FRUIT_RESTITUTION_BY_TIER[10]", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(10), "fruits", W / 2, 100);
+    handle.step(1 / 60);
+
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]!.restitution).toBeCloseTo(FRUIT_RESTITUTION_BY_TIER[10], 6);
+
+    handle.cleanup();
   });
 });

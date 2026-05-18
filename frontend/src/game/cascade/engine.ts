@@ -96,6 +96,9 @@ export async function createEngine(
   // Higher counts resolve penetration in 15-deep stacks cleanly.
   engine.positionIterations = MATTER_POSITION_ITERATIONS;
   engine.velocityIterations = MATTER_VELOCITY_ITERATIONS;
+  // _restingThresh is a global singleton on Matter.Resolver (not per-engine).
+  // Setting it here is intentionally process-wide — every createEngine call writes
+  // the same constant, so there is no cross-instance divergence risk.
   (Matter.Resolver as unknown as Record<string, number>)._restingThresh = RESTITUTION_THRESHOLD;
 
   const world = engine.world;
