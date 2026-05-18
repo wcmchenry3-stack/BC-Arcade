@@ -81,6 +81,7 @@ test.describe("Mahjong — error paths", () => {
     await page
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Turtle", exact: true }).click();
 
     // Canvas renders despite backend 500 (game logic is client-side)
     await expect(
@@ -107,6 +108,7 @@ test.describe("Mahjong — error paths", () => {
     await page
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Turtle", exact: true }).click();
     await page
       .getByRole("img", { name: /Mahjong Solitaire/i })
       .waitFor({ timeout: 15_000 });
@@ -138,6 +140,7 @@ test.describe("Mahjong — error paths", () => {
     await page
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Turtle", exact: true }).click();
 
     // Corrupted state is ignored — a fresh canvas renders
     await expect(

@@ -24,6 +24,16 @@ export async function gotoMahjong(page: Page): Promise<void> {
   await page
     .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
     .waitFor({ timeout: 10_000 });
+  // If there is no saved game, the layout select screen is shown first.
+  // Pick the Turtle layout (the only one unlocked by default) to reach the board.
+  try {
+    await page
+      .getByRole("button", { name: "Turtle", exact: true })
+      .waitFor({ timeout: 2_000 });
+    await page.getByRole("button", { name: "Turtle", exact: true }).click();
+  } catch {
+    // No layout select — a saved game was resumed automatically.
+  }
   await page
     .getByRole("img", { name: /Mahjong Solitaire/i })
     .waitFor({ timeout: 15_000 });
