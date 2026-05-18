@@ -294,10 +294,9 @@ export default function MahjongScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const camera = useMahjongCamera();
-
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
+  const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"));
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
   const [hasSavedGame, setHasSavedGame] = useState(false);

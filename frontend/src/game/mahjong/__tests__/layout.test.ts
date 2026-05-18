@@ -4,9 +4,48 @@
  * Pure functions tested in isolation (no hooks, no React).
  */
 
-import { calculateMahjongLayout, fitToScreen, makeBoardCamera } from "../layout";
+import { calculateMahjongLayout, fitToScreen, layoutBounds, makeBoardCamera } from "../layout";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
+
+describe("layoutBounds", () => {
+  it("returns turtle-equivalent dims for turtle coordinate range", () => {
+    // Turtle: cols 0–22 (step 2), rows 0–7, layers 0–4
+    const slots = [
+      { col: 0, row: 0, layer: 0 },
+      { col: 22, row: 7, layer: 4 },
+    ];
+    expect(layoutBounds(slots)).toEqual({ boardCols: 12, boardRows: 8, boardLayers: 4 });
+  });
+
+  it("returns correct dims for pyramid coordinate range", () => {
+    // Pyramid: cols 4–24 (step 2), rows 2–5, layers 0–4
+    const slots = [
+      { col: 4, row: 2, layer: 0 },
+      { col: 24, row: 5, layer: 4 },
+    ];
+    expect(layoutBounds(slots)).toEqual({ boardCols: 13, boardRows: 6, boardLayers: 4 });
+  });
+
+  it("returns correct dims for a tall layout like four_rivers (16 rows)", () => {
+    // Four Rivers: cols 4–24, rows 0–15, layers 0–1
+    const slots = [
+      { col: 4, row: 0, layer: 0 },
+      { col: 24, row: 15, layer: 1 },
+    ];
+    expect(layoutBounds(slots)).toEqual({ boardCols: 13, boardRows: 16, boardLayers: 1 });
+  });
+
+  it("boardLayers equals maxLayer (not maxLayer+1)", () => {
+    const slots = [{ col: 0, row: 0, layer: 3 }];
+    expect(layoutBounds(slots).boardLayers).toBe(3);
+  });
+
+  it("boardCols = maxCol/2 + 1 because tiles are 2 grid units wide", () => {
+    const slots = [{ col: 10, row: 0, layer: 0 }];
+    expect(layoutBounds(slots).boardCols).toBe(6);
+  });
+});
 
 describe("calculateMahjongLayout", () => {
   it("returns a tileWidth clamped to MAX_TILE_W (56) on a large iPad landscape screen", () => {
