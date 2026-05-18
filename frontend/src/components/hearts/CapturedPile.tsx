@@ -76,7 +76,7 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
     <View
       style={styles.oppContainer}
       accessibilityLabel={t("captured.opponentLabel", { label: seatLabel, count, points })}
-      accessibilityRole="none"
+      accessibilityRole="img"
     >
       <View style={[styles.oppFan, { width: fanWidth, height: OPP_CARD_H }]}>
         {Array.from({ length: visible }).map((_, i) => (
@@ -115,7 +115,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
     <View
       style={[styles.selfRow, { borderColor: colors.border }]}
       accessibilityLabel={t("captured.selfLabel", { count, points })}
-      accessibilityRole="none"
+      accessibilityRole="img"
     >
       <Text style={[styles.selfLabel, { color: colors.textMuted }]}>{t("captured.taken")}</Text>
       <View style={styles.selfCards}>

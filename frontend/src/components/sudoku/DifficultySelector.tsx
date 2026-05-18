@@ -33,6 +33,7 @@ export default function DifficultySelector({ value, onChange }: Props) {
               defaultValue: d === "easy" ? "Easy" : d === "medium" ? "Medium" : "Hard",
             })}
             accessibilityState={{ selected }}
+            aria-checked={selected}
             style={[
               styles.btn,
               {

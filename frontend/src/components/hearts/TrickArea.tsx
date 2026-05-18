@@ -131,6 +131,7 @@ export default function TrickArea({
       <Animated.View
         key={pos}
         style={[styles.slot, styles[pos], animatedStyle]}
+        accessibilityRole="img"
         accessibilityLabel={
           tc
             ? isWinner

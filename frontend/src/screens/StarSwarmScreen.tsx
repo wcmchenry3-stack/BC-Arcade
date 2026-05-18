@@ -339,6 +339,7 @@ export default function StarSwarmScreen() {
                       onPress={() => setDifficulty(tier)}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: difficulty === tier }}
+                      aria-checked={difficulty === tier}
                       accessibilityLabel={`${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`}
                     >
                       <Text
@@ -661,6 +662,7 @@ const baseStyles = StyleSheet.create({
   },
   pickerStartBtn: {
     marginTop: 12,
+    backgroundColor: "#b05800", // #fff text on this gives ~5.1:1 contrast (WCAG AA)
   },
 });
 
