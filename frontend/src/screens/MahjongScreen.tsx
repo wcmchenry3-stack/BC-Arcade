@@ -64,7 +64,7 @@ import {
   shuffleBoard,
   undoMove,
 } from "../game/mahjong/engine";
-import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
+import { getLayout } from "../game/mahjong/layouts/registry";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
 import {
   clearGame,
@@ -498,7 +498,8 @@ export default function MahjongScreen() {
         setState(saved);
         if (saved.isComplete) winRecordedRef.current = true;
       } else {
-        setState(createGame(TURTLE_LAYOUT));
+        const layoutId = "turtle";
+        setState({ ...createGame(getLayout(layoutId)), currentLayoutId: layoutId });
         setStats((prev) => {
           const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
           saveStats(updated).catch(() => {});
@@ -703,7 +704,8 @@ export default function MahjongScreen() {
   const startNewGame = useCallback(() => {
     winRecordedRef.current = false;
     prevCompleteRef.current = false;
-    const fresh = createGame(TURTLE_LAYOUT);
+    const layoutId = "turtle";
+    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
     setState(fresh);
     setStats((prev) => {
       const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
