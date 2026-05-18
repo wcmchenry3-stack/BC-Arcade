@@ -1129,7 +1129,6 @@ const styles = StyleSheet.create({
   },
   dealIdText: {
     fontSize: 10,
-    opacity: 0.6,
   },
   modalOverlay: {
     flex: 1,
