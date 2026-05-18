@@ -2,8 +2,7 @@ import Matter from "matter-js";
 import * as Sentry from "@sentry/react-native";
 import { FruitDefinition, FruitSet, FruitTier } from "../../theme/fruitSets.engine";
 import { getVerticesForFruit } from "./fruitVertices";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const decomp = require("poly-decomp") as object;
+import decomp from "poly-decomp";
 
 // Re-export shared types and constants so imports from './engine' keep working on all platforms
 export {
@@ -90,6 +89,7 @@ export async function createEngine(
   fruitSet: FruitSet,
   nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
+  // setDecomp sets a global reference on Matter.Common — idempotent, safe to call per-instance
   Matter.Common.setDecomp(decomp);
 
   const engine = Matter.Engine.create({

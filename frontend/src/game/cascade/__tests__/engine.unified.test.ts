@@ -1539,7 +1539,7 @@ describe("UC5 — poly-decomp integration", () => {
     handle.cleanup();
   });
 
-  it("getVerticesForFruit — all 22 assets validated: fruit assets return non-null, cosmos may return null for circular bodies", () => {
+  it("getVerticesForFruit — all 22 assets validated: fruit assets return non-null, known circular cosmos return null", () => {
     // Fruit set: all 11 tiers have polygon vertex data — must return non-null
     const fruitsSet = FRUIT_SETS["fruits"]!;
     for (const def of fruitsSet.fruits) {
@@ -1549,14 +1549,19 @@ describe("UC5 — poly-decomp integration", () => {
       expect(verts!.length).toBeGreaterThanOrEqual(3);
     }
 
-    // Cosmos set: 11 tiers — spherical bodies (sun, jupiter, saturn, uranus) correctly
-    // return null; non-circular bodies return polygon data. Neither should throw.
+    // Cosmos set: 11 tiers. Spherical bodies have 0 vertices in the JSON and must
+    // return null (they correctly use circle physics). Non-circular bodies must return
+    // polygon data with ≥3 vertices.
+    const CIRCULAR_COSMOS = new Set(["sun", "jupiter", "saturn", "uranus"]);
     const cosmosSet = FRUIT_SETS["cosmos"]!;
     for (const def of cosmosSet.fruits) {
       const nameKey = def.name.toLowerCase();
       const verts = getVerticesForFruit("cosmos", nameKey);
-      if (verts !== null) {
-        expect(verts.length).toBeGreaterThanOrEqual(3);
+      if (CIRCULAR_COSMOS.has(nameKey)) {
+        expect(verts).toBeNull();
+      } else {
+        expect(verts).not.toBeNull();
+        expect(verts!.length).toBeGreaterThanOrEqual(3);
       }
     }
   });
@@ -1629,10 +1634,17 @@ describe("UC5 — poly-decomp integration", () => {
         (args) => (args[1] as { tags?: { op?: string } } | undefined)?.tags?.op === "spawn.decomp"
       );
     expect(decompCall).toBeDefined();
-    const opts = decompCall![1] as { level: string; tags: Record<string, string> };
+    const opts = decompCall![1] as {
+      level: string;
+      tags: Record<string, string>;
+      extra: { setId: string; nameKey: string; tier: number };
+    };
     expect(opts.level).toBe("warning");
     expect(opts.tags.subsystem).toBe("cascade.engine");
     expect(opts.tags.op).toBe("spawn.decomp");
+    expect(opts.extra.setId).toBe("fruits");
+    expect(opts.extra.nameKey).toBe("cherry");
+    expect(typeof opts.extra.tier).toBe("number");
 
     // Confirm circle fallback was used
     expect(circleSpy).toHaveBeenCalled();
