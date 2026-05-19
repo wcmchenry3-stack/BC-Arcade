@@ -81,7 +81,7 @@ test.describe("Mahjong — layout select screen", () => {
 
     // Pyramid is locked by default — shows the locked accessibility label.
     const pyramidBtn = page.getByRole("button", {
-      name: /Pyramid.*locked/i,
+      name: /^Pyramid.*locked/i,
     });
     await expect(pyramidBtn).toBeVisible({ timeout: 5_000 });
     await expect(pyramidBtn).toBeDisabled();
