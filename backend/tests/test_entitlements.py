@@ -232,3 +232,33 @@ def test_cors_disallowed_origin_excluded(
     # Request still succeeds server-side, but the allow-origin header must be
     # absent so the browser enforces the block.
     assert r.headers.get("access-control-allow-origin") is None
+
+
+def test_cors_oversized_body_response_includes_allow_origin(client: TestClient) -> None:
+    """413 from MaxBodySizeMiddleware must carry CORS headers (#1739 regression)."""
+    from main import DEFAULT_MAX_BODY_BYTES
+
+    r = client.post(
+        "/entitlements",
+        content=b"x" * (DEFAULT_MAX_BODY_BYTES + 1),
+        headers={"Origin": _TEST_ORIGIN, "Content-Type": "application/json"},
+    )
+    assert r.status_code == 413
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+
+
+def test_cors_rate_limited_response_includes_allow_origin(
+    client: TestClient, session_id: str
+) -> None:
+    """429 from the rate limiter must carry CORS headers (#1739 regression)."""
+    from limiter import limiter
+
+    limiter.reset()
+    for _ in range(30):
+        client.get("/entitlements", headers={**_headers(session_id), "Origin": _TEST_ORIGIN})
+
+    r = client.get("/entitlements", headers={**_headers(session_id), "Origin": _TEST_ORIGIN})
+    assert r.status_code == 429
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+
+    limiter.reset()
