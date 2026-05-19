@@ -15,6 +15,11 @@ import bridgeData from "../../../../assets/mahjong/layouts/bridge.json";
 import gateData from "../../../../assets/mahjong/layouts/gate.json";
 import doublePyramidData from "../../../../assets/mahjong/layouts/double_pyramid.json";
 import anchorData from "../../../../assets/mahjong/layouts/anchor.json";
+import crownData from "../../../../assets/mahjong/layouts/crown.json";
+import shieldData from "../../../../assets/mahjong/layouts/shield.json";
+import heartData from "../../../../assets/mahjong/layouts/heart.json";
+import hourglassData from "../../../../assets/mahjong/layouts/hourglass.json";
+import theKeyData from "../../../../assets/mahjong/layouts/the_key.json";
 
 export const LAYOUTS: LayoutMeta[] = [
   {
@@ -121,6 +126,41 @@ export const LAYOUTS: LayoutMeta[] = [
     tier: 2,
     tileCount: 144,
     data: anchorData,
+  },
+  {
+    id: "crown",
+    name: "Crown",
+    tier: 2,
+    tileCount: 144,
+    data: crownData,
+  },
+  {
+    id: "shield",
+    name: "Shield",
+    tier: 2,
+    tileCount: 144,
+    data: shieldData,
+  },
+  {
+    id: "heart",
+    name: "Heart",
+    tier: 2,
+    tileCount: 144,
+    data: heartData,
+  },
+  {
+    id: "hourglass",
+    name: "Hourglass",
+    tier: 2,
+    tileCount: 144,
+    data: hourglassData,
+  },
+  {
+    id: "the_key",
+    name: "The Key",
+    tier: 2,
+    tileCount: 144,
+    data: theKeyData,
   },
 ];
 
