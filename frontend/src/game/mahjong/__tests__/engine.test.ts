@@ -563,9 +563,18 @@ describe("shuffleBoard", () => {
     const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
     const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
     const state: MahjongState = {
-      _v: 1, tiles: [a, b], pairsRemoved: 71, score: 710, shufflesLeft: 1,
-      selected: null, undoStack: [], isComplete: false, isDeadlocked: false,
-      startedAt: null, accumulatedMs: 0, dealId: "TEST",
+      _v: 1,
+      tiles: [a, b],
+      pairsRemoved: 71,
+      score: 710,
+      shufflesLeft: 1,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
     };
     for (let seed = 0; seed < 50; seed++) {
       setRng(createSeededRng(seed));
@@ -588,13 +597,22 @@ describe("shuffleBoard", () => {
       // faceId values are arbitrary — tilesMatch uses suit+rank, not faceId
       { id: 0, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
       { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 },
-      { id: 2, suit: "dragons",    rank: 1, faceId: 1, col: 0, row: 0, layer: 0 },
-      { id: 3, suit: "dragons",    rank: 1, faceId: 1, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 0 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 },
     ];
     const state: MahjongState = {
-      _v: 1, tiles, pairsRemoved: 70, score: 700, shufflesLeft: 2,
-      selected: null, undoStack: [], isComplete: false, isDeadlocked: false,
-      startedAt: null, accumulatedMs: 0, dealId: "TEST",
+      _v: 1,
+      tiles,
+      pairsRemoved: 70,
+      score: 700,
+      shufflesLeft: 2,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
     };
     for (let seed = 0; seed < 50; seed++) {
       setRng(createSeededRng(seed));
