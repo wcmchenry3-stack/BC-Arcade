@@ -40,7 +40,7 @@ export const FRUIT_FRICTION = 0.08;
  * than circle friction. At 30% decay/tick, ω reaches < 2% of its initial value in
  * ~12 ticks (~0.2 s) rather than the 60+ ticks the old value required. (#1735)
  */
-export const FRUIT_ANGULAR_DAMPING = 0.30;
+export const FRUIT_ANGULAR_DAMPING = 0.3;
 /** Hard cap on angular velocity (rad/step) applied before the damping multiply.
  *  Prevents a single high-energy polygon edge collision from imparting runaway spin
  *  that would take many seconds to decay even with strong damping. (#1735) */
