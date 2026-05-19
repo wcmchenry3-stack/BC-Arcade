@@ -236,6 +236,9 @@ export async function createEngine(
       // fallback behaviour and the renderer's expectations.
       if (polyBody) {
         Matter.Body.setPosition(polyBody, { x, y });
+        // poly-decomp runs inside fromVertices and may assign a non-zero
+        // angularVelocity after bodyOpts are applied, so reset it explicitly.
+        Matter.Body.setAngularVelocity(polyBody, 0);
         body = polyBody;
       } else {
         const decompKey = `decomp-${setId}-${nameKey}`;

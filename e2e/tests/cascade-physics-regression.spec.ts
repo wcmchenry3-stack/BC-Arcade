@@ -105,20 +105,24 @@ test.describe("Cascade — physics regression (#1734 / #1735 / #1736)", () => {
     expect(f2).toBeDefined();
     if (!f2) return;
 
+    // The first 200 ms window must show downward movement — proves gravity is non-zero.
+    const dy1 = f2.y - f1.y;
+    expect(dy1).toBeGreaterThan(0);
+
     await fastForward(page, 200);
     const s3 = await getState(page);
     const f3 = s3.fruits[0];
-    // At some point the fruit may have landed and stopped — skip if settled.
+
+    // Only assert acceleration if the fruit is still in free-fall during the
+    // third window. If it has already landed and settled (|dy| < 0.5 px) the
+    // dy1 > 0 assertion above is sufficient proof that gravity worked.
     if (!f3 || Math.abs(f3.y - f2.y) < 0.5) return;
 
-    const dy1 = f2.y - f1.y; // displacement in second 200 ms
     const dy2 = f3.y - f2.y; // displacement in third 200 ms
 
-    // If the fruit is still accelerating (hasn't hit terminal velocity),
-    // the second window must be at least as large as the first.
-    // Both must be positive (moving downward).
-    expect(dy1).toBeGreaterThan(0);
-    expect(dy2).toBeGreaterThanOrEqual(dy1 * 0.8); // allow 20% tolerance for settle noise
+    // Displacement must grow (or hold) — fruit is accelerating, not drifting at
+    // constant speed. Allow 20 % tolerance for contact-normal settle noise.
+    expect(dy2).toBeGreaterThanOrEqual(dy1 * 0.8);
   });
 
   // -------------------------------------------------------------------------
@@ -212,7 +216,8 @@ test.describe("Cascade — physics regression (#1734 / #1735 / #1736)", () => {
       const r = RADII[f.tier] ?? 18;
       expect(f.x - r).toBeGreaterThanOrEqual(INNER_LEFT - 2);
       expect(f.x + r).toBeLessThanOrEqual(INNER_RIGHT + 2);
-      expect(f.y + r).toBeLessThanOrEqual(WORLD_H + r); // escape guard margin
+      expect(f.y - r).toBeGreaterThan(0); // top-of-bin escape guard
+      expect(f.y + r).toBeLessThanOrEqual(WORLD_H + r);
     }
   });
 
@@ -229,6 +234,7 @@ test.describe("Cascade — physics regression (#1734 / #1735 / #1736)", () => {
       const r = RADII[f.tier] ?? 55;
       expect(f.x - r).toBeGreaterThanOrEqual(INNER_LEFT - 2);
       expect(f.x + r).toBeLessThanOrEqual(INNER_RIGHT + 2);
+      expect(f.y - r).toBeGreaterThan(0); // top-of-bin escape guard
       expect(f.y + r).toBeLessThanOrEqual(WORLD_H + r);
     }
   });

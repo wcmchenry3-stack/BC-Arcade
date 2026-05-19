@@ -534,19 +534,19 @@ describe("drop speed — fruit reaches floor quickly", () => {
     handle.cleanup();
   });
 
-  it("y-velocity increases meaningfully in the first 5 frames (gravity is non-zero)", async () => {
+  it("y-velocity increases meaningfully across early frames (gravity is non-zero)", async () => {
     // Guards against gravity.scale=undefined/0 which would produce zero acceleration.
     const handle = await buildEngine();
     handle.drop(fruit(0), fruitSet.id, W / 2, 30);
-    const y0 = handle.step(DT).snapshots[0]?.y ?? 30;
-    const y5 = handle.step(DT).snapshots[0]?.y ?? 0;
-    for (let i = 0; i < 3; i++) handle.step(DT);
-    const y8 = handle.step(DT).snapshots[0]?.y ?? 0;
-    // The fruit should have accelerated: displacement in steps 5-8 > displacement in step 0-1
-    const earlyDy = y5 - y0;
-    const laterDy = y8 - y5;
+    const yAt1 = handle.step(DT).snapshots[0]?.y ?? 30; // position after step 1
+    const yAt2 = handle.step(DT).snapshots[0]?.y ?? 0; // position after step 2
+    for (let i = 0; i < 3; i++) handle.step(DT); // steps 3–5
+    const yAt6 = handle.step(DT).snapshots[0]?.y ?? 0; // position after step 6
+    // The fruit should have accelerated: displacement in steps 2–6 > displacement in steps 1–2
+    const earlyDy = yAt2 - yAt1;
+    const laterDy = yAt6 - yAt2;
     expect(earlyDy).toBeGreaterThan(0);
-    expect(laterDy).toBeGreaterThan(earlyDy); // accelerating, not constant
+    expect(laterDy).toBeGreaterThan(earlyDy); // accelerating, not constant drift
     handle.cleanup();
   });
 });
@@ -564,9 +564,7 @@ describe("angular velocity — clamp and decay", () => {
     handle.drop(fruit(0), fruitSet.id, W / 2, 30);
     handle.step(DT); // one step so the body exists in the world
 
-    const bodies = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     expect(bodies.length).toBeGreaterThanOrEqual(1);
     for (const body of bodies) {
       expect(Math.abs(body.angularVelocity)).toBeLessThan(0.05);
@@ -583,18 +581,14 @@ describe("angular velocity — clamp and decay", () => {
     handle.step(DT);
 
     // Force extreme angular velocity onto the body
-    const bodies = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     for (const body of bodies) {
       Matter.Body.setAngularVelocity(body, 50); // 50 rad/step — far above cap
     }
     // One more step applies the clamp
     handle.step(DT);
 
-    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     for (const body of bodiesAfter) {
       // After clamp + one decay: |ω| ≤ MAX_ANG * (1 - DAMPING)
       const maxAfterDecay = MAX_ANGULAR_VELOCITY_RAD_PER_STEP * (1 - FRUIT_ANGULAR_DAMPING) + 0.01;
@@ -616,21 +610,25 @@ describe("angular velocity — clamp and decay", () => {
 
     // Measure angle over the next 30 frames
     const snap0 = handle.step(DT).snapshots[0];
-    if (!snap0) { handle.cleanup(); return; }
+    if (!snap0) {
+      handle.cleanup();
+      return;
+    }
     const angle0 = snap0.angle;
 
     for (let i = 0; i < 29; i++) handle.step(DT);
     const snap1 = handle.step(DT).snapshots[0];
-    if (!snap1) { handle.cleanup(); return; }
+    if (!snap1) {
+      handle.cleanup();
+      return;
+    }
     const angle1 = snap1.angle;
 
     // Total rotation over 30 frames must be < 0.3 rad (~17°) once settled
     expect(Math.abs(angle1 - angle0)).toBeLessThan(0.3);
 
     // Also confirm angularVelocity on the underlying body is tiny
-    const bodies = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     for (const body of bodies) {
       expect(Math.abs(body.angularVelocity)).toBeLessThan(0.05);
     }
@@ -692,9 +690,7 @@ describe("post-merge boundary safety", () => {
 
     handle.step(DT);
     const MAX_SPEED = 90; // px/s
-    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter(
-      (b) => !b.isStatic
-    );
+    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     for (const body of bodiesAfter) {
       const { x: vx, y: vy } = body.velocity;
       const speedPxS = Math.sqrt(vx * vx + vy * vy) * 60;
