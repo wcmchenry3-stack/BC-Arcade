@@ -23,7 +23,6 @@ import LockedGameScreen from "./src/screens/LockedGameScreen";
 import GameScreen from "./src/screens/GameScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import BottomTabBar from "./src/components/shared/BottomTabBar";
-import { AiDifficulty, GameState } from "./src/game/yacht/types";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
@@ -41,6 +40,12 @@ import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardC
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import { LazyScreens } from "./src/utils/lazyScreens";
+import type {
+  RootStackParamList,
+  HomeStackParamList,
+  ProfileStackParamList,
+} from "./src/types/navigation";
+export type { RootStackParamList, HomeStackParamList, ProfileStackParamList };
 
 // Start capturing console.warn / console.error for feedback submissions
 SessionLogger.init();
@@ -61,47 +66,6 @@ if (!dsn) {
     console.error("[Sentry] init failed:", e);
   }
 }
-
-export type RootStackParamList = {
-  MainTabs: undefined;
-};
-
-export type HomeStackParamList = {
-  Home: undefined;
-  Game: { initialState: GameState; aiDifficulty?: AiDifficulty; aiState?: GameState };
-  Cascade: undefined;
-  StarSwarm: undefined;
-  BlackjackBetting: undefined;
-  BlackjackTable: undefined;
-  BlackjackVictory: undefined;
-  BlackjackStats: undefined;
-  Twenty48: undefined;
-  Solitaire: undefined;
-  FreeCell: undefined;
-  Hearts: undefined;
-  Sudoku: undefined;
-  Mahjong: undefined;
-  MahjongLayoutInspector: undefined;
-  MahjongLayoutDetail: { layoutId: string };
-  Sort: undefined;
-  DailyWord: undefined;
-  Scoreboard: {
-    gameKey:
-      | "hearts"
-      | "yacht"
-      | "blackjack"
-      | "twenty48"
-      | "solitaire"
-      | "sudoku"
-      | "cascade"
-      | "mahjong";
-  };
-};
-
-export type ProfileStackParamList = {
-  ProfileHome: undefined;
-  GameDetail: { gameId: string };
-};
 
 // Must live inside the Suspense boundary. The outer Wrapped commits immediately
 // (Suspense never suspends its own parent), so only an inner child mounts after

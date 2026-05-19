@@ -6,7 +6,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/core";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
 import { createGame } from "../game/mahjong/engine";
 import { useMahjongCamera } from "../game/mahjong/layout";
