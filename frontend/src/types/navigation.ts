@@ -1,3 +1,6 @@
+// Leaf module — keeps navigation param types out of App.tsx to break the
+// App.tsx → lazyScreens.ts → *Screen.tsx → App.tsx circular dependency that
+// caused a TDZ crash at bundle time (issue #1553).
 import type { AiDifficulty, GameState } from "../game/yacht/types";
 
 export type RootStackParamList = {

@@ -45,7 +45,6 @@ import type {
   HomeStackParamList,
   ProfileStackParamList,
 } from "./src/types/navigation";
-export type { RootStackParamList, HomeStackParamList, ProfileStackParamList };
 
 // Start capturing console.warn / console.error for feedback submissions
 SessionLogger.init();
