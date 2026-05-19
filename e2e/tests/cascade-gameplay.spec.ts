@@ -46,7 +46,7 @@ test.describe("Cascade — merge and score behavior", () => {
 
   test("two tier-1 fruits merge → score = 4", async ({ page }) => {
     // Tier-1 radius=25, sum-of-radii=50. Place 44px apart (6px overlap, ~12%)
-    // so Rapier fires CollisionStart reliably — mirrors the watermelon test design.
+    // so Matter.js fires CollisionStart reliably — mirrors the watermelon test design.
     await spawnTierAt(page, 1, 145);
     await spawnTierAt(page, 1, 189);
     await fastForward(page, 2000);
@@ -64,7 +64,7 @@ test.describe("Cascade — merge and score behavior", () => {
     page,
   }) => {
     // Tier-10 radius=89; valid x range in a 400px canvas is [105, 295].
-    // Place 156px apart (r1+r2=178) for ~12% initial overlap so Rapier
+    // Place 156px apart (r1+r2=178) for ~12% initial overlap so Matter.js
     // contact detection fires reliably without suppressing contact events.
     await spawnTierAt(page, 10, 122);
     await spawnTierAt(page, 10, 278);
@@ -122,7 +122,7 @@ test.describe("Cascade — merge and score behavior", () => {
     await fastForward(page, 2000);
 
     // tier-2 merge (+8): 31px apart (radius=33, sum=66, 35px overlap ~53%).
-    // Originally 8px, bumped to 17px for Rapier CI (#1418), now bumped to 35px
+    // Originally 8px, bumped to 35px
     // for Matter.js — RAF may tick between the two spawnTierAt calls, letting the
     // first fruit fall up to ~44px before the second spawns (≥44px breaks 17px
     // overlap). 35px overlap tolerates ~55px of free-fall. Start at x=235 to

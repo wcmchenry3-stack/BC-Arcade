@@ -8,7 +8,7 @@
  *   - Score display element presence after interaction
  *   - App stability (no crashes/reloads after drops)
  *
- * The real Rapier2D WASM runs in the Playwright Chromium container.
+ * The real Matter.js engine runs in the Playwright Chromium container.
  */
 
 import { test, expect } from "./fixtures";

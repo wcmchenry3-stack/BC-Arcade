@@ -13,16 +13,16 @@ export {
 } from "./physicsLayout";
 export type { Vec2 } from "./physicsLayout";
 
-// --- Canonical physics world dimensions (px) ---
-// Physics always runs at this fixed size. The renderer scales the canvas to fit
-// the device container — see CascadeScreen for the scale computation.
+/** Fixed physics world width (px). Physics always runs at this size; the renderer scales the canvas to fit the device container (S3). */
 export const WORLD_W = 400;
+/** Fixed physics world height (px). Physics always runs at this size; the renderer scales the canvas to fit the device container (S3). */
 export const WORLD_H = 700;
 
-// --- Layout constants ---
+/** Wall and floor thickness (px). Must exceed max-speed × dt per sub-step so fruits cannot tunnel through walls at terminal velocity (S3). */
 export const WALL_THICKNESS = 16;
-/** 18% from top — game over if settled fruit crosses this */
+/** 18% from top — game over if settled fruit crosses this (UC5). */
 export const DANGER_LINE_RATIO = 0.18;
+/** Wall-clock grace period (ms) after game-over trigger before the overlay fires (UC5). */
 export const GAME_OVER_GRACE_MS = 3000;
 /** Consecutive ticks a settled fruit must be above the danger line before game-over fires. */
 export const GAME_OVER_CONSECUTIVE_TICKS = 180;
@@ -44,8 +44,10 @@ export const WALL_FRICTION = 0.2;
 export const POP_IMPULSE_SCALE = 2.0;
 
 // --- Per-tier physics (UC3) ---
-// Density (matter-js pixel-area units): heavier for larger fruit so large tiers sink into piles.
-// Tuple type ensures noUncheckedIndexedAccess won't widen to `number | undefined` for FruitTier indices.
+/**
+ * Per-tier Matter.js density (pixel-area units): heavier for larger fruit so large tiers sink into piles.
+ * Tuple type ensures noUncheckedIndexedAccess won't widen to `number | undefined` for FruitTier indices. (UC3)
+ */
 export const FRUIT_DENSITY_BY_TIER: readonly [
   number,
   number,
@@ -71,7 +73,7 @@ export const FRUIT_DENSITY_BY_TIER: readonly [
   0.0018, // tier-9  (r=134)
   0.002, // tier-10 (r=168)
 ];
-// Restitution: smaller fruit bounce more; larger fruit thud and settle.
+/** Per-tier restitution: smaller fruit bounce more; larger fruit thud and settle (UC3). */
 export const FRUIT_RESTITUTION_BY_TIER: readonly [
   number,
   number,
@@ -100,10 +102,10 @@ export const FRUIT_RESTITUTION_BY_TIER: readonly [
 /** Approach velocity (px/tick) below which restitution is suppressed — Matter.Resolver._restingThresh. */
 export const RESTITUTION_THRESHOLD = 0.5;
 
-// --- Matter.js gravity ---
-// Equivalent to ~1800 px/s² at 60 Hz (matches Rapier GRAVITY_Y=18 × SCALE=0.01 × 1/SCALE).
-// matter.js applies gravity as: velocity += gravity.y * gravity.scale per tick.
-// Default gravity.scale = 0.001, so y=1.8 gives snappy arcade freefall.
+/**
+ * Matter.js gravity Y component. Equivalent to ~1800 px/s² at 60 Hz.
+ * Applied as: velocity += gravity.y × gravity.scale per tick; default scale = 0.001. (UC1)
+ */
 export const MATTER_GRAVITY_Y = 1.8;
 
 // --- Fixed physics timestep ---
@@ -137,14 +139,16 @@ export const MAX_FRUIT_SPEED_PX_S = 900;
 export const SPAWN_GRACE_TICKS = 3;
 /** Wall-clock duration of spawn grace (ms). Converted to ticks at spawn time based on actual step
  *  duration so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz. */
-export const SPAWN_GRACE_MS = SPAWN_GRACE_TICKS * FIXED_STEP_MS; // ≈ 50 ms
+/** Wall-clock spawn-grace duration ≈ 50 ms. Converted to ticks at spawn time so 120 Hz ProMotion devices get the same wall-clock protection as 60 Hz (UC2). */
+export const SPAWN_GRACE_MS = SPAWN_GRACE_TICKS * FIXED_STEP_MS;
 /** Number of physics ticks over which a merge-spawned body grows from WARM_SPAWN_START_SCALE to 100% radius. */
 export const WARM_SPAWN_FRAMES = 10;
 /** Initial radius scale for merge-spawned bodies — starts at 50% to prevent explosive ejection. */
 export const WARM_SPAWN_START_SCALE = 0.5;
 
-// --- Collision group bitmasks ---
+/** Collision category bitmask for wall and floor bodies (UC2). */
 export const COLLISION_GROUP_WALL = 0x0001;
+/** Collision category bitmask for fruit bodies — collides with walls and other fruits (UC2). */
 export const COLLISION_GROUP_DYNAMIC = 0x0002;
 
 // --- Shared interfaces ---
