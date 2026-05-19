@@ -1895,9 +1895,7 @@ describe("S11 — mergePostFrames elevated iterations & NaN/Inf guards", () => {
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
 
     const getDynamicBig = () =>
-      Matter.Composite.allBodies(engineInstance.world).filter(
-        (b) => !b.isStatic && b.parent === b
-      );
+      Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic && b.parent === b);
 
     // Drop two tier-9 bodies positioned near the right wall so midX > innerRight
     const ids1 = new Set(getDynamicBig().map((b) => b.id));
