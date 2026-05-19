@@ -1,12 +1,16 @@
 /**
- * Castle layout -- 144 slots.
+ * Castle layout — 144 slots.
  *
- * Layer breakdown:
- *   Layer 0 --  80 tiles
- *   Layer 1 --  40 tiles
- *   Layer 2 --  16 tiles
- *   Layer 3 --   8 tiles
- *   Total: 144
+ * Fortress silhouette with corner towers, perimeter walls, and an interior courtyard.
+ *
+ * Layer breakdown (top-down; higher layer = more elevated):
+ *   Layer 0 —  80 tiles: full castle floor plan (10-col × 8-row rectangle, cols 0–18, rows 0–7)
+ *   Layer 1 —  40 tiles: perimeter walls rise — full top row (row 1), left/right tower sides
+ *                         (cols 0–2 and 16–18), and full bottom row (row 6); interior courtyard
+ *                         (rows 2–5, cols 4–14) remains at ground level only
+ *   Layer 2 —  16 tiles: battlement crests on top and bottom wall rows + upper tower sections
+ *   Layer 3 —   8 tiles: tallest corner tower caps (cols 0–2 and 16–18, rows 2–3)
+ *   Total: 80 + 40 + 16 + 8 = 144
  */
 
 import type { Layout } from "../types";

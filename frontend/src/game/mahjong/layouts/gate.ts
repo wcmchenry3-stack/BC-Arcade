@@ -1,12 +1,19 @@
 /**
- * Gate layout -- 144 slots.
+ * Gate layout — 144 slots.
+ *
+ * Fortified gateway: two tall pillars flanking an arched opening, with a cobblestone ground.
  *
  * Layer breakdown:
- *   Layer 0 --  76 tiles
- *   Layer 1 --  44 tiles
- *   Layer 2 --  16 tiles
- *   Layer 3 --   8 tiles
- *   Total: 144
+ *   Layer 0 —  76 tiles: pillar bases (cols 0–4 and 18–22, rows 2–4), arch foundation row
+ *                         (row 5, partial), full-width cobblestone ground (rows 6–9)
+ *   Layer 1 —  44 tiles: pillar walls rise (cols 0–4 and 18–22, rows 2–7) + full archway span
+ *                         (row 5, full width) + arch crown connector (cols 0–4, 10–12, 18–22,
+ *                         row 4). Arch tiles at cols 10–12 row 4 and cols 6,16 row 5 have no
+ *                         layer-0 base — intentional: the arch spans empty air over the gateway.
+ *   Layer 2 —  16 tiles: upper pillar sections (cols 0–4 and 18–22, rows 2–3) +
+ *                         arch keystone (cols 8–14, row 4)
+ *   Layer 3 —   8 tiles: tallest pillar corner caps (cols 0–2 and 20–22, rows 2–3)
+ *   Total: 76 + 44 + 16 + 8 = 144
  */
 
 import type { Layout } from "../types";
