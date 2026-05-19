@@ -69,7 +69,7 @@ export interface GameCanvasHandle {
    */
   restoreFruits: (fruits: readonly SavedFruitInput[], fruitSet: FruitSet) => void;
   fastForward?: (ms: number) => void;
-  /** True once the physics engine has finished async init (Rapier WASM loaded). */
+  /** True once the physics engine has finished async init (Matter.js engine loaded). */
   isReady?: () => boolean;
   /** Seed the spawn-queue RNG. Only present when EXPO_PUBLIC_TEST_HOOKS=1. */
   setSeed?: (seed: number) => void;

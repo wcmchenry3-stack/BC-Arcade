@@ -48,11 +48,11 @@ export async function gotoCascade(page: Page): Promise<void> {
   await page
     .getByRole("heading", { name: "Cascade", exact: true })
     .waitFor({ timeout: 10_000 });
-  // Rapier WASM may take a moment to initialise — wait for the canvas label
+  // Matter.js engine may take a moment to initialise — wait for the canvas label
   await page
     .getByRole("img", { name: /Cascade game/i })
     .waitFor({ timeout: 15_000 });
-  // The canvas DOM mounts before Rapier WASM finishes async init; without
+  // The canvas DOM mounts before the Matter.js engine finishes async init; without
   // this wait the first spawnTierAt() calls can silently no-op because
   // engineRef is still null, causing flaky first-run failures (#375).
   await page.waitForFunction(
