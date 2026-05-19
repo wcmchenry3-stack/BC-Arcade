@@ -316,7 +316,7 @@ export default function GameCanvas({
 
     loadTileAssets().then((uris) => {
       if (cancelled) return;
-      Promise.all(
+      return Promise.all(
         uris.map((uri, i) => {
           if (!uri) return Promise.resolve();
           return new Promise<void>((resolve) => {

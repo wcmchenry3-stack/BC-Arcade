@@ -46,7 +46,6 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../../App";
-import { TILE_REQUIRES } from "../components/mahjong/tileAssets";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
@@ -325,7 +324,7 @@ export default function MahjongScreen() {
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
   const [tileUris, setTileUris] = useState<(string | null)[]>(
-    Array(TILE_REQUIRES.length).fill(null)
+    Array(42).fill(null)
   );
 
   // Animation state
