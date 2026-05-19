@@ -19,6 +19,8 @@ import {
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import * as Sentry from "@sentry/react-native";
 import HomeScreen from "./src/screens/HomeScreen";
+import MahjongLayoutInspectorScreen from "./src/screens/MahjongLayoutInspectorScreen";
+import MahjongLayoutDetailScreen from "./src/screens/MahjongLayoutDetailScreen";
 import LockedGameScreen from "./src/screens/LockedGameScreen";
 import GameScreen from "./src/screens/GameScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
@@ -81,6 +83,8 @@ export type HomeStackParamList = {
   Hearts: undefined;
   Sudoku: undefined;
   Mahjong: undefined;
+  MahjongLayoutInspector: undefined;
+  MahjongLayoutDetail: { layoutId: string };
   Sort: undefined;
   DailyWord: undefined;
   Scoreboard: {
@@ -237,6 +241,8 @@ function LobbyStack() {
       <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />
       <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
+      <HomeStack.Screen name="MahjongLayoutInspector" component={MahjongLayoutInspectorScreen} />
+      <HomeStack.Screen name="MahjongLayoutDetail" component={MahjongLayoutDetailScreen} />
       <HomeStack.Screen name="Sort" component={LazySortScreen} />
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
