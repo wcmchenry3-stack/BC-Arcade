@@ -555,6 +555,11 @@ describe("shuffleBoard", () => {
     // winnable 1-pair board. Two tiles at distinct (col, row) positions — the
     // only possible slot assignment is non-stacked, so the result must always
     // have a free pair regardless of RNG seed.
+    //
+    // Note: the hasStackedMatch guard is geometrically unreachable here because
+    // neither slot shares (col, row). This test is a sanity check that shuffleBoard
+    // always succeeds and the result is playable; regression coverage for the guard
+    // itself is in the "issue 1565 deadlock" test below.
     const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
     const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
     const state: MahjongState = {
@@ -562,7 +567,7 @@ describe("shuffleBoard", () => {
       selected: null, undoStack: [], isComplete: false, isDeadlocked: false,
       startedAt: null, accumulatedMs: 0, dealId: "TEST",
     };
-    for (let seed = 0; seed < 30; seed++) {
+    for (let seed = 0; seed < 50; seed++) {
       setRng(createSeededRng(seed));
       const shuffled = shuffleBoard(state);
       expect(hasFreePairs(shuffled.tiles)).toBe(true);
@@ -580,6 +585,7 @@ describe("shuffleBoard", () => {
     //   (0,0,0) — blocked by (0,0,1)
     //   (0,0,1) — free at top of its column stack
     const tiles: SlotTile[] = [
+      // faceId values are arbitrary — tilesMatch uses suit+rank, not faceId
       { id: 0, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
       { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 },
       { id: 2, suit: "dragons",    rank: 1, faceId: 1, col: 0, row: 0, layer: 0 },
@@ -593,7 +599,7 @@ describe("shuffleBoard", () => {
     for (let seed = 0; seed < 50; seed++) {
       setRng(createSeededRng(seed));
       const shuffled = shuffleBoard(state);
-      if (shuffled === state) continue; // all 50 retries failed (should not happen)
+      expect(shuffled).not.toBe(state); // guard must find a valid arrangement within 50 retries
       expect(hasFreePairs(shuffled.tiles)).toBe(true);
       for (const t of shuffled.tiles) {
         const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
@@ -620,7 +626,8 @@ describe("shuffleBoard", () => {
     for (let seed = 0; seed < 50; seed++) {
       setRng(createSeededRng(seed));
       const shuffled = shuffleBoard(state);
-      if (shuffled === state) continue;
+      expect(shuffled).not.toBe(state); // guard must find a valid arrangement within 50 retries
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
       for (const t of shuffled.tiles) {
         const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
         if (partner) {
