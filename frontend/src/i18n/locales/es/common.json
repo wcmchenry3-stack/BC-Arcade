@@ -40,6 +40,7 @@
   "overflow.menu.label": "Más opciones",
   "overflow.menu.scoreboard": "Marcador",
   "overflow.menu.newGame": "Nueva partida",
+  "overflow.menu.levelSelect": "Seleccionar nivel",
   "overflow.menu.editNames": "Editar nombres",
   "overflow.abandon.title": "¿Abandonar la partida actual?",
   "overflow.abandon.body": "Empezar una nueva partida eliminará tu progreso en esta ronda. Tus estadísticas generales no se verán afectadas.",

@@ -40,6 +40,7 @@
   "overflow.menu.label": "更多选项",
   "overflow.menu.scoreboard": "排行榜",
   "overflow.menu.newGame": "新游戏",
+  "overflow.menu.levelSelect": "选择关卡",
   "overflow.menu.editNames": "编辑名称",
   "overflow.abandon.title": "放弃当前游戏？",
   "overflow.abandon.body": "开始新游戏会丢失本轮的进度，但不会影响你的总统计数据。",

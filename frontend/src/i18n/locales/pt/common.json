@@ -40,6 +40,7 @@
   "overflow.menu.label": "Mais opções",
   "overflow.menu.scoreboard": "Placar",
   "overflow.menu.newGame": "Novo Jogo",
+  "overflow.menu.levelSelect": "Selecionar Nível",
   "overflow.menu.editNames": "Editar nomes",
   "overflow.abandon.title": "Abandonar o jogo atual?",
   "overflow.abandon.body": "Começar um novo jogo vai apagar seu progresso nesta rodada. Suas estatísticas gerais não serão afetadas.",

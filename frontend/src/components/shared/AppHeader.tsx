@@ -27,6 +27,8 @@ export interface AppHeaderProps {
   onOpenScoreboard?: () => void;
   /** When provided, shows the ⋯ menu with a New Game item (with abandon confirmation). See GH #711. */
   onNewGame?: () => void;
+  /** When provided, shows the ⋯ menu with a Level Select item (no confirmation — goes directly to layout picker). */
+  onLevelSelect?: () => void;
   /** When provided, shows the ⋯ menu with an Edit Names item. */
   onEditPlayerNames?: () => void;
 }
@@ -38,6 +40,7 @@ export function AppHeader({
   requireBack = false,
   onOpenScoreboard,
   onNewGame,
+  onLevelSelect,
   onEditPlayerNames,
 }: AppHeaderProps) {
   const { colors, theme } = useTheme();
@@ -48,7 +51,7 @@ export function AppHeader({
   const [abandonVisible, setAbandonVisible] = useState(false);
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
-  const showMenu = !!onOpenScoreboard || !!onNewGame || !!onEditPlayerNames;
+  const showMenu = !!onOpenScoreboard || !!onNewGame || !!onLevelSelect || !!onEditPlayerNames;
 
   // #498 — mount-time telemetry: record whether the back affordance is wired
   // up so we can detect regressions where a screen silently drops onBack.
@@ -94,6 +97,11 @@ export function AppHeader({
   const handleMenuNewGame = () => {
     setMenuOpen(false);
     setAbandonVisible(true);
+  };
+
+  const handleMenuLevelSelect = () => {
+    setMenuOpen(false);
+    onLevelSelect?.();
   };
 
   const handleMenuEditNames = () => {
@@ -282,6 +290,27 @@ export function AppHeader({
               />
               <Text style={[styles.itemLabel, { color: colors.text }]}>
                 {t("common:overflow.menu.newGame")}
+              </Text>
+            </Pressable>
+          )}
+
+          {!!onLevelSelect && (
+            <Pressable
+              onPress={handleMenuLevelSelect}
+              accessibilityRole="menuitem"
+              style={(state) => [
+                styles.dropdownItem,
+                state.pressed && { backgroundColor: colors.surfaceAlt },
+              ]}
+            >
+              <MaterialIcons
+                name="grid-view"
+                size={18}
+                color={colors.accent}
+                style={styles.itemIcon}
+              />
+              <Text style={[styles.itemLabel, { color: colors.text }]}>
+                {t("common:overflow.menu.levelSelect")}
               </Text>
             </Pressable>
           )}

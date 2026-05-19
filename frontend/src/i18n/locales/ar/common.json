@@ -40,6 +40,7 @@
   "overflow.menu.label": "خيارات إضافية",
   "overflow.menu.scoreboard": "لوحة النتائج",
   "overflow.menu.newGame": "لعبة جديدة",
+  "overflow.menu.levelSelect": "اختيار المستوى",
   "overflow.menu.editNames": "تعديل الأسماء",
   "overflow.abandon.title": "ترك اللعبة الحالية؟",
   "overflow.abandon.body": "بدء لعبة جديدة سيؤدي إلى فقدان تقدمك في هذه الجولة. إحصائياتك الإجمالية لن تتأثر.",

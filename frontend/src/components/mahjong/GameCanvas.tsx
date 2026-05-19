@@ -422,7 +422,7 @@ export default function GameCanvas({
             onPress={onNewGamePress}
             accessibilityLabel={t("action.newGameLabel")}
           >
-            <Text style={styles.btnText}>{t("overlay.newGameButton")}</Text>
+            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
           </Pressable>
         </View>
       )}
@@ -440,7 +440,7 @@ export default function GameCanvas({
             onPress={onNewGamePress}
             accessibilityLabel={t("action.newGameLabel")}
           >
-            <Text style={styles.btnText}>{t("overlay.newGameButton")}</Text>
+            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
           </Pressable>
         </View>
       )}

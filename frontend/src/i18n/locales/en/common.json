@@ -40,6 +40,7 @@
   "overflow.menu.label": "More options",
   "overflow.menu.scoreboard": "Scoreboard",
   "overflow.menu.newGame": "New Game",
+  "overflow.menu.levelSelect": "Level Select",
   "overflow.menu.editNames": "Edit Names",
   "overflow.abandon.title": "Abandon current game?",
   "overflow.abandon.body": "Starting a new game will discard your progress in this round. Your lifetime stats won't be affected.",
