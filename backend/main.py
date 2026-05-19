@@ -128,11 +128,11 @@ _allowed_origins: list[str] = (
 # ---------------------------------------------------------------------------
 # Middleware stack (registered last = outermost in Starlette)
 # Order outermost → innermost:
-#   1. request_logger  (logs all requests including 429s)
-#   2. SlowAPIMiddleware  (rate limiting)
-#   3. MaxBodySizeMiddleware  (reject oversized bodies early)
-#   4. CORSMiddleware
-#   5. security_headers  (@app.middleware decorator, innermost)
+#   1. request_logger  (@app.middleware, outermost — logs every request incl. 429s)
+#   2. security_headers  (@app.middleware)
+#   3. CORSMiddleware  (must wrap SlowAPI/MaxBody so 429/413 errors carry CORS headers)
+#   4. SlowAPIMiddleware  (rate limiting)
+#   5. MaxBodySizeMiddleware  (reject oversized bodies early, innermost)
 # ---------------------------------------------------------------------------
 
 DEFAULT_MAX_BODY_BYTES = 1_024  # 1 KB — legacy game payloads (~50 bytes max)
@@ -161,7 +161,13 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# Register in reverse of desired execution order (last registered = outermost)
+# Register in reverse of desired execution order (last registered = outermost).
+# CORSMiddleware is registered last so it wraps SlowAPI and MaxBody — this
+# ensures 429 (rate-limited) and 413 (body-too-large) responses include the
+# Access-Control-Allow-Origin header. Without it, browsers block those error
+# responses and raise TypeError: Failed to fetch (#1739).
+app.add_middleware(MaxBodySizeMiddleware)
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -169,8 +175,22 @@ app.add_middleware(
     expose_headers=["Retry-After"],
     allow_headers=["Content-Type", "X-Session-ID", "X-Admin-Token"],
 )
-app.add_middleware(MaxBodySizeMiddleware)
-app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'none'; "
+        "connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; "
+        "frame-ancestors 'none'"
+    )
+    if "server" in response.headers:
+        del response.headers["server"]
+    return response
 
 
 @app.middleware("http")
@@ -195,22 +215,6 @@ async def request_logger(request: Request, call_next) -> Response:
         record["event"] = "server_error"
 
     _audit_log.info(json.dumps(record))
-    return response
-
-
-@app.middleware("http")
-async def security_headers(request: Request, call_next) -> Response:
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'none'; "
-        "connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; "
-        "frame-ancestors 'none'"
-    )
-    if "server" in response.headers:
-        del response.headers["server"]
     return response
 
 
