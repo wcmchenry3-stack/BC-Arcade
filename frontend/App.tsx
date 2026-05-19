@@ -210,8 +210,14 @@ const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
 const LazyHeartsScreen = makePremiumScreen("hearts", withSuspense(LazyScreens.Hearts, "hearts"));
 const LazySudokuScreen = makePremiumScreen("sudoku", withSuspense(LazyScreens.Sudoku, "sudoku"));
 const LazyMahjongScreen = withSuspense(LazyScreens.Mahjong, "mahjong");
-const LazyMahjongLayoutInspectorScreen = withSuspense(LazyScreens.MahjongLayoutInspector, "mahjong_layout_inspector");
-const LazyMahjongLayoutDetailScreen = withSuspense(LazyScreens.MahjongLayoutDetail, "mahjong_layout_detail");
+const LazyMahjongLayoutInspectorScreen = withSuspense(
+  LazyScreens.MahjongLayoutInspector,
+  "mahjong_layout_inspector"
+);
+const LazyMahjongLayoutDetailScreen = withSuspense(
+  LazyScreens.MahjongLayoutDetail,
+  "mahjong_layout_detail"
+);
 const LazySortScreen = makePremiumScreen("sort", withSuspense(LazyScreens.Sort, "sort"));
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
@@ -241,7 +247,10 @@ function LobbyStack() {
       <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />
       <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
-      <HomeStack.Screen name="MahjongLayoutInspector" component={LazyMahjongLayoutInspectorScreen} />
+      <HomeStack.Screen
+        name="MahjongLayoutInspector"
+        component={LazyMahjongLayoutInspectorScreen}
+      />
       <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
       <HomeStack.Screen name="Sort" component={LazySortScreen} />
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
