@@ -40,6 +40,7 @@
   "overflow.menu.label": "Mehr Optionen",
   "overflow.menu.scoreboard": "Punktetafel",
   "overflow.menu.newGame": "Neues Spiel",
+  "overflow.menu.levelSelect": "Level auswählen",
   "overflow.menu.editNames": "Namen bearbeiten",
   "overflow.abandon.title": "Aktuelles Spiel beenden?",
   "overflow.abandon.body": "Ein neues Spiel zu starten, löscht deinen Fortschritt in dieser Runde. Deine Gesamtstatistiken bleiben erhalten.",

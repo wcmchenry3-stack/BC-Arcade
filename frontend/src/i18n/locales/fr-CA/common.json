@@ -40,6 +40,7 @@
   "overflow.menu.label": "Plus d'options",
   "overflow.menu.scoreboard": "Tableau des scores",
   "overflow.menu.newGame": "Nouvelle partie",
+  "overflow.menu.levelSelect": "Sélectionner un niveau",
   "overflow.menu.editNames": "Modifier les noms",
   "overflow.abandon.title": "Abandonner la partie en cours?",
   "overflow.abandon.body": "Commencer une nouvelle partie effacera vos progrès dans ce tour. Vos statistiques globales ne seront pas affectées.",

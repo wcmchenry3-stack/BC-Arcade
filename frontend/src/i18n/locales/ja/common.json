@@ -40,6 +40,7 @@
   "overflow.menu.label": "その他のオプション",
   "overflow.menu.scoreboard": "スコアボード",
   "overflow.menu.newGame": "新しいゲーム",
+  "overflow.menu.levelSelect": "レベル選択",
   "overflow.menu.editNames": "名前を編集",
   "overflow.abandon.title": "現在のゲームを終了しますか？",
   "overflow.abandon.body": "新しいゲームを始めると、このラウンドの進行状況が失われます。累計の成績には影響しません。",
