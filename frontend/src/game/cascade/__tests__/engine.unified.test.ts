@@ -11,6 +11,7 @@ import type { EngineHandle } from "../engine.shared";
 import { getVerticesForFruit } from "../fruitVertices";
 import {
   MATTER_POSITION_ITERATIONS,
+  MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
   MAX_FRUIT_SPEED_PX_S,
   FIXED_STEP_MS,
@@ -280,12 +281,13 @@ describe("velocity clamp", () => {
     const fruitBody = dynamicBodies[0];
     if (!fruitBody) throw new Error("Expected a fruit body");
 
-    // Force velocity far above the clamp threshold
-    Matter.Body.setVelocity(fruitBody, { x: 0, y: 9999 });
+    // Force velocity above the clamp threshold but below the 4× explosive-ejection guard
+    // so the body is clamped (not removed). 2× cap = 30 px/step; explosion fires at 4× = 60.
+    const maxSpeedPerStep = MAX_FRUIT_SPEED_PX_S / 60;
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: maxSpeedPerStep * 2 });
     handle.step(1 / 60);
 
     const speed = Math.sqrt(fruitBody.velocity.x ** 2 + fruitBody.velocity.y ** 2);
-    const maxSpeedPerStep = MAX_FRUIT_SPEED_PX_S / 60;
     expect(speed).toBeLessThanOrEqual(maxSpeedPerStep + 0.5);
 
     handle.cleanup();
@@ -1763,6 +1765,214 @@ describe("UC6 — game-over velocity filter", () => {
     }
 
     expect(fired).toBe(true);
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S11 — mergePostFrames elevated iterations & NaN/Inf guards (#1616)
+// ---------------------------------------------------------------------------
+
+describe("S11 — mergePostFrames elevated iterations & NaN/Inf guards", () => {
+  const getDynamic = (eng: Matter.Engine) =>
+    Matter.Composite.allBodies(eng.world).filter((b) => !b.isStatic && b.parent === b);
+
+  function dropAndTrack(
+    handle: EngineHandle,
+    eng: Matter.Engine,
+    tier: number,
+    x: number,
+    y: number
+  ): Matter.Body {
+    const idsBefore = new Set(getDynamic(eng).map((b) => b.id));
+    handle.drop(fruit(tier), "fruits", x, y);
+    const newBodies = getDynamic(eng).filter((b) => !idsBefore.has(b.id));
+    if (!newBodies[0]) throw new Error(`dropAndTrack: no new body for tier=${tier}`);
+    return newBodies[0];
+  }
+
+  it("MATTER_POSITION_ITERATIONS_MERGE is 15", () => {
+    expect(MATTER_POSITION_ITERATIONS_MERGE).toBe(15);
+  });
+
+  it("engine uses elevated positionIterations for exactly 3 sub-steps after a merge", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    const bA = dropAndTrack(handle, engineInstance, 0, 50, 300);
+    const bB = dropAndTrack(handle, engineInstance, 0, 60, 300);
+    handle.step(1e-9);
+
+    // Trigger synthetic merge — mergePostFrames set to 3 during next step
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: bA, bodyB: bB, activeContacts: [], separation: 0, isActive: true }],
+    });
+    handle.step(1e-9); // tiny dt: no sub-steps run, processMerges fires, mergePostFrames = 3
+
+    // Each step(1/60) has exactly 1 sub-step — iterations should be elevated for 3 steps
+    handle.step(1 / 60);
+    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
+    handle.step(1 / 60);
+    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
+    handle.step(1 / 60);
+    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
+    // 4th sub-step: back to normal
+    handle.step(1 / 60);
+    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS);
+
+    handle.cleanup();
+  });
+
+  it("seeded tier-0 dense merge: no NaN/Inf positions in snapshots after 3 post-merge sub-steps", async () => {
+    const handle = await buildEngine();
+
+    // Drop two tier-0 fruits close together to guarantee a natural merge
+    handle.drop(fruit(0), "fruits", W / 2 - 5, 30);
+    handle.drop(fruit(0), "fruits", W / 2 + 5, 30);
+
+    let mergeStep = -1;
+    const allSnapshots: { x: number; y: number }[][] = [];
+    for (let i = 0; i < 400; i++) {
+      const { snapshots, events } = handle.step(1 / 60);
+      allSnapshots.push(snapshots);
+      if (mergeStep === -1 && events.some((e) => e.type === "fruitMerge")) {
+        mergeStep = i;
+      }
+      if (mergeStep !== -1 && i >= mergeStep + 3) break;
+    }
+
+    expect(mergeStep).toBeGreaterThanOrEqual(0); // merge did occur
+
+    // All snapshots from the 3 post-merge sub-steps must have finite positions
+    const postMergeSnaps = allSnapshots.slice(mergeStep, mergeStep + 4).flat();
+    for (const snap of postMergeSnaps) {
+      expect(isFinite(snap.x)).toBe(true);
+      expect(isFinite(snap.y)).toBe(true);
+    }
+
+    handle.cleanup();
+  });
+
+  it("tier-10 spawn is clamped within bin bounds after tier-9 merge near right wall", async () => {
+    // Use a wider world so tier-9 (r=134) bodies fit without physics issues
+    const BIG_W = 600;
+    const BIG_H = 900;
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const bigHandle = await createEngine(BIG_W, BIG_H, fruitSet);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    const getDynamicBig = () =>
+      Matter.Composite.allBodies(engineInstance.world).filter(
+        (b) => !b.isStatic && b.parent === b
+      );
+
+    // Drop two tier-9 bodies positioned near the right wall so midX > innerRight
+    const ids1 = new Set(getDynamicBig().map((b) => b.id));
+    bigHandle.drop(fruit(9), "fruits", BIG_W - 20, 500);
+    const bA = getDynamicBig().filter((b) => !ids1.has(b.id))[0]!;
+
+    const ids2 = new Set(getDynamicBig().map((b) => b.id));
+    bigHandle.drop(fruit(9), "fruits", BIG_W - 30, 510);
+    const bB = getDynamicBig().filter((b) => !ids2.has(b.id))[0]!;
+
+    bigHandle.step(1e-9);
+
+    const bodiesBefore = new Set(getDynamicBig().map((b) => b.id));
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: bA, bodyB: bB, activeContacts: [], separation: 0, isActive: true }],
+    });
+    bigHandle.step(1e-9); // process merge, spawn tier-10
+
+    const newBodies = getDynamicBig().filter((b) => !bodiesBefore.has(b.id));
+    const tier10Body = newBodies[0];
+
+    if (tier10Body) {
+      const tier10Radius = fruit(10).radius;
+      const innerLeft = WALL_THICKNESS + tier10Radius;
+      const innerRight = BIG_W - WALL_THICKNESS - tier10Radius;
+      expect(tier10Body.position.x).toBeGreaterThanOrEqual(innerLeft - 0.5);
+      expect(tier10Body.position.x).toBeLessThanOrEqual(innerRight + 0.5);
+    }
+
+    bigHandle.cleanup();
+  });
+
+  it("explosive ejection guard removes a body with speed > 4× velocity cap", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+
+    const fruitBody = getDynamic(engineInstance)[0]!;
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    // Set speed well above 4× the per-step velocity cap
+    const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000;
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: maxVelPerStep * 4.5 });
+
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    handle.step(1 / 60);
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("explosive ejection"));
+    expect(getDynamic(engineInstance)).toHaveLength(0);
+
+    handle.cleanup();
+  });
+
+  it("NaN position guard removes body and emits console.warn", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+
+    const fruitBody = getDynamic(engineInstance)[0]!;
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    // Force NaN position to simulate a corrupted body
+    Matter.Body.setPosition(fruitBody, { x: NaN, y: NaN });
+
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const { snapshots } = handle.step(1e-7);
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("NaN/Inf position"));
+    // Corrupted body must not appear in snapshots
+    expect(snapshots.every((s) => isFinite(s.x) && isFinite(s.y))).toBe(true);
+
+    handle.cleanup();
+  });
+
+  it("step() with mergePostFrames=3 and 20 bodies completes in < 32 ms", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    // Settle 20 tier-0 bodies
+    for (let i = 0; i < 20; i++) {
+      handle.drop(fruit(0), "fruits", 30 + i * 12, 550);
+    }
+    for (let i = 0; i < 60; i++) handle.step(1 / 60);
+
+    // Trigger a merge to prime mergePostFrames = 3
+    const bA = dropAndTrack(handle, engineInstance, 0, 50, 200);
+    const bB = dropAndTrack(handle, engineInstance, 0, 62, 200);
+    handle.step(1e-9);
+    Matter.Events.trigger(engineInstance, "collisionStart", {
+      pairs: [{ bodyA: bA, bodyB: bB, activeContacts: [], separation: 0, isActive: true }],
+    });
+    handle.step(1e-9); // mergePostFrames = 3
+
+    const start = Date.now();
+    handle.step(1 / 60); // elevated iterations with 20+ bodies
+    const elapsed = Date.now() - start;
+
+    // 32 ms is 2× the 16 ms frame budget — intentionally lenient for CI variance
+    expect(elapsed).toBeLessThan(32);
+
     handle.cleanup();
   });
 });
