@@ -253,10 +253,13 @@ test.describe("2048 — axe-core scans", () => {
     await injectGameState(page, wonState());
     await page.getByRole("button", { name: "Play 2048" }).click();
     await page.getByText("You Win!").waitFor();
-    // AnimationOverlay fades in over 300 ms. Wait for opacity:1 before running
-    // axe — mid-animation opacity composites effective fg/bg colors against the
-    // page behind the overlay, deflating contrast ratios (#1743).
-    await expect(page.getByTestId("animation-overlay")).toHaveCSS("opacity", "1");
+    // AnimationOverlay fades in over 300 ms. Two overlays share the testID
+    // (win + game-over), so filter to the one containing this overlay's text.
+    // Mid-animation opacity composites effective fg/bg against the page,
+    // deflating contrast ratios — wait for 1 before running axe (#1743).
+    await expect(
+      page.getByTestId("animation-overlay").filter({ has: page.getByText("You Win!") }),
+    ).toHaveCSS("opacity", "1");
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -268,10 +271,13 @@ test.describe("2048 — axe-core scans", () => {
     await injectGameState(page, gameOverState());
     await page.getByRole("button", { name: "Play 2048" }).click();
     await page.getByText("Game Over").waitFor();
-    // AnimationOverlay fades in over 300 ms. Wait for opacity:1 before running
-    // axe — mid-animation opacity composites effective fg/bg colors against the
-    // page behind the overlay, deflating contrast ratios (#1743).
-    await expect(page.getByTestId("animation-overlay")).toHaveCSS("opacity", "1");
+    // AnimationOverlay fades in over 300 ms. Two overlays share the testID
+    // (win + game-over), so filter to the one containing this overlay's text.
+    // Mid-animation opacity composites effective fg/bg against the page,
+    // deflating contrast ratios — wait for 1 before running axe (#1743).
+    await expect(
+      page.getByTestId("animation-overlay").filter({ has: page.getByText("Game Over") }),
+    ).toHaveCSS("opacity", "1");
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
