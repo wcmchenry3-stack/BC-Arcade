@@ -2,6 +2,7 @@ import React from "react";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
+import SortBoard from "../../game/sort/components/SortBoard";
 
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
@@ -215,5 +216,74 @@ describe("SortScreen — leaderboard tab", () => {
       fireEvent.press(leaderboardTab);
     });
     expect(await findByText("No scores yet.")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: source bottle flash after pour (issue #1567)
+//
+// The bug: setGhost(null) fired from the Reanimated animation callback while
+// setGameState(nextState) was on a separate setTimeout ~50ms later. Between
+// those two calls there was a render where the ghost was gone but the stale
+// bottle state was still visible — causing a brief flash of the poured color.
+//
+// The fix: onPourComplete drives the state update from inside SortBoard's
+// animation callback so both calls land in the same render. The test below
+// guards that contract: calling onPourComplete immediately produces the
+// post-pour state without needing any timer to fire.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — pour completion callback (regression #1567)", () => {
+  it("updates bottle state immediately when onPourComplete fires — no timer needed", async () => {
+    const { findByLabelText, UNSAFE_getByType } = renderScreen();
+
+    const levelCard = await findByLabelText("Level 1");
+    await act(async () => {
+      fireEvent.press(levelCard);
+    });
+
+    // Select bottle 1 (["red","blue"], 2 balls), then pour into bottle 3 (empty).
+    // This sets pendingPourRef so onPourComplete can apply the state update.
+    const bottle1 = await findByLabelText(/^Bottle 1, 2 of/);
+    await act(async () => {
+      fireEvent.press(bottle1);
+    });
+    const bottle3 = await findByLabelText("Bottle 3, empty");
+    await act(async () => {
+      fireEvent.press(bottle3);
+    });
+
+    // Simulate the moment SortBoard's return animation finishes and fires
+    // onPourComplete (in production this is via runOnJS inside the worklet;
+    // here we call it directly because Reanimated's jest mock does not invoke
+    // animation callbacks).
+    const board = UNSAFE_getByType(SortBoard);
+    await act(async () => {
+      board.props.onPourComplete?.();
+    });
+
+    // Bottle 1 should now show 1 ball ("red" remains; "blue" was poured out).
+    // If the bug is present (state update only on a setTimeout), this label
+    // won't exist yet and the test fails.
+    expect(await findByLabelText(/^Bottle 1, 1 of/)).toBeTruthy();
+    expect(await findByLabelText(/^Bottle 3, 1 of/)).toBeTruthy();
+  });
+
+  it("is a no-op when onPourComplete fires with no pending pour", async () => {
+    const { findByLabelText, UNSAFE_getByType } = renderScreen();
+
+    const levelCard = await findByLabelText("Level 1");
+    await act(async () => {
+      fireEvent.press(levelCard);
+    });
+
+    // Call onPourComplete without initiating any pour first.
+    const board = UNSAFE_getByType(SortBoard);
+    await act(async () => {
+      board.props.onPourComplete?.();
+    });
+
+    // Original state should be unchanged.
+    expect(await findByLabelText(/^Bottle 1, 2 of/)).toBeTruthy();
   });
 });

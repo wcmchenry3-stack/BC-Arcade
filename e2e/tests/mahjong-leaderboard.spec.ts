@@ -86,8 +86,10 @@ test.describe("Mahjong — leaderboard", () => {
 
     await page.getByRole("button", { name: "Start a new game" }).click();
 
-    // Win modal dismissed; PAIRS counter resets to 0.
+    // Win modal dismissed; layout select screen is shown next.
     await expect(page.getByRole("heading", { name: "YOU WIN!" })).not.toBeVisible({ timeout: 3_000 });
+    // Pick the Turtle layout to start a fresh game; PAIRS counter resets to 0.
+    await page.getByRole("button", { name: "Turtle", exact: true }).click();
     await expect(page.getByText(/^PAIRS\s+0\/72/).first()).toBeVisible({ timeout: 5_000 });
   });
 });

@@ -15,7 +15,7 @@ This document is the single reference for adding a new game to BC Arcade. It cov
    - [Metadata models](#14-metadata-models)
    - [stats_shape()](#15-stats_shape)
    - [players\[\]](#16-players)
-2. [Frontend contract](#2-frontend-contract) *(pending Epic #522)*
+2. [Frontend contract](#2-frontend-contract) _(pending Epic #522)_
 3. [New-game checklist](#3-new-game-checklist)
 
 ---
@@ -129,12 +129,20 @@ Each game's `games.metadata` JSONB column is validated on write by a Pydantic mo
 
 All metadata models use `extra="forbid"` to prevent arbitrary data from being silently stored.
 
-| Game | Model | Fields |
-|---|---|---|
-| Blackjack | `BlackjackMetadata` | *(none — state is in-memory)* |
-| Cascade | `CascadeMetadata` | `player_name: str = ""` (max 64 chars) |
-| Daily Word | `DailyWordMetadata` | `puzzle_id: str`, `language: Literal["en","hi"] = "en"` |
-| Pachisi | `PachisiMetadata` | *(none — state is in-memory)* |
+| Game        | Model               | Fields                                                                                                                                                             |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Blackjack   | `BlackjackMetadata` | `best_run_chips: int \| None`, `total_runs: int \| None`, `runs_completed: int \| None`, `current_table: Literal["beginner","intermediate","high_roller"] \| None` |
+| Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
+| Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                 |
+| FreeCell    | —                   | No metadata model; uses standalone leaderboard router                                                                                                              |
+| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                             |
+| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
+| Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                             |
+| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                             |
+| Starswarm   | —                   | No backend module; router-only                                                                                                                                     |
+| Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                 |
+| Twenty48    | —                   | Frontend-only; no backend module                                                                                                                                   |
+| Yacht       | `YachtMetadata`     | `difficulty: Literal["easy","medium","hard"] = "easy"`                                                                                                             |
 
 **Adding a metadata model:**
 
@@ -154,13 +162,13 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
-| Key | Type | Description |
-|---|---|---|
-| `played` | `int` | completed game count |
-| `best` | `int \| None` | highest `final_score` |
-| `avg` | `float \| None` | mean `final_score` |
-| `last_played_at` | `datetime \| None` | most recent `completed_at` |
-| `latest_score` | `int \| None` | `final_score` of the most recently completed game |
+| Key              | Type               | Description                                       |
+| ---------------- | ------------------ | ------------------------------------------------- |
+| `played`         | `int`              | completed game count                              |
+| `best`           | `int \| None`      | highest `final_score`                             |
+| `avg`            | `float \| None`    | mean `final_score`                                |
+| `last_played_at` | `datetime \| None` | most recent `completed_at`                        |
+| `latest_score`   | `int \| None`      | `final_score` of the most recently completed game |
 
 **Return value:** a dict whose keys are a subset of `GameTypeStats` fields (`played`, `best`, `avg`, `last_played_at`, `best_chips`, `current_chips`). Omitted keys default to `None` in the response.
 
@@ -208,7 +216,7 @@ When a client omits `players` from `POST /games`, the router auto-fills `[{"play
 
 > **Pending Epic #522.** The shared frontend abstractions (`GameSession<TState, TAction>`, `GameShell`, `useGameSync`, ESLint import zone rules) do not yet exist. This section will be completed when Epic #522 is merged.
 
-### 2.1 Shared types *(TBD)*
+### 2.1 Shared types _(TBD)_
 
 Location: TBD (likely `frontend/src/game/_shared/types.ts`)
 
@@ -216,15 +224,15 @@ Location: TBD (likely `frontend/src/game/_shared/types.ts`)
 - `Player` — maps to backend `PlayerRef`
 - Per-game types extend the shared base
 
-### 2.2 GameShell *(TBD)*
+### 2.2 GameShell _(TBD)_
 
 A shared screen wrapper component that owns: header, loading/error states, and any chrome common to all games. Individual game screens own only game-specific UI.
 
-### 2.3 useGameSync *(TBD)*
+### 2.3 useGameSync _(TBD)_
 
 A hook that manages the game session lifecycle — creating, polling, and completing a game via the `/games` API. Screens call the hook; they do not call the API directly.
 
-### 2.4 ESLint import zones *(TBD)*
+### 2.4 ESLint import zones _(TBD)_
 
 Cross-game import paths (e.g. a Blackjack screen importing from `../cascade/`) will be forbidden via `no-restricted-imports` or an import-zone plugin rule. The exact configuration will be documented here when implemented.
 
@@ -248,8 +256,9 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`backend/games/registry.py`** — add the module singleton to `_REGISTRY`
 - [ ] **`backend/scripts/gen_vocab_ts.py`** — regenerate `frontend/src/api/vocab.ts`
   - CI: `tests/test_vocab.py` (TS contract drift check)
+- [ ] **Premium tier** _(if applicable)_ — set `is_premium=true` in the Alembic migration; add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`; add the slug to `PREMIUM_GAMES` in `frontend/src/entitlements/EntitlementContext.tsx`. See [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements).
 
-### Frontend *(pending Epic #522)*
+### Frontend _(pending Epic #522)_
 
 - [ ] **`frontend/src/api/vocab.ts`** — committed generated file includes the new `GameType` value
 - [ ] **`frontend/src/game/mygame/types.ts`** — per-game state and action types extending `GameSession<TState, TAction>`
@@ -274,4 +283,4 @@ Before merging a new game, verify all four items below. The `android-bundle-chec
 
 ---
 
-*For questions about the overall architecture, see [`docs/TESTING.md`](TESTING.md) (test patterns) and [`docs/BRANDING.md`](BRANDING.md) (design system). For deployment, see [`docs/RENDER.md`](RENDER.md).*
+_For questions about the overall architecture, see [`docs/TESTING.md`](TESTING.md) (test patterns) and [`docs/BRANDING.md`](BRANDING.md) (design system). For deployment, see [`docs/RENDER.md`](RENDER.md)._

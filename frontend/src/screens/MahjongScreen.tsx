@@ -29,7 +29,6 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { Asset } from "expo-asset";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -46,8 +45,8 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { HomeStackParamList } from "../../App";
-import { TILE_REQUIRES } from "../components/mahjong/tileAssets";
+import type { HomeStackParamList } from "../types/navigation";
+import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
@@ -64,22 +63,28 @@ import {
   shuffleBoard,
   undoMove,
 } from "../game/mahjong/engine";
-import { TURTLE_LAYOUT } from "../game/mahjong/layouts/turtle";
+import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
 import type { MahjongState, SlotTile } from "../game/mahjong/types";
 import {
   clearGame,
   loadGame,
+  loadProgress,
   loadStats,
   saveGame,
+  saveProgress,
   saveStats,
+  unlockNextLayout,
+  DEFAULT_PROGRESS,
+  type MahjongProgress,
   type MahjongStats,
 } from "../game/mahjong/storage";
+import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
 import { useMahjongScoreboard } from "../game/mahjong/MahjongScoreboardContext";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { clamp, computeZoomBounds, rubberClamp } from "../game/mahjong/zoom";
+import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
 
@@ -288,10 +293,13 @@ export default function MahjongScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const camera = useMahjongCamera();
-
+  const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
+  const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"));
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
+  const [hasSavedGame, setHasSavedGame] = useState(false);
+  const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -302,6 +310,8 @@ export default function MahjongScreen() {
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [noHintVisible, setNoHintVisible] = useState(false);
+  const noHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
   const [devPanelOpen, setDevPanelOpen] = useState(false);
@@ -313,9 +323,7 @@ export default function MahjongScreen() {
   );
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
-  const [tileUris, setTileUris] = useState<(string | null)[]>(
-    Array(TILE_REQUIRES.length).fill(null)
-  );
+  const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
@@ -338,6 +346,12 @@ export default function MahjongScreen() {
   const baseTranslateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const baseTranslateY = useSharedValue(0);
+  // Board/viewport dimensions as shared values so pan-boundary worklets can
+  // read them on the UI thread without capturing stale JS-side camera values.
+  const boardWidthSV = useSharedValue(camera.boardWidth);
+  const boardHeightSV = useSharedValue(camera.boardHeight);
+  const viewportWidthSV = useSharedValue(camera.viewportWidth);
+  const viewportHeightSV = useSharedValue(camera.viewportHeight);
 
   // Reset gesture state when layout changes (orientation / resize).
   useEffect(() => {
@@ -353,25 +367,59 @@ export default function MahjongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.scale, camera.tileWidth]);
 
+  useEffect(() => {
+    boardWidthSV.value = camera.boardWidth;
+    boardHeightSV.value = camera.boardHeight;
+    viewportWidthSV.value = camera.viewportWidth;
+    viewportHeightSV.value = camera.viewportHeight;
+  }, [camera.boardWidth, camera.boardHeight, camera.viewportWidth, camera.viewportHeight]);
+
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      // Allow rubber-band overshoot past limits; onEnd springs back.
-      zoomScale.value = rubberClamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
+      zoomScale.value = clamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
     })
     .onEnd(() => {
-      const target = clamp(zoomScale.value, minZoom.value, maxZoom.value);
-      baseScale.value = target;
-      if (Math.abs(zoomScale.value - target) > 1e-6) {
-        zoomScale.value = withSpring(target, { damping: 20, stiffness: 300 });
-      }
+      baseScale.value = zoomScale.value;
+      // Clamp pan position to the new (smaller) bounds when zooming out.
+      const { maxTranslateX, maxTranslateY } = computePanBounds(
+        boardWidthSV.value,
+        boardHeightSV.value,
+        viewportWidthSV.value,
+        viewportHeightSV.value,
+        zoomScale.value
+      );
+      translateX.value = clamp(translateX.value, -maxTranslateX, maxTranslateX);
+      translateY.value = clamp(translateY.value, -maxTranslateY, maxTranslateY);
+      baseTranslateX.value = translateX.value;
+      baseTranslateY.value = translateY.value;
     });
 
   const panGesture = Gesture.Pan()
     .minPointers(1)
     .maxPointers(1)
+    // Only activate after an intentional drag so simple taps on overlay buttons
+    // (CTA shuffle, deadlock new-game, win new-game) are not intercepted by the
+    // gesture recognizer before Pressable.onPress can fire.
+    .activeOffsetX([-8, 8])
+    .activeOffsetY([-8, 8])
     .onUpdate((e) => {
-      translateX.value = baseTranslateX.value + e.translationX;
-      translateY.value = baseTranslateY.value + e.translationY;
+      const { maxTranslateX, maxTranslateY } = computePanBounds(
+        boardWidthSV.value,
+        boardHeightSV.value,
+        viewportWidthSV.value,
+        viewportHeightSV.value,
+        zoomScale.value
+      );
+      translateX.value = clamp(
+        baseTranslateX.value + e.translationX,
+        -maxTranslateX,
+        maxTranslateX
+      );
+      translateY.value = clamp(
+        baseTranslateY.value + e.translationY,
+        -maxTranslateY,
+        maxTranslateY
+      );
     })
     .onEnd(() => {
       baseTranslateX.value = translateX.value;
@@ -436,24 +484,14 @@ export default function MahjongScreen() {
 
   // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
   // display requires Skia and can't run inside Animated.View).
+  // Reuses the singleton promise from loadTileAssets() so no duplicate
+  // network requests are made when GameCanvas also calls it on mount.
   useEffect(() => {
     if (Platform.OS !== "web") return;
     let cancelled = false;
-    const uris: (string | null)[] = Array(TILE_REQUIRES.length).fill(null);
-    (async () => {
-      await Promise.all(
-        (TILE_REQUIRES as readonly number[]).map(async (src, i) => {
-          try {
-            const asset = Asset.fromModule(src);
-            await asset.downloadAsync();
-            uris[i] = asset.uri ?? null;
-          } catch {
-            /* keep null */
-          }
-        })
-      );
+    loadTileAssets().then((uris) => {
       if (!cancelled) setTileUris([...uris]);
-    })();
+    });
     return () => {
       cancelled = true;
     };
@@ -486,26 +524,27 @@ export default function MahjongScreen() {
     });
   }, [state, stats, setScoreboardSnapshot]);
 
-  // Mount: restore saved game or deal fresh.
+  // Mount: restore saved game or show layout select.
   useEffect(() => {
     let alive = true;
-    Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
-      if (!alive) return;
-      hasLoadedRef.current = true;
-      if (saved !== null) {
-        setState(saved);
-        if (saved.isComplete) winRecordedRef.current = true;
-      } else {
-        setState(createGame(TURTLE_LAYOUT));
-        setStats((prev) => {
-          const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-          saveStats(updated).catch(() => {});
-          return updated;
-        });
+    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
+      ([saved, savedStats, savedProgress]) => {
+        if (!alive) return;
+        hasLoadedRef.current = true;
+        progressRef.current = savedProgress;
+        setProgress(savedProgress);
+        if (saved !== null) {
+          setState(saved);
+          setHasSavedGame(!saved.isComplete);
+          if (saved.isComplete) winRecordedRef.current = true;
+          setView("play");
+        } else {
+          setView("select");
+        }
+        setStats(savedStats);
+        setLoading(false);
       }
-      setStats(savedStats);
-      setLoading(false);
-    });
+    );
     return () => {
       alive = false;
     };
@@ -578,7 +617,7 @@ export default function MahjongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  // Win lifecycle: complete sync session, record stats.
+  // Win lifecycle: complete sync session, record stats, unlock next layout.
   useEffect(() => {
     if (state === null) {
       prevCompleteRef.current = false;
@@ -606,6 +645,24 @@ export default function MahjongScreen() {
           return updated;
         });
       }
+      // Unlock the next layout in registry order, then clear the active layout
+      // from progress regardless of whether a new layout was unlocked.
+      const completedId = state.currentLayoutId ?? "turtle";
+      const newUnlocked = unlockNextLayout(
+        completedId,
+        LAYOUTS,
+        progressRef.current.unlockedLayouts
+      );
+      const newProgress: MahjongProgress = {
+        ...progressRef.current,
+        unlockedLayouts: newUnlocked,
+        currentLayoutId: null,
+        currentState: null,
+      };
+      progressRef.current = newProgress;
+      setProgress(newProgress);
+      saveProgress(newProgress).catch(() => {});
+      setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete]);
@@ -634,7 +691,7 @@ export default function MahjongScreen() {
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
-      syncStart({ layout: "turtle" });
+      syncStart({ layout: s.currentLayoutId ?? "turtle" });
       syncMarkStarted();
       if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
@@ -662,7 +719,12 @@ export default function MahjongScreen() {
   const handleHint = useCallback(() => {
     if (!state) return;
     const pair = getAnyFreePair(state.tiles);
-    if (!pair) return;
+    if (!pair) {
+      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
+      setNoHintVisible(true);
+      noHintTimerRef.current = setTimeout(() => setNoHintVisible(false), 2000);
+      return;
+    }
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
@@ -671,6 +733,7 @@ export default function MahjongScreen() {
   useEffect(
     () => () => {
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
     },
     []
   );
@@ -693,26 +756,93 @@ export default function MahjongScreen() {
   }, []);
 
   const startNewGame = useCallback(() => {
-    winRecordedRef.current = false;
-    prevCompleteRef.current = false;
-    const fresh = createGame(TURTLE_LAYOUT);
-    setState(fresh);
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated).catch(() => {});
-      return updated;
-    });
     if (syncGetGameId()) {
       syncComplete(
         { outcome: "abandoned", finalScore: 0, durationMs: 0 },
         { outcome: "abandoned" }
       );
     }
-    syncStart({ layout: "turtle" });
-    syncMarkStarted();
-  }, [syncGetGameId, syncComplete, syncStart, syncMarkStarted]);
+    winRecordedRef.current = false;
+    prevCompleteRef.current = false;
+    const s = stateRef.current;
+    setHasSavedGame(s !== null && !s.isComplete);
+    setState(null);
+    setView("select");
+  }, [syncGetGameId, syncComplete]);
+
+  // Navigates directly to level select without an abandon confirmation or server
+  // abandon event — the in-progress game is preserved locally so CONTINUE works.
+  const goToLevelSelect = useCallback(() => {
+    const s = stateRef.current;
+    setHasSavedGame(s !== null && !s.isComplete);
+    setView("select");
+  }, []);
+
+  const handleSelectLayout = useCallback((layoutId: string) => {
+    winRecordedRef.current = false;
+    prevCompleteRef.current = false;
+    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
+    setState(fresh);
+    setView("play");
+    setHasSavedGame(false);
+    setStats((prev) => {
+      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
+      saveStats(updated).catch(() => {});
+      return updated;
+    });
+    const newProgress: MahjongProgress = {
+      ...progressRef.current,
+      currentLayoutId: layoutId,
+      currentState: null,
+    };
+    progressRef.current = newProgress;
+    setProgress(newProgress);
+    saveProgress(newProgress).catch(() => {});
+    // Sync session starts on first tile tap via ensureSyncStarted, not here.
+  }, []);
+
+  const handleContinue = useCallback(() => {
+    loadGame()
+      .then((saved) => {
+        if (!saved) {
+          // Storage was cleared or corrupt — dismiss the continue button and stay on select.
+          setHasSavedGame(false);
+          return;
+        }
+        setState(saved);
+        setHasSavedGame(false);
+        setView("play");
+      })
+      .catch(() => {
+        setHasSavedGame(false);
+      });
+  }, []);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
+
+  if (!loading && view === "select") {
+    return (
+      <GameShell
+        title={t("game.title")}
+        requireBack
+        loading={false}
+        onBack={() => navigation.popToTop()}
+        style={{
+          paddingBottom: Math.max(insets.bottom, 16),
+          paddingLeft: Math.max(insets.left, 12),
+          paddingRight: Math.max(insets.right, 12),
+        }}
+      >
+        <LayoutSelectScreen
+          layouts={LAYOUTS}
+          progress={progress}
+          hasContinue={hasSavedGame}
+          onSelectLayout={handleSelectLayout}
+          onContinue={handleContinue}
+        />
+      </GameShell>
+    );
+  }
 
   return (
     <GameShell
@@ -726,6 +856,7 @@ export default function MahjongScreen() {
         paddingRight: Math.max(insets.right, 12),
       }}
       onNewGame={startNewGame}
+      onLevelSelect={goToLevelSelect}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
       rightSlot={
         <Pressable
@@ -812,6 +943,16 @@ export default function MahjongScreen() {
             )}
           </View>
 
+          {noHintVisible && (
+            <Text
+              style={styles.noHintToast}
+              accessibilityLiveRegion="polite"
+              testID="no-hint-toast"
+            >
+              {t("action.noHint")}
+            </Text>
+          )}
+
           {/* Viewport container — clips the board during zoom/pan */}
           <View
             style={{
@@ -878,6 +1019,12 @@ export default function MahjongScreen() {
             <Text style={styles.devToggleText}>
               {debugShowFree ? "overlay: ON" : "overlay: off"}
             </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate("MahjongLayoutInspector")}
+            style={styles.devToggleBtn}
+          >
+            <Text style={styles.devToggleText}>Layout Inspector →</Text>
           </Pressable>
           {freePairs.length > 0 && (
             <>
@@ -1097,6 +1244,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 8,
   },
+  noHintToast: {
+    fontFamily: typography.heading,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    paddingBottom: 4,
+    color: "#5dbcd2",
+  },
   hudText: {
     fontFamily: typography.heading,
     fontSize: 14,
@@ -1104,7 +1258,6 @@ const styles = StyleSheet.create({
   },
   dealIdText: {
     fontSize: 10,
-    opacity: 0.6,
   },
   modalOverlay: {
     flex: 1,

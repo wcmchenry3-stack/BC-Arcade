@@ -40,6 +40,7 @@
   "overflow.menu.label": "עוד אפשרויות",
   "overflow.menu.scoreboard": "לוח תוצאות",
   "overflow.menu.newGame": "משחק חדש",
+  "overflow.menu.levelSelect": "בחירת רמה",
   "overflow.menu.editNames": "ערוך שמות",
   "overflow.abandon.title": "לנטוש את המשחק הנוכחי?",
   "overflow.abandon.body": "התחלת משחק חדש תמחק את ההתקדמות שלך בסיבוב הזה. הסטטיסטיקות הכלליות שלך לא יושפעו.",

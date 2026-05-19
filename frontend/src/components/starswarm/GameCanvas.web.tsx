@@ -9,6 +9,7 @@ import {
   applyPowerUp,
   POWERUP_DURATION,
   HIT_FLASH_DURATION,
+  BULLET_C_W,
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
@@ -23,6 +24,7 @@ import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
+import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
 import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
@@ -118,6 +120,7 @@ interface Images {
   enemyBoss: HTMLImageElement | null;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
+  bulletCharge: HTMLImageElement | null;
   explosionFrames: (HTMLImageElement | null)[];
   puShield: HTMLImageElement | null;
   puBomb: HTMLImageElement | null;
@@ -242,6 +245,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       enemyBoss: null,
       bulletPlayer: null,
       bulletEnemy: null,
+      bulletCharge: null,
       explosionFrames: Array(20).fill(null) as null[],
       puShield: null,
       puBomb: null,
@@ -324,6 +328,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(enemyBossSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
+          loadImg(bulletChargeSrc as number),
           loadImg(puShieldSrc as number),
           loadImg(puBombSrc as number),
           loadImg(puBuddySrc as number),
@@ -339,6 +344,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyBoss,
           bulletPlayer,
           bulletEnemy,
+          bulletCharge,
           puShield,
           puBomb,
           puBuddy,
@@ -353,6 +359,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyBoss: enemyBoss ?? null,
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
+          bulletCharge: bulletCharge ?? null,
           explosionFrames: frames.map((f) => f ?? null),
           puShield: puShield ?? null,
           puBomb: puBomb ?? null,
@@ -447,13 +454,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
       }
 
-      // Player bullets
+      // Player bullets — charge bullets (wider) use bulletCharge sprite / cyan fallback
       for (const b of state.playerBullets) {
-        const img = imgs.bulletPlayer;
+        const isCharged = b.width >= BULLET_C_W;
+        const img = isCharged ? imgs.bulletCharge : imgs.bulletPlayer;
         if (img) {
           ctx.drawImage(img, b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
         } else {
-          ctx.fillStyle = C.bulletPlayer;
+          ctx.fillStyle = isCharged ? "#00f0ff" : C.bulletPlayer;
           ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
         }
       }

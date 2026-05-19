@@ -5,8 +5,24 @@
  * engine, AI, UI components, and persistence layer alike.
  */
 
-export type AiDifficulty = "easy" | "medium" | "hard";
-export const AI_DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];
+export type AiPersona = "cautious" | "schemer" | "daring";
+export type AiPreset = AiPersona | "mixed";
+/** @deprecated Use AiPersona */
+export type AiDifficulty = AiPersona;
+export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
+export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
+
+// Mixed table canonical seat assignment (seats 1–3 are AI; seat 0 is human).
+const MIXED_PERSONAS: Readonly<Record<1 | 2 | 3, AiPersona>> = {
+  1: "cautious",
+  2: "schemer",
+  3: "daring",
+};
+
+export function resolvePersona(preset: AiPreset, seatIndex: number): AiPersona {
+  if (preset !== "mixed") return preset;
+  return MIXED_PERSONAS[seatIndex as 1 | 2 | 3] ?? "schemer";
+}
 
 /** UI events emitted by the engine and consumed by the animation layer. */
 export type GameEvent =
@@ -47,11 +63,13 @@ export type HeartsPhase =
  * Players: index 0 = human, 1 = left AI, 2 = top AI, 3 = right AI.
  * `_v` is a schema version so persisted saves can be migrated or rejected.
  * v2 adds `scoreHistory` so per-round deltas survive screen unmount (#745).
- * v3 adds `aiDifficulty` for the Easy/Medium/Hard AI difficulty selector (#1168).
+ * v3 adds `aiDifficulty` for the AI persona selector (#1168). Values renamed to
+ * "cautious"/"schemer"/"daring" (#1653); old "easy"/"medium"/"hard" are migrated on load.
+ * "mixed" preset added (#1654): seats one of each persona per canonical order.
  */
 export interface HeartsState {
   readonly _v: 3;
-  readonly aiDifficulty: AiDifficulty;
+  readonly aiDifficulty: AiPreset;
   readonly phase: HeartsPhase;
   /** 1-based. Pass direction = getPassDirection(handNumber). */
   readonly handNumber: number;

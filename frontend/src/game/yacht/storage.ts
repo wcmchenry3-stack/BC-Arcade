@@ -8,29 +8,42 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { GameState } from "./types";
+import type { AiDifficulty } from "./types";
 
-const STORAGE_KEY = "yacht_game_v1";
+const STORAGE_KEY = "yacht_game_v2";
 
-export async function saveGame(state: GameState): Promise<void> {
+export interface SavedGame {
+  state: GameState;
+  aiDifficulty: AiDifficulty | null;
+  aiState: GameState | null;
+}
+
+export async function saveGame(
+  state: GameState,
+  aiDifficulty: AiDifficulty | null = null,
+  aiState: GameState | null = null
+): Promise<void> {
+  const payload: SavedGame = { state, aiDifficulty, aiState };
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "yacht.storage", op: "save" } });
   }
 }
 
-export async function loadGame(): Promise<GameState | null> {
+export async function loadGame(): Promise<SavedGame | null> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as GameState;
+    const parsed = JSON.parse(raw) as SavedGame;
     // Sanity check — shape drift should discard rather than crash the screen.
     if (
-      !Array.isArray(parsed.dice) ||
-      parsed.dice.length !== 5 ||
-      typeof parsed.round !== "number" ||
-      typeof parsed.scores !== "object" ||
-      parsed.scores === null
+      !parsed.state ||
+      !Array.isArray(parsed.state.dice) ||
+      parsed.state.dice.length !== 5 ||
+      typeof parsed.state.round !== "number" ||
+      typeof parsed.state.scores !== "object" ||
+      parsed.state.scores === null
     ) {
       return null;
     }

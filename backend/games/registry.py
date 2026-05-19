@@ -16,6 +16,7 @@ from mahjong.module import module as mahjong_module
 from solitaire.module import module as solitaire_module
 from sort.module import module as sort_module
 from sudoku.module import module as sudoku_module
+from yacht.module import module as yacht_module
 
 from games.protocol import GameModule
 
@@ -30,6 +31,7 @@ _REGISTRY: dict[str, GameModule] = {
     solitaire_module.game_type.value: solitaire_module,
     sort_module.game_type.value: sort_module,
     sudoku_module.game_type.value: sudoku_module,
+    yacht_module.game_type.value: yacht_module,
 }
 
 

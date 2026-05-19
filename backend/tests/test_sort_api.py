@@ -41,11 +41,11 @@ def _submit(player_name: str, level_reached: int):
 
 
 class TestGetLevels:
-    def test_returns_20_levels(self):
+    def test_returns_23_levels(self):
         res = client.get("/sort/levels", headers=_HEADERS)
         assert res.status_code == 200
         data = res.json()
-        assert len(data["levels"]) == 20
+        assert len(data["levels"]) == 23
 
     def test_level_has_id_and_bottles(self):
         res = client.get("/sort/levels", headers=_HEADERS)
@@ -57,7 +57,7 @@ class TestGetLevels:
     def test_levels_sequential_ids(self):
         levels = client.get("/sort/levels", headers=_HEADERS).json()["levels"]
         ids = [lvl["id"] for lvl in levels]
-        assert ids == list(range(1, 21))
+        assert ids == list(range(1, 24))
 
     def test_consecutive_calls_return_different_levels(self):
         r1 = client.get("/sort/levels", headers=_HEADERS).json()["levels"]
@@ -82,8 +82,8 @@ class TestSubmitScore:
     def test_level_1_accepted(self):
         assert _submit("Alice", 1).status_code == 201
 
-    def test_level_20_accepted(self):
-        assert _submit("Alice", 20).status_code == 201
+    def test_level_23_accepted(self):
+        assert _submit("Alice", 23).status_code == 201
 
     def test_level_0_returns_422(self):
         assert (
@@ -93,10 +93,10 @@ class TestSubmitScore:
             == 422
         )
 
-    def test_level_21_returns_422(self):
+    def test_level_24_returns_422(self):
         assert (
             client.post(
-                "/sort/score", json={"player_name": "Bob", "level_reached": 21}, headers=_HEADERS
+                "/sort/score", json={"player_name": "Bob", "level_reached": 24}, headers=_HEADERS
             ).status_code
             == 422
         )

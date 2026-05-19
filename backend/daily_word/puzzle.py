@@ -1,13 +1,16 @@
 """Daily Word puzzle selection — deterministic, timezone-aware (#1188).
 
-Seeding: index = (int(date.strftime("%Y%m%d")) + SALT) % len(answers)
+Seeding: answers list is shuffled once at load time with random.Random(SALT),
+then index = (int(date.strftime("%Y%m%d")) + SALT) % len(answers).
 SALT comes from the DAILY_WORD_SALT env var (int, default 0).
+Changing SALT shifts the entire future word schedule.
 puzzle_id format: "YYYY-MM-DD:{lang}"
 """
 
 from __future__ import annotations
 
 import os
+import random
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +33,12 @@ _ANSWERS_HI: list[str] = [unicodedata.normalize("NFC", w) for w in _load_list("a
 _VALID_HI: frozenset[str] = frozenset(
     unicodedata.normalize("NFC", w) for w in _load_list("valid_hi.txt")
 ) | frozenset(_ANSWERS_HI)
+
+# Shuffle each answers list so consecutive days pick pseudo-random entries rather than
+# sequential list positions. Each language uses an independent seeded RNG so their
+# schedules don't depend on each other's list length.
+random.Random(SALT).shuffle(_ANSWERS_EN)
+random.Random(SALT).shuffle(_ANSWERS_HI)
 
 _ANSWERS: dict[str, list[str]] = {"en": _ANSWERS_EN, "hi": _ANSWERS_HI}
 _VALID: dict[str, frozenset[str]] = {"en": _VALID_EN, "hi": _VALID_HI}

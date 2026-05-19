@@ -14,7 +14,7 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Sentry from "@sentry/react-native";
-import { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
 import { useTheme } from "../theme/ThemeContext";
@@ -81,8 +81,15 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    const state = saved && !saved.game_over ? saved : newYachtGame();
-    navigation.navigate("Game", { initialState: state });
+    if (saved && !saved.state.game_over) {
+      navigation.navigate("Game", {
+        initialState: saved.state,
+        aiDifficulty: saved.aiDifficulty ?? undefined,
+        aiState: saved.aiState ?? undefined,
+      });
+    } else {
+      navigation.navigate("Game", { initialState: newYachtGame() });
+    }
   }
 
   const games: GameCard[] = [

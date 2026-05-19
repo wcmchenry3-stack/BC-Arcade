@@ -10,7 +10,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import {
   hit as engineHit,

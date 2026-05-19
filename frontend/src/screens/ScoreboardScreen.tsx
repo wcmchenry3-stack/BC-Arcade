@@ -19,7 +19,7 @@ import { useTwenty48Scoreboard } from "../game/twenty48/Twenty48ScoreboardContex
 import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
 import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
-import type { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 
 type GameKey = HomeStackParamList["Scoreboard"]["gameKey"];
 

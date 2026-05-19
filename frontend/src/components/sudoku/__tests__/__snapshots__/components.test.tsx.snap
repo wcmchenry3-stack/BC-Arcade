@@ -24,7 +24,7 @@ exports[`DifficultySelector matches snapshot — medium selected 1`] = `
     accessibilityState={
       {
         "busy": undefined,
-        "checked": undefined,
+        "checked": false,
         "disabled": undefined,
         "expanded": undefined,
         "selected": false,
@@ -86,7 +86,7 @@ exports[`DifficultySelector matches snapshot — medium selected 1`] = `
     accessibilityState={
       {
         "busy": undefined,
-        "checked": undefined,
+        "checked": true,
         "disabled": undefined,
         "expanded": undefined,
         "selected": true,
@@ -148,7 +148,7 @@ exports[`DifficultySelector matches snapshot — medium selected 1`] = `
     accessibilityState={
       {
         "busy": undefined,
-        "checked": undefined,
+        "checked": false,
         "disabled": undefined,
         "expanded": undefined,
         "selected": false,

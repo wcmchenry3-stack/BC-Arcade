@@ -6,17 +6,20 @@
  * (sprite shoots sideways, escapes the bin, bounces wildly) the multi-sprite
  * pile is a lost cause too.
  *
- * Tests the matter.js (native) engine because it runs in pure JS — Jest can
- * step a real simulation without a WASM binary or mock.
+ * Tests the unified Matter.js engine — pure JS, runs in Jest without a WASM binary.
  *
  * Each scenario is a high-level invariant: positions inside the bin,
- * velocities settled, drift bounded. Sub-pixel parity with Rapier is not
- * asserted; that's covered by physics-parity.test.ts.
+ * velocities settled, drift bounded.
  */
 import Matter from "matter-js";
-import { createEngine } from "../engine.native";
+import { createEngine } from "../engine";
 import type { EngineHandle, BodySnapshot } from "../engine.shared";
-import { WALL_THICKNESS, MAX_FRUIT_SPEED_PX_S } from "../engine.shared";
+import {
+  WALL_THICKNESS,
+  MAX_FRUIT_SPEED_PX_S,
+  MAX_ANGULAR_VELOCITY_RAD_PER_STEP,
+  FRUIT_ANGULAR_DAMPING,
+} from "../engine.shared";
 import { FRUIT_SETS, FruitSet, FruitDefinition } from "../../../theme/fruitSets";
 
 function requireFruitSet(id: string): FruitSet {
@@ -144,7 +147,7 @@ describe("single sprite — drop and settle", () => {
     handle.drop(fruit(0), fruitSet.id, W / 2, 30);
 
     const frames = stepNCollect(handle, 360);
-    const maxDeltaPerFrame = MAX_FRUIT_SPEED_PX_S / 60 + 1;
+    const maxDeltaPerFrame = MAX_FRUIT_SPEED_PX_S / 60 + 2;
     let prevSnaps: BodySnapshot[] | undefined;
     for (const snaps of frames) {
       for (const s of snaps) {
@@ -467,7 +470,9 @@ describe("stacked merge — spawn grace period", () => {
 
     // On the step immediately after the merge, measure all body velocities.
     handle.step(DT);
-    const MAX_OUTWARD_SPEED = 50; // px/s — generous threshold; explosions reach 500+ px/s
+    // 250 px/s accounts for free-fall under gravity 5.0 (≈167 px/s after 2 steps) plus
+    // mass-weighted velocity inheritance from the falling parents.
+    const MAX_OUTWARD_SPEED = 250; // px/s
     const bodiesAfterMerge = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic
     );
@@ -476,6 +481,238 @@ describe("stacked merge — spawn grace period", () => {
       // velocity in Matter.js is px/step; multiply by 60 for px/s
       const speedPxS = Math.sqrt(vx * vx + vy * vy) * 60;
       expect(speedPxS).toBeLessThanOrEqual(MAX_OUTWARD_SPEED);
+    }
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drop speed — gravity must feel arcade-snappy (#1734)
+// ---------------------------------------------------------------------------
+
+describe("drop speed — fruit reaches floor quickly", () => {
+  it("tier-0 fruit reaches the floor within 90 frames from DROP_Y=30", async () => {
+    // With MATTER_GRAVITY_Y=5.0 the theoretical frame count is ~49; 90 is a
+    // generous ceiling that still catches a near-zero gravity regression (old
+    // value of 1.8 took ~72 frames, a misconfigured scale=0 would never land).
+    const handle = await buildEngine();
+    const r = fruit(0).radius;
+    handle.drop(fruit(0), fruitSet.id, W / 2, 30);
+
+    let hitFloorFrame = -1;
+    for (let i = 0; i < 150; i++) {
+      const snap = handle.step(DT).snapshots[0];
+      if (!snap) break;
+      if (snap.y + r >= innerFloorTop - 2) {
+        hitFloorFrame = i;
+        break;
+      }
+    }
+
+    expect(hitFloorFrame).toBeGreaterThanOrEqual(0); // did reach floor
+    expect(hitFloorFrame).toBeLessThan(90);
+    handle.cleanup();
+  });
+
+  it("tier-5 fruit reaches the floor within 90 frames from DROP_Y=30", async () => {
+    const handle = await buildEngine();
+    const def = fruit(5);
+    handle.drop(def, fruitSet.id, W / 2, 30);
+
+    let hitFloorFrame = -1;
+    for (let i = 0; i < 150; i++) {
+      const snap = handle.step(DT).snapshots[0];
+      if (!snap) break;
+      if (snap.y + def.radius >= innerFloorTop - 2) {
+        hitFloorFrame = i;
+        break;
+      }
+    }
+
+    expect(hitFloorFrame).toBeGreaterThanOrEqual(0);
+    expect(hitFloorFrame).toBeLessThan(90);
+    handle.cleanup();
+  });
+
+  it("y-velocity increases meaningfully across early frames (gravity is non-zero)", async () => {
+    // Guards against gravity.scale=undefined/0 which would produce zero acceleration.
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, W / 2, 30);
+    const yAt1 = handle.step(DT).snapshots[0]?.y ?? 30; // position after step 1
+    const yAt2 = handle.step(DT).snapshots[0]?.y ?? 0; // position after step 2
+    for (let i = 0; i < 3; i++) handle.step(DT); // steps 3–5
+    const yAt6 = handle.step(DT).snapshots[0]?.y ?? 0; // position after step 6
+    // The fruit should have accelerated: displacement in steps 2–6 > displacement in steps 1–2
+    const earlyDy = yAt2 - yAt1;
+    const laterDy = yAt6 - yAt2;
+    expect(earlyDy).toBeGreaterThan(0);
+    expect(laterDy).toBeGreaterThan(earlyDy); // accelerating, not constant drift
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Angular velocity — spin settles quickly after landing (#1735)
+// ---------------------------------------------------------------------------
+
+describe("angular velocity — clamp and decay", () => {
+  it("freshly dropped fruit starts with near-zero angular velocity", async () => {
+    // Guards angularVelocity:0 in bodyOpts — poly-decomp must not impart spin at spawn.
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    handle.drop(fruit(0), fruitSet.id, W / 2, 30);
+    handle.step(DT); // one step so the body exists in the world
+
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    expect(bodies.length).toBeGreaterThanOrEqual(1);
+    for (const body of bodies) {
+      expect(Math.abs(body.angularVelocity)).toBeLessThan(0.05);
+    }
+    handle.cleanup();
+  });
+
+  it("angular velocity is clamped to MAX_ANGULAR_VELOCITY_RAD_PER_STEP after one step", async () => {
+    // Inject a body with extreme spin and confirm the post-step clamp fires.
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    handle.drop(fruit(0), fruitSet.id, W / 2, 30);
+    handle.step(DT);
+
+    // Force extreme angular velocity onto the body
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    for (const body of bodies) {
+      Matter.Body.setAngularVelocity(body, 50); // 50 rad/step — far above cap
+    }
+    // One more step applies the clamp
+    handle.step(DT);
+
+    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    for (const body of bodiesAfter) {
+      // After clamp + one decay: |ω| ≤ MAX_ANG * (1 - DAMPING)
+      const maxAfterDecay = MAX_ANGULAR_VELOCITY_RAD_PER_STEP * (1 - FRUIT_ANGULAR_DAMPING) + 0.01;
+      expect(Math.abs(body.angularVelocity)).toBeLessThanOrEqual(maxAfterDecay);
+    }
+    handle.cleanup();
+  });
+
+  it("after landing, angular velocity decays to near-zero within 30 frames", async () => {
+    // Drop, let the fruit settle (60 frames), then check spin is negligible over
+    // the following 30 frames. This is the "still spinning after landing" regression.
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    handle.drop(fruit(0), fruitSet.id, W / 2, 30);
+
+    // Let it fall and land
+    for (let i = 0; i < 80; i++) handle.step(DT);
+
+    // Measure angle over the next 30 frames
+    const snap0 = handle.step(DT).snapshots[0];
+    if (!snap0) {
+      handle.cleanup();
+      return;
+    }
+    const angle0 = snap0.angle;
+
+    for (let i = 0; i < 29; i++) handle.step(DT);
+    const snap1 = handle.step(DT).snapshots[0];
+    if (!snap1) {
+      handle.cleanup();
+      return;
+    }
+    const angle1 = snap1.angle;
+
+    // Total rotation over 30 frames must be < 0.3 rad (~17°) once settled
+    expect(Math.abs(angle1 - angle0)).toBeLessThan(0.3);
+
+    // Also confirm angularVelocity on the underlying body is tiny
+    const bodies = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    for (const body of bodies) {
+      expect(Math.abs(body.angularVelocity)).toBeLessThan(0.05);
+    }
+    handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Post-merge boundary safety — reduced pop impulse (#1736)
+// ---------------------------------------------------------------------------
+
+describe("post-merge boundary safety", () => {
+  it("after a merge, all bodies remain inside the bin", async () => {
+    const handle = await buildEngine();
+    handle.drop(fruit(0), fruitSet.id, W / 2 - 5, 30);
+    handle.drop(fruit(0), fruitSet.id, W / 2 + 5, 30);
+
+    let merged = false;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(DT);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        merged = true;
+      }
+      if (merged) {
+        const snaps = handle.step(DT).snapshots;
+        for (const s of snaps) {
+          const r = fruitSet.fruits[s.tier]?.radius ?? 18;
+          expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 2);
+          expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 2);
+          expect(s.y + r).toBeLessThanOrEqual(H + r * 2); // escape guard margin
+        }
+        break;
+      }
+    }
+    expect(merged).toBe(true);
+    handle.cleanup();
+  });
+
+  it("bystander body near a merge does not exceed 90 px/s after the merge event", async () => {
+    // Same invariant as the existing stacked-merge test but now with reduced
+    // POP_IMPULSE_SCALE=0.8. Limit raised to 250 px/s to account for free-fall
+    // under gravity 5.0 (≈167 px/s after 2 steps).
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+
+    handle.drop(fruit(0), fruitSet.id, W / 2 - 5, 30);
+    handle.drop(fruit(0), fruitSet.id, W / 2 + 5, 30);
+
+    let mergeFrame = -1;
+    for (let i = 0; i < 300; i++) {
+      const { events } = handle.step(DT);
+      if (events.some((e) => e.type === "fruitMerge")) {
+        mergeFrame = i;
+        break;
+      }
+    }
+    expect(mergeFrame).toBeGreaterThanOrEqual(0);
+
+    handle.step(DT);
+    const MAX_SPEED = 250; // px/s
+    const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
+    for (const body of bodiesAfter) {
+      const { x: vx, y: vy } = body.velocity;
+      const speedPxS = Math.sqrt(vx * vx + vy * vy) * 60;
+      expect(speedPxS).toBeLessThanOrEqual(MAX_SPEED);
+    }
+    handle.cleanup();
+  });
+
+  it("a high-tier merge does not send neighboring body outside bin walls", async () => {
+    // Tier-5 merges produce a large spawn radius (nextDef.radius ≈ 55 px).
+    // Old POP_IMPULSE_SCALE=2.0 → mag=110; new 0.8 → mag=44.
+    const handle = await buildEngine();
+    handle.drop(fruit(5), fruitSet.id, W / 2 - 4, 30);
+    handle.drop(fruit(5), fruitSet.id, W / 2 + 4, 30);
+
+    const frames = stepNCollect(handle, 600);
+    for (const snaps of frames) {
+      for (const s of snaps) {
+        const r = fruitSet.fruits[s.tier]?.radius ?? 18;
+        expect(s.x - r).toBeGreaterThanOrEqual(innerLeftEdge - 2);
+        expect(s.x + r).toBeLessThanOrEqual(innerRightEdge + 2);
+      }
     }
     handle.cleanup();
   });

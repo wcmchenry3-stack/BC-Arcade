@@ -12,7 +12,7 @@ import { test, expect } from "./fixtures";
 test.describe("Yacht — New Game button", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
   });
 
@@ -20,6 +20,7 @@ test.describe("Yacht — New Game button", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /new game/i }).click();
@@ -32,6 +33,7 @@ test.describe("Yacht — New Game button", () => {
 
   test("in-progress: Cancel preserves game state", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Advance to round 2 by rolling and scoring Ones
@@ -53,6 +55,7 @@ test.describe("Yacht — New Game button", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     // Advance to round 2

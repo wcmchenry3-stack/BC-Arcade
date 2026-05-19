@@ -59,9 +59,14 @@
   "events.moonShot": "{{name}} לקח את הכל!",
   "events.queenOfSpades": "{{name}} לקח את מלכת הספייד!",
 
-  "difficulty.groupLabel": "רמת קושי",
-  "difficulty.easy": "קל",
-  "difficulty.medium": "בינוני",
-  "difficulty.hard": "קשה",
+  "difficulty.groupLabel": "סגנון יריב",
+  "difficulty.cautious": "זהיר",
+  "difficulty.cautious.desc": "משחק בזהירות, נמנע מלקחת נקודות",
+  "difficulty.schemer": "מתכנן",
+  "difficulty.schemer.desc": "יוצר חסרים, מסיט את מלכת הספייד",
+  "difficulty.daring": "נועז",
+  "difficulty.daring.desc": "מנסה לירות ירח, מכוון אליך עם המלכה",
+  "difficulty.mixed": "שולחן מעורב",
+  "difficulty.mixed.desc": "אחד מכל סוג: זהיר משמאל, מתכנן ממול, נועז מימין",
   "game.startGame": "התחל משחק"
 }

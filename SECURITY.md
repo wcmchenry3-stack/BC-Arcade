@@ -96,6 +96,15 @@ _Not every check applies to every project — mobile-only repos skip frontend np
 - Certificate pinning evaluated on each release for sensitive endpoints
 - Privacy manifest reviewed before each App Store / Google Play submission
 
+### Entitlement Tokens (Premium Access)
+
+- Premium game access is gated by a short-lived RS256-signed JWT issued from `GET /entitlements`
+- The private signing key is loaded exclusively from the `ENTITLEMENT_PRIVATE_KEY` environment variable — never hard-coded or committed
+- Token payload (`entitled_games[]`, `sub`, `iat`, `exp`) is server-generated; no client-supplied claim is trusted
+- Every premium API route uses the `require_entitlement(game_slug)` FastAPI dependency, which validates the token signature and expiry and returns `403` on failure
+- Offline grace period (7 days) is enforced client-side only and does not bypass server-side entitlement checks on score submission
+- `ENTITLEMENT_DEV_OVERRIDE=true` bypasses checks for local development — must never be set in production environments
+
 ### Secrets Management
 
 - All secrets stored in environment variables or GitHub Actions secrets — never in source

@@ -60,6 +60,8 @@ export default function GameOverlay({
             borderTopColor: accentColor,
           },
         ]}
+        accessibilityRole="dialog"
+        accessibilityViewIsModal
       >
         <Text
           style={[styles.title, { color: colors.text, fontFamily: typography.heading }]}

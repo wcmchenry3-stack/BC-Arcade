@@ -6,9 +6,6 @@ export const MIN_READABLE_TILE_PX = 48;
 // even on large screens where tiles already exceed MIN_READABLE_TILE_PX.
 export const MIN_ZOOM_HEADROOM = 1.5;
 
-// Resistance factor for rubber-band overshoot past zoom limits (0 = rigid, 1 = no resistance).
-export const RUBBER_FACTOR = 0.3;
-
 /**
  * Compute the [minZoom, maxZoom] bounds for the board gesture layer.
  *
@@ -26,14 +23,29 @@ export function computeZoomBounds(
   return { minZoom, maxZoom };
 }
 
+/**
+ * Compute the maximum allowed pan translation for each axis at a given zoom level.
+ *
+ * At minZoom the board fits the viewport exactly, so both bounds are 0.
+ * At higher zoom levels the board overflows the viewport; the board edge may
+ * travel at most halfExcess pixels from center before it crosses the viewport
+ * edge and the black background becomes visible.
+ */
+export function computePanBounds(
+  boardWidth: number,
+  boardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  scale: number
+): { maxTranslateX: number; maxTranslateY: number } {
+  "worklet";
+  return {
+    maxTranslateX: Math.max(0, (boardWidth * scale - viewportWidth) / 2),
+    maxTranslateY: Math.max(0, (boardHeight * scale - viewportHeight) / 2),
+  };
+}
+
 export function clamp(value: number, min: number, max: number): number {
   "worklet";
   return Math.min(Math.max(value, min), max);
-}
-
-export function rubberClamp(value: number, min: number, max: number): number {
-  "worklet";
-  if (value < min) return min + (value - min) * RUBBER_FACTOR;
-  if (value > max) return max + (value - max) * RUBBER_FACTOR;
-  return value;
 }

@@ -59,9 +59,14 @@
   "events.moonShot": "{{name}}が月を射抜いた！",
   "events.queenOfSpades": "{{name}}がスペードのQを取った！",
 
-  "difficulty.groupLabel": "難易度",
-  "difficulty.easy": "かんたん",
-  "difficulty.medium": "ふつう",
-  "difficulty.hard": "むずかしい",
+  "difficulty.groupLabel": "対戦相手のスタイル",
+  "difficulty.cautious": "慎重",
+  "difficulty.cautious.desc": "保守的にプレイし、点数を取らないようにする",
+  "difficulty.schemer": "策士",
+  "difficulty.schemer.desc": "スートの欠如を作り、スペードのクイーンをかわす",
+  "difficulty.daring": "大胆",
+  "difficulty.daring.desc": "月を狙い、あなたをクイーンで標的にする",
+  "difficulty.mixed": "ミックステーブル",
+  "difficulty.mixed.desc": "各1人ずつ：慎重が左、策士が正面、大胆が右",
   "game.startGame": "ゲームスタート"
 }

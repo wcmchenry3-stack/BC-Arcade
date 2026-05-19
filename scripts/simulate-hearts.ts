@@ -18,14 +18,21 @@ import {
   selectPassCard,
   setRng,
 } from "../frontend/src/game/hearts/engine";
-import { selectCardToPlay, selectCardsToPass } from "../frontend/src/game/hearts/ai";
-import type { AiDifficulty, Card, HeartsState } from "../frontend/src/game/hearts/types";
+import {
+  selectCardToPlay,
+  selectCardsToPass,
+} from "../frontend/src/game/hearts/ai";
+import type {
+  AiPersona,
+  Card,
+  HeartsState,
+} from "../frontend/src/game/hearts/types";
 
 // ---------------------------------------------------------------------------
 // Simulation
 // ---------------------------------------------------------------------------
 
-type Difficulties = [AiDifficulty, AiDifficulty, AiDifficulty, AiDifficulty];
+type Difficulties = [AiPersona, AiPersona, AiPersona, AiPersona];
 
 interface GameResult {
   win: number;
@@ -33,23 +40,64 @@ interface GameResult {
   handsPlayed: number;
   moonShots: number;
   qSpadeOnHuman: number;
+  // Behavioral metrics (#1632)
+  qSpadeByPlayer: [number, number, number, number]; // hands each seat took Q♠
+  voidsByPlayer: [number, number, number, number];  // passing rounds each seat voided a suit
+  passingRounds: number;                            // total non-"none" passing rounds
+  moonShotsByPlayer: [number, number, number, number]; // rounds each seat shot the moon
+  handScoreSumByPlayer: [number, number, number, number]; // sum of per-hand scores
 }
 
 function simulateGame(difficulties: Difficulties, seed: number): GameResult {
   setRng(createSeededRng(seed));
   let state: HeartsState = dealGame(difficulties[0]); // aiDifficulty field is informational
 
+  // Accumulate hand-scoped events before dealNextHand resets them (#1539).
+  let totalMoonShots = 0;
+  let qSpadeOnHuman = 0;
+  const qSpadeByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  const moonShotsByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  const handScoreSumByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+
+  function collectHandEvents(s: HeartsState) {
+    const ev = s.events ?? [];
+    for (const e of ev) {
+      if (e.type === "moonShot") {
+        totalMoonShots++;
+        moonShotsByPlayer[e.shooter]++;
+      }
+      if (e.type === "queenOfSpades") {
+        qSpadeByPlayer[e.takerSeat]++;
+        if (e.takerSeat === 0) qSpadeOnHuman = 1;
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      handScoreSumByPlayer[i] += s.handScores[i] ?? 0;
+    }
+  }
+
+  const voidsByPlayer: [number, number, number, number] = [0, 0, 0, 0];
+  let passingRounds = 0;
+
   while (state.phase !== "game_over") {
     if (state.phase === "passing") {
+      const isRealPass = state.passDirection !== "none";
       for (let i = 0; i < 4; i++) {
         const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
-        const cards = selectCardsToPass(hand, state.passDirection, diff);
+        const cards = selectCardsToPass(hand, state.passDirection, diff, i);
         for (const card of cards) {
           state = selectPassCard(state, i, card);
         }
       }
       state = commitPass(state);
+      if (isRealPass) {
+        passingRounds++;
+        for (let i = 0; i < 4; i++) {
+          const suits = new Set((state.playerHands[i] ?? []).map((c) => c.suit));
+          if (suits.size < 4) voidsByPlayer[i]++;
+        }
+      }
     } else if (state.phase === "playing") {
       const playerIndex = state.currentPlayerIndex;
       const diff = difficulties[playerIndex]!;
@@ -58,20 +106,23 @@ function simulateGame(difficulties: Difficulties, seed: number): GameResult {
       const card = selectCardToPlay(hand, trick, state, playerIndex, diff);
       state = playCard(state, playerIndex, card);
     } else if (state.phase === "dealing") {
+      collectHandEvents(state);
       state = dealNextHand(state);
     }
   }
-
-  const events = state.events ?? [];
-  const moonShots = events.filter((e) => e.type === "moonShot").length;
-  const qSpadeOnHuman = events.some((e) => e.type === "queenOfSpades" && e.takerSeat === 0) ? 1 : 0;
+  collectHandEvents(state); // collect the final hand's events
 
   return {
     win: state.winnerIndex === 0 ? 1 : 0,
     player0Score: state.cumulativeScores[0] ?? 0,
     handsPlayed: state.handNumber,
-    moonShots,
+    moonShots: totalMoonShots,
     qSpadeOnHuman,
+    qSpadeByPlayer,
+    voidsByPlayer,
+    passingRounds,
+    moonShotsByPlayer,
+    handScoreSumByPlayer,
   };
 }
 
@@ -126,18 +177,20 @@ function simulateGameLogged(difficulties: Difficulties, seed: number): GameLog {
       for (let i = 0; i < 4; i++) {
         const diff = difficulties[i]!;
         const hand = [...(state.playerHands[i] ?? [])];
-        const cards = selectCardsToPass(hand, state.passDirection, diff);
+        const cards = selectCardsToPass(hand, state.passDirection, diff, i);
         pendingPasses[i] = cards;
         for (const card of cards) {
           state = selectPassCard(state, i, card);
         }
       }
-      const handsBeforeCommit = state.playerHands.map((h) => new Set(h.map((c) => `${c.suit}:${c.rank}`)));
+      const handsBeforeCommit = state.playerHands.map(
+        (h) => new Set(h.map((c) => `${c.suit}:${c.rank}`)),
+      );
       state = commitPass(state);
       currentHand.passed = pendingPasses.map((p) => [...p]);
       for (let i = 0; i < 4; i++) {
         currentHand.received[i] = (state.playerHands[i] ?? []).filter(
-          (c) => !handsBeforeCommit[i]!.has(`${c.suit}:${c.rank}`)
+          (c) => !handsBeforeCommit[i]!.has(`${c.suit}:${c.rank}`),
         );
       }
     } else if (state.phase === "playing") {
@@ -203,7 +256,8 @@ function mean(values: number[]): number {
 }
 
 function stdDev(values: number[], avg: number): number {
-  const variance = values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
+  const variance =
+    values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
   return Math.sqrt(variance);
 }
 
@@ -228,7 +282,7 @@ function sigLabel(z: number): string {
 // CLI dispatch
 // ---------------------------------------------------------------------------
 
-const VALID_DIFFICULTIES = new Set<AiDifficulty>(["easy", "medium", "hard"]);
+const VALID_DIFFICULTIES = new Set<AiPersona>(["cautious", "schemer", "daring"]);
 
 function parseCount(args: string[], flag: string): number | null {
   const idx = args.indexOf(flag);
@@ -243,13 +297,15 @@ function parseDifficulties(args: string[]): Difficulties | null {
   const parts = (args[idx + 1] ?? "").split(",");
   if (parts.length !== 4) return null;
   for (const p of parts) {
-    if (!VALID_DIFFICULTIES.has(p as AiDifficulty)) return null;
+    if (!VALID_DIFFICULTIES.has(p as AiPersona)) return null;
   }
   return parts as unknown as Difficulties;
 }
 
 // --count N is the primary flag; --log-games N is a deprecated alias
-const count = parseCount(process.argv, "--count") ?? parseCount(process.argv, "--log-games");
+const count =
+  parseCount(process.argv, "--count") ??
+  parseCount(process.argv, "--log-games");
 if (count !== null) {
   if (count < 1) {
     process.stderr.write("Error: count must be a positive integer\n");
@@ -258,17 +314,35 @@ if (count !== null) {
   const difficultiesArg = parseDifficulties(process.argv);
   if (process.argv.includes("--difficulties") && difficultiesArg === null) {
     process.stderr.write(
-      "Error: --difficulties must be 4 comma-separated values of easy/medium/hard\n" +
-        "  Example: --difficulties easy,medium,hard,medium\n"
+      "Error: --difficulties must be 4 comma-separated values of cautious/schemer/daring\n" +
+        "  Example: --difficulties cautious,schemer,daring,schemer\n",
     );
     process.exit(1);
   }
-  const logDifficulties: Difficulties = difficultiesArg ?? ["medium", "medium", "medium", "medium"];
+  const logDifficulties: Difficulties = difficultiesArg ?? [
+    "schemer",
+    "schemer",
+    "schemer",
+    "schemer",
+  ];
   for (let i = 0; i < count; i++) {
     const log = simulateGameLogged(logDifficulties, i);
     process.stdout.write(JSON.stringify(log) + "\n");
   }
   process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Reporting helpers
+// ---------------------------------------------------------------------------
+
+function fmt4pct(vals: number[], denom: number): string {
+  if (denom === 0) return "  n/a     n/a     n/a     n/a";
+  return vals.map((v) => `${((v / denom) * 100).toFixed(1)}%`.padStart(7)).join(" ");
+}
+
+function fmt4score(vals: number[], denom: number): string {
+  return vals.map((v) => (v / denom).toFixed(1).padStart(7)).join(" ");
 }
 
 // ---------------------------------------------------------------------------
@@ -279,36 +353,36 @@ const GAMES_PER_BATCH = 3000;
 
 const batches: Array<{ label: string; difficulties: Difficulties }> = [
   {
-    label: "Easy vs Easy vs Easy (baseline)",
-    difficulties: ["easy", "easy", "easy", "easy"],
+    label: "Cautious vs Cautious vs Cautious (baseline)",
+    difficulties: ["cautious", "cautious", "cautious", "cautious"],
   },
   {
-    label: "Easy vs Medium vs Medium vs Medium",
-    difficulties: ["easy", "medium", "medium", "medium"],
+    label: "Cautious vs Schemer vs Schemer vs Schemer",
+    difficulties: ["cautious", "schemer", "schemer", "schemer"],
   },
   {
-    label: "Easy vs Hard vs Hard vs Hard",
-    difficulties: ["easy", "hard", "hard", "hard"],
+    label: "Cautious vs Daring vs Daring vs Daring",
+    difficulties: ["cautious", "daring", "daring", "daring"],
   },
   {
-    label: "Medium vs Hard vs Hard vs Hard",
-    difficulties: ["medium", "hard", "hard", "hard"],
+    label: "Schemer vs Daring vs Daring vs Daring",
+    difficulties: ["schemer", "daring", "daring", "daring"],
   },
   {
-    // Hard vs Medium, with 2 Easy neutrals to reduce field noise.
-    // If Hard beats Medium, player 0 (Hard) should win > player 1 (Medium).
-    label: "Hard vs Medium + 2 Easy neutrals (player 0 = Hard)",
-    difficulties: ["hard", "medium", "easy", "easy"],
+    // Daring vs Schemer, with 2 Cautious neutrals to reduce field noise.
+    // If Daring beats Schemer, player 0 (Daring) should win > player 1 (Schemer).
+    label: "Daring vs Schemer + 2 Cautious neutrals (player 0 = Daring)",
+    difficulties: ["daring", "schemer", "cautious", "cautious"],
   },
   {
-    // Mirror of the above — player 0 is now Medium.
-    // Comparing batch 5 win rate vs batch 6 win rate isolates Hard vs Medium.
-    label: "Medium vs Hard + 2 Easy neutrals (player 0 = Medium)",
-    difficulties: ["medium", "hard", "easy", "easy"],
+    // Mirror of the above — player 0 is now Schemer.
+    // Comparing batch 5 win rate vs batch 6 win rate isolates Daring vs Schemer.
+    label: "Schemer vs Daring + 2 Cautious neutrals (player 0 = Schemer)",
+    difficulties: ["schemer", "daring", "cautious", "cautious"],
   },
 ];
 
-console.log("Hearts AI Difficulty Simulation Results");
+console.log("Hearts AI Persona Simulation Results");
 console.log("=======================================\n");
 
 const batchWinRates: number[] = [];
@@ -339,15 +413,42 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   const moonPct = (mean(moonShotsAll) * 100).toFixed(1);
   const qPct = (mean(qOnHuman) * 100).toFixed(1);
 
+  // Behavioral metrics (#1632)
+  const totalHands = results.reduce((s, r) => s + r.handsPlayed, 0);
+  const totalPassRounds = results.reduce((s, r) => s + r.passingRounds, 0);
+  const qByPlayerAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.qSpadeByPlayer[i]!, 0),
+  );
+  const voidsAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.voidsByPlayer[i]!, 0),
+  );
+  const moonAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.moonShotsByPlayer[i]!, 0),
+  );
+  const handScoreAgg = [0, 1, 2, 3].map((i) =>
+    results.reduce((s, r) => s + r.handScoreSumByPlayer[i]!, 0),
+  );
+
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
   console.log(label);
   console.log(`  Games: ${n}`);
-  console.log(`  Player 0 Win Rate: ${pct(winRate)} (95% CI: [${pct(ciLow)}, ${pct(ciHigh)}])`);
-  console.log(`  Player 0 Avg Score: ${avgScore.toFixed(1)} ± ${sdScore.toFixed(1)} (std dev)`);
-  console.log(`  Hands per Game: ${avgHands.toFixed(1)} ± ${sdHands.toFixed(1)}`);
+  console.log(
+    `  Player 0 Win Rate: ${pct(winRate)} (95% CI: [${pct(ciLow)}, ${pct(ciHigh)}])`,
+  );
+  console.log(
+    `  Player 0 Avg Score: ${avgScore.toFixed(1)} ± ${sdScore.toFixed(1)} (std dev)`,
+  );
+  console.log(
+    `  Hands per Game: ${avgHands.toFixed(1)} ± ${sdHands.toFixed(1)}`,
+  );
   console.log(`  Moon Shots (any player): ${moonPct}%`);
   console.log(`  Q♠ on Human: ${qPct}%`);
+  console.log(`  Behavioral Metrics      s0      s1      s2      s3`);
+  console.log(`  Q♠/Hand by Seat:    ${fmt4pct(qByPlayerAgg, totalHands)}`);
+  console.log(`  Void Rate by Seat:  ${fmt4pct(voidsAgg, totalPassRounds)}`);
+  console.log(`  Moon Shots/Round:   ${fmt4pct(moonAgg, totalHands)}`);
+  console.log(`  Avg Hand Score:     ${fmt4score(handScoreAgg, totalHands)}`);
   console.log();
 }
 
@@ -355,27 +456,39 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 // Interpretation
 // ---------------------------------------------------------------------------
 
-const [easyWr, easyVsMedWr, easyVsHardWr, medVs3HardWr, hardVsMedNeutralWr, medVsHardNeutralWr] =
-  batchWinRates as [number, number, number, number, number, number];
+const [
+  cautiousWr,
+  cautiousVsSchemerWr,
+  cautiousVsDaringWr,
+  schemerVs3DaringWr,
+  daringVsSchemerNeutralWr,
+  schemerVsDaringNeutralWr,
+] = batchWinRates as [number, number, number, number, number, number];
 
-const zEM = zTest(easyWr, easyVsMedWr, GAMES_PER_BATCH);
-const zEH = zTest(easyWr, easyVsHardWr, GAMES_PER_BATCH);
-const zMHFull = zTest(easyVsMedWr, easyVsHardWr, GAMES_PER_BATCH);
-// Direct Hard vs Medium comparison: Hard (batch 5) vs Medium (batch 6) — same game, seat swapped.
-const zHvM_direct = zTest(hardVsMedNeutralWr, medVsHardNeutralWr, GAMES_PER_BATCH);
+const zCS = zTest(cautiousWr, cautiousVsSchemerWr, GAMES_PER_BATCH);
+const zCD = zTest(cautiousWr, cautiousVsDaringWr, GAMES_PER_BATCH);
+const zSDFull = zTest(cautiousVsSchemerWr, cautiousVsDaringWr, GAMES_PER_BATCH);
+// Direct Daring vs Schemer comparison: Daring (batch 5) vs Schemer (batch 6) — same game, seat swapped.
+const zDvS_direct = zTest(
+  daringVsSchemerNeutralWr,
+  schemerVsDaringNeutralWr,
+  GAMES_PER_BATCH,
+);
 const check = (cond: boolean) => (cond ? "✓" : "✗");
 
 console.log("Interpretation:");
 console.log(
-  `  ${check(easyWr > 0.2 && easyWr < 0.3)} Easy baseline win rate near 25% (got ${(easyWr * 100).toFixed(1)}%)`
-);
-console.log(`  ${check(easyVsMedWr < easyWr)} Easy vs Medium: win rate drops (${sigLabel(zEM)})`);
-console.log(
-  `  ${check(easyVsHardWr < easyVsMedWr)} Easy vs Hard: win rate drops further (${sigLabel(zEH)})`
+  `  ${check(cautiousWr > 0.2 && cautiousWr < 0.3)} Cautious baseline win rate near 25% (got ${(cautiousWr * 100).toFixed(1)}%)`,
 );
 console.log(
-  `  ${check(medVs3HardWr < 0.25)} Medium vs 3 Hard: Medium below 25% (got ${(medVs3HardWr * 100).toFixed(1)}%, ${sigLabel(zMHFull)} vs Easy batches)`
+  `  ${check(cautiousVsSchemerWr < cautiousWr)} Cautious vs Schemer: win rate drops (${sigLabel(zCS)})`,
 );
 console.log(
-  `  ${check(hardVsMedNeutralWr > medVsHardNeutralWr)} Hard vs Medium (neutral field): Hard ${(hardVsMedNeutralWr * 100).toFixed(1)}% vs Medium ${(medVsHardNeutralWr * 100).toFixed(1)}% (${sigLabel(zHvM_direct)})`
+  `  ${check(cautiousVsDaringWr < cautiousVsSchemerWr)} Cautious vs Daring: win rate drops further (${sigLabel(zCD)})`,
+);
+console.log(
+  `  ${check(schemerVs3DaringWr < 0.25)} Schemer vs 3 Daring: Schemer below 25% (got ${(schemerVs3DaringWr * 100).toFixed(1)}%, ${sigLabel(zSDFull)} vs Cautious batches)`,
+);
+console.log(
+  `  ${check(daringVsSchemerNeutralWr > schemerVsDaringNeutralWr)} Daring vs Schemer (neutral field): Daring ${(daringVsSchemerNeutralWr * 100).toFixed(1)}% vs Schemer ${(schemerVsDaringNeutralWr * 100).toFixed(1)}% (${sigLabel(zDvS_direct)})`,
 );

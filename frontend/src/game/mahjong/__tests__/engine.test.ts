@@ -24,6 +24,7 @@ import {
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { getLayout, LAYOUTS } from "../layouts/registry";
 
 // Pin the RNG so every test run is identical.
 beforeEach(() => {
@@ -179,6 +180,14 @@ describe("isFreeTile", () => {
     const t = tile({ id: 0, col: 4, row: 2, layer: 0 });
     const otherRow = tile({ id: 1, col: 2, row: 3, layer: 0 });
     expect(isFreeTile(t, [t, otherRow])).toBe(true);
+  });
+
+  it("is blocked by a tile two layers above after layer+1 is removed (gap blindness fix)", () => {
+    // layer 0 tile covered by a tile at layer 2; the layer 1 tile has been removed.
+    // Before the fix, only layer+1 was checked so the layer 0 tile was wrongly free.
+    const t = tile({ id: 0, col: 4, row: 2, layer: 0 });
+    const abovePlus2 = tile({ id: 1, col: 4, row: 2, layer: 2 });
+    expect(isFreeTile(t, [t, abovePlus2])).toBe(false);
   });
 });
 
@@ -522,6 +531,130 @@ describe("shuffleBoard", () => {
     const shuffled = shuffleBoard(state);
     expect(shuffled.undoStack.length).toBe(1);
   });
+
+  it("never places both tiles of a pair at the same (col, row)", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const shuffled = shuffleBoard(state);
+    const byKey = new Map<string, SlotTile[]>();
+    for (const t of shuffled.tiles) {
+      const key = t.suit === "flowers" || t.suit === "seasons" ? t.suit : `${t.suit}:${t.rank}`;
+      const g = byKey.get(key) ?? [];
+      g.push(t);
+      byKey.set(key, g);
+    }
+    for (const group of byKey.values()) {
+      for (let i = 0; i + 1 < group.length; i += 2) {
+        const a = group[i]!;
+        const b = group[i + 1]!;
+        expect(a.col === b.col && a.row === b.row).toBe(false);
+      }
+    }
+  });
+
+  it("shuffle with 1 pair remaining always produces a winnable board", () => {
+    // Acceptance criterion: shuffle with 1 pair remaining always produces a
+    // winnable 1-pair board. Two tiles at distinct (col, row) positions — the
+    // only possible slot assignment is non-stacked, so the result must always
+    // have a free pair regardless of RNG seed.
+    //
+    // Note: the hasStackedMatch guard is geometrically unreachable here because
+    // neither slot shares (col, row). This test is a sanity check that shuffleBoard
+    // always succeeds and the result is playable; regression coverage for the guard
+    // itself is in the "issue 1565 deadlock" test below.
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const state: MahjongState = {
+      _v: 1,
+      tiles: [a, b],
+      pairsRemoved: 71,
+      score: 710,
+      shufflesLeft: 1,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    };
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+    }
+  });
+
+  it("shuffle avoids placing a matching pair in a column stack — issue 1565 deadlock", () => {
+    // Reproduces the exact bug: 2 pairs remain; slots include a column stack
+    // at (col=0, row=0). A bad shuffle assigns one pair to (0,0,0)+(0,0,1),
+    // which looks winnable because the other pair is still a free match, but
+    // becomes unwinnable once that pair is removed.
+    //
+    // Slot layout:
+    //   (2,0,0) and (4,0,0) — both free at layer 0
+    //   (0,0,0) — blocked by (0,0,1)
+    //   (0,0,1) — free at top of its column stack
+    const tiles: SlotTile[] = [
+      // faceId values are arbitrary — tilesMatch uses suit+rank, not faceId
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 0 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 },
+    ];
+    const state: MahjongState = {
+      _v: 1,
+      tiles,
+      pairsRemoved: 70,
+      score: 700,
+      shufflesLeft: 2,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    };
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      expect(shuffled).not.toBe(state); // guard must find a valid arrangement within 50 retries
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+      for (const t of shuffled.tiles) {
+        const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
+        if (partner) {
+          expect(t.col === partner.col && t.row === partner.row).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("shuffle with 2–4 pairs remaining never stacks a matching pair (50 seeds)", () => {
+    // Acceptance criterion: shuffle with 2–4 pairs produces no stacked-matching
+    // pairs. Play down to 4 pairs (8 tiles) with a seeded game, then stress-test
+    // shuffleBoard across 50 seeds.
+    setRng(createSeededRng(1));
+    let state = createGame(TURTLE_LAYOUT, 1);
+    // Remove pairs until 8 tiles remain.
+    while (state.tiles.length > 8) {
+      const [a, b] = firstFreePair(state);
+      state = selectTile(selectTile(state, a.id), b.id);
+    }
+    expect(state.tiles.length).toBe(8);
+
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      expect(shuffled).not.toBe(state); // guard must find a valid arrangement within 50 retries
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+      for (const t of shuffled.tiles) {
+        const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
+        if (partner) {
+          expect(t.col === partner.col && t.row === partner.row).toBe(false);
+        }
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -781,5 +914,24 @@ describe("timer helpers", () => {
   it("resumeGame is a no-op when already running", () => {
     const state: MahjongState = { ...createGame(TURTLE_LAYOUT), startedAt: 1000 };
     expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createGame — smoke test across all layouts (#1695)
+// ---------------------------------------------------------------------------
+
+describe.each(LAYOUTS.map((m) => m.id))("createGame — %s", (id) => {
+  let state: MahjongState;
+  beforeEach(() => {
+    state = createGame(getLayout(id));
+  });
+
+  it("produces exactly 144 tiles", () => {
+    expect(state.tiles.length).toBe(144);
+  });
+
+  it("initial board has at least one free pair", () => {
+    expect(hasFreePairs(state.tiles)).toBe(true);
   });
 });

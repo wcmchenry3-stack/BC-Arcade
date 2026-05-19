@@ -92,8 +92,9 @@ def _submit(
 
 
 class TestSetPlayerName:
-    def test_valid_update_returns_200_with_score_entry(self):
-        gid = _create_game()
+    @pytest.mark.parametrize("variant", ["classic", "mini"])
+    def test_valid_update_returns_200_with_score_entry(self, variant):
+        gid = _create_game(variant=variant)
         _complete_game(gid, 80)
         res = _set_name(gid, "Alice")
         assert res.status_code == 200
@@ -150,39 +151,49 @@ class TestSetPlayerName:
 
 
 class TestGetScores:
-    def test_empty_initially(self):
-        res = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS)
+    @pytest.mark.parametrize("variant", ["classic", "mini"])
+    def test_empty_initially(self, variant):
+        res = client.get(f"/sudoku/scores/easy?variant={variant}", headers=SESSION_HEADERS)
         assert res.status_code == 200
         assert res.json()["scores"] == []
 
-    def test_returns_submitted_entries_for_difficulty(self):
-        _submit("Alice", 90, "easy")
-        _submit("Bob", 60, "easy")
-        scores = client.get("/sudoku/scores/easy", headers=SESSION_HEADERS).json()["scores"]
+    @pytest.mark.parametrize("variant", ["classic", "mini"])
+    def test_returns_submitted_entries_for_difficulty(self, variant):
+        _submit("Alice", 90, "easy", variant)
+        _submit("Bob", 60, "easy", variant)
+        scores = client.get(
+            f"/sudoku/scores/easy?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert len(scores) == 2
 
-    def test_ordered_by_score_descending(self):
+    @pytest.mark.parametrize("variant", ["classic", "mini"])
+    def test_ordered_by_score_descending(self, variant):
         from limiter import limiter
 
         limiter.reset()
-        _submit("Alice", 40, "medium")
+        _submit("Alice", 40, "medium", variant)
         limiter.reset()
-        _submit("Bob", 180, "medium")
+        _submit("Bob", 180, "medium", variant)
         limiter.reset()
-        _submit("Carol", 120, "medium")
-        scores = client.get("/sudoku/scores/medium", headers=SESSION_HEADERS).json()["scores"]
+        _submit("Carol", 120, "medium", variant)
+        scores = client.get(
+            f"/sudoku/scores/medium?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert [s["score"] for s in scores] == [180, 120, 40]
 
     def test_invalid_difficulty_path_returns_422(self):
         assert client.get("/sudoku/scores/impossible", headers=SESSION_HEADERS).status_code == 422
 
-    def test_capped_at_ten_entries(self):
+    @pytest.mark.parametrize("variant", ["classic", "mini"])
+    def test_capped_at_ten_entries(self, variant):
         from limiter import limiter
 
         for i in range(15):
             limiter.reset()
-            _submit(f"Player{i}", i * 10, "hard")
-        scores = client.get("/sudoku/scores/hard", headers=SESSION_HEADERS).json()["scores"]
+            _submit(f"Player{i}", i * 10, "hard", variant)
+        scores = client.get(
+            f"/sudoku/scores/hard?variant={variant}", headers=SESSION_HEADERS
+        ).json()["scores"]
         assert len(scores) == 10
         assert scores[0]["score"] == 140
 
@@ -220,6 +231,53 @@ class TestDifficultyIsolation:
         assert [s["player_name"] for s in easy] == ["E"]
         assert [s["player_name"] for s in medium] == ["M"]
         assert [s["player_name"] for s in hard] == ["H"]
+
+
+# ---------------------------------------------------------------------------
+# Variant isolation — classic and mini leaderboards must be partitioned
+# ---------------------------------------------------------------------------
+
+
+class TestVariantIsolation:
+    def test_mini_score_absent_from_classic_leaderboard(self):
+        _submit("MiniPlayer", 100, "easy", "mini")
+        scores = client.get("/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS).json()[
+            "scores"
+        ]
+        assert not any(s["player_name"] == "MiniPlayer" for s in scores)
+
+    def test_classic_score_absent_from_mini_leaderboard(self):
+        _submit("ClassicPlayer", 100, "easy", "classic")
+        scores = client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()[
+            "scores"
+        ]
+        assert not any(s["player_name"] == "ClassicPlayer" for s in scores)
+
+    def test_classic_and_mini_partitioned(self):
+        from limiter import limiter
+
+        limiter.reset()
+        _submit("Classic1", 100, "easy", "classic")
+        limiter.reset()
+        _submit("Mini1", 200, "easy", "mini")
+
+        classic_names = {
+            s["player_name"]
+            for s in client.get(
+                "/sudoku/scores/easy?variant=classic", headers=SESSION_HEADERS
+            ).json()["scores"]
+        }
+        mini_names = {
+            s["player_name"]
+            for s in client.get("/sudoku/scores/easy?variant=mini", headers=SESSION_HEADERS).json()[
+                "scores"
+            ]
+        }
+
+        assert "Classic1" in classic_names
+        assert "Mini1" not in classic_names
+        assert "Mini1" in mini_names
+        assert "Classic1" not in mini_names
 
 
 # ---------------------------------------------------------------------------

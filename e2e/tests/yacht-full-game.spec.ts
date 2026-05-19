@@ -34,18 +34,20 @@ test.describe("Yacht — full 13-round game journey", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     // Clear any saved game from a previous test so each test starts fresh.
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
   });
 
   test("navigates from Home to Game on Play Yacht click", async ({ page }) => {
     await expect(page.getByText("BC Arcade").first()).toBeVisible();
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
   });
 
   test("Roll button appears and responds", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     const rollBtn = page.getByRole("button", { name: /Roll/i });
@@ -60,6 +62,7 @@ test.describe("Yacht — full 13-round game journey", () => {
 
   test("scoring a category advances the round", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
@@ -70,6 +73,7 @@ test.describe("Yacht — full 13-round game journey", () => {
 
   test("game-over modal appears after 13 rounds", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     for (let round = 0; round < 13; round++) {
       await expect(page.getByText(`Round ${round + 1} / 13`)).toBeVisible();
@@ -85,6 +89,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();
@@ -102,6 +107,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();
@@ -142,6 +148,7 @@ test.describe("Yacht — full 13-round game journey", () => {
 
   test("No Thanks navigates back to HomeScreen", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();

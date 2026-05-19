@@ -46,7 +46,7 @@ test.describe("Cascade — merge and score behavior", () => {
 
   test("two tier-1 fruits merge → score = 4", async ({ page }) => {
     // Tier-1 radius=25, sum-of-radii=50. Place 44px apart (6px overlap, ~12%)
-    // so Rapier fires CollisionStart reliably — mirrors the watermelon test design.
+    // so Matter.js fires CollisionStart reliably — mirrors the watermelon test design.
     await spawnTierAt(page, 1, 145);
     await spawnTierAt(page, 1, 189);
     await fastForward(page, 2000);
@@ -64,7 +64,7 @@ test.describe("Cascade — merge and score behavior", () => {
     page,
   }) => {
     // Tier-10 radius=89; valid x range in a 400px canvas is [105, 295].
-    // Place 156px apart (r1+r2=178) for ~12% initial overlap so Rapier
+    // Place 156px apart (r1+r2=178) for ~12% initial overlap so Matter.js
     // contact detection fires reliably without suppressing contact events.
     await spawnTierAt(page, 10, 122);
     await spawnTierAt(page, 10, 278);
@@ -85,8 +85,12 @@ test.describe("Cascade — merge and score behavior", () => {
   test("tier-0 + tier-1 at same x do NOT merge → score = 0, fruitCount = 2", async ({
     page,
   }) => {
-    await spawnTierAt(page, 0, 150);
-    await spawnTierAt(page, 1, 150);
+    // Use well-separated x positions so the two fruits never overlap at spawn.
+    // Spawning both at x=150 caused a full overlap (radii 18+23=41 px, distance 0),
+    // and the physics explosion under GRAVITY_Y=5.0 sent the lighter body past the
+    // explosive-ejection threshold, culling it and making fruitCount=1.
+    await spawnTierAt(page, 0, 80);
+    await spawnTierAt(page, 1, 320);
     await fastForward(page, 2000);
 
     const state = await getState(page);
@@ -121,13 +125,14 @@ test.describe("Cascade — merge and score behavior", () => {
     await spawnTierAt(page, 0, 150);
     await fastForward(page, 2000);
 
-    // tier-2 merge (+8): 49px apart (radius=33, sum=66, 17px overlap ~26%).
-    // Increased from 8px overlap — was intermittently missing in CI under Rapier
-    // WASM load (GH #1418). 17px guarantees CollisionStart fires on the first step
-    // regardless of physics cadence. Start at x=235 to clear the tier-1 body
-    // spawned above (at x=150, radius=25, rightmost edge ≈175).
+    // tier-2 merge (+8): 31px apart (radius=33, sum=66, 35px overlap ~53%).
+    // Originally 8px, bumped to 35px
+    // for Matter.js — RAF may tick between the two spawnTierAt calls, letting the
+    // first fruit fall up to ~44px before the second spawns (≥44px breaks 17px
+    // overlap). 35px overlap tolerates ~55px of free-fall. Start at x=235 to
+    // clear the tier-1 body (at x=150, radius=25, rightmost edge ≈175).
     await spawnTierAt(page, 2, 235);
-    await spawnTierAt(page, 2, 284);
+    await spawnTierAt(page, 2, 266);
     await fastForward(page, 2000);
 
     const state = await getState(page);

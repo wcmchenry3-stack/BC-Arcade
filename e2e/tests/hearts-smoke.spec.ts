@@ -18,7 +18,7 @@ test.describe("Hearts — smoke tests", () => {
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page.getByRole("heading", { name: "Hearts", exact: true }).waitFor({ timeout: 10_000 });
     await expect(
-      page.getByRole("radiogroup", { name: "AI Difficulty" }),
+      page.getByRole("radiogroup", { name: "Opponent Style" }),
     ).toBeVisible({ timeout: 5_000 });
   });
 

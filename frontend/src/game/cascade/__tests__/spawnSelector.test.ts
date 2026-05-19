@@ -7,6 +7,34 @@ import {
   simulateSpawns,
 } from "../spawnSelector";
 
+describe("createSeededRng determinism", () => {
+  it("same seed produces identical tier sequence", () => {
+    const sel1 = new ControlledSpawnSelector(createSeededRng(42));
+    const sel2 = new ControlledSpawnSelector(createSeededRng(42));
+    for (let i = 0; i < 50; i++) {
+      expect(sel1.next()).toBe(sel2.next());
+    }
+  });
+
+  it("different seeds produce different sequences", () => {
+    const run1 = new ControlledSpawnSelector(createSeededRng(1));
+    const run2 = new ControlledSpawnSelector(createSeededRng(99999));
+    const tiers1 = Array.from({ length: 50 }, () => run1.next());
+    const tiers2 = Array.from({ length: 50 }, () => run2.next());
+    expect(tiers1).not.toEqual(tiers2);
+  });
+
+  it("recreating with same seed after drops resets determinism", () => {
+    const fresh = new ControlledSpawnSelector(createSeededRng(99));
+    const firstRun = Array.from({ length: 20 }, () => fresh.next());
+
+    const reset = new ControlledSpawnSelector(createSeededRng(99));
+    const secondRun = Array.from({ length: 20 }, () => reset.next());
+
+    expect(firstRun).toEqual(secondRun);
+  });
+});
+
 describe("ControlledSpawnSelector", () => {
   it("always returns a valid spawn tier", () => {
     const selector = new ControlledSpawnSelector(createSeededRng(11));

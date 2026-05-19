@@ -24,6 +24,8 @@ import { useTranslation } from "react-i18next";
 import type { Bottle, Color } from "../types";
 import { BOTTLE_DEPTH } from "../types";
 import { isBottleSolved } from "../engine";
+import { useTheme } from "../../../theme/ThemeContext";
+import type { Theme } from "../../../theme/ThemeContext";
 import {
   BOTTLE_LIQUID_COLORS,
   BOTTLE_STROKE_SELECTED,
@@ -53,8 +55,8 @@ const UNIT_H = INNER_H / BOTTLE_DEPTH; // 38 per liquid unit
 export const FLASK_CAVITY = `M 18 ${PAD_TOP} L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_BOTTOM} L 38 ${BODY_BOTTOM} Q 50 ${BODY_BOTTOM} 50 154 Q 50 52 38 36 L 38 ${PAD_TOP} Z`;
 const FLASK_OUTLINE = `M 18 0 L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_BOTTOM} L 38 ${BODY_BOTTOM} Q 50 ${BODY_BOTTOM} 50 154 Q 50 52 38 36 L 38 0 Z`;
 
-// Liquid colors are now imported from theme.bottle
-export const LIQUID_COLORS = BOTTLE_LIQUID_COLORS;
+// Per-theme liquid color map — subscribers select by theme key.
+export const LIQUID_COLORS: Record<Theme, Record<Color, string>> = BOTTLE_LIQUID_COLORS;
 
 const COLORBLIND_SYMBOLS: Record<Color, string> = {
   red: "▲",
@@ -65,6 +67,12 @@ const COLORBLIND_SYMBOLS: Record<Color, string> = {
   purple: "◆",
   pink: "✦",
   teal: "✚",
+  brown: "↑",
+  lime: "♥",
+  navy: "△",
+  maroon: "⚡",
+  gold: "◎",
+  indigo: "⊕",
 };
 
 export const DEFAULT_BOTTLE_WIDTH = 52;
@@ -106,6 +114,8 @@ export default function BottleView({
   isGhost = false,
 }: BottleViewProps) {
   const { t } = useTranslation("sort");
+  const { theme } = useTheme();
+  const liquidColors = BOTTLE_LIQUID_COLORS[theme];
   const bounceY = useSharedValue(0);
   const tiltDeg = useSharedValue(0);
 
@@ -188,7 +198,7 @@ export default function BottleView({
         <G clipPath={`url(#${clipId})`}>
           {bottle.map((color, i) => {
             const y = BODY_BOTTOM - (i + 1) * UNIT_H;
-            const fill = LIQUID_COLORS[color];
+            const fill = liquidColors[color];
             return (
               <G key={i}>
                 <Rect x={0} y={y} width={VB_W} height={UNIT_H + 0.5} fill={fill} />

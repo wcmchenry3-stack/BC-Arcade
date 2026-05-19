@@ -7,10 +7,12 @@ GET /cascade/scores returns the top 10 scores for the leaderboard display.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
@@ -23,6 +25,8 @@ from vocab import GameType as GameTypeEnum
 from .models import LeaderboardResponse, ScoreEntry, SetPlayerNameRequest
 
 router = APIRouter(dependencies=[Depends(require_entitlement("cascade"))])
+
+logger = logging.getLogger(__name__)
 
 LEADERBOARD_LIMIT = 10
 
@@ -86,30 +90,41 @@ async def set_player_name(
         if game is None:
             raise HTTPException(status_code=404, detail="Game not found.")
 
+        if game.final_score is None:
+            raise HTTPException(status_code=400, detail="Game has no final score.")
+
         metadata = dict(game.game_metadata or {})
         metadata["player_name"] = body.player_name
         game.game_metadata = metadata
-        await db.commit()
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            logger.error("cascade score commit failed for game %s: %s", game_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to save player name.")
 
         # Rank = 1 + count of games that outrank this one.
         # Tie-break: equal scores rank older completed_at first (same order as
         # the leaderboard GET), so a game ranks below existing tied entries.
         score_val = game.final_score or 0
-        count = (
-            await db.execute(
-                select(func.count()).where(
-                    Game.game_type_id == gt_id,
-                    Game.final_score.is_not(None),
-                    or_(
-                        Game.final_score > score_val,
-                        and_(
-                            Game.final_score == score_val,
-                            Game.completed_at < game.completed_at,
+        try:
+            count = (
+                await db.execute(
+                    select(func.count()).where(
+                        Game.game_type_id == gt_id,
+                        Game.final_score.is_not(None),
+                        or_(
+                            Game.final_score > score_val,
+                            and_(
+                                Game.final_score == score_val,
+                                Game.completed_at < game.completed_at,
+                            ),
                         ),
-                    ),
+                    )
                 )
-            )
-        ).scalar()
+            ).scalar()
+        except SQLAlchemyError as exc:
+            logger.error("cascade rank query failed for game %s: %s", game_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to calculate rank.")
 
     rank = int(count or 0) + 1
     return ScoreEntry(

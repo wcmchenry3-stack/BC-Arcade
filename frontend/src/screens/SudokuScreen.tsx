@@ -35,7 +35,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
@@ -668,6 +668,7 @@ function VariantSelector({
               defaultValue: v === "classic" ? "Classic 9×9" : "Mini 6×6",
             })}
             accessibilityState={{ selected }}
+            aria-checked={selected}
             style={[
               styles.variantBtn,
               { backgroundColor: selected ? colors.accent : colors.surface },

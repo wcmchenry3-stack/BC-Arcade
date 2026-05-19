@@ -40,6 +40,7 @@
   "overflow.menu.label": "Ещё опции",
   "overflow.menu.scoreboard": "Таблица очков",
   "overflow.menu.newGame": "Новая игра",
+  "overflow.menu.levelSelect": "Выбор уровня",
   "overflow.menu.editNames": "Редактировать имена",
   "overflow.abandon.title": "Завершить текущую игру?",
   "overflow.abandon.body": "Начав новую игру, вы потеряете прогресс в этом раунде. Общая статистика останется без изменений.",

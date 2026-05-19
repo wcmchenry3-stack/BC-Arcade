@@ -75,9 +75,14 @@
   "events.moonShot": "{{name}} shot the moon!",
   "events.queenOfSpades": "{{name}} takes the Queen of Spades!",
 
-  "difficulty.groupLabel": "AI Difficulty",
-  "difficulty.easy": "Easy",
-  "difficulty.medium": "Medium",
-  "difficulty.hard": "Hard",
+  "difficulty.groupLabel": "Opponent Style",
+  "difficulty.cautious": "Cautious",
+  "difficulty.cautious.desc": "Plays conservatively, avoids taking points",
+  "difficulty.schemer": "Schemer",
+  "difficulty.schemer.desc": "Creates suit voids, deflects the Queen of Spades",
+  "difficulty.daring": "Daring",
+  "difficulty.daring.desc": "Swings for moon shots, targets you with the Queen",
+  "difficulty.mixed": "Mixed Table",
+  "difficulty.mixed.desc": "One of each: Cautious left, Schemer across, Daring right",
   "game.startGame": "Start Game"
 }

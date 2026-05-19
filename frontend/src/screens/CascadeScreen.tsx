@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { createAudioPlayer } from "expo-audio";
-import { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
@@ -178,6 +178,7 @@ function CascadeGame() {
   const completedGameIdRef = useRef<string | null>(null);
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
+  const comboCountRef = useRef(0);
 
   // Reload persistence state (#216).
   const lastSaveTimeRef = useRef<number>(0);
@@ -414,6 +415,7 @@ function CascadeGame() {
             ]);
           }
         } else if (evt.type === "cascadeCombo") {
+          comboCountRef.current += 1;
           playCascadeCombo();
           if (!reduceMotion) {
             comboOpacity.value = 0.4;
@@ -487,6 +489,11 @@ function CascadeGame() {
     [gameOver, activeFruitSet, saveGameThrottled, syncEnqueue, syncMarkStarted]
   );
 
+  const handleSetSeed = useCallback((seed: number) => {
+    queueRef.current = new FruitQueue(new ControlledSpawnSelector(createSeededRng(seed)));
+    setQueueVersion((v) => v + 1);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Test seam — window.__cascade_* hooks (only when EXPO_PUBLIC_TEST_HOOKS=1)
   // -------------------------------------------------------------------------
@@ -497,12 +504,10 @@ function CascadeGame() {
       score: scoreRef.current,
       gameOver: gameOverRef.current,
       nextFruitTier: queueRef.current.peek(),
+      comboCount: comboCountRef.current,
       ...canvasRef.current?.getEngineState?.(),
     });
-    g.__cascade_setSeed = (seed: number) => {
-      queueRef.current = new FruitQueue(new ControlledSpawnSelector(createSeededRng(seed)));
-      setQueueVersion((v) => v + 1);
-    };
+    g.__cascade_setSeed = handleSetSeed;
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
       const tier = queueRef.current.consume();
@@ -524,7 +529,10 @@ function CascadeGame() {
       if (gameOverRef.current) return;
       const def = activeFruitSetRef.current.fruits[tier];
       if (!def) return;
-      canvasRef.current?.drop(def, x);
+      // Use spawnRaw (not drop) so the cascade combo counter is not reset
+      // between spawns — drop() resets comboMergeCount, which would wipe
+      // any merges that fired via the RAF loop between await spawnTierAt calls.
+      canvasRef.current?.spawnRaw?.(def, x);
     };
     return () => {
       delete g.__cascade_getState;
@@ -546,6 +554,7 @@ function CascadeGame() {
     scoreRef.current = 0;
     gameOverRef.current = false;
     dropCountRef.current = 0;
+    comboCountRef.current = 0;
     setScore(0);
     setGameOver(false);
     setQueueVersion((v) => v + 1);
@@ -611,6 +620,7 @@ function CascadeGame() {
               onEvents={handleEvents}
               onTap={handleTap}
               onReady={handleCanvasReady}
+              onSetSeed={process.env.EXPO_PUBLIC_TEST_HOOKS === "1" ? handleSetSeed : undefined}
               width={WORLD_W}
               height={WORLD_H}
               scale={scale}

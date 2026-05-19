@@ -31,7 +31,7 @@ const DEBUG_COLLISION = __DEV__;
 export interface CascadeEngineState {
   fruitCount: number;
   dangerRatio: number;
-  fruits: Array<{ id: number; tier: number; x: number; y: number }>;
+  fruits: Array<{ id: number; tier: number; x: number; y: number; angle: number }>;
 }
 
 export interface SavedFruitInput {
@@ -59,8 +59,16 @@ export interface GameCanvasHandle {
    */
   restoreFruits: (fruits: readonly SavedFruitInput[], fruitSet: FruitSet) => void;
   fastForward?: (ms: number) => void;
-  /** True once the physics engine has finished async init (Rapier WASM loaded). */
+  /** True once the physics engine has finished async init (Matter.js engine loaded). */
   isReady?: () => boolean;
+  /** Seed the spawn-queue RNG. Only present when EXPO_PUBLIC_TEST_HOOKS=1. */
+  setSeed?: (seed: number) => void;
+  /**
+   * Spawn a fruit without resetting the cascade combo counter. Test-only —
+   * used by __cascade_spawnTierAt so RAF-frame merges between spawns don't
+   * cause the subsequent drop() call to wipe the running combo count.
+   */
+  spawnRaw?: (def: FruitDefinition, x: number) => void;
 }
 
 interface Props {
@@ -71,6 +79,8 @@ interface Props {
   onTap: (x: number) => void;
   /** Called once, after createEngine() resolves and the engine is ready to drop. */
   onReady?: () => void;
+  /** Callback that rebuilds the spawn queue with a seeded RNG. Test-only. */
+  onSetSeed?: (seed: number) => void;
   width: number; // world width (px) — physics coordinate space
   height: number; // world height (px) — physics coordinate space
   scale: number; // display scale: canvas CSS size = world * scale
@@ -155,7 +165,7 @@ function drawCollisionOverlay(
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
-  ({ fruitSet, nextDef, onEvents, onTap, onReady, width, height, scale }, ref) => {
+  ({ fruitSet, nextDef, onEvents, onTap, onReady, onSetSeed, width, height, scale }, ref) => {
     const { colors } = useTheme();
     const { t } = useTranslation("cascade");
 
@@ -449,6 +459,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             tier: b.tier,
             x: Math.round(b.x),
             y: Math.round(b.y),
+            angle: b.angle,
           })),
         };
       };
@@ -507,8 +518,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           }
           drawRef.current();
         },
+        setSeed(seed: number) {
+          onSetSeed?.(seed);
+        },
+        spawnRaw(def: FruitDefinition, x: number) {
+          if (!engineRef.current) return;
+          const clamped = clamp(
+            x,
+            WALL_THICKNESS + def.radius,
+            width - WALL_THICKNESS - def.radius
+          );
+          engineRef.current.spawnRaw?.(def, fruitSetRef.current.id, clamped, DROP_Y);
+        },
       };
-    }, [initEngine, width, height]);
+    }, [initEngine, width, height, onSetSeed]);
 
     const panGesture = Gesture.Pan()
       .runOnJS(true)

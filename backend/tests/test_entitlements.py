@@ -183,3 +183,78 @@ def test_render_yaml_prod_does_not_set_dev_override() -> None:
     prod_service = next(s for s in config["services"] if s["name"] == "bc-arcade-api")
     env_keys = {e["key"] for e in prod_service.get("envVars", [])}
     assert "ENTITLEMENT_DEV_OVERRIDE" not in env_keys
+
+
+# ---------------------------------------------------------------------------
+# CORS — web platform requests must receive Access-Control-Allow-Origin (#1739)
+#
+# _allowed_origins is resolved at import time from ALLOWED_ORIGINS env var;
+# when the var is unset in tests the default is ["http://localhost:8081",
+# "http://localhost:19006"].  Tests use one of those values as the Origin so
+# they exercise real CORSMiddleware behaviour without re-importing the module.
+# ---------------------------------------------------------------------------
+
+_TEST_ORIGIN = "http://localhost:8081"
+
+
+def test_cors_get_entitlements_includes_allow_origin(client: TestClient, session_id: str) -> None:
+    r = client.get(
+        "/entitlements",
+        headers={**_headers(session_id), "Origin": _TEST_ORIGIN},
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+
+
+def test_cors_preflight_entitlements(client: TestClient) -> None:
+    r = client.options(
+        "/entitlements",
+        headers={
+            "Origin": _TEST_ORIGIN,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "content-type, x-session-id",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+    assert "GET" in r.headers.get("access-control-allow-methods", "")
+
+
+def test_cors_disallowed_origin_excluded(client: TestClient, session_id: str) -> None:
+    r = client.get(
+        "/entitlements",
+        headers={**_headers(session_id), "Origin": "https://evil.example.com"},
+    )
+    # Request still succeeds server-side, but the allow-origin header must be
+    # absent so the browser enforces the block.
+    assert r.headers.get("access-control-allow-origin") is None
+
+
+def test_cors_oversized_body_response_includes_allow_origin(client: TestClient) -> None:
+    """413 from MaxBodySizeMiddleware must carry CORS headers (#1739 regression)."""
+    from main import DEFAULT_MAX_BODY_BYTES
+
+    r = client.post(
+        "/entitlements",
+        content=b"x" * (DEFAULT_MAX_BODY_BYTES + 1),
+        headers={"Origin": _TEST_ORIGIN, "Content-Type": "application/json"},
+    )
+    assert r.status_code == 413
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+
+
+def test_cors_rate_limited_response_includes_allow_origin(
+    client: TestClient, session_id: str
+) -> None:
+    """429 from the rate limiter must carry CORS headers (#1739 regression)."""
+    from limiter import limiter
+
+    limiter.reset()
+    for _ in range(30):
+        client.get("/entitlements", headers={**_headers(session_id), "Origin": _TEST_ORIGIN})
+
+    r = client.get("/entitlements", headers={**_headers(session_id), "Origin": _TEST_ORIGIN})
+    assert r.status_code == 429
+    assert r.headers.get("access-control-allow-origin") == _TEST_ORIGIN
+
+    limiter.reset()

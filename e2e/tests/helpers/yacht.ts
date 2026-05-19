@@ -9,9 +9,11 @@ import { installEntitlementsMock } from "./api-mock";
 export async function gotoYacht(page: Page): Promise<void> {
   await installEntitlementsMock(page);
   await page.goto("/");
-  await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+  await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
   await page.goto("/");
   await page.getByRole("button", { name: "Play Yacht" }).click();
+  // Dismiss the VS mode picker that appears for fresh games.
+  await page.getByRole("button", { name: /^Solo$/i }).click();
   await page.getByText("Round 1 / 13").waitFor();
 }
 
@@ -48,7 +50,11 @@ export async function injectGameState(
 ): Promise<void> {
   await page.goto("/");
   await page.evaluate(
-    (s) => localStorage.setItem("yacht_game_v1", JSON.stringify(s)),
+    (s) =>
+      localStorage.setItem(
+        "yacht_game_v2",
+        JSON.stringify({ state: s, aiDifficulty: null, aiState: null }),
+      ),
     state,
   );
   await page.goto("/");

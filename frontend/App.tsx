@@ -23,7 +23,6 @@ import LockedGameScreen from "./src/screens/LockedGameScreen";
 import GameScreen from "./src/screens/GameScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import BottomTabBar from "./src/components/shared/BottomTabBar";
-import { GameState } from "./src/game/yacht/types";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
@@ -41,6 +40,11 @@ import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardC
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import { LazyScreens } from "./src/utils/lazyScreens";
+import type {
+  RootStackParamList,
+  HomeStackParamList,
+  ProfileStackParamList,
+} from "./src/types/navigation";
 
 // Start capturing console.warn / console.error for feedback submissions
 SessionLogger.init();
@@ -53,6 +57,7 @@ if (!dsn) {
   try {
     Sentry.init({
       dsn,
+      environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
       sendDefaultPii: true,
     });
     installSentryConsoleErrorCapture();
@@ -60,45 +65,6 @@ if (!dsn) {
     console.error("[Sentry] init failed:", e);
   }
 }
-
-export type RootStackParamList = {
-  MainTabs: undefined;
-};
-
-export type HomeStackParamList = {
-  Home: undefined;
-  Game: { initialState: GameState };
-  Cascade: undefined;
-  StarSwarm: undefined;
-  BlackjackBetting: undefined;
-  BlackjackTable: undefined;
-  BlackjackVictory: undefined;
-  BlackjackStats: undefined;
-  Twenty48: undefined;
-  Solitaire: undefined;
-  FreeCell: undefined;
-  Hearts: undefined;
-  Sudoku: undefined;
-  Mahjong: undefined;
-  Sort: undefined;
-  DailyWord: undefined;
-  Scoreboard: {
-    gameKey:
-      | "hearts"
-      | "yacht"
-      | "blackjack"
-      | "twenty48"
-      | "solitaire"
-      | "sudoku"
-      | "cascade"
-      | "mahjong";
-  };
-};
-
-export type ProfileStackParamList = {
-  ProfileHome: undefined;
-  GameDetail: { gameId: string };
-};
 
 // Must live inside the Suspense boundary. The outer Wrapped commits immediately
 // (Suspense never suspends its own parent), so only an inner child mounts after
@@ -207,6 +173,14 @@ const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
 const LazyHeartsScreen = makePremiumScreen("hearts", withSuspense(LazyScreens.Hearts, "hearts"));
 const LazySudokuScreen = makePremiumScreen("sudoku", withSuspense(LazyScreens.Sudoku, "sudoku"));
 const LazyMahjongScreen = withSuspense(LazyScreens.Mahjong, "mahjong");
+const LazyMahjongLayoutInspectorScreen = withSuspense(
+  LazyScreens.MahjongLayoutInspector,
+  "mahjong_layout_inspector"
+);
+const LazyMahjongLayoutDetailScreen = withSuspense(
+  LazyScreens.MahjongLayoutDetail,
+  "mahjong_layout_detail"
+);
 const LazySortScreen = makePremiumScreen("sort", withSuspense(LazyScreens.Sort, "sort"));
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
@@ -236,6 +210,11 @@ function LobbyStack() {
       <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />
       <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
+      <HomeStack.Screen
+        name="MahjongLayoutInspector"
+        component={LazyMahjongLayoutInspectorScreen}
+      />
+      <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
       <HomeStack.Screen name="Sort" component={LazySortScreen} />
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />

@@ -40,6 +40,7 @@
   "overflow.menu.label": "और विकल्प",
   "overflow.menu.scoreboard": "स्कोरबोर्ड",
   "overflow.menu.newGame": "नया गेम",
+  "overflow.menu.levelSelect": "स्तर चुनें",
   "overflow.menu.editNames": "नाम संपादित करें",
   "overflow.abandon.title": "क्या आप मौजूदा गेम छोड़ना चाहते हैं?",
   "overflow.abandon.body": "नया गेम शुरू करने से इस राउंड की प्रगति हट जाएगी। आपकी लाइफटाइम स्टैट्स पर कोई असर नहीं पड़ेगा।",

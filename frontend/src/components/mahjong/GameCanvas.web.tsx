@@ -9,11 +9,10 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
 import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
-import { TILE_REQUIRES } from "./tileAssets";
+import { loadTileAssets } from "./tileAssetLoader";
 import {
   MAHJONG_BOARD_BG,
   MAHJONG_GLOW_SHADOW,
@@ -308,37 +307,33 @@ export default function GameCanvas({
     return () => mql.removeEventListener("change", handler);
   }, [dpr]);
 
-  // Load all 42 SVG tile images once on mount.
+  // Load all 42 SVG tile images once on mount, reusing assets already
+  // downloaded by the screen-level loadTileAssets() singleton.
   useEffect(() => {
     const images: (HTMLImageElement | null)[] = Array(42).fill(null);
     tileImagesRef.current = images;
     let cancelled = false;
 
-    (async () => {
-      await Promise.all(
-        (TILE_REQUIRES as number[]).map(async (src, i) => {
-          try {
-            const asset = Asset.fromModule(src);
-            await asset.downloadAsync();
-            const uri = asset.localUri ?? asset.uri;
-            if (!uri || cancelled) return;
-            await new Promise<void>((resolve) => {
-              const img = new window.Image();
-              img.crossOrigin = "anonymous";
-              img.src = uri;
-              img.onload = () => {
-                if (!cancelled) images[i] = img;
-                resolve();
-              };
-              img.onerror = () => resolve();
-            });
-          } catch {
-            // SVG failed to load — suit-color fallback stays
-          }
+    loadTileAssets().then((uris) => {
+      if (cancelled) return;
+      return Promise.all(
+        uris.map((uri, i) => {
+          if (!uri) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const img = new window.Image();
+            img.crossOrigin = "anonymous";
+            img.src = uri;
+            img.onload = () => {
+              if (!cancelled) images[i] = img;
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
         })
-      );
-      if (!cancelled && images.some((img) => img !== null)) setImagesVersion((v) => v + 1);
-    })();
+      ).then(() => {
+        if (!cancelled && images.some((img) => img !== null)) setImagesVersion((v) => v + 1);
+      });
+    });
 
     return () => {
       cancelled = true;
@@ -392,7 +387,17 @@ export default function GameCanvas({
           `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
         );
     }
-  }, [state, freeTiles, allHintIds, imagesVersion, camera, debugShowFree, dpr]);
+  }, [
+    state,
+    freeTiles,
+    allHintIds,
+    imagesVersion,
+    camera,
+    boardWidth,
+    boardHeight,
+    debugShowFree,
+    dpr,
+  ]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -451,7 +456,7 @@ export default function GameCanvas({
             onPress={onNewGamePress}
             accessibilityLabel={t("action.newGameLabel")}
           >
-            <Text style={styles.btnText}>{t("overlay.newGameButton")}</Text>
+            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
           </Pressable>
         </View>
       )}
@@ -469,7 +474,7 @@ export default function GameCanvas({
             onPress={onNewGamePress}
             accessibilityLabel={t("action.newGameLabel")}
           >
-            <Text style={styles.btnText}>{t("overlay.newGameButton")}</Text>
+            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
           </Pressable>
         </View>
       )}

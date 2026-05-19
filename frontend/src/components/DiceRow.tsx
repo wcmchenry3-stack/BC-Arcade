@@ -29,6 +29,8 @@ interface DiceRowProps {
   onToggleHold: (index: number) => void;
   /** Indices of dice that are currently animating a roll. */
   rollingIndices?: readonly number[];
+  /** When true, disables the roll button but keeps dice at full opacity (used to show opponent dice). */
+  locked?: boolean;
 }
 
 export default function DiceRow({
@@ -39,6 +41,7 @@ export default function DiceRow({
   onRoll,
   onToggleHold,
   rollingIndices,
+  locked = false,
 }: DiceRowProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
@@ -60,7 +63,7 @@ export default function DiceRow({
     }
   }
 
-  const canRoll = rollsUsed < 3 && !gameOver;
+  const canRoll = rollsUsed < 3 && !gameOver && !locked;
   const rollsLeft = 3 - rollsUsed;
 
   // Web gradient for roll button; native falls back to flat accentBright
@@ -82,7 +85,7 @@ export default function DiceRow({
             value={val}
             held={held[i] ?? false}
             onPress={() => onToggleHold(i)}
-            disabled={rollsUsed === 0 || gameOver}
+            disabled={locked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
             reduceMotion={reduceMotion}
           />

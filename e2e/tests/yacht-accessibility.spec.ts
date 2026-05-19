@@ -34,9 +34,10 @@ async function assertNoA11yViolations(
 test.describe("Yacht — accessibility labels (#185)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("yacht_game_v1"));
+    await page.evaluate(() => localStorage.removeItem("yacht_game_v2"));
     await page.goto("/");
     await page.getByRole("button", { name: "Play Yacht" }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
   });
 

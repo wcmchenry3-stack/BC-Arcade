@@ -68,6 +68,42 @@ function renderScreen() {
   );
 }
 
+describe("HeartsScreen — pre-game persona selector (#1654)", () => {
+  beforeEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("renders all four preset options including Mixed Table", async () => {
+    const { getAllByRole } = renderScreen();
+    await waitFor(() => {
+      const labels = getAllByRole("radio").map((r) => r.props.accessibilityLabel as string);
+      expect(labels.some((l) => /cautious/i.test(l))).toBe(true);
+      expect(labels.some((l) => /schemer/i.test(l))).toBe(true);
+      expect(labels.some((l) => /daring/i.test(l))).toBe(true);
+      expect(labels.some((l) => /mixed table/i.test(l))).toBe(true);
+    });
+  });
+
+  it("Mixed Table can be selected and reflects selected state", async () => {
+    const { getAllByRole } = renderScreen();
+    await waitFor(() =>
+      expect(
+        getAllByRole("radio").some((r) => /mixed table/i.test(r.props.accessibilityLabel))
+      ).toBe(true)
+    );
+    const mixedBtn = getAllByRole("radio").find((r) =>
+      /mixed table/i.test(r.props.accessibilityLabel)
+    )!;
+    fireEvent.press(mixedBtn);
+    await waitFor(() => {
+      const updated = getAllByRole("radio").find((r) =>
+        /mixed table/i.test(r.props.accessibilityLabel)
+      )!;
+      expect(updated.props.accessibilityState.selected).toBe(true);
+    });
+  });
+});
+
 describe("HeartsScreen — passing phase (inline banner)", () => {
   beforeEach(() => {
     setRng(createSeededRng(42));

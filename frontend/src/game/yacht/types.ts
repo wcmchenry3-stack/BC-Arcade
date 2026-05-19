@@ -4,6 +4,11 @@
 
 import type { GameOutcome, GameSession } from "../_shared/types";
 
+/** Difficulty tier for the Yacht AI opponent. Governs hold and scoring strategy. */
+export type AiDifficulty = "easy" | "medium" | "hard";
+
+export const AI_DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];
+
 export type GameEvent =
   | { readonly type: "diceRoll"; readonly rolledIndices: readonly number[] }
   | { readonly type: "dieHold"; readonly index: number }

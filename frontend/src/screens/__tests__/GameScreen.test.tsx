@@ -79,7 +79,7 @@ const mockNavigation = { navigate: jest.fn(), goBack: jest.fn() } as unknown as 
 
 function renderScreen(stateOverrides: Record<string, unknown> = {}) {
   const initialState = makeState(stateOverrides);
-  return render(
+  const result = render(
     <ThemeProvider>
       <YachtScorecardProvider>
         <GameScreen
@@ -91,6 +91,13 @@ function renderScreen(stateOverrides: Record<string, unknown> = {}) {
       </YachtScorecardProvider>
     </ThemeProvider>
   );
+  // Fresh games show a mode picker modal. Auto-select Solo so existing tests
+  // aren't affected by the VS-mode overlay blocking accessibility queries.
+  const soloBtn = result.queryByRole("button", { name: /^solo$/i });
+  if (soloBtn) {
+    fireEvent.press(soloBtn);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

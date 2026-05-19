@@ -17,7 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { HomeStackParamList } from "../../App";
+import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
@@ -40,8 +40,11 @@ import {
   savePausedState,
   clearSavedPausedState,
 } from "../game/starswarm/pauseStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
 import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+
+const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
@@ -71,11 +74,25 @@ export default function StarSwarmScreen() {
   const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
   const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
 
-  // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session)
+  // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
+  // Defaults to Ensign for new users; AsyncStorage load below promotes it to the last-played tier.
   const [difficulty, setDifficulty] = useState<DifficultyTier>(
-    savedPauseRef.current?.difficulty ?? "LieutenantJG"
+    savedPauseRef.current?.difficulty ?? "Ensign"
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
+
+  // On mount, restore the last-used difficulty from local storage (skipped when a saved-pause
+  // session supplies its own difficulty, which takes precedence).
+  useEffect(() => {
+    if (savedPauseRef.current !== null) return;
+    AsyncStorage.getItem(DIFFICULTY_STORAGE_KEY)
+      .then((stored) => {
+        if (stored !== null && (DIFFICULTY_TIERS as readonly string[]).includes(stored)) {
+          setDifficulty(stored as DifficultyTier);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -83,6 +100,11 @@ export default function StarSwarmScreen() {
       [key]: Math.round(Math.min(1, Math.max(0, v[key] + delta)) * 10) / 10,
     }));
   }, []);
+
+  const scoreRef = useRef(0);
+  const highScoreRef = useRef(0);
+  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
+  const [resetTick, setResetTick] = useState(0);
 
   const {
     playLaser,
@@ -94,12 +116,7 @@ export default function StarSwarmScreen() {
     playChallengingStage,
     playBonusLife,
     playPerfect,
-  } = useStarSwarmAudio(phase !== "GameOver", devVolumes);
-
-  const scoreRef = useRef(0);
-  const highScoreRef = useRef(0);
-  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
-  const [resetTick, setResetTick] = useState(0);
+  } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
@@ -166,6 +183,7 @@ export default function StarSwarmScreen() {
 
   // Confirm difficulty selection and start the game
   const handleConfirmDifficulty = useCallback(() => {
+    AsyncStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty).catch(() => {});
     clearSavedPausedState();
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
@@ -173,7 +191,7 @@ export default function StarSwarmScreen() {
     setPhase("SwoopIn");
     setIsPaused(false);
     setResetTick((t) => t + 1);
-  }, []);
+  }, [difficulty]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);
@@ -321,6 +339,7 @@ export default function StarSwarmScreen() {
                       onPress={() => setDifficulty(tier)}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: difficulty === tier }}
+                      aria-checked={difficulty === tier}
                       accessibilityLabel={`${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`}
                     >
                       <Text
@@ -643,6 +662,7 @@ const baseStyles = StyleSheet.create({
   },
   pickerStartBtn: {
     marginTop: 12,
+    backgroundColor: "#b05800", // #fff text on this gives ~5.1:1 contrast (WCAG AA)
   },
 });
 

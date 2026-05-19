@@ -245,6 +245,7 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: http://localhost:8000
           EXPO_PUBLIC_TEST_HOOKS: "1"
+          EXPO_PUBLIC_SENTRY_DSN: ""
 
       - name: Install E2E deps
         run: npm ci
@@ -379,7 +380,7 @@ jobs:
           |---|---|
           | JS bundle (Hermes, Android) | ${BUNDLE_SIZE_MB} MB |
           | Delta vs 4.5 MB baseline | ${DELTA_STR} |
-          | Hard limit | 5.0 MB |
+          | Hard limit | 6.0 MB |
 
           _Measured from \`dist/index.android.bundle\` (uncompressed Hermes bytecode). See [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail) for details._"
           gh pr comment "${{ github.event.pull_request.number }}" \
