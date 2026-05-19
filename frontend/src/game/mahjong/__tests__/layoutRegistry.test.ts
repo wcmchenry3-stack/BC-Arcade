@@ -17,6 +17,11 @@ import { FISH_LAYOUT } from "../layouts/fish";
 import { SPIDER_LAYOUT } from "../layouts/spider";
 import { CAT_LAYOUT } from "../layouts/cat";
 import { SNOWFLAKE_LAYOUT } from "../layouts/snowflake";
+import { CASTLE_LAYOUT } from "../layouts/castle";
+import { BRIDGE_LAYOUT } from "../layouts/bridge";
+import { GATE_LAYOUT } from "../layouts/gate";
+import { DOUBLE_PYRAMID_LAYOUT } from "../layouts/double_pyramid";
+import { ANCHOR_LAYOUT } from "../layouts/anchor";
 import type { Layout } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -248,6 +253,62 @@ describe.each(TIER2_IDS)("%s layout", (id) => {
   it("matches its .ts source exactly", () => {
     const json = getLayout(id);
     const ts = TIER2_TS_SOURCES[id]!;
+    expect(json.length).toBe(ts.length);
+    for (let i = 0; i < ts.length; i++) {
+      expect(json[i]).toEqual(ts[i]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier-2 structure layouts validity -- castle, bridge, gate, double_pyramid, anchor
+// ---------------------------------------------------------------------------
+
+const TIER2_STRUCTURE_IDS = ["castle", "bridge", "gate", "double_pyramid", "anchor"] as const;
+
+const TIER2_STRUCTURE_TS_SOURCES: Record<string, Layout> = {
+  castle: CASTLE_LAYOUT,
+  bridge: BRIDGE_LAYOUT,
+  gate: GATE_LAYOUT,
+  double_pyramid: DOUBLE_PYRAMID_LAYOUT,
+  anchor: ANCHOR_LAYOUT,
+};
+
+describe.each(TIER2_STRUCTURE_IDS)("%s layout", (id) => {
+  it("loads without throwing", () => {
+    expect(() => getLayout(id)).not.toThrow();
+  });
+
+  it("has exactly 144 slots", () => {
+    expect(getLayout(id).length).toBe(144);
+  });
+
+  it("has no duplicate coordinates", () => {
+    const layout = getLayout(id);
+    const keys = layout.map((s) => `${s.col},${s.row},${s.layer}`);
+    expect(new Set(keys).size).toBe(144);
+  });
+
+  it("has an even tile count per layer (solvability precondition)", () => {
+    const layout = getLayout(id);
+    const byLayer = new Map<number, number>();
+    for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
+    for (const count of byLayer.values()) {
+      expect(count % 2).toBe(0);
+    }
+  });
+
+  it("is present in LAYOUTS registry with tier=2", () => {
+    const meta = LAYOUTS.find((l) => l.id === id);
+    expect(meta).toBeDefined();
+    expect(meta!.tier).toBe(2);
+    expect(meta!.tileCount).toBe(144);
+    expect(Array.isArray(meta!.data)).toBe(true);
+  });
+
+  it("matches its .ts source exactly", () => {
+    const json = getLayout(id);
+    const ts = TIER2_STRUCTURE_TS_SOURCES[id]!;
     expect(json.length).toBe(ts.length);
     for (let i = 0; i < ts.length; i++) {
       expect(json[i]).toEqual(ts[i]);

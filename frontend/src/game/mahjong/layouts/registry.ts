@@ -10,6 +10,11 @@ import fishData from "../../../../assets/mahjong/layouts/fish.json";
 import spiderData from "../../../../assets/mahjong/layouts/spider.json";
 import catData from "../../../../assets/mahjong/layouts/cat.json";
 import snowflakeData from "../../../../assets/mahjong/layouts/snowflake.json";
+import castleData from "../../../../assets/mahjong/layouts/castle.json";
+import bridgeData from "../../../../assets/mahjong/layouts/bridge.json";
+import gateData from "../../../../assets/mahjong/layouts/gate.json";
+import doublePyramidData from "../../../../assets/mahjong/layouts/double_pyramid.json";
+import anchorData from "../../../../assets/mahjong/layouts/anchor.json";
 
 export const LAYOUTS: LayoutMeta[] = [
   {
@@ -81,6 +86,41 @@ export const LAYOUTS: LayoutMeta[] = [
     tier: 2,
     tileCount: 144,
     data: snowflakeData,
+  },
+  {
+    id: "castle",
+    name: "Castle",
+    tier: 2,
+    tileCount: 144,
+    data: castleData,
+  },
+  {
+    id: "bridge",
+    name: "Bridge",
+    tier: 2,
+    tileCount: 144,
+    data: bridgeData,
+  },
+  {
+    id: "gate",
+    name: "Gate",
+    tier: 2,
+    tileCount: 144,
+    data: gateData,
+  },
+  {
+    id: "double_pyramid",
+    name: "Double Pyramid",
+    tier: 2,
+    tileCount: 144,
+    data: doublePyramidData,
+  },
+  {
+    id: "anchor",
+    name: "Anchor",
+    tier: 2,
+    tileCount: 144,
+    data: anchorData,
   },
 ];
 
