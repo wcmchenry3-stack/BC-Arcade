@@ -25,6 +25,7 @@ export {
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
+  MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
   MATTER_SLEEP_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
@@ -62,6 +63,7 @@ import {
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
   MATTER_POSITION_ITERATIONS,
+  MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
   MATTER_SLEEP_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
@@ -91,6 +93,11 @@ export async function createEngine(
   fruitSet: FruitSet,
   nowProvider: () => number = () => Date.now()
 ): Promise<EngineHandle> {
+  // Guard (a): validate world dimensions at init
+  if (!isFinite(W) || !isFinite(H) || W <= 0 || H <= 0) {
+    console.warn(`[Engine] invalid world dimensions W=${W} H=${H}`);
+  }
+
   // setDecomp sets a global reference on Matter.Common — idempotent, safe to call per-instance
   Matter.Common.setDecomp(decomp);
 
@@ -148,6 +155,8 @@ export async function createEngine(
   const mergeQueue: Array<[number, number, number]> = [];
   let comboMergeCount = 0;
   let comboFired = false;
+  // Counts sub-steps remaining that should use elevated position iterations after a merge.
+  let mergePostFrames = 0;
 
   // --- Collision handler ---
   // isMerging is set atomically when enqueueing so that a second collisionStart
@@ -297,6 +306,7 @@ export async function createEngine(
       removeBody(idB, bodyB);
       // fruitMerge fires at warm-spawn start (not at completion).
       events.push({ type: "fruitMerge", tier, x: midX, y: midY });
+      mergePostFrames = 3;
 
       if (tier < 10) {
         const nextDef = fruitSet.fruits[(tier + 1) as FruitTier];
@@ -396,6 +406,9 @@ export async function createEngine(
       let lastStepMs = FIXED_STEP_MS;
       while (remainingMs > 0.01) {
         lastStepMs = Math.min(remainingMs, FIXED_STEP_MS);
+        engine.positionIterations =
+          mergePostFrames > 0 ? MATTER_POSITION_ITERATIONS_MERGE : MATTER_POSITION_ITERATIONS;
+        if (mergePostFrames > 0) mergePostFrames--;
         Matter.Engine.update(engine, lastStepMs);
         remainingMs -= lastStepMs;
       }
@@ -475,11 +488,25 @@ export async function createEngine(
       {
         const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * lastStepMs) / 1000;
         const maxVelSq = maxVelPerStep * maxVelPerStep;
-        fruitMap.forEach((_fb, bodyId) => {
+        // Guard (d): explosive ejection — speed > 4× NOMINAL cap signals a corrupted body; remove it.
+        // Use FIXED_STEP_MS (nominal 60 Hz) so the threshold stays stable across variable
+        // frame rates — lastStepMs can be tiny on catch-up frames, which would otherwise
+        // spuriously eject legitimately-clamped bodies.
+        const nominalVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000; // 15 px/step at 60 Hz
+        const explosionVelSq = (nominalVelPerStep * 4) ** 2; // 3600 (px/step)²
+        fruitMap.forEach((fb, bodyId) => {
           const body = bodyById.get(bodyId);
           if (!body) return;
           const { x: vx, y: vy } = body.velocity;
           const speedSq = vx * vx + vy * vy;
+          if (speedSq > explosionVelSq) {
+            console.warn(
+              `[Engine] explosive ejection tier=${fb.fruitTier} speed=${Math.sqrt(speedSq).toFixed(1)}`
+            );
+            removeBody(bodyId, body);
+            bodyById.delete(bodyId);
+            return;
+          }
           if (speedSq > maxVelSq) {
             const factor = maxVelPerStep / Math.sqrt(speedSq);
             Matter.Body.setVelocity(body, { x: vx * factor, y: vy * factor });
@@ -523,6 +550,14 @@ export async function createEngine(
         const px = body.position.x;
         const py = body.position.y;
 
+        // Guard (b): NaN/Inf position post-step — remove corrupted body before snapshot
+        if (!isFinite(px) || !isFinite(py)) {
+          escapedIds.push(bodyId);
+          console.warn(`[Engine] NaN/Inf position tier=${fb.fruitTier} x=${px} y=${py}`);
+          return;
+        }
+
+        // Guard (c): boundary escape
         const margin = fb.fruitRadius * 2;
         if (px < -margin || px > W + margin || py > H + margin) {
           escapedIds.push(bodyId);

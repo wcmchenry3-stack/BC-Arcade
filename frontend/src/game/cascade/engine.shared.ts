@@ -118,6 +118,9 @@ export const FIXED_STEP_MS = 1000 / 60;
 export const MATTER_POSITION_ITERATIONS = 10;
 /** Matter.js velocity correction iterations (default 4). 6 resolves constraint budget cleanly. */
 export const MATTER_VELOCITY_ITERATIONS = 6;
+/** Elevated position-correction iterations used for 3 sub-steps immediately after a merge.
+ *  Provides extra solving power to resolve penetration in dense post-merge piles (S11). */
+export const MATTER_POSITION_ITERATIONS_MERGE = 15;
 
 // --- Body sleeping ---
 /** Ticks of low velocity before a Matter.js body sleeps (spec: 30 ≈ 500 ms at 60 Hz). */
