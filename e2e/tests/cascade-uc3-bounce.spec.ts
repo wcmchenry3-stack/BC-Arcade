@@ -43,8 +43,11 @@ test.describe("Cascade UC3 — heterogeneous bounce, per-tier density", () => {
     // Drop tier-0 at centre — small fruit, no risk of merge with anything
     await spawnTierAt(page, 0, WORLD_W / 2);
 
-    // Let it fall and hit the floor (floor contact ~930 ms from y≈50)
-    await fastForward(page, 1200);
+    // With GRAVITY_Y=5.0 the fruit hits the floor in ~750 ms (down from ~930 ms
+    // at the old GRAVITY_Y=1.8). 700 ms puts the first snapshot just before or
+    // at floor contact; the 300 ms window that follows captures the active first
+    // and second bounces before the fruit fully settles (~1100 ms).
+    await fastForward(page, 700);
 
     const before = await getState(page);
     const f1 = before.fruits.find((f) => f.tier === 0);
@@ -54,8 +57,7 @@ test.describe("Cascade UC3 — heterogeneous bounce, per-tier density", () => {
     // Fruit must be near the floor at this point
     expect(f1.y).toBeGreaterThan(TIER_0_REST_Y - 120);
 
-    // Advance 300 ms — a bouncing body with restitution=0.5 will be many pixels
-    // above its previous y (it bounced upward after the floor contact)
+    // Advance 300 ms — the fruit is in active bounce here; y changes visibly.
     await fastForward(page, 300);
 
     const after = await getState(page);
@@ -102,13 +104,15 @@ test.describe("Cascade UC3 — heterogeneous bounce, per-tier density", () => {
     page,
   }) => {
     // Drop tier-0 and tier-10 side by side, both from the same height.
-    // Sample y-positions at two windows (1200–1500 ms and 1500–1800 ms after drop).
-    // tier-0 (restitution=0.5) is still bouncing in both windows → two large deltas.
-    // tier-10 (restitution=0.05) settles before 1200 ms → near-zero deltas in both.
+    // With GRAVITY_Y=5.0: tier-10 hits the floor at ~600 ms and settles immediately
+    // (restitution=0.05). tier-0 hits the floor at ~750 ms and bounces until ~1100 ms.
+    // Sample at 700 ms so tier-0 is near/at floor (capturing the active bounce window)
+    // while tier-10 is already settled. At least one 300 ms delta for tier-0 must
+    // exceed 5 px; both tier-10 deltas must be < 5 px.
     await spawnTierAt(page, 0, 100);
     await spawnTierAt(page, 10, 300);
 
-    await fastForward(page, 1200);
+    await fastForward(page, 700);
     const snap1 = await getState(page);
 
     await fastForward(page, 300);

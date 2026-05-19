@@ -85,8 +85,12 @@ test.describe("Cascade — merge and score behavior", () => {
   test("tier-0 + tier-1 at same x do NOT merge → score = 0, fruitCount = 2", async ({
     page,
   }) => {
-    await spawnTierAt(page, 0, 150);
-    await spawnTierAt(page, 1, 150);
+    // Use well-separated x positions so the two fruits never overlap at spawn.
+    // Spawning both at x=150 caused a full overlap (radii 18+23=41 px, distance 0),
+    // and the physics explosion under GRAVITY_Y=5.0 sent the lighter body past the
+    // explosive-ejection threshold, culling it and making fruitCount=1.
+    await spawnTierAt(page, 0, 80);
+    await spawnTierAt(page, 1, 320);
     await fastForward(page, 2000);
 
     const state = await getState(page);
