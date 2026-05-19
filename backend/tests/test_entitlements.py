@@ -197,9 +197,7 @@ def test_render_yaml_prod_does_not_set_dev_override() -> None:
 _TEST_ORIGIN = "http://localhost:8081"
 
 
-def test_cors_get_entitlements_includes_allow_origin(
-    client: TestClient, session_id: str
-) -> None:
+def test_cors_get_entitlements_includes_allow_origin(client: TestClient, session_id: str) -> None:
     r = client.get(
         "/entitlements",
         headers={**_headers(session_id), "Origin": _TEST_ORIGIN},
@@ -222,9 +220,7 @@ def test_cors_preflight_entitlements(client: TestClient) -> None:
     assert "GET" in r.headers.get("access-control-allow-methods", "")
 
 
-def test_cors_disallowed_origin_excluded(
-    client: TestClient, session_id: str
-) -> None:
+def test_cors_disallowed_origin_excluded(client: TestClient, session_id: str) -> None:
     r = client.get(
         "/entitlements",
         headers={**_headers(session_id), "Origin": "https://evil.example.com"},
