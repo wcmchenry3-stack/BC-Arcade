@@ -15,7 +15,7 @@
  *   Total: 80 + 44 + 16 + 4 = 144
  */
 
-import type { Layout } from '../types';
+import type { Layout } from "../types";
 
 export const HEART_LAYOUT: Layout = [
   { col: 0, row: 0, layer: 0 },
