@@ -8,7 +8,8 @@
  *   Layer 0 —  80 tiles: 5 tooth points (cols 2/6/10/14/18, rows 0–3) + body band
  *                         (cols 0–22, rows 4–5) + base (cols 0–22, rows 6–8)
  *   Layer 1 —  44 tiles: tooth-tip highlights (cols 2/6/10/14/18, rows 0–1) +
- *                         inner body (cols 2–20, rows 4–5) + base accent (cols 2–14, rows 6–7)
+ *                         inner body (cols 2–20, rows 4–5) + symmetric base taper
+ *                         (cols 4–18 row 6, cols 6–16 row 7)
  *   Layer 2 —  16 tiles: between-teeth fill (cols 4/8/12/16, rows 0–1) +
  *                         center body (cols 6–12, rows 4–5)
  *   Layer 3 —   4 tiles: crown apex (cols 8–10, rows 4–5)
@@ -128,20 +129,20 @@ export const CROWN_LAYOUT: Layout = [
   { col: 16, row: 5, layer: 1 },
   { col: 18, row: 5, layer: 1 },
   { col: 20, row: 5, layer: 1 },
-  { col: 2, row: 6, layer: 1 },
   { col: 4, row: 6, layer: 1 },
   { col: 6, row: 6, layer: 1 },
   { col: 8, row: 6, layer: 1 },
   { col: 10, row: 6, layer: 1 },
   { col: 12, row: 6, layer: 1 },
   { col: 14, row: 6, layer: 1 },
-  { col: 2, row: 7, layer: 1 },
-  { col: 4, row: 7, layer: 1 },
+  { col: 16, row: 6, layer: 1 },
+  { col: 18, row: 6, layer: 1 },
   { col: 6, row: 7, layer: 1 },
   { col: 8, row: 7, layer: 1 },
   { col: 10, row: 7, layer: 1 },
   { col: 12, row: 7, layer: 1 },
   { col: 14, row: 7, layer: 1 },
+  { col: 16, row: 7, layer: 1 },
   { col: 4, row: 0, layer: 2 },
   { col: 8, row: 0, layer: 2 },
   { col: 12, row: 0, layer: 2 },
