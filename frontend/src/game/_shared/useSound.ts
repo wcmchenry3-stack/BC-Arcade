@@ -40,7 +40,8 @@ export function useSound(key: SoundKey, volume = 1.0): { play: () => void } {
     if (!player) return;
     try {
       player.seekTo(0);
-      player.play();
+      // On web play() returns a Promise; catch AbortError from unmount-triggered pause races.
+      Promise.resolve(player.play()).catch(() => {});
     } catch {
       // expo-audio may throw on web if audio context is suspended; fail silently.
     }
