@@ -23,7 +23,7 @@
   "overlay.youWon": "YOU WIN!",
   "overlay.youWonDetail": "All {{count}} pairs cleared!",
   "overlay.shuffleButton": "Shuffle",
-  "overlay.newGameButton": "Level Select",
+  "overlay.levelSelectButton": "Level Select",
   "layout.turtle": "Turtle",
   "layout.pyramid": "Pyramid",
   "layout.square": "Square",

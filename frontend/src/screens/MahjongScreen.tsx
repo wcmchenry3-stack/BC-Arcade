@@ -364,12 +364,15 @@ export default function MahjongScreen() {
     baseTranslateX.value = 0;
     translateY.value = 0;
     baseTranslateY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera.scale, camera.tileWidth]);
+
+  useEffect(() => {
     boardWidthSV.value = camera.boardWidth;
     boardHeightSV.value = camera.boardHeight;
     viewportWidthSV.value = camera.viewportWidth;
     viewportHeightSV.value = camera.viewportHeight;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.scale, camera.tileWidth]);
+  }, [camera.boardWidth, camera.boardHeight, camera.viewportWidth, camera.viewportHeight]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
