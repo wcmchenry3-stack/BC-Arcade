@@ -91,11 +91,30 @@ export async function createEngine(
   W: number,
   H: number,
   fruitSet: FruitSet,
-  nowProvider: () => number = () => Date.now()
+  nowProvider: () => number = () => Date.now(),
+  random: () => number = Math.random,
+  sampleRate: number = 0.1
 ): Promise<EngineHandle> {
-  // Guard (a): validate world dimensions at init
+  // Dedupe Sets — prevent per-frame Sentry spam; each key fires at most once per session.
+  // All reset on cleanup() so a new session can observe the same anomaly again.
+  const nanPositionDeduped = new Set<string>();
+  const boundaryEscapeDeduped = new Set<string>();
+  const explosiveEjectionDeduped = new Set<string>();
+  // Dedup set for NaN/Inf merge-position Sentry warnings — one per tier per engine lifetime
+  const nanSpawnDeduped = new Set<string>();
+  // Dedup set for polygon decomp-failure Sentry warnings — one per (setId, nameKey) per engine lifetime
+  const decompFailureDeduped = new Set<string>();
+
+  // Guard (a): validate world dimensions at init — fires at most once since it's in init code.
   if (!isFinite(W) || !isFinite(H) || W <= 0 || H <= 0) {
     console.warn(`[Engine] invalid world dimensions W=${W} H=${H}`);
+    if (random() < sampleRate) {
+      Sentry.captureMessage(`cascade.engine: invalid world dimensions W=${W} H=${H}`, {
+        level: "warning",
+        tags: { subsystem: "cascade.engine", op: "engine.init" },
+        extra: { W, H },
+      });
+    }
   }
 
   // setDecomp sets a global reference on Matter.Common — idempotent, safe to call per-instance
@@ -124,11 +143,6 @@ export async function createEngine(
     number,
     { framesLeft: number; targetRadius: number; currentRadius: number }
   >();
-
-  // Dedup set for NaN/Inf merge-position Sentry warnings — one per tier per engine lifetime
-  const nanSpawnDeduped = new Set<string>();
-  // Dedup set for polygon decomp-failure Sentry warnings — one per (setId, nameKey) per engine lifetime
-  const decompFailureDeduped = new Set<string>();
 
   // --- Static walls and floor ---
   const floor = Matter.Bodies.rectangle(W / 2, H - WALL_THICKNESS / 2, W, WALL_THICKNESS, {
@@ -218,11 +232,13 @@ export async function createEngine(
         const decompKey = `decomp-${setId}-${nameKey}`;
         if (!decompFailureDeduped.has(decompKey)) {
           decompFailureDeduped.add(decompKey);
-          Sentry.captureMessage(`cascade.engine: polygon decomp failed`, {
-            level: "warning",
-            tags: { subsystem: "cascade.engine", op: "spawn.decomp" },
-            extra: { setId, nameKey, tier: def.tier },
-          });
+          if (random() < sampleRate) {
+            Sentry.captureMessage(`cascade.engine: polygon decomp failed`, {
+              level: "warning",
+              tags: { subsystem: "cascade.engine", op: "spawn.decomp" },
+              extra: { setId, nameKey, tier: def.tier },
+            });
+          }
         }
         body = Matter.Bodies.circle(x, y, def.radius, bodyOpts);
       }
@@ -500,8 +516,20 @@ export async function createEngine(
           const { x: vx, y: vy } = body.velocity;
           const speedSq = vx * vx + vy * vy;
           if (speedSq > explosionVelSq) {
+            const speed = Math.sqrt(speedSq);
+            const ejKey = `ejection-${fb.fruitTier}`;
+            if (!explosiveEjectionDeduped.has(ejKey)) {
+              explosiveEjectionDeduped.add(ejKey);
+              if (random() < sampleRate) {
+                Sentry.captureMessage(`cascade.engine: explosive ejection tier=${fb.fruitTier}`, {
+                  level: "warning",
+                  tags: { subsystem: "cascade.engine", op: "body.explosive-ejection" },
+                  extra: { tier: fb.fruitTier, speed },
+                });
+              }
+            }
             console.warn(
-              `[Engine] explosive ejection tier=${fb.fruitTier} speed=${Math.sqrt(speedSq).toFixed(1)}`
+              `[Engine] explosive ejection tier=${fb.fruitTier} speed=${speed.toFixed(1)}`
             );
             removeBody(bodyId, body);
             bodyById.delete(bodyId);
@@ -553,6 +581,17 @@ export async function createEngine(
         // Guard (b): NaN/Inf position post-step — remove corrupted body before snapshot
         if (!isFinite(px) || !isFinite(py)) {
           escapedIds.push(bodyId);
+          const nanPosKey = `nan-pos-${fb.fruitTier}`;
+          if (!nanPositionDeduped.has(nanPosKey)) {
+            nanPositionDeduped.add(nanPosKey);
+            if (random() < sampleRate) {
+              Sentry.captureMessage(`cascade.engine: NaN/Inf position tier=${fb.fruitTier}`, {
+                level: "warning",
+                tags: { subsystem: "cascade.engine", op: "body.nan-position" },
+                extra: { tier: fb.fruitTier, x: px, y: py },
+              });
+            }
+          }
           console.warn(`[Engine] NaN/Inf position tier=${fb.fruitTier} x=${px} y=${py}`);
           return;
         }
@@ -561,7 +600,17 @@ export async function createEngine(
         const margin = fb.fruitRadius * 2;
         if (px < -margin || px > W + margin || py > H + margin) {
           escapedIds.push(bodyId);
-          console.warn(`[Engine] boundary escape tier=${fb.fruitTier} x=${px} y=${py}`);
+          const escKey = `escape-${fb.fruitTier}`;
+          if (!boundaryEscapeDeduped.has(escKey)) {
+            boundaryEscapeDeduped.add(escKey);
+            if (random() < sampleRate) {
+              Sentry.captureMessage(`cascade.engine: boundary escape tier=${fb.fruitTier}`, {
+                level: "warning",
+                tags: { subsystem: "cascade.engine", op: "body.boundary-escape" },
+                extra: { tier: fb.fruitTier, x: px, y: py, W, H },
+              });
+            }
+          }
           return;
         }
 
@@ -598,6 +647,9 @@ export async function createEngine(
       Matter.Engine.clear(engine);
       fruitMap.clear();
       warmBodies.clear();
+      nanPositionDeduped.clear();
+      boundaryEscapeDeduped.clear();
+      explosiveEjectionDeduped.clear();
       nanSpawnDeduped.clear();
       decompFailureDeduped.clear();
     },
