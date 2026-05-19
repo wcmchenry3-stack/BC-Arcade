@@ -27,6 +27,11 @@ import { SHIELD_LAYOUT } from "../layouts/shield";
 import { HEART_LAYOUT } from "../layouts/heart";
 import { HOURGLASS_LAYOUT } from "../layouts/hourglass";
 import { THE_KEY_LAYOUT } from "../layouts/the_key";
+import { DIAMOND_LAYOUT } from "../layouts/diamond";
+import { X_WING_LAYOUT } from "../layouts/x_wing";
+import { MAZE_LAYOUT } from "../layouts/maze";
+import { ZIG_ZAG_LAYOUT } from "../layouts/zig_zag";
+import { CONCENTRIC_SQUARES_LAYOUT } from "../layouts/concentric_squares";
 import type { Layout } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -370,6 +375,62 @@ describe.each(TIER2_SYMBOL_IDS)("%s layout", (id) => {
   it("matches its .ts source exactly", () => {
     const json = getLayout(id);
     const ts = TIER2_SYMBOL_TS_SOURCES[id]!;
+    expect(json.length).toBe(ts.length);
+    for (let i = 0; i < ts.length; i++) {
+      expect(json[i]).toEqual(ts[i]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier-2 geometric layouts validity -- diamond, x_wing, maze, zig_zag, concentric_squares
+// ---------------------------------------------------------------------------
+
+const TIER2_GEOMETRIC_IDS = ["diamond", "x_wing", "maze", "zig_zag", "concentric_squares"] as const;
+
+const TIER2_GEOMETRIC_TS_SOURCES: Record<string, Layout> = {
+  diamond: DIAMOND_LAYOUT,
+  x_wing: X_WING_LAYOUT,
+  maze: MAZE_LAYOUT,
+  zig_zag: ZIG_ZAG_LAYOUT,
+  concentric_squares: CONCENTRIC_SQUARES_LAYOUT,
+};
+
+describe.each(TIER2_GEOMETRIC_IDS)("%s layout", (id) => {
+  it("loads without throwing", () => {
+    expect(() => getLayout(id)).not.toThrow();
+  });
+
+  it("has exactly 144 slots", () => {
+    expect(getLayout(id).length).toBe(144);
+  });
+
+  it("has no duplicate coordinates", () => {
+    const layout = getLayout(id);
+    const keys = layout.map((s) => `${s.col},${s.row},${s.layer}`);
+    expect(new Set(keys).size).toBe(144);
+  });
+
+  it("has an even tile count per layer (solvability precondition)", () => {
+    const layout = getLayout(id);
+    const byLayer = new Map<number, number>();
+    for (const s of layout) byLayer.set(s.layer, (byLayer.get(s.layer) ?? 0) + 1);
+    for (const count of byLayer.values()) {
+      expect(count % 2).toBe(0);
+    }
+  });
+
+  it("is present in LAYOUTS registry with tier=2", () => {
+    const meta = LAYOUTS.find((l) => l.id === id);
+    expect(meta).toBeDefined();
+    expect(meta!.tier).toBe(2);
+    expect(meta!.tileCount).toBe(144);
+    expect(Array.isArray(meta!.data)).toBe(true);
+  });
+
+  it("matches its .ts source exactly", () => {
+    const json = getLayout(id);
+    const ts = TIER2_GEOMETRIC_TS_SOURCES[id]!;
     expect(json.length).toBe(ts.length);
     for (let i = 0; i < ts.length; i++) {
       expect(json[i]).toEqual(ts[i]);
