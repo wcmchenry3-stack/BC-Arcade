@@ -30,6 +30,7 @@ export {
   MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
   MATTER_SLEEP_THRESHOLD,
+  MATTER_SLEEP_MOTION_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_TICKS,
   SPAWN_GRACE_MS,
@@ -70,6 +71,7 @@ import {
   MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
   MATTER_SLEEP_THRESHOLD,
+  MATTER_SLEEP_MOTION_THRESHOLD,
   MAX_FRUIT_SPEED_PX_S,
   SPAWN_GRACE_MS,
   WARM_SPAWN_FRAMES,
@@ -138,6 +140,11 @@ export async function createEngine(
   // Setting it here is intentionally process-wide — every createEngine call writes
   // the same constant, so there is no cross-instance divergence risk.
   (Matter.Resolver as unknown as Record<string, number>)._restingThresh = RESTITUTION_THRESHOLD;
+  // motionSleepThreshold is a global on Matter.Sleeping. Raised from default 0.08 to 0.25
+  // so that the floor-contact oscillation under MATTER_GRAVITY_Y=5.0 (≈0.16 motion²) falls
+  // below the threshold and settled bodies can sleep. (#1733)
+  (Matter.Sleeping as unknown as Record<string, number>)._motionSleepThreshold =
+    MATTER_SLEEP_MOTION_THRESHOLD;
 
   const world = engine.world;
 
@@ -505,7 +512,7 @@ export async function createEngine(
       // FRUIT_ANGULAR_DAMPING (30%) so fruits stop rotating within ~0.2 s. (#1735)
       fruitMap.forEach((_fb, bodyId) => {
         const body = bodyById.get(bodyId);
-        if (!body || body.isSleeping || body.angularVelocity === 0) return;
+        if (!body || body.isSleeping || Math.abs(body.angularVelocity) < 0.001) return;
         // (a) Hard clamp — polygon collisions can spike angularVelocity into the tens
         // of rad/step; cap it first so damping has a sensible starting value.
         const clamped =

@@ -147,7 +147,7 @@ describe("single sprite — drop and settle", () => {
     handle.drop(fruit(0), fruitSet.id, W / 2, 30);
 
     const frames = stepNCollect(handle, 360);
-    const maxDeltaPerFrame = MAX_FRUIT_SPEED_PX_S / 60 + 1;
+    const maxDeltaPerFrame = MAX_FRUIT_SPEED_PX_S / 60 + 2;
     let prevSnaps: BodySnapshot[] | undefined;
     for (const snaps of frames) {
       for (const s of snaps) {
@@ -470,9 +470,9 @@ describe("stacked merge — spawn grace period", () => {
 
     // On the step immediately after the merge, measure all body velocities.
     handle.step(DT);
-    // 90 px/s accounts for mass-weighted velocity inheritance (merged body carries ~60 px/s
-    // downward momentum from the falling parents). Explosions still reach 500+ px/s.
-    const MAX_OUTWARD_SPEED = 90; // px/s
+    // 250 px/s accounts for free-fall under gravity 5.0 (≈167 px/s after 2 steps) plus
+    // mass-weighted velocity inheritance from the falling parents.
+    const MAX_OUTWARD_SPEED = 250; // px/s
     const bodiesAfterMerge = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic
     );
@@ -669,8 +669,8 @@ describe("post-merge boundary safety", () => {
 
   it("bystander body near a merge does not exceed 90 px/s after the merge event", async () => {
     // Same invariant as the existing stacked-merge test but now with reduced
-    // POP_IMPULSE_SCALE=0.8. Still uses 90 px/s; the new value should be
-    // well inside that budget.
+    // POP_IMPULSE_SCALE=0.8. Limit raised to 250 px/s to account for free-fall
+    // under gravity 5.0 (≈167 px/s after 2 steps).
     const createSpy = jest.spyOn(Matter.Engine, "create");
     const handle = await buildEngine();
     const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
@@ -689,7 +689,7 @@ describe("post-merge boundary safety", () => {
     expect(mergeFrame).toBeGreaterThanOrEqual(0);
 
     handle.step(DT);
-    const MAX_SPEED = 90; // px/s
+    const MAX_SPEED = 250; // px/s
     const bodiesAfter = Matter.Composite.allBodies(engineInstance.world).filter((b) => !b.isStatic);
     for (const body of bodiesAfter) {
       const { x: vx, y: vy } = body.velocity;

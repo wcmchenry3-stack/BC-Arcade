@@ -149,6 +149,15 @@ export const MATTER_POSITION_ITERATIONS_MERGE = 15;
 // --- Body sleeping ---
 /** Ticks of low velocity before a Matter.js body sleeps (spec: 30 ≈ 500 ms at 60 Hz). */
 export const MATTER_SLEEP_THRESHOLD = 30;
+/**
+ * Matter.Sleeping.motionSleepThreshold — motion² value below which a body counts toward sleeping.
+ * Default in Matter.js is 0.08 (speed < 0.28 px/step). With MATTER_GRAVITY_Y=5.0, the
+ * gravity-vs-floor-constraint equilibrium produces a floor-contact oscillation of ~0.4 px/step
+ * (motion ≈ 0.16), so the default threshold never triggers. Raise to 0.25 (speed < 0.5 px/step)
+ * to let settled bodies sleep while the wake threshold (0.4, hard-coded in Matter.js) still
+ * provides hysteresis that prevents spurious wake-ups. (#1733)
+ */
+export const MATTER_SLEEP_MOTION_THRESHOLD = 0.25;
 
 // --- Terminal velocity guard ---
 // CASCADE-PHYS-08 (Outcome C): tier-0 at 1200 px/s travels 20 px per 1/60s frame > WALL_THICKNESS (16 px).
