@@ -8,7 +8,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { statsApi } from "../api/stats";
 import type { GameDetailResponse } from "../api/types";
-import type { ProfileStackParamList } from "../../App";
+import type { ProfileStackParamList } from "../types/navigation";
 import { formatTimestamp } from "../utils/formatTimestamp";
 
 type Props = {
