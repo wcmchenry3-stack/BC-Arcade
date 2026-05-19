@@ -1,5 +1,5 @@
-/**
- * Maze layout � 144 slots.
+﻿/**
+ * Maze layout - 144 slots.
  *
  * Rectangular corridors and walls creating bottleneck chokepoints.  The outer
  * border is fully walled; interior walls define two large open corridors
@@ -7,17 +7,18 @@
  * rooms and tight passages.
  *
  * Layer breakdown:
- *   Layer 0 �  80 tiles: all maze wall positions, rows 0�11
- *   Layer 1 �  44 tiles: outer border walls (top, bottom, left, right)
- *   Layer 2 �  16 tiles: internal H-wall rows 4 and 8 (plus col-8 rows 5�6 and col-18 rows 1�2)
- *   Layer 3 �   4 tiles: wall-junction corners at rows 4 and 8
+ *   Layer 0 -  80 tiles: all maze wall positions, rows 0-11
+ *   Layer 1 -  44 tiles: outer border walls (top, bottom, left, right)
+ *   Layer 2 -  16 tiles: internal H-wall rows 4 and 8 (plus col-8 rows 5-6 and col-18 rows 1-2)
+ *   Layer 3 -   4 tiles: wall-junction corners at rows 4 and 8
  *   Total: 80 + 44 + 16 + 4 = 144
  */
 
 import type { Layout } from "../types";
 
 export const MAZE_LAYOUT: Layout = [
-  // Layer 0
+  // Layer 0 - 80 tiles: all maze wall positions, rows 0-11
+  // Top border row 0 (12 tiles)
   { col: 0, row: 0, layer: 0 },
   { col: 2, row: 0, layer: 0 },
   { col: 4, row: 0, layer: 0 },
@@ -98,7 +99,7 @@ export const MAZE_LAYOUT: Layout = [
   { col: 18, row: 11, layer: 0 },
   { col: 20, row: 11, layer: 0 },
   { col: 22, row: 11, layer: 0 },
-  // Layer 1
+  // Layer 1 - 44 tiles: outer border walls (top, bottom, left col-0, right col-22)
   { col: 0, row: 0, layer: 1 },
   { col: 0, row: 1, layer: 1 },
   { col: 0, row: 2, layer: 1 },
@@ -143,7 +144,7 @@ export const MAZE_LAYOUT: Layout = [
   { col: 22, row: 9, layer: 1 },
   { col: 22, row: 10, layer: 1 },
   { col: 22, row: 11, layer: 1 },
-  // Layer 2
+  // Layer 2 - 16 tiles: internal wall accents at rows 4 and 8, plus col-8 rows 5-6 and col-18 rows 1-2
   { col: 2, row: 4, layer: 2 },
   { col: 4, row: 4, layer: 2 },
   { col: 4, row: 8, layer: 2 },
@@ -160,7 +161,7 @@ export const MAZE_LAYOUT: Layout = [
   { col: 8, row: 6, layer: 2 },
   { col: 18, row: 1, layer: 2 },
   { col: 18, row: 2, layer: 2 },
-  // Layer 3
+  // Layer 3 - 4 tiles: wall-junction corners (row-4 ends, row-8 ends)
   { col: 2, row: 4, layer: 3 },
   { col: 20, row: 4, layer: 3 },
   { col: 4, row: 8, layer: 3 },

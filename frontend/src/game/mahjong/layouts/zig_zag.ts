@@ -1,22 +1,23 @@
-/**
- * Zig-Zag layout � 144 slots.
+﻿/**
+ * Zig-Zag layout - 144 slots.
  *
- * An 8-tile-wide diagonal band that sweeps left-to-right across rows 0�4
- * and then returns right-to-left through rows 5�8, with a second rightward
+ * An 8-tile-wide diagonal band that sweeps left-to-right across rows 0-4
+ * and then returns right-to-left through rows 5-8, with a second rightward
  * pass beginning at row 9.
  *
  * Layer breakdown:
- *   Layer 0 �  80 tiles: full zig-zag band, rows 0�9
- *   Layer 1 �  44 tiles: rows 1�5 full band + row-6 inner 4 tiles
- *   Layer 2 �  16 tiles: rows 2�5 inner 4-wide strip
- *   Layer 3 �   4 tiles: apex tiles at rows 3�4
+ *   Layer 0 -  80 tiles: full zig-zag band, rows 0-9
+ *   Layer 1 -  44 tiles: rows 1-5 full band + row-6 inner 4 tiles
+ *   Layer 2 -  16 tiles: rows 2-5 inner 4-wide strip
+ *   Layer 3 -   4 tiles: apex tiles at rows 3-4
  *   Total: 80 + 44 + 16 + 4 = 144
  */
 
 import type { Layout } from "../types";
 
 export const ZIG_ZAG_LAYOUT: Layout = [
-  // Layer 0
+  // Layer 0 - 80 tiles: full zig-zag band, rows 0-9
+  // Row 0: rightward pass, cols 0-14 (8 tiles)
   { col: 0, row: 0, layer: 0 },
   { col: 2, row: 0, layer: 0 },
   { col: 4, row: 0, layer: 0 },
@@ -97,7 +98,8 @@ export const ZIG_ZAG_LAYOUT: Layout = [
   { col: 12, row: 9, layer: 0 },
   { col: 14, row: 9, layer: 0 },
   { col: 16, row: 9, layer: 0 },
-  // Layer 1
+  // Layer 1 - 44 tiles: rows 1-5 full band + row-6 inner 4 tiles
+  // Rows 1-5 (8 tiles each = 40), plus row-6 inner cols 8-14 (4 tiles)
   { col: 2, row: 1, layer: 1 },
   { col: 4, row: 1, layer: 1 },
   { col: 6, row: 1, layer: 1 },
@@ -142,7 +144,7 @@ export const ZIG_ZAG_LAYOUT: Layout = [
   { col: 10, row: 6, layer: 1 },
   { col: 12, row: 6, layer: 1 },
   { col: 14, row: 6, layer: 1 },
-  // Layer 2
+  // Layer 2 - 16 tiles: inner 4-wide strip following the zig-zag apex, rows 2-5
   { col: 8, row: 2, layer: 2 },
   { col: 10, row: 2, layer: 2 },
   { col: 12, row: 2, layer: 2 },
@@ -159,7 +161,7 @@ export const ZIG_ZAG_LAYOUT: Layout = [
   { col: 12, row: 5, layer: 2 },
   { col: 14, row: 5, layer: 2 },
   { col: 16, row: 5, layer: 2 },
-  // Layer 3
+  // Layer 3 - 4 tiles: apex peak tiles at the turn point (rows 3-4)
   { col: 12, row: 3, layer: 3 },
   { col: 14, row: 3, layer: 3 },
   { col: 14, row: 4, layer: 3 },
