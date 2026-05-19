@@ -12,6 +12,7 @@ export interface GameShellProps extends Pick<
   | "rightSlot"
   | "onOpenScoreboard"
   | "onNewGame"
+  | "onLevelSelect"
   | "onEditPlayerNames"
 > {
   /** When true renders a full-screen loading spinner instead of children. */
@@ -36,6 +37,7 @@ export function GameShell({
   rightSlot,
   onOpenScoreboard,
   onNewGame,
+  onLevelSelect,
   onEditPlayerNames,
   loading = false,
   error,
@@ -71,6 +73,7 @@ export function GameShell({
         rightSlot={rightSlot}
         onOpenScoreboard={onOpenScoreboard}
         onNewGame={onNewGame}
+        onLevelSelect={onLevelSelect}
         onEditPlayerNames={onEditPlayerNames}
       />
       {!!error && (

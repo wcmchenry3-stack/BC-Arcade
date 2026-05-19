@@ -84,7 +84,7 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { clamp, computeZoomBounds } from "../game/mahjong/zoom";
+import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
 
 const MAX_NAME_LENGTH = 32;
 
@@ -346,6 +346,12 @@ export default function MahjongScreen() {
   const baseTranslateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const baseTranslateY = useSharedValue(0);
+  // Board/viewport dimensions as shared values so pan-boundary worklets can
+  // read them on the UI thread without capturing stale JS-side camera values.
+  const boardWidthSV = useSharedValue(camera.boardWidth);
+  const boardHeightSV = useSharedValue(camera.boardHeight);
+  const viewportWidthSV = useSharedValue(camera.viewportWidth);
+  const viewportHeightSV = useSharedValue(camera.viewportHeight);
 
   // Reset gesture state when layout changes (orientation / resize).
   useEffect(() => {
@@ -358,6 +364,10 @@ export default function MahjongScreen() {
     baseTranslateX.value = 0;
     translateY.value = 0;
     baseTranslateY.value = 0;
+    boardWidthSV.value = camera.boardWidth;
+    boardHeightSV.value = camera.boardHeight;
+    viewportWidthSV.value = camera.viewportWidth;
+    viewportHeightSV.value = camera.viewportHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.scale, camera.tileWidth]);
 
@@ -367,6 +377,18 @@ export default function MahjongScreen() {
     })
     .onEnd(() => {
       baseScale.value = zoomScale.value;
+      // Clamp pan position to the new (smaller) bounds when zooming out.
+      const { maxTranslateX, maxTranslateY } = computePanBounds(
+        boardWidthSV.value,
+        boardHeightSV.value,
+        viewportWidthSV.value,
+        viewportHeightSV.value,
+        zoomScale.value
+      );
+      translateX.value = clamp(translateX.value, -maxTranslateX, maxTranslateX);
+      translateY.value = clamp(translateY.value, -maxTranslateY, maxTranslateY);
+      baseTranslateX.value = translateX.value;
+      baseTranslateY.value = translateY.value;
     });
 
   const panGesture = Gesture.Pan()
@@ -378,8 +400,23 @@ export default function MahjongScreen() {
     .activeOffsetX([-8, 8])
     .activeOffsetY([-8, 8])
     .onUpdate((e) => {
-      translateX.value = baseTranslateX.value + e.translationX;
-      translateY.value = baseTranslateY.value + e.translationY;
+      const { maxTranslateX, maxTranslateY } = computePanBounds(
+        boardWidthSV.value,
+        boardHeightSV.value,
+        viewportWidthSV.value,
+        viewportHeightSV.value,
+        zoomScale.value
+      );
+      translateX.value = clamp(
+        baseTranslateX.value + e.translationX,
+        -maxTranslateX,
+        maxTranslateX
+      );
+      translateY.value = clamp(
+        baseTranslateY.value + e.translationY,
+        -maxTranslateY,
+        maxTranslateY
+      );
     })
     .onEnd(() => {
       baseTranslateX.value = translateX.value;
@@ -730,6 +767,14 @@ export default function MahjongScreen() {
     setView("select");
   }, [syncGetGameId, syncComplete]);
 
+  // Navigates directly to level select without an abandon confirmation or server
+  // abandon event — the in-progress game is preserved locally so CONTINUE works.
+  const goToLevelSelect = useCallback(() => {
+    const s = stateRef.current;
+    setHasSavedGame(s !== null && !s.isComplete);
+    setView("select");
+  }, []);
+
   const handleSelectLayout = useCallback((layoutId: string) => {
     winRecordedRef.current = false;
     prevCompleteRef.current = false;
@@ -808,6 +853,7 @@ export default function MahjongScreen() {
         paddingRight: Math.max(insets.right, 12),
       }}
       onNewGame={startNewGame}
+      onLevelSelect={goToLevelSelect}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
       rightSlot={
         <Pressable
