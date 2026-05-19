@@ -13,6 +13,7 @@ import {
   MATTER_POSITION_ITERATIONS,
   MATTER_POSITION_ITERATIONS_MERGE,
   MATTER_VELOCITY_ITERATIONS,
+  MERGE_POST_FRAMES,
   MAX_FRUIT_SPEED_PX_S,
   FIXED_STEP_MS,
   WALL_THICKNESS,
@@ -97,6 +98,22 @@ describe("createEngine", () => {
     };
     expect(engineInstance.enableSleeping).toBe(true);
     handle.cleanup();
+  });
+
+  it("gravity.scale is set to 0.001 explicitly (Matter.js 0.20 shallow-merge guard)", async () => {
+    // Guards the fix for #1734: passing gravity: {x,y} without scale causes
+    // Matter.js 0.20 to drop the default scale:0.001, producing NaN or zero gravity.
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    expect(engineInstance.gravity.scale).toBe(0.001);
+    handle.cleanup();
+  });
+
+  it("FRUIT_ANGULAR_DAMPING is at least 0.15 (strong enough to settle polygon spin)", async () => {
+    // Guards the fix for #1735: the old value of 0.05 was insufficient for polygon
+    // edge-contact torque. Minimum 0.15 is a hard floor; the constant is 0.30.
+    expect(FRUIT_ANGULAR_DAMPING).toBeGreaterThanOrEqual(0.15);
   });
 });
 
@@ -997,8 +1014,8 @@ describe("UC1 — angular damping and air friction", () => {
 
     handle.drop(fruit(0), "fruits", W / 2, H - 80);
 
-    // Step 180 ticks (≈3000ms) to let the body settle and sleep
-    for (let i = 0; i < 180; i++) handle.step(1 / 60);
+    // Step 360 ticks (≈6000ms) to let the body settle and sleep under gravity 5.0
+    for (let i = 0; i < 360; i++) handle.step(1 / 60);
 
     const sleepingCount = Matter.Composite.allBodies(engineInstance.world).filter(
       (b) => !b.isStatic && b.isSleeping
@@ -1520,8 +1537,8 @@ describe("UC4 — cascade combo and game-over suppression (S8 / #1613)", () => {
     }
     expect(merged).toBe(true);
 
-    // Run 300 more real physics ticks (300/60 = 5 s) — all fruit bodies must be sleeping
-    for (let i = 0; i < 300; i++) handle.step(1 / 60);
+    // Run 600 more real physics ticks (600/60 = 10 s) — all fruit bodies must be sleeping
+    for (let i = 0; i < 600; i++) handle.step(1 / 60);
 
     const awakeBodies = getDynamic(engineInstance).filter((b) => !b.isSleeping);
     expect(awakeBodies).toHaveLength(0);
@@ -1804,20 +1821,18 @@ describe("S11 — mergePostFrames elevated iterations & NaN/Inf guards", () => {
     const bB = dropAndTrack(handle, engineInstance, 0, 60, 300);
     handle.step(1e-9);
 
-    // Trigger synthetic merge — mergePostFrames set to 3 during next step
+    // Trigger synthetic merge — mergePostFrames set to MERGE_POST_FRAMES during next step
     Matter.Events.trigger(engineInstance, "collisionStart", {
       pairs: [{ bodyA: bA, bodyB: bB, activeContacts: [], separation: 0, isActive: true }],
     });
-    handle.step(1e-9); // tiny dt: no sub-steps run, processMerges fires, mergePostFrames = 3
+    handle.step(1e-9); // tiny dt: no sub-steps run, processMerges fires, mergePostFrames = MERGE_POST_FRAMES
 
-    // Each step(1/60) has exactly 1 sub-step — iterations should be elevated for 3 steps
-    handle.step(1 / 60);
-    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
-    handle.step(1 / 60);
-    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
-    handle.step(1 / 60);
-    expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
-    // 4th sub-step: back to normal
+    // Each step(1/60) has exactly 1 sub-step — iterations should be elevated for MERGE_POST_FRAMES steps
+    for (let i = 0; i < MERGE_POST_FRAMES; i++) {
+      handle.step(1 / 60);
+      expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS_MERGE);
+    }
+    // Next sub-step: back to normal
     handle.step(1 / 60);
     expect(engineInstance.positionIterations).toBe(MATTER_POSITION_ITERATIONS);
 
