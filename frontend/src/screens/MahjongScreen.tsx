@@ -974,6 +974,12 @@ export default function MahjongScreen() {
               {debugShowFree ? "overlay: ON" : "overlay: off"}
             </Text>
           </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate("MahjongLayoutInspector")}
+            style={styles.devToggleBtn}
+          >
+            <Text style={styles.devToggleText}>Layout Inspector →</Text>
+          </Pressable>
           {freePairs.length > 0 && (
             <>
               <Text style={[styles.devPanelTitle, { marginTop: 8 }]}>free pairs</Text>
