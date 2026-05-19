@@ -323,9 +323,7 @@ export default function MahjongScreen() {
   );
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
-  const [tileUris, setTileUris] = useState<(string | null)[]>(
-    Array(42).fill(null)
-  );
+  const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
