@@ -29,7 +29,6 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { Asset } from "expo-asset";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -48,6 +47,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../../App";
 import { TILE_REQUIRES } from "../components/mahjong/tileAssets";
+import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
@@ -447,24 +447,14 @@ export default function MahjongScreen() {
 
   // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
   // display requires Skia and can't run inside Animated.View).
+  // Reuses the singleton promise from loadTileAssets() so no duplicate
+  // network requests are made when GameCanvas also calls it on mount.
   useEffect(() => {
     if (Platform.OS !== "web") return;
     let cancelled = false;
-    const uris: (string | null)[] = Array(TILE_REQUIRES.length).fill(null);
-    (async () => {
-      await Promise.all(
-        (TILE_REQUIRES as readonly number[]).map(async (src, i) => {
-          try {
-            const asset = Asset.fromModule(src);
-            await asset.downloadAsync();
-            uris[i] = asset.uri ?? null;
-          } catch {
-            /* keep null */
-          }
-        })
-      );
+    loadTileAssets().then((uris) => {
       if (!cancelled) setTileUris([...uris]);
-    })();
+    });
     return () => {
       cancelled = true;
     };
