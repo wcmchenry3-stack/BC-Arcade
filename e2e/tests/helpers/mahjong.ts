@@ -67,11 +67,7 @@ export async function injectMahjongProgress(
   await page.goto("/");
 }
 
-/**
- * Inject both a MahjongState and MahjongProgress snapshot in a single
- * navigation cycle — avoids the four-goto overhead of calling the two
- * individual helpers back-to-back.
- */
+/** Inject a MahjongState and MahjongProgress snapshot in a single navigation cycle. */
 export async function injectMahjongFull(
   page: Page,
   state: Record<string, unknown>,

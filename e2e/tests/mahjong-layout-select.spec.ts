@@ -150,15 +150,7 @@ test.describe("Mahjong — layout select screen", () => {
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    // Layout select shows with a Continue button for the saved pyramid game.
-    await page
-      .getByRole("heading", { name: "Choose Layout", exact: true })
-      .waitFor({ timeout: 5_000 });
-    const continueBtn = page.getByRole("button", { name: "Continue" });
-    await expect(continueBtn).toBeVisible({ timeout: 5_000 });
-    await continueBtn.click();
-
-    // The resumed game should show the injected score and pairs.
+    // With a saved game, the app resumes directly in play view (no layout select).
     await expect(page.getByText(/^SCORE\s+70/).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -180,11 +172,6 @@ test.describe("Mahjong — layout select screen", () => {
     await page
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
-
-    await page
-      .getByRole("heading", { name: "Choose Layout", exact: true })
-      .waitFor({ timeout: 5_000 });
-    await page.getByRole("button", { name: "Continue" }).click();
 
     // State should survive the restart.
     await expect(page.getByText(/^SCORE\s+70/).first()).toBeVisible({

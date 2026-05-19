@@ -24,7 +24,7 @@ import {
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
-import { getLayout } from "../layouts/registry";
+import { getLayout, LAYOUTS } from "../layouts/registry";
 
 // Pin the RNG so every test run is identical.
 beforeEach(() => {
@@ -918,38 +918,10 @@ describe("timer helpers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createGame — smoke test across all 25 layouts (#1695)
+// createGame — smoke test across all layouts (#1695)
 // ---------------------------------------------------------------------------
 
-const ALL_LAYOUT_IDS = [
-  "turtle",
-  "pyramid",
-  "square",
-  "arena",
-  "four_rivers",
-  "butterfly",
-  "fish",
-  "spider",
-  "cat",
-  "snowflake",
-  "castle",
-  "bridge",
-  "gate",
-  "double_pyramid",
-  "anchor",
-  "crown",
-  "shield",
-  "heart",
-  "hourglass",
-  "the_key",
-  "diamond",
-  "x_wing",
-  "maze",
-  "zig_zag",
-  "concentric_squares",
-] as const;
-
-describe.each(ALL_LAYOUT_IDS)("createGame — %s", (id) => {
+describe.each(LAYOUTS.map((m) => m.id))("createGame — %s", (id) => {
   let state: MahjongState;
   beforeEach(() => {
     state = createGame(getLayout(id));
