@@ -46,8 +46,8 @@ function fruit(tier: number): FruitDefinition {
   return f;
 }
 
-async function buildEngine(): Promise<EngineHandle> {
-  return createEngine(W, H, fruitSet);
+async function buildEngine(random?: () => number): Promise<EngineHandle> {
+  return createEngine(W, H, fruitSet, undefined, random);
 }
 
 function countDecompWarnings(mock: jest.MockedFunction<typeof Sentry.captureMessage>): number {
@@ -1577,7 +1577,7 @@ describe("UC5 — poly-decomp integration", () => {
     const captureMock = jest.mocked(Sentry.captureMessage);
     // Use delta counting so accumulated calls from prior tests don't affect assertions
     const before = countDecompWarnings(captureMock);
-    const handle = await buildEngine();
+    const handle = await buildEngine(() => 0); // random=0 ensures sampleRate gate passes
 
     // Drop the same tier twice at different x positions (far enough to avoid merging)
     // so only one decomp-failure warning fires for that (setId, nameKey) key
@@ -1600,13 +1600,13 @@ describe("UC5 — poly-decomp integration", () => {
     const captureMock = jest.mocked(Sentry.captureMessage);
     const baseline = countDecompWarnings(captureMock);
 
-    const handle1 = await buildEngine();
+    const handle1 = await buildEngine(() => 0); // random=0 ensures sampleRate gate passes
     handle1.drop(fruit(0), "fruits", 50, 30);
     handle1.step(1 / 60);
     const afterFirst = countDecompWarnings(captureMock);
     handle1.cleanup(); // resets decompFailureDeduped
 
-    const handle2 = await buildEngine();
+    const handle2 = await buildEngine(() => 0);
     handle2.drop(fruit(0), "fruits", 50, 30);
     handle2.step(1 / 60);
     const afterSecond = countDecompWarnings(captureMock);
@@ -1626,7 +1626,7 @@ describe("UC5 — poly-decomp integration", () => {
 
     const captureMock = jest.mocked(Sentry.captureMessage);
     const beforeCount = captureMock.mock.calls.length;
-    const handle = await buildEngine();
+    const handle = await buildEngine(() => 0); // random=0 ensures sampleRate gate passes
 
     handle.drop(fruit(0), "fruits", 50, 30);
     handle.step(1 / 60);
@@ -2006,5 +2006,138 @@ describe("S11 — mergePostFrames elevated iterations & NaN/Inf guards", () => {
     expect(elapsed).toBeLessThan(50);
 
     handle.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S12 — Sentry observability (#1617)
+// ---------------------------------------------------------------------------
+
+describe("S12 — Sentry observability (cascade.engine)", () => {
+  const getDynamic = (eng: Matter.Engine) =>
+    Matter.Composite.allBodies(eng.world).filter((b) => !b.isStatic && b.parent === b);
+
+  const alwaysFire = () => 0; // random() < sampleRate is always true
+
+  function countOp(mock: jest.MockedFunction<typeof Sentry.captureMessage>, op: string): number {
+    return mock.mock.calls.filter(
+      (args) => (args[1] as { tags?: { op?: string } } | undefined)?.tags?.op === op
+    ).length;
+  }
+
+  it("NaN position → Sentry fires on first occurrence; dedupe prevents second call for same tier", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+
+    const fruitBody = getDynamic(engineInstance)[0]!;
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    const before = countOp(captureMock, "body.nan-position");
+    Matter.Body.setPosition(fruitBody, { x: NaN, y: NaN });
+    handle.step(1e-7);
+    expect(countOp(captureMock, "body.nan-position") - before).toBe(1);
+
+    // Second tier-0 body with NaN → dedupe key already set, Sentry NOT called again
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+    const fruitBody2 = getDynamic(engineInstance)[0]!;
+    if (!fruitBody2) throw new Error("Expected a second fruit body");
+    const afterFirst = countOp(captureMock, "body.nan-position");
+    Matter.Body.setPosition(fruitBody2, { x: NaN, y: NaN });
+    handle.step(1e-7);
+    expect(countOp(captureMock, "body.nan-position") - afterFirst).toBe(0);
+
+    handle.cleanup();
+  });
+
+  it("boundary escape → Sentry fires once; console.warn NOT called for boundary", async () => {
+    const handle = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    const before = countOp(captureMock, "body.boundary-escape");
+    handle.drop(fruit(0), "fruits", W / 2, H + fruit(0).radius * 2 + 10);
+    handle.step(1 / 60);
+
+    expect(countOp(captureMock, "body.boundary-escape") - before).toBe(1);
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("boundary"));
+
+    handle.cleanup();
+  });
+
+  it("explosive ejection → Sentry fires once; same tier on second body → NOT called again", async () => {
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+
+    const fruitBody = getDynamic(engineInstance)[0]!;
+    if (!fruitBody) throw new Error("Expected a fruit body");
+
+    const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000;
+    const before = countOp(captureMock, "body.explosive-ejection");
+    Matter.Body.setVelocity(fruitBody, { x: 0, y: maxVelPerStep * 4.5 });
+    handle.step(1 / 60);
+    expect(countOp(captureMock, "body.explosive-ejection") - before).toBe(1);
+
+    // Second tier-0 body at explosive speed → dedupe suppresses second Sentry call
+    handle.drop(fruit(0), "fruits", W / 2, 300);
+    handle.step(1 / 60);
+    const fruitBody2 = getDynamic(engineInstance)[0]!;
+    if (!fruitBody2) throw new Error("Expected a second fruit body");
+    const afterFirst = countOp(captureMock, "body.explosive-ejection");
+    Matter.Body.setVelocity(fruitBody2, { x: 0, y: maxVelPerStep * 4.5 });
+    handle.step(1 / 60);
+    expect(countOp(captureMock, "body.explosive-ejection") - afterFirst).toBe(0);
+
+    handle.cleanup();
+  });
+
+  it("1000 clean step() calls with 20 bodies → Sentry never called", async () => {
+    const handle = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    for (let i = 0; i < 20; i++) {
+      handle.drop(fruit(0), "fruits", 30 + i * 12, 550);
+    }
+    // Settle bodies so any initial explosive collisions from overlapping spawns are flushed
+    for (let i = 0; i < 120; i++) handle.step(1 / 60);
+
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    const before = captureMock.mock.calls.length; // baseline after settling
+
+    for (let i = 0; i < 1000; i++) handle.step(1 / 60);
+
+    expect(captureMock.mock.calls.length).toBe(before);
+    handle.cleanup();
+  });
+
+  it("cleanup() resets dedupe Sets so Sentry fires again in a new session", async () => {
+    const captureMock = jest.mocked(Sentry.captureMessage);
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    const handle1 = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    const before = countOp(captureMock, "body.boundary-escape");
+    handle1.drop(fruit(0), "fruits", W / 2, H + fruit(0).radius * 2 + 10);
+    handle1.step(1 / 60);
+    const afterSession1 = countOp(captureMock, "body.boundary-escape");
+    expect(afterSession1 - before).toBe(1);
+    handle1.cleanup();
+
+    // New engine instance — Sets reset; same anomaly fires again
+    const handle2 = await createEngine(W, H, fruitSet, undefined, alwaysFire);
+    handle2.drop(fruit(0), "fruits", W / 2, H + fruit(0).radius * 2 + 10);
+    handle2.step(1 / 60);
+    const afterSession2 = countOp(captureMock, "body.boundary-escape");
+    expect(afterSession2 - afterSession1).toBe(1);
+    handle2.cleanup();
   });
 });
