@@ -264,13 +264,7 @@ describe.each(TIER2_IDS)("%s layout", (id) => {
 // Tier-2 structure layouts validity -- castle, bridge, gate, double_pyramid, anchor
 // ---------------------------------------------------------------------------
 
-const TIER2_STRUCTURE_IDS = [
-  "castle",
-  "bridge",
-  "gate",
-  "double_pyramid",
-  "anchor",
-] as const;
+const TIER2_STRUCTURE_IDS = ["castle", "bridge", "gate", "double_pyramid", "anchor"] as const;
 
 const TIER2_STRUCTURE_TS_SOURCES: Record<string, Layout> = {
   castle: CASTLE_LAYOUT,
