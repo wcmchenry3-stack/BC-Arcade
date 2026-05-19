@@ -18,9 +18,11 @@ export {
   FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
   FRUIT_ANGULAR_DAMPING,
+  MAX_ANGULAR_VELOCITY_RAD_PER_STEP,
   FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
+  MERGE_POST_FRAMES,
   RESTITUTION_THRESHOLD,
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
@@ -56,9 +58,11 @@ import {
   FRUIT_RESTITUTION_BY_TIER,
   FRUIT_FRICTION,
   FRUIT_ANGULAR_DAMPING,
+  MAX_ANGULAR_VELOCITY_RAD_PER_STEP,
   FRUIT_FRICTION_AIR,
   WALL_FRICTION,
   POP_IMPULSE_SCALE,
+  MERGE_POST_FRAMES,
   RESTITUTION_THRESHOLD,
   MATTER_GRAVITY_Y,
   FIXED_STEP_MS,
@@ -120,8 +124,10 @@ export async function createEngine(
   // setDecomp sets a global reference on Matter.Common — idempotent, safe to call per-instance
   Matter.Common.setDecomp(decomp);
 
+  // gravity.scale must be set explicitly: Matter.js 0.20 shallow-merges the gravity
+  // object, which would overwrite the default scale: 0.001 with undefined if omitted.
   const engine = Matter.Engine.create({
-    gravity: { x: 0, y: MATTER_GRAVITY_Y },
+    gravity: { x: 0, y: MATTER_GRAVITY_Y, scale: 0.001 },
     enableSleeping: true,
   });
   // Matter defaults: positionIterations=6, velocityIterations=4.
@@ -209,6 +215,9 @@ export async function createEngine(
       frictionAir: FRUIT_FRICTION_AIR,
       density: FRUIT_DENSITY_BY_TIER[def.tier],
       sleepThreshold: MATTER_SLEEP_THRESHOLD,
+      // Zero spin at spawn — polygon poly-decomp can assign arbitrary initial angular
+      // velocity during fromVertices decomposition. Reset it so every fruit starts still. (#1735)
+      angularVelocity: 0,
       collisionFilter: {
         category: COLLISION_GROUP_DYNAMIC,
         mask:
@@ -322,7 +331,7 @@ export async function createEngine(
       removeBody(idB, bodyB);
       // fruitMerge fires at warm-spawn start (not at completion).
       events.push({ type: "fruitMerge", tier, x: midX, y: midY });
-      mergePostFrames = 3;
+      mergePostFrames = MERGE_POST_FRAMES;
 
       if (tier < 10) {
         const nextDef = fruitSet.fruits[(tier + 1) as FruitTier];
@@ -489,12 +498,19 @@ export async function createEngine(
 
       // Angular damping: Matter.js applies frictionAir to angular velocity, but at only
       // 1%/step that alone is insufficient for snappy spin-decay. This post-step pass
-      // applies an additional FRUIT_ANGULAR_DAMPING fraction per tick so fruits stop
-      // rotating naturally without tuning frictionAir to an unrealistic value.
+      // (a) hard-clamps runaway spin from polygon edge contacts, then (b) applies
+      // FRUIT_ANGULAR_DAMPING (30%) so fruits stop rotating within ~0.2 s. (#1735)
       fruitMap.forEach((_fb, bodyId) => {
         const body = bodyById.get(bodyId);
         if (!body || body.isSleeping || body.angularVelocity === 0) return;
-        Matter.Body.setAngularVelocity(body, body.angularVelocity * (1 - FRUIT_ANGULAR_DAMPING));
+        // (a) Hard clamp — polygon collisions can spike angularVelocity into the tens
+        // of rad/step; cap it first so damping has a sensible starting value.
+        const clamped =
+          Math.abs(body.angularVelocity) > MAX_ANGULAR_VELOCITY_RAD_PER_STEP
+            ? Math.sign(body.angularVelocity) * MAX_ANGULAR_VELOCITY_RAD_PER_STEP
+            : body.angularVelocity;
+        // (b) Exponential decay: ω *= (1 − 0.30) each tick → < 2% in ~12 ticks.
+        Matter.Body.setAngularVelocity(body, clamped * (1 - FRUIT_ANGULAR_DAMPING));
       });
 
       // Velocity clamp: cap per-step speed so no body can tunnel through a 16px wall.

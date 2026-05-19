@@ -34,14 +34,33 @@ export const GAME_OVER_VELOCITY_THRESHOLD = 8;
 // --- Physics tuning constants ---
 /** Low friction = fruits slide and settle naturally (spec: 0.05–0.1). */
 export const FRUIT_FRICTION = 0.08;
-/** Angular damping kills residual spin so fruits stop rotating after landing (UC1). */
-export const FRUIT_ANGULAR_DAMPING = 0.05;
+/**
+ * Angular damping kills residual spin so fruits stop rotating after landing (UC1).
+ * Raised from 0.05 to 0.30: polygon edge contacts generate far larger angular impulse
+ * than circle friction. At 30% decay/tick, ω reaches < 2% of its initial value in
+ * ~12 ticks (~0.2 s) rather than the 60+ ticks the old value required. (#1735)
+ */
+export const FRUIT_ANGULAR_DAMPING = 0.30;
+/** Hard cap on angular velocity (rad/step) applied before the damping multiply.
+ *  Prevents a single high-energy polygon edge collision from imparting runaway spin
+ *  that would take many seconds to decay even with strong damping. (#1735) */
+export const MAX_ANGULAR_VELOCITY_RAD_PER_STEP = 0.3;
 /** Air friction slows bodies in free-fall so they decelerate smoothly (UC1). */
 export const FRUIT_FRICTION_AIR = 0.01;
 /** Wall/floor friction (spec: ~0.2) — higher than fruit friction so fruits grip walls but slide freely on each other. */
 export const WALL_FRICTION = 0.2;
-/** Radial pop impulse applied to neighbors on merge: magnitude = nextTierRadius × this. Tunable. */
-export const POP_IMPULSE_SCALE = 2.0;
+/**
+ * Radial pop impulse applied to neighbors on merge: magnitude = nextTierRadius × this.
+ * Reduced from 2.0 to 0.8: the 2.0 value was calibrated for circles; polygon bodies
+ * have irregular inertia tensors that amplify lateral impulse, sending neighbors
+ * careening across the bin. 0.8 is enough to separate overlapping bodies while
+ * leaving the elevated-iteration solver (MERGE_POST_FRAMES) to do the rest. (#1736)
+ */
+export const POP_IMPULSE_SCALE = 0.8;
+/** Sub-steps after a merge that run at MATTER_POSITION_ITERATIONS_MERGE iterations.
+ *  Raised from 3 to 6 to give the solver more time to resolve penetration in dense
+ *  polygon piles before the next collision event fires. (#1736) */
+export const MERGE_POST_FRAMES = 6;
 
 // --- Per-tier physics (UC3) ---
 /**
@@ -103,10 +122,13 @@ export const FRUIT_RESTITUTION_BY_TIER: readonly [
 export const RESTITUTION_THRESHOLD = 0.5;
 
 /**
- * Matter.js gravity Y component. Equivalent to ~1800 px/s² at 60 Hz.
- * Applied as: velocity += gravity.y × gravity.scale per tick; default scale = 0.001. (UC1)
+ * Matter.js gravity Y component. With gravity.scale = 0.001 (set explicitly in
+ * Engine.create to survive Matter.js 0.20 shallow-merge), effective acceleration
+ * is MATTER_GRAVITY_Y × 0.001 × (16.67 ms)² ≈ 1.39 px/step² at 60 Hz.
+ * Raised from 1.8 (≈0.5 px/step², ~1.2 s drop) to 5.0 (≈1.4 px/step², ~0.8 s drop)
+ * for an arcade-snappy freefall feel. (#1734)
  */
-export const MATTER_GRAVITY_Y = 1.8;
+export const MATTER_GRAVITY_Y = 5.0;
 
 // --- Fixed physics timestep ---
 /** Fixed physics sub-step duration (ms). Engine runs at 60 Hz regardless of frame rate. */

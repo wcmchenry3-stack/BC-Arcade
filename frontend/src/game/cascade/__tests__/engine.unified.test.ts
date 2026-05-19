@@ -98,6 +98,22 @@ describe("createEngine", () => {
     expect(engineInstance.enableSleeping).toBe(true);
     handle.cleanup();
   });
+
+  it("gravity.scale is set to 0.001 explicitly (Matter.js 0.20 shallow-merge guard)", async () => {
+    // Guards the fix for #1734: passing gravity: {x,y} without scale causes
+    // Matter.js 0.20 to drop the default scale:0.001, producing NaN or zero gravity.
+    const createSpy = jest.spyOn(Matter.Engine, "create");
+    const handle = await buildEngine();
+    const engineInstance = createSpy.mock.results[0]?.value as Matter.Engine;
+    expect(engineInstance.gravity.scale).toBe(0.001);
+    handle.cleanup();
+  });
+
+  it("FRUIT_ANGULAR_DAMPING is at least 0.15 (strong enough to settle polygon spin)", async () => {
+    // Guards the fix for #1735: the old value of 0.05 was insufficient for polygon
+    // edge-contact torque. Minimum 0.15 is a hard floor; the constant is 0.30.
+    expect(FRUIT_ANGULAR_DAMPING).toBeGreaterThanOrEqual(0.15);
+  });
 });
 
 // ---------------------------------------------------------------------------
