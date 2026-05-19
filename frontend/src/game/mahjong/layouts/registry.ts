@@ -20,6 +20,11 @@ import shieldData from "../../../../assets/mahjong/layouts/shield.json";
 import heartData from "../../../../assets/mahjong/layouts/heart.json";
 import hourglassData from "../../../../assets/mahjong/layouts/hourglass.json";
 import theKeyData from "../../../../assets/mahjong/layouts/the_key.json";
+import diamondData from "../../../../assets/mahjong/layouts/diamond.json";
+import xWingData from "../../../../assets/mahjong/layouts/x_wing.json";
+import mazeData from "../../../../assets/mahjong/layouts/maze.json";
+import zigZagData from "../../../../assets/mahjong/layouts/zig_zag.json";
+import concentricSquaresData from "../../../../assets/mahjong/layouts/concentric_squares.json";
 
 export const LAYOUTS: LayoutMeta[] = [
   {
@@ -161,6 +166,41 @@ export const LAYOUTS: LayoutMeta[] = [
     tier: 2,
     tileCount: 144,
     data: theKeyData,
+  },
+  {
+    id: "diamond",
+    name: "Diamond",
+    tier: 2,
+    tileCount: 144,
+    data: diamondData,
+  },
+  {
+    id: "x_wing",
+    name: "X-Wing",
+    tier: 2,
+    tileCount: 144,
+    data: xWingData,
+  },
+  {
+    id: "maze",
+    name: "Maze",
+    tier: 2,
+    tileCount: 144,
+    data: mazeData,
+  },
+  {
+    id: "zig_zag",
+    name: "Zig-Zag",
+    tier: 2,
+    tileCount: 144,
+    data: zigZagData,
+  },
+  {
+    id: "concentric_squares",
+    name: "Concentric Squares",
+    tier: 2,
+    tileCount: 144,
+    data: concentricSquaresData,
   },
 ];
 
