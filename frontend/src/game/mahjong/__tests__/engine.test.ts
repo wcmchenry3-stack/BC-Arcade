@@ -549,6 +549,86 @@ describe("shuffleBoard", () => {
       }
     }
   });
+
+  it("shuffle with 1 pair remaining always produces a winnable board", () => {
+    // Acceptance criterion: shuffle with 1 pair remaining always produces a
+    // winnable 1-pair board. Two tiles at distinct (col, row) positions — the
+    // only possible slot assignment is non-stacked, so the result must always
+    // have a free pair regardless of RNG seed.
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const state: MahjongState = {
+      _v: 1, tiles: [a, b], pairsRemoved: 71, score: 710, shufflesLeft: 1,
+      selected: null, undoStack: [], isComplete: false, isDeadlocked: false,
+      startedAt: null, accumulatedMs: 0, dealId: "TEST",
+    };
+    for (let seed = 0; seed < 30; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+    }
+  });
+
+  it("shuffle avoids placing a matching pair in a column stack — issue 1565 deadlock", () => {
+    // Reproduces the exact bug: 2 pairs remain; slots include a column stack
+    // at (col=0, row=0). A bad shuffle assigns one pair to (0,0,0)+(0,0,1),
+    // which looks winnable because the other pair is still a free match, but
+    // becomes unwinnable once that pair is removed.
+    //
+    // Slot layout:
+    //   (2,0,0) and (4,0,0) — both free at layer 0
+    //   (0,0,0) — blocked by (0,0,1)
+    //   (0,0,1) — free at top of its column stack
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 4, row: 0, layer: 0 },
+      { id: 2, suit: "dragons",    rank: 1, faceId: 1, col: 0, row: 0, layer: 0 },
+      { id: 3, suit: "dragons",    rank: 1, faceId: 1, col: 0, row: 0, layer: 1 },
+    ];
+    const state: MahjongState = {
+      _v: 1, tiles, pairsRemoved: 70, score: 700, shufflesLeft: 2,
+      selected: null, undoStack: [], isComplete: false, isDeadlocked: false,
+      startedAt: null, accumulatedMs: 0, dealId: "TEST",
+    };
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      if (shuffled === state) continue; // all 50 retries failed (should not happen)
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+      for (const t of shuffled.tiles) {
+        const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
+        if (partner) {
+          expect(t.col === partner.col && t.row === partner.row).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("shuffle with 2–4 pairs remaining never stacks a matching pair (50 seeds)", () => {
+    // Acceptance criterion: shuffle with 2–4 pairs produces no stacked-matching
+    // pairs. Play down to 4 pairs (8 tiles) with a seeded game, then stress-test
+    // shuffleBoard across 50 seeds.
+    setRng(createSeededRng(1));
+    let state = createGame(TURTLE_LAYOUT, 1);
+    // Remove pairs until 8 tiles remain.
+    while (state.tiles.length > 8) {
+      const [a, b] = firstFreePair(state);
+      state = selectTile(selectTile(state, a.id), b.id);
+    }
+    expect(state.tiles.length).toBe(8);
+
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      if (shuffled === state) continue;
+      for (const t of shuffled.tiles) {
+        const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
+        if (partner) {
+          expect(t.col === partner.col && t.row === partner.row).toBe(false);
+        }
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
