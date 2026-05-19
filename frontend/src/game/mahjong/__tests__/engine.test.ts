@@ -950,13 +950,16 @@ const ALL_LAYOUT_IDS = [
 ] as const;
 
 describe.each(ALL_LAYOUT_IDS)("createGame — %s", (id) => {
+  let state: MahjongState;
+  beforeEach(() => {
+    state = createGame(getLayout(id));
+  });
+
   it("produces exactly 144 tiles", () => {
-    const state = createGame(getLayout(id));
     expect(state.tiles.length).toBe(144);
   });
 
   it("initial board has at least one free pair", () => {
-    const state = createGame(getLayout(id));
     expect(hasFreePairs(state.tiles)).toBe(true);
   });
 });

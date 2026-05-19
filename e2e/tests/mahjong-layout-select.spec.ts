@@ -8,11 +8,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import {
-  mockMahjongApi,
-  injectMahjongState,
-  injectMahjongProgress,
-} from "./helpers/mahjong";
+import { mockMahjongApi, injectMahjongFull } from "./helpers/mahjong";
 
 const PROGRESS_TURTLE_ONLY = {
   unlockedLayouts: ["turtle"],
@@ -72,7 +68,7 @@ test.describe("Mahjong — layout select screen", () => {
   test("locked layouts show lock label and are non-interactive", async ({
     page,
   }) => {
-    // With only turtle unlocked, all other layouts should appear locked.
+    // With only turtle unlocked (default), all other layouts should appear locked.
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
     await page
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
@@ -112,8 +108,10 @@ test.describe("Mahjong — layout select screen", () => {
     page,
   }) => {
     // Inject a completed turtle game with only turtle unlocked.
-    await injectMahjongProgress(page, PROGRESS_TURTLE_ONLY);
-    await injectMahjongState(page, COMPLETED_TURTLE_GAME);
+    // MahjongScreen fires the win lifecycle on initial load when the persisted
+    // state is already complete (prevCompleteRef starts false → isComplete true
+    // transition triggers unlockNextLayout on first render).
+    await injectMahjongFull(page, COMPLETED_TURTLE_GAME, PROGRESS_TURTLE_ONLY);
 
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
     await page
@@ -145,8 +143,7 @@ test.describe("Mahjong — layout select screen", () => {
     page,
   }) => {
     // Inject a mid-game pyramid state along with progress that has pyramid unlocked.
-    await injectMahjongProgress(page, PROGRESS_TURTLE_PYRAMID);
-    await injectMahjongState(page, MID_GAME_PYRAMID);
+    await injectMahjongFull(page, MID_GAME_PYRAMID, PROGRESS_TURTLE_PYRAMID);
 
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
     await page
@@ -168,6 +165,12 @@ test.describe("Mahjong — layout select screen", () => {
     await expect(page.getByText(/^PAIRS\s+7\/72/).first()).toBeVisible({
       timeout: 5_000,
     });
+
+    // Verify the active game is specifically the pyramid layout.
+    const gameState = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("mahjong_game") ?? "null"),
+    );
+    expect(gameState?.currentLayoutId).toBe("pyramid");
 
     // Simulate an app restart by navigating away and back.
     await page.goto("/");

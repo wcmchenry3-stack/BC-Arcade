@@ -60,9 +60,31 @@ export async function injectMahjongProgress(
 ): Promise<void> {
   await page.goto("/");
   await page.evaluate(
-    ([key, data]) =>
-      localStorage.setItem(key as string, JSON.stringify(data)),
+    ([key, data]) => localStorage.setItem(key as string, JSON.stringify(data)),
+    // Key must match PROGRESS_KEY in frontend/src/game/mahjong/storage.ts
     ["@mahjong/progress", progress] as const,
+  );
+  await page.goto("/");
+}
+
+/**
+ * Inject both a MahjongState and MahjongProgress snapshot in a single
+ * navigation cycle — avoids the four-goto overhead of calling the two
+ * individual helpers back-to-back.
+ */
+export async function injectMahjongFull(
+  page: Page,
+  state: Record<string, unknown>,
+  progress: Record<string, unknown>,
+): Promise<void> {
+  await page.goto("/");
+  await page.evaluate(
+    ([gameState, progressData]) => {
+      localStorage.setItem("mahjong_game", JSON.stringify(gameState));
+      // Key must match PROGRESS_KEY in frontend/src/game/mahjong/storage.ts
+      localStorage.setItem("@mahjong/progress", JSON.stringify(progressData));
+    },
+    [state, progress] as const,
   );
   await page.goto("/");
 }
