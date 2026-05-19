@@ -12,19 +12,29 @@ import { createGame } from "../game/mahjong/engine";
 import { useMahjongCamera } from "../game/mahjong/layout";
 import { computeZoomBounds, clamp } from "../game/mahjong/zoom";
 import { GameShell } from "../components/shared/GameShell";
+import { useTheme } from "../theme/ThemeContext";
 import GameCanvas from "../components/mahjong/GameCanvas";
 
 const NOOP = () => {};
+// Stable seed so the same layout always renders identically in the inspector.
+const INSPECTOR_SEED = 0;
 
 export default function MahjongLayoutDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const route = useRoute<RouteProp<HomeStackParamList, "MahjongLayoutDetail">>();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { layoutId } = route.params;
 
   const meta = LAYOUTS.find((m) => m.id === layoutId);
-  const layout = useMemo(() => getLayout(layoutId), [layoutId]);
-  const state = useMemo(() => createGame(layout), [layout]);
+  const layout = useMemo(() => {
+    try {
+      return getLayout(layoutId);
+    } catch {
+      return getLayout("turtle");
+    }
+  }, [layoutId]);
+  const state = useMemo(() => createGame(layout, INSPECTOR_SEED), [layout]);
   const camera = useMahjongCamera(layout);
 
   const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
@@ -94,7 +104,7 @@ export default function MahjongLayoutDetailScreen() {
       <View style={styles.content}>
         {tierLabel ? (
           <View style={styles.metaRow}>
-            <Text style={styles.metaText}>{tierLabel}</Text>
+            <Text style={[styles.metaText, { color: colors.textMuted }]}>{tierLabel}</Text>
           </View>
         ) : null}
 
@@ -136,7 +146,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   metaText: {
-    color: "#8090c0",
     fontSize: 13,
     fontWeight: "600",
   },

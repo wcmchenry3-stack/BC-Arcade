@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -7,27 +7,30 @@ import type { HomeStackParamList } from "../../App";
 import { LAYOUTS } from "../game/mahjong/layouts/registry";
 import type { LayoutMeta } from "../game/mahjong/types";
 import { GameShell } from "../components/shared/GameShell";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function MahjongLayoutInspectorScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
-  function renderItem({ item }: { item: LayoutMeta }) {
-    return (
+  const renderItem = useCallback(
+    ({ item }: { item: LayoutMeta }) => (
       <Pressable
-        style={styles.card}
+        style={[styles.card, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}
         onPress={() => navigation.navigate("MahjongLayoutDetail", { layoutId: item.id })}
         accessibilityRole="button"
         accessibilityLabel={`${item.name}, Tier ${item.tier}, ${item.tileCount} tiles`}
       >
-        <View style={styles.tierBadge}>
-          <Text style={styles.tierText}>T{item.tier}</Text>
+        <View style={[styles.tierBadge, { backgroundColor: colors.surfaceAlt }]}>
+          <Text style={[styles.tierText, { color: colors.textMuted }]}>T{item.tier}</Text>
         </View>
-        <Text style={styles.cardName}>{item.name}</Text>
-        <Text style={styles.cardMeta}>{item.tileCount} tiles</Text>
+        <Text style={[styles.cardName, { color: colors.text }]}>{item.name}</Text>
+        <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{item.tileCount} tiles</Text>
       </Pressable>
-    );
-  }
+    ),
+    [navigation, colors]
+  );
 
   return (
     <GameShell
@@ -53,10 +56,8 @@ const styles = StyleSheet.create({
   row: { gap: 12, marginBottom: 12 },
   card: {
     flex: 1,
-    backgroundColor: "#1a1f2e",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#3a4060",
     padding: 16,
     alignItems: "center",
     minHeight: 96,
@@ -66,12 +67,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: "#2a3050",
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  tierText: { color: "#8090c0", fontSize: 10, fontWeight: "700" },
-  cardName: { color: "#e0e4f0", fontSize: 15, fontWeight: "700", textAlign: "center" },
-  cardMeta: { color: "#8090c0", fontSize: 12, marginTop: 4 },
+  tierText: { fontSize: 10, fontWeight: "700" },
+  cardName: { fontSize: 15, fontWeight: "700", textAlign: "center" },
+  cardMeta: { fontSize: 12, marginTop: 4 },
 });
