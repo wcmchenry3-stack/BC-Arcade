@@ -24,6 +24,7 @@ import {
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { getLayout } from "../layouts/registry";
 
 // Pin the RNG so every test run is identical.
 beforeEach(() => {
@@ -913,5 +914,49 @@ describe("timer helpers", () => {
   it("resumeGame is a no-op when already running", () => {
     const state: MahjongState = { ...createGame(TURTLE_LAYOUT), startedAt: 1000 };
     expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createGame — smoke test across all 25 layouts (#1695)
+// ---------------------------------------------------------------------------
+
+const ALL_LAYOUT_IDS = [
+  "turtle",
+  "pyramid",
+  "square",
+  "arena",
+  "four_rivers",
+  "butterfly",
+  "fish",
+  "spider",
+  "cat",
+  "snowflake",
+  "castle",
+  "bridge",
+  "gate",
+  "double_pyramid",
+  "anchor",
+  "crown",
+  "shield",
+  "heart",
+  "hourglass",
+  "the_key",
+  "diamond",
+  "x_wing",
+  "maze",
+  "zig_zag",
+  "concentric_squares",
+] as const;
+
+describe.each(ALL_LAYOUT_IDS)("createGame — %s", (id) => {
+  it("produces exactly 144 tiles", () => {
+    const state = createGame(getLayout(id));
+    expect(state.tiles.length).toBe(144);
+  });
+
+  it("initial board has at least one free pair", () => {
+    const state = createGame(getLayout(id));
+    expect(hasFreePairs(state.tiles)).toBe(true);
   });
 });

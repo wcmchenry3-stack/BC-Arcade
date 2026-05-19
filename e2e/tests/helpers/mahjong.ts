@@ -52,3 +52,17 @@ export async function injectMahjongState(
   );
   await page.goto("/");
 }
+
+/** Inject a MahjongProgress snapshot into localStorage and reload the home page. */
+export async function injectMahjongProgress(
+  page: Page,
+  progress: Record<string, unknown>,
+): Promise<void> {
+  await page.goto("/");
+  await page.evaluate(
+    ([key, data]) =>
+      localStorage.setItem(key as string, JSON.stringify(data)),
+    ["@mahjong/progress", progress] as const,
+  );
+  await page.goto("/");
+}
