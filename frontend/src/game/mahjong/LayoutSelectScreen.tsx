@@ -38,7 +38,9 @@ export default function LayoutSelectScreen({
 
   return (
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">{t("layoutSelect.title")}</Text>
+      <Text style={[styles.title, { color: colors.text }]} accessibilityRole="header">
+        {t("layoutSelect.title")}
+      </Text>
 
       {hasContinue && (
         <Pressable
