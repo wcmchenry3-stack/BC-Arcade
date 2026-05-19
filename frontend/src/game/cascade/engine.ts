@@ -488,8 +488,12 @@ export async function createEngine(
       {
         const maxVelPerStep = (MAX_FRUIT_SPEED_PX_S * lastStepMs) / 1000;
         const maxVelSq = maxVelPerStep * maxVelPerStep;
-        // Guard (d): explosive ejection — speed > 4× cap signals a corrupted body; remove it.
-        const explosionVelSq = (maxVelPerStep * 4) ** 2;
+        // Guard (d): explosive ejection — speed > 4× NOMINAL cap signals a corrupted body; remove it.
+        // Use FIXED_STEP_MS (nominal 60 Hz) so the threshold stays stable across variable
+        // frame rates — lastStepMs can be tiny on catch-up frames, which would otherwise
+        // spuriously eject legitimately-clamped bodies.
+        const nominalVelPerStep = (MAX_FRUIT_SPEED_PX_S * FIXED_STEP_MS) / 1000; // 15 px/step at 60 Hz
+        const explosionVelSq = (nominalVelPerStep * 4) ** 2; // 3600 (px/step)²
         fruitMap.forEach((fb, bodyId) => {
           const body = bodyById.get(bodyId);
           if (!body) return;
