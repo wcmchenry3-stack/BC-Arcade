@@ -270,25 +270,29 @@ describe("CascadeEngine — cascadeCombo", () => {
 
   it("two merges in one combo window → cascadeCombo { count: 2 }", () => {
     const engine = new CascadeEngine({});
-    // Two independent pairs at different x; last drop resets the combo window
+    // Two pairs dropped at different x positions — each pair merges independently in the
+    // first step (same-position collision). The last drop() resets the window; both merges
+    // are counted, so cascadeCombo fires eagerly in that same step.
     engine.drop(0, 100);
     engine.drop(0, 100);
     engine.drop(0, 300);
     engine.drop(0, 300);
-    const results = runSteps(engine, COMBO_WINDOW_TICKS + 50);
+    const results = runSteps(engine, 60);
     const comboEvent = allEvents(results).find((e) => e.type === "cascadeCombo");
     expect(comboEvent).toMatchObject({ type: "cascadeCombo", count: 2 });
   });
 
   it("three merges in one combo window → cascadeCombo { count: 3 }", () => {
     const engine = new CascadeEngine({});
+    // Three independent pairs; all merge in the first step. Validates that count
+    // accumulates across multiple pending merges before the eager emission check.
     engine.drop(0, 100);
     engine.drop(0, 100);
     engine.drop(0, 200);
     engine.drop(0, 200);
     engine.drop(0, 300);
     engine.drop(0, 300);
-    const results = runSteps(engine, COMBO_WINDOW_TICKS + 50);
+    const results = runSteps(engine, 60);
     const comboEvent = allEvents(results).find((e) => e.type === "cascadeCombo");
     expect(comboEvent).toMatchObject({ type: "cascadeCombo", count: 3 });
   });

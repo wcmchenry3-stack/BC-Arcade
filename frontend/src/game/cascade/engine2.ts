@@ -105,6 +105,7 @@ export class CascadeEngine {
   private _accumulator = 0;
   private _comboCount = 0;
   private _comboTicksLeft = 0;
+  private _comboEmitted = false;
 
   constructor(_config: EngineConfig = {}) {
     this._engine = Matter.Engine.create({
@@ -270,12 +271,18 @@ export class CascadeEngine {
       events.push({ type: "gameOver" });
     }
 
-    if (this._comboTicksLeft > 0) {
-      this._comboTicksLeft--;
-      if (this._comboTicksLeft === 0 && this._comboCount >= 2) {
-        events.push({ type: "cascadeCombo", count: this._comboCount });
-      }
+    // Emit as soon as the threshold is reached (after all merges in this step are counted)
+    // so the screen can react immediately. Suppressed if gameOver fired in the same step.
+    if (
+      this._comboTicksLeft > 0 &&
+      this._comboCount >= 2 &&
+      !this._comboEmitted &&
+      !this._gameOver
+    ) {
+      events.push({ type: "cascadeCombo", count: this._comboCount });
+      this._comboEmitted = true;
     }
+    if (this._comboTicksLeft > 0) this._comboTicksLeft--;
 
     return { events };
   }
@@ -297,6 +304,7 @@ export class CascadeEngine {
     this._pieces.set(body.id, { body, tier });
     this._comboCount = 0;
     this._comboTicksLeft = COMBO_WINDOW_TICKS;
+    this._comboEmitted = false;
   }
 
   getState(): GameState {
