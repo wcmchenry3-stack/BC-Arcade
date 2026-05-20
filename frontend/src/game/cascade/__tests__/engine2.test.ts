@@ -7,6 +7,7 @@ import {
   FLOOR_THICKNESS,
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
+  MAX_SPAWN_VELOCITY,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -174,6 +175,63 @@ describe("CascadeEngine — game over", () => {
     const countBefore = engine.getState().pieces.length;
     engine.drop(0, 200);
     expect(engine.getState().pieces).toHaveLength(countBefore);
+  });
+});
+
+describe("CascadeEngine — sleep system", () => {
+  it("a piece dropped from low height comes to rest without bouncing indefinitely", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, WORLD_WIDTH / 2);
+    runSteps(engine, 400);
+    // Must be resting near the floor — not bounced above the midpoint
+    expect(engine.getState().pieces[0]!.y).toBeGreaterThan(WORLD_HEIGHT / 2);
+  });
+
+  it("after enough steps, a resting piece is flagged as sleeping", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, WORLD_WIDTH / 2);
+    // Run long enough for the piece to settle and sleep
+    runSteps(engine, 600);
+    expect(engine.getState().pieces[0]!.isSleeping).toBe(true);
+  });
+});
+
+describe("CascadeEngine — merge spawn velocity", () => {
+  it("spawn velocity of merge-result body is clamped to MAX_SPAWN_VELOCITY", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, 200);
+    engine.drop(0, 200);
+    let mergeFound = false;
+    for (let i = 0; i < 600; i++) {
+      const result = engine.step(16.67);
+      if (result.events.some((e) => e.type === "merge")) {
+        // Capture velocity in the same step the merge fired, before gravity alters it
+        const piece = engine.getState().pieces[0]!;
+        expect(Math.abs(piece.vx)).toBeLessThanOrEqual(MAX_SPAWN_VELOCITY);
+        expect(Math.abs(piece.vy)).toBeLessThanOrEqual(MAX_SPAWN_VELOCITY);
+        mergeFound = true;
+        break;
+      }
+    }
+    expect(mergeFound).toBe(true);
+  });
+
+  it("merge in a crowded bin does not eject a piece above the overflow line", () => {
+    const engine = new CascadeEngine({});
+    // Build a partial stack of non-merging pieces (alternating tier 1 / tier 2)
+    for (let i = 0; i < 4; i++) {
+      engine.drop(i % 2 === 0 ? 1 : 2, WORLD_WIDTH / 2);
+      runSteps(engine, 20);
+    }
+    // Drop two tier-0 pieces at the same x — guaranteed to collide and merge
+    engine.drop(0, WORLD_WIDTH / 2);
+    engine.drop(0, WORLD_WIDTH / 2);
+    const results = runSteps(engine, 300);
+    expect(allEvents(results).some((e) => e.type === "merge")).toBe(true);
+    // The merged tier-1 piece must not have flown above the overflow line
+    const mergedPiece = engine.getState().pieces.find((p) => p.tier === 1);
+    expect(mergedPiece).toBeDefined();
+    expect(mergedPiece!.y).toBeGreaterThan(OVERFLOW_LINE_Y);
   });
 });
 
