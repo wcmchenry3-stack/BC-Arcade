@@ -393,6 +393,59 @@ describe("MahjongScreen — hint button", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Shuffle button
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — shuffle button", () => {
+  /** Two free matching tiles so the board has a valid move (not a shuffle-CTA state). */
+  function makeShufflableState(shufflesLeft = 3): MahjongState {
+    return {
+      _v: 1,
+      tiles: [
+        { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
+      ] as MahjongState["tiles"],
+      selected: null,
+      pairsRemoved: 0,
+      score: 0,
+      shufflesLeft,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    } as unknown as MahjongState;
+  }
+
+  it("shuffle HUD button is enabled on a fresh game", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeShufflableState(3)));
+    const api = await mount();
+    const btn = api.getByLabelText("action.shuffleLabel");
+    expect(btn.props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it("pressing the shuffle HUD button decrements shufflesLeft", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeShufflableState(3)));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("action.shuffleLabel"));
+    });
+
+    // shufflesLeft should now be 2; the HUD text shows the count.
+    expect(api.queryByText(/action\.shuffle.*2/)).toBeTruthy();
+  });
+
+  it("shuffle HUD button is disabled when shufflesLeft is 0", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeShufflableState(0)));
+    const api = await mount();
+    const btn = api.getByLabelText("action.shuffleLabel");
+    expect(btn.props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // useGameSync lifecycle
 // ---------------------------------------------------------------------------
 
