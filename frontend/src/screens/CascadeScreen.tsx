@@ -214,11 +214,11 @@ function CascadeGame() {
   const { play: playGameOver } = useSound("cascade.gameOver");
 
   const engineRef = useRef<CascadeEngine | null>(null);
-  // Initialized lazily below so queue and history come from the same makeQueue() call.
-  const queueRef = useRef<PieceQueue | null>(null);
+  // Initialized lazily so queue and history come from the same makeQueue() call.
+  const queueRef = useRef<PieceQueue>(null as unknown as PieceQueue);
   const queueHistoryRef = useRef<number[]>([]);
   const queueRngRef = useRef<(() => number) | undefined>(undefined);
-  if (queueRef.current === null) {
+  if (queueRef.current == null) {
     const init = makeQueue();
     queueRef.current = init.queue;
     queueHistoryRef.current = init.history;
@@ -285,6 +285,20 @@ function CascadeGame() {
     [syncComplete]
   );
 
+  // Pops queue.current, advances the queue, updates history. Returns the dropped tier.
+  const consumeFromQueue = useCallback((isInDanger: boolean): FruitTier => {
+    const tier = queueRef.current.current as FruitTier;
+    const newQueue = advanceQueue(
+      queueRef.current,
+      queueHistoryRef.current,
+      isInDanger,
+      queueRngRef.current
+    );
+    queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
+    queueRef.current = newQueue;
+    return tier;
+  }, []); // reads/writes refs only — no reactive deps
+
   const pushScoreboardSnapshot = useCallback(() => {
     setScoreboardSnapshot({
       score: scoreRef.current,
@@ -326,7 +340,7 @@ function CascadeGame() {
       pieces: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       score: scoreRef.current,
       savedAt: Date.now(),
-      queue: queueRef.current ?? { current: 0, next: 0 },
+      queue: queueRef.current,
     };
   }, []);
 
@@ -510,11 +524,7 @@ function CascadeGame() {
       const pieces = engineRef.current?.getState().pieces ?? [];
       // isInDanger shapes the piece added to the back of the queue (2 drops ahead)
       const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
-      const currentQueue = queueRef.current!;
-      const tier = currentQueue.current as FruitTier;
-      const newQueue = advanceQueue(currentQueue, queueHistoryRef.current, isInDanger, queueRngRef.current);
-      queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
-      queueRef.current = newQueue;
+      const tier = consumeFromQueue(isInDanger);
       setQueueVersion((v) => v + 1);
 
       console.log(
@@ -539,7 +549,7 @@ function CascadeGame() {
         droppingRef.current = false;
       }, 200);
     },
-    [gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted]
+    [consumeFromQueue, gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted]
   );
 
   const handleSetSeed = useCallback((seed: number) => {
@@ -562,7 +572,7 @@ function CascadeGame() {
       return {
         score: scoreRef.current,
         gameOver: gameOverRef.current,
-        nextFruitTier: queueRef.current?.current ?? 0,
+        nextFruitTier: queueRef.current.current,
         comboCount: 0,
         fruitCount: state?.pieces.length ?? 0,
         dangerRatio: 0,
@@ -576,11 +586,7 @@ function CascadeGame() {
       if (gameOverRef.current) return;
       const dangerPieces = engineRef.current?.getState().pieces ?? [];
       const isInDanger = dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
-      const currentQueue = queueRef.current!;
-      const tier = currentQueue.current as FruitTier;
-      const newQueue = advanceQueue(currentQueue, queueHistoryRef.current, isInDanger, queueRngRef.current);
-      queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
-      queueRef.current = newQueue;
+      const tier = consumeFromQueue(isInDanger);
       setQueueVersion((v) => v + 1);
       engineRef.current?.drop(tier, x);
     };
@@ -648,7 +654,7 @@ function CascadeGame() {
     pushScoreboardSnapshot();
   }
 
-  const queue = queueRef.current!;
+  const queue = queueRef.current;
   const currentDef = activeFruitSet.fruits[queue.current];
   const nextDef = activeFruitSet.fruits[queue.next];
 

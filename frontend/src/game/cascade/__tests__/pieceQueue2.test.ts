@@ -25,14 +25,12 @@ describe("createPieceQueue", () => {
   });
 
   it("respects provided history for drought/streak avoidance", () => {
-    // Fill history with 4 of tier 0 → tier 0 should be banned (anti-streak)
+    // Anti-streak is a hard ban (weight = 0), not probabilistic — all seeds must avoid tier 0
     const history = [0, 0, 0, 0];
-    let banHit = false;
     for (let seed = 1; seed <= 50; seed++) {
       const q = createPieceQueue(history, seededRng(seed));
-      if (q.current !== 0) banHit = true;
+      expect(q.current).not.toBe(0);
     }
-    expect(banHit).toBe(true);
   });
 });
 
@@ -64,6 +62,23 @@ describe("advanceQueue", () => {
     advanceQueue(queue, [queue.current], false, rng);
     expect(queue.current).toBe(before.current);
     expect(queue.next).toBe(before.next);
+  });
+
+  it("suppresses high tiers in danger state", () => {
+    const highTiers = DROPPABLE_PIECE_TIERS.filter((t) => t >= 3);
+    const safe = Array.from({ length: 200 }, (_, i) => {
+      const rng = seededRng(i + 1);
+      const q = createPieceQueue([], rng);
+      return advanceQueue(q, [q.current], false, rng).next;
+    });
+    const danger = Array.from({ length: 200 }, (_, i) => {
+      const rng = seededRng(i + 1);
+      const q = createPieceQueue([], rng);
+      return advanceQueue(q, [q.current], true, rng).next;
+    });
+    const safeHigh = safe.filter((t) => highTiers.includes(t)).length;
+    const dangerHigh = danger.filter((t) => highTiers.includes(t)).length;
+    expect(dangerHigh).toBeLessThan(safeHigh);
   });
 
   it("chains correctly over multiple advances", () => {
