@@ -13,7 +13,7 @@ export const GRAVITY_SCALE = 0.001; // Matter.js v0.20 gravity.scale fix
 export const PIECE_RESTITUTION = 0.3;
 export const PIECE_FRICTION = 0.5;
 export const PIECE_FRICTION_AIR = 0.01;
-export const PIECE_ANGULAR_DAMPING = 0.30;
+export const PIECE_ANGULAR_DAMPING = 0.3;
 export const MAX_ANGULAR_VELOCITY = 0.3; // rad/step hard clamp
 
 // Simulation
