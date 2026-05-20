@@ -27,6 +27,7 @@ import {
   WALL_THICKNESS,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
+import { selectNextTier } from "../game/cascade/spawnSelector2";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
@@ -55,11 +56,14 @@ const clearCascadeGame = (): Promise<void> => Promise.resolve();
 
 class ControlledSpawnSelector {
   private readonly rng: () => number;
+  private history: number[] = [];
   constructor(rng?: () => number) {
     this.rng = rng ?? Math.random;
   }
-  next(): FruitTier {
-    return Math.floor(this.rng() * 5) as FruitTier;
+  next(isInDanger = false): FruitTier {
+    const tier = selectNextTier(this.history, isInDanger, this.rng) as FruitTier;
+    this.history.push(tier);
+    return tier;
   }
 }
 
@@ -89,9 +93,9 @@ class FruitQueue {
   peekNext(): FruitTier {
     return this.queue[1] ?? 0;
   }
-  consume(): FruitTier {
+  consume(isInDanger = false): FruitTier {
     const tier = this.queue.shift()!;
-    this.queue.push(this.selector.next());
+    this.queue.push(this.selector.next(isInDanger));
     return tier;
   }
 }
@@ -531,7 +535,9 @@ function CascadeGame() {
       dropCountRef.current += 1;
       syncMarkStarted();
 
-      const tier = queueRef.current.consume();
+      const pieces = engineRef.current?.getState().pieces ?? [];
+      const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + 80);
+      const tier = queueRef.current.consume(isInDanger);
       setQueueVersion((v) => v + 1);
 
       console.log(
@@ -587,7 +593,8 @@ function CascadeGame() {
     g.__cascade_setSeed = handleSetSeed;
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
-      const tier = queueRef.current.consume();
+      const dangerPieces = engineRef.current?.getState().pieces ?? [];
+      const tier = queueRef.current.consume(dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + 80));
       setQueueVersion((v) => v + 1);
       engineRef.current?.drop(tier, x);
     };
