@@ -20,6 +20,7 @@ export interface SpriteRef {
   scale?: number;
 }
 
+// scoreValues follow triangular numbers T(1)–T(10): 1, 3, 6, 10, 15, 21, 28, 36, 45, 55
 export const PIECE_DEFS: PieceDef[] = [
   {
     tier: 0,
@@ -52,7 +53,7 @@ export const PIECE_DEFS: PieceDef[] = [
   {
     tier: 4,
     label: "Apple",
-    color: "#e63946",
+    color: "#c1121f", // distinct from Cherry (#e63946) for placeholder rendering
     scoreValue: 15,
     shape: { kind: "circle", radius: 44 },
   },
@@ -70,13 +71,14 @@ export const PIECE_DEFS: PieceDef[] = [
     scoreValue: 28,
     shape: { kind: "circle", radius: 62 },
   },
+  // placeholder — update to convex when art ready
   {
     tier: 7,
     label: "Pineapple",
     color: "#ffd166",
     scoreValue: 36,
     shape: { kind: "circle", radius: 72 },
-  }, // placeholder — update to convex when art ready
+  },
   {
     tier: 8,
     label: "Melon",
