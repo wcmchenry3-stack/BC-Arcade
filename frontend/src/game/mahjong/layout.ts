@@ -140,9 +140,10 @@ const PAD_Y_R = 14 / 44;
 
 // Keep APP_HEADER_H in sync with AppHeader.APP_HEADER_HEIGHT
 const APP_HEADER_H = 64;
-const HUD_ROW_H = 36;
+// hudRow paddingVertical:8 (×2 = 16) + button minHeight:32 = 48
+const HUD_ROW_H = 48;
 const MIN_BOTTOM_PAD = 16;
-// App header + HUD row + bottom padding = 116
+// App header + HUD row + bottom padding = 128
 const MAHJONG_CHROME_H = APP_HEADER_H + HUD_ROW_H + MIN_BOTTOM_PAD;
 // Minimum horizontal margin on each side when safe-area insets are absent
 const MIN_HORIZ_MARGIN = 8;
