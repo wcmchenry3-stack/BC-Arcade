@@ -18,6 +18,7 @@ import {
   FIXED_STEP_MS,
   MAX_SUBSTEPS,
   MERGE_POP_IMPULSE,
+  PIECE_SLEEP_THRESHOLD,
   PIECE_SLEEP_MIN_FRAMES,
   MAX_SPAWN_VELOCITY,
 } from "./constants";
@@ -37,6 +38,8 @@ export interface PieceSnapshot {
   tier: number;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   angle: number;
   shapeKind: "circle" | "convex";
   isSleeping: boolean;
@@ -70,10 +73,16 @@ function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
   if (def.shape.kind === "circle") {
     body = Matter.Bodies.circle(x, y, def.shape.radius, opts);
   } else {
-    const fromVerts = Matter.Bodies.fromVertices(x, y, [def.shape.vertices as Matter.Vector[]], opts);
-    body = fromVerts && fromVerts.vertices?.length
-      ? fromVerts
-      : Matter.Bodies.circle(x, y, def.shape.boundingRadius, opts);
+    const fromVerts = Matter.Bodies.fromVertices(
+      x,
+      y,
+      [def.shape.vertices as Matter.Vector[]],
+      opts
+    );
+    body =
+      fromVerts && fromVerts.vertices?.length
+        ? fromVerts
+        : Matter.Bodies.circle(x, y, def.shape.boundingRadius, opts);
   }
   body.sleepThreshold = PIECE_SLEEP_MIN_FRAMES;
   return body;
@@ -100,6 +109,10 @@ export class CascadeEngine {
     });
     this._engine.positionIterations = 6;
     this._engine.velocityIterations = 4;
+    // _motionSleepThreshold is not in the public type declarations but is a stable
+    // runtime property on the Sleeping module since Matter.js v0.14.
+    (Matter.Sleeping as unknown as { _motionSleepThreshold: number })._motionSleepThreshold =
+      PIECE_SLEEP_THRESHOLD;
     this._world = this._engine.world;
 
     Matter.Composite.add(this._world, [
@@ -278,6 +291,8 @@ export class CascadeEngine {
       tier,
       x: body.position.x,
       y: body.position.y,
+      vx: body.velocity.x,
+      vy: body.velocity.y,
       angle: body.angle,
       shapeKind: PIECE_DEFS[tier]!.shape.kind,
       isSleeping: body.isSleeping,
