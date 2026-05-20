@@ -53,3 +53,7 @@ public.pem
 
 # High-res source art — stored in Google Drive (bc-arcade folder), not the repo
 frontend/assets/source-icons/
+
+# Pipeline input dirs — large source images (~77 MB / ~86 MB), not shipped in repo
+fruit_images/
+celestial_images/

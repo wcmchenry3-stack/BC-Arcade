@@ -15,7 +15,8 @@
     "process-assets": "python scripts/remove_backgrounds.py",
     "extract-vertices": "python scripts/extract_vertices.py",
     "bundlesize": "bundlesize",
-    "check-build-env": "node scripts/check-build-env.js"
+    "check-build-env": "node scripts/check-build-env.js",
+    "prebuild": "node scripts/optimize-assets.js"
   },
   "jest": {
     "preset": "jest-expo",
