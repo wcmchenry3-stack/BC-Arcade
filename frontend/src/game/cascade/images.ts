@@ -1,4 +1,4 @@
-// Image asset registry — mirrors the sounds.ts pattern.
+// Cascade image registry.
 //
 // Two variants per theme:
 //   icons — WebP with transparent background, for React Native <Image> in UI (menus, pickers)
@@ -18,9 +18,10 @@ import _coconutIcon from "../../../assets/fruit-icons/coconut.webp";
 import _dragonfruitIcon from "../../../assets/fruit-icons/dragonfruit.webp";
 import _pineappleIcon from "../../../assets/fruit-icons/pineapple.webp";
 import _watermelonIcon from "../../../assets/fruit-icons/watermelon.webp";
+// pumpkin retained — intentional, future game tier
 import _pumpkinIcon from "../../../assets/fruit-icons/pumpkin.webp";
 
-// --- Fruit baked sprites (Skia canvas) ---
+// --- Fruit baked sprites (Skia canvas, WebP sets for runtime rendering) ---
 import _cherryBaked from "../../../assets/fruits-baked/cherry.png";
 import _blueberryBaked from "../../../assets/fruits-baked/blueberry.png";
 import _lemonBaked from "../../../assets/fruits-baked/lemon.png";
@@ -32,6 +33,7 @@ import _coconutBaked from "../../../assets/fruits-baked/coconut.png";
 import _dragonfruitBaked from "../../../assets/fruits-baked/dragonfruit.png";
 import _pineappleBaked from "../../../assets/fruits-baked/pineapple.png";
 import _watermelonBaked from "../../../assets/fruits-baked/watermelon.png";
+// pumpkin retained — intentional, future game tier (baked PNG sets for Skia vertex pipeline)
 import _pumpkinBaked from "../../../assets/fruits-baked/pumpkin.png";
 
 // --- Celestial icons (UI display) ---
@@ -48,7 +50,7 @@ import _jupiterIcon from "../../../assets/celestial-icons/jupiter.webp";
 import _sunIcon from "../../../assets/celestial-icons/sun.webp";
 import _milkyWayIcon from "../../../assets/celestial-icons/milkyway.webp";
 
-// --- Cosmos baked sprites (Skia canvas) ---
+// --- Cosmos baked sprites (Skia canvas, baked PNG sets for Skia vertex pipeline) ---
 import _moonBaked from "../../../assets/cosmos-baked/moon.png";
 import _plutoBaked from "../../../assets/cosmos-baked/pluto.png";
 import _mercuryBaked from "../../../assets/cosmos-baked/mercury.png";

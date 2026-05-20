@@ -29,8 +29,12 @@ jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
 jest.mock("../../components/cascade/ThemeSelector", () => "ThemeSelector");
 
-// Skia requires a native module — mock the whole package in Jest
-jest.mock("@shopify/react-native-skia", () => ({}));
+// Skia requires a native module — mock the whole package in Jest.
+// useImage returns a non-null stub so useFruitImages resolves immediately
+// and useAssetsReady returns true, allowing CascadeGame to render.
+jest.mock("@shopify/react-native-skia", () => ({
+  useImage: jest.fn().mockReturnValue({ width: 1, height: 1 }),
+}));
 
 // react-native-svg: stub SVG components so they render as no-ops in JSDOM
 jest.mock("react-native-svg", () => {

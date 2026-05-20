@@ -43,6 +43,7 @@ import FoundationPile from "../game/solitaire/components/FoundationPile";
 import StockWastePile from "../game/solitaire/components/StockWastePile";
 import { SolitaireWinCascade } from "../game/solitaire/components/SolitaireWinCascade";
 import { useSound } from "../game/_shared/useSound";
+import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../game/solitaire/components/CardView";
 import {
   applyMove,
@@ -121,11 +122,14 @@ export default function SolitaireScreen() {
 
   const [cascadeVisible, setCascadeVisible] = useState(false);
 
-  const { play: playCardFlip } = useSound("solitaire.cardFlip");
-  const { play: playCardPlace } = useSound("solitaire.cardPlace");
-  const { play: playFoundationComplete } = useSound("solitaire.foundationComplete");
-  const { play: playInvalidMove } = useSound("solitaire.invalidMove");
-  const { play: playGameWin } = useSound("solitaire.gameWin");
+  const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
+  const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
+  const { play: playFoundationComplete } = useSound(
+    "solitaire.foundationComplete",
+    SOLITAIRE_SOUNDS
+  );
+  const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
+  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
 
   const {

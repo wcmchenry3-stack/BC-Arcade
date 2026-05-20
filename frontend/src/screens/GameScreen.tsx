@@ -23,6 +23,7 @@ import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
+import { YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
@@ -106,12 +107,12 @@ export default function GameScreen({ navigation, route }: Props) {
   } = useGameSync("yacht");
 
   // Sound hooks
-  const { play: playDiceRoll } = useSound("yacht.diceRoll");
-  const { play: playDieHold } = useSound("yacht.dieHold");
-  const { play: playYacht } = useSound("yacht.yacht");
-  const { play: playJoker } = useSound("yacht.joker");
-  const { play: playStraight } = useSound("yacht.straight");
-  const { play: playUpperBonus } = useSound("yacht.upperBonus");
+  const { play: playDiceRoll } = useSound("yacht.diceRoll", YACHT_SOUNDS);
+  const { play: playDieHold } = useSound("yacht.dieHold", YACHT_SOUNDS);
+  const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
+  const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);
+  const { play: playStraight } = useSound("yacht.straight", YACHT_SOUNDS);
+  const { play: playUpperBonus } = useSound("yacht.upperBonus", YACHT_SOUNDS);
 
   function endedPayload(s: GameState, outcome: "completed" | "abandoned") {
     return {

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createAudioPlayer, AudioPlayer } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
-import { SOUND_REGISTRY, SoundKey } from "./sounds";
 
-export function useSound(key: SoundKey, volume = 1.0): { play: () => void } {
+export function useSound(
+  key: string,
+  registry: Record<string, number>,
+  volume = 1.0
+): { play: () => void } {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
   const mutedRef = useRef(muted);
@@ -14,7 +17,7 @@ export function useSound(key: SoundKey, volume = 1.0): { play: () => void } {
   }, [muted]);
 
   useEffect(() => {
-    const source = SOUND_REGISTRY[key];
+    const source = registry[key];
     if (source == null) return;
     const player = createAudioPlayer(source);
     player.volume = volume;
@@ -25,7 +28,7 @@ export function useSound(key: SoundKey, volume = 1.0): { play: () => void } {
     };
     // volume intentionally excluded — sync effect below handles live updates without recreating the player
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, registry]);
 
   // Sync volume changes to the live player without recreating it.
   useEffect(() => {

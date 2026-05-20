@@ -38,6 +38,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "assetBundlePatterns": ["assets/**"],
     "plugins": [
       [
         "@sentry/react-native/expo",

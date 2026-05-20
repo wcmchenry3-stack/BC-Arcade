@@ -24,11 +24,21 @@ beforeEach(() => {
 describe("useStarSwarmAudio — newGameTick passthrough", () => {
   it("passes newGameTick to useBackgroundMusic", () => {
     renderHook(() => useStarSwarmAudio(true, undefined, 3));
-    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(expect.any(Array), true, 3);
+    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      true,
+      3
+    );
   });
 
   it("passes undefined newGameTick when not provided", () => {
     renderHook(() => useStarSwarmAudio(true));
-    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(expect.any(Array), true, undefined);
+    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      true,
+      undefined
+    );
   });
 });

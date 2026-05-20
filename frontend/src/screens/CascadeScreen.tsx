@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, View, LayoutChangeEvent, Pressable } from "react-native";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  StyleSheet,
+  View,
+  LayoutChangeEvent,
+  Pressable,
+} from "react-native";
 import Svg, { Circle, Line as SvgLine } from "react-native-svg";
 import Animated, {
   useSharedValue,
@@ -19,6 +26,8 @@ import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitTier } from "../theme/fruitSets";
+import { useFruitImages } from "../theme/useFruitImages";
+import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine2";
 import {
   WORLD_WIDTH,
@@ -63,7 +72,7 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
 }
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
-import { SOUND_REGISTRY } from "../game/_shared/sounds";
+import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 
 const SAVE_THROTTLE_MS = 2000;
 
@@ -118,7 +127,7 @@ function useTieredMergeSound() {
 
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   useEffect(() => {
-    const source = SOUND_REGISTRY["cascade.fruitMerge"];
+    const source = CASCADE_SOUNDS["cascade.fruitMerge"];
     if (!source) return;
     const player = createAudioPlayer(source);
     playerRef.current = player;
@@ -191,6 +200,9 @@ function CascadeGame() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
+  // decoded images will be forwarded to the Skia canvas renderer in a follow-up
+  const fruitImages = useFruitImages();
+  const assetsReady = useAssetsReady([...fruitImages.fruits, ...fruitImages.cosmos]);
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
   const [score, setScore] = useState(0);
@@ -211,7 +223,7 @@ function CascadeGame() {
 
   // Sounds
   const playFruitMerge = useTieredMergeSound();
-  const { play: playGameOver } = useSound("cascade.gameOver");
+  const { play: playGameOver } = useSound("cascade.gameOver", CASCADE_SOUNDS);
 
   const engineRef = useRef<CascadeEngine | null>(null);
   // Initialized lazily so queue and history come from the same makeQueue() call.
@@ -677,58 +689,66 @@ function CascadeGame() {
         paddingRight: Math.max(insets.right, 16),
       }}
     >
-      <ScoreDisplay score={score}>
-        {currentDef !== undefined && nextDef !== undefined && (
-          <NextFruitPreview current={currentDef} next={nextDef} />
-        )}
-      </ScoreDisplay>
+      {!assetsReady ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" accessibilityLabel={t("common:loading")} />
+        </View>
+      ) : (
+        <>
+          <ScoreDisplay score={score}>
+            {currentDef !== undefined && nextDef !== undefined && (
+              <NextFruitPreview current={currentDef} next={nextDef} />
+            )}
+          </ScoreDisplay>
 
-      <ThemeSelector />
+          <ThemeSelector />
 
-      <View style={styles.canvasWrapper}>
-        <View
-          style={[
-            styles.canvasOuter,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-          onLayout={onLayout}
-        >
-          {scale > 0 && (
-            <Pressable
-              testID="cascade-game-area"
-              onPress={(e) => {
-                const rawX = e.nativeEvent.locationX / scale;
-                const worldX = Math.max(
-                  WALL_THICKNESS,
-                  Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX)
-                );
-                handleTap(worldX);
-              }}
-              style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
+          <View style={styles.canvasWrapper}>
+            <View
+              style={[
+                styles.canvasOuter,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+              onLayout={onLayout}
             >
-              <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
-            </Pressable>
-          )}
-        </View>
+              {scale > 0 && (
+                <Pressable
+                  testID="cascade-game-area"
+                  onPress={(e) => {
+                    const rawX = e.nativeEvent.locationX / scale;
+                    const worldX = Math.max(
+                      WALL_THICKNESS,
+                      Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX)
+                    );
+                    handleTap(worldX);
+                  }}
+                  style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
+                >
+                  <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
+                </Pressable>
+              )}
+            </View>
 
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          {mergeBursts.map((burst) => (
-            <MergeBurst
-              key={burst.id}
-              {...burst}
-              onDone={() => setMergeBursts((prev) => prev.filter((b) => b.id !== burst.id))}
+            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              {mergeBursts.map((burst) => (
+                <MergeBurst
+                  key={burst.id}
+                  {...burst}
+                  onDone={() => setMergeBursts((prev) => prev.filter((b) => b.id !== burst.id))}
+                />
+              ))}
+            </View>
+          </View>
+
+          <AnimationOverlay visible={gameOver} onDismiss={() => {}} />
+          {gameOver && (
+            <GameOverOverlay
+              score={score}
+              gameId={completedGameIdRef.current}
+              onRestart={handleRestart}
             />
-          ))}
-        </View>
-      </View>
-
-      <AnimationOverlay visible={gameOver} onDismiss={() => {}} />
-      {gameOver && (
-        <GameOverOverlay
-          score={score}
-          gameId={completedGameIdRef.current}
-          onRestart={handleRestart}
-        />
+          )}
+        </>
       )}
     </GameShell>
   );
@@ -743,6 +763,11 @@ export default function CascadeScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   canvasWrapper: {
     flex: 1,
   },

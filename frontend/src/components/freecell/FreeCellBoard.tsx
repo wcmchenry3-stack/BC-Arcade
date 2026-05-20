@@ -15,6 +15,7 @@ import { DragProvider } from "../../game/_shared/drag/DragContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../../game/_shared/drag/DragContext";
 import { useSound } from "../../game/_shared/useSound";
+import { FREECELL_SOUNDS } from "../../game/freecell/sounds";
 import { useCardSelection } from "../../game/_shared/useCardSelection";
 
 const TABLEAU_COLS = 8;
@@ -43,7 +44,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
 
-  const { play: playInvalidMove } = useSound("freecell.invalidMove");
+  const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
 
   function tryMove(move: Move) {
