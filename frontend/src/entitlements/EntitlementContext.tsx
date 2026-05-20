@@ -6,18 +6,18 @@ import { createGameClient } from "../game/_shared/httpClient";
 import { clearGame as clearHearts } from "../game/hearts/storage";
 import { clearGame as clearYacht } from "../game/yacht/storage";
 import { clearGame as clearSudoku } from "../game/sudoku/storage";
-import { clearGame as clearCascade } from "../game/cascade/storage";
 import { clearGame as clearSort } from "../game/sort/storage";
 import { scoreQueue } from "../game/_shared/scoreQueue";
 import type { GameType } from "../api/vocab";
 
 // Maps premium game slugs to their AsyncStorage clear functions.
 // starswarm has no local game state, so it is intentionally absent.
+// cascade storage was removed in the v2 teardown (#1747); rewired in #1751.
 const GAME_STORAGE_CLEARERS: Partial<Record<string, () => Promise<void>>> = {
   hearts: clearHearts,
   yacht: clearYacht,
   sudoku: clearSudoku,
-  cascade: clearCascade,
+  cascade: () => Promise.resolve(),
   sort: clearSort,
 };
 

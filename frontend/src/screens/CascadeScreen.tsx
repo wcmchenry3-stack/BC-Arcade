@@ -17,9 +17,6 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
-import { FruitQueue } from "../game/cascade/fruitQueue";
-import { ControlledSpawnSelector, createSeededRng } from "../game/cascade/spawnSelector";
-import { WORLD_W, WORLD_H, GameEvent } from "../game/cascade/engine";
 import type { FruitTier } from "../theme/fruitSets";
 import { scoreForMerge } from "../game/cascade/scoring";
 import GameCanvas, { GameCanvasHandle } from "../components/cascade/GameCanvas";
@@ -28,13 +25,77 @@ import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import GameOverOverlay from "../components/cascade/GameOverOverlay";
 import { useGameSync } from "../game/_shared/useGameSync";
-import {
-  saveGame as saveCascadeGame,
-  loadGame as loadCascadeGame,
-  clearGame as clearCascadeGame,
-  CascadeGameSnapshot,
-} from "../game/cascade/storage";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
+
+// ---------------------------------------------------------------------------
+// Cascade v2 teardown — engine, storage, and queue replaced by stubs
+// pending full screen rewrite in #1751.
+// ---------------------------------------------------------------------------
+
+const WORLD_W = 400;
+const WORLD_H = 700;
+
+type GameEvent =
+  | { type: "fruitMerge"; tier: FruitTier; x: number; y: number }
+  | { type: "cascadeCombo" }
+  | { type: "gameOver" };
+
+interface CascadeGameSnapshot {
+  version: number;
+  score: number;
+  gameOver: boolean;
+  fruitSetId: string;
+  queueTiers: [number, number];
+  fruits: { tier: number; x: number; y: number }[];
+  savedAt: number;
+}
+
+const saveCascadeGame = (_snap: CascadeGameSnapshot): Promise<void> => Promise.resolve();
+const loadCascadeGame = (): Promise<CascadeGameSnapshot | null> => Promise.resolve(null);
+const clearCascadeGame = (): Promise<void> => Promise.resolve();
+
+class ControlledSpawnSelector {
+  private readonly rng: () => number;
+  constructor(rng?: () => number) {
+    this.rng = rng ?? Math.random;
+  }
+  next(): FruitTier {
+    return Math.floor(this.rng() * 5) as FruitTier;
+  }
+}
+
+function createSeededRng(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (Math.imul(48271, s) + (s >>> 16)) | 0;
+    return (s >>> 0) / 0x100000000;
+  };
+}
+
+class FruitQueue {
+  private queue: FruitTier[];
+  private readonly selector: ControlledSpawnSelector;
+  constructor(
+    selector = new ControlledSpawnSelector(),
+    initialQueue?: readonly [FruitTier, FruitTier]
+  ) {
+    this.selector = selector;
+    this.queue = initialQueue
+      ? [initialQueue[0], initialQueue[1]]
+      : [this.selector.next(), this.selector.next()];
+  }
+  peek(): FruitTier {
+    return this.queue[0] ?? 0;
+  }
+  peekNext(): FruitTier {
+    return this.queue[1] ?? 0;
+  }
+  consume(): FruitTier {
+    const tier = this.queue.shift()!;
+    this.queue.push(this.selector.next());
+    return tier;
+  }
+}
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { SOUND_REGISTRY } from "../game/_shared/sounds";
@@ -343,7 +404,7 @@ function CascadeGame() {
   }, []);
 
   const handleMerge = useCallback(
-    (event: { tier: number; x: number; y: number }) => {
+    (event: { tier: FruitTier; x: number; y: number }) => {
       const delta = scoreForMerge(event.tier);
       scoreRef.current += delta;
       setScore((s) => s + delta);
