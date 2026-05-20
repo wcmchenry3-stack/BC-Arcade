@@ -141,7 +141,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     difficultyRef.current = difficultyProp;
     // ms remaining in pre-wave countdown; null = no countdown active.
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
+    // countdownDigit in renderState must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
+    const pendingChallengingStageRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
@@ -246,6 +248,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = gameRef.current.phase;
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
+      pendingChallengingStageRef.current = false;
       setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3 });
     }, [resetTick, width, height]);
 
@@ -270,7 +273,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           if (countdownMsRef.current !== null) {
             // Pre-wave countdown: freeze engine, tick the timer only
             countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
-            if (countdownMsRef.current === 0) countdownMsRef.current = null;
+            if (countdownMsRef.current === 0) {
+              countdownMsRef.current = null;
+              if (pendingChallengingStageRef.current) {
+                pendingChallengingStageRef.current = false;
+                onChallengingStageRef.current?.();
+              }
+            }
           } else {
             try {
               const prevCooldown = prev.player.shootCooldown;
@@ -332,19 +341,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onWaveClearRef.current?.();
                 if (applied.challengingPerfect) onChallengingPerfectRef.current?.();
               }
+              // Start countdown when WaveClear ends. Evaluated before phase callbacks so
+              // onChallengingStage fires after the countdown expires, not during it.
+              // prevPhaseRef.current is updated below — after this check — so the WaveClear
+              // guard remains valid for the full duration of this tick.
+              const startingCountdown =
+                prevPhaseRef.current === "WaveClear" &&
+                applied.phase !== "WaveClear" &&
+                applied.phase !== "GameOver";
+              if (startingCountdown) countdownMsRef.current = 3000;
               if (
                 applied.phase === "ChallengingStage" &&
                 prevPhaseRef.current !== "ChallengingStage"
               ) {
-                onChallengingStageRef.current?.();
-              }
-              // Start countdown when WaveClear ends and the next wave begins
-              if (
-                prevPhaseRef.current === "WaveClear" &&
-                applied.phase !== "WaveClear" &&
-                applied.phase !== "GameOver"
-              ) {
-                countdownMsRef.current = 3000;
+                if (startingCountdown) {
+                  pendingChallengingStageRef.current = true;
+                } else {
+                  onChallengingStageRef.current?.();
+                }
               }
               prevPhaseRef.current = applied.phase;
               if (applied.phase === "GameOver") {
