@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 export const HEARTS_SOUNDS: Record<string, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "hearts.heartsBroken": require("../../../assets/sounds/hearts-broken.mp3"),

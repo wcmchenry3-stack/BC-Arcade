@@ -49,17 +49,41 @@ export function useStarSwarmAudio(
   const v = { ...DEFAULT_SFX_VOLUMES, ...volumes };
 
   const { play: playLaser } = useSound("starswarm.laser", STARSWARM_SOUNDS, v.laser);
-  const { play: playPowerUpLightning } = useSound("starswarm.poweruplightning", STARSWARM_SOUNDS, v.poweruplightning);
-  const { play: playPowerUpShield } = useSound("starswarm.powerupshield", STARSWARM_SOUNDS, v.powerupshield);
-  const { play: playPowerUpBuddy } = useSound("starswarm.powerupbuddy", STARSWARM_SOUNDS, v.powerupbuddy);
-  const { play: playPowerUpBomb } = useSound("starswarm.powerupbomb", STARSWARM_SOUNDS, v.powerupbomb);
+  const { play: playPowerUpLightning } = useSound(
+    "starswarm.poweruplightning",
+    STARSWARM_SOUNDS,
+    v.poweruplightning
+  );
+  const { play: playPowerUpShield } = useSound(
+    "starswarm.powerupshield",
+    STARSWARM_SOUNDS,
+    v.powerupshield
+  );
+  const { play: playPowerUpBuddy } = useSound(
+    "starswarm.powerupbuddy",
+    STARSWARM_SOUNDS,
+    v.powerupbuddy
+  );
+  const { play: playPowerUpBomb } = useSound(
+    "starswarm.powerupbomb",
+    STARSWARM_SOUNDS,
+    v.powerupbomb
+  );
   const { play: playExplosion } = useSound("starswarm.explosion", STARSWARM_SOUNDS, v.explosion);
   const { play: playPlayerHit } = useSound("starswarm.playerhit", STARSWARM_SOUNDS, v.playerhit);
   const { play: playWaveClear } = useSound("starswarm.waveclear", STARSWARM_SOUNDS, v.waveclear);
   const { play: playGameOver } = useSound("starswarm.gameover", STARSWARM_SOUNDS, v.gameover);
-  const { play: playChallengingStage } = useSound("starswarm.challengingstage", STARSWARM_SOUNDS, v.challengingstage);
+  const { play: playChallengingStage } = useSound(
+    "starswarm.challengingstage",
+    STARSWARM_SOUNDS,
+    v.challengingstage
+  );
   const { play: playBonusLife } = useSound("starswarm.bonuslife", STARSWARM_SOUNDS, v.bonuslife);
-  const { play: playPerfect } = useSound("starswarm.perfectbonus", STARSWARM_SOUNDS, v.perfectbonus);
+  const { play: playPerfect } = useSound(
+    "starswarm.perfectbonus",
+    STARSWARM_SOUNDS,
+    v.perfectbonus
+  );
 
   const playPowerUpCollect = useCallback(
     (type: PowerUpType) => {

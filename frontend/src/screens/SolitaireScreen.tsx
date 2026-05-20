@@ -124,7 +124,10 @@ export default function SolitaireScreen() {
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
-  const { play: playFoundationComplete } = useSound("solitaire.foundationComplete", SOLITAIRE_SOUNDS);
+  const { play: playFoundationComplete } = useSound(
+    "solitaire.foundationComplete",
+    SOLITAIRE_SOUNDS
+  );
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);

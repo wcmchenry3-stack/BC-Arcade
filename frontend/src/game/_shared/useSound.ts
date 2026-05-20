@@ -28,7 +28,7 @@ export function useSound(
     };
     // volume intentionally excluded — sync effect below handles live updates without recreating the player
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, registry]);
 
   // Sync volume changes to the live player without recreating it.
   useEffect(() => {

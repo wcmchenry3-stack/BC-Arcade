@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AccessibilityInfo, ActivityIndicator, StyleSheet, View, LayoutChangeEvent, Pressable } from "react-native";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  StyleSheet,
+  View,
+  LayoutChangeEvent,
+  Pressable,
+} from "react-native";
 import Svg, { Circle, Line as SvgLine } from "react-native-svg";
 import Animated, {
   useSharedValue,
@@ -193,6 +200,7 @@ function CascadeGame() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
+  // decoded images will be forwarded to the Skia canvas renderer in a follow-up
   const fruitImages = useFruitImages();
   const assetsReady = useAssetsReady([...fruitImages.fruits, ...fruitImages.cosmos]);
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
@@ -668,14 +676,6 @@ function CascadeGame() {
       : 0;
   scaleRef.current = scale;
 
-  if (!assetsReady) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" accessibilityLabel={t("common:loading")} />
-      </View>
-    );
-  }
-
   return (
     <GameShell
       title={t("game.title")}
@@ -689,58 +689,66 @@ function CascadeGame() {
         paddingRight: Math.max(insets.right, 16),
       }}
     >
-      <ScoreDisplay score={score}>
-        {currentDef !== undefined && nextDef !== undefined && (
-          <NextFruitPreview current={currentDef} next={nextDef} />
-        )}
-      </ScoreDisplay>
+      {!assetsReady ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" accessibilityLabel={t("common:loading")} />
+        </View>
+      ) : (
+        <>
+          <ScoreDisplay score={score}>
+            {currentDef !== undefined && nextDef !== undefined && (
+              <NextFruitPreview current={currentDef} next={nextDef} />
+            )}
+          </ScoreDisplay>
 
-      <ThemeSelector />
+          <ThemeSelector />
 
-      <View style={styles.canvasWrapper}>
-        <View
-          style={[
-            styles.canvasOuter,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-          onLayout={onLayout}
-        >
-          {scale > 0 && (
-            <Pressable
-              testID="cascade-game-area"
-              onPress={(e) => {
-                const rawX = e.nativeEvent.locationX / scale;
-                const worldX = Math.max(
-                  WALL_THICKNESS,
-                  Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX)
-                );
-                handleTap(worldX);
-              }}
-              style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
+          <View style={styles.canvasWrapper}>
+            <View
+              style={[
+                styles.canvasOuter,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+              onLayout={onLayout}
             >
-              <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
-            </Pressable>
-          )}
-        </View>
+              {scale > 0 && (
+                <Pressable
+                  testID="cascade-game-area"
+                  onPress={(e) => {
+                    const rawX = e.nativeEvent.locationX / scale;
+                    const worldX = Math.max(
+                      WALL_THICKNESS,
+                      Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX)
+                    );
+                    handleTap(worldX);
+                  }}
+                  style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
+                >
+                  <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
+                </Pressable>
+              )}
+            </View>
 
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          {mergeBursts.map((burst) => (
-            <MergeBurst
-              key={burst.id}
-              {...burst}
-              onDone={() => setMergeBursts((prev) => prev.filter((b) => b.id !== burst.id))}
+            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              {mergeBursts.map((burst) => (
+                <MergeBurst
+                  key={burst.id}
+                  {...burst}
+                  onDone={() => setMergeBursts((prev) => prev.filter((b) => b.id !== burst.id))}
+                />
+              ))}
+            </View>
+          </View>
+
+          <AnimationOverlay visible={gameOver} onDismiss={() => {}} />
+          {gameOver && (
+            <GameOverOverlay
+              score={score}
+              gameId={completedGameIdRef.current}
+              onRestart={handleRestart}
             />
-          ))}
-        </View>
-      </View>
-
-      <AnimationOverlay visible={gameOver} onDismiss={() => {}} />
-      {gameOver && (
-        <GameOverOverlay
-          score={score}
-          gameId={completedGameIdRef.current}
-          onRestart={handleRestart}
-        />
+          )}
+        </>
       )}
     </GameShell>
   );

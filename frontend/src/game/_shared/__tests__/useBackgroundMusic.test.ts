@@ -41,10 +41,9 @@ describe("useBackgroundMusic — unmount cleanup", () => {
     mockPause.mockImplementation(() => callOrder.push("pause"));
     mockRemove.mockImplementation(() => callOrder.push("remove"));
 
-    const { unmount } = renderHook(
-      () => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true),
-      { wrapper }
-    );
+    const { unmount } = renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), {
+      wrapper,
+    });
     unmount();
 
     expect(callOrder).toEqual(["pause", "remove"]);
