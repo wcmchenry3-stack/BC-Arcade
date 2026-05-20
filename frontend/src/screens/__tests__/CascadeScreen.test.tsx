@@ -339,7 +339,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
   });
 
   it("emits a 'merge' event with from_tier/to_tier and x/y", () => {
-    const renderer = renderScreen();
+    const _renderer = renderScreen();
     // Make sure game area is rendered (it is after renderScreen)
     mockEnqueueEvent.mockClear();
     injectMerge(4, 200, 300);
@@ -421,7 +421,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
   });
 
   it("does not double-fire game_ended when handleGameOver runs after completion", () => {
-    const renderer = renderScreen();
+    const _renderer = renderScreen();
     injectGameOver();
     mockCompleteGame.mockClear();
     injectGameOver(); // second game-over event

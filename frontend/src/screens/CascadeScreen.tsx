@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  StyleSheet,
-  View,
-  LayoutChangeEvent,
-  Pressable,
-} from "react-native";
+import { AccessibilityInfo, StyleSheet, View, LayoutChangeEvent, Pressable } from "react-native";
 import Svg, { Circle, Line as SvgLine } from "react-native-svg";
 import Animated, {
   useSharedValue,
@@ -168,20 +162,17 @@ function useTieredMergeSound() {
     };
   }, []);
 
-  return useCallback(
-    (tier: number) => {
-      if (mutedRef.current || !playerRef.current) return;
-      const volume = Math.min(1, 0.35 + tier * 0.065);
-      try {
-        (playerRef.current as unknown as { volume: number }).volume = volume;
-        playerRef.current.seekTo(0);
-        playerRef.current.play();
-      } catch {
-        /* expo-audio may throw if audio context is suspended */
-      }
-    },
-    []
-  );
+  return useCallback((tier: number) => {
+    if (mutedRef.current || !playerRef.current) return;
+    const volume = Math.min(1, 0.35 + tier * 0.065);
+    try {
+      (playerRef.current as unknown as { volume: number }).volume = volume;
+      playerRef.current.seekTo(0);
+      playerRef.current.play();
+    } catch {
+      /* expo-audio may throw if audio context is suspended */
+    }
+  }, []);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,9 +182,11 @@ function useTieredMergeSound() {
 function PieceRenderer({
   pieces,
   scale,
+  overflowLineColor,
 }: {
   pieces: PieceSnapshot[];
   scale: number;
+  overflowLineColor: string;
 }) {
   return (
     <Svg
@@ -209,18 +202,15 @@ function PieceRenderer({
         y1={OVERFLOW_LINE_Y}
         x2={WORLD_WIDTH - WALL_THICKNESS}
         y2={OVERFLOW_LINE_Y}
-        stroke="#FF5050"
+        stroke={overflowLineColor}
         strokeOpacity={0.35}
         strokeWidth={1}
       />
       {pieces.map((piece) => {
         const def = PIECE_DEFS[piece.tier];
         if (!def) return null;
-        const r =
-          def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
-        return (
-          <Circle key={piece.id} cx={piece.x} cy={piece.y} r={r} fill={def.color} />
-        );
+        const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+        return <Circle key={piece.id} cx={piece.x} cy={piece.y} r={r} fill={def.color} />;
       })}
     </Svg>
   );
@@ -251,13 +241,10 @@ function CascadeGame() {
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
-  const comboOpacity = useSharedValue(0);
-  const comboAnimStyle = useAnimatedStyle(() => ({ opacity: comboOpacity.value }));
   const nextBurstId = useId();
 
   // Sounds
   const playFruitMerge = useTieredMergeSound();
-  const { play: playCascadeCombo } = useSound("cascade.cascadeCombo");
   const { play: playGameOver } = useSound("cascade.gameOver");
 
   const engineRef = useRef<CascadeEngine | null>(null);
@@ -288,13 +275,13 @@ function CascadeGame() {
   const completedGameIdRef = useRef<string | null>(null);
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
-  const comboCountRef = useRef(0);
 
   const lastSaveTimeRef = useRef<number>(0);
 
   // For merge burst position calculation
   const scaleRef = useRef(0);
   const containerWidthRef = useRef(0);
+  const piecesRef = useRef<PieceSnapshot[]>([]);
 
   const startInstrumentedSession = useCallback(
     (themeId: string) => {
@@ -368,10 +355,10 @@ function CascadeGame() {
       gameOver: gameOverRef.current,
       fruitSetId: activeFruitSetRef.current.id,
       queueTiers: [queueRef.current.peek(), queueRef.current.peekNext()],
-      fruits: pieces.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
+      fruits: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       savedAt: Date.now(),
     };
-  }, [pieces]);
+  }, []);
 
   const saveGameThrottled = useCallback(() => {
     const now = Date.now();
@@ -510,9 +497,12 @@ function CascadeGame() {
       }
 
       setScore(state.score);
+      piecesRef.current = state.pieces;
       setPieces(state.pieces);
 
-      rafId = requestAnimationFrame(tick);
+      if (!gameOverRef.current) {
+        rafId = requestAnimationFrame(tick);
+      }
     }
 
     rafId = requestAnimationFrame(tick);
@@ -586,10 +576,12 @@ function CascadeGame() {
         score: scoreRef.current,
         gameOver: gameOverRef.current,
         nextFruitTier: queueRef.current.peek(),
-        comboCount: comboCountRef.current,
+        comboCount: 0,
         fruitCount: state?.pieces.length ?? 0,
         dangerRatio: 0,
-        fruits: state?.pieces.map((p) => ({ id: p.id, tier: p.tier, x: p.x, y: p.y, angle: p.angle })) ?? [],
+        fruits:
+          state?.pieces.map((p) => ({ id: p.id, tier: p.tier, x: p.x, y: p.y, angle: p.angle })) ??
+          [],
       };
     };
     g.__cascade_setSeed = handleSetSeed;
@@ -648,7 +640,6 @@ function CascadeGame() {
     scoreRef.current = 0;
     gameOverRef.current = false;
     dropCountRef.current = 0;
-    comboCountRef.current = 0;
     setScore(0);
     setGameOver(false);
     setPieces([]);
@@ -712,17 +703,12 @@ function CascadeGame() {
               }}
               style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
             >
-              <PieceRenderer pieces={pieces} scale={scale} />
+              <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
             </Pressable>
           )}
         </View>
 
         <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, styles.comboFlash, comboAnimStyle]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
           {mergeBursts.map((burst) => (
             <MergeBurst
               key={burst.id}
@@ -768,9 +754,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     opacity: 0.95,
     overflow: "hidden",
-  },
-  comboFlash: {
-    backgroundColor: "rgba(255, 165, 0, 1)",
-    zIndex: 1,
   },
 });
