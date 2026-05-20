@@ -95,6 +95,7 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-python.yml@main
     with:
       working-directory: backend
+      ignore-vulns: PYSEC-2025-183  # PyJWT ≤2.12.1 — no fix released yet; tracked in GHSA advisory
     secrets: inherit
 
   cve-frontend:
