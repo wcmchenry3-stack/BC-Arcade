@@ -513,6 +513,90 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
 }
 
 /**
+ * Interleave slots so no consecutive pair (0,1), (2,3), … shares (col, row).
+ *
+ * Uses a greedy "largest-group-first" strategy: on each iteration pick one slot
+ * from the biggest remaining group, then one from the biggest group with a
+ * different (col, row). The invariant `maxGroupSize ≤ n/2` guarantees a
+ * partner always exists, so the algorithm never stalls.
+ *
+ * Within each group, slots are sorted ascending by layer so that `pop()`
+ * always returns the topmost (highest-layer) slot first. This guarantees the
+ * very first pair in the result consists of two topmost-layer tiles from
+ * different columns — both will be free — so the caller's `hasFreePairs` check
+ * always passes as long as the feasibility condition holds.
+ *
+ * Returns null when the invariant is violated — i.e. one (col, row) position
+ * holds more than half the remaining slots, making a valid pairing impossible
+ * by the pigeonhole principle.
+ */
+function buildValidSlotPairing(slots: readonly Slot[], rng: RandomSource): Slot[] | null {
+  const n = slots.length;
+
+  // Build groups keyed by "col,row".
+  const groups: Slot[][] = [];
+  const keyToIdx = new Map<string, number>();
+  for (const s of slots) {
+    const key = `${s.col},${s.row}`;
+    let idx = keyToIdx.get(key);
+    if (idx === undefined) {
+      idx = groups.length;
+      groups.push([]);
+      keyToIdx.set(key, idx);
+    }
+    groups[idx]!.push(s);
+  }
+
+  // Feasibility: no group may exceed half the total slot count.
+  for (const g of groups) {
+    if (g.length > n / 2) return null;
+  }
+
+  // Sort each group ascending by layer so pop() returns the topmost slot first.
+  // Shuffle sub-topmost layers randomly for variety while keeping the topmost
+  // guarantee that ensures hasFreePairs on the produced board.
+  for (const g of groups) {
+    g.sort((a, b) => a.layer - b.layer);
+    if (g.length > 1) {
+      const topmost = g.pop()!;
+      fisherYates(g, rng);
+      g.push(topmost); // topmost stays last → popped first
+    }
+  }
+
+  // Shuffle group order for randomness between equal-size groups.
+  fisherYates(groups, rng);
+
+  const result: Slot[] = [];
+
+  while (result.length < n) {
+    // Re-sort descending by remaining size each round (O(k log k), k ≤ 72).
+    groups.sort((a, b) => b.length - a.length);
+
+    const gA = groups[0]!;
+    if (gA.length === 0) break; // all slots consumed
+
+    const sA = gA.pop()!;
+
+    // Pick from the next non-empty group. All groups have unique col/row keys
+    // (enforced by keyToIdx), so any group at index 1+ is guaranteed to differ
+    // from gA — no col/row guard needed here.
+    let sB: Slot | undefined;
+    for (let i = 1; i < groups.length; i++) {
+      const g = groups[i]!;
+      if (g.length === 0) continue;
+      sB = g.pop()!;
+      break;
+    }
+
+    if (sB === undefined) return null; // shouldn't reach here if feasibility passed
+    result.push(sA, sB);
+  }
+
+  return result.length === n ? result : null;
+}
+
+/**
  * Redistribute all remaining tiles across their current slots in a new
  * arrangement that has at least one playable free pair. Costs one shuffle
  * token. Clears the selection.
@@ -521,6 +605,12 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
  * row approach used by createGame won't work. Instead we randomly reassign
  * tile types to slots and retry until hasFreePairs returns true (≤ 50 tries,
  * practically never exhausted).
+ *
+ * Fallback: when all 50 random attempts fail (can happen on skewed boards
+ * where most tiles share one (col,row) group), buildValidSlotPairing provides
+ * a guaranteed-valid interleaving. If even that returns null the board is
+ * geometrically deadlocked — no reshuffle can ever produce a playable
+ * arrangement — so we consume the token and surface the deadlock overlay.
  */
 export function shuffleBoard(state: MahjongState): MahjongState {
   if (state.shufflesLeft === 0) return state;
@@ -554,9 +644,43 @@ export function shuffleBoard(state: MahjongState): MahjongState {
       break;
     }
   }
-  if (newTiles.length === 0) return state; // extremely unlikely
 
-  const isDeadlocked = !hasFreePairs(newTiles) && state.shufflesLeft - 1 === 0;
+  // Fallback: guaranteed interleaving algorithm for skewed or pure-stack boards.
+  if (newTiles.length === 0) {
+    const interleaved = buildValidSlotPairing(slots, _rng);
+    if (interleaved !== null) {
+      const shuffledPairs = fisherYates([...pairs], _rng);
+      const candidate: SlotTile[] = [];
+      for (let i = 0; i < shuffledPairs.length; i++) {
+        const pair = shuffledPairs[i]!;
+        const sA = interleaved[i * 2]!;
+        const sB = interleaved[i * 2 + 1]!;
+        candidate.push({ ...pair[0], id: i * 2, col: sA.col, row: sA.row, layer: sA.layer });
+        candidate.push({ ...pair[1], id: i * 2 + 1, col: sB.col, row: sB.row, layer: sB.layer });
+      }
+      // buildValidSlotPairing guarantees hasFreePairs; check is a defensive
+      // safety net in case the invariant is ever violated.
+      if (hasFreePairs(candidate)) {
+        newTiles = candidate;
+      }
+    }
+  }
+
+  // Geometric deadlock: no valid arrangement exists regardless of RNG.
+  // Consume the token and surface the deadlock state so the user gets clear
+  // feedback instead of a silent no-op.
+  if (newTiles.length === 0) {
+    const shufflesLeft = state.shufflesLeft - 1;
+    const snapshot: MahjongState = { ...state, undoStack: [] };
+    const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
+    return {
+      ...state,
+      selected: null,
+      shufflesLeft,
+      isDeadlocked: true,
+      undoStack,
+    };
+  }
 
   const snapshot: MahjongState = { ...state, undoStack: [] };
   const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
@@ -567,7 +691,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     selected: null,
     shufflesLeft: state.shufflesLeft - 1,
     undoStack,
-    isDeadlocked,
+    isDeadlocked: false,
   };
 }
 
