@@ -578,17 +578,15 @@ function buildValidSlotPairing(slots: readonly Slot[], rng: RandomSource): Slot[
 
     const sA = gA.pop()!;
 
-    // Pick from the next non-empty group (all groups have unique col/row keys,
-    // so any group at index 1+ is guaranteed to differ from gA).
+    // Pick from the next non-empty group. All groups have unique col/row keys
+    // (enforced by keyToIdx), so any group at index 1+ is guaranteed to differ
+    // from gA — no col/row guard needed here.
     let sB: Slot | undefined;
     for (let i = 1; i < groups.length; i++) {
       const g = groups[i]!;
       if (g.length === 0) continue;
-      const top = g[g.length - 1]!;
-      if (top.col !== sA.col || top.row !== sA.row) {
-        sB = g.pop()!;
-        break;
-      }
+      sB = g.pop()!;
+      break;
     }
 
     if (sB === undefined) return null; // shouldn't reach here if feasibility passed
@@ -660,6 +658,8 @@ export function shuffleBoard(state: MahjongState): MahjongState {
         candidate.push({ ...pair[0], id: i * 2, col: sA.col, row: sA.row, layer: sA.layer });
         candidate.push({ ...pair[1], id: i * 2 + 1, col: sB.col, row: sB.row, layer: sB.layer });
       }
+      // buildValidSlotPairing guarantees hasFreePairs; check is a defensive
+      // safety net in case the invariant is ever violated.
       if (hasFreePairs(candidate)) {
         newTiles = candidate;
       }
@@ -682,8 +682,6 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     };
   }
 
-  const isDeadlocked = !hasFreePairs(newTiles) && state.shufflesLeft - 1 === 0;
-
   const snapshot: MahjongState = { ...state, undoStack: [] };
   const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
 
@@ -693,7 +691,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     selected: null,
     shufflesLeft: state.shufflesLeft - 1,
     undoStack,
-    isDeadlocked,
+    isDeadlocked: false,
   };
 }
 
