@@ -58,6 +58,8 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 Each game exposes its own lazy-loaded registry (`src/assets/<game>/`), introduced in #1627. Only import assets for the game that's actively loaded — do not add to `_shared/` unless the asset is truly cross-game.
 
+> **Note:** `_shared/images.ts` and `_shared/sounds.ts` were the pre-#1627 monolithic registries and are now retired. New assets go in per-game registries only.
+
 Adding a new shared image set: add imports + export object to `_shared/images.ts`.
 
 ## Offline strategy
