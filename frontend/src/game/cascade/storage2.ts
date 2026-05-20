@@ -1,31 +1,41 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-const GAME_KEY = "cascade_game_v2";
+const GAME_KEY = "cascade_game_v3";
 
 export interface SavedState {
-  version: 2;
+  version: 3;
   pieces: Array<{ tier: number; x: number; y: number }>;
   score: number;
   savedAt: number;
+  queue: { current: number; next: number };
 }
 
 export function looksValid(data: unknown): data is SavedState {
   if (typeof data !== "object" || data === null) return false;
   const d = data as Record<string, unknown>;
-  return (
-    d.version === 2 &&
-    Array.isArray(d.pieces) &&
-    (d.pieces as unknown[]).every(
+  if (
+    d.version !== 3 ||
+    !Array.isArray(d.pieces) ||
+    !(d.pieces as unknown[]).every(
       (p) =>
         typeof p === "object" &&
         p !== null &&
         typeof (p as Record<string, unknown>).tier === "number" &&
         typeof (p as Record<string, unknown>).x === "number" &&
         typeof (p as Record<string, unknown>).y === "number"
-    ) &&
-    typeof d.score === "number" &&
-    typeof d.savedAt === "number"
+    ) ||
+    typeof d.score !== "number" ||
+    typeof d.savedAt !== "number"
+  ) {
+    return false;
+  }
+  const q = d.queue as Record<string, unknown> | undefined;
+  return (
+    typeof q === "object" &&
+    q !== null &&
+    typeof q.current === "number" &&
+    typeof q.next === "number"
   );
 }
 

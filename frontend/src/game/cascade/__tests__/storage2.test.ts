@@ -3,13 +3,14 @@ import * as Sentry from "@sentry/react-native";
 import { saveGame, loadGame, clearGame, looksValid } from "../storage2";
 import type { SavedState } from "../storage2";
 
-const STORAGE_KEY = "cascade_game_v2";
+const STORAGE_KEY = "cascade_game_v3";
 
 const makeSavedState = (overrides: Partial<SavedState> = {}): SavedState => ({
-  version: 2,
+  version: 3,
   pieces: [{ tier: 1, x: 100, y: 200 }],
   score: 42,
   savedAt: 1700000000000,
+  queue: { current: 0, next: 1 },
   ...overrides,
 });
 
@@ -22,8 +23,8 @@ describe("cascade storage2 — looksValid", () => {
     expect(looksValid(makeSavedState({ pieces: [] }))).toBe(true);
   });
 
-  it("returns false for version !== 2", () => {
-    expect(looksValid({ ...makeSavedState(), version: 1 })).toBe(false);
+  it("returns false for version !== 3", () => {
+    expect(looksValid({ ...makeSavedState(), version: 2 })).toBe(false);
   });
 
   it("returns false when pieces is not an array", () => {
@@ -40,6 +41,19 @@ describe("cascade storage2 — looksValid", () => {
 
   it("returns false when savedAt is not a number", () => {
     expect(looksValid({ ...makeSavedState(), savedAt: null as unknown as number })).toBe(false);
+  });
+
+  it("returns false when queue is missing", () => {
+    const { queue: _q, ...noQueue } = makeSavedState();
+    expect(looksValid(noQueue)).toBe(false);
+  });
+
+  it("returns false when queue.current is not a number", () => {
+    expect(looksValid({ ...makeSavedState(), queue: { current: "0", next: 1 } })).toBe(false);
+  });
+
+  it("returns false when queue.next is not a number", () => {
+    expect(looksValid({ ...makeSavedState(), queue: { current: 0, next: null } })).toBe(false);
   });
 
   it("returns false for null", () => {
@@ -76,8 +90,8 @@ describe("cascade storage2 — save / load roundtrip", () => {
     await expect(loadGame()).resolves.toBeNull();
   });
 
-  it("version !== 2 → looksValid returns false and loadGame returns null", async () => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), version: 1 }));
+  it("version !== 3 → looksValid returns false and loadGame returns null", async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), version: 2 }));
     expect(await loadGame()).toBeNull();
   });
 
@@ -126,6 +140,13 @@ describe("cascade storage2 — save / load roundtrip", () => {
     await saveGame(state);
     const loaded = await loadGame();
     expect(loaded?.pieces).toEqual(state.pieces);
+  });
+
+  it("preserves queue through save/load", async () => {
+    const state = makeSavedState({ queue: { current: 2, next: 4 } });
+    await saveGame(state);
+    const loaded = await loadGame();
+    expect(loaded?.queue).toEqual({ current: 2, next: 4 });
   });
 
   it("preserves score and savedAt through save/load", async () => {
