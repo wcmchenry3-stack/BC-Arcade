@@ -1,6 +1,5 @@
-import * as Matter from 'matter-js';
-import { PIECE_DEFS, MAX_TIER } from './pieceDefs';
-import type { PieceDef } from './pieceDefs';
+import * as Matter from "matter-js";
+import { PIECE_DEFS, MAX_TIER, type PieceDef } from "./pieceDefs";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -19,9 +18,14 @@ import {
   FIXED_STEP_MS,
   MAX_SUBSTEPS,
   MERGE_POP_IMPULSE,
-} from './constants';
+} from "./constants";
+
+// Pixels above the overflow line where a newly dropped piece's centroid starts.
+const DROP_SPAWN_INSET = 5;
 
 export interface EngineConfig {
+  // Reserved for future multi-board or variable-size support.
+  // Currently unused — world dimensions are taken from constants.ts.
   worldWidth?: number;
   worldHeight?: number;
 }
@@ -32,14 +36,14 @@ export interface PieceSnapshot {
   x: number;
   y: number;
   angle: number;
-  shapeKind: 'circle' | 'convex';
+  shapeKind: "circle" | "convex";
 }
 
 export type EngineEvent =
-  | { type: 'merge'; tierA: number; tierB: number; result: number; x: number; y: number }
-  | { type: 'score'; delta: number; total: number }
-  | { type: 'gameOver' }
-  | { type: 'guardRailFired'; reason: string; bodyId: number };
+  | { type: "merge"; tierA: number; tierB: number; result: number; x: number; y: number }
+  | { type: "score"; delta: number; total: number }
+  | { type: "gameOver" }
+  | { type: "guardRailFired"; reason: string; bodyId: number };
 
 export interface StepResult {
   events: EngineEvent[];
@@ -56,9 +60,9 @@ function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
     restitution: PIECE_RESTITUTION,
     friction: PIECE_FRICTION,
     frictionAir: PIECE_FRICTION_AIR,
-    label: 'piece',
+    label: "piece",
   };
-  if (def.shape.kind === 'circle') {
+  if (def.shape.kind === "circle") {
     return Matter.Bodies.circle(x, y, def.shape.radius, opts);
   }
   const body = Matter.Bodies.fromVertices(x, y, [def.shape.vertices as Matter.Vector[]], opts);
@@ -75,7 +79,10 @@ export class CascadeEngine {
   private _score = 0;
   private _gameOver = false;
   private _overflowTicksCount = 0;
-  private _ticksSinceLastMerge = 0;
+  // Start past the threshold so the first tick is immediately eligible to count overflow.
+  // Initializing to 0 would suppress overflow counting for the first OVERFLOW_IGNORE_MERGE_TICKS
+  // ticks of every game as if a merge had just fired at t = -1.
+  private _ticksSinceLastMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
   private readonly _pendingMerges = new Set<string>();
   private _accumulator = 0;
 
@@ -86,26 +93,35 @@ export class CascadeEngine {
     this._world = this._engine.world;
 
     Matter.Composite.add(this._world, [
+      Matter.Bodies.rectangle(WALL_THICKNESS / 2, WORLD_HEIGHT / 2, WALL_THICKNESS, WORLD_HEIGHT, {
+        isStatic: true,
+        friction: PIECE_FRICTION,
+        label: "wall-left",
+      }),
       Matter.Bodies.rectangle(
-        WALL_THICKNESS / 2, WORLD_HEIGHT / 2,
-        WALL_THICKNESS, WORLD_HEIGHT,
-        { isStatic: true, friction: PIECE_FRICTION, label: 'wall-left' },
+        WORLD_WIDTH - WALL_THICKNESS / 2,
+        WORLD_HEIGHT / 2,
+        WALL_THICKNESS,
+        WORLD_HEIGHT,
+        { isStatic: true, friction: PIECE_FRICTION, label: "wall-right" }
       ),
       Matter.Bodies.rectangle(
-        WORLD_WIDTH - WALL_THICKNESS / 2, WORLD_HEIGHT / 2,
-        WALL_THICKNESS, WORLD_HEIGHT,
-        { isStatic: true, friction: PIECE_FRICTION, label: 'wall-right' },
-      ),
-      Matter.Bodies.rectangle(
-        WORLD_WIDTH / 2, WORLD_HEIGHT - FLOOR_THICKNESS / 2,
-        WORLD_WIDTH, FLOOR_THICKNESS,
-        { isStatic: true, friction: PIECE_FRICTION, label: 'floor' },
+        WORLD_WIDTH / 2,
+        WORLD_HEIGHT - FLOOR_THICKNESS / 2,
+        WORLD_WIDTH,
+        FLOOR_THICKNESS,
+        { isStatic: true, friction: PIECE_FRICTION, label: "floor" }
       ),
     ]);
 
-    Matter.Events.on(this._engine, 'collisionStart', this._handleCollision);
+    // Only collisionStart is subscribed. collisionActive is intentionally omitted:
+    // Matter.js fires collisionStart even for bodies created already overlapping
+    // (no prior-frame contact), which covers the case of two same-position drops.
+    Matter.Events.on(this._engine, "collisionStart", this._handleCollision);
   }
 
+  // _handleCollision guards pA.tier >= MAX_TIER, so every pair entering
+  // _pendingMerges is guaranteed to have tier < MAX_TIER and newTier <= MAX_TIER.
   private readonly _handleCollision = (event: Matter.IEventCollision<Matter.Engine>): void => {
     for (const pair of event.pairs) {
       const pA = this._pieces.get(pair.bodyA.id);
@@ -117,6 +133,8 @@ export class CascadeEngine {
     }
   };
 
+  // Lifecycle hook — engine is ready immediately after construction; start() is a
+  // no-op placeholder for callers that follow a create/start/destroy lifecycle.
   start(): void {}
 
   step(deltaMs: number): StepResult {
@@ -136,13 +154,11 @@ export class CascadeEngine {
     for (const { body, tier } of this._pieces.values()) {
       const damped = body.angularVelocity * (1 - PIECE_ANGULAR_DAMPING);
       const clamped =
-        Math.abs(damped) > MAX_ANGULAR_VELOCITY
-          ? Math.sign(damped) * MAX_ANGULAR_VELOCITY
-          : damped;
+        Math.abs(damped) > MAX_ANGULAR_VELOCITY ? Math.sign(damped) * MAX_ANGULAR_VELOCITY : damped;
       Matter.Body.setAngularVelocity(body, clamped);
 
       const def = PIECE_DEFS[tier]!;
-      const r = def.shape.kind === 'circle' ? def.shape.radius : def.shape.boundingRadius;
+      const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
       const minX = WALL_THICKNESS + r;
       const maxX = WORLD_WIDTH - WALL_THICKNESS - r;
       const maxY = WORLD_HEIGHT - FLOOR_THICKNESS - r;
@@ -155,14 +171,15 @@ export class CascadeEngine {
           y: Math.min(maxY, isFinite(by) ? by : WORLD_HEIGHT / 2),
         });
         Matter.Body.setVelocity(body, { x: 0, y: 0 });
-        events.push({ type: 'guardRailFired', reason: 'outOfBounds', bodyId: body.id });
+        events.push({ type: "guardRailFired", reason: "outOfBounds", bodyId: body.id });
       }
     }
 
-    // Process pending merges
+    // Process pending merges. _handleCollision guarantees tier < MAX_TIER for all
+    // pairs in _pendingMerges, so newTier is always a valid PIECE_DEFS index.
     const merged = new Set<number>();
     for (const key of this._pendingMerges) {
-      const colon = key.indexOf(':');
+      const colon = key.indexOf(":");
       const idA = Number(key.slice(0, colon));
       const idB = Number(key.slice(colon + 1));
       if (merged.has(idA) || merged.has(idB)) continue;
@@ -183,23 +200,23 @@ export class CascadeEngine {
       merged.add(idA);
       merged.add(idB);
 
-      if (newTier <= MAX_TIER) {
-        const newDef = PIECE_DEFS[newTier]!;
-        const newBody = makeBody(newDef, mx, my);
-        Matter.Body.setVelocity(newBody, { x: 0, y: -MERGE_POP_IMPULSE });
-        Matter.Composite.add(this._world, newBody);
-        this._pieces.set(newBody.id, { body: newBody, tier: newTier });
-      }
+      const newDef = PIECE_DEFS[newTier]!;
+      const newBody = makeBody(newDef, mx, my);
+      Matter.Body.setVelocity(newBody, { x: 0, y: -MERGE_POP_IMPULSE });
+      Matter.Composite.add(this._world, newBody);
+      this._pieces.set(newBody.id, { body: newBody, tier: newTier });
 
-      const scoreValue = PIECE_DEFS[newTier <= MAX_TIER ? newTier : MAX_TIER]!.scoreValue;
+      const scoreValue = PIECE_DEFS[newTier]!.scoreValue;
       this._score += scoreValue;
-      events.push({ type: 'merge', tierA: tier, tierB: tier, result: Math.min(newTier, MAX_TIER), x: mx, y: my });
-      events.push({ type: 'score', delta: scoreValue, total: this._score });
+      events.push({ type: "merge", tierA: tier, tierB: tier, result: newTier, x: mx, y: my });
+      events.push({ type: "score", delta: scoreValue, total: this._score });
       this._ticksSinceLastMerge = 0;
     }
     this._pendingMerges.clear();
 
-    // Overflow detection
+    // Overflow detection. Any merge — even far below the overflow line — resets the
+    // counter via OVERFLOW_IGNORE_MERGE_TICKS; this intentionally gives merges time
+    // to settle before re-evaluating whether the stack is still overflowing.
     this._ticksSinceLastMerge++;
     let anyOverflow = false;
     for (const { body } of this._pieces.values()) {
@@ -217,14 +234,14 @@ export class CascadeEngine {
 
     if (this._overflowTicksCount >= OVERFLOW_TICKS_THRESHOLD) {
       this._gameOver = true;
-      events.push({ type: 'gameOver' });
+      events.push({ type: "gameOver" });
     }
 
     return { events };
   }
 
   destroy(): void {
-    Matter.Events.off(this._engine, 'collisionStart', this._handleCollision);
+    Matter.Events.off(this._engine, "collisionStart", this._handleCollision);
     Matter.Engine.clear(this._engine);
     this._pieces.clear();
   }
@@ -233,8 +250,8 @@ export class CascadeEngine {
     if (this._gameOver) return;
     const def = PIECE_DEFS[tier];
     if (!def) return;
-    const r = def.shape.kind === 'circle' ? def.shape.radius : def.shape.boundingRadius;
-    const y = OVERFLOW_LINE_Y - r - 5;
+    const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+    const y = OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET;
     const body = makeBody(def, x, y);
     Matter.Composite.add(this._world, body);
     this._pieces.set(body.id, { body, tier });
