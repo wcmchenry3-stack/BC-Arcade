@@ -28,7 +28,8 @@ import {
   DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
-import { selectNextTier, DROUGHT_WINDOW } from "../game/cascade/spawnSelector2";
+import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector2";
+import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue2";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
@@ -48,20 +49,6 @@ import {
 
 const SETTLE_TICKS = 60;
 
-class ControlledSpawnSelector {
-  private readonly rng: () => number;
-  private history: number[] = [];
-  constructor(rng?: () => number) {
-    this.rng = rng ?? Math.random;
-  }
-  next(isInDanger = false): FruitTier {
-    const tier = selectNextTier(this.history, isInDanger, this.rng) as FruitTier;
-    this.history.push(tier);
-    if (this.history.length > DROUGHT_WINDOW) this.history.shift();
-    return tier;
-  }
-}
-
 function createSeededRng(seed: number): () => number {
   let s = seed | 0;
   return () => {
@@ -70,29 +57,9 @@ function createSeededRng(seed: number): () => number {
   };
 }
 
-class FruitQueue {
-  private queue: FruitTier[];
-  private readonly selector: ControlledSpawnSelector;
-  constructor(
-    selector = new ControlledSpawnSelector(),
-    initialQueue?: readonly [FruitTier, FruitTier]
-  ) {
-    this.selector = selector;
-    this.queue = initialQueue
-      ? [initialQueue[0], initialQueue[1]]
-      : [this.selector.next(), this.selector.next()];
-  }
-  peek(): FruitTier {
-    return this.queue[0] ?? 0;
-  }
-  peekNext(): FruitTier {
-    return this.queue[1] ?? 0;
-  }
-  consume(isInDanger = false): FruitTier {
-    const tier = this.queue.shift()!;
-    this.queue.push(this.selector.next(isInDanger));
-    return tier;
-  }
+function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] } {
+  const queue = createPieceQueue([], rng);
+  return { queue, history: [queue.current, queue.next] };
 }
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
@@ -247,7 +214,15 @@ function CascadeGame() {
   const { play: playGameOver } = useSound("cascade.gameOver");
 
   const engineRef = useRef<CascadeEngine | null>(null);
-  const queueRef = useRef(new FruitQueue());
+  // Initialized lazily below so queue and history come from the same makeQueue() call.
+  const queueRef = useRef<PieceQueue | null>(null);
+  const queueHistoryRef = useRef<number[]>([]);
+  const queueRngRef = useRef<(() => number) | undefined>(undefined);
+  if (queueRef.current === null) {
+    const init = makeQueue();
+    queueRef.current = init.queue;
+    queueHistoryRef.current = init.history;
+  }
   const droppingRef = useRef(false);
   const lastDropTimeRef = useRef<number>(Date.now());
   const dropCountRef = useRef<number>(0);
@@ -334,6 +309,9 @@ function CascadeGame() {
       engineRef.current?.restore(snapshot.pieces, snapshot.score);
       scoreRef.current = snapshot.score;
       setScore(snapshot.score);
+      queueRef.current = snapshot.queue;
+      queueHistoryRef.current = [snapshot.queue.current, snapshot.queue.next];
+      setQueueVersion((v) => v + 1);
       settlingTicksLeftRef.current = SETTLE_TICKS;
     });
     return () => {
@@ -344,10 +322,11 @@ function CascadeGame() {
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
-      version: 2,
+      version: 3,
       pieces: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       score: scoreRef.current,
       savedAt: Date.now(),
+      queue: queueRef.current ?? { current: 0, next: 0 },
     };
   }, []);
 
@@ -368,7 +347,10 @@ function CascadeGame() {
     if (prevFruitSetId.current !== activeFruitSet.id) {
       prevFruitSetId.current = activeFruitSet.id;
       endInstrumentedSession(gameOverRef.current ? "completed" : "abandoned");
-      queueRef.current = new FruitQueue();
+      queueRngRef.current = undefined;
+      const reset = makeQueue();
+      queueRef.current = reset.queue;
+      queueHistoryRef.current = reset.history;
       scoreRef.current = 0;
       gameOverRef.current = false;
       dropCountRef.current = 0;
@@ -528,7 +510,11 @@ function CascadeGame() {
       const pieces = engineRef.current?.getState().pieces ?? [];
       // isInDanger shapes the piece added to the back of the queue (2 drops ahead)
       const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
-      const tier = queueRef.current.consume(isInDanger);
+      const currentQueue = queueRef.current!;
+      const tier = currentQueue.current as FruitTier;
+      const newQueue = advanceQueue(currentQueue, queueHistoryRef.current, isInDanger, queueRngRef.current);
+      queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
+      queueRef.current = newQueue;
       setQueueVersion((v) => v + 1);
 
       console.log(
@@ -557,7 +543,11 @@ function CascadeGame() {
   );
 
   const handleSetSeed = useCallback((seed: number) => {
-    queueRef.current = new FruitQueue(new ControlledSpawnSelector(createSeededRng(seed)));
+    const rng = createSeededRng(seed);
+    queueRngRef.current = rng;
+    const seeded = makeQueue(rng);
+    queueRef.current = seeded.queue;
+    queueHistoryRef.current = seeded.history;
     setQueueVersion((v) => v + 1);
   }, []);
 
@@ -572,7 +562,7 @@ function CascadeGame() {
       return {
         score: scoreRef.current,
         gameOver: gameOverRef.current,
-        nextFruitTier: queueRef.current.peek(),
+        nextFruitTier: queueRef.current?.current ?? 0,
         comboCount: 0,
         fruitCount: state?.pieces.length ?? 0,
         dangerRatio: 0,
@@ -585,9 +575,12 @@ function CascadeGame() {
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
       const dangerPieces = engineRef.current?.getState().pieces ?? [];
-      const tier = queueRef.current.consume(
-        dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN)
-      );
+      const isInDanger = dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
+      const currentQueue = queueRef.current!;
+      const tier = currentQueue.current as FruitTier;
+      const newQueue = advanceQueue(currentQueue, queueHistoryRef.current, isInDanger, queueRngRef.current);
+      queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
+      queueRef.current = newQueue;
       setQueueVersion((v) => v + 1);
       engineRef.current?.drop(tier, x);
     };
@@ -636,7 +629,10 @@ function CascadeGame() {
 
   function handleRestart() {
     endInstrumentedSession(gameOverRef.current ? "completed" : "abandoned");
-    queueRef.current = new FruitQueue();
+    queueRngRef.current = undefined;
+    const restarted = makeQueue();
+    queueRef.current = restarted.queue;
+    queueHistoryRef.current = restarted.history;
     scoreRef.current = 0;
     gameOverRef.current = false;
     dropCountRef.current = 0;
@@ -652,9 +648,9 @@ function CascadeGame() {
     pushScoreboardSnapshot();
   }
 
-  const queue = queueRef.current;
-  const currentDef = activeFruitSet.fruits[queue.peek()];
-  const nextDef = activeFruitSet.fruits[queue.peekNext()];
+  const queue = queueRef.current!;
+  const currentDef = activeFruitSet.fruits[queue.current];
+  const nextDef = activeFruitSet.fruits[queue.next];
 
   const scale =
     containerWidth > 0 && containerHeight > 0
