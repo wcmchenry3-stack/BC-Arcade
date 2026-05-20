@@ -11,7 +11,7 @@
 import { useImage } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
 
-import { COSMOS_BAKED, FRUIT_BAKED } from "../game/_shared/images";
+import { COSMOS_BAKED, FRUIT_BAKED } from "../game/cascade/images";
 
 export interface FruitSetImages {
   /** Images indexed by tier (0–10). null = not yet loaded. */

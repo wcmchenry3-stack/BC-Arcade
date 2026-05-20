@@ -3,7 +3,6 @@ import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SoundProvider } from "../SoundContext";
 import { useSound } from "../useSound";
-import { SOUND_REGISTRY } from "../sounds";
 
 const mockPlay = jest.fn();
 const mockSeekTo = jest.fn();
@@ -26,15 +25,16 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return React.createElement(SoundProvider, null, children);
 }
 
+const EMPTY_REGISTRY: Record<string, number> = {};
+const TEST_REGISTRY: Record<string, number> = { "test.beep": 1 as unknown as number };
+
 beforeEach(() => {
   jest.clearAllMocks();
-  // Clear registry between tests
-  Object.keys(SOUND_REGISTRY).forEach((k) => delete SOUND_REGISTRY[k]);
 });
 
 describe("useSound — unregistered key", () => {
-  it("play() is a no-op when key has no entry in SOUND_REGISTRY", () => {
-    const { result } = renderHook(() => useSound("unknown.key"), { wrapper });
+  it("play() is a no-op when key has no entry in registry", () => {
+    const { result } = renderHook(() => useSound("unknown.key", EMPTY_REGISTRY), { wrapper });
     act(() => {
       result.current.play();
     });
@@ -43,13 +43,8 @@ describe("useSound — unregistered key", () => {
 });
 
 describe("useSound — registered key", () => {
-  beforeEach(() => {
-    // Simulate a registered asset (Metro require returns a number)
-    SOUND_REGISTRY["test.beep"] = 1 as unknown as number;
-  });
-
   it("play() calls seekTo(0) then play() on the audio player", () => {
-    const { result } = renderHook(() => useSound("test.beep"), { wrapper });
+    const { result } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
     act(() => {
       result.current.play();
     });
@@ -60,7 +55,7 @@ describe("useSound — registered key", () => {
   it("play() is a no-op when muted", async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("true");
 
-    const { result } = renderHook(() => useSound("test.beep"), { wrapper });
+    const { result } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
     // Wait for AsyncStorage to resolve
     await act(async () => {});
     act(() => {
@@ -70,14 +65,16 @@ describe("useSound — registered key", () => {
   });
 
   it("returns a stable play reference across re-renders", () => {
-    const { result, rerender } = renderHook(() => useSound("test.beep"), { wrapper });
+    const { result, rerender } = renderHook(() => useSound("test.beep", TEST_REGISTRY), {
+      wrapper,
+    });
     const first = result.current.play;
     rerender({});
     expect(result.current.play).toBe(first);
   });
 
   it("calls remove() on the player when unmounted", () => {
-    const { unmount } = renderHook(() => useSound("test.beep"), { wrapper });
+    const { unmount } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
     unmount();
     expect(mockRemove).toHaveBeenCalledTimes(1);
   });

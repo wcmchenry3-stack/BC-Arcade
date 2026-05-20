@@ -26,6 +26,7 @@ import type { FreeCellState, Move } from "../game/freecell/types";
 import { clearGame, loadGame, saveGame } from "../game/freecell/storage";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
+import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
 
 const AUTO_STEP_MS = 120;
@@ -52,10 +53,10 @@ export default function FreeCellScreen() {
   const [showGameWin, setShowGameWin] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
-  const { play: playCardPlace } = useSound("freecell.cardPlace", 0.4);
-  const { play: playSupermove } = useSound("freecell.supermove", 0.5);
-  const { play: playFoundationComplete } = useSound("freecell.foundationComplete");
-  const { play: playGameWin } = useSound("freecell.gameWin");
+  const { play: playCardPlace } = useSound("freecell.cardPlace", FREECELL_SOUNDS, 0.4);
+  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 0.5);
+  const { play: playFoundationComplete } = useSound("freecell.foundationComplete", FREECELL_SOUNDS);
+  const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
 
   const startAutoComplete = useCallback((fromState: FreeCellState) => {
     if (autoCompletingRef.current) return;

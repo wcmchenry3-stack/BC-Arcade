@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, View, LayoutChangeEvent, Pressable } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, StyleSheet, View, LayoutChangeEvent, Pressable } from "react-native";
 import Svg, { Circle, Line as SvgLine } from "react-native-svg";
 import Animated, {
   useSharedValue,
@@ -19,6 +19,8 @@ import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitTier } from "../theme/fruitSets";
+import { useFruitImages } from "../theme/useFruitImages";
+import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine2";
 import {
   WORLD_WIDTH,
@@ -63,7 +65,7 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
 }
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
-import { SOUND_REGISTRY } from "../game/_shared/sounds";
+import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 
 const SAVE_THROTTLE_MS = 2000;
 
@@ -118,7 +120,7 @@ function useTieredMergeSound() {
 
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   useEffect(() => {
-    const source = SOUND_REGISTRY["cascade.fruitMerge"];
+    const source = CASCADE_SOUNDS["cascade.fruitMerge"];
     if (!source) return;
     const player = createAudioPlayer(source);
     playerRef.current = player;
@@ -191,6 +193,8 @@ function CascadeGame() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
+  const fruitImages = useFruitImages();
+  const assetsReady = useAssetsReady([...fruitImages.fruits, ...fruitImages.cosmos]);
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
   const [score, setScore] = useState(0);
@@ -211,7 +215,7 @@ function CascadeGame() {
 
   // Sounds
   const playFruitMerge = useTieredMergeSound();
-  const { play: playGameOver } = useSound("cascade.gameOver");
+  const { play: playGameOver } = useSound("cascade.gameOver", CASCADE_SOUNDS);
 
   const engineRef = useRef<CascadeEngine | null>(null);
   // Initialized lazily so queue and history come from the same makeQueue() call.
@@ -664,6 +668,14 @@ function CascadeGame() {
       : 0;
   scaleRef.current = scale;
 
+  if (!assetsReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" accessibilityLabel={t("common:loading")} />
+      </View>
+    );
+  }
+
   return (
     <GameShell
       title={t("game.title")}
@@ -743,6 +755,11 @@ export default function CascadeScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   canvasWrapper: {
     flex: 1,
   },
