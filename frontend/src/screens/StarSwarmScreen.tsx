@@ -274,7 +274,7 @@ export default function StarSwarmScreen() {
               onChallengingStage={playChallengingStage}
               onChallengingPerfect={handleChallengingPerfect}
               onBonusLife={handleBonusLife}
-              isPaused={isPaused}
+              isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
               width={CANVAS_W}
               height={CANVAS_H}
