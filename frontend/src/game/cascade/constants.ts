@@ -39,3 +39,6 @@ export const MERGE_POP_IMPULSE = 0.8;
 
 // Spawn selection — danger band above the overflow line that suppresses large-tier drops
 export const DANGER_STACK_MARGIN = 80; // px below OVERFLOW_LINE_Y
+
+// Combo detection — ticks (step() calls) after a drop within which merges count toward a combo
+export const COMBO_WINDOW_TICKS = 120;
