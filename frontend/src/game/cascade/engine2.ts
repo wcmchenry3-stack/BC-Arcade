@@ -21,6 +21,7 @@ import {
   PIECE_SLEEP_THRESHOLD,
   PIECE_SLEEP_MIN_FRAMES,
   MAX_SPAWN_VELOCITY,
+  COMBO_WINDOW_TICKS,
 } from "./constants";
 
 // Pixels above the overflow line where a newly dropped piece's centroid starts.
@@ -49,7 +50,8 @@ export type EngineEvent =
   | { type: "merge"; tierA: number; tierB: number; result: number; x: number; y: number }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver" }
-  | { type: "guardRailFired"; reason: string; bodyId: number };
+  | { type: "guardRailFired"; reason: string; bodyId: number }
+  | { type: "cascadeCombo"; count: number };
 
 export interface StepResult {
   events: EngineEvent[];
@@ -101,6 +103,9 @@ export class CascadeEngine {
   private _ticksSinceLastMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
   private readonly _pendingMerges = new Set<string>();
   private _accumulator = 0;
+  private _comboCount = 0;
+  private _comboTicksLeft = 0;
+  private _comboEmitted = false;
 
   constructor(_config: EngineConfig = {}) {
     this._engine = Matter.Engine.create({
@@ -239,6 +244,7 @@ export class CascadeEngine {
       events.push({ type: "merge", tierA: tier, tierB: tier, result: newTier, x: mx, y: my });
       events.push({ type: "score", delta: scoreValue, total: this._score });
       this._ticksSinceLastMerge = 0;
+      if (this._comboTicksLeft > 0) this._comboCount++;
     }
     this._pendingMerges.clear();
 
@@ -265,6 +271,19 @@ export class CascadeEngine {
       events.push({ type: "gameOver" });
     }
 
+    // Emit as soon as the threshold is reached (after all merges in this step are counted)
+    // so the screen can react immediately. Suppressed if gameOver fired in the same step.
+    if (
+      this._comboTicksLeft > 0 &&
+      this._comboCount >= 2 &&
+      !this._comboEmitted &&
+      !this._gameOver
+    ) {
+      events.push({ type: "cascadeCombo", count: this._comboCount });
+      this._comboEmitted = true;
+    }
+    if (this._comboTicksLeft > 0) this._comboTicksLeft--;
+
     return { events };
   }
 
@@ -283,6 +302,9 @@ export class CascadeEngine {
     const body = makeBody(def, x, y);
     Matter.Composite.add(this._world, body);
     this._pieces.set(body.id, { body, tier });
+    this._comboCount = 0;
+    this._comboTicksLeft = COMBO_WINDOW_TICKS;
+    this._comboEmitted = false;
   }
 
   getState(): GameState {

@@ -8,6 +8,7 @@ import {
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
   MAX_SPAWN_VELOCITY,
+  COMBO_WINDOW_TICKS,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -255,5 +256,58 @@ describe("CascadeEngine — guard rails (no silent removal)", () => {
     runSteps(engine, 300);
     // The piece must still be present — guard rail moves OOB pieces back inside, never deletes them
     expect(engine.getState().pieces).toHaveLength(1);
+  });
+});
+
+describe("CascadeEngine — cascadeCombo", () => {
+  it("single merge from one drop → no cascadeCombo event", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, 200);
+    engine.drop(0, 200);
+    const results = runSteps(engine, COMBO_WINDOW_TICKS + 50);
+    expect(allEvents(results).some((e) => e.type === "cascadeCombo")).toBe(false);
+  });
+
+  it("two merges in one combo window → cascadeCombo { count: 2 }", () => {
+    const engine = new CascadeEngine({});
+    // Two pairs dropped at different x positions — each pair merges independently in the
+    // first step (same-position collision). The last drop() resets the window; both merges
+    // are counted, so cascadeCombo fires eagerly in that same step.
+    engine.drop(0, 100);
+    engine.drop(0, 100);
+    engine.drop(0, 300);
+    engine.drop(0, 300);
+    const results = runSteps(engine, 60);
+    const comboEvent = allEvents(results).find((e) => e.type === "cascadeCombo");
+    expect(comboEvent).toMatchObject({ type: "cascadeCombo", count: 2 });
+  });
+
+  it("three merges in one combo window → cascadeCombo { count: 3 }", () => {
+    const engine = new CascadeEngine({});
+    // Three independent pairs; all merge in the first step. Validates that count
+    // accumulates across multiple pending merges before the eager emission check.
+    engine.drop(0, 100);
+    engine.drop(0, 100);
+    engine.drop(0, 200);
+    engine.drop(0, 200);
+    engine.drop(0, 300);
+    engine.drop(0, 300);
+    const results = runSteps(engine, 60);
+    const comboEvent = allEvents(results).find((e) => e.type === "cascadeCombo");
+    expect(comboEvent).toMatchObject({ type: "cascadeCombo", count: 3 });
+  });
+
+  it("cascadeCombo does not fire across two separate drop() calls", () => {
+    const engine = new CascadeEngine({});
+    // First pair merges (count=1 in first window)
+    engine.drop(0, 100);
+    engine.drop(0, 100);
+    runSteps(engine, 50);
+    // Second pair: drop() resets the window — first merge is discarded
+    engine.drop(0, 300);
+    engine.drop(0, 300);
+    const results = runSteps(engine, COMBO_WINDOW_TICKS + 50);
+    // Only second pair's merge counts in the new window: count=1 → no cascadeCombo
+    expect(allEvents(results).some((e) => e.type === "cascadeCombo")).toBe(false);
   });
 });
