@@ -302,7 +302,9 @@ export class CascadeEngine {
     this._score = score;
     this._gameOver = false;
     this._overflowTicksCount = 0;
-    this._ticksSinceLastMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
+    // Treat restore like a merge just fired so OVERFLOW_IGNORE_MERGE_TICKS of
+    // grace applies while pieces settle into their saved positions.
+    this._ticksSinceLastMerge = 0;
     this._accumulator = 0;
     this._comboCount = 0;
     this._comboTicksLeft = 0;
@@ -311,7 +313,6 @@ export class CascadeEngine {
       const def = PIECE_DEFS[tier];
       if (!def) continue;
       const body = makeBody(def, x, y);
-      Matter.Body.setVelocity(body, { x: 0, y: 0 });
       Matter.Composite.add(this._world, body);
       this._pieces.set(body.id, { body, tier });
     }

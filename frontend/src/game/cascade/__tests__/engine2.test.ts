@@ -9,6 +9,7 @@ import {
   OVERFLOW_TICKS_THRESHOLD,
   MAX_SPAWN_VELOCITY,
   COMBO_WINDOW_TICKS,
+  OVERFLOW_IGNORE_MERGE_TICKS,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -256,6 +257,70 @@ describe("CascadeEngine — guard rails (no silent removal)", () => {
     runSteps(engine, 300);
     // The piece must still be present — guard rail moves OOB pieces back inside, never deletes them
     expect(engine.getState().pieces).toHaveLength(1);
+  });
+});
+
+describe("CascadeEngine — restore", () => {
+  it("populates pieces at saved positions with correct tiers", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(
+      [
+        { tier: 0, x: 100, y: 400 },
+        { tier: 2, x: 250, y: 350 },
+      ],
+      500
+    );
+    const { pieces, score, gameOver } = engine.getState();
+    expect(pieces).toHaveLength(2);
+    expect(pieces.map((p) => p.tier).sort()).toEqual([0, 2]);
+    expect(score).toBe(500);
+    expect(gameOver).toBe(false);
+  });
+
+  it("clears any existing pieces before restoring", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(1, 200);
+    engine.drop(1, 300);
+    engine.restore([{ tier: 0, x: 150, y: 400 }], 0);
+    expect(engine.getState().pieces).toHaveLength(1);
+  });
+
+  it("restores with zero score when called with score 0", () => {
+    const engine = new CascadeEngine({});
+    engine.restore([{ tier: 0, x: 150, y: 400 }], 0);
+    expect(engine.getState().score).toBe(0);
+  });
+
+  it("silently skips pieces with an invalid tier", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(
+      [
+        { tier: 999, x: 100, y: 400 },
+        { tier: 1, x: 200, y: 400 },
+      ],
+      0
+    );
+    expect(engine.getState().pieces).toHaveLength(1);
+    expect(engine.getState().pieces[0]!.tier).toBe(1);
+  });
+
+  it("grants overflow-ignore grace period — overflow does not fire immediately after restore", () => {
+    const engine = new CascadeEngine({});
+    // Restore a pile above the overflow line
+    const aboveOverflow = OVERFLOW_LINE_Y - 20;
+    engine.restore(
+      [
+        { tier: 0, x: 150, y: aboveOverflow },
+        { tier: 1, x: 200, y: aboveOverflow - 30 },
+      ],
+      0
+    );
+    // Run fewer ticks than the ignore window — game over must NOT fire yet
+    const results: StepResult[] = [];
+    for (let i = 0; i < OVERFLOW_IGNORE_MERGE_TICKS - 1; i++) {
+      results.push(engine.step(16.67));
+    }
+    expect(allEvents(results).some((e) => e.type === "gameOver")).toBe(false);
   });
 });
 

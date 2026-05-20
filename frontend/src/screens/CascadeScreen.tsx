@@ -35,12 +35,16 @@ import ThemeSelector from "../components/cascade/ThemeSelector";
 import GameOverOverlay from "../components/cascade/GameOverOverlay";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
+import {
+  saveGame as saveCascadeGame,
+  loadGame as loadCascadeGame,
+  clearGame as clearCascadeGame,
+  type SavedState,
+} from "../game/cascade/storage2";
 
 // ---------------------------------------------------------------------------
 // Cascade v2 — screen wired to CascadeEngine (#1751, #1754).
 // ---------------------------------------------------------------------------
-
-import { saveGame as saveCascadeGame, loadGame as loadCascadeGame, clearGame as clearCascadeGame, type SavedState } from "../game/cascade/storage2";
 
 const SETTLE_TICKS = 60;
 
