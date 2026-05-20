@@ -2,7 +2,7 @@ import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
 
 const BASE_WEIGHTS: Record<number, number> = { 0: 5, 1: 4, 2: 3, 3: 2, 4: 1 };
 
-const DROUGHT_WINDOW = 10;
+export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 3;
 const STREAK_PENALTY = 0.3;

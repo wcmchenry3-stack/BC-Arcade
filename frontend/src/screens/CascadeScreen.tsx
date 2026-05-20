@@ -25,9 +25,10 @@ import {
   WORLD_HEIGHT,
   OVERFLOW_LINE_Y,
   WALL_THICKNESS,
+  DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
-import { selectNextTier } from "../game/cascade/spawnSelector2";
+import { selectNextTier, DROUGHT_WINDOW } from "../game/cascade/spawnSelector2";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
@@ -63,6 +64,7 @@ class ControlledSpawnSelector {
   next(isInDanger = false): FruitTier {
     const tier = selectNextTier(this.history, isInDanger, this.rng) as FruitTier;
     this.history.push(tier);
+    if (this.history.length > DROUGHT_WINDOW) this.history.shift();
     return tier;
   }
 }
@@ -536,7 +538,8 @@ function CascadeGame() {
       syncMarkStarted();
 
       const pieces = engineRef.current?.getState().pieces ?? [];
-      const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + 80);
+      // isInDanger shapes the piece added to the back of the queue (2 drops ahead)
+      const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
       const tier = queueRef.current.consume(isInDanger);
       setQueueVersion((v) => v + 1);
 
@@ -594,7 +597,9 @@ function CascadeGame() {
     g.__cascade_dropAt = (x: number) => {
       if (gameOverRef.current) return;
       const dangerPieces = engineRef.current?.getState().pieces ?? [];
-      const tier = queueRef.current.consume(dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + 80));
+      const tier = queueRef.current.consume(
+        dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN)
+      );
       setQueueVersion((v) => v + 1);
       engineRef.current?.drop(tier, x);
     };
