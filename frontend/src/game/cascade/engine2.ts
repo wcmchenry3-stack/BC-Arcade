@@ -293,6 +293,30 @@ export class CascadeEngine {
     this._pieces.clear();
   }
 
+  restore(pieces: ReadonlyArray<{ tier: number; x: number; y: number }>, score: number): void {
+    for (const { body } of this._pieces.values()) {
+      Matter.Composite.remove(this._world, body);
+    }
+    this._pieces.clear();
+    this._pendingMerges.clear();
+    this._score = score;
+    this._gameOver = false;
+    this._overflowTicksCount = 0;
+    this._ticksSinceLastMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
+    this._accumulator = 0;
+    this._comboCount = 0;
+    this._comboTicksLeft = 0;
+    this._comboEmitted = false;
+    for (const { tier, x, y } of pieces) {
+      const def = PIECE_DEFS[tier];
+      if (!def) continue;
+      const body = makeBody(def, x, y);
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      Matter.Composite.add(this._world, body);
+      this._pieces.set(body.id, { body, tier });
+    }
+  }
+
   drop(tier: number, x: number): void {
     if (this._gameOver) return;
     const def = PIECE_DEFS[tier];
