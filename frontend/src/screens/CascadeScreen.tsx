@@ -50,7 +50,7 @@ interface CascadeGameSnapshot {
   savedAt: number;
 }
 
-const saveCascadeGame = (_snap: CascadeGameSnapshot): Promise<void> => Promise.resolve();
+const saveCascadeGame: (snap: CascadeGameSnapshot) => Promise<void> = () => Promise.resolve();
 const loadCascadeGame = (): Promise<CascadeGameSnapshot | null> => Promise.resolve(null);
 const clearCascadeGame = (): Promise<void> => Promise.resolve();
 
