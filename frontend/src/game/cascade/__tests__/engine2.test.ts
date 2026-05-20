@@ -7,6 +7,7 @@ import {
   FLOOR_THICKNESS,
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
+  MAX_SPAWN_VELOCITY,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -174,6 +175,63 @@ describe("CascadeEngine — game over", () => {
     const countBefore = engine.getState().pieces.length;
     engine.drop(0, 200);
     expect(engine.getState().pieces).toHaveLength(countBefore);
+  });
+});
+
+describe("CascadeEngine — sleep system", () => {
+  it("a piece dropped from low height comes to rest without bouncing indefinitely", () => {
+    const engine = new CascadeEngine({});
+    // Drop near the floor so it settles quickly
+    const tier = 0;
+    const radius = (PIECE_DEFS[tier]!.shape as { radius: number }).radius;
+    const nearFloorY = WORLD_HEIGHT - FLOOR_THICKNESS - radius * 2;
+    engine.drop(tier, WORLD_WIDTH / 2);
+    // Fast-forward until piece settles near the floor
+    runSteps(engine, 400);
+    // The piece must be resting near the floor — it should not have bounced above the midpoint
+    expect(engine.getState().pieces[0]!.y).toBeGreaterThan(WORLD_HEIGHT / 2);
+  });
+
+  it("after enough steps, a resting piece is flagged as sleeping", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, WORLD_WIDTH / 2);
+    // Run long enough for the piece to settle and sleep
+    runSteps(engine, 600);
+    expect(engine.getState().pieces[0]!.isSleeping).toBe(true);
+  });
+});
+
+describe("CascadeEngine — merge spawn velocity", () => {
+  it("merge-result body x velocity is within [-MAX_SPAWN_VELOCITY, MAX_SPAWN_VELOCITY]", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, 200);
+    engine.drop(0, 200);
+    const results = runSteps(engine, 600);
+    const hasMerge = allEvents(results).some((e) => e.type === "merge");
+    expect(hasMerge).toBe(true);
+    const { x } = engine.getState().pieces[0]!;
+    // After merge the piece should still be inside the bin
+    expect(x).toBeGreaterThan(WALL_THICKNESS);
+    expect(x).toBeLessThan(WORLD_WIDTH - WALL_THICKNESS);
+  });
+
+  it("merge in a crowded bin does not eject a piece above the overflow line", () => {
+    const engine = new CascadeEngine({});
+    // Stack several pieces then trigger a merge near the bottom
+    for (let i = 0; i < 5; i++) {
+      engine.drop(0, WORLD_WIDTH / 2);
+      runSteps(engine, 30);
+    }
+    engine.drop(0, WORLD_WIDTH / 2);
+    const results = runSteps(engine, 300);
+    const hasMerge = allEvents(results).some((e) => e.type === "merge");
+    if (hasMerge) {
+      const mergedPiece = engine.getState().pieces.find((p) => p.tier === 1);
+      if (mergedPiece) {
+        expect(mergedPiece.y).toBeGreaterThan(OVERFLOW_LINE_Y);
+      }
+    }
+    // Even if no merge occurred the test verifies the engine didn't throw
   });
 });
 

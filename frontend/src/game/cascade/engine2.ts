@@ -18,6 +18,8 @@ import {
   FIXED_STEP_MS,
   MAX_SUBSTEPS,
   MERGE_POP_IMPULSE,
+  PIECE_SLEEP_MIN_FRAMES,
+  MAX_SPAWN_VELOCITY,
 } from "./constants";
 
 // Pixels above the overflow line where a newly dropped piece's centroid starts.
@@ -37,6 +39,7 @@ export interface PieceSnapshot {
   y: number;
   angle: number;
   shapeKind: "circle" | "convex";
+  isSleeping: boolean;
 }
 
 export type EngineEvent =
@@ -61,14 +64,18 @@ function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
     friction: PIECE_FRICTION,
     frictionAir: PIECE_FRICTION_AIR,
     label: "piece",
+    slop: 0.05,
   };
+  let body: Matter.Body;
   if (def.shape.kind === "circle") {
-    return Matter.Bodies.circle(x, y, def.shape.radius, opts);
+    body = Matter.Bodies.circle(x, y, def.shape.radius, opts);
+  } else {
+    const fromVerts = Matter.Bodies.fromVertices(x, y, [def.shape.vertices as Matter.Vector[]], opts);
+    body = fromVerts && fromVerts.vertices?.length
+      ? fromVerts
+      : Matter.Bodies.circle(x, y, def.shape.boundingRadius, opts);
   }
-  const body = Matter.Bodies.fromVertices(x, y, [def.shape.vertices as Matter.Vector[]], opts);
-  if (!body || !body.vertices?.length) {
-    return Matter.Bodies.circle(x, y, def.shape.boundingRadius, opts);
-  }
+  body.sleepThreshold = PIECE_SLEEP_MIN_FRAMES;
   return body;
 }
 
@@ -89,7 +96,10 @@ export class CascadeEngine {
   constructor(_config: EngineConfig = {}) {
     this._engine = Matter.Engine.create({
       gravity: { x: 0, y: GRAVITY_Y, scale: GRAVITY_SCALE },
+      enableSleeping: true,
     });
+    this._engine.positionIterations = 6;
+    this._engine.velocityIterations = 4;
     this._world = this._engine.world;
 
     Matter.Composite.add(this._world, [
@@ -200,9 +210,14 @@ export class CascadeEngine {
       merged.add(idA);
       merged.add(idB);
 
+      const mergedVx = (pA.body.velocity.x + pB.body.velocity.x) / 2;
+      const mergedVy = (pA.body.velocity.y + pB.body.velocity.y) / 2 - MERGE_POP_IMPULSE;
       const newDef = PIECE_DEFS[newTier]!;
       const newBody = makeBody(newDef, mx, my);
-      Matter.Body.setVelocity(newBody, { x: 0, y: -MERGE_POP_IMPULSE });
+      Matter.Body.setVelocity(newBody, {
+        x: Math.max(-MAX_SPAWN_VELOCITY, Math.min(MAX_SPAWN_VELOCITY, mergedVx)),
+        y: Math.max(-MAX_SPAWN_VELOCITY, Math.min(MAX_SPAWN_VELOCITY, mergedVy)),
+      });
       Matter.Composite.add(this._world, newBody);
       this._pieces.set(newBody.id, { body: newBody, tier: newTier });
 
@@ -265,6 +280,7 @@ export class CascadeEngine {
       y: body.position.y,
       angle: body.angle,
       shapeKind: PIECE_DEFS[tier]!.shape.kind,
+      isSleeping: body.isSleeping,
     }));
     return { pieces, score: this._score, gameOver: this._gameOver };
   }

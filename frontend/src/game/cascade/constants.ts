@@ -10,11 +10,21 @@ export const GRAVITY_Y = 5.0;
 export const GRAVITY_SCALE = 0.001; // Matter.js v0.20 gravity.scale fix
 
 // Piece physics defaults
-export const PIECE_RESTITUTION = 0.3;
+export const PIECE_RESTITUTION = 0.2;
 export const PIECE_FRICTION = 0.5;
 export const PIECE_FRICTION_AIR = 0.01;
 export const PIECE_ANGULAR_DAMPING = 0.3;
 export const MAX_ANGULAR_VELOCITY = 0.3; // rad/step hard clamp
+
+// Sleep system — prevents microscopic wiggling on resting pieces
+export const PIECE_SLEEP_THRESHOLD = 0.08; // motion = speed² + angularSpeed²; maps to Matter.Sleeping._motionSleepThreshold
+export const PIECE_SLEEP_MIN_FRAMES = 10; // frames below threshold before sleeping; maps to body.sleepThreshold
+
+// Anti-jitter — restitution threshold below which impact is treated as e=0
+export const PIECE_RESTITUTION_THRESHOLD = 0.001;
+
+// CCD / spawn-overlap clamping — prevents explosive ejection on merge spawn
+export const MAX_SPAWN_VELOCITY = 3; // px per frame
 
 // Simulation
 export const FIXED_STEP_MS = 1000 / 60;
