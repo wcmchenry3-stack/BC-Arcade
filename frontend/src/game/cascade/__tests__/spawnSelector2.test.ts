@@ -1,11 +1,11 @@
 import { selectNextTier, DROUGHT_WINDOW } from "../spawnSelector2";
 import { DROPPABLE_PIECE_TIERS } from "../pieceDefs";
 
-function sampleN(n: number, history: number[] = [], danger = false): number[] {
+function sampleN(n: number, history: number[] = [], danger = false, rng?: () => number): number[] {
   const results: number[] = [];
   const running = [...history];
   for (let i = 0; i < n; i++) {
-    const t = selectNextTier(running, danger);
+    const t = selectNextTier(running, danger, rng);
     results.push(t);
     running.push(t);
   }
@@ -70,15 +70,20 @@ describe("selectNextTier — drought guard", () => {
 });
 
 describe("selectNextTier — anti-streak", () => {
+  // The selector hard-bans a tier after STREAK_WINDOW (4) consecutive picks,
+  // so this is a guaranteed property — verified with 50 deterministic seeds.
   it("same tier is not selected more than 4 times consecutively", () => {
-    const results = sampleN(500);
-    let streak = 1;
-    for (let i = 1; i < results.length; i++) {
-      if (results[i] === results[i - 1]) {
-        streak++;
-        expect(streak).toBeLessThanOrEqual(4);
-      } else {
-        streak = 1;
+    for (let seed = 1; seed <= 50; seed++) {
+      const rng = seededRng(seed);
+      const results = sampleN(500, [], false, rng);
+      let streak = 1;
+      for (let i = 1; i < results.length; i++) {
+        if (results[i] === results[i - 1]) {
+          streak++;
+          expect(streak).toBeLessThanOrEqual(4);
+        } else {
+          streak = 1;
+        }
       }
     }
   });

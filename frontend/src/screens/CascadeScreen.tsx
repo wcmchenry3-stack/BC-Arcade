@@ -35,25 +35,18 @@ import ThemeSelector from "../components/cascade/ThemeSelector";
 import GameOverOverlay from "../components/cascade/GameOverOverlay";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
+import {
+  saveGame as saveCascadeGame,
+  loadGame as loadCascadeGame,
+  clearGame as clearCascadeGame,
+  type SavedState,
+} from "../game/cascade/storage2";
 
 // ---------------------------------------------------------------------------
-// Cascade v2 — screen wired to CascadeEngine (#1751).
-// Storage stubs remain pending full persistence implementation.
+// Cascade v2 — screen wired to CascadeEngine (#1751, #1754).
 // ---------------------------------------------------------------------------
 
-interface CascadeGameSnapshot {
-  version: number;
-  score: number;
-  gameOver: boolean;
-  fruitSetId: string;
-  queueTiers: [number, number];
-  fruits: { tier: number; x: number; y: number }[];
-  savedAt: number;
-}
-
-const saveCascadeGame: (snap: CascadeGameSnapshot) => Promise<void> = () => Promise.resolve();
-const loadCascadeGame = (): Promise<CascadeGameSnapshot | null> => Promise.resolve(null);
-const clearCascadeGame = (): Promise<void> => Promise.resolve();
+const SETTLE_TICKS = 60;
 
 class ControlledSpawnSelector {
   private readonly rng: () => number;
@@ -283,6 +276,7 @@ function CascadeGame() {
   const mergeCountRef = useRef(0);
 
   const lastSaveTimeRef = useRef<number>(0);
+  const settlingTicksLeftRef = useRef<number>(0);
 
   // For merge burst position calculation
   const scaleRef = useRef(0);
@@ -332,21 +326,15 @@ function CascadeGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load any saved game on mount (stubs — always resolves null currently).
+  // Load any saved game on mount and restore engine state.
   useEffect(() => {
     let active = true;
     loadCascadeGame().then((snapshot) => {
-      if (!active || !snapshot) return;
-      if (snapshot.fruitSetId !== activeFruitSetRef.current.id) {
-        clearCascadeGame().catch(() => {});
-        return;
-      }
+      if (!active || !snapshot || snapshot.pieces.length === 0) return;
+      engineRef.current?.restore(snapshot.pieces, snapshot.score);
       scoreRef.current = snapshot.score;
       setScore(snapshot.score);
-      if (snapshot.gameOver) {
-        gameOverRef.current = true;
-        setGameOver(true);
-      }
+      settlingTicksLeftRef.current = SETTLE_TICKS;
     });
     return () => {
       active = false;
@@ -354,14 +342,11 @@ function CascadeGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const buildSnapshot = useCallback((): CascadeGameSnapshot => {
+  const buildSnapshot = useCallback((): SavedState => {
     return {
-      version: 1,
+      version: 2,
+      pieces: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       score: scoreRef.current,
-      gameOver: gameOverRef.current,
-      fruitSetId: activeFruitSetRef.current.id,
-      queueTiers: [queueRef.current.peek(), queueRef.current.peekNext()],
-      fruits: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       savedAt: Date.now(),
     };
   }, []);
@@ -392,6 +377,7 @@ function CascadeGame() {
       setPieces([]);
       setQueueVersion((v) => v + 1);
       clearCascadeGame().catch(() => {});
+      settlingTicksLeftRef.current = 0;
       setGameKey((k) => k + 1);
       startInstrumentedSession(activeFruitSet.id);
     }
@@ -485,6 +471,8 @@ function CascadeGame() {
       const delta = Math.min(now - last, 100);
       last = now;
 
+      if (settlingTicksLeftRef.current > 0) settlingTicksLeftRef.current--;
+
       const result = engine.step(delta);
       const state = engine.getState();
 
@@ -526,9 +514,9 @@ function CascadeGame() {
       const now = Date.now();
       const interval = now - lastDropTimeRef.current;
 
-      if (gameOver || droppingRef.current) {
+      if (gameOver || droppingRef.current || settlingTicksLeftRef.current > 0) {
         console.log(
-          `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} intervalMs=${interval}`
+          `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} intervalMs=${interval}`
         );
         return;
       }
@@ -658,6 +646,7 @@ function CascadeGame() {
     setQueueVersion((v) => v + 1);
     clearCascadeGame().catch(() => {});
     lastSaveTimeRef.current = 0;
+    settlingTicksLeftRef.current = 0;
     setGameKey((k) => k + 1);
     startInstrumentedSession(activeFruitSetRef.current.id);
     pushScoreboardSnapshot();
