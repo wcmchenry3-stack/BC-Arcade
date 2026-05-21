@@ -166,10 +166,14 @@ function PieceRenderer({
   // Freeze the rendered position of sleeping pieces to prevent sub-pixel physics
   // drift from causing visible jitter on settled pieces.
   const frozenPositions = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const activeIds = new Set(pieces.map((p) => p.id));
-  for (const id of frozenPositions.current.keys()) {
-    if (!activeIds.has(id)) frozenPositions.current.delete(id);
-  }
+
+  // Evict stale entries when pieces are removed (merge, game-over reset).
+  useEffect(() => {
+    const activeIds = new Set(pieces.map((p) => p.id));
+    for (const id of frozenPositions.current.keys()) {
+      if (!activeIds.has(id)) frozenPositions.current.delete(id);
+    }
+  }, [pieces]);
 
   return (
     <Svg

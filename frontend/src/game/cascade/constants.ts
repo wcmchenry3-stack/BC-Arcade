@@ -37,6 +37,10 @@ export const OVERFLOW_IGNORE_MERGE_TICKS = 60;
 // Merge behavior
 export const MERGE_POP_IMPULSE = 0.4;
 
+// Guard rail — horizontal tolerance (px) before firing; prevents triggering on wall-contact bodies.
+// No tolerance is applied to the floor: falling pieces should be caught immediately.
+export const GUARD_RAIL_HORIZONTAL_TOLERANCE = 1;
+
 // Spawn selection — danger band above the overflow line that suppresses large-tier drops
 export const DANGER_STACK_MARGIN = 80; // px below OVERFLOW_LINE_Y
 
