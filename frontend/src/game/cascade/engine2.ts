@@ -193,7 +193,9 @@ export class CascadeEngine {
       const bx = body.position.x;
       const by = body.position.y;
 
-      if (!isFinite(bx) || !isFinite(by) || bx < minX || bx > maxX || by > maxY) {
+      // 1px tolerance prevents triggering on bodies legitimately resting against the wall.
+      const GUARD_TOLERANCE = 1;
+      if (!isFinite(bx) || !isFinite(by) || bx < minX - GUARD_TOLERANCE || bx > maxX + GUARD_TOLERANCE || by > maxY + GUARD_TOLERANCE) {
         Matter.Body.setPosition(body, {
           x: Math.max(minX, Math.min(maxX, isFinite(bx) ? bx : WORLD_WIDTH / 2)),
           y: Math.min(maxY, isFinite(by) ? by : WORLD_HEIGHT / 2),

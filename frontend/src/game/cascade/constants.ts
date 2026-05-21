@@ -6,7 +6,7 @@ export const FLOOR_THICKNESS = 20;
 export const OVERFLOW_LINE_Y = 80; // y from top; game-over trigger line
 
 // Matter.js physics
-export const GRAVITY_Y = 5.0;
+export const GRAVITY_Y = 2.5;
 export const GRAVITY_SCALE = 0.001; // Matter.js v0.20 gravity.scale fix
 
 // Piece physics defaults
@@ -35,7 +35,7 @@ export const OVERFLOW_TICKS_THRESHOLD = 180;
 export const OVERFLOW_IGNORE_MERGE_TICKS = 60;
 
 // Merge behavior
-export const MERGE_POP_IMPULSE = 0.8;
+export const MERGE_POP_IMPULSE = 0.4;
 
 // Spawn selection — danger band above the overflow line that suppresses large-tier drops
 export const DANGER_STACK_MARGIN = 80; // px below OVERFLOW_LINE_Y
