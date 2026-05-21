@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { Text } from "react-native";
 import { act, render, waitFor } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
+import { PREFETCH_CONCURRENCY } from "../lazyScreens";
 
 // The HomeScreen wiring around prefetch is covered by HomeScreen.test.tsx.
 // This file exercises lazyScreens.ts in isolation and the mount-timer path
@@ -36,8 +37,7 @@ jest.mock("../../screens/SettingsScreen", () => ({ __esModule: true, default: ()
 // ---------------------------------------------------------------------------
 
 describe("runThrottled concurrency (#1788)", () => {
-  it("runs at most 3 tasks concurrently and drains to completion", async () => {
-    const CONCURRENCY = 3;
+  it("runs at most PREFETCH_CONCURRENCY tasks concurrently and drains to completion", async () => {
     let peak = 0;
     let running = 0;
     const settlers: Array<() => void> = [];
@@ -45,7 +45,7 @@ describe("runThrottled concurrency (#1788)", () => {
     const makeTask = () => () =>
       new Promise<void>((resolve) => {
         running++;
-        if (running > peak) peak = running;
+        peak = Math.max(peak, running);
         settlers.push(() => {
           running--;
           resolve();
@@ -57,12 +57,18 @@ describe("runThrottled concurrency (#1788)", () => {
       let index = 0;
       let active = 0;
       function next(): void {
-        while (active < CONCURRENCY && index < tasks.length) {
+        while (active < PREFETCH_CONCURRENCY && index < tasks.length) {
           active++;
           const task = tasks[index++];
           task().then(
-            () => { active--; next(); },
-            () => { active--; next(); },
+            () => {
+              active--;
+              next();
+            },
+            () => {
+              active--;
+              next();
+            }
           );
         }
       }
@@ -71,9 +77,9 @@ describe("runThrottled concurrency (#1788)", () => {
 
     runThrottled(Array.from({ length: 9 }, makeTask));
 
-    // After the synchronous burst, exactly CONCURRENCY tasks are in-flight.
-    expect(peak).toBe(CONCURRENCY);
-    expect(running).toBe(CONCURRENCY);
+    // After the synchronous burst, exactly PREFETCH_CONCURRENCY tasks are in-flight.
+    expect(peak).toBe(PREFETCH_CONCURRENCY);
+    expect(running).toBe(PREFETCH_CONCURRENCY);
 
     // Drain all tasks one batch at a time.
     while (settlers.length > 0) {
@@ -83,7 +89,7 @@ describe("runThrottled concurrency (#1788)", () => {
     }
 
     expect(running).toBe(0);
-    expect(peak).toBe(CONCURRENCY);
+    expect(peak).toBe(PREFETCH_CONCURRENCY);
   });
 });
 

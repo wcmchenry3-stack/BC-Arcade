@@ -61,7 +61,7 @@ const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
 // Max simultaneous Metro bundle requests. Windows Node.js defaults to 512 fds;
 // PR #1777 split sounds/images into per-game modules so each lazy chunk opens
 // more files than before. Capping at 3 prevents EMFILE on Windows (#1788).
-const PREFETCH_CONCURRENCY = 3;
+export const PREFETCH_CONCURRENCY = 3;
 
 function runThrottled(tasks: Array<() => Promise<unknown>>): void {
   let index = 0;
@@ -72,8 +72,14 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
       running++;
       const task = tasks[index++];
       task().then(
-        () => { running--; next(); },
-        () => { running--; next(); },
+        () => {
+          running--;
+          next();
+        },
+        () => {
+          running--;
+          next();
+        }
       );
     }
   }
@@ -92,7 +98,9 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
  * premium code (issue #1055).
  *
  * Imports are throttled to PREFETCH_CONCURRENCY to avoid EMFILE on Windows
- * where Node.js caps open file descriptors at 512 (#1788).
+ * where Node.js caps open file descriptors at 512 (#1788). In production the
+ * throttle is harmless — chunks load from CDN in the background after
+ * interaction settling, so the extra serialisation is imperceptible.
  */
 export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): void {
   const tasks: Array<() => Promise<unknown>> = [
@@ -102,9 +110,7 @@ export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): vo
     factories.FreeCell,
     factories.Mahjong,
     factories.DailyWord,
-    ...PREMIUM_LAZY
-      .filter(([, slug]) => canPlay(slug))
-      .map(([key]) => factories[key]),
+    ...PREMIUM_LAZY.filter(([, slug]) => canPlay(slug)).map(([key]) => factories[key]),
   ];
   runThrottled(tasks);
 }
