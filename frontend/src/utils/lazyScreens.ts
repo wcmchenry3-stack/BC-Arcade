@@ -58,6 +58,29 @@ const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
   ["Sort", "sort"],
 ];
 
+// Max simultaneous Metro bundle requests. Windows Node.js defaults to 512 fds;
+// PR #1777 split sounds/images into per-game modules so each lazy chunk opens
+// more files than before. Capping at 3 prevents EMFILE on Windows (#1788).
+const PREFETCH_CONCURRENCY = 3;
+
+function runThrottled(tasks: Array<() => Promise<unknown>>): void {
+  let index = 0;
+  let running = 0;
+
+  function next(): void {
+    while (running < PREFETCH_CONCURRENCY && index < tasks.length) {
+      running++;
+      const task = tasks[index++];
+      task().then(
+        () => { running--; next(); },
+        () => { running--; next(); },
+      );
+    }
+  }
+
+  next();
+}
+
 /**
  * Fire-and-forget prefetch of lobby game chunks. Called from HomeScreen after
  * interactions settle so the Suspense fallback doesn't flash when the user
@@ -67,18 +90,21 @@ const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
  * Free game chunks are always prefetched. Premium chunks are only prefetched
  * when canPlay returns true for that slug so unentitled sessions never receive
  * premium code (issue #1055).
+ *
+ * Imports are throttled to PREFETCH_CONCURRENCY to avoid EMFILE on Windows
+ * where Node.js caps open file descriptors at 512 (#1788).
  */
 export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): void {
-  factories.BlackjackBetting().catch(() => undefined);
-  factories.Twenty48().catch(() => undefined);
-  factories.Solitaire().catch(() => undefined);
-  factories.FreeCell().catch(() => undefined);
-  factories.Mahjong().catch(() => undefined);
-  factories.DailyWord().catch(() => undefined);
-
-  for (const [key, slug] of PREMIUM_LAZY) {
-    if (canPlay(slug)) {
-      factories[key]().catch(() => undefined);
-    }
-  }
+  const tasks: Array<() => Promise<unknown>> = [
+    factories.BlackjackBetting,
+    factories.Twenty48,
+    factories.Solitaire,
+    factories.FreeCell,
+    factories.Mahjong,
+    factories.DailyWord,
+    ...PREMIUM_LAZY
+      .filter(([, slug]) => canPlay(slug))
+      .map(([key]) => factories[key]),
+  ];
+  runThrottled(tasks);
 }

@@ -27,6 +27,66 @@ jest.mock("../../screens/LeaderboardScreen", () => ({ __esModule: true, default:
 jest.mock("../../screens/GameDetailScreen", () => ({ __esModule: true, default: () => null }));
 jest.mock("../../screens/SettingsScreen", () => ({ __esModule: true, default: () => null }));
 
+// ---------------------------------------------------------------------------
+// Throttle algorithm unit test (#1788 regression)
+//
+// The factories in lazyScreens.ts are module-private, so we can't spy on
+// them directly. Instead we test the throttle algorithm in isolation —
+// same logic, self-contained — to verify the concurrency ceiling holds.
+// ---------------------------------------------------------------------------
+
+describe("runThrottled concurrency (#1788)", () => {
+  it("runs at most 3 tasks concurrently and drains to completion", async () => {
+    const CONCURRENCY = 3;
+    let peak = 0;
+    let running = 0;
+    const settlers: Array<() => void> = [];
+
+    const makeTask = () => () =>
+      new Promise<void>((resolve) => {
+        running++;
+        if (running > peak) peak = running;
+        settlers.push(() => {
+          running--;
+          resolve();
+        });
+      });
+
+    // Mirror of runThrottled from lazyScreens.ts
+    function runThrottled(tasks: Array<() => Promise<unknown>>): void {
+      let index = 0;
+      let active = 0;
+      function next(): void {
+        while (active < CONCURRENCY && index < tasks.length) {
+          active++;
+          const task = tasks[index++];
+          task().then(
+            () => { active--; next(); },
+            () => { active--; next(); },
+          );
+        }
+      }
+      next();
+    }
+
+    runThrottled(Array.from({ length: 9 }, makeTask));
+
+    // After the synchronous burst, exactly CONCURRENCY tasks are in-flight.
+    expect(peak).toBe(CONCURRENCY);
+    expect(running).toBe(CONCURRENCY);
+
+    // Drain all tasks one batch at a time.
+    while (settlers.length > 0) {
+      const batch = settlers.splice(0);
+      batch.forEach((s) => s());
+      await Promise.resolve();
+    }
+
+    expect(running).toBe(0);
+    expect(peak).toBe(CONCURRENCY);
+  });
+});
+
 describe("prefetchLobbyGameScreens", () => {
   it("resolves without throwing when called repeatedly", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
