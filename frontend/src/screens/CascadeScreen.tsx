@@ -92,8 +92,8 @@ function MergeBurst({ x, y, color, onDone }: MergeBurstData & { onDone: () => vo
   const opacity = useSharedValue(0.75);
 
   useEffect(() => {
-    scale.value = withSpring(2.2, { damping: 6, stiffness: 50 });
-    opacity.value = withTiming(0, { duration: 550 }, (finished) => {
+    scale.value = withSpring(2.2, { damping: 9, stiffness: 25 });
+    opacity.value = withTiming(0, { duration: 1100 }, (finished) => {
       if (finished) runOnJS(onDone)();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +163,18 @@ function PieceRenderer({
   scale: number;
   overflowLineColor: string;
 }) {
+  // Freeze the rendered position of sleeping pieces to prevent sub-pixel physics
+  // drift from causing visible jitter on settled pieces.
+  const frozenPositions = useRef<Map<number, { x: number; y: number }>>(new Map());
+
+  // Evict stale entries when pieces are removed (merge, game-over reset).
+  useEffect(() => {
+    const activeIds = new Set(pieces.map((p) => p.id));
+    for (const id of frozenPositions.current.keys()) {
+      if (!activeIds.has(id)) frozenPositions.current.delete(id);
+    }
+  }, [pieces]);
+
   return (
     <Svg
       width={WORLD_WIDTH * scale}
@@ -185,7 +197,17 @@ function PieceRenderer({
         const def = PIECE_DEFS[piece.tier];
         if (!def) return null;
         const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
-        return <Circle key={piece.id} cx={piece.x} cy={piece.y} r={r} fill={def.color} />;
+
+        if (piece.isSleeping) {
+          if (!frozenPositions.current.has(piece.id)) {
+            frozenPositions.current.set(piece.id, { x: piece.x, y: piece.y });
+          }
+        } else {
+          frozenPositions.current.delete(piece.id);
+        }
+        const pos = frozenPositions.current.get(piece.id) ?? piece;
+
+        return <Circle key={piece.id} cx={pos.x} cy={pos.y} r={r} fill={def.color} />;
       })}
     </Svg>
   );
@@ -493,7 +515,7 @@ function CascadeGame() {
         } else if (ev.type === "gameOver") {
           onGameOverRef.current();
         } else if (ev.type === "guardRailFired") {
-          console.log(`[Cascade] guard rail: ${ev.reason} body=${ev.bodyId}`);
+          if (__DEV__) console.log(`[Cascade] guard rail: ${ev.reason} body=${ev.bodyId}`);
         }
         // "score" event — score is read from state above; no separate handling needed.
       }

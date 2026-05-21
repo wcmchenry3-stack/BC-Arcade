@@ -18,6 +18,7 @@ import {
   FIXED_STEP_MS,
   MAX_SUBSTEPS,
   MERGE_POP_IMPULSE,
+  GUARD_RAIL_HORIZONTAL_TOLERANCE,
   PIECE_SLEEP_THRESHOLD,
   PIECE_SLEEP_MIN_FRAMES,
   MAX_SPAWN_VELOCITY,
@@ -193,7 +194,13 @@ export class CascadeEngine {
       const bx = body.position.x;
       const by = body.position.y;
 
-      if (!isFinite(bx) || !isFinite(by) || bx < minX || bx > maxX || by > maxY) {
+      if (
+        !isFinite(bx) ||
+        !isFinite(by) ||
+        bx < minX - GUARD_RAIL_HORIZONTAL_TOLERANCE ||
+        bx > maxX + GUARD_RAIL_HORIZONTAL_TOLERANCE ||
+        by > maxY
+      ) {
         Matter.Body.setPosition(body, {
           x: Math.max(minX, Math.min(maxX, isFinite(bx) ? bx : WORLD_WIDTH / 2)),
           y: Math.min(maxY, isFinite(by) ? by : WORLD_HEIGHT / 2),

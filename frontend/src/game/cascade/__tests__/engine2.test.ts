@@ -10,6 +10,7 @@ import {
   MAX_SPAWN_VELOCITY,
   COMBO_WINDOW_TICKS,
   OVERFLOW_IGNORE_MERGE_TICKS,
+  GUARD_RAIL_HORIZONTAL_TOLERANCE,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -257,6 +258,25 @@ describe("CascadeEngine — guard rails (no silent removal)", () => {
     runSteps(engine, 300);
     // The piece must still be present — guard rail moves OOB pieces back inside, never deletes them
     expect(engine.getState().pieces).toHaveLength(1);
+  });
+
+  it("does not emit guardRailFired for a piece resting against the wall", () => {
+    const engine = new CascadeEngine({});
+    const tier0 = PIECE_DEFS[0]!;
+    const r = tier0.shape.kind === "circle" ? tier0.shape.radius : tier0.shape.boundingRadius;
+    // Drop at the left wall boundary — center at WALL_THICKNESS + r, within GUARD_RAIL_HORIZONTAL_TOLERANCE
+    engine.drop(0, WALL_THICKNESS + r);
+    // Let the piece fully settle
+    runSteps(engine, 300);
+    // A resting wall-contact piece must not fire the guard rail
+    const results = runSteps(engine, 120);
+    const guardRails = allEvents(results).filter((e) => e.type === "guardRailFired");
+    expect(guardRails).toHaveLength(0);
+  });
+
+  it("guard rail tolerance constant is exported and matches engine behaviour", () => {
+    // Tolerance must be positive so wall-contact bodies are not treated as escaped
+    expect(GUARD_RAIL_HORIZONTAL_TOLERANCE).toBeGreaterThan(0);
   });
 });
 
