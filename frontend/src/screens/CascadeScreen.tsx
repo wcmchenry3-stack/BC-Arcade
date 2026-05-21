@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Modal,
+  ScrollView,
   StyleSheet,
+  Text,
   View,
   LayoutChangeEvent,
   Pressable,
@@ -22,6 +25,13 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { createAudioPlayer } from "expo-audio";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import {
+  DEV_ACCENT,
+  DEV_ACCENT_DIM,
+  DEV_ACCENT_BORDER,
+  DEV_OVERLAY_BG,
+  DEV_SURFACE_SUBTLE,
+} from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
@@ -43,6 +53,7 @@ import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import GameOverOverlay from "../components/cascade/GameOverOverlay";
+import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
 import {
@@ -227,6 +238,7 @@ function CascadeGame() {
   const assetsReady = useAssetsReady([...fruitImages.fruits, ...fruitImages.cosmos]);
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -772,6 +784,89 @@ function CascadeGame() {
           )}
         </>
       )}
+
+      {__DEV__ && (
+        <Pressable style={styles.devButton} onPress={() => setDevPanelOpen(true)}>
+          <Text style={styles.devButtonText}>DEV</Text>
+        </Pressable>
+      )}
+
+      {__DEV__ && (
+        <Modal
+          visible={devPanelOpen}
+          transparent
+          animationType="fade"
+          accessibilityViewIsModal
+          onRequestClose={() => setDevPanelOpen(false)}
+        >
+          <View style={styles.devOverlay}>
+            <View style={[styles.devPanel, { backgroundColor: colors.surfaceHigh }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.devScrollContent}
+              >
+                <Text style={styles.devTitle}>Cascade Dev Panel</Text>
+
+                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
+                  ── Engine Pieces ──
+                </Text>
+                <Text style={[styles.devHint, { color: colors.textMuted }]}>
+                  Spawns at canvas center · tiers 0–{PIECE_DEFS.length - 1}
+                </Text>
+
+                {PIECE_DEFS.map((def) => {
+                  const r =
+                    def.shape.kind === "circle"
+                      ? def.shape.radius
+                      : def.shape.boundingRadius;
+                  return (
+                    <View key={def.tier} style={styles.devTierRow}>
+                      <View style={[styles.devSwatch, { backgroundColor: def.color }]} />
+                      <Text style={[styles.devTierLabel, { color: colors.text }]}>
+                        {def.tier} · {def.label}
+                      </Text>
+                      <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>
+                        r={r}
+                      </Text>
+                      <Pressable
+                        style={styles.devSpawnBtn}
+                        onPress={() => {
+                          engineRef.current?.drop(def.tier, WORLD_WIDTH / 2);
+                        }}
+                      >
+                        <Text style={styles.devSpawnText}>Spawn</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+
+                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
+                  ── Active Set: {activeFruitSet.label} ──
+                </Text>
+
+                {activeFruitSet.fruits.map((fruit) => (
+                  <View key={fruit.tier} style={styles.devTierRow}>
+                    <FruitGlyph fruit={fruit} size={32} />
+                    <Text style={[styles.devTierLabel, { color: colors.text }]}>
+                      {fruit.tier} · {fruit.name}
+                    </Text>
+                    <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>
+                      {fruit.emoji}
+                    </Text>
+                  </View>
+                ))}
+
+                <Pressable
+                  style={[styles.devActionBtn, { backgroundColor: DEV_SURFACE_SUBTLE }]}
+                  onPress={() => setDevPanelOpen(false)}
+                >
+                  <Text style={[styles.devActionText, { color: colors.textMuted }]}>Close</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
     </GameShell>
   );
 }
@@ -804,5 +899,99 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     opacity: 0.95,
     overflow: "hidden",
+  },
+  // DEV panel
+  devButton: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: DEV_ACCENT_DIM,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    zIndex: 100,
+  },
+  devButtonText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  devOverlay: {
+    flex: 1,
+    backgroundColor: DEV_OVERLAY_BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  devPanel: {
+    borderRadius: 12,
+    padding: 20,
+    width: 340,
+    maxHeight: "85%",
+    borderWidth: 1,
+    borderColor: DEV_ACCENT_BORDER,
+  },
+  devScrollContent: {
+    gap: 10,
+  },
+  devTitle: {
+    color: DEV_ACCENT,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 2,
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
+  devSectionHeader: {
+    fontSize: 10,
+    letterSpacing: 1,
+    textAlign: "center",
+    marginTop: 4,
+  },
+  devHint: {
+    fontSize: 11,
+    textAlign: "center",
+  },
+  devTierRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  devSwatch: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    flexShrink: 0,
+  },
+  devTierLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  devTierMeta: {
+    fontSize: 11,
+    minWidth: 32,
+    textAlign: "right",
+  },
+  devSpawnBtn: {
+    backgroundColor: DEV_ACCENT_DIM,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  devSpawnText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  devActionBtn: {
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  devActionText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

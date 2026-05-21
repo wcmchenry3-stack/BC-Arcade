@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="body" cx="37%" cy="30%" r="68%" fx="37%" fy="30%">
+      <stop offset="0%"   stop-color="#fde68a"/>
+      <stop offset="35%"  stop-color="#d97706"/>
+      <stop offset="75%"  stop-color="#92400e"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.32)"/>
+    </radialGradient>
+    <radialGradient id="s1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.90)"/>
+      <stop offset="60%"  stop-color="rgba(255,255,255,0.30)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <radialGradient id="s2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.70)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <clipPath id="clip"><circle cx="256" cy="256" r="210"/></clipPath>
+  </defs>
+
+  <circle cx="256" cy="256" r="210" fill="url(#body)"/>
+  <circle cx="256" cy="256" r="210" fill="url(#rim)"/>
+
+  <ellipse cx="183" cy="168" rx="66" ry="46" transform="rotate(-28 183 168)" fill="url(#s1)"/>
+  <ellipse cx="160" cy="192" rx="22" ry="14" transform="rotate(-28 160 192)" fill="url(#s2)" opacity="0.65"/>
+
+  <!-- diamond crosshatch pattern (clipped to sphere) -->
+  <g clip-path="url(#clip)" opacity="0.30">
+    <line x1="46"  y1="46"  x2="466" y2="466" stroke="#78350f" stroke-width="10"/>
+    <line x1="136" y1="46"  x2="512" y2="422" stroke="#78350f" stroke-width="10"/>
+    <line x1="0"   y1="136" x2="422" y2="512" stroke="#78350f" stroke-width="10"/>
+    <line x1="466" y1="46"  x2="46"  y2="466" stroke="#78350f" stroke-width="10"/>
+    <line x1="376" y1="46"  x2="0"   y2="422" stroke="#78350f" stroke-width="10"/>
+    <line x1="512" y1="136" x2="90"  y2="512" stroke="#78350f" stroke-width="10"/>
+    <line x1="46"  y1="256" x2="466" y2="256" stroke="#78350f" stroke-width="8"/>
+    <line x1="46"  y1="170" x2="466" y2="170" stroke="#78350f" stroke-width="8"/>
+    <line x1="46"  y1="342" x2="466" y2="342" stroke="#78350f" stroke-width="8"/>
+  </g>
+  <circle cx="210" cy="286" r="22" fill="#2a0e00"/>
+  <circle cx="217" cy="278" r="8" fill="white"/>
+  <circle cx="302" cy="286" r="22" fill="#2a0e00"/>
+  <circle cx="309" cy="278" r="8" fill="white"/>
+  <path d="M 220 322 Q 256 352 292 322" stroke="#2a0e00" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <!-- crown spikes -->
+  <g fill="#15803d">
+    <polygon points="256,10 248,60 264,60"/>
+    <polygon points="222,18 220,68 236,64"/>
+    <polygon points="290,18 292,68 276,64"/>
+    <polygon points="192,36 196,84 210,76"/>
+    <polygon points="320,36 316,84 302,76"/>
+  </g>
+</svg>
