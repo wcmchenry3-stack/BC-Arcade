@@ -17,25 +17,14 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   createAudioPlayer,
   useAudioPlaylist,
   useAudioPlaylistStatus,
   type AudioPlayer,
 } from "expo-audio";
-import {
-  AudioBufferSourceNode,
-  AudioContext,
-  GainNode,
-} from "react-native-audio-api";
+import { AudioBufferSourceNode, AudioContext, GainNode } from "react-native-audio-api";
 
 // Test track: shortest bundled BGM (~4.8 MB), loops fastest — most likely to expose a gap.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -73,7 +62,12 @@ function ApproachA() {
     setPlaying(false);
   }, []);
 
-  useEffect(() => () => { playerRef.current?.remove(); }, []);
+  useEffect(
+    () => () => {
+      playerRef.current?.remove();
+    },
+    []
+  );
 
   return (
     <SectionCard
@@ -98,27 +92,32 @@ function ApproachB() {
     loop: "single",
   });
   const status = useAudioPlaylistStatus(playlist);
-  const playingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
+  const [loopCount, setLoopCount] = useState(0);
+
+  // didJustFinish pulses true for one status update on every loop completion.
+  // currentIndex stays 0 for a single-item playlist, so we track via this flag instead.
+  useEffect(() => {
+    if (status.didJustFinish) {
+      setLoopCount((n) => n + 1);
+    }
+  }, [status.didJustFinish]);
 
   const start = useCallback(() => {
     playlist.volume = BG_VOL;
+    setLoopCount(0);
     try {
       playlist.play();
     } catch {
       // ignore
     }
-    playingRef.current = true;
     setPlaying(true);
   }, [playlist]);
 
   const stop = useCallback(() => {
     playlist.pause();
-    playingRef.current = false;
     setPlaying(false);
   }, [playlist]);
-
-  const loopCount = status.currentIndex; // single-item playlist wraps currentIndex on loop
 
   return (
     <SectionCard
@@ -188,15 +187,22 @@ function ApproachC() {
     }
   }, [stop]);
 
-  useEffect(() => () => {
-    try { sourceRef.current?.stop(); } catch { /* ignore */ }
-    ctxRef.current?.close().catch(() => {});
-  }, []);
+  useEffect(
+    () => () => {
+      try {
+        sourceRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      ctxRef.current?.close().catch(() => {});
+    },
+    []
+  );
 
   return (
     <SectionCard
       label="C — react-native-audio-api: AudioBufferSourceNode.loop"
-      sublabel={`Decodes to PCM buffer; restarts at sample 0. Zero-gap guaranteed.\nRequires custom dev client.${status === "decoding" ? "\nDecoding…" : ""}`}
+      sublabel={`Decodes to PCM buffer; restarts at sample 0. Zero-gap guaranteed.\nRequires custom dev client.${status === "decoding" ? "\nDecoding…" : status === "ready" ? "\nDecode complete." : ""}`}
       playing={playing}
       loopCount={loopCount}
       onStart={start}
