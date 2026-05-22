@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   AppState,
   AppStateStatus,
   FlatList,
@@ -348,6 +349,30 @@ export default function SortScreen() {
     }
   }
 
+  function handleResetLevel() {
+    if (isPouring || !currentLevelId) return;
+    const level = levels.find((l) => l.id === currentLevelId);
+    if (!level) return;
+    if (pourTimerRef.current !== null) {
+      clearTimeout(pourTimerRef.current);
+      pourTimerRef.current = null;
+    }
+    setIsPouring(false);
+    setPouringFrom(null);
+    setPouringTo(null);
+    setGameState(initState(level.bottles as (Color | "")[][]));
+    setHistory([]);
+  }
+
+  function handleResetOrNew() {
+    if (isPouring) return;
+    Alert.alert(t("action.reset"), undefined, [
+      { text: t("action.resetLevel"), onPress: handleResetLevel },
+      { text: t("action.newGame"), onPress: handleBackToSelect },
+      { text: t("action.cancel"), style: "cancel" },
+    ]);
+  }
+
   function handleNextLevel() {
     const nextId = (currentLevelId ?? 0) + 1;
     const nextLevel = levels.find((l) => l.id === nextId);
@@ -627,6 +652,15 @@ export default function SortScreen() {
         </View>
 
         <View style={styles.hudActions}>
+          <Pressable
+            onPress={handleResetOrNew}
+            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
+            disabled={isPouring}
+            accessibilityRole="button"
+            accessibilityLabel={t("action.reset")}
+          >
+            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
+          </Pressable>
           <Pressable
             onPress={handleUndo}
             style={[styles.hudActionBtn, { opacity: history.length > 0 ? 1 : 0.35 }]}

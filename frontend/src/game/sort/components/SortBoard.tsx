@@ -202,6 +202,8 @@ export default function SortBoard({
     const dstBottle = stateRef.current.bottles[pouringTo];
     if (!sourceBottle) return;
 
+    // Use visual x-position (not index) so cross-row pours tilt toward the
+    // actual destination — index order breaks in multi-row grids (e.g. level 15).
     const isRight = srcPos.x < dstPos.x;
     const tiltSign: 1 | -1 = isRight ? 1 : -1;
 

@@ -71,6 +71,33 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.reset": {
+    "component": "SortScreen header",
+    "description": "Reset button label — opens a dialog to reset or start a new game.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.resetLevel": {
+    "component": "SortScreen reset dialog",
+    "description": "Alert button that restarts the current level from scratch.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.cancel": {
+    "component": "SortScreen reset dialog",
+    "description": "Alert dismiss button.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.newGame": {
     "component": "SortScreen header",
     "description": "New Game button.",
