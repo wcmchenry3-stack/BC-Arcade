@@ -24,7 +24,7 @@ import {
   useAudioPlaylistStatus,
   type AudioPlayer,
 } from "expo-audio";
-import { AudioBufferSourceNode, AudioContext, GainNode } from "react-native-audio-api";
+import { AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode } from "react-native-audio-api";
 
 // Test track: shortest bundled BGM (~4.8 MB), loops fastest — most likely to expose a gap.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -96,6 +96,8 @@ function ApproachB() {
   const [loopCount, setLoopCount] = useState(0);
 
   // didJustFinish pulses true for one status update on every loop completion.
+  // Note: this is a playlist-level event, not a per-loop-boundary callback — semantics
+  // differ from C's onLoopEnded (which fires at the exact PCM sample boundary).
   // currentIndex stays 0 for a single-item playlist, so we track via this flag instead.
   useEffect(() => {
     if (status.didJustFinish) {
@@ -141,6 +143,8 @@ function ApproachC() {
   const ctxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null); // cached PCM — decoded once, reused on every Play
+  const decodingRef = useRef(false); // prevents concurrent decodes on double-tap
   const [playing, setPlaying] = useState(false);
   const [loopCount, setLoopCount] = useState(0);
   const [status, setStatus] = useState<"idle" | "decoding" | "ready">("idle");
@@ -148,6 +152,7 @@ function ApproachC() {
   const stop = useCallback(() => {
     try {
       sourceRef.current?.stop();
+      sourceRef.current?.disconnect(); // remove from audio graph; stopped nodes still hold refs
     } catch {
       // may throw if already stopped
     }
@@ -156,9 +161,11 @@ function ApproachC() {
   }, []);
 
   const start = useCallback(async () => {
+    if (decodingRef.current) return; // guard: ignore tap while decode is in flight
     try {
       if (!ctxRef.current) {
         ctxRef.current = new AudioContext();
+        await ctxRef.current.resume(); // required on web; no-op on native
         const gain = ctxRef.current.createGain();
         gain.gain.value = BG_VOL;
         gain.connect(ctxRef.current.destination);
@@ -167,21 +174,28 @@ function ApproachC() {
 
       stop();
 
-      setStatus("decoding");
-      // decodeAudioData accepts a bundled asset number directly
-      const buffer = await ctxRef.current.decodeAudioData(TEST_TRACK);
-      setStatus("ready");
+      if (!bufferRef.current) {
+        decodingRef.current = true;
+        setStatus("decoding");
+        // decodeAudioData accepts a bundled asset number directly
+        bufferRef.current = await ctxRef.current.decodeAudioData(TEST_TRACK);
+        decodingRef.current = false;
+        setStatus("ready");
+      }
+
+      if (!gainRef.current) return; // component unmounted before AudioContext was set up
 
       const source = ctxRef.current.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = bufferRef.current;
       source.loop = true;
       source.onLoopEnded = () => setLoopCount((n) => n + 1);
-      source.connect(gainRef.current!);
+      source.connect(gainRef.current);
+      setLoopCount(0); // reset before start so any immediate onLoopEnded doesn't get wiped
       source.start(0);
       sourceRef.current = source;
       setPlaying(true);
-      setLoopCount(0);
     } catch (e) {
+      decodingRef.current = false;
       setStatus("idle");
       console.error("[AudioLibrarySpike] react-native-audio-api error:", e);
     }
@@ -191,6 +205,7 @@ function ApproachC() {
     () => () => {
       try {
         sourceRef.current?.stop();
+        sourceRef.current?.disconnect();
       } catch {
         /* ignore */
       }
