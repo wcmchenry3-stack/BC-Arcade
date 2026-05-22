@@ -168,11 +168,27 @@ export default function SortScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, currentLevelId, gameState]);
 
-  // Show win modal when the level is completed
+  // Unlock next level and show win modal as soon as the puzzle is solved.
+  // Unlocking is tied to solving, not to leaderboard submission, so players
+  // who skip score entry still progress.
   useEffect(() => {
-    if (gameState?.isComplete && !showWinModal) {
-      setShowWinModal(true);
+    if (!gameState?.isComplete || showWinModal) return;
+    setShowWinModal(true);
+    if (currentLevelId !== null) {
+      const newUnlocked = Math.min(
+        Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
+        levels.length || currentLevelId + 1
+      );
+      const updated: SortProgress = {
+        ...progressRef.current,
+        unlockedLevel: newUnlocked,
+        currentLevelId: null,
+        currentState: null,
+      };
+      setProgress(updated);
+      void saveProgress(updated);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.isComplete, showWinModal]);
 
   // ---------------------------------------------------------------------------
@@ -331,17 +347,6 @@ export default function SortScreen() {
     try {
       const entry = await sortApi.submitScore(playerName.trim(), currentLevelId);
       setWinEntry(entry);
-      const newUnlockedLevel = Math.min(
-        Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
-        levels.length || currentLevelId + 1
-      );
-      const newProgress: SortProgress = {
-        unlockedLevel: newUnlockedLevel,
-        currentLevelId: null,
-        currentState: null,
-      };
-      setProgress(newProgress);
-      void saveProgress(newProgress);
     } catch {
       setSubmitError(true);
     } finally {
