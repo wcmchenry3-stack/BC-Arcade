@@ -56,9 +56,9 @@ describe("initStarSwarm", () => {
     expect(s.phase).toBe("SwoopIn");
   });
 
-  it("returns ChallengingStage phase on wave 3", () => {
+  it("returns FreeFireZone phase on wave 3", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
   });
 
   it("spawns enemies on init", () => {
@@ -459,7 +459,7 @@ describe("Wave progression", () => {
     expect(s.wave).toBe(2);
   });
 
-  it("wave 3 is a ChallengingStage", () => {
+  it("wave 3 is a FreeFireZone", () => {
     // Fast-forward to wave 3
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
     s = advanceMs(s, 8000);
@@ -467,7 +467,7 @@ describe("Wave progression", () => {
     s = tick(s, 16, NO_INPUT); // WaveClear
     s = advanceMs(s, 3000);
     expect(s.wave).toBe(3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
   });
 
   it("score is carried over between waves", () => {
@@ -482,19 +482,19 @@ describe("Wave progression", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Challenging Stage
+// Free Fire Zone
 // ---------------------------------------------------------------------------
 
-describe("ChallengingStage", () => {
-  it("enemies in ChallengingStage do not fire", () => {
+describe("FreeFireZone", () => {
+  it("enemies in FreeFireZone do not fire", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    // ChallengingStage lasts ~5s before enemies exit; stay well within it
+    // FreeFireZone lasts ~5s before enemies exit; stay well within it
     s = advanceMs(s, 3000);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     expect(s.enemyBullets.length).toBe(0);
   });
 
-  it("hitting enemies in ChallengingStage increments challengingHits", () => {
+  it("hitting enemies in FreeFireZone increments freeFireHits", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     // Advance until at least one enemy is on-screen
     s = advanceMs(s, 1000);
@@ -516,7 +516,7 @@ describe("ChallengingStage", () => {
     };
     s = { ...s, playerBullets: [bullet] };
     s = tick(s, 16, NO_INPUT);
-    expect(s.challengingHits).toBe(1);
+    expect(s.freeFireHits).toBe(1);
   });
 
   it("transitions to WaveClear when all challenge enemies exit", () => {
@@ -774,14 +774,14 @@ describe("GameOver terminal state", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ChallengingStage — off-screen enemy cleanup (#934)
+// FreeFireZone — off-screen enemy cleanup (#934)
 // ---------------------------------------------------------------------------
 
-describe("ChallengingStage off-screen cleanup", () => {
+describe("FreeFireZone off-screen cleanup", () => {
   it("transitions to WaveClear after enemies exit without being shot", () => {
-    // Wave 3 starts as ChallengingStage; enemies follow a path to canvasH + 80
+    // Wave 3 starts as FreeFireZone; enemies follow a path to canvasH + 80
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
 
     // With 40 enemies, last enemy (idx 39) has delay = 39*400/5000 = 3.12 (×pathDuration).
     // It exits the canvas after 39*400 + 5000 = 20600 ms.
@@ -848,7 +848,7 @@ describe("Dive/circle shooting", () => {
 
   it("challenge stage enemies do not fire while attacking", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     s = advanceMs(s, 5000, NO_INPUT);
     expect(s.enemyBullets).toHaveLength(0);
   });
@@ -1442,9 +1442,9 @@ describe("Power-up engine (#980)", () => {
   });
 
   it("kill counter only increments during Playing phase", () => {
-    // ChallengingStage wave — kills should NOT increment counter
+    // FreeFireZone wave — kills should NOT increment counter
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     const target = s.enemies.find((e) => e.isAlive);
     if (!target) throw new Error("no enemy");
     const bullet: Bullet = {
@@ -1603,9 +1603,9 @@ describe("Power-up engine (#980)", () => {
     expect(s.activePowerUp).toBeNull();
   });
 
-  it("Challenging Stage spawns no power-ups (#1463 — power-ups trivialise the perfect-clear)", () => {
+  it("Free Fire Zone spawns no power-ups (#1463 — power-ups trivialise the perfect-clear)", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     expect(s.powerUps.length).toBe(0);
   });
 });
@@ -1914,9 +1914,9 @@ describe("#1031 Straggler aggression", () => {
     expect(wiggling.length).toBe(0);
   });
 
-  it("straggler does not apply during ChallengingStage", () => {
+  it("straggler does not apply during FreeFireZone", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "LieutenantJG");
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     s = advanceMs(s, 500, NO_INPUT);
     // Kill all but 2
     const alive = s.enemies.filter((e) => e.isAlive);
@@ -2300,54 +2300,54 @@ describe("#1037 Difficulty tiers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #1022 — Challenging Stage cadence (3, 7, 11, 15), 40 enemies, PERFECT bonus
+// #1022 — Free Fire Zone cadence (3, 7, 11, 15), 40 enemies, PERFECT bonus
 // ---------------------------------------------------------------------------
 
-describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
-  it("waves 3, 7, 11, 15 start as ChallengingStage (classic Galaga cadence)", () => {
+describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
+  it("waves 3, 7, 11, 15 start as FreeFireZone (classic Galaga cadence)", () => {
     for (const wave of [3, 7, 11, 15]) {
       const s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
-      expect(s.phase).toBe("ChallengingStage");
+      expect(s.phase).toBe("FreeFireZone");
     }
   });
 
-  it("waves 4, 5, 6, 8, 9, 10 do NOT start as ChallengingStage", () => {
+  it("waves 4, 5, 6, 8, 9, 10 do NOT start as FreeFireZone", () => {
     for (const wave of [4, 5, 6, 8, 9, 10]) {
       const s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
-      expect(s.phase).not.toBe("ChallengingStage");
+      expect(s.phase).not.toBe("FreeFireZone");
     }
   });
 
-  it("ChallengingStage spawns exactly 40 enemies", () => {
+  it("FreeFireZone spawns exactly 40 enemies", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("ChallengingStage");
+    expect(s.phase).toBe("FreeFireZone");
     expect(s.enemies.length).toBe(40);
   });
 
-  it("challengingPerfect is false at ChallengingStage start", () => {
+  it("freeFirePerfect is false at FreeFireZone start", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.challengingPerfect).toBe(false);
+    expect(s.freeFirePerfect).toBe(false);
   });
 
-  it("challengingPerfect is true on WaveClear when all 40 enemies were hit", () => {
+  it("freeFirePerfect is true on WaveClear when all 40 enemies were hit", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // Force all 40 hits and kill every enemy in one tick
     s = {
       ...s,
-      challengingHits: 40,
+      freeFireHits: 40,
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
-    expect(s.challengingPerfect).toBe(true);
+    expect(s.freeFirePerfect).toBe(true);
   });
 
-  it("challengingPerfect is false on WaveClear when enemies scroll off without being shot", () => {
+  it("freeFirePerfect is false on WaveClear when enemies scroll off without being shot", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
     s = advanceMs(s, 22000, NO_INPUT);
     expect(s.phase).toBe("WaveClear");
-    expect(s.challengingPerfect).toBe(false);
+    expect(s.freeFirePerfect).toBe(false);
   });
 
   it("PERFECT clears add 10,000 pts bonus at Ensign ×1 (plus 40×50 hit bonus)", () => {
@@ -2361,7 +2361,7 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
     let perfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     perfect = {
       ...perfect,
-      challengingHits: 40,
+      freeFireHits: 40,
       enemies: perfect.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     perfect = tick(perfect, 16, NO_INPUT);
@@ -2376,7 +2376,7 @@ describe("#1022 Challenging Stage cadence & PERFECT bonus", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     s = {
       ...s,
-      challengingHits: 20,
+      freeFireHits: 20,
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);

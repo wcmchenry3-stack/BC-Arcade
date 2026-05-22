@@ -16,7 +16,7 @@ export interface SfxVolumes {
   playerhit: number;
   waveclear: number;
   gameover: number;
-  challengingstage: number;
+  freefirezone: number;
   bonuslife: number;
   perfectbonus: number;
 }
@@ -31,7 +31,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   playerhit: 0.7,
   waveclear: 0.8,
   gameover: 0.8,
-  challengingstage: 0.8,
+  freefirezone: 0.8,
   bonuslife: 0.9,
   perfectbonus: 1.0,
 };
@@ -73,10 +73,10 @@ export function useStarSwarmAudio(
   const { play: playPlayerHit } = useSound("starswarm.playerhit", STARSWARM_SOUNDS, v.playerhit);
   const { play: playWaveClear } = useSound("starswarm.waveclear", STARSWARM_SOUNDS, v.waveclear);
   const { play: playGameOver } = useSound("starswarm.gameover", STARSWARM_SOUNDS, v.gameover);
-  const { play: playChallengingStage } = useSound(
-    "starswarm.challengingstage",
+  const { play: playFreeFireZone } = useSound(
+    "starswarm.freefirezone",
     STARSWARM_SOUNDS,
-    v.challengingstage
+    v.freefirezone
   );
   const { play: playBonusLife } = useSound("starswarm.bonuslife", STARSWARM_SOUNDS, v.bonuslife);
   const { play: playPerfect } = useSound(
@@ -102,7 +102,7 @@ export function useStarSwarmAudio(
     playPlayerHit,
     playWaveClear,
     playGameOver,
-    playChallengingStage,
+    playFreeFireZone,
     playBonusLife,
     playPerfect,
   };

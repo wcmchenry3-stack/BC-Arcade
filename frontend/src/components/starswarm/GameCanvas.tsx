@@ -65,9 +65,9 @@ interface Props {
   onWaveClear?: () => void;
   onLaserFire?: () => void;
   onExplosion?: () => void;
-  onChallengingStage?: () => void;
-  /** Called once when all enemies in a Challenging Stage are hit (#1022). */
-  onChallengingPerfect?: () => void;
+  onFreeFireZone?: () => void;
+  /** Called once when all enemies in a Free Fire Zone are hit (#1022). */
+  onFreeFirePerfect?: () => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   isPaused?: boolean;
@@ -102,8 +102,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onLaserFire,
       onExplosion,
-      onChallengingStage,
-      onChallengingPerfect,
+      onFreeFireZone,
+      onFreeFirePerfect,
       onBonusLife,
       onPowerUpCollect,
       isPaused = false,
@@ -143,7 +143,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in renderState must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
-    const pendingChallengingStageRef = useRef(false);
+    const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
@@ -155,8 +155,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
-    const onChallengingStageRef = useRef(onChallengingStage);
-    const onChallengingPerfectRef = useRef(onChallengingPerfect);
+    const onFreeFireZoneRef = useRef(onFreeFireZone);
+    const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
@@ -188,11 +188,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
     useEffect(() => {
-      onChallengingStageRef.current = onChallengingStage;
-    }, [onChallengingStage]);
+      onFreeFireZoneRef.current = onFreeFireZone;
+    }, [onFreeFireZone]);
     useEffect(() => {
-      onChallengingPerfectRef.current = onChallengingPerfect;
-    }, [onChallengingPerfect]);
+      onFreeFirePerfectRef.current = onFreeFirePerfect;
+    }, [onFreeFirePerfect]);
     useEffect(() => {
       onBonusLifeRef.current = onBonusLife;
     }, [onBonusLife]);
@@ -248,7 +248,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = gameRef.current.phase;
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
-      pendingChallengingStageRef.current = false;
+      pendingFreeFireZoneRef.current = false;
       setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3 });
     }, [resetTick, width, height]);
 
@@ -275,9 +275,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
             if (countdownMsRef.current === 0) {
               countdownMsRef.current = null;
-              if (pendingChallengingStageRef.current) {
-                pendingChallengingStageRef.current = false;
-                onChallengingStageRef.current?.();
+              if (pendingFreeFireZoneRef.current) {
+                pendingFreeFireZoneRef.current = false;
+                onFreeFireZoneRef.current?.();
               }
             }
           } else {
@@ -339,10 +339,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               prevActivePowerUpRef.current = nowType;
               if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
                 onWaveClearRef.current?.();
-                if (applied.challengingPerfect) onChallengingPerfectRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
               // Start countdown when WaveClear ends. Evaluated before phase callbacks so
-              // onChallengingStage fires after the countdown expires, not during it.
+              // onFreeFireZone fires after the countdown expires, not during it.
               // prevPhaseRef.current is updated below — after this check — so the WaveClear
               // guard remains valid for the full duration of this tick.
               const startingCountdown =
@@ -351,13 +351,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 applied.phase !== "GameOver";
               if (startingCountdown) countdownMsRef.current = 3000;
               if (
-                applied.phase === "ChallengingStage" &&
-                prevPhaseRef.current !== "ChallengingStage"
+                applied.phase === "FreeFireZone" &&
+                prevPhaseRef.current !== "FreeFireZone"
               ) {
                 if (startingCountdown) {
-                  pendingChallengingStageRef.current = true;
+                  pendingFreeFireZoneRef.current = true;
                 } else {
-                  onChallengingStageRef.current?.();
+                  onFreeFireZoneRef.current?.();
                 }
               }
               prevPhaseRef.current = applied.phase;
@@ -754,19 +754,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {state.phase === "WaveClear" && countdownDigit === null && (
             <View style={styles.phaseOverlay}>
               <Text style={styles.overlayTitle}>{t("phase.waveClear")}</Text>
-              {state.challengingPerfect && (
+              {state.freeFirePerfect && (
                 <Text style={styles.perfectBanner}>{t("phase.perfect")}</Text>
               )}
             </View>
           )}
 
-          {state.phase === "ChallengingStage" && countdownDigit === null && (
+          {state.phase === "FreeFireZone" && countdownDigit === null && (
             <View style={styles.phaseOverlay}>
               <Text style={[styles.overlayTitle, styles.challengingTitle]}>
-                {t("phase.challengingStage")}
+                {t("phase.freeFireZone")}
               </Text>
               <Text style={styles.overlaySubtitle}>
-                {t("phase.hits", { count: state.challengingHits })}
+                {t("phase.hits", { count: state.freeFireHits })}
               </Text>
             </View>
           )}

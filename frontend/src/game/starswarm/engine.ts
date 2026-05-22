@@ -73,14 +73,14 @@ const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
 const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 
 const WAVE_CLEAR_PAUSE = 1600; // ms
-const CHALLENGING_CLEAR_PAUSE = 2200; // ms
-const CHALLENGING_ENEMY_COUNT = 40; // classic 40-enemy Challenging Stage (#1022)
+const FREE_FIRE_CLEAR_PAUSE = 2200; // ms
+const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
-// #1463: reduced HP — challenging stage is a shooting gallery; multi-hit enemies are unkillable at speed
-const CHALLENGING_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
+// #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
+const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
 // #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
-const CHALLENGING_PATH_DURATION = 5000; // ms each enemy traverses its arc
-const CHALLENGING_STAGGER_MS = 400; // ms between successive enemy entries
+const FREE_FIRE_PATH_DURATION = 5000; // ms each enemy traverses its arc
+const FREE_FIRE_STAGGER_MS = 400; // ms between successive enemy entries
 
 const SHOOT_INTERVAL_BASE = 2600; // ms base
 const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
@@ -484,12 +484,12 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
   };
 }
 
-function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH: number): Enemy {
+function makeFreeFireEnemy(idx: number, total: number, canvasW: number, canvasH: number): Enemy {
   const tier: EnemyTier = idx % 6 === 0 ? "Boss" : idx % 3 === 0 ? "Elite" : "Grunt";
   const size = TIER_SIZE[tier];
   const path = challengePath(idx, total, canvasW, canvasH);
   const p0 = evalCubic(path, 0);
-  const delay = (idx * CHALLENGING_STAGGER_MS) / CHALLENGING_PATH_DURATION;
+  const delay = (idx * FREE_FIRE_STAGGER_MS) / FREE_FIRE_PATH_DURATION;
 
   return {
     id: nextId(),
@@ -503,7 +503,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     formationY: path.p3.y,
     path,
     pathT: -delay,
-    pathDuration: CHALLENGING_PATH_DURATION,
+    pathDuration: FREE_FIRE_PATH_DURATION,
     vel: { x: 0, y: 0 },
     circleCx: 0,
     circleCy: 0,
@@ -512,7 +512,7 @@ function makeChallengeEnemy(idx: number, total: number, canvasW: number, canvasH
     circleSpeed: CIRCLE_SPEED,
     shootTimer: 9_999_999, // never shoots
     diveTargetX: 0,
-    hp: CHALLENGING_TIER_HP[tier],
+    hp: FREE_FIRE_TIER_HP[tier],
     isAlive: true,
     hitFlashTimer: 0,
     wiggleTimer: 0,
@@ -532,7 +532,7 @@ function diveInterval(wave: number, paramScale = 1): number {
 }
 
 // Classic Galaga cadence: wave 3, then every 4th wave (3, 7, 11, 15 …) (#1022)
-function isChallengingWave(wave: number): boolean {
+function isFreeFireWave(wave: number): boolean {
   if (wave === 3) return true;
   if (wave < 3) return false;
   return (wave - 3) % 4 === 0;
@@ -629,11 +629,11 @@ function buildWaveState(
   let enemies: Enemy[];
   let phase: StarSwarmState["phase"];
 
-  if (isChallengingWave(wave)) {
-    enemies = Array.from({ length: CHALLENGING_ENEMY_COUNT }, (_, i) =>
-      makeChallengeEnemy(i, CHALLENGING_ENEMY_COUNT, canvasW, canvasH)
+  if (isFreeFireWave(wave)) {
+    enemies = Array.from({ length: FREE_FIRE_ENEMY_COUNT }, (_, i) =>
+      makeFreeFireEnemy(i, FREE_FIRE_ENEMY_COUNT, canvasW, canvasH)
     );
-    phase = "ChallengingStage";
+    phase = "FreeFireZone";
   } else {
     const slots = waveSlots(wave);
     enemies = slots.map((slot, idx) => makeEnemy(idx, slot, canvasW));
@@ -662,7 +662,7 @@ function buildWaveState(
     phaseTimer: 0,
     canvasW,
     canvasH,
-    challengingHits: 0,
+    freeFireHits: 0,
     nextDiveTimer: diveInterval(wave, paramScale),
     formationSwayX: 0,
     formationSwayDir: 1,
@@ -678,7 +678,7 @@ function buildWaveState(
     pauseStraggler: false,
     bombFlashTimer: 0,
     difficulty,
-    challengingPerfect: false,
+    freeFirePerfect: false,
     playerFireDisabled: false,
     enemyFireDisabled: false,
   };
@@ -1275,7 +1275,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
 
   // #934: challenge enemies follow a path that exits off the bottom; once they
   // cross canvasH they can't be shot, so mark them dead to unblock WaveClear.
-  if (state.phase === "ChallengingStage") {
+  if (state.phase === "FreeFireZone") {
     enemies = enemies.map((e) =>
       e.isAlive && e.y > state.canvasH + 60 ? { ...e, isAlive: false } : e
     );
@@ -1440,7 +1440,7 @@ function spawnExplosion(x: number, y: number): Explosion {
 
 function tickCollisions(state: StarSwarmState): StarSwarmState {
   const { player } = state;
-  let { score, challengingHits } = state;
+  let { score, freeFireHits } = state;
   const newExplosions: Explosion[] = [...state.explosions];
   let killsSinceLastDrop = state.killsSinceLastDrop;
   let dropJitterTarget = state.dropJitterTarget;
@@ -1470,9 +1470,9 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         newExplosions.push(spawnExplosion(enemy.x, enemy.y));
         const base = TIER_SCORE[enemy.tier];
         const mult = enemy.phase === "Diving" || enemy.phase === "Circling" ? DIVE_SCORE_MULT : 1;
-        const bonus = state.phase === "ChallengingStage" ? 1 : mult;
+        const bonus = state.phase === "FreeFireZone" ? 1 : mult;
         score += Math.round(base * bonus * scoreMult);
-        if (state.phase === "ChallengingStage") challengingHits += 1;
+        if (state.phase === "FreeFireZone") freeFireHits += 1;
         if (state.phase === "Playing") killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
@@ -1663,7 +1663,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,
             score,
-            challengingHits,
+            freeFireHits,
             powerUps,
             buddyShips,
             killsSinceLastDrop,
@@ -1682,7 +1682,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           enemyBullets: enemyBulletsAfterHit,
           explosions: newExplosions,
           score,
-          challengingHits,
+          freeFireHits,
           powerUps,
           buddyShips,
           killsSinceLastDrop,
@@ -1701,7 +1701,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     playerBullets,
     enemyBullets: currentEnemyBullets,
     score,
-    challengingHits,
+    freeFireHits,
     explosions: newExplosions,
     powerUps,
     buddyShips,
@@ -1744,24 +1744,24 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     return state;
   }
 
-  // ChallengingStage → WaveClear once all challenge enemies have exited
-  if (state.phase === "ChallengingStage") {
+  // FreeFireZone → WaveClear once all challenge enemies have exited
+  if (state.phase === "FreeFireZone") {
     // Enemies exit when their path completes (they reach formationY which is off-screen bottom)
     const anyAlive = liveEnemies.length > 0;
     if (!anyAlive) {
       const sm = difficultyMultiplier(state.difficulty);
       // #1463: wave-clear bonus scales with hit ratio — zero kills = zero bonus
-      const hitFraction = Math.min(1, state.challengingHits / CHALLENGING_ENEMY_COUNT);
+      const hitFraction = Math.min(1, state.freeFireHits / FREE_FIRE_ENEMY_COUNT);
       const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
-      const perfect = state.challengingHits === CHALLENGING_ENEMY_COUNT;
+      const perfect = state.freeFireHits === FREE_FIRE_ENEMY_COUNT;
       const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
       return {
         ...state,
         score:
-          state.score + waveClearBonus + Math.round(state.challengingHits * 50 * sm) + perfectBonus,
+          state.score + waveClearBonus + Math.round(state.freeFireHits * 50 * sm) + perfectBonus,
         phase: "WaveClear",
-        phaseTimer: CHALLENGING_CLEAR_PAUSE,
-        challengingPerfect: perfect,
+        phaseTimer: FREE_FIRE_CLEAR_PAUSE,
+        freeFirePerfect: perfect,
         bombFlashTimer: 0,
       };
     }

@@ -113,7 +113,7 @@ export default function StarSwarmScreen() {
     playPlayerHit,
     playWaveClear,
     playGameOver,
-    playChallengingStage,
+    playFreeFireZone,
     playBonusLife,
     playPerfect,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
@@ -145,7 +145,7 @@ export default function StarSwarmScreen() {
     [playGameOver, difficulty]
   );
 
-  const handleChallengingPerfect = useCallback(() => {
+  const handleFreeFirePerfect = useCallback(() => {
     playPerfect();
   }, [playPerfect]);
 
@@ -271,8 +271,8 @@ export default function StarSwarmScreen() {
               onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
-              onChallengingStage={playChallengingStage}
-              onChallengingPerfect={handleChallengingPerfect}
+              onFreeFireZone={playFreeFireZone}
+              onFreeFirePerfect={handleFreeFirePerfect}
               onBonusLife={handleBonusLife}
               isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
@@ -477,7 +477,7 @@ export default function StarSwarmScreen() {
                   ["Player hit", "playerhit"],
                   ["Wave clear", "waveclear"],
                   ["Game over", "gameover"],
-                  ["Challenging", "challengingstage"],
+                  ["Free Fire", "freefirezone"],
                   ["Perfect bonus", "perfectbonus"],
                 ] as [string, keyof SfxVolumes][]
               ).map(([label, key]) => (
