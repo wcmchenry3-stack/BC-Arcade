@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
+import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
 import type { GamePhase } from "../../game/starswarm/types";
@@ -43,6 +44,8 @@ export default function Controls({
   // Ship X captured at each touch-start — used to compute delta from gesture start,
   // avoiding cumulative drift from per-event changeX accumulation.
   const shipXAtDragStartRef = useRef(CANVAS_W / 2);
+  // Sentry breadcrumb throttle: only log the first boundary-hit per second to avoid flood.
+  const lastBoundaryLogMsRef = useRef(0);
 
   const resetPlayerX = useCallback(() => {
     playerXRef.current = CANVAS_W / 2;
@@ -73,6 +76,24 @@ export default function Controls({
       // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
       if (rawX !== newX) {
         shipXAtDragStartRef.current = newX - e.translationX / scale;
+        // Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors.
+        // Throttled to once per second — pan events fire at 60 fps and would flood the trail.
+        const now = Date.now();
+        if (now - lastBoundaryLogMsRef.current > 1000) {
+          lastBoundaryLogMsRef.current = now;
+          Sentry.addBreadcrumb({
+            category: "starswarm.player",
+            message: "ship hit canvas boundary",
+            level: "info",
+            data: {
+              rawX: Math.round(rawX * 10) / 10,
+              clampedX: Math.round(newX * 10) / 10,
+              overshootPx: Math.round((rawX - newX) * 10) / 10,
+              side: rawX > newX ? "right" : "left",
+              phase,
+            },
+          });
+        }
       }
       playerXRef.current = newX;
       canvasRef.current?.setPlayerX(newX);
