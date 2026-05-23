@@ -71,6 +71,7 @@
   "gameOver.youWin": "你赢了！",
   "gameOver.computerWins": "电脑赢了！",
   "gameOver.tie": "平局！",
+  "gameOver.scorecard": "计分卡",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "第{{n}}掷 / 3",
   "vsMode.category": "类别",

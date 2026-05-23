@@ -71,6 +71,7 @@
   "gameOver.youWin": "あなたの勝ち！",
   "gameOver.computerWins": "コンピュータの勝ち！",
   "gameOver.tie": "引き分け！",
+  "gameOver.scorecard": "スコアカード",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "ロール {{n}} / 3",
   "vsMode.category": "カテゴリ",
