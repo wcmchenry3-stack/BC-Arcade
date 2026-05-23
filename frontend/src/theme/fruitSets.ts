@@ -157,7 +157,7 @@ export const FRUIT_SETS: Record<string, FruitSet> = {
         name: "Dragonfruit",
         icon: FRUIT_ICONS.dragonfruit,
         bakedIcon: FRUIT_BAKED.dragonfruit,
-        bakedClipR: 1.626744,
+        bakedClipR: 1.577306,
         emoji: "🐉",
         color: "#db2777",
         radius: RADII[8],
