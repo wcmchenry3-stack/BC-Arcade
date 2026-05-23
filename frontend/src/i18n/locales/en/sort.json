@@ -8,6 +8,7 @@
   "action.undo": "Undo",
   "action.hint": "Hint",
   "action.reset": "Reset",
+  "action.resetPrompt": "Restart this level or choose a different one.",
   "action.resetLevel": "Reset Level",
   "action.cancel": "Cancel",
   "action.newGame": "New Game",

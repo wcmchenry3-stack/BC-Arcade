@@ -80,6 +80,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.resetPrompt": {
+    "component": "SortScreen reset dialog",
+    "description": "Body message of the reset/new-game alert dialog.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.resetLevel": {
     "component": "SortScreen reset dialog",
     "description": "Alert button that restarts the current level from scratch.",

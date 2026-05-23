@@ -188,8 +188,7 @@ export default function SortScreen() {
       setProgress(updated);
       void saveProgress(updated);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState?.isComplete, showWinModal]);
+  }, [gameState?.isComplete, showWinModal, currentLevelId, levels]);
 
   // ---------------------------------------------------------------------------
   // Game handlers
@@ -355,7 +354,7 @@ export default function SortScreen() {
   }
 
   function handleResetLevel() {
-    if (isPouring || !currentLevelId) return;
+    if (!currentLevelId) return;
     const level = levels.find((l) => l.id === currentLevelId);
     if (!level) return;
     if (pourTimerRef.current !== null) {
@@ -371,7 +370,7 @@ export default function SortScreen() {
 
   function handleResetOrNew() {
     if (isPouring) return;
-    Alert.alert(t("action.reset"), undefined, [
+    Alert.alert(t("action.reset"), t("action.resetPrompt"), [
       { text: t("action.resetLevel"), onPress: handleResetLevel },
       { text: t("action.newGame"), onPress: handleBackToSelect },
       { text: t("action.cancel"), style: "cancel" },
@@ -658,15 +657,6 @@ export default function SortScreen() {
 
         <View style={styles.hudActions}>
           <Pressable
-            onPress={handleResetOrNew}
-            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
-            disabled={isPouring}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.reset")}
-          >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
-          </Pressable>
-          <Pressable
             onPress={handleUndo}
             style={[styles.hudActionBtn, { opacity: history.length > 0 ? 1 : 0.35 }]}
             disabled={history.length === 0}
@@ -683,6 +673,15 @@ export default function SortScreen() {
             accessibilityLabel={t("action.hint")}
           >
             <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.hint")}</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleResetOrNew}
+            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
+            disabled={isPouring}
+            accessibilityRole="button"
+            accessibilityLabel={t("action.reset")}
+          >
+            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
           </Pressable>
         </View>
       </View>
