@@ -2304,7 +2304,7 @@ describe("#1037 Difficulty tiers", () => {
 // ---------------------------------------------------------------------------
 
 describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
-  it("waves 3, 7, 11, 15 start as FreeFireZone (classic Galaga cadence)", () => {
+  it("waves 3, 7, 11, 15 start as FreeFireZone", () => {
     for (const wave of [3, 7, 11, 15]) {
       const s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
       expect(s.phase).toBe("FreeFireZone");

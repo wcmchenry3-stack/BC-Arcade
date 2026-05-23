@@ -8,7 +8,7 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.playerhit": require("../../../assets/sounds/starswarm-playerhit.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  "starswarm.freefirezone": require("../../../assets/sounds/starswarm-challengingstage.ogg"),
+  "starswarm.freefirezone": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.gameover": require("../../../assets/sounds/starswarm-gameover.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -531,7 +531,7 @@ function diveInterval(wave: number, paramScale = 1): number {
   return Math.max(floor, base);
 }
 
-// Classic Galaga cadence: wave 3, then every 4th wave (3, 7, 11, 15 …) (#1022)
+// Free Fire Zone cadence: wave 3, then every 4th wave (3, 7, 11, 15 …) (#1022)
 function isFreeFireWave(wave: number): boolean {
   if (wave === 3) return true;
   if (wave < 3) return false;
