@@ -818,10 +818,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               onWaveClearRef.current?.();
               if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
             }
-            if (
-              applied.phase === "FreeFireZone" &&
-              prevPhaseRef.current !== "FreeFireZone"
-            ) {
+            if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
               onFreeFireZoneRef.current?.();
             }
             prevPhaseRef.current = applied.phase;

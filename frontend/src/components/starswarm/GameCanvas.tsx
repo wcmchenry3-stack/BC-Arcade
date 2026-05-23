@@ -350,10 +350,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 applied.phase !== "WaveClear" &&
                 applied.phase !== "GameOver";
               if (startingCountdown) countdownMsRef.current = 3000;
-              if (
-                applied.phase === "FreeFireZone" &&
-                prevPhaseRef.current !== "FreeFireZone"
-              ) {
+              if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
                 if (startingCountdown) {
                   pendingFreeFireZoneRef.current = true;
                 } else {
