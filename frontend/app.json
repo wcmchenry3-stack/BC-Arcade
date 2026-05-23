@@ -50,7 +50,7 @@
       ],
       "expo-localization",
       "expo-audio",
-      ["react-native-audio-api", { "disableFFmpeg": true }]
+      ["react-native-audio-api", { "disableFFmpeg": true, "iosMicrophonePermission": "Audio playback libraries used for game sound effects and background music require this permission." }]
     ]
   }
 }
