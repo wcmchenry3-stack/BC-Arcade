@@ -107,4 +107,29 @@ describe("SortBoard", () => {
     );
     expect(onPourComplete).not.toHaveBeenCalled();
   });
+
+  it("renders cross-row pour without crashing (regression #1803)", () => {
+    // Issue #1803: on 7+ bottle boards the grid wraps to multiple rows. Bottle
+    // index order no longer matches visual left-right order, so the old
+    // `isRight = pouringFrom < pouringTo` picked the wrong tilt direction.
+    // Example: bottle 4 (row 1, col 0) is visually LEFT of bottle 3 (row 0,
+    // col 3) but 4 < 3 is false. The fix uses srcPos.x < dstPos.x instead.
+    // Reanimated jest mock doesn't execute worklet callbacks so we can only
+    // verify the component doesn't crash; the animation direction is exercised
+    // by the SortScreen e2e test for issue #1803.
+    const state = mkState([
+      ["red", "red", "red", "red"],
+      ["blue", "blue", "blue", "blue"],
+      ["green", "green", "green", "green"],
+      ["yellow", "yellow", "yellow", "yellow"],
+      ["orange", "orange", "orange", "orange"],
+      ["purple", "purple", "purple", "purple"],
+      ["pink", "pink", "pink", "pink"],
+      [],
+    ]);
+    const { getAllByLabelText } = render(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} pouringFrom={4} pouringTo={3} />)
+    );
+    expect(getAllByLabelText(/^Bottle \d/)).toHaveLength(8);
+  });
 });

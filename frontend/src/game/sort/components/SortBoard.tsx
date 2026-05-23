@@ -202,7 +202,7 @@ export default function SortBoard({
     const dstBottle = stateRef.current.bottles[pouringTo];
     if (!sourceBottle) return;
 
-    const isRight = pouringFrom < pouringTo;
+    const isRight = srcPos.x < dstPos.x;
     const tiltSign: 1 | -1 = isRight ? 1 : -1;
 
     // Spout pivot: outer neck edge scaled from viewBox coords to bottleW/H
@@ -313,7 +313,8 @@ export default function SortBoard({
   // Pour tilt direction — used for reduce-motion fallback only
   const pouringDirection: "left" | "right" | undefined =
     pouringFrom !== null && pouringTo !== null
-      ? pouringFrom < pouringTo
+      ? (bottlePositionsRef.current[pouringFrom]?.x ?? 0) <
+        (bottlePositionsRef.current[pouringTo]?.x ?? Infinity)
         ? "right"
         : "left"
       : undefined;
