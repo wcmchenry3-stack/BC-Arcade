@@ -27,7 +27,7 @@ export type EnemyPhase =
 export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid
   | "Playing" // normal combat
-  | "ChallengingStage" // non-hostile bonus wave
+  | "FreeFireZone" // non-hostile bonus wave
   | "WaveClear" // brief pause before next wave
   | "GameOver";
 
@@ -170,8 +170,8 @@ export interface StarSwarmState {
   readonly phaseTimer: number;
   readonly canvasW: number;
   readonly canvasH: number;
-  /** Hits accumulated during the current Challenging Stage. */
-  readonly challengingHits: number;
+  /** Hits accumulated during the current Free Fire Zone. */
+  readonly freeFireHits: number;
   /** ms until the next dive-AI trigger fires. */
   readonly nextDiveTimer: number;
   /** Current left/right sway offset applied to all Formation enemies (px). */
@@ -209,8 +209,8 @@ export interface StarSwarmState {
   readonly bombFlashTimer: number;
   /** Active difficulty tier; drives score multiplier and AI param scaling (#1037). */
   readonly difficulty: DifficultyTier;
-  /** True when the player hit all enemies in a Challenging Stage (#1022). */
-  readonly challengingPerfect: boolean;
+  /** True when the player hit all enemies in a Free Fire Zone (#1022). */
+  readonly freeFirePerfect: boolean;
   /** Dev: suppress player fire (bullets never spawn, cooldown still ticks). */
   readonly playerFireDisabled: boolean;
   /** Dev: enemy bullets are never pushed to the bullet list. */
