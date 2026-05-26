@@ -71,6 +71,7 @@
   "gameOver.youWin": "Вы выиграли!",
   "gameOver.computerWins": "Компьютер выиграл!",
   "gameOver.tie": "Ничья!",
+  "gameOver.scorecard": "Таблица очков",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "Бросок {{n}} / 3",
   "vsMode.category": "Категория",

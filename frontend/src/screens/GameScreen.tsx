@@ -189,34 +189,38 @@ export default function GameScreen({ navigation, route }: Props) {
 
       // Initial roll (all dice free)
       setAiRollingIndices([0, 1, 2, 3, 4]);
-      await delay(700);
+      await delay(1000);
       if (cancelled) return;
       s = engineRoll(s, [false, false, false, false, false]);
       setAiGameState(s);
       setAiRollingIndices([]);
-      // Settle pause: let the player read the dice values before the next roll
-      await delay(450);
+      // Settle pause: let the player read the dice values
+      await delay(800);
       if (cancelled) return;
 
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
         const holds = holdStrategy(s, diff);
+        // Show held dice before rolling so the player can see the AI's decision
+        setAiGameState({ ...s, held: holds });
+        await delay(800);
+        if (cancelled) return;
         const rolledIdxs = holds.reduce<number[]>((acc, h, i) => {
           if (!h) acc.push(i);
           return acc;
         }, []);
         setAiRollingIndices(rolledIdxs);
-        await delay(700);
+        await delay(1000);
         if (cancelled) return;
         s = engineRoll(s, holds);
         setAiGameState(s);
         setAiRollingIndices([]);
-        await delay(450);
+        await delay(800);
         if (cancelled) return;
       }
 
       // Beat before the AI locks in its category
-      await delay(600);
+      await delay(1000);
       if (cancelled) return;
       const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
       s = engineScore(s, cat);
@@ -498,10 +502,13 @@ export default function GameScreen({ navigation, route }: Props) {
         upperBonus={gameState.upper_bonus}
         yachtBonusCount={gameState.yacht_bonus_count}
         yachtBonusTotal={gameState.yacht_bonus_total}
+        scores={gameState.scores}
         onPlayAgain={startNewGame}
         onDismiss={() => navigation.goBack()}
         vsResult={vsResult}
         aiTotalScore={aiGameState?.total_score}
+        aiUpperBonus={aiGameState?.upper_bonus}
+        aiScores={aiGameState?.scores}
       />
 
       <NewGameConfirmModal

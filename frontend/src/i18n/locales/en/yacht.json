@@ -71,6 +71,7 @@
   "gameOver.youWin": "You Win!",
   "gameOver.computerWins": "Computer Wins!",
   "gameOver.tie": "It's a Tie!",
+  "gameOver.scorecard": "Scorecard",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "Roll {{n}} / 3",
   "vsMode.category": "Category",

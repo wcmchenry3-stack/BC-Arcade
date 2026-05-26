@@ -140,9 +140,10 @@ describe("GameScreen", () => {
   });
 
   it("game over modal appears when game_over is true", () => {
-    const { getByText } = renderScreen({ game_over: true, total_score: 250 });
+    const { getByText, getAllByText } = renderScreen({ game_over: true, total_score: 250 });
     expect(getByText(/game over/i)).toBeTruthy();
-    expect(getByText("250")).toBeTruthy();
+    // Score appears in both the hero display and the scorecard total row
+    expect(getAllByText("250").length).toBeGreaterThan(0);
   });
 
   it("play again button starts a new game in place", async () => {

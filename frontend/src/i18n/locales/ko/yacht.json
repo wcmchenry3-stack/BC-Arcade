@@ -71,6 +71,7 @@
   "gameOver.youWin": "당신이 이겼습니다!",
   "gameOver.computerWins": "컴퓨터가 이겼습니다!",
   "gameOver.tie": "무승부!",
+  "gameOver.scorecard": "스코어카드",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "던지기 {{n}} / 3",
   "vsMode.category": "카테고리",

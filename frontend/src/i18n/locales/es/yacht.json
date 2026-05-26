@@ -71,6 +71,7 @@
   "gameOver.youWin": "¡Ganaste!",
   "gameOver.computerWins": "¡Gana la computadora!",
   "gameOver.tie": "¡Empate!",
+  "gameOver.scorecard": "Marcador final",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "Tiro {{n}} / 3",
   "vsMode.category": "Categoría",

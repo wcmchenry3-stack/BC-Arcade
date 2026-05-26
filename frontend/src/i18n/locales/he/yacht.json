@@ -71,6 +71,7 @@
   "gameOver.youWin": "ניצחת!",
   "gameOver.computerWins": "המחשב ניצח!",
   "gameOver.tie": "תיקו!",
+  "gameOver.scorecard": "כרטיס הניקוד",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "הטלה {{n}} / 3",
   "vsMode.category": "קטגוריה",

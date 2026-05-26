@@ -77,7 +77,7 @@ export default function Die({
     if (reduceMotion) return;
     cancelAnimation(rotation);
     rotation.value = withSequence(
-      withTiming(360 * 2, { duration: 350 }),
+      withTiming(360 * 2, { duration: 500 }),
       withTiming(0, { duration: 0 })
     );
   }, [rolling, reduceMotion, rotation]);
