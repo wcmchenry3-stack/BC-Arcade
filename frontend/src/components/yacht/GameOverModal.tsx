@@ -80,7 +80,7 @@ export default function GameOverModal({
         <Text style={[styles.rowVal, { color: colors.text }]}>{fmtScore(scores[cat])}</Text>
         {isVs && (
           <Text style={[styles.rowVal, { color: colors.textMuted }]}>
-            {fmtScore(aiScores?.[cat])}
+            {fmtScore(aiScores[cat])}
           </Text>
         )}
       </View>
@@ -188,7 +188,7 @@ export default function GameOverModal({
             <View style={styles.scorecardContainer}>
               {isVs && (
                 <View style={styles.scoreRow}>
-                  <Text style={[styles.rowLabel, { color: "transparent" }]}>-</Text>
+                  <View style={styles.rowLabel} />
                   <Text style={[styles.colHeader, { color: colors.textMuted }]}>
                     {t("score.you")}
                   </Text>
