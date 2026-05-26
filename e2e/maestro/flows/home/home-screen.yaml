@@ -1,4 +1,4 @@
 appId: com.buffingchi.games
 ---
 - runFlow: ../_shared/launch.yaml
-- takeScreenshot: home-screen
+- takeScreenshot: home-screen-launch

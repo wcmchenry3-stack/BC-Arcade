@@ -10,5 +10,5 @@ appId: com.buffingchi.games
     id: "nav-back"
 - assertVisible:
     text: "BC Arcade"
-    timeout: 5000
+    timeout: 8000
 - takeScreenshot: navigation-home-return

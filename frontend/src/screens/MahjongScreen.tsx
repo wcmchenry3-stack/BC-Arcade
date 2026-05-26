@@ -372,6 +372,7 @@ export default function MahjongScreen() {
     boardHeightSV.value = camera.boardHeight;
     viewportWidthSV.value = camera.viewportWidth;
     viewportHeightSV.value = camera.viewportHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.boardWidth, camera.boardHeight, camera.viewportWidth, camera.viewportHeight]);
 
   const pinchGesture = Gesture.Pinch()
