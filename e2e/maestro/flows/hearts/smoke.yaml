@@ -6,10 +6,11 @@ appId: com.buffingchi.games
     env:
       gameSlug: "hearts"
       screenLabel: "Hearts"
-# Difficulty picker shows on fresh start — confirm to begin.
+# Difficulty picker only shows when no game is saved; skip if one is in progress.
 - tapOn:
     id: "hearts-start-game"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "hearts-player-hand-area"
     timeout: 10000

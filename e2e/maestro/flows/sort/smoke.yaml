@@ -6,10 +6,11 @@ appId: com.buffingchi.games
     env:
       gameSlug: "sort"
       screenLabel: "Sort Puzzle"
-# Level select shows first — tap level 1 (always unlocked).
+# Level select only shows when no saved game is in progress; skip if resuming.
 - tapOn:
     id: "sort-level-1"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "sort-board"
     timeout: 8000

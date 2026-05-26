@@ -6,16 +6,18 @@ appId: com.buffingchi.games
     env:
       gameSlug: "yacht"
       screenLabel: "Yacht"
-# Difficulty picker shows for every fresh game — always tap Solo.
+# Mode picker only shows for fresh games; skip if a saved game is already in play.
 - tapOn:
     id: "yacht-mode-solo"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "yacht-roll-button"
     timeout: 8000
 - tapOn:
     id: "yacht-roll-button"
+# "Tap dice to hold" only appears after the first roll — proves the roll fired.
 - assertVisible:
-    id: "yacht-die-0"
+    text: "Tap dice to hold"
     timeout: 5000
 - takeScreenshot: yacht-smoke

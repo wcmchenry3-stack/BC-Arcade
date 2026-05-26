@@ -6,10 +6,11 @@ appId: com.buffingchi.games
     env:
       gameSlug: "sudoku"
       screenLabel: "Sudoku"
-# PreGame difficulty picker shows on fresh start — tap Start.
+# PreGame only shows when no puzzle is in progress; skip if resuming a saved puzzle.
 - tapOn:
     id: "sudoku-pregame-start"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "sudoku-digit-1"
     timeout: 8000

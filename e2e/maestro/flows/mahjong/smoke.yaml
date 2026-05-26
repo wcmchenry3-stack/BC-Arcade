@@ -6,10 +6,11 @@ appId: com.buffingchi.games
     env:
       gameSlug: "mahjong"
       screenLabel: "Mahjong Solitaire"
-# Layout select shows on fresh start — tap Turtle (always unlocked).
+# Layout select only shows when no saved game is in progress; skip if resuming.
 - tapOn:
     id: "mahjong-layout-turtle"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "mahjong-board-viewport"
     timeout: 15000

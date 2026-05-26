@@ -3,8 +3,8 @@ appId: com.buffingchi.games
 # Offline smoke — proves client-side game logic runs without network.
 # toggleAirplaneMode is Android-only. iOS: run with device in Airplane Mode manually,
 # or use a network-conditioner profile before launching the test.
-- runFlow: ../_shared/launch.yaml
 - toggleAirplaneMode
+- runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
     env:

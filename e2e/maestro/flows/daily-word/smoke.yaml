@@ -11,7 +11,9 @@ appId: com.buffingchi.games
     timeout: 8000
 - tapOn:
     id: "daily-word-key-a"
+# Assert the first tile is still rendered (not that "A" appears somewhere on screen,
+# which was trivially true before the tap due to the keyboard key).
 - assertVisible:
-    text: "A"
+    id: "tile-0-0"
     timeout: 3000
 - takeScreenshot: daily-word-smoke

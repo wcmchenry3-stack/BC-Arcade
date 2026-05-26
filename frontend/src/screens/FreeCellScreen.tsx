@@ -194,6 +194,7 @@ export default function FreeCellScreen() {
       rightSlot={
         <View style={styles.headerBtnRow}>
           <Pressable
+            testID="freecell-hint-button"
             onPress={handleHint}
             disabled={hintDisabled}
             style={[
@@ -241,7 +242,11 @@ export default function FreeCellScreen() {
               </Text>
             </View>
 
-            <View testID="freecell-board" style={styles.boardWrap} accessibilityLabel={t("freecell:a11y.boardRegion")}>
+            <View
+              testID="freecell-board"
+              style={styles.boardWrap}
+              accessibilityLabel={t("freecell:a11y.boardRegion")}
+            >
               <FreeCellBoard state={state} onMove={handleMove} />
             </View>
 

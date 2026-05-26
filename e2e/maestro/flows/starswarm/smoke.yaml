@@ -6,10 +6,11 @@ appId: com.buffingchi.games
     env:
       gameSlug: "starswarm"
       screenLabel: "Star Swarm"
-# Difficulty picker shows before every new game — confirm default selection.
+# Difficulty picker only shows when no saved session exists; skip if restoring a pause.
 - tapOn:
     id: "starswarm-start-game"
-    timeout: 8000
+    optional: true
+    timeout: 3000
 - assertVisible:
     id: "starswarm-canvas-outer"
     timeout: 8000
