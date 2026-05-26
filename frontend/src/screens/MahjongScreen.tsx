@@ -869,7 +869,7 @@ export default function MahjongScreen() {
           accessibilityRole="button"
           accessibilityLabel={t("action.undoLabel")}
           accessibilityState={{ disabled: undoDisabled }}
-          testID="undo-button"
+          testID="mahjong-undo-button"
         >
           <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
         </Pressable>
@@ -908,7 +908,7 @@ export default function MahjongScreen() {
               accessibilityState={{
                 disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
               }}
-              testID="shuffle-button"
+              testID="mahjong-shuffle-button"
             >
               <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
                 {t("action.shuffle")} {state.shufflesLeft}
@@ -930,7 +930,7 @@ export default function MahjongScreen() {
               accessibilityRole="button"
               accessibilityLabel={t("action.hintLabel")}
               accessibilityState={{ disabled: state.isComplete || state.isDeadlocked }}
-              testID="hint-button"
+              testID="mahjong-hint-button"
             >
               <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
             </Pressable>
@@ -1186,7 +1186,7 @@ function WinModal({
                 accessibilityRole="button"
                 accessibilityLabel={submitLabel}
                 accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-                testID="submit-score-button"
+                testID="mahjong-submit-score-button"
               >
                 {submitting ? (
                   <ActivityIndicator color={colors.textOnAccent} />
@@ -1211,7 +1211,7 @@ function WinModal({
             onPress={onNewGame}
             accessibilityRole="button"
             accessibilityLabel={t("action.newGameLabel")}
-            testID="new-game-button"
+            testID="mahjong-new-game-button"
           >
             <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
               {t("action.newGame")}
