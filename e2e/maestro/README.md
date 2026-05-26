@@ -81,9 +81,11 @@ To navigate to a game, use `navigate-to.yaml`:
 - runFlow:
     file: ../_shared/navigate-to.yaml
     env:
-      gameTitle: "Yacht"
+      gameSlug: "yacht"
       screenLabel: "Roll"
 ```
+
+> **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
 ## Scope
 

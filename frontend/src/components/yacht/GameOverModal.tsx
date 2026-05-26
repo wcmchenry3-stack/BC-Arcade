@@ -251,6 +251,7 @@ export default function GameOverModal({
               onPress={onPlayAgain}
               accessibilityRole="button"
               accessibilityLabel={t("gameOver.playAgainLabel")}
+              testID="yacht-play-again-button"
             >
               <Text style={[styles.playAgainText, { color: colors.textOnAccent }]}>
                 {t("gameOver.playAgain")}
@@ -261,6 +262,7 @@ export default function GameOverModal({
               onPress={onDismiss}
               accessibilityRole="button"
               accessibilityLabel={t("gameOver.dismissLabel")}
+              testID="yacht-dismiss-button"
             >
               <Text style={[styles.dismissText, { color: colors.textMuted }]}>
                 {t("gameOver.dismiss")}

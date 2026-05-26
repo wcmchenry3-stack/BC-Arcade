@@ -116,6 +116,7 @@ export default function Die({
         accessibilityState={{ checked: held, disabled }}
         accessibilityLabel={label}
         accessibilityHint={disabled ? undefined : held ? t("dice.unholdHint") : t("dice.holdHint")}
+        testID={`yacht-die-${index}`}
         style={({ pressed }) => [
           styles.die,
           {

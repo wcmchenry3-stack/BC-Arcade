@@ -111,6 +111,7 @@ function Stock({
         style={style}
         accessibilityRole="button"
         accessibilityLabel={label}
+        testID="solitaire-stock-pile"
       >
         {content}
       </Pressable>
