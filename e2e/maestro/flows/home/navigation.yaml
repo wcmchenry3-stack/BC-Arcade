@@ -1,0 +1,14 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "yacht"
+      screenLabel: "Yacht"
+- tapOn:
+    id: "nav-back"
+- assertVisible:
+    text: "BC Arcade"
+    timeout: 8000
+- takeScreenshot: navigation-home-return

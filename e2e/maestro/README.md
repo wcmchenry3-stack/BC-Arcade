@@ -26,7 +26,7 @@ Start the app on a connected device or simulator/emulator first, then:
 
 ```bash
 # Single flow
-maestro test e2e/maestro/flows/home/home-screen-ios.yaml
+maestro test e2e/maestro/flows/home/home-screen.yaml
 
 # All flows in a directory (e.g. once yacht flows land)
 maestro test e2e/maestro/flows/yacht/
@@ -82,7 +82,7 @@ To navigate to a game, use `navigate-to.yaml`:
     file: ../_shared/navigate-to.yaml
     env:
       gameSlug: "yacht"
-      screenLabel: "Roll"
+      screenLabel: "Yacht"
 ```
 
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
