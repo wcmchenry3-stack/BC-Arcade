@@ -7,4 +7,3 @@ appId: com.buffingchi.games
 - assertVisible:
     text: "Choose a game"
     timeout: 5000
-- takeScreenshot: android-home-screen-verified
