@@ -1,7 +1,6 @@
 # Subflow: tap a game tile and assert the game screen loads.
-# Caller must set:  ${gameTitle} (label on the home-screen tile)
-#                   ${screenLabel} (text visible on the game screen)
----
+# Caller must set: ${gameTitle} (label on the home-screen tile)
+#                  ${screenLabel} (text visible on the game screen)
 - tapOn:
     text: "${gameTitle}"
 - assertVisible:

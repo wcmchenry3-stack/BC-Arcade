@@ -4,13 +4,14 @@ Smoke tests for native mobile (Android & iOS). These flows cover what Playwright
 
 ## Prerequisites
 
-Install the Maestro CLI (one-time):
+Install the Maestro CLI (one-time). CI pins **v1.39.13** — match it locally to avoid behaviour differences:
 
 ```bash
+export MAESTRO_VERSION=1.39.13
 curl -Ls "https://get.maestro.mobile.dev" | bash
 ```
 
-Or via Homebrew:
+Or via Homebrew (may trail the pinned version):
 
 ```bash
 brew tap mobile-dev-inc/tap
@@ -27,11 +28,12 @@ Start the app on a connected device or simulator/emulator first, then:
 # Single flow
 maestro test e2e/maestro/flows/home/home-screen-ios.yaml
 
-# All flows in a directory
+# All flows in a directory (e.g. once yacht flows land)
 maestro test e2e/maestro/flows/yacht/
 
-# All flows
-maestro test e2e/maestro/flows/
+# All game flows — exclude _shared/ as those subflows require env vars and
+# are not standalone-runnable
+maestro test $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*")
 ```
 
 ## Directory structure
@@ -61,7 +63,13 @@ e2e/maestro/
 
 ## Shared subflows
 
-All game flows start with:
+`launch.yaml` includes an `appId` header so it can also run standalone as a quick sanity check:
+
+```bash
+maestro test e2e/maestro/flows/_shared/launch.yaml
+```
+
+All game flows import it as their first step:
 
 ```yaml
 - runFlow: ../_shared/launch.yaml
