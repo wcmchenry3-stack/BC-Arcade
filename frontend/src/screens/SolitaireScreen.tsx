@@ -945,6 +945,7 @@ function WinModal({
                 accessibilityRole="button"
                 accessibilityLabel={submitLabel}
                 accessibilityState={{ disabled: !canSubmit, busy: submitting }}
+                testID="submit-score-button"
               >
                 {submitting ? (
                   <ActivityIndicator color={colors.textOnAccent} />
@@ -969,6 +970,7 @@ function WinModal({
             onPress={onNewGame}
             accessibilityRole="button"
             accessibilityLabel={t("solitaire:action.newGame")}
+            testID="new-game-button"
           >
             <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
               {t("solitaire:action.newGame")}

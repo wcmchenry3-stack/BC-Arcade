@@ -84,6 +84,7 @@ export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
               accessibilityState={{ selected: focused }}
               accessibilityLabel={label}
               style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+              testID={`tab-${route.name.toLowerCase()}`}
             >
               {focused ? (
                 <LinearGradient

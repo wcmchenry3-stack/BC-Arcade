@@ -236,6 +236,7 @@ export default function HomeScreen() {
               : (playLabels[item.title] ?? item.title)
           }
           accessibilityHint={item.description}
+          testID={`game-tile-${item.slug}`}
         >
           {/* Gradient top border */}
           <LinearGradient
