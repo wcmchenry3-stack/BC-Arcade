@@ -15,6 +15,7 @@ import { isValidPour, applyPour, isComplete } from "./engine";
 import type { Move, SortState } from "./types";
 
 const BFS_CAP = 200_000;
+const YIELD_EVERY = 1_000;
 
 // ---------------------------------------------------------------------------
 // State serialisation for the visited set
@@ -73,5 +74,57 @@ export function solve(state: SortState): Move[] | null {
  */
 export function getNextHint(state: SortState): Move | null {
   const path = solve(state);
+  return path && path.length > 0 ? path[0] : null;
+}
+
+/**
+ * Async BFS that yields to the JS event loop every YIELD_EVERY dequeued
+ * states so the UI stays responsive during long solves (levels 16–20).
+ */
+export async function solveAsync(state: SortState): Promise<Move[] | null> {
+  if (isComplete(state)) return [];
+
+  const visited = new Set<string>([key(state)]);
+  const queue: Array<[SortState, Move[]]> = [[state, []]];
+  let head = 0;
+  let dequeued = 0;
+
+  while (head < queue.length) {
+    if (visited.size >= BFS_CAP) return null;
+
+    if (dequeued > 0 && dequeued % YIELD_EVERY === 0) {
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+
+    const [cur, moves] = queue[head++];
+    dequeued++;
+
+    for (let from = 0; from < cur.bottles.length; from++) {
+      for (let to = 0; to < cur.bottles.length; to++) {
+        if (from === to) continue;
+        if (!isValidPour(cur.bottles[from], cur.bottles[to])) continue;
+
+        const next = applyPour(cur, from, to);
+        const k = key(next);
+        if (visited.has(k)) continue;
+
+        const path = [...moves, { from, to }];
+        if (next.isComplete) return path;
+
+        visited.add(k);
+        queue.push([next, path]);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Async variant of getNextHint — runs the BFS off the main thread tick so
+ * the UI stays responsive. Use this in UI handlers instead of getNextHint.
+ */
+export async function getNextHintAsync(state: SortState): Promise<Move | null> {
+  const path = await solveAsync(state);
   return path && path.length > 0 ? path[0] : null;
 }
