@@ -258,7 +258,7 @@ export default function StarSwarmScreen() {
         paddingRight: Math.max(insets.right, 0),
       }}
     >
-      <View style={styles.canvasOuter} onLayout={onLayout}>
+      <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
         {scale > 0 && (
           <View style={{ width: displayW, height: displayH }}>
             <GameCanvas
@@ -355,6 +355,7 @@ export default function StarSwarmScreen() {
                   ))}
                 </ScrollView>
                 <Pressable
+                  testID="starswarm-start-game"
                   style={[styles.devActionBtn, dynamicStyles.devPrimary, styles.pickerStartBtn]}
                   onPress={handleConfirmDifficulty}
                 >

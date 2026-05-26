@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "sort"
+      screenLabel: "Sort Puzzle"
+# Level select shows first — tap level 1 (always unlocked).
+- tapOn:
+    id: "sort-level-1"
+    timeout: 8000
+- assertVisible:
+    id: "sort-board"
+    timeout: 8000
+- tapOn:
+    id: "sort-board"
+- takeScreenshot: sort-smoke

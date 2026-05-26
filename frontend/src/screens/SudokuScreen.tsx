@@ -624,6 +624,7 @@ function PreGame({
           <DifficultySelector value={difficulty} onChange={onChange} />
         </View>
         <Pressable
+          testID="sudoku-pregame-start"
           onPress={onStart}
           style={[styles.preGameStart, gradient]}
           accessibilityRole="button"

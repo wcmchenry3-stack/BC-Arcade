@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "starswarm"
+      screenLabel: "Star Swarm"
+# Difficulty picker shows before every new game — confirm default selection.
+- tapOn:
+    id: "starswarm-start-game"
+    timeout: 8000
+- assertVisible:
+    id: "starswarm-canvas-outer"
+    timeout: 8000
+- tapOn:
+    id: "starswarm-canvas-outer"
+- takeScreenshot: starswarm-smoke

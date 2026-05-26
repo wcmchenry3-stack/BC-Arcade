@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "sudoku"
+      screenLabel: "Sudoku"
+# PreGame difficulty picker shows on fresh start — tap Start.
+- tapOn:
+    id: "sudoku-pregame-start"
+    timeout: 8000
+- assertVisible:
+    id: "sudoku-digit-1"
+    timeout: 8000
+- tapOn:
+    id: "sudoku-digit-1"
+- takeScreenshot: sudoku-smoke

@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+---
+# Offline smoke — proves client-side game logic runs without network.
+# toggleAirplaneMode is Android-only. iOS: run with device in Airplane Mode manually,
+# or use a network-conditioner profile before launching the test.
+- runFlow: ../_shared/launch.yaml
+- toggleAirplaneMode
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 8000
+- tapOn:
+    id: "solitaire-stock-pile"
+- takeScreenshot: offline-solitaire-no-network
+- toggleAirplaneMode

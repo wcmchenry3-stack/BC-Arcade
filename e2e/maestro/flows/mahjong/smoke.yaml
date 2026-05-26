@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "mahjong"
+      screenLabel: "Mahjong Solitaire"
+# Layout select shows on fresh start — tap Turtle (always unlocked).
+- tapOn:
+    id: "mahjong-layout-turtle"
+    timeout: 8000
+- assertVisible:
+    id: "mahjong-board-viewport"
+    timeout: 15000
+- tapOn:
+    id: "mahjong-hint-button"
+- takeScreenshot: mahjong-smoke

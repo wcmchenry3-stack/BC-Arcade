@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "hearts"
+      screenLabel: "Hearts"
+# Difficulty picker shows on fresh start — confirm to begin.
+- tapOn:
+    id: "hearts-start-game"
+    timeout: 8000
+- assertVisible:
+    id: "hearts-player-hand-area"
+    timeout: 10000
+- tapOn:
+    id: "hearts-player-hand-area"
+- takeScreenshot: hearts-smoke

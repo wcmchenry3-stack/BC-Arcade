@@ -1,0 +1,17 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "daily_word"
+      screenLabel: "Daily Word"
+- assertVisible:
+    id: "tile-0-0"
+    timeout: 8000
+- tapOn:
+    id: "daily-word-key-a"
+- assertVisible:
+    text: "A"
+    timeout: 3000
+- takeScreenshot: daily-word-smoke

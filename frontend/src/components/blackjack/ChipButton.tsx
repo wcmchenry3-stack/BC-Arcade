@@ -24,6 +24,7 @@ export default function ChipButton({
 
   return (
     <Pressable
+      testID={`blackjack-chip-${amount}`}
       style={[styles.chip, { backgroundColor: chipColor, opacity: disabled ? 0.35 : 1 }]}
       onPress={onPress}
       disabled={disabled}

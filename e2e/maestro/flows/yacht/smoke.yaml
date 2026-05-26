@@ -1,0 +1,21 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "yacht"
+      screenLabel: "Yacht"
+# Difficulty picker shows for every fresh game — always tap Solo.
+- tapOn:
+    id: "yacht-mode-solo"
+    timeout: 8000
+- assertVisible:
+    id: "yacht-roll-button"
+    timeout: 8000
+- tapOn:
+    id: "yacht-roll-button"
+- assertVisible:
+    id: "yacht-die-0"
+    timeout: 5000
+- takeScreenshot: yacht-smoke
