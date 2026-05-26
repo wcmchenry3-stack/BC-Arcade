@@ -1,0 +1,23 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "yacht"
+      screenLabel: "Yacht"
+# Mode picker only shows for fresh games; skip if a saved game is already in play.
+- tapOn:
+    id: "yacht-mode-solo"
+    optional: true
+    timeout: 3000
+- assertVisible:
+    id: "yacht-roll-button"
+    timeout: 8000
+- tapOn:
+    id: "yacht-roll-button"
+# "Tap dice to hold" only appears after the first roll — proves the roll fired.
+- assertVisible:
+    text: "Tap dice to hold"
+    timeout: 5000
+- takeScreenshot: yacht-smoke

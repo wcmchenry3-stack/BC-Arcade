@@ -469,6 +469,7 @@ export default function HeartsScreen() {
           </Text>
           <HeartsAiDifficultySelector value={selectedDifficulty} onChange={setSelectedDifficulty} />
           <Pressable
+            testID="hearts-start-game"
             style={[styles.btn, { backgroundColor: colors.accent }]}
             onPress={() => handleStartGame(selectedDifficulty)}
             accessibilityRole="button"
@@ -537,7 +538,7 @@ export default function HeartsScreen() {
         </View>
 
         {/* Human hand */}
-        <View style={styles.bottomArea}>
+        <View testID="hearts-player-hand-area" style={styles.bottomArea}>
           <Text style={[styles.humanLabel, { color: colors.textMuted }]}>
             {playerLabels[0] ?? ""}
           </Text>

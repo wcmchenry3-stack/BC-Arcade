@@ -959,6 +959,7 @@ export default function MahjongScreen() {
 
           {/* Viewport container — clips the board during zoom/pan */}
           <View
+            testID="mahjong-board-viewport"
             style={{
               width: camera.viewportWidth,
               height: camera.viewportHeight,

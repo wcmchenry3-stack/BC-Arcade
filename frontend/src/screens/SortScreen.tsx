@@ -704,6 +704,7 @@ export default function SortScreen() {
 
       {/* Board */}
       <View
+        testID="sort-board"
         style={styles.boardContainer}
         onLayout={(e: LayoutChangeEvent) => setBoardHeight(e.nativeEvent.layout.height)}
       >

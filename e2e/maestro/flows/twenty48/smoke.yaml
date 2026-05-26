@@ -1,0 +1,16 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "twenty48"
+      screenLabel: "2048"
+- assertVisible:
+    id: "twenty48-board"
+    timeout: 8000
+- swipe:
+    direction: RIGHT
+    from:
+      id: "twenty48-board"
+- takeScreenshot: twenty48-smoke

@@ -542,6 +542,7 @@ export default function GameScreen({ navigation, route }: Props) {
               </Text>
 
               <Pressable
+                testID="yacht-mode-solo"
                 style={[styles.modeBtn, { borderColor: colors.border }]}
                 onPress={handleChooseSolo}
                 accessibilityRole="button"

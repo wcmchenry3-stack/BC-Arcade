@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "sudoku"
+      screenLabel: "Sudoku"
+# PreGame only shows when no puzzle is in progress; skip if resuming a saved puzzle.
+- tapOn:
+    id: "sudoku-pregame-start"
+    optional: true
+    timeout: 3000
+- assertVisible:
+    id: "sudoku-digit-1"
+    timeout: 8000
+- tapOn:
+    id: "sudoku-digit-1"
+- takeScreenshot: sudoku-smoke

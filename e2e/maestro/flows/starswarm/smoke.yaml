@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "starswarm"
+      screenLabel: "Star Swarm"
+# Difficulty picker only shows when no saved session exists; skip if restoring a pause.
+- tapOn:
+    id: "starswarm-start-game"
+    optional: true
+    timeout: 3000
+- assertVisible:
+    id: "starswarm-canvas-outer"
+    timeout: 8000
+- tapOn:
+    id: "starswarm-canvas-outer"
+- takeScreenshot: starswarm-smoke

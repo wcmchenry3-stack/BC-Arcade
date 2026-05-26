@@ -245,7 +245,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
       {/* Table */}
       {state && (
-        <View style={styles.tableArea}>
+        <View testID="blackjack-table-area" style={styles.tableArea}>
           <BlackjackTable
             playerHand={state.player_hand}
             dealerHand={state.dealer_hand}

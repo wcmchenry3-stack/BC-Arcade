@@ -413,7 +413,7 @@ export default function Twenty48Screen({ navigation }: Props) {
 
       {/* Board */}
       <GestureDetector gesture={swipeGesture}>
-        <View style={styles.boardContainer}>
+        <View testID="twenty48-board" style={styles.boardContainer}>
           {/* Ambient glow blobs — decorative, placed behind the grid */}
           <View
             style={[styles.glowTopLeft, { backgroundColor: colors.accent }, glowBlur]}

@@ -87,6 +87,23 @@ To navigate to a game, use `navigate-to.yaml`:
 
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
+## Pre-game selectors
+
+Several games show a selector before the game starts. Each smoke flow handles this automatically:
+
+| Game | Selector | How the flow handles it |
+|---|---|---|
+| Yacht | Mode picker (Solo / VS Computer) | taps `yacht-mode-solo` |
+| Hearts | Difficulty picker | taps `hearts-start-game` |
+| Sort | Level select | taps `sort-level-1` |
+| Mahjong | Layout select | taps `mahjong-layout-turtle` |
+| Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |
+| StarSwarm | Difficulty picker | taps `starswarm-start-game` |
+
+## Offline flow
+
+`offline/smoke.yaml` uses `toggleAirplaneMode` (Android only). On iOS, put the device in Airplane Mode before running the flow. The flow navigates to Solitaire — a client-side game — taps the stock pile, and asserts the game responds without a network connection.
+
 ## Scope
 
 Each game flow is a **smoke test only**: launch → navigate → one interaction → assert screen is stable. Detailed logic (scoring, edge cases, persistence) is covered by Playwright.

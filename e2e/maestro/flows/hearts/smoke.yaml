@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "hearts"
+      screenLabel: "Hearts"
+# Difficulty picker only shows when no game is saved; skip if one is in progress.
+- tapOn:
+    id: "hearts-start-game"
+    optional: true
+    timeout: 3000
+- assertVisible:
+    id: "hearts-player-hand-area"
+    timeout: 10000
+- tapOn:
+    id: "hearts-player-hand-area"
+- takeScreenshot: hearts-smoke

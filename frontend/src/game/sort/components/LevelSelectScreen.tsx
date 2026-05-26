@@ -58,6 +58,7 @@ export default function LevelSelectScreen({ levels, progress, onSelectLevel, onC
               return (
                 <Pressable
                   key={level.id}
+                  testID={`sort-level-${level.id}`}
                   style={[
                     styles.card,
                     {

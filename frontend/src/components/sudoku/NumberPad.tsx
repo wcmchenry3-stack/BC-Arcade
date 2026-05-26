@@ -56,6 +56,7 @@ export default function NumberPad({
           return (
             <Pressable
               key={d}
+              testID={`sudoku-digit-${d}`}
               onPress={() => onDigit(d)}
               disabled={disabled}
               accessibilityRole="button"

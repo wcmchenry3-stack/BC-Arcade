@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "mahjong"
+      screenLabel: "Mahjong Solitaire"
+# Layout select only shows when no saved game is in progress; skip if resuming.
+- tapOn:
+    id: "mahjong-layout-turtle"
+    optional: true
+    timeout: 3000
+- assertVisible:
+    id: "mahjong-board-viewport"
+    timeout: 15000
+- tapOn:
+    id: "mahjong-hint-button"
+- takeScreenshot: mahjong-smoke
