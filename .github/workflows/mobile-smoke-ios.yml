@@ -15,6 +15,7 @@ jobs:
   maestro-ios:
     name: Maestro iOS smoke
     runs-on: macos-15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
 
@@ -52,6 +53,7 @@ jobs:
       - name: Boot iOS 18 simulator and install app
         run: |
           SIM_UDID=$(xcrun simctl list devices available | grep "iPhone 16 (" | grep -v "iPad" | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          [ -z "$SIM_UDID" ] && echo "::error::No iPhone 16 simulator found in available devices" && exit 1
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIM_UDID"
           xcrun simctl bootstatus "$SIM_UDID" -b
