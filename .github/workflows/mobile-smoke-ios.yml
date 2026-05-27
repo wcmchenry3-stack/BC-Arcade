@@ -66,7 +66,30 @@ jobs:
             --output ./maestro-results \
             $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*" ! -path "*/offline/*")
 
-      - name: Upload Maestro artifacts
+      - name: Write job summary
+        if: always()
+        shell: python3 {0}
+        run: |
+          import xml.etree.ElementTree as ET, os
+          report = 'maestro-results/report.xml'
+          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null')
+          rows = []
+          try:
+              root = ET.parse(report).getroot()
+              suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+              for s in suites:
+                  name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
+                  failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
+                  rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+          except FileNotFoundError:
+              rows.append('| _(no report — test runner may have crashed)_ | — |\n')
+          except ET.ParseError as exc:
+              rows.append(f'| _(parse error: {exc})_ | — |\n')
+          with open(out, 'a') as f:
+              f.write('## Maestro iOS Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.writelines(rows)
+
+      - name: Upload Maestro results
         uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -75,4 +98,13 @@ jobs:
             maestro-results/
             ~/.maestro/tests/
           if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload failure screenshots
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: maestro-ios-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
           retention-days: 7
