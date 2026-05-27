@@ -72,7 +72,7 @@ jobs:
         run: |
           import xml.etree.ElementTree as ET, os
           report = 'maestro-results/report.xml'
-          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null')
+          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
           rows = []
           try:
               root = ET.parse(report).getroot()
@@ -105,6 +105,8 @@ jobs:
         if: failure()
         with:
           name: maestro-ios-screenshots
-          path: screenshots/
+          path: |
+            screenshots/
+            maestro-results/screenshots/
           if-no-files-found: ignore
           retention-days: 7
