@@ -760,6 +760,16 @@ describe("getHintMoves", () => {
     // The reversible swap from col 0 must not appear
     expect(hints.every((m) => m.type !== "tableau-to-tableau" || m.fromCol !== 0)).toBe(true);
   });
+
+  it("includes freecell-to-tableau move when freecell card can reach tableau", () => {
+    // 7♠ (black, rank 7) in freecell 0 can move onto 8♥ (red, rank 8) in col 0
+    const state = mkState({
+      tableau: [[c("hearts", 8)], [], [], [], [], [], [], []],
+      freeCells: [c("spades", 7), null, null, null],
+    });
+    const hints = getHintMoves(state);
+    expect(hints.some((m) => m.type === "freecell-to-tableau")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
