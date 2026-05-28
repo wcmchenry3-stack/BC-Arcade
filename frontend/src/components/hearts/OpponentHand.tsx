@@ -53,6 +53,7 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
               key={i}
               accessible
               accessibilityLabel={faceDownLabel}
+              accessibilityRole="image"
               style={[styles.vertCard, { top: i * V_OFFSET, borderColor: colors.border }]}
             >
               <LinearGradient
@@ -83,6 +84,7 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
             key={i}
             accessible
             accessibilityLabel={faceDownLabel}
+            accessibilityRole="image"
             style={[styles.horizCard, { left: i * H_OFFSET, borderColor: colors.border }]}
           >
             <LinearGradient
