@@ -22,12 +22,20 @@ const V_W = 32;
 const V_H = 22;
 const V_OFFSET = 5;
 
+const cardShadow = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.3,
+  shadowRadius: 3,
+  elevation: 2,
+} as const;
+
 export default function OpponentHand({ cardCount, label, layout = "horizontal" }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
 
   const count = Math.min(cardCount, 13);
-
+  const faceDownLabel = t("card.faceDown");
   const gradientColors = [colors.accent, colors.secondary] as [string, string];
 
   if (layout === "vertical") {
@@ -41,13 +49,19 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
         <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
         <View style={{ position: "relative", width: V_W, height: stackH }}>
           {Array.from({ length: count }).map((_, i) => (
-            <LinearGradient
+            <View
               key={i}
-              colors={gradientColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              accessible
+              accessibilityLabel={faceDownLabel}
               style={[styles.vertCard, { top: i * V_OFFSET, borderColor: colors.border }]}
-            />
+            >
+              <LinearGradient
+                colors={gradientColors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </View>
           ))}
         </View>
       </View>
@@ -65,26 +79,24 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
       <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
       <View style={{ position: "relative", width: fanW, height: H_H }}>
         {Array.from({ length: count }).map((_, i) => (
-          <LinearGradient
+          <View
             key={i}
-            colors={gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            accessible
+            accessibilityLabel={faceDownLabel}
             style={[styles.horizCard, { left: i * H_OFFSET, borderColor: colors.border }]}
-          />
+          >
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
         ))}
       </View>
     </View>
   );
 }
-
-const cardShadow = {
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.3,
-  shadowRadius: 3,
-  elevation: 2,
-} as const;
 
 const styles = StyleSheet.create({
   container: {
@@ -102,6 +114,7 @@ const styles = StyleSheet.create({
     height: H_H,
     borderRadius: 4,
     borderWidth: 1,
+    overflow: "hidden",
     ...cardShadow,
   },
   vertCard: {
@@ -111,6 +124,7 @@ const styles = StyleSheet.create({
     height: V_H,
     borderRadius: 4,
     borderWidth: 1,
+    overflow: "hidden",
     ...cardShadow,
   },
 });
