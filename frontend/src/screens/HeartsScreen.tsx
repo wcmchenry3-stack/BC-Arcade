@@ -56,7 +56,6 @@ function delay(ms: number): Promise<void> {
 type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
 type SubmitState = "idle" | "submitting" | "done" | "error";
 
-
 export default function HeartsScreen() {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();

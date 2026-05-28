@@ -78,6 +78,14 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
   );
 }
 
+const cardShadow = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.3,
+  shadowRadius: 3,
+  elevation: 2,
+} as const;
+
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
@@ -94,11 +102,7 @@ const styles = StyleSheet.create({
     height: H_H,
     borderRadius: 4,
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 2,
+    ...cardShadow,
   },
   vertCard: {
     position: "absolute",
@@ -107,10 +111,6 @@ const styles = StyleSheet.create({
     height: V_H,
     borderRadius: 4,
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 2,
+    ...cardShadow,
   },
 });

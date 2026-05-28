@@ -53,9 +53,12 @@ const SELF_CARD_W = 28;
 const SELF_CARD_H = 40;
 const SELF_OFFSET = 18;
 
-// Append alpha ~0.4 (hex 66) to a 6-digit hex color.
+// Append alpha to a 6-digit hex color.
 function alpha40(hex: string): string {
-  return hex.length === 7 ? `${hex}66` : hex;
+  return hex.length === 7 ? `${hex}66` : hex; // ~40% opacity
+}
+function alpha13(hex: string): string {
+  return hex.length === 7 ? `${hex}22` : hex; // ~13% opacity
 }
 
 interface OpponentProps {
@@ -96,7 +99,9 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
         ))}
       </View>
       {points > 0 && (
-        <Text style={[styles.oppBadge, { color: colors.error, backgroundColor: `${colors.error}22` }]}>
+        <Text
+          style={[styles.oppBadge, { color: colors.error, backgroundColor: alpha13(colors.error) }]}
+        >
           {`${scoredCount} · +${points}`}
         </Text>
       )}
@@ -135,7 +140,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                   styles.selfCard,
                   {
                     left: i * SELF_OFFSET,
-                    backgroundColor: colors.surface,
+                    backgroundColor: "#fff",
                     borderColor: colors.border,
                   },
                 ]}
