@@ -51,6 +51,11 @@ export function DropTarget({
   useEffect(() => {
     registerDropZone(id, {
       getMeasurement,
+      refreshMeasurement: () => {
+        viewRef.current?.measureInWindow((x, y, w, h) => {
+          boundsRef.current = { x, y, width: w, height: h };
+        });
+      },
       onDrop: (source, cards) => onDropRef.current(source, cards),
     });
     return () => unregisterDropZone(id);

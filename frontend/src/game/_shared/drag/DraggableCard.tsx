@@ -70,7 +70,7 @@ export function DraggableCard({
     .activeOffsetX([-12, 12])
     .activeOffsetY([-12, 12])
     .enabled(draggable)
-    .onStart(() => {
+    .onStart((e) => {
       "worklet";
       panActivated.value = true;
       const cardMeasured = rnMeasure(viewRef);
@@ -80,8 +80,12 @@ export function DraggableCard({
         containerOffsetX.value = containerMeasured.pageX;
         containerOffsetY.value = containerMeasured.pageY;
       }
-      const localX = (cardMeasured?.pageX ?? 0) - containerOffsetX.value;
-      const localY = (cardMeasured?.pageY ?? 0) - containerOffsetY.value;
+      // rnMeasure can return null on iOS/Android before the first native layout pass.
+      // RNGH guarantee: e.absoluteX - e.x = absolute window X of the gesture view's origin.
+      const pageX = cardMeasured?.pageX ?? (e.absoluteX - e.x);
+      const pageY = cardMeasured?.pageY ?? (e.absoluteY - e.y);
+      const localX = pageX - containerOffsetX.value;
+      const localY = pageY - containerOffsetY.value;
       originX.value = localX;
       originY.value = localY;
       cardX.value = localX;

@@ -30,6 +30,15 @@ function DragTrigger({ source, cards }: { source: DragSource; cards: DragCard[] 
   );
 }
 
+function StartDragTrigger({ source, cards }: { source: DragSource; cards: DragCard[] }) {
+  const { startDrag } = useDragContext();
+  return (
+    <Text accessibilityLabel="start-drag" onPress={() => startDrag(source, cards)}>
+      start
+    </Text>
+  );
+}
+
 describe("DropTarget", () => {
   it("renders children without highlight when no drag is active", () => {
     const { getByTestId } = render(
@@ -61,6 +70,23 @@ describe("DropTarget", () => {
     const merged = Object.assign({}, ...flatStyle.filter(Boolean));
     expect(merged.backgroundColor).toBeDefined();
     expect(merged.backgroundColor).toMatch(/33$/);
+  });
+
+  it("does not throw when startDrag triggers refreshMeasurement on the registered zone", () => {
+    // refreshMeasurement calls viewRef.current?.measureInWindow — in the test
+    // environment the ref is null so the optional-chain is a no-op. Verify no crash.
+    const { getByLabelText } = render(
+      wrap(
+        <>
+          <StartDragTrigger source={dragSource} cards={dragCards} />
+          <DropTarget id="pile-refresh" onDrop={() => false} testID="target">
+            <Text>Content</Text>
+          </DropTarget>
+        </>
+      )
+    );
+
+    expect(() => fireEvent.press(getByLabelText("start-drag"))).not.toThrow();
   });
 
   it("applies dimStyle when drag is active and this target is not legal", () => {

@@ -32,6 +32,34 @@ function SnapBackTrigger() {
   );
 }
 
+function DropZoneRegistrar({
+  id,
+  onRefresh,
+}: {
+  id: string;
+  onRefresh: () => void;
+}) {
+  const { registerDropZone, unregisterDropZone } = useDragContext();
+  React.useEffect(() => {
+    registerDropZone(id, {
+      getMeasurement: () => null,
+      refreshMeasurement: onRefresh,
+      onDrop: () => false,
+    });
+    return () => unregisterDropZone(id);
+  }, [id, onRefresh, registerDropZone, unregisterDropZone]);
+  return null;
+}
+
+function StartDragTrigger() {
+  const { startDrag } = useDragContext();
+  return (
+    <Text accessibilityLabel="start" onPress={() => startDrag(dragSource, dragCards)}>
+      start
+    </Text>
+  );
+}
+
 describe("DragContext", () => {
   it("snapBackAndClear calls withSpring for the animation", () => {
     const withSpring = jest.spyOn(Reanimated, "withSpring");
@@ -42,5 +70,25 @@ describe("DragContext", () => {
 
     expect(withSpring).toHaveBeenCalled();
     withSpring.mockRestore();
+  });
+
+  it("startDrag calls refreshMeasurement on every registered drop zone", () => {
+    const refresh1 = jest.fn();
+    const refresh2 = jest.fn();
+
+    const { getByLabelText } = render(
+      <DragProvider>
+        <ThemeProvider>
+          <DropZoneRegistrar id="zone-a" onRefresh={refresh1} />
+          <DropZoneRegistrar id="zone-b" onRefresh={refresh2} />
+          <StartDragTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    fireEvent.press(getByLabelText("start"));
+
+    expect(refresh1).toHaveBeenCalledTimes(1);
+    expect(refresh2).toHaveBeenCalledTimes(1);
   });
 });

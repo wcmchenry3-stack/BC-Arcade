@@ -83,6 +83,7 @@ export default function TableauPile({
       return (
         <DropTarget
           id={dropId!}
+          testID={dropId}
           onDrop={onDrop!}
           highlightStyle={highlightStyle}
           dimStyle={dimStyle}
@@ -169,6 +170,7 @@ export default function TableauPile({
     return (
       <DropTarget
         id={dropId!}
+        testID={dropId}
         onDrop={onDrop!}
         style={containerStyle}
         highlightStyle={highlightStyle}

@@ -33,6 +33,7 @@ export type DropHandler = (source: DragSource, cards: DragCard[]) => boolean;
 
 interface DropZoneEntry {
   getMeasurement: () => { x: number; y: number; width: number; height: number } | null;
+  refreshMeasurement: () => void;
   onDrop: DropHandler;
 }
 
@@ -113,6 +114,11 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       setDragState(state);
       if (getLegalDropIds) {
         setLegalTargetIds(new Set(getLegalDropIds(source, cards)));
+      }
+      // Refresh all drop-zone bounds so hit-tests use current window coordinates,
+      // not potentially-stale onLayout measurements.
+      for (const [, zone] of dropZonesRef.current) {
+        zone.refreshMeasurement();
       }
     },
     [getLegalDropIds]
