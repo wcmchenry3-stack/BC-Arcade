@@ -82,8 +82,9 @@ export function DraggableCard({
       }
       // rnMeasure can return null on iOS/Android before the first native layout pass.
       // RNGH guarantee: e.absoluteX - e.x = absolute window X of the gesture view's origin.
-      const pageX = cardMeasured?.pageX ?? (e.absoluteX - e.x);
-      const pageY = cardMeasured?.pageY ?? (e.absoluteY - e.y);
+      // Assumes GestureDetector + innerEl share the same origin as viewRef (no intervening padding).
+      const pageX = cardMeasured?.pageX ?? e.absoluteX - e.x;
+      const pageY = cardMeasured?.pageY ?? e.absoluteY - e.y;
       const localX = pageX - containerOffsetX.value;
       const localY = pageY - containerOffsetY.value;
       originX.value = localX;

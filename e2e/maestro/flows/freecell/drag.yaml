@@ -9,6 +9,10 @@ appId: com.buffingchi.games
 - assertVisible:
     id: "freecell-board"
     timeout: 8000
+# Confirm the drag source exists before swiping.
+- assertVisible:
+    id: "freecell-col-0-top"
+    timeout: 3000
 # Drag the top card of column 0 to freecell slot 0.
 # At game start all 4 freecell slots are always empty and every column has cards,
 # so this move is always valid — a reliable probe of the drag gesture path.
@@ -18,4 +22,8 @@ appId: com.buffingchi.games
     to:
       id: "freecell-slot-0"
     duration: 600
+# Confirm the board is still functional (no crash) and the drag target is visible.
+- assertVisible:
+    id: "freecell-slot-0"
+    timeout: 2000
 - takeScreenshot: freecell-drag

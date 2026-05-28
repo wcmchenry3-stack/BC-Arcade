@@ -149,11 +149,21 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
         zone,
       }));
 
-      results.forEach((entry, i) => {
-        zones[i]!.measureFresh((bounds) => {
+      // Safety net: if any measureInWindow callback never fires (e.g. view unmounted
+      // mid-drag on Android) the card must not stay frozen on screen indefinitely.
+      const timeout = setTimeout(() => {
+        if (remaining > 0) snapBackAndClear();
+      }, 300);
+
+      results.forEach((entry) => {
+        entry.zone.measureFresh((bounds) => {
+          // No-op if the timeout already fired and snapped back.
+          if (remaining <= 0) return;
           entry.bounds = bounds;
           remaining--;
           if (remaining > 0) return;
+
+          clearTimeout(timeout);
 
           // All measurements received — run hit-test.
           // Guard against a second drag starting before this callback fires.
