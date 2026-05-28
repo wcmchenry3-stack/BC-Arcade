@@ -41,6 +41,15 @@
       "global": {
         "lines": 80,
         "statements": 80
+      },
+      "./src/game/solitaire/engine.ts": {
+        "lines": 80
+      },
+      "./src/game/freecell/engine.ts": {
+        "lines": 80
+      },
+      "./src/game/hearts/engine.ts": {
+        "lines": 80
       }
     },
     "moduleNameMapper": {

@@ -16,6 +16,7 @@
 import {
   applyHandScoring,
   commitPass,
+  createSeededRng,
   dealGame,
   dealNextHand,
   detectMoon,
@@ -75,6 +76,37 @@ function mkState(overrides: Partial<HeartsState> = {}): HeartsState {
 
 afterEach(() => {
   setRng(Math.random);
+});
+
+// ---------------------------------------------------------------------------
+// createSeededRng
+// ---------------------------------------------------------------------------
+
+describe("createSeededRng", () => {
+  it("returns values in [0, 1)", () => {
+    const rng = createSeededRng(42);
+    for (let i = 0; i < 10; i++) {
+      const v = rng();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
+    }
+  });
+
+  it("produces a deterministic sequence for the same seed", () => {
+    const r1 = createSeededRng(12345);
+    const r2 = createSeededRng(12345);
+    expect(r1()).toBe(r2());
+    expect(r1()).toBe(r2());
+    expect(r1()).toBe(r2());
+  });
+
+  it("produces different sequences for different seeds", () => {
+    const r1 = createSeededRng(1);
+    const r2 = createSeededRng(2);
+    const seq1 = [r1(), r1(), r1()];
+    const seq2 = [r2(), r2(), r2()];
+    expect(seq1).not.toEqual(seq2);
+  });
 });
 
 // ---------------------------------------------------------------------------
