@@ -34,20 +34,19 @@ function SnapBackTrigger() {
 
 function DropZoneRegistrar({
   id,
-  onRefresh,
+  onMeasureFresh,
 }: {
   id: string;
-  onRefresh: () => void;
+  onMeasureFresh?: (cb: (bounds: { x: number; y: number; width: number; height: number } | null) => void) => void;
 }) {
   const { registerDropZone, unregisterDropZone } = useDragContext();
   React.useEffect(() => {
     registerDropZone(id, {
-      getMeasurement: () => null,
-      refreshMeasurement: onRefresh,
+      measureFresh: onMeasureFresh ?? ((cb) => cb(null)),
       onDrop: () => false,
     });
     return () => unregisterDropZone(id);
-  }, [id, onRefresh, registerDropZone, unregisterDropZone]);
+  }, [id, onMeasureFresh, registerDropZone, unregisterDropZone]);
   return null;
 }
 
@@ -72,23 +71,34 @@ describe("DragContext", () => {
     withSpring.mockRestore();
   });
 
-  it("startDrag calls refreshMeasurement on every registered drop zone", () => {
-    const refresh1 = jest.fn();
-    const refresh2 = jest.fn();
+  it("endDrag calls measureFresh on every registered drop zone", () => {
+    const measure1 = jest.fn((cb: (b: null) => void) => cb(null));
+    const measure2 = jest.fn((cb: (b: null) => void) => cb(null));
+
+    function EndDragTrigger() {
+      const { endDrag } = useDragContext();
+      return (
+        <Text accessibilityLabel="end" onPress={() => endDrag(999, 999)}>
+          end
+        </Text>
+      );
+    }
 
     const { getByLabelText } = render(
       <DragProvider>
         <ThemeProvider>
-          <DropZoneRegistrar id="zone-a" onRefresh={refresh1} />
-          <DropZoneRegistrar id="zone-b" onRefresh={refresh2} />
+          <DropZoneRegistrar id="zone-a" onMeasureFresh={measure1} />
+          <DropZoneRegistrar id="zone-b" onMeasureFresh={measure2} />
           <StartDragTrigger />
+          <EndDragTrigger />
         </ThemeProvider>
       </DragProvider>
     );
 
     fireEvent.press(getByLabelText("start"));
+    fireEvent.press(getByLabelText("end"));
 
-    expect(refresh1).toHaveBeenCalledTimes(1);
-    expect(refresh2).toHaveBeenCalledTimes(1);
+    expect(measure1).toHaveBeenCalledTimes(1);
+    expect(measure2).toHaveBeenCalledTimes(1);
   });
 });

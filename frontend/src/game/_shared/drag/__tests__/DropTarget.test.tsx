@@ -72,21 +72,32 @@ describe("DropTarget", () => {
     expect(merged.backgroundColor).toMatch(/33$/);
   });
 
-  it("does not throw when startDrag triggers refreshMeasurement on the registered zone", () => {
-    // refreshMeasurement calls viewRef.current?.measureInWindow — in the test
-    // environment the ref is null so the optional-chain is a no-op. Verify no crash.
+  it("calls measureFresh without throwing when endDrag fires", () => {
+    // measureFresh calls viewRef.current.measureInWindow — in the test
+    // environment the ref is null so the cb is called with null. Verify no crash.
+    function EndDragTrigger() {
+      const { endDrag } = useDragContext();
+      return (
+        <Text accessibilityLabel="end-drag" onPress={() => endDrag(999, 999)}>
+          end
+        </Text>
+      );
+    }
+
     const { getByLabelText } = render(
       wrap(
         <>
           <StartDragTrigger source={dragSource} cards={dragCards} />
-          <DropTarget id="pile-refresh" onDrop={() => false} testID="target">
+          <EndDragTrigger />
+          <DropTarget id="pile-fresh" onDrop={() => false} testID="target">
             <Text>Content</Text>
           </DropTarget>
         </>
       )
     );
 
-    expect(() => fireEvent.press(getByLabelText("start-drag"))).not.toThrow();
+    fireEvent.press(getByLabelText("start-drag"));
+    expect(() => fireEvent.press(getByLabelText("end-drag"))).not.toThrow();
   });
 
   it("applies dimStyle when drag is active and this target is not legal", () => {

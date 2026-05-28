@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { View } from "react-native";
 import type { ViewStyle } from "react-native";
 import { useTheme } from "../../../theme/ThemeContext";
@@ -28,7 +28,6 @@ export function DropTarget({
   testID,
 }: DropTargetProps) {
   const viewRef = useRef<View>(null);
-  const boundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const { colors } = useTheme();
 
   // Keep the latest onDrop in a ref so re-renders don't force re-registration.
@@ -39,27 +38,23 @@ export function DropTarget({
 
   const { dragState, legalTargetIds, registerDropZone, unregisterDropZone } = useDragContext();
 
-  const getMeasurement = useCallback(() => boundsRef.current, []);
-
-  const onLayout = useCallback(() => {
-    // measureInWindow is more reliable than measure on iOS for absolute window coordinates.
-    viewRef.current?.measureInWindow((x, y, w, h) => {
-      boundsRef.current = { x, y, width: w, height: h };
-    });
-  }, []);
-
   useEffect(() => {
     registerDropZone(id, {
-      getMeasurement,
-      refreshMeasurement: () => {
-        viewRef.current?.measureInWindow((x, y, w, h) => {
-          boundsRef.current = { x, y, width: w, height: h };
+      // Always measure fresh via measureInWindow so the hit-test uses current
+      // window coordinates — cached onLayout values can be stale or zero on iOS.
+      measureFresh: (cb) => {
+        if (!viewRef.current) {
+          cb(null);
+          return;
+        }
+        viewRef.current.measureInWindow((x, y, w, h) => {
+          cb({ x, y, width: w, height: h });
         });
       },
       onDrop: (source, cards) => onDropRef.current(source, cards),
     });
     return () => unregisterDropZone(id);
-  }, [id, getMeasurement, registerDropZone, unregisterDropZone]);
+  }, [id, registerDropZone, unregisterDropZone]);
 
   const isDragActive = dragState !== null;
   const isLegal = legalTargetIds.has(id);
@@ -75,7 +70,6 @@ export function DropTarget({
         isDragActive && isLegal && highlightStyle,
         isDragActive && !isLegal && dimStyle,
       ]}
-      onLayout={onLayout}
     >
       {children}
     </View>
