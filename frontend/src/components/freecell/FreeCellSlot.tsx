@@ -89,6 +89,7 @@ export default function FreeCellSlot({
       return (
         <DropTarget
           id={dropId!}
+          testID={dropId}
           onDrop={onDrop!}
           highlightStyle={{ borderColor: colors.accent, borderWidth: 2, borderRadius: 6 }}
           dimStyle={{ opacity: 0.4 }}
@@ -134,6 +135,7 @@ export default function FreeCellSlot({
     return (
       <DropTarget
         id={dropId!}
+        testID={dropId}
         onDrop={onDrop!}
         highlightStyle={{ borderColor: colors.accent, borderWidth: 2, borderRadius: 6 }}
         dimStyle={{ opacity: 0.4 }}

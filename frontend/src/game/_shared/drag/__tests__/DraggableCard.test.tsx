@@ -1,6 +1,7 @@
 import React from "react";
 import { Text } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
+import * as Reanimated from "react-native-reanimated";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
@@ -122,6 +123,26 @@ describe("DraggableCard", () => {
     expect(getByTestId("card")).toHaveStyle({ opacity: 1 });
     fireEvent.press(getByLabelText("trigger"));
     expect(getByTestId("card")).toHaveStyle({ opacity: 0.6 });
+  });
+
+  it("renders without crash when rnMeasure is mocked to return null", () => {
+    // Pan gesture worklets run natively and can't be simulated in Jest, but we can
+    // verify the component mounts and tap-fallback still works when rnMeasure returns null.
+    const measureSpy = jest.spyOn(Reanimated, "measure").mockReturnValue(null);
+    const onTap = jest.fn();
+
+    const { getByRole } = render(
+      wrap(
+        <DraggableCard onTap={onTap} dragCards={dragCards} dragSource={dragSource}>
+          <Text accessibilityRole="button">A♠</Text>
+        </DraggableCard>
+      )
+    );
+
+    expect(() => fireEvent.press(getByRole("button"))).not.toThrow();
+    expect(onTap).toHaveBeenCalledTimes(1);
+
+    measureSpy.mockRestore();
   });
 
   it("accepts hitSlop prop without throwing", () => {
