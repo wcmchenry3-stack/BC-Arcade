@@ -47,7 +47,7 @@ function scoringCards(cards: readonly Card[]): Card[] {
 const OPP_CARD_W = 24;
 const OPP_CARD_H = 28;
 const OPP_OFFSET = 8;
-const OPP_MAX_VISIBLE = 4;
+const OPP_MAX_VISIBLE = 5;
 
 const SELF_CARD_W = 28;
 const SELF_CARD_H = 40;
@@ -95,6 +95,11 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
           />
         ))}
       </View>
+      {points > 0 && (
+        <Text style={[styles.oppBadge, { color: colors.error, backgroundColor: `${colors.error}22` }]}>
+          {`${scoredCount} · +${points}`}
+        </Text>
+      )}
     </View>
   );
 }
@@ -138,7 +143,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfRank,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.text },
+                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
                   ]}
                 >
                   {rankText(card.rank)}
@@ -146,7 +151,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfSuit,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.text },
+                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
                   ]}
                 >
                   {SUIT_SYMBOL[card.suit]}
@@ -165,6 +170,14 @@ const styles = StyleSheet.create({
   oppContainer: {
     alignItems: "center",
     gap: 4,
+  },
+  oppBadge: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
   },
   oppFan: {
     position: "relative",

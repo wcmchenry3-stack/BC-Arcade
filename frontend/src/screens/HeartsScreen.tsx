@@ -5,7 +5,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
-import type { Colors } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -57,15 +56,6 @@ function delay(ms: number): Promise<void> {
 type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
 type SubmitState = "idle" | "submitting" | "done" | "error";
 
-// Side-seat label for narrow slots (West/East). Just the player name; the
-// captured pile beneath provides the only seat-level visual weight.
-function SideSeatLabel({ label, colors }: { label: string; colors: Colors }) {
-  return <Text style={[sideSeatStyles.label, { color: colors.textMuted }]}>{label}</Text>;
-}
-
-const sideSeatStyles = StyleSheet.create({
-  label: { fontSize: 11, fontWeight: "600" },
-});
 
 export default function HeartsScreen() {
   const { t } = useTranslation("hearts");
@@ -509,7 +499,11 @@ export default function HeartsScreen() {
         {/* Middle: Left AI | TrickArea | Right AI */}
         <View style={styles.middleRow}>
           <View style={styles.sideColumn}>
-            <SideSeatLabel label={playerLabels[1] ?? ""} colors={colors} />
+            <OpponentHand
+              cardCount={gameState.playerHands[1]?.length ?? 0}
+              label={playerLabels[1] ?? ""}
+              layout="vertical"
+            />
             <OpponentCapturedPile
               cards={gameState.wonCards[1] ?? []}
               seatLabel={playerLabels[1] ?? ""}
@@ -529,7 +523,11 @@ export default function HeartsScreen() {
             />
           </View>
           <View style={styles.sideColumn}>
-            <SideSeatLabel label={playerLabels[3] ?? ""} colors={colors} />
+            <OpponentHand
+              cardCount={gameState.playerHands[3]?.length ?? 0}
+              label={playerLabels[3] ?? ""}
+              layout="vertical"
+            />
             <OpponentCapturedPile
               cards={gameState.wonCards[3] ?? []}
               seatLabel={playerLabels[3] ?? ""}
