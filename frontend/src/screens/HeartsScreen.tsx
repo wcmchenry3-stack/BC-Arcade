@@ -91,7 +91,7 @@ export default function HeartsScreen() {
   const scoreHistory = useMemo(() => gameState?.scoreHistory ?? [], [gameState?.scoreHistory]);
 
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
-  const [debugMode] = useState(__DEV__);
+  const debugMode = __DEV__;
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -138,6 +138,13 @@ export default function HeartsScreen() {
       if (!unmountedRef.current && saved) {
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
+        if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
+          dealSnapshotRef.current = {
+            initialHands: saved.playerHands,
+            passSelections: saved.passSelections ?? [[], [], [], []],
+            finalHands: saved.playerHands,
+          };
+        }
       }
     });
     loadPlayerNames().then((names) => {
