@@ -511,6 +511,7 @@ export default function GameScreen({ navigation, route }: Props) {
         aiTotalScore={aiGameState?.total_score}
         aiUpperBonus={aiGameState?.upper_bonus}
         aiScores={aiGameState?.scores}
+        aiYachtBonusTotal={aiGameState?.yacht_bonus_total}
       />
 
       <NewGameConfirmModal

@@ -32,6 +32,7 @@ interface GameOverModalProps {
   aiTotalScore?: number;
   aiUpperBonus?: number;
   aiScores?: Record<string, number | null>;
+  aiYachtBonusTotal?: number;
 }
 
 function fmtScore(val: number | null | undefined): string {
@@ -51,6 +52,7 @@ export default function GameOverModal({
   aiTotalScore,
   aiUpperBonus,
   aiScores,
+  aiYachtBonusTotal,
 }: GameOverModalProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
@@ -230,6 +232,35 @@ export default function GameOverModal({
                 {t("section.lower")}
               </Text>
               {LOWER_CATEGORY_KEYS.map(renderScoreRow)}
+
+              {(yachtBonusTotal > 0 || (aiYachtBonusTotal ?? 0) > 0) && (
+                <View style={[styles.subtotalRow, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.subtotalLabel, { color: colors.textMuted }]}>
+                    {t("bonus.yachtLabel")}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.subtotalVal,
+                      { color: yachtBonusTotal > 0 ? colors.bonus : colors.textMuted },
+                    ]}
+                  >
+                    {yachtBonusTotal > 0 ? `+${yachtBonusTotal}` : "—"}
+                  </Text>
+                  {isVs && (
+                    <Text
+                      style={[
+                        styles.subtotalVal,
+                        {
+                          color:
+                            (aiYachtBonusTotal ?? 0) > 0 ? colors.bonus : colors.textMuted,
+                        },
+                      ]}
+                    >
+                      {(aiYachtBonusTotal ?? 0) > 0 ? `+${aiYachtBonusTotal}` : "—"}
+                    </Text>
+                  )}
+                </View>
+              )}
 
               <View style={[styles.totalRow, { borderTopColor: colors.border }]}>
                 <Text style={[styles.totalLabel, { color: colors.text }]}>
