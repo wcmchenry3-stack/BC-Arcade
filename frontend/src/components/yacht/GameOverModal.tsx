@@ -234,7 +234,10 @@ export default function GameOverModal({
               {LOWER_CATEGORY_KEYS.map(renderScoreRow)}
 
               {(yachtBonusTotal > 0 || (aiYachtBonusTotal ?? 0) > 0) && (
-                <View style={[styles.subtotalRow, { borderTopColor: colors.border }]}>
+                <View
+                  testID="yacht-bonus-row"
+                  style={[styles.subtotalRow, { borderTopColor: colors.border }]}
+                >
                   <Text style={[styles.subtotalLabel, { color: colors.textMuted }]}>
                     {t("bonus.yachtLabel")}
                   </Text>
@@ -251,8 +254,7 @@ export default function GameOverModal({
                       style={[
                         styles.subtotalVal,
                         {
-                          color:
-                            (aiYachtBonusTotal ?? 0) > 0 ? colors.bonus : colors.textMuted,
+                          color: (aiYachtBonusTotal ?? 0) > 0 ? colors.bonus : colors.textMuted,
                         },
                       ]}
                     >

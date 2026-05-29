@@ -1,11 +1,3 @@
-/**
- * Regression test for GH #1842 — CPU dice snap to new value after roll animation.
- *
- * Invariant: when aiRollingIndices is non-empty (animation active), aiGameState.dice
- * must already hold the rolled values. In the broken code engineRoll was called 1000 ms
- * AFTER setAiRollingIndices, so the die finished spinning on the old value and then
- * snapped silently to the new one.
- */
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
 import GameScreen from "../GameScreen";
@@ -43,9 +35,19 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 const ALL_NULL_SCORES = {
-  ones: null, twos: null, threes: null, fours: null, fives: null, sixes: null,
-  three_of_a_kind: null, four_of_a_kind: null, full_house: null,
-  small_straight: null, large_straight: null, yacht: null, chance: null,
+  ones: null,
+  twos: null,
+  threes: null,
+  fours: null,
+  fives: null,
+  sixes: null,
+  three_of_a_kind: null,
+  four_of_a_kind: null,
+  full_house: null,
+  small_straight: null,
+  large_straight: null,
+  yacht: null,
+  chance: null,
 };
 
 function makeGameState(overrides: Partial<GameState> = {}): GameState {
@@ -73,7 +75,7 @@ const mockNav = {
 // Recognisable rolled value — easy to assert against "showing blank" (value 0).
 const ROLLED_DICE: [number, number, number, number, number] = [6, 6, 6, 6, 6];
 
-describe("GameScreen VS mode — CPU animation ordering (GH #1842)", () => {
+describe("GameScreen VS mode — CPU animation ordering", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
@@ -90,7 +92,7 @@ describe("GameScreen VS mode — CPU animation ordering (GH #1842)", () => {
     jest.useRealTimers();
   });
 
-  it("CPU dice already show rolled values when rolling animation starts — no post-animation snap (#1842)", async () => {
+  it("CPU dice already show rolled values when rolling animation starts", async () => {
     // Player: already rolled once so they can score without another roll.
     const playerState = makeGameState({ dice: [1, 1, 1, 1, 1], rolls_used: 1 });
     // AI: blank dice, not yet rolled.
@@ -120,15 +122,7 @@ describe("GameScreen VS mode — CPU animation ordering (GH #1842)", () => {
       fireEvent.press(getByRole("button", { name: /ones/i }));
     });
 
-    // At this point the AI turn loop's synchronous prefix has run and then
-    // suspended at the first `await delay(...)`. No timers have advanced.
-    //
-    // BROKEN (pre-fix): setAiRollingIndices([0,1,2,3,4]) was called before
-    //   engineRoll, so dice are still blank → accessibilityLabel "showing blank".
-    //
-    // FIXED: engineRoll + setAiGameState are called synchronously BEFORE
-    //   setAiRollingIndices, so dice are already [6,6,6,6,6] when the
-    //   animation starts → accessibilityLabel "showing 6".
+    // Loop suspends at the first await; engineRoll ran synchronously before setAiRollingIndices.
     const diceButtons = getAllByTestId(/^yacht-die-[0-4]$/);
     expect(diceButtons).toHaveLength(5);
     for (const die of diceButtons) {

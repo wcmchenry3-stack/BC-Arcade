@@ -187,8 +187,7 @@ export default function GameScreen({ navigation, route }: Props) {
       const diff = aiDifficultyRef.current!;
       let s = aiGameStateRef.current!;
 
-      // Initial roll (all dice free) — compute result first so the animation
-      // plays over the final values and no post-spin snap occurs (#1842).
+      // Initial roll (all dice free) — compute result first so animation plays over final values.
       s = engineRoll(s, [false, false, false, false, false]);
       setAiGameState(s);
       setAiRollingIndices([0, 1, 2, 3, 4]);
@@ -210,7 +209,7 @@ export default function GameScreen({ navigation, route }: Props) {
           if (!h) acc.push(i);
           return acc;
         }, []);
-        // Compute result before starting animation (#1842)
+        // Compute result before starting animation
         s = engineRoll(s, holds);
         setAiGameState(s);
         setAiRollingIndices(rolledIdxs);
