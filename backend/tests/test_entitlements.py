@@ -134,6 +134,22 @@ def test_dev_override_returns_all_premium_games(
     assert set(decoded["entitled_games"]) == _PREMIUM_GAMES
 
 
+def test_dev_override_does_not_require_database(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Override must work even when DATABASE_URL is not configured (no DB available)."""
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    monkeypatch.setattr(
+        "entitlements.router.get_session_factory",
+        lambda: (_ for _ in ()).throw(RuntimeError("DATABASE_URL is not configured")),
+    )
+    r = client.get("/entitlements", headers=_headers(session_id))
+    assert r.status_code == 200
+    pub_pem = entitlements_service.get_public_key_pem()
+    decoded = jwt.decode(r.json()["token"], pub_pem, algorithms=["RS256"])
+    assert set(decoded["entitled_games"]) == _PREMIUM_GAMES
+
+
 def test_dev_override_false_gives_normal_path(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

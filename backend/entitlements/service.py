@@ -15,11 +15,11 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import GameEntitlement
 
-# Sourced from migrations 0014 + 0016. Used when ENTITLEMENT_DEV_OVERRIDE is active
-# and no DB is available so the override doesn't require a running database.
+# Keep in sync with is_premium=True rows (migrations 0014, 0016) — update when adding a premium game.
 _ALL_PREMIUM_SLUGS = ["cascade", "hearts", "sort", "starswarm", "sudoku", "yacht"]
 
 TOKEN_TTL_HOURS = 24
@@ -90,7 +90,7 @@ def issue_token(session_id: str, entitled_games: list[str]) -> tuple[str, dateti
     return token, exp
 
 
-async def get_entitled_games(db_session, session_id: str) -> list[str]:
+async def get_entitled_games(db_session: AsyncSession | None, session_id: str) -> list[str]:
     """Return entitled game slugs; when DEV_OVERRIDE is active, returns all premium slugs."""
     if is_dev_override_active():
         return list(_ALL_PREMIUM_SLUGS)
