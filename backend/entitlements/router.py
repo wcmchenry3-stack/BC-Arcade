@@ -19,9 +19,12 @@ router = APIRouter()
 async def get_entitlements(request: Request) -> EntitlementsResponse:
     """Return a signed RS256 JWT listing games this session may access."""
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        entitled_games = await service.get_entitled_games(db, sid)
+    if service.is_dev_override_active():
+        entitled_games = await service.get_entitled_games(None, sid)
+    else:
+        factory = get_session_factory()
+        async with factory() as db:
+            entitled_games = await service.get_entitled_games(db, sid)
     token, expires_at = service.issue_token(sid, entitled_games)
     return EntitlementsResponse(
         token=token,
