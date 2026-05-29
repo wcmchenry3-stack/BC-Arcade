@@ -91,24 +91,23 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
       <Text style={[styles.sectionHeader, { color: colors.text }]}>
         Tricks ({log.tricks.length})
       </Text>
-      {log.tricks.map((trick, t) => {
-        const byPlayer: string[] = ["—", "—", "—", "—"];
-        for (const play of trick.plays) {
-          const s = cardStr(play.card);
-          byPlayer[play.playerIndex] = play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
-        }
-        return (
-          <Text key={t} style={[styles.trickRow, { color: colors.textMuted }]}>
-            <Text style={{ color: colors.text }}>T{t + 1} </Text>
-            {byPlayer.map((c, i) => `${label(i)}:${c}`).join("  ")}
-            {"  "}
-            <Text style={{ color: colors.accent }}>
-              → {label(trick.winnerIndex)}
-              {trick.pointsWon > 0 ? ` +${trick.pointsWon}` : ""}
-            </Text>
+      {log.tricks.map((trick, t) => (
+        <Text key={t} style={[styles.trickRow, { color: colors.textMuted }]}>
+          <Text style={{ color: colors.text }}>T{t + 1} </Text>
+          {trick.plays
+            .map((play) => {
+              const s = cardStr(play.card);
+              const cell = play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
+              return `${label(play.playerIndex)}:${cell}`;
+            })
+            .join("  ")}
+          {"  "}
+          <Text style={{ color: colors.accent }}>
+            → {label(trick.winnerIndex)}
+            {trick.pointsWon > 0 ? ` +${trick.pointsWon}` : ""}
           </Text>
-        );
-      })}
+        </Text>
+      ))}
 
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Scores</Text>
       <Text style={[styles.handRow, { color: colors.textMuted }]}>

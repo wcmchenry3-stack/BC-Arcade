@@ -99,19 +99,17 @@ export function formatSessionAsMarkdown(
 
     lines.push("");
     lines.push("### Tricks");
-    const colLabels = [0, 1, 2, 3].map(label);
-    lines.push(`| # | ${colLabels.join(" | ")} | Winner | Pts |`);
-    lines.push(`|---|${colLabels.map(() => "---").join("|")}|--------|-----|`);
     for (let t = 0; t < log.tricks.length; t++) {
       const trick = log.tricks[t]!;
-      const cellByPlayer: string[] = ["—", "—", "—", "—"];
-      for (const play of trick.plays) {
-        const s = cardStr(play.card);
-        cellByPlayer[play.playerIndex] = play.playerIndex === trick.winnerIndex ? `**${s}**` : s;
-      }
-      lines.push(
-        `| ${t + 1} | ${cellByPlayer.join(" | ")} | ${label(trick.winnerIndex)} | ${trick.pointsWon} |`
-      );
+      const plays = trick.plays
+        .map((play) => {
+          const s = cardStr(play.card);
+          const cell = play.playerIndex === trick.winnerIndex ? `**${s}**` : s;
+          return `${label(play.playerIndex)}:${cell}`;
+        })
+        .join("  ");
+      const pts = trick.pointsWon > 0 ? ` +${trick.pointsWon}` : "";
+      lines.push(`T${t + 1} ${plays}  → ${label(trick.winnerIndex)}${pts}`);
     }
 
     lines.push("");
