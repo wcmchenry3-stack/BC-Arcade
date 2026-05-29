@@ -3,6 +3,9 @@ import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import type { Card } from "../../game/hearts/types";
+import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
 
 interface Props {
   cardCount: number;
@@ -10,6 +13,8 @@ interface Props {
   /** "horizontal" = North (portrait cards fanning left-to-right).
    *  "vertical"   = East/West (landscape cards stacked top-to-bottom). */
   layout?: "horizontal" | "vertical";
+  /** __DEV__ only: when provided, renders card identities as a text row below the hand. */
+  revealCards?: readonly Card[];
 }
 
 // Horizontal fan constants (North)
@@ -30,7 +35,12 @@ const cardShadow = {
   elevation: 2,
 } as const;
 
-export default function OpponentHand({ cardCount, label, layout = "horizontal" }: Props) {
+export default function OpponentHand({
+  cardCount,
+  label,
+  layout = "horizontal",
+  revealCards,
+}: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
 
@@ -65,6 +75,13 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
             </View>
           ))}
         </View>
+        {__DEV__ && revealCards && (
+          <Text style={[styles.revealText, { color: colors.textMuted }]}>
+            {revealCards
+              .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
+              .join(" ")}
+          </Text>
+        )}
       </View>
     );
   }
@@ -96,6 +113,13 @@ export default function OpponentHand({ cardCount, label, layout = "horizontal" }
           </View>
         ))}
       </View>
+      {__DEV__ && revealCards && (
+        <Text style={[styles.revealText, { color: colors.textMuted }]}>
+          {revealCards
+            .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
+            .join(" ")}
+        </Text>
+      )}
     </View>
   );
 }
@@ -128,5 +152,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
     ...cardShadow,
+  },
+  revealText: {
+    fontSize: 9,
+    flexWrap: "wrap",
+    textAlign: "center",
+    maxWidth: 80,
+    marginTop: 2,
   },
 });
