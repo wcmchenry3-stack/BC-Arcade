@@ -91,7 +91,7 @@ export default function HeartsScreen() {
   const scoreHistory = useMemo(() => gameState?.scoreHistory ?? [], [gameState?.scoreHistory]);
 
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode] = useState(__DEV__);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -660,25 +660,13 @@ export default function HeartsScreen() {
         />
         {__DEV__ && (
           <Pressable
-            style={[
-              styles.devButton,
-              { backgroundColor: debugMode ? colors.accent : colors.surfaceAlt },
-            ]}
-            onPress={() => {
-              const next = !debugMode;
-              setDebugMode(next);
-              if (next) setDebugPanelOpen(true);
-            }}
+            style={[styles.devButton, { backgroundColor: colors.accent }]}
+            onPress={() => setDebugPanelOpen((prev) => !prev)}
             accessibilityRole="button"
-            accessibilityLabel="Toggle Hearts debugger"
+            accessibilityLabel="Toggle Hearts debugger panel"
           >
-            <Text
-              style={[
-                styles.devButtonText,
-                { color: debugMode ? colors.textOnAccent : colors.textMuted },
-              ]}
-            >
-              {debugMode ? "DBG ON" : "DBG"}
+            <Text style={[styles.devButtonText, { color: colors.textOnAccent }]}>
+              {debugPanelOpen ? "DBG ▾" : "DBG ▴"}
             </Text>
           </Pressable>
         )}
