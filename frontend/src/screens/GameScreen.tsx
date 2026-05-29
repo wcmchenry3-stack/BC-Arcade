@@ -187,12 +187,13 @@ export default function GameScreen({ navigation, route }: Props) {
       const diff = aiDifficultyRef.current!;
       let s = aiGameStateRef.current!;
 
-      // Initial roll (all dice free)
+      // Initial roll (all dice free) — compute result first so the animation
+      // plays over the final values and no post-spin snap occurs (#1842).
+      s = engineRoll(s, [false, false, false, false, false]);
+      setAiGameState(s);
       setAiRollingIndices([0, 1, 2, 3, 4]);
       await delay(1000);
       if (cancelled) return;
-      s = engineRoll(s, [false, false, false, false, false]);
-      setAiGameState(s);
       setAiRollingIndices([]);
       // Settle pause: let the player read the dice values
       await delay(800);
@@ -201,7 +202,7 @@ export default function GameScreen({ navigation, route }: Props) {
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
         const holds = holdStrategy(s, diff);
-        // Show held dice before rolling so the player can see the AI's decision
+        // Show hold decision on current values so the player sees the AI's choice
         setAiGameState({ ...s, held: holds });
         await delay(800);
         if (cancelled) return;
@@ -209,11 +210,12 @@ export default function GameScreen({ navigation, route }: Props) {
           if (!h) acc.push(i);
           return acc;
         }, []);
+        // Compute result before starting animation (#1842)
+        s = engineRoll(s, holds);
+        setAiGameState(s);
         setAiRollingIndices(rolledIdxs);
         await delay(1000);
         if (cancelled) return;
-        s = engineRoll(s, holds);
-        setAiGameState(s);
         setAiRollingIndices([]);
         await delay(800);
         if (cancelled) return;
