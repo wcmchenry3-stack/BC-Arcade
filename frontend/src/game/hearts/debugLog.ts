@@ -33,7 +33,7 @@ function handStr(cards: readonly Card[]): string {
   return cards.length > 0 ? cards.map(cardStr).join(" ") : "—";
 }
 
-function passDirectionLabel(dir: PassDirection): string {
+export function passDirectionLabel(dir: PassDirection): string {
   const map: Record<PassDirection, string> = {
     left: "Pass Left",
     right: "Pass Right",
@@ -43,7 +43,7 @@ function passDirectionLabel(dir: PassDirection): string {
   return map[dir];
 }
 
-function passOffset(dir: PassDirection): number {
+export function passOffset(dir: PassDirection): number {
   if (dir === "left") return 1;
   if (dir === "right") return 3;
   if (dir === "across") return 2;
@@ -107,8 +107,7 @@ export function formatSessionAsMarkdown(
       const cellByPlayer: string[] = ["—", "—", "—", "—"];
       for (const play of trick.plays) {
         const s = cardStr(play.card);
-        cellByPlayer[play.playerIndex] =
-          play.playerIndex === trick.winnerIndex ? `**${s}**` : s;
+        cellByPlayer[play.playerIndex] = play.playerIndex === trick.winnerIndex ? `**${s}**` : s;
       }
       lines.push(
         `| ${t + 1} | ${cellByPlayer.join(" | ")} | ${label(trick.winnerIndex)} | ${trick.pointsWon} |`
@@ -116,9 +115,7 @@ export function formatSessionAsMarkdown(
     }
 
     lines.push("");
-    const deltaStr = [0, 1, 2, 3]
-      .map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`)
-      .join(", ");
+    const deltaStr = [0, 1, 2, 3].map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`).join(", ");
     const runningStr = [0, 1, 2, 3]
       .map((i) => `${label(i)} ${log.cumulativeScoresAfter[i] ?? 0}`)
       .join(", ");

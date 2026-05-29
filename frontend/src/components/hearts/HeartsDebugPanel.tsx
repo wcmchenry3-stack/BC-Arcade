@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -9,16 +9,22 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeContext";
 import type { HandDebugLog } from "../../game/hearts/debugLog";
-import { cardStr, formatSessionAsMarkdown } from "../../game/hearts/debugLog";
+import {
+  cardStr,
+  formatSessionAsMarkdown,
+  passDirectionLabel,
+  passOffset,
+} from "../../game/hearts/debugLog";
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   logs: readonly HandDebugLog[];
-  notes: string[];
-  playerLabels: string[];
+  notes: readonly string[];
+  playerLabels: readonly string[];
   aiDifficulty: string;
   onNotesChange: (handIdx: number, text: string) => void;
 }
@@ -29,41 +35,23 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
-function passLabel(dir: string): string {
-  const map: Record<string, string> = {
-    left: "Pass Left",
-    right: "Pass Right",
-    across: "Pass Across",
-    none: "No Pass",
-  };
-  return map[dir] ?? dir;
-}
-
-function passOffset(dir: string): number {
-  if (dir === "left") return 1;
-  if (dir === "right") return 3;
-  if (dir === "across") return 2;
-  return 0;
-}
-
 interface HandSectionProps {
   log: HandDebugLog;
   handIdx: number;
   note: string;
-  playerLabels: string[];
+  playerLabels: readonly string[];
   onNotesChange: (handIdx: number, text: string) => void;
 }
 
 function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSectionProps) {
   const { colors } = useTheme();
   const label = (i: number) => playerLabels[i] ?? `P${i}`;
-
   const offset = passOffset(log.passDirection);
 
   return (
     <View style={[styles.handSection, { borderColor: colors.border }]}>
       <Text style={[styles.handTitle, { color: colors.accent }]}>
-        Hand {log.handNumber} — {passLabel(log.passDirection)}
+        Hand {log.handNumber} — {passDirectionLabel(log.passDirection)}
       </Text>
 
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Initial Deals</Text>
@@ -107,8 +95,7 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
         const byPlayer: string[] = ["—", "—", "—", "—"];
         for (const play of trick.plays) {
           const s = cardStr(play.card);
-          byPlayer[play.playerIndex] =
-            play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
+          byPlayer[play.playerIndex] = play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
         }
         return (
           <Text key={t} style={[styles.trickRow, { color: colors.textMuted }]}>
@@ -125,15 +112,11 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
 
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Scores</Text>
       <Text style={[styles.handRow, { color: colors.textMuted }]}>
-        {[0, 1, 2, 3]
-          .map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`)
-          .join("  ")}
+        {[0, 1, 2, 3].map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`).join("  ")}
       </Text>
       <Text style={[styles.handRow, { color: colors.textMuted }]}>
         Running:{" "}
-        {[0, 1, 2, 3]
-          .map((i) => `${label(i)} ${log.cumulativeScoresAfter[i] ?? 0}`)
-          .join("  ")}
+        {[0, 1, 2, 3].map((i) => `${label(i)} ${log.cumulativeScoresAfter[i] ?? 0}`).join("  ")}
       </Text>
 
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Notes</Text>
@@ -163,18 +146,29 @@ export default function HeartsDebugPanel({
   onNotesChange,
 }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== null) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   async function handleCopy() {
     const text = formatSessionAsMarkdown(logs, notes, playerLabels, aiDifficulty);
     try {
       await copyToClipboard(text);
+      if (copiedTimerRef.current !== null) clearTimeout(copiedTimerRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      // ignore
+      if (__DEV__) console.warn("[HeartsDebugPanel] clipboard copy failed");
     }
   }
+
+  const isNative = Platform.OS !== "web";
 
   return (
     <Modal
@@ -184,19 +178,33 @@ export default function HeartsDebugPanel({
       accessibilityViewIsModal
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View
+          style={[styles.header, { borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}
+        >
           <Text style={[styles.headerTitle, { color: colors.text }]}>
-            Hearts Debugger{logs.length > 0 ? ` — ${logs.length} hand${logs.length !== 1 ? "s" : ""}` : ""}
+            Hearts Debugger
+            {logs.length > 0 ? ` — ${logs.length} hand${logs.length !== 1 ? "s" : ""}` : ""}
           </Text>
           <View style={styles.headerActions}>
             <Pressable
-              style={[styles.copyBtn, { backgroundColor: copied ? colors.accent : colors.surfaceAlt }]}
+              style={[
+                styles.copyBtn,
+                { backgroundColor: copied ? colors.accent : colors.surfaceAlt },
+              ]}
               onPress={() => void handleCopy()}
+              disabled={isNative}
               accessibilityRole="button"
-              accessibilityLabel="Copy session to clipboard"
+              accessibilityLabel={isNative ? "Copy (web only)" : "Copy session to clipboard"}
             >
-              <Text style={[styles.copyBtnText, { color: copied ? colors.textOnAccent : colors.text }]}>
-                {copied ? "Copied!" : "Copy"}
+              <Text
+                style={[
+                  styles.copyBtnText,
+                  {
+                    color: isNative ? colors.textMuted : copied ? colors.textOnAccent : colors.text,
+                  },
+                ]}
+              >
+                {copied ? "Copied!" : isNative ? "Copy (web)" : "Copy"}
               </Text>
             </Pressable>
             <Pressable
@@ -212,7 +220,7 @@ export default function HeartsDebugPanel({
 
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}
           keyboardShouldPersistTaps="handled"
         >
           {logs.length === 0 ? (
@@ -246,8 +254,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingTop: 52,
+    paddingBottom: 12,
     borderBottomWidth: 1,
   },
   headerTitle: {
@@ -309,12 +316,12 @@ const styles = StyleSheet.create({
   },
   handRow: {
     fontSize: 12,
-    fontFamily: "monospace",
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     flexWrap: "wrap",
   },
   trickRow: {
     fontSize: 11,
-    fontFamily: "monospace",
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     flexWrap: "wrap",
   },
   noteInput: {

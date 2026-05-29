@@ -94,7 +94,7 @@ export default function HeartsScreen() {
   const [debugMode, setDebugMode] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
-  const handLogRef = useRef<HandDebugLog[]>([]);
+  const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
   const dealSnapshotRef = useRef<{
     initialHands: readonly (readonly Card[])[];
     passSelections: readonly (readonly Card[])[];
@@ -182,7 +182,7 @@ export default function HeartsScreen() {
       scoreDeltas: gameState.scoreHistory[histLen - 1] ?? [],
       cumulativeScoresAfter: gameState.cumulativeScores,
     };
-    handLogRef.current = [...handLogRef.current, entry];
+    setHandLogs((prev) => [...prev, entry]);
     setHandNotes((prev) => [...prev, ""]);
     trickLogBufferRef.current = [];
     dealSnapshotRef.current = null;
@@ -310,7 +310,6 @@ export default function HeartsScreen() {
         loopActiveRef.current = false;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [playCardPlay, debugMode]
   );
 
@@ -366,7 +365,9 @@ export default function HeartsScreen() {
 
     if (completedTrick) {
       if (__DEV__ && debugMode) {
-        trickLogBufferRef.current.push(buildDebugTrick(completedTrick, newState.currentLeaderIndex));
+        trickLogBufferRef.current.push(
+          buildDebugTrick(completedTrick, newState.currentLeaderIndex)
+        );
       }
       void saveGame(newState);
       if (newState.phase === "playing") {
@@ -473,10 +474,14 @@ export default function HeartsScreen() {
     clearGame().catch(() => {});
     const fresh = dealGame(difficulty);
     if (__DEV__) {
-      handLogRef.current = [];
+      setHandLogs([]);
       trickLogBufferRef.current = [];
       dealSnapshotRef.current = debugMode
-        ? { initialHands: fresh.playerHands, passSelections: [[], [], [], []], finalHands: fresh.playerHands }
+        ? {
+            initialHands: fresh.playerHands,
+            passSelections: [[], [], [], []],
+            finalHands: fresh.playerHands,
+          }
         : null;
       setHandNotes([]);
     }
@@ -494,7 +499,7 @@ export default function HeartsScreen() {
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
     if (__DEV__) {
-      handLogRef.current = [];
+      setHandLogs([]);
       trickLogBufferRef.current = [];
       dealSnapshotRef.current = null;
       setHandNotes([]);
@@ -660,13 +665,19 @@ export default function HeartsScreen() {
               { backgroundColor: debugMode ? colors.accent : colors.surfaceAlt },
             ]}
             onPress={() => {
-              setDebugMode((d) => !d);
-              setDebugPanelOpen(true);
+              const next = !debugMode;
+              setDebugMode(next);
+              if (next) setDebugPanelOpen(true);
             }}
             accessibilityRole="button"
             accessibilityLabel="Toggle Hearts debugger"
           >
-            <Text style={[styles.devButtonText, { color: debugMode ? colors.textOnAccent : colors.textMuted }]}>
+            <Text
+              style={[
+                styles.devButtonText,
+                { color: debugMode ? colors.textOnAccent : colors.textMuted },
+              ]}
+            >
               {debugMode ? "DBG ON" : "DBG"}
             </Text>
           </Pressable>
@@ -857,7 +868,7 @@ export default function HeartsScreen() {
         <HeartsDebugPanel
           visible={debugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}
-          logs={handLogRef.current}
+          logs={handLogs}
           notes={handNotes}
           playerLabels={playerLabels}
           aiDifficulty={gameState.aiDifficulty}

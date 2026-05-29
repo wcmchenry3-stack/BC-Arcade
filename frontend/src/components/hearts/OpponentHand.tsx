@@ -4,7 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { Card } from "../../game/hearts/types";
-import { cardStr } from "../../game/hearts/debugLog";
+import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
 
 interface Props {
   cardCount: number;
@@ -76,7 +77,9 @@ export default function OpponentHand({
         </View>
         {__DEV__ && revealCards && (
           <Text style={[styles.revealText, { color: colors.textMuted }]}>
-            {revealCards.map(cardStr).join(" ")}
+            {revealCards
+              .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
+              .join(" ")}
           </Text>
         )}
       </View>
@@ -112,7 +115,9 @@ export default function OpponentHand({
       </View>
       {__DEV__ && revealCards && (
         <Text style={[styles.revealText, { color: colors.textMuted }]}>
-          {revealCards.map(cardStr).join(" ")}
+          {revealCards
+            .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
+            .join(" ")}
         </Text>
       )}
     </View>
