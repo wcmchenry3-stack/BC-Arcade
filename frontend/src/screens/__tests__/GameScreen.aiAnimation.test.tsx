@@ -1,5 +1,6 @@
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
+import { AppState } from "react-native";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -75,6 +76,36 @@ const mockNav = {
 // Recognisable rolled value — easy to assert against "showing blank" (value 0).
 const ROLLED_DICE: [number, number, number, number, number] = [6, 6, 6, 6, 6];
 
+// ---------------------------------------------------------------------------
+// Shared VS-game render helper used by both describe blocks below.
+// ---------------------------------------------------------------------------
+
+function renderVsGame(
+  playerOverrides: Partial<GameState> = {},
+  aiOverrides: Partial<GameState> = {}
+) {
+  const playerState = makeGameState({ dice: [1, 1, 1, 1, 1], rolls_used: 1, ...playerOverrides });
+  const aiState = makeGameState(aiOverrides);
+  return render(
+    <ThemeProvider>
+      <YachtScorecardProvider>
+        <GameScreen
+          navigation={mockNav}
+          route={
+            {
+              params: {
+                initialState: playerState,
+                aiDifficulty: "easy" as const,
+                aiState,
+              },
+            } as unknown as Parameters<typeof GameScreen>[0]["route"]
+          }
+        />
+      </YachtScorecardProvider>
+    </ThemeProvider>
+  );
+}
+
 describe("GameScreen VS mode — CPU animation ordering", () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -128,5 +159,142 @@ describe("GameScreen VS mode — CPU animation ordering", () => {
     for (const die of diceButtons) {
       expect(die.props.accessibilityLabel).toMatch(/showing 6/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AppState interruption + replay (GH #1850 / PR #1851)
+// ---------------------------------------------------------------------------
+
+describe("GameScreen VS mode — AppState interruption + replay", () => {
+  let appStateListeners: Array<(state: string) => void>;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    appStateListeners = [];
+    (AppState.addEventListener as jest.Mock).mockImplementation(
+      (_event: string, handler: (state: string) => void) => {
+        appStateListeners.push(handler);
+        return { remove: jest.fn() };
+      }
+    );
+    mockRoll.mockImplementation((state: GameState) => ({
+      ...state,
+      dice: [...ROLLED_DICE],
+      rolls_used: state.rolls_used + 1,
+      held: [false, false, false, false, false],
+    }));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function fireAppState(state: string) {
+    appStateListeners.forEach((h) => h(state));
+  }
+
+  it("registers exactly one AppState listener on mount (single combined listener)", () => {
+    renderVsGame();
+    expect(appStateListeners).toHaveLength(1);
+  });
+
+  it("no additional AppState listener is registered when an AI turn starts", async () => {
+    const { getByRole } = renderVsGame();
+    expect(appStateListeners).toHaveLength(1);
+
+    await act(async () => {
+      fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+
+    // Still exactly one listener — no per-turn subscription added.
+    expect(appStateListeners).toHaveLength(1);
+  });
+
+  it("backgrounding mid-AI-turn stops the animation loop (no further rolls)", async () => {
+    const { getByRole } = renderVsGame();
+    mockRoll.mockClear();
+
+    await act(async () => {
+      fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+    // One roll happens synchronously before the first await in the loop.
+    const rollsBeforeBackground = mockRoll.mock.calls.length;
+    expect(rollsBeforeBackground).toBe(1);
+
+    await act(async () => {
+      fireAppState("background");
+    });
+
+    // Advance all timers — the cancelled loop should exit without rolling again.
+    await act(async () => {
+      jest.advanceTimersByTime(10_000);
+    });
+
+    expect(mockRoll.mock.calls.length).toBe(rollsBeforeBackground);
+  });
+
+  it("foregrounding after background replays the AI turn (mockRoll called again)", async () => {
+    const { getByRole, getByText } = renderVsGame();
+
+    await act(async () => {
+      fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+
+    await act(async () => {
+      fireAppState("background");
+      jest.advanceTimersByTime(10_000);
+    });
+
+    mockRoll.mockClear();
+
+    await act(async () => {
+      fireAppState("active");
+    });
+
+    // The replay re-fires the AI turn effect: at minimum one roll runs synchronously.
+    expect(mockRoll.mock.calls.length).toBeGreaterThan(0);
+    expect(getByText("Computer's Turn")).toBeTruthy();
+  });
+
+  it("replay restores the pre-turn snapshot (first roll receives rolls_used=0)", async () => {
+    const { getByRole } = renderVsGame();
+
+    await act(async () => {
+      fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+
+    await act(async () => {
+      fireAppState("background");
+      jest.advanceTimersByTime(10_000);
+    });
+
+    mockRoll.mockClear();
+
+    await act(async () => {
+      fireAppState("active");
+    });
+
+    // The very first roll on replay must use the pre-turn snapshot (rolls_used=0).
+    expect(mockRoll).toHaveBeenCalledWith(expect.objectContaining({ rolls_used: 0 }), [
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("backgrounding when NOT in an AI turn does not start a spurious replay", async () => {
+    const { queryByText } = renderVsGame();
+
+    // Background and foreground with no AI turn running.
+    await act(async () => {
+      fireAppState("background");
+      fireAppState("active");
+    });
+
+    expect(queryByText("Computer's Turn")).toBeNull();
   });
 });
