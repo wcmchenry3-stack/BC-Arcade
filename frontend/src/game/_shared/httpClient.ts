@@ -53,6 +53,15 @@ function isLocalhost(url: string): boolean {
   }
 }
 
+function isDevApiUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname.startsWith("dev-");
+  } catch {
+    return false;
+  }
+}
+
 function resolveBaseUrl(): string {
   const raw = process.env.EXPO_PUBLIC_API_URL;
   if (raw) {
@@ -74,6 +83,21 @@ function resolveBaseUrl(): string {
         });
         throw new Error(msg);
       }
+    }
+    // Catch dev-API-in-prod: a production Sentry environment tag with a
+    // dev-* hostname means .env.production was misconfigured (issue #1854).
+    if (!__DEV__ && !isTestBuild && isDevApiUrl(resolved)) {
+      const msg =
+        "EXPO_PUBLIC_API_URL points to a dev API host in a non-dev build (" +
+        resolved +
+        "). Set EXPO_PUBLIC_API_URL to the production API URL in .env.production " +
+        "and in the Render build environment (see render.yaml).";
+      Sentry.captureMessage(msg, {
+        level: "fatal",
+        tags: { subsystem: "httpClient", issue: "dev-api-in-prod" },
+        extra: { raw },
+      });
+      throw new Error(msg);
     }
     return resolved;
   }
