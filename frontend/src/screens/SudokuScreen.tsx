@@ -53,6 +53,7 @@ import {
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
 import { VARIANTS, variantConfig } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
+import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
   clearGame,
   loadGame,
@@ -124,7 +125,7 @@ export default function SudokuScreen() {
   const unitFlashOpacity = useRef(new Animated.Value(0)).current;
   const isComplete = state?.isComplete ?? false;
 
-  const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete");
+  const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
 
   const {
     start: syncStart,
@@ -623,6 +624,7 @@ function PreGame({
           <DifficultySelector value={difficulty} onChange={onChange} />
         </View>
         <Pressable
+          testID="sudoku-pregame-start"
           onPress={onStart}
           style={[styles.preGameStart, gradient]}
           accessibilityRole="button"

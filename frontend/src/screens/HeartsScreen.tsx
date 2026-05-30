@@ -39,6 +39,7 @@ import { useGameSync } from "../game/_shared/useGameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
+import { HEARTS_SOUNDS } from "../game/hearts/sounds";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
@@ -177,12 +178,12 @@ export default function HeartsScreen() {
     return unsub;
   }, [navigation, syncComplete, syncGetGameId]);
 
-  const { play: playHeartsBroken } = useSound("hearts.heartsBroken");
-  const { play: playMoonShot } = useSound("hearts.moonShot");
-  const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades");
-  const { play: playCardPlay } = useSound("hearts.cardPlay");
-  const { play: playTrickWon } = useSound("hearts.trickWon");
-  const { play: playGameOver } = useSound("hearts.gameOver");
+  const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
+  const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
+  const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
+  const { play: playCardPlay } = useSound("hearts.cardPlay", HEARTS_SOUNDS);
+  const { play: playTrickWon } = useSound("hearts.trickWon", HEARTS_SOUNDS);
+  const { play: playGameOver } = useSound("hearts.gameOver", HEARTS_SOUNDS);
 
   useGameEvents(
     gameState?.events,
@@ -468,6 +469,7 @@ export default function HeartsScreen() {
           </Text>
           <HeartsAiDifficultySelector value={selectedDifficulty} onChange={setSelectedDifficulty} />
           <Pressable
+            testID="hearts-start-game"
             style={[styles.btn, { backgroundColor: colors.accent }]}
             onPress={() => handleStartGame(selectedDifficulty)}
             accessibilityRole="button"
@@ -536,7 +538,7 @@ export default function HeartsScreen() {
         </View>
 
         {/* Human hand */}
-        <View style={styles.bottomArea}>
+        <View testID="hearts-player-hand-area" style={styles.bottomArea}>
           <Text style={[styles.humanLabel, { color: colors.textMuted }]}>
             {playerLabels[0] ?? ""}
           </Text>

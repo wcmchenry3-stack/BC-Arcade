@@ -24,6 +24,7 @@ import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
+import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
 import ActionButtons from "../components/blackjack/ActionButtons";
 import ResultBanner from "../components/blackjack/ResultBanner";
@@ -61,11 +62,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const comebackOpacity = useSharedValue(0);
   const allInOpacity = useSharedValue(0);
 
-  const cardDealSound = useSound("blackjack.cardDeal");
-  const blackjackSound = useSound("blackjack.blackjack");
-  const bustSound = useSound("blackjack.bust");
-  const winSound = useSound("blackjack.win");
-  const pushSound = useSound("blackjack.push");
+  const cardDealSound = useSound("blackjack.cardDeal", BLACKJACK_SOUNDS);
+  const blackjackSound = useSound("blackjack.blackjack", BLACKJACK_SOUNDS);
+  const bustSound = useSound("blackjack.bust", BLACKJACK_SOUNDS);
+  const winSound = useSound("blackjack.win", BLACKJACK_SOUNDS);
+  const pushSound = useSound("blackjack.push", BLACKJACK_SOUNDS);
 
   // Flash animations for player hand area
   const bustFlash = useSharedValue(0);
@@ -244,7 +245,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
       {/* Table */}
       {state && (
-        <View style={styles.tableArea}>
+        <View testID="blackjack-table-area" style={styles.tableArea}>
           <BlackjackTable
             playerHand={state.player_hand}
             dealerHand={state.dealer_hand}

@@ -307,6 +307,7 @@ function WordKeyboard({
     return (
       <Pressable
         key={`${key}-${idx}`}
+        testID={`daily-word-key-${key.toLowerCase()}`}
         onPress={() => onKey(key)}
         style={[keyStyles.key, isAction && keyStyles.actionKey, { backgroundColor: bg }]}
         accessibilityRole="button"

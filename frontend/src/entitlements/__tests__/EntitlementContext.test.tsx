@@ -28,11 +28,10 @@ jest.mock("../../game/_shared/httpClient", () => ({
 const mockClearHearts = jest.fn().mockResolvedValue(undefined);
 const mockClearYacht = jest.fn().mockResolvedValue(undefined);
 const mockClearSudoku = jest.fn().mockResolvedValue(undefined);
-const mockClearCascade = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/hearts/storage", () => ({ clearGame: () => mockClearHearts() }));
 jest.mock("../../game/yacht/storage", () => ({ clearGame: () => mockClearYacht() }));
 jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku() }));
-jest.mock("../../game/cascade/storage", () => ({ clearGame: () => mockClearCascade() }));
+// cascade/storage was removed in v2 teardown (#1747); EntitlementContext uses an inline no-op.
 
 const mockDropByGameType = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/_shared/scoreQueue", () => ({
@@ -118,7 +117,6 @@ beforeEach(async () => {
   mockClearHearts.mockResolvedValue(undefined);
   mockClearYacht.mockResolvedValue(undefined);
   mockClearSudoku.mockResolvedValue(undefined);
-  mockClearCascade.mockResolvedValue(undefined);
   mockDropByGameType.mockResolvedValue(undefined);
 });
 
@@ -347,7 +345,6 @@ describe("revocation flow", () => {
       expires_at: "2099-01-01T00:00:00Z",
     });
     await triggerForegroundWith(["cascade"]);
-    expect(mockClearCascade).not.toHaveBeenCalled();
     expect(mockDropByGameType).not.toHaveBeenCalledWith("cascade");
   });
 

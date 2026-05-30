@@ -71,6 +71,7 @@
   "gameOver.youWin": "Jij wint!",
   "gameOver.computerWins": "Computer wint!",
   "gameOver.tie": "Gelijkspel!",
+  "gameOver.scorecard": "Scorekaart",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "Gooi {{n}} / 3",
   "vsMode.category": "Categorie",

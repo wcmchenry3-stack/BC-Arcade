@@ -1,6 +1,6 @@
 import { ImageSourcePropType } from "react-native";
 
-import { COSMOS_BAKED, COSMOS_ICONS, FRUIT_BAKED, FRUIT_ICONS } from "../game/_shared/images";
+import { COSMOS_BAKED, COSMOS_ICONS, FRUIT_BAKED, FRUIT_ICONS } from "../game/cascade/images";
 import type { FruitDefinition as FruitDefinitionBase } from "./fruitSets.engine";
 
 export type { FruitTier } from "./fruitSets.engine";

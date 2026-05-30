@@ -28,6 +28,7 @@ import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useTwenty48Scoreboard } from "../game/twenty48/Twenty48ScoreboardContext";
 import { useSound } from "../game/_shared/useSound";
+import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
 
 function flattenBoard(board: number[][]): number[] {
   return board.flat();
@@ -68,10 +69,10 @@ export default function Twenty48Screen({ navigation }: Props) {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
 
-  const { play: playTileMerge } = useSound("twenty48.tileMerge", 0.3);
-  const { play: playTileSpawn } = useSound("twenty48.tileSpawn", 0.2);
-  const { play: playWin2048 } = useSound("twenty48.win2048");
-  const { play: playGameOverSound } = useSound("twenty48.gameOver");
+  const { play: playTileMerge } = useSound("twenty48.tileMerge", TWENTY48_SOUNDS, 0.3);
+  const { play: playTileSpawn } = useSound("twenty48.tileSpawn", TWENTY48_SOUNDS, 0.2);
+  const { play: playWin2048 } = useSound("twenty48.win2048", TWENTY48_SOUNDS);
+  const { play: playGameOverSound } = useSound("twenty48.gameOver", TWENTY48_SOUNDS);
 
   // Game event instrumentation (#369 / #549). One session per game from load /
   // reset until game_over OR keep-playing. After a keep-playing end, further
@@ -412,7 +413,7 @@ export default function Twenty48Screen({ navigation }: Props) {
 
       {/* Board */}
       <GestureDetector gesture={swipeGesture}>
-        <View style={styles.boardContainer}>
+        <View testID="twenty48-board" style={styles.boardContainer}>
           {/* Ambient glow blobs — decorative, placed behind the grid */}
           <View
             style={[styles.glowTopLeft, { backgroundColor: colors.accent }, glowBlur]}

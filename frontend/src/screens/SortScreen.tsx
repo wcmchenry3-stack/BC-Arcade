@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   AppState,
   AppStateStatus,
   FlatList,
@@ -28,7 +29,7 @@ import {
   pourUnits,
   undo as undoState,
 } from "../game/sort/engine";
-import { getNextHint } from "../game/sort/solver";
+import { getNextHintAsync } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
@@ -89,6 +90,8 @@ export default function SortScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
   const [winEntry, setWinEntry] = useState<ScoreEntry | null>(null);
+
+  const [isHinting, setIsHinting] = useState(false);
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
@@ -167,12 +170,27 @@ export default function SortScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, currentLevelId, gameState]);
 
-  // Show win modal when the level is completed
+  // Unlock next level and show win modal as soon as the puzzle is solved.
+  // Unlocking is tied to solving, not to leaderboard submission, so players
+  // who skip score entry still progress.
   useEffect(() => {
-    if (gameState?.isComplete && !showWinModal) {
-      setShowWinModal(true);
+    if (!gameState?.isComplete || showWinModal) return;
+    setShowWinModal(true);
+    if (currentLevelId !== null) {
+      const newUnlocked = Math.min(
+        Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
+        levels.length || currentLevelId + 1
+      );
+      const updated: SortProgress = {
+        ...progressRef.current,
+        unlockedLevel: newUnlocked,
+        currentLevelId: null,
+        currentState: null,
+      };
+      setProgress(updated);
+      void saveProgress(updated);
     }
-  }, [gameState?.isComplete, showWinModal]);
+  }, [gameState?.isComplete, showWinModal, currentLevelId, levels]);
 
   // ---------------------------------------------------------------------------
   // Game handlers
@@ -251,11 +269,19 @@ export default function SortScreen() {
     setHistory(newHistory);
   }
 
-  function handleHint() {
-    if (!gameState || gameState.isComplete || isPouring) return;
-    const hint = getNextHint(gameState);
-    if (!hint) return;
-    setGameState({ ...gameState, selectedBottleIndex: hint.from });
+  async function handleHint() {
+    if (!gameState || gameState.isComplete || isPouring || isHinting) return;
+    setIsHinting(true);
+    try {
+      const hint = await getNextHintAsync(gameState);
+      if (hint) {
+        setGameState((cur) =>
+          cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
+        );
+      }
+    } finally {
+      setIsHinting(false);
+    }
   }
 
   function handleSelectLevel(levelId: number) {
@@ -330,22 +356,35 @@ export default function SortScreen() {
     try {
       const entry = await sortApi.submitScore(playerName.trim(), currentLevelId);
       setWinEntry(entry);
-      const newUnlockedLevel = Math.min(
-        Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
-        levels.length || currentLevelId + 1
-      );
-      const newProgress: SortProgress = {
-        unlockedLevel: newUnlockedLevel,
-        currentLevelId: null,
-        currentState: null,
-      };
-      setProgress(newProgress);
-      void saveProgress(newProgress);
     } catch {
       setSubmitError(true);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleResetLevel() {
+    if (!currentLevelId) return;
+    const level = levels.find((l) => l.id === currentLevelId);
+    if (!level) return;
+    if (pourTimerRef.current !== null) {
+      clearTimeout(pourTimerRef.current);
+      pourTimerRef.current = null;
+    }
+    setIsPouring(false);
+    setPouringFrom(null);
+    setPouringTo(null);
+    setGameState(initState(level.bottles as (Color | "")[][]));
+    setHistory([]);
+  }
+
+  function handleResetOrNew() {
+    if (isPouring) return;
+    Alert.alert(t("action.reset"), t("action.resetPrompt"), [
+      { text: t("action.resetLevel"), onPress: handleResetLevel },
+      { text: t("action.newGame"), onPress: handleBackToSelect },
+      { text: t("action.cancel"), style: "cancel" },
+    ]);
   }
 
   function handleNextLevel() {
@@ -639,17 +678,33 @@ export default function SortScreen() {
           </Pressable>
           <Pressable
             onPress={handleHint}
-            style={styles.hudActionBtn}
+            style={[styles.hudActionBtn, { opacity: isHinting ? 0.35 : 1 }]}
+            disabled={isHinting}
             accessibilityRole="button"
             accessibilityLabel={t("action.hint")}
+            accessibilityState={{ busy: isHinting }}
           >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.hint")}</Text>
+            {isHinting ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.hint")}</Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={handleResetOrNew}
+            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
+            disabled={isPouring}
+            accessibilityRole="button"
+            accessibilityLabel={t("action.reset")}
+          >
+            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
           </Pressable>
         </View>
       </View>
 
       {/* Board */}
       <View
+        testID="sort-board"
         style={styles.boardContainer}
         onLayout={(e: LayoutChangeEvent) => setBoardHeight(e.nativeEvent.layout.height)}
       >

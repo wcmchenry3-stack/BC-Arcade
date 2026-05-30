@@ -111,6 +111,7 @@ export default function DiceRow({
         onPress={handleRoll}
         disabled={!canRoll || rolling}
         accessibilityRole="button"
+        testID="yacht-roll-button"
         accessibilityLabel={
           rolling
             ? t("roll.rollingLabel")

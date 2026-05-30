@@ -94,8 +94,9 @@ describe("calculateMahjongLayout", () => {
       safeAreaBottom,
       ...TURTLE,
     });
-    // availH = screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H (116)
-    const availH = screenHeight - safeAreaTop - safeAreaBottom - 116;
+    // availH = screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H (128)
+    // MAHJONG_CHROME_H = APP_HEADER_H(64) + HUD_ROW_H(48) + MIN_BOTTOM_PAD(16)
+    const availH = screenHeight - safeAreaTop - safeAreaBottom - 128;
     expect(l.boardHeight).toBeLessThanOrEqual(availH + 1); // allow 1px rounding
   });
 

@@ -65,9 +65,9 @@ interface Props {
   onWaveClear?: () => void;
   onLaserFire?: () => void;
   onExplosion?: () => void;
-  onChallengingStage?: () => void;
-  /** Called once when all enemies in a Challenging Stage are hit (#1022). */
-  onChallengingPerfect?: () => void;
+  onFreeFireZone?: () => void;
+  /** Called once when all enemies in a Free Fire Zone are hit (#1022). */
+  onFreeFirePerfect?: () => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   isPaused?: boolean;
@@ -89,6 +89,7 @@ interface Props {
 interface RenderState {
   game: StarSwarmState;
   sf: StarfieldState;
+  countdownDigit: number | null;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -101,8 +102,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onLaserFire,
       onExplosion,
-      onChallengingStage,
-      onChallengingPerfect,
+      onFreeFireZone,
+      onFreeFirePerfect,
       onBonusLife,
       onPowerUpCollect,
       isPaused = false,
@@ -138,6 +139,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     devOptionsRef.current = devOptions;
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
     difficultyRef.current = difficultyProp;
+    // ms remaining in pre-wave countdown; null = no countdown active.
+    // Restored sessions skip the countdown; new games and each new wave get 3 s.
+    // countdownDigit in renderState must be initialized consistently with this value.
+    const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
+    const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
@@ -149,8 +155,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
-    const onChallengingStageRef = useRef(onChallengingStage);
-    const onChallengingPerfectRef = useRef(onChallengingPerfect);
+    const onFreeFireZoneRef = useRef(onFreeFireZone);
+    const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
@@ -182,11 +188,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
     useEffect(() => {
-      onChallengingStageRef.current = onChallengingStage;
-    }, [onChallengingStage]);
+      onFreeFireZoneRef.current = onFreeFireZone;
+    }, [onFreeFireZone]);
     useEffect(() => {
-      onChallengingPerfectRef.current = onChallengingPerfect;
-    }, [onChallengingPerfect]);
+      onFreeFirePerfectRef.current = onFreeFirePerfect;
+    }, [onFreeFirePerfect]);
     useEffect(() => {
       onBonusLifeRef.current = onBonusLife;
     }, [onBonusLife]);
@@ -197,6 +203,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const [renderState, setRenderState] = useState<RenderState>({
       game: gameRef.current,
       sf: sfRef.current,
+      countdownDigit: initialState ? null : 3,
     });
 
     useImperativeHandle(
@@ -232,6 +239,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current
       );
       sfRef.current = initStarfield(width, height);
+      countdownMsRef.current = 3000;
       lastFrameTimeRef.current = 0;
       inputRef.current.playerX = width / 2;
       inputRef.current.fire = true;
@@ -240,7 +248,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = gameRef.current.phase;
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
-      setRenderState({ game: gameRef.current, sf: sfRef.current });
+      pendingFreeFireZoneRef.current = false;
+      setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3 });
     }, [resetTick, width, height]);
 
     // RAF game loop — drives both engine tick and Skia re-renders
@@ -261,84 +270,110 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         const prev = gameRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
-          try {
-            const prevCooldown = prev.player.shootCooldown;
-            // #1039: apply pauseStraggler from devOptions each tick
-            const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
-            const playerFireDisabled = devOptionsRef.current?.playerFireDisabled ?? false;
-            const enemyFireDisabled = devOptionsRef.current?.enemyFireDisabled ?? false;
-            let tickInput =
-              prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
-            if (tickInput.playerFireDisabled !== playerFireDisabled)
-              tickInput = { ...tickInput, playerFireDisabled };
-            if (tickInput.enemyFireDisabled !== enemyFireDisabled)
-              tickInput = { ...tickInput, enemyFireDisabled };
-            const next = tick(tickInput, dtMs, {
-              playerX: inputRef.current.playerX,
-              fire: inputRef.current.fire,
-            });
+          if (countdownMsRef.current !== null) {
+            // Pre-wave countdown: freeze engine, tick the timer only
+            countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
+            if (countdownMsRef.current === 0) {
+              countdownMsRef.current = null;
+              if (pendingFreeFireZoneRef.current) {
+                pendingFreeFireZoneRef.current = false;
+                onFreeFireZoneRef.current?.();
+              }
+            }
+          } else {
+            try {
+              const prevCooldown = prev.player.shootCooldown;
+              // #1039: apply pauseStraggler from devOptions each tick
+              const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
+              const playerFireDisabled = devOptionsRef.current?.playerFireDisabled ?? false;
+              const enemyFireDisabled = devOptionsRef.current?.enemyFireDisabled ?? false;
+              let tickInput =
+                prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
+              if (tickInput.playerFireDisabled !== playerFireDisabled)
+                tickInput = { ...tickInput, playerFireDisabled };
+              if (tickInput.enemyFireDisabled !== enemyFireDisabled)
+                tickInput = { ...tickInput, enemyFireDisabled };
+              const next = tick(tickInput, dtMs, {
+                playerX: inputRef.current.playerX,
+                fire: inputRef.current.fire,
+              });
 
-            // Dev: when infinite lives is on, intercept any lives decrement and
-            // restore lives + phase so the game never transitions to GameOver.
-            let applied = next;
-            if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
-              applied = {
-                ...next,
-                phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
-                player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
-              };
-            }
+              // Dev: when infinite lives is on, intercept any lives decrement and
+              // restore lives + phase so the game never transitions to GameOver.
+              let applied = next;
+              if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
+                applied = {
+                  ...next,
+                  phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
+                  player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
+                };
+              }
 
-            gameRef.current = applied;
-            if (applied.score !== prevScoreRef.current) {
-              prevScoreRef.current = applied.score;
-              onScoreChangeRef.current?.(applied.score);
+              gameRef.current = applied;
+              if (applied.score !== prevScoreRef.current) {
+                prevScoreRef.current = applied.score;
+                onScoreChangeRef.current?.(applied.score);
+              }
+              if (
+                applied.player.shootCooldown > prevCooldown &&
+                applied.activePowerUp?.type === "lightning"
+              ) {
+                onLaserFireRef.current?.();
+              }
+              if (applied.explosions.length > prev.explosions.length) {
+                onExplosionRef.current?.();
+              }
+              if (applied.player.lives < prevLivesRef.current) {
+                if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
+              }
+              prevLivesRef.current = applied.player.lives;
+              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) {
+                onBonusLifeRef.current?.();
+                bonusFlashEndRef.current = Date.now() + 1500;
+              }
+              prevBonusLivesRef.current = applied.bonusLivesAwarded;
+              const nowType = applied.activePowerUp?.type ?? null;
+              if (prevActivePowerUpRef.current === null && nowType !== null) {
+                onPowerUpCollectRef.current?.(nowType);
+              }
+              prevActivePowerUpRef.current = nowType;
+              if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
+              // Start countdown when WaveClear ends. Evaluated before phase callbacks so
+              // onFreeFireZone fires after the countdown expires, not during it.
+              // prevPhaseRef.current is updated below — after this check — so the WaveClear
+              // guard remains valid for the full duration of this tick.
+              const startingCountdown =
+                prevPhaseRef.current === "WaveClear" &&
+                applied.phase !== "WaveClear" &&
+                applied.phase !== "GameOver";
+              if (startingCountdown) countdownMsRef.current = 3000;
+              if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
+                if (startingCountdown) {
+                  pendingFreeFireZoneRef.current = true;
+                } else {
+                  onFreeFireZoneRef.current?.();
+                }
+              }
+              prevPhaseRef.current = applied.phase;
+              if (applied.phase === "GameOver") {
+                onGameOverRef.current?.(applied.score, applied.wave);
+              }
+            } catch (e) {
+              Sentry.captureException(e, { tags: { subsystem: "starswarm.loop" } });
             }
-            if (
-              applied.player.shootCooldown > prevCooldown &&
-              applied.activePowerUp?.type === "lightning"
-            ) {
-              onLaserFireRef.current?.();
-            }
-            if (applied.explosions.length > prev.explosions.length) {
-              onExplosionRef.current?.();
-            }
-            if (applied.player.lives < prevLivesRef.current) {
-              if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
-            }
-            prevLivesRef.current = applied.player.lives;
-            if (applied.bonusLivesAwarded > prevBonusLivesRef.current) {
-              onBonusLifeRef.current?.();
-              bonusFlashEndRef.current = Date.now() + 1500;
-            }
-            prevBonusLivesRef.current = applied.bonusLivesAwarded;
-            const nowType = applied.activePowerUp?.type ?? null;
-            if (prevActivePowerUpRef.current === null && nowType !== null) {
-              onPowerUpCollectRef.current?.(nowType);
-            }
-            prevActivePowerUpRef.current = nowType;
-            if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
-              onWaveClearRef.current?.();
-              if (applied.challengingPerfect) onChallengingPerfectRef.current?.();
-            }
-            if (
-              applied.phase === "ChallengingStage" &&
-              prevPhaseRef.current !== "ChallengingStage"
-            ) {
-              onChallengingStageRef.current?.();
-            }
-            prevPhaseRef.current = applied.phase;
-            if (applied.phase === "GameOver") {
-              onGameOverRef.current?.(applied.score, applied.wave);
-            }
-          } catch (e) {
-            Sentry.captureException(e, { tags: { subsystem: "starswarm.loop" } });
           }
         }
         // Starfield scrolls continuously
         sfRef.current = tickStarfield(sfRef.current, dtMs);
 
-        setRenderState({ game: gameRef.current, sf: sfRef.current });
+        const countdownDigit =
+          countdownMsRef.current !== null
+            ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
+            : null;
+        setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit });
         id = requestAnimationFrame(loop);
       }
 
@@ -346,7 +381,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf } = renderState;
+    const { game: state, sf, countdownDigit } = renderState;
     const { player } = state;
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
@@ -707,22 +742,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </View>
           )}
 
-          {state.phase === "WaveClear" && (
+          {countdownDigit !== null && (
+            <View style={styles.phaseOverlay} pointerEvents="none">
+              <Text style={styles.countdownText}>{countdownDigit}</Text>
+            </View>
+          )}
+
+          {state.phase === "WaveClear" && countdownDigit === null && (
             <View style={styles.phaseOverlay}>
               <Text style={styles.overlayTitle}>{t("phase.waveClear")}</Text>
-              {state.challengingPerfect && (
+              {state.freeFirePerfect && (
                 <Text style={styles.perfectBanner}>{t("phase.perfect")}</Text>
               )}
             </View>
           )}
 
-          {state.phase === "ChallengingStage" && (
+          {state.phase === "FreeFireZone" && countdownDigit === null && (
             <View style={styles.phaseOverlay}>
               <Text style={[styles.overlayTitle, styles.challengingTitle]}>
-                {t("phase.challengingStage")}
+                {t("phase.freeFireZone")}
               </Text>
               <Text style={styles.overlaySubtitle}>
-                {t("phase.hits", { count: state.challengingHits })}
+                {t("phase.hits", { count: state.freeFireHits })}
               </Text>
             </View>
           )}
@@ -820,6 +861,14 @@ const styles = StyleSheet.create({
     textShadowColor: "#ff8800",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+  },
+  countdownText: {
+    color: "#00ffcc",
+    fontSize: 96,
+    fontWeight: "bold",
+    textShadowColor: "#00ffcc",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 24,
   },
   gameOverOverlay: {
     backgroundColor: "rgba(0,0,0,0.65)",

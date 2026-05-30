@@ -104,6 +104,7 @@ export default function BettingPanel({
         </Pressable>
 
         <Pressable
+          testID="blackjack-deal-button"
           style={[styles.dealBtn, { backgroundColor: canDeal ? resolvedAccent : colors.border }]}
           onPress={() => onDeal(bet)}
           disabled={!canDeal}

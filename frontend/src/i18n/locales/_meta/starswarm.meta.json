@@ -71,18 +71,18 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "phase.challengingStage": {
+  "phase.freeFireZone": {
     "component": "GameCanvas",
-    "description": "Overlay text shown at the start of a bonus Challenging Stage wave.",
+    "description": "Overlay text shown at the start of a bonus Free Fire Zone wave.",
     "tone": "dramatic, arcade",
     "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Borrowed from Galaga — keep the arcade feel."
+    "notes": null
   },
   "phase.hits": {
     "component": "GameCanvas",
-    "description": "Sub-line during Challenging Stage showing how many enemies the player has hit.",
+    "description": "Sub-line during Free Fire Zone showing how many enemies the player has hit.",
     "tone": "neutral",
     "characterLimit": 15,
     "placeholders": ["{{count}}"],

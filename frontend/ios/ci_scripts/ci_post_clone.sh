@@ -55,6 +55,11 @@ cd "$CI_PRIMARY_REPOSITORY_PATH/frontend/ios"
 rm -rf Pods Podfile.lock
 which pod || brew install cocoapods
 
+# Disable FFmpeg download in react-native-audio-api (app.json disableFFmpeg:true).
+# Without this, pod install tries to fetch large FFmpeg xcframeworks from GitHub
+# which times out on Xcode Cloud runners (issue #1813).
+export DISABLE_AUDIOAPI_FFMPEG=1
+
 # Retry pod install up to 3 times — Xcode Cloud runners occasionally
 # time out reaching cdn.cocoapods.org on the first attempt.
 for attempt in 1 2 3; do

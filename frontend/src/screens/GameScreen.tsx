@@ -23,6 +23,7 @@ import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
+import { YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
@@ -106,12 +107,12 @@ export default function GameScreen({ navigation, route }: Props) {
   } = useGameSync("yacht");
 
   // Sound hooks
-  const { play: playDiceRoll } = useSound("yacht.diceRoll");
-  const { play: playDieHold } = useSound("yacht.dieHold");
-  const { play: playYacht } = useSound("yacht.yacht");
-  const { play: playJoker } = useSound("yacht.joker");
-  const { play: playStraight } = useSound("yacht.straight");
-  const { play: playUpperBonus } = useSound("yacht.upperBonus");
+  const { play: playDiceRoll } = useSound("yacht.diceRoll", YACHT_SOUNDS);
+  const { play: playDieHold } = useSound("yacht.dieHold", YACHT_SOUNDS);
+  const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
+  const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);
+  const { play: playStraight } = useSound("yacht.straight", YACHT_SOUNDS);
+  const { play: playUpperBonus } = useSound("yacht.upperBonus", YACHT_SOUNDS);
 
   function endedPayload(s: GameState, outcome: "completed" | "abandoned") {
     return {
@@ -188,34 +189,38 @@ export default function GameScreen({ navigation, route }: Props) {
 
       // Initial roll (all dice free)
       setAiRollingIndices([0, 1, 2, 3, 4]);
-      await delay(700);
+      await delay(1000);
       if (cancelled) return;
       s = engineRoll(s, [false, false, false, false, false]);
       setAiGameState(s);
       setAiRollingIndices([]);
-      // Settle pause: let the player read the dice values before the next roll
-      await delay(450);
+      // Settle pause: let the player read the dice values
+      await delay(800);
       if (cancelled) return;
 
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
         const holds = holdStrategy(s, diff);
+        // Show held dice before rolling so the player can see the AI's decision
+        setAiGameState({ ...s, held: holds });
+        await delay(800);
+        if (cancelled) return;
         const rolledIdxs = holds.reduce<number[]>((acc, h, i) => {
           if (!h) acc.push(i);
           return acc;
         }, []);
         setAiRollingIndices(rolledIdxs);
-        await delay(700);
+        await delay(1000);
         if (cancelled) return;
         s = engineRoll(s, holds);
         setAiGameState(s);
         setAiRollingIndices([]);
-        await delay(450);
+        await delay(800);
         if (cancelled) return;
       }
 
       // Beat before the AI locks in its category
-      await delay(600);
+      await delay(1000);
       if (cancelled) return;
       const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
       s = engineScore(s, cat);
@@ -497,10 +502,13 @@ export default function GameScreen({ navigation, route }: Props) {
         upperBonus={gameState.upper_bonus}
         yachtBonusCount={gameState.yacht_bonus_count}
         yachtBonusTotal={gameState.yacht_bonus_total}
+        scores={gameState.scores}
         onPlayAgain={startNewGame}
         onDismiss={() => navigation.goBack()}
         vsResult={vsResult}
         aiTotalScore={aiGameState?.total_score}
+        aiUpperBonus={aiGameState?.upper_bonus}
+        aiScores={aiGameState?.scores}
       />
 
       <NewGameConfirmModal
@@ -534,6 +542,7 @@ export default function GameScreen({ navigation, route }: Props) {
               </Text>
 
               <Pressable
+                testID="yacht-mode-solo"
                 style={[styles.modeBtn, { borderColor: colors.border }]}
                 onPress={handleChooseSolo}
                 accessibilityRole="button"

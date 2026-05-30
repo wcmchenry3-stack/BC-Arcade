@@ -107,7 +107,7 @@ const C = {
   powerBarBg: "rgba(255,255,255,0.18)",
   powerBarFill: "#ffee00",
   waveClear: "#00ffcc",
-  challengingStage: "#ffdd00",
+  freeFireZone: "#ffdd00",
   gameOverText: "#ff4422",
   gameOverOverlay: "rgba(0,0,0,0.65)",
 } as const;
@@ -153,9 +153,9 @@ interface Props {
   onWaveClear?: () => void;
   onLaserFire?: () => void;
   onExplosion?: () => void;
-  onChallengingStage?: () => void;
-  /** Called once when all enemies in a Challenging Stage are hit (#1022). */
-  onChallengingPerfect?: () => void;
+  onFreeFireZone?: () => void;
+  /** Called once when all enemies in a Free Fire Zone are hit (#1022). */
+  onFreeFirePerfect?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   isPaused?: boolean;
   onPause?: () => void;
@@ -180,8 +180,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onLaserFire,
       onExplosion,
-      onChallengingStage,
-      onChallengingPerfect,
+      onFreeFireZone,
+      onFreeFirePerfect,
       onPowerUpCollect,
       isPaused = false,
       onPause,
@@ -227,8 +227,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
-    const onChallengingStageRef = useRef(onChallengingStage);
-    const onChallengingPerfectRef = useRef(onChallengingPerfect);
+    const onFreeFireZoneRef = useRef(onFreeFireZone);
+    const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
@@ -287,11 +287,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
     useEffect(() => {
-      onChallengingStageRef.current = onChallengingStage;
-    }, [onChallengingStage]);
+      onFreeFireZoneRef.current = onFreeFireZone;
+    }, [onFreeFireZone]);
     useEffect(() => {
-      onChallengingPerfectRef.current = onChallengingPerfect;
-    }, [onChallengingPerfect]);
+      onFreeFirePerfectRef.current = onFreeFirePerfect;
+    }, [onFreeFirePerfect]);
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
@@ -718,7 +718,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.font = "bold 22px 'Courier New', monospace";
         ctx.fillStyle = C.waveClear;
         ctx.fillText(t("phase.waveClear"), width / 2, height / 2);
-        if (state.challengingPerfect) {
+        if (state.freeFirePerfect) {
           ctx.font = "bold 18px 'Courier New', monospace";
           ctx.fillStyle = "#ffdd00";
           ctx.shadowColor = "#ff8800";
@@ -728,13 +728,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      if (state.phase === "ChallengingStage") {
+      if (state.phase === "FreeFireZone") {
         ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.challengingStage;
-        ctx.fillText(t("phase.challengingStage"), width / 2, height / 2 - 18);
+        ctx.fillStyle = C.freeFireZone;
+        ctx.fillText(t("phase.freeFireZone"), width / 2, height / 2 - 18);
         ctx.font = "14px 'Courier New', monospace";
         ctx.fillStyle = C.hudText;
-        ctx.fillText(t("phase.hits", { count: state.challengingHits }), width / 2, height / 2 + 12);
+        ctx.fillText(t("phase.hits", { count: state.freeFireHits }), width / 2, height / 2 + 12);
       }
 
       if (state.phase === "GameOver") {
@@ -816,13 +816,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             prevLivesRef.current = applied.player.lives;
             if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
               onWaveClearRef.current?.();
-              if (applied.challengingPerfect) onChallengingPerfectRef.current?.();
+              if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
             }
-            if (
-              applied.phase === "ChallengingStage" &&
-              prevPhaseRef.current !== "ChallengingStage"
-            ) {
-              onChallengingStageRef.current?.();
+            if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
+              onFreeFireZoneRef.current?.();
             }
             prevPhaseRef.current = applied.phase;
             if (applied.phase === "GameOver") {

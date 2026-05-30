@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createAudioPlayer, AudioPlayer } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
-import { SOUND_REGISTRY, SoundKey } from "./sounds";
 
 const BG_VOLUME = 0.2;
 
@@ -14,11 +13,17 @@ const BG_VOLUME = 0.2;
 // some native audio sessions.  The [newGameTick] effect runs before [active] so that
 // when both fire in the same React commit the [active] resume-branch plays the track
 // that [newGameTick] already started rather than launching a second session.
-export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTick?: number): void {
+export function useBackgroundMusic(
+  keys: string[],
+  registry: Record<string, number>,
+  active: boolean,
+  newGameTick?: number
+): void {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
   const mutedRef = useRef(muted);
   const keysRef = useRef(keys);
+  const registryRef = useRef(registry);
   const prevActiveRef = useRef<boolean | null>(null);
 
   useEffect(() => {
@@ -28,6 +33,10 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTic
   useEffect(() => {
     keysRef.current = keys;
   }, [keys]);
+
+  useEffect(() => {
+    registryRef.current = registry;
+  }, [registry]);
 
   // Force a new session on every new-game tick.
   // IMPORTANT: keep this effect declared before [active]. When both deps change in the
@@ -48,7 +57,7 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTic
       playerRef.current = null;
       return;
     }
-    pickAndPlay(playerRef, keysRef, mutedRef);
+    pickAndPlay(playerRef, keysRef, registryRef, mutedRef);
     // active intentionally omitted: we read its value at call-time when newGameTick fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newGameTick]);
@@ -76,7 +85,7 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTic
     }
 
     // New session (null→true on mount, or false→true after game over): pick a new track.
-    pickAndPlay(playerRef, keysRef, mutedRef);
+    pickAndPlay(playerRef, keysRef, registryRef, mutedRef);
   }, [active]);
 
   // React to mute toggle independently of active.
@@ -109,7 +118,8 @@ export function useBackgroundMusic(keys: SoundKey[], active: boolean, newGameTic
 
 function pickAndPlay(
   playerRef: { current: AudioPlayer | null },
-  keysRef: { current: SoundKey[] },
+  keysRef: { current: string[] },
+  registryRef: { current: Record<string, number> },
   mutedRef: { current: boolean }
 ): void {
   try {
@@ -121,7 +131,7 @@ function pickAndPlay(
 
   const currentKeys = keysRef.current;
   const key = currentKeys[Math.floor(Math.random() * currentKeys.length)];
-  const source = key != null ? SOUND_REGISTRY[key] : undefined;
+  const source = key != null ? registryRef.current[key] : undefined;
   if (!source) return;
 
   const player = createAudioPlayer(source);

@@ -1,0 +1,15 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "freecell"
+      screenLabel: "FreeCell"
+- assertVisible:
+    id: "freecell-board"
+    timeout: 8000
+# Tap Hint — a real interactive button — proving native touch reaches the game.
+- tapOn:
+    id: "freecell-hint-button"
+- takeScreenshot: freecell-smoke

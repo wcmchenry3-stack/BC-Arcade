@@ -655,6 +655,97 @@ describe("shuffleBoard", () => {
       }
     }
   });
+
+  it("fallback algorithm — succeeds on a two-column board where random attempts frequently fail", () => {
+    // 12 tiles split evenly across two column stacks: (0,0) and (2,0), 6 tiles each.
+    // The (0,0) group holds exactly n/2 slots (the feasibility limit), so the random
+    // 50-attempt loop fails roughly 30 % of the time. buildValidSlotPairing must step
+    // in for those seeds and always produce a board with a free pair.
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "characters", rank: 2, faceId: 9, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "characters", rank: 2, faceId: 9, col: 0, row: 0, layer: 3 },
+      { id: 4, suit: "characters", rank: 3, faceId: 10, col: 0, row: 0, layer: 4 },
+      { id: 5, suit: "characters", rank: 3, faceId: 10, col: 0, row: 0, layer: 5 },
+      { id: 6, suit: "dragons", rank: 1, faceId: 1, col: 2, row: 0, layer: 0 },
+      { id: 7, suit: "dragons", rank: 1, faceId: 1, col: 2, row: 0, layer: 1 },
+      { id: 8, suit: "dragons", rank: 2, faceId: 2, col: 2, row: 0, layer: 2 },
+      { id: 9, suit: "dragons", rank: 2, faceId: 2, col: 2, row: 0, layer: 3 },
+      { id: 10, suit: "dragons", rank: 3, faceId: 3, col: 2, row: 0, layer: 4 },
+      { id: 11, suit: "dragons", rank: 3, faceId: 3, col: 2, row: 0, layer: 5 },
+    ];
+    const state: MahjongState = {
+      _v: 1,
+      tiles,
+      pairsRemoved: 66,
+      score: 660,
+      shufflesLeft: 1,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    };
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const shuffled = shuffleBoard(state);
+      // Must always find a valid board (fallback kicks in when random fails).
+      expect(shuffled).not.toBe(state);
+      expect(shuffled.shufflesLeft).toBe(0);
+      expect(shuffled.isDeadlocked).toBe(false);
+      expect(hasFreePairs(shuffled.tiles)).toBe(true);
+      for (const t of shuffled.tiles) {
+        const partner = shuffled.tiles.find((u) => u.id !== t.id && tilesMatch(t, u));
+        if (partner) {
+          expect(t.col === partner.col && t.row === partner.row).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("geometric deadlock — surfaces isDeadlocked when all tiles share the same (col, row)", () => {
+    // 4 tiles at (0,0,0-3): every possible pair assignment puts both tiles of
+    // each pair in the same column stack, so no valid shuffle exists.
+    // shuffleBoard must not silently return the same state; instead it consumes
+    // the token and sets isDeadlocked so the deadlock overlay appears.
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = {
+      _v: 1,
+      tiles,
+      pairsRemoved: 70,
+      score: 700,
+      shufflesLeft: 2,
+      selected: null,
+      undoStack: [],
+      isComplete: false,
+      isDeadlocked: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      dealId: "TEST",
+    };
+    for (let seed = 0; seed < 50; seed++) {
+      setRng(createSeededRng(seed));
+      const result = shuffleBoard(state);
+      // Must NOT silently return unchanged state.
+      expect(result).not.toBe(state);
+      // Token consumed.
+      expect(result.shufflesLeft).toBe(1);
+      // Deadlock surfaced (tiles unchanged — no valid arrangement found).
+      expect(result.isDeadlocked).toBe(true);
+      // Tiles unchanged (no valid rearrangement possible).
+      expect(result.tiles).toEqual(state.tiles);
+      // Undo snapshot pushed so user can back out.
+      expect(result.undoStack.length).toBe(1);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

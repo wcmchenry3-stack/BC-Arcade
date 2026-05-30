@@ -7,7 +7,7 @@
   "hud.best": "BEST",
   "hud.wave": "WAVE",
   "phase.waveClear": "WAVE CLEAR",
-  "phase.challengingStage": "CHALLENGING STAGE",
+  "phase.freeFireZone": "FREE FIRE ZONE",
   "phase.hits": "HITS: {{count}}",
   "phase.gameOver": "GAME OVER",
   "score.display": "Score: {{score}}",

@@ -113,7 +113,7 @@ export default function StarSwarmScreen() {
     playPlayerHit,
     playWaveClear,
     playGameOver,
-    playChallengingStage,
+    playFreeFireZone,
     playBonusLife,
     playPerfect,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
@@ -145,7 +145,7 @@ export default function StarSwarmScreen() {
     [playGameOver, difficulty]
   );
 
-  const handleChallengingPerfect = useCallback(() => {
+  const handleFreeFirePerfect = useCallback(() => {
     playPerfect();
   }, [playPerfect]);
 
@@ -258,7 +258,7 @@ export default function StarSwarmScreen() {
         paddingRight: Math.max(insets.right, 0),
       }}
     >
-      <View style={styles.canvasOuter} onLayout={onLayout}>
+      <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
         {scale > 0 && (
           <View style={{ width: displayW, height: displayH }}>
             <GameCanvas
@@ -271,10 +271,10 @@ export default function StarSwarmScreen() {
               onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
-              onChallengingStage={playChallengingStage}
-              onChallengingPerfect={handleChallengingPerfect}
+              onFreeFireZone={playFreeFireZone}
+              onFreeFirePerfect={handleFreeFirePerfect}
               onBonusLife={handleBonusLife}
-              isPaused={isPaused}
+              isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
               width={CANVAS_W}
               height={CANVAS_H}
@@ -355,6 +355,7 @@ export default function StarSwarmScreen() {
                   ))}
                 </ScrollView>
                 <Pressable
+                  testID="starswarm-start-game"
                   style={[styles.devActionBtn, dynamicStyles.devPrimary, styles.pickerStartBtn]}
                   onPress={handleConfirmDifficulty}
                 >
@@ -477,7 +478,7 @@ export default function StarSwarmScreen() {
                   ["Player hit", "playerhit"],
                   ["Wave clear", "waveclear"],
                   ["Game over", "gameover"],
-                  ["Challenging", "challengingstage"],
+                  ["Free Fire", "freefirezone"],
                   ["Perfect bonus", "perfectbonus"],
                 ] as [string, keyof SfxVolumes][]
               ).map(([label, key]) => (

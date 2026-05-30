@@ -1,0 +1,14 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "cascade"
+      screenLabel: "Cascade"
+- assertVisible:
+    id: "cascade-game-area"
+    timeout: 8000
+- tapOn:
+    id: "cascade-game-area"
+- takeScreenshot: cascade-smoke

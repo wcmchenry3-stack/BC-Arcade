@@ -1,0 +1,21 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "blackjack"
+      screenLabel: "Blackjack"
+- assertVisible:
+    id: "blackjack-chip-1"
+    timeout: 8000
+- tapOn:
+    id: "blackjack-chip-1"
+- assertVisible:
+    id: "blackjack-deal-button"
+- tapOn:
+    id: "blackjack-deal-button"
+- assertVisible:
+    id: "blackjack-table-area"
+    timeout: 10000
+- takeScreenshot: blackjack-smoke

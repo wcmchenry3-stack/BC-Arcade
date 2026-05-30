@@ -166,6 +166,7 @@ export function AppHeader({
             accessibilityLabel={t("common:nav.backLabel")}
             style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
             hitSlop={12}
+            testID="nav-back"
           >
             <Text style={[styles.backText, { color: colors.text }]}>{t("common:nav.back")}</Text>
           </Pressable>
@@ -202,6 +203,7 @@ export function AppHeader({
               pressed && styles.menuButtonPressed,
             ]}
             hitSlop={8}
+            testID="nav-menu"
           >
             <MaterialIcons name="more-horiz" size={20} color={colors.textOnAccent} />
           </Pressable>

@@ -1,0 +1,112 @@
+name: Mobile Smoke — iOS
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-smoke-ios
+  cancel-in-progress: false
+
+jobs:
+  maestro-ios:
+    name: Maestro iOS smoke
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install Maestro CLI
+        run: |
+          export MAESTRO_VERSION=1.39.13
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Build app for iOS Simulator
+        run: |
+          xcodebuild \
+            -workspace frontend/ios/GamingApp.xcworkspace \
+            -scheme GamingApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build \
+            -quiet
+        env:
+          EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+
+      - name: Boot iOS 18 simulator and install app
+        run: |
+          SIM_UDID=$(xcrun simctl list devices available | grep "iPhone 16 (" | grep -v "iPad" | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          [ -z "$SIM_UDID" ] && echo "::error::No iPhone 16 simulator found in available devices" && exit 1
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIM_UDID"
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          xcrun simctl install "$SIM_UDID" DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app
+
+      - name: Run Maestro flows on iOS Simulator
+        run: |
+          maestro test \
+            --device "$SIM_UDID" \
+            --output ./maestro-results \
+            $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*" ! -path "*/offline/*")
+
+      - name: Write job summary
+        if: always()
+        shell: python3 {0}
+        run: |
+          import xml.etree.ElementTree as ET, os
+          report = 'maestro-results/report.xml'
+          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
+          rows = []
+          try:
+              root = ET.parse(report).getroot()
+              suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+              for s in suites:
+                  name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
+                  failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
+                  rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+          except FileNotFoundError:
+              rows.append('| _(no report — test runner may have crashed)_ | — |\n')
+          except ET.ParseError as exc:
+              rows.append(f'| _(parse error: {exc})_ | — |\n')
+          with open(out, 'a') as f:
+              f.write('## Maestro iOS Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.writelines(rows)
+
+      - name: Upload Maestro results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: maestro-ios-results
+          path: |
+            maestro-results/
+            ~/.maestro/tests/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload failure screenshots
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: maestro-ios-screenshots
+          path: |
+            screenshots/
+            maestro-results/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -77,7 +77,7 @@ export default function Die({
     if (reduceMotion) return;
     cancelAnimation(rotation);
     rotation.value = withSequence(
-      withTiming(360 * 2, { duration: 350 }),
+      withTiming(360 * 2, { duration: 500 }),
       withTiming(0, { duration: 0 })
     );
   }, [rolling, reduceMotion, rotation]);
@@ -116,6 +116,7 @@ export default function Die({
         accessibilityState={{ checked: held, disabled }}
         accessibilityLabel={label}
         accessibilityHint={disabled ? undefined : held ? t("dice.unholdHint") : t("dice.holdHint")}
+        testID={`yacht-die-${index}`}
         style={({ pressed }) => [
           styles.die,
           {

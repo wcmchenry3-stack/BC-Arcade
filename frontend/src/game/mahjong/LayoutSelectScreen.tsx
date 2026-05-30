@@ -63,6 +63,7 @@ export default function LayoutSelectScreen({
               return (
                 <Pressable
                   key={layout.id}
+                  testID={`mahjong-layout-${layout.id}`}
                   style={[
                     styles.card,
                     {
