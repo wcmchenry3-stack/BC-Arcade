@@ -118,6 +118,34 @@ describe("httpClient — BASE_URL configuration", () => {
       g.__DEV__ = originalDev;
     }
   });
+
+  it("throws at module load when a dev-* API URL is used in a non-dev build (#1854)", () => {
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    try {
+      expect(() => loadClient()).toThrow(/points to a dev API host/);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining("points to a dev API host"),
+        expect.objectContaining({
+          level: "fatal",
+          tags: expect.objectContaining({ issue: "dev-api-in-prod" }),
+        })
+      );
+    } finally {
+      g.__DEV__ = originalDev;
+    }
+  });
+
+  it("does not throw for a dev-* URL when __DEV__ is true (#1854)", async () => {
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    // __DEV__ is true by default in the test environment.
+    expect((globalThis as { __DEV__?: boolean }).__DEV__).toBe(true);
+    expect(() => loadClient()).not.toThrow();
+  });
 });
 
 describe("httpClient — error handling", () => {
