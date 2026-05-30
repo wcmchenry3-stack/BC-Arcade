@@ -81,10 +81,11 @@ export default function GameScreen({ navigation, route }: Props) {
   const [aiGameState, setAiGameState] = useState<GameState | null>(route.params.aiState ?? null);
   const [isAiTurn, setIsAiTurn] = useState(false);
   const [aiRollingIndices, setAiRollingIndices] = useState<readonly number[]>([]);
-  // Tracks whether the AI turn was interrupted by app backgrounding so it can be replayed.
+  const isAiTurnRef = useRef(isAiTurn);
+  const aiTurnCancelledRef = useRef(false);
   const aiTurnInterruptedRef = useRef(false);
-  // Snapshot of AI game state at the start of each turn, used to replay from scratch on resume.
   const aiTurnStartStateRef = useRef<GameState | null>(null);
+  const aiReplayPendingRef = useRef(false);
 
   // Keep refs in sync for use inside async AI turn loop and callbacks.
   const gameStateRef = useRef(gameState);
@@ -101,6 +102,10 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     aiGameStateRef.current = aiGameState;
   }, [aiGameState]);
+
+  useEffect(() => {
+    isAiTurnRef.current = isAiTurn;
+  }, [isAiTurn]);
 
   // Game event instrumentation (#368 / #549).
   const {
@@ -182,23 +187,42 @@ export default function GameScreen({ navigation, route }: Props) {
     () => setGameState((prev) => (prev === null ? prev : { ...prev, events: undefined }))
   );
 
+  // Single mount-time AppState listener — cancels on background, replays on foreground return.
+  // Using isAiTurnRef (not the state value) avoids re-subscribing on every turn.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if ((next === "background" || next === "inactive") && isAiTurnRef.current) {
+        aiTurnCancelledRef.current = true;
+        aiTurnInterruptedRef.current = true;
+        setAiRollingIndices([]);
+      } else if (next === "active" && aiTurnInterruptedRef.current) {
+        aiTurnInterruptedRef.current = false;
+        if (aiTurnStartStateRef.current) {
+          setAiGameState(aiTurnStartStateRef.current);
+          aiTurnStartStateRef.current = null;
+        }
+        aiReplayPendingRef.current = true;
+        setIsAiTurn(false);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Re-fires the AI turn effect after isAiTurn settles to false with a replay pending.
+  // This avoids the setTimeout(50) toggle race from the original implementation.
+  useEffect(() => {
+    if (!isAiTurn && aiReplayPendingRef.current) {
+      aiReplayPendingRef.current = false;
+      setIsAiTurn(true);
+    }
+  }, [isAiTurn]);
+
   // AI turn loop: fires whenever isAiTurn becomes true.
   useEffect(() => {
     if (!isAiTurn || !aiDifficultyRef.current || !aiGameStateRef.current) return;
 
-    // Snapshot the pre-turn state so we can replay cleanly from scratch if interrupted.
     aiTurnStartStateRef.current = aiGameStateRef.current;
-
-    let cancelled = false;
-
-    // Cancel and mark interrupted if the app leaves the foreground mid-animation.
-    const appStateSub = AppState.addEventListener("change", (next) => {
-      if (next === "background" || next === "inactive") {
-        cancelled = true;
-        aiTurnInterruptedRef.current = true;
-        setAiRollingIndices([]);
-      }
-    });
+    aiTurnCancelledRef.current = false;
 
     async function runAiTurn() {
       const diff = aiDifficultyRef.current!;
@@ -209,11 +233,11 @@ export default function GameScreen({ navigation, route }: Props) {
       setAiGameState(s);
       setAiRollingIndices([0, 1, 2, 3, 4]);
       await delay(1000);
-      if (cancelled) return;
+      if (aiTurnCancelledRef.current) return;
       setAiRollingIndices([]);
       // Settle pause: let the player read the dice values
       await delay(800);
-      if (cancelled) return;
+      if (aiTurnCancelledRef.current) return;
 
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
@@ -221,7 +245,7 @@ export default function GameScreen({ navigation, route }: Props) {
         // Show hold decision on current values so the player sees the AI's choice
         setAiGameState({ ...s, held: holds });
         await delay(800);
-        if (cancelled) return;
+        if (aiTurnCancelledRef.current) return;
         const rolledIdxs = holds.reduce<number[]>((acc, h, i) => {
           if (!h) acc.push(i);
           return acc;
@@ -231,15 +255,15 @@ export default function GameScreen({ navigation, route }: Props) {
         setAiGameState(s);
         setAiRollingIndices(rolledIdxs);
         await delay(1000);
-        if (cancelled) return;
+        if (aiTurnCancelledRef.current) return;
         setAiRollingIndices([]);
         await delay(800);
-        if (cancelled) return;
+        if (aiTurnCancelledRef.current) return;
       }
 
       // Beat before the AI locks in its category
       await delay(1000);
-      if (cancelled) return;
+      if (aiTurnCancelledRef.current) return;
       const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
       s = engineScore(s, cat);
       setAiGameState(s);
@@ -248,27 +272,9 @@ export default function GameScreen({ navigation, route }: Props) {
 
     void runAiTurn();
     return () => {
-      cancelled = true;
-      appStateSub.remove();
+      aiTurnCancelledRef.current = true;
     };
   }, [isAiTurn]);
-
-  // When the app returns to the foreground after interrupting an AI turn, replay it.
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active" && aiTurnInterruptedRef.current) {
-        aiTurnInterruptedRef.current = false;
-        // Restore the pre-turn snapshot so the loop starts from rolls_used=0,
-        // then toggle isAiTurn to re-fire the AI turn effect.
-        if (aiTurnStartStateRef.current) {
-          setAiGameState(aiTurnStartStateRef.current);
-        }
-        setIsAiTurn(false);
-        setTimeout(() => setIsAiTurn(true), 50);
-      }
-    });
-    return () => sub.remove();
-  }, []);
 
   function handleRoll() {
     if (isAiTurn) return;
