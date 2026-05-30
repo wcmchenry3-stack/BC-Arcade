@@ -91,7 +91,7 @@ export default function HeartsScreen() {
   const scoreHistory = useMemo(() => gameState?.scoreHistory ?? [], [gameState?.scoreHistory]);
 
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
-  const [debugMode] = useState(__DEV__);
+  const debugMode = __DEV__;
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -138,6 +138,15 @@ export default function HeartsScreen() {
       if (!unmountedRef.current && saved) {
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
+        if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
+          // Best-effort: saved state doesn't preserve the original deal, so
+          // playerHands approximates both initial and final hands for resumed games.
+          dealSnapshotRef.current = {
+            initialHands: saved.playerHands,
+            passSelections: saved.passSelections ?? [[], [], [], []],
+            finalHands: saved.playerHands,
+          };
+        }
       }
     });
     loadPlayerNames().then((names) => {
@@ -290,7 +299,7 @@ export default function HeartsScreen() {
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
             void saveGame(s);
-            if (__DEV__ && debugMode) {
+            if (__DEV__) {
               trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
             }
           }
@@ -310,7 +319,7 @@ export default function HeartsScreen() {
         loopActiveRef.current = false;
       }
     },
-    [playCardPlay, debugMode]
+    [playCardPlay]
   );
 
   // Trigger AI loop when it's their turn; wait for lastTrick display first.

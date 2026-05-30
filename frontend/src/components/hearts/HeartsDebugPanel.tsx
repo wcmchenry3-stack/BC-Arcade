@@ -18,6 +18,8 @@ import {
   passDirectionLabel,
   passOffset,
 } from "../../game/hearts/debugLog";
+import type { AiPreset } from "../../game/hearts/types";
+import { resolvePersona } from "../../game/hearts/types";
 
 interface Props {
   visible: boolean;
@@ -25,7 +27,7 @@ interface Props {
   logs: readonly HandDebugLog[];
   notes: readonly string[];
   playerLabels: readonly string[];
-  aiDifficulty: string;
+  aiDifficulty: AiPreset;
   onNotesChange: (handIdx: number, text: string) => void;
 }
 
@@ -91,24 +93,23 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
       <Text style={[styles.sectionHeader, { color: colors.text }]}>
         Tricks ({log.tricks.length})
       </Text>
-      {log.tricks.map((trick, t) => {
-        const byPlayer: string[] = ["—", "—", "—", "—"];
-        for (const play of trick.plays) {
-          const s = cardStr(play.card);
-          byPlayer[play.playerIndex] = play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
-        }
-        return (
-          <Text key={t} style={[styles.trickRow, { color: colors.textMuted }]}>
-            <Text style={{ color: colors.text }}>T{t + 1} </Text>
-            {byPlayer.map((c, i) => `${label(i)}:${c}`).join("  ")}
-            {"  "}
-            <Text style={{ color: colors.accent }}>
-              → {label(trick.winnerIndex)}
-              {trick.pointsWon > 0 ? ` +${trick.pointsWon}` : ""}
-            </Text>
+      {log.tricks.map((trick, t) => (
+        <Text key={t} style={[styles.trickRow, { color: colors.textMuted }]}>
+          <Text style={{ color: colors.text }}>T{t + 1} </Text>
+          {trick.plays
+            .map((play) => {
+              const s = cardStr(play.card);
+              const cell = play.playerIndex === trick.winnerIndex ? `[${s}]` : s;
+              return `${label(play.playerIndex)}:${cell}`;
+            })
+            .join("  ")}
+          {"  "}
+          <Text style={{ color: colors.accent }}>
+            → {label(trick.winnerIndex)}
+            {trick.pointsWon > 0 ? ` +${trick.pointsWon}` : ""}
           </Text>
-        );
-      })}
+        </Text>
+      ))}
 
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Scores</Text>
       <Text style={[styles.handRow, { color: colors.textMuted }]}>
@@ -181,41 +182,55 @@ export default function HeartsDebugPanel({
         <View
           style={[styles.header, { borderBottomColor: colors.border, paddingTop: insets.top + 12 }]}
         >
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            Hearts Debugger
-            {logs.length > 0 ? ` — ${logs.length} hand${logs.length !== 1 ? "s" : ""}` : ""}
-          </Text>
-          <View style={styles.headerActions}>
-            <Pressable
-              style={[
-                styles.copyBtn,
-                { backgroundColor: copied ? colors.accent : colors.surfaceAlt },
-              ]}
-              onPress={() => void handleCopy()}
-              disabled={isNative}
-              accessibilityRole="button"
-              accessibilityLabel={isNative ? "Copy (web only)" : "Copy session to clipboard"}
-            >
-              <Text
+          <View style={styles.headerTop}>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>
+              Hearts Debugger
+              {logs.length > 0 ? ` — ${logs.length} hand${logs.length !== 1 ? "s" : ""}` : ""}
+            </Text>
+            <View style={styles.headerActions}>
+              <Pressable
                 style={[
-                  styles.copyBtnText,
-                  {
-                    color: isNative ? colors.textMuted : copied ? colors.textOnAccent : colors.text,
-                  },
+                  styles.copyBtn,
+                  { backgroundColor: copied ? colors.accent : colors.surfaceAlt },
                 ]}
+                onPress={() => void handleCopy()}
+                disabled={isNative}
+                accessibilityRole="button"
+                accessibilityLabel={isNative ? "Copy (web only)" : "Copy session to clipboard"}
               >
-                {copied ? "Copied!" : isNative ? "Copy (web)" : "Copy"}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.closeBtn}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close debugger"
-            >
-              <Text style={[styles.closeBtnText, { color: colors.text }]}>✕</Text>
-            </Pressable>
+                <Text
+                  style={[
+                    styles.copyBtnText,
+                    {
+                      color: isNative
+                        ? colors.textMuted
+                        : copied
+                          ? colors.textOnAccent
+                          : colors.text,
+                    },
+                  ]}
+                >
+                  {copied ? "Copied!" : isNative ? "Copy (web)" : "Copy"}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.closeBtn}
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close debugger"
+              >
+                <Text style={[styles.closeBtnText, { color: colors.text }]}>✕</Text>
+              </Pressable>
+            </View>
           </View>
+          <Text style={[styles.personaLine, { color: colors.textMuted }]}>
+            {[1, 2, 3]
+              .map(
+                (seat) =>
+                  `${playerLabels[seat] ?? `P${seat}`}: ${resolvePersona(aiDifficulty, seat)}`
+              )
+              .join("  ·  ")}
+          </Text>
         </View>
 
         <ScrollView
@@ -250,12 +265,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: "column",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    gap: 4,
+  },
+  headerTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 16,
@@ -266,6 +285,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  personaLine: {
+    fontSize: 11,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
   },
   copyBtn: {
     paddingHorizontal: 12,
