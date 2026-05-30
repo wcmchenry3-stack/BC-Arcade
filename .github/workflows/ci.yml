@@ -44,9 +44,11 @@ jobs:
       - uses: actions/checkout@v6
       - name: Check for merge conflict markers
         run: |
-          if grep -rn -E "^(<<<<<<<|=======|>>>>>>>)" \
+          if grep -rn \
+              -e "^<<<<<<< " -e "^=======$" -e "^>>>>>>> " \
               --include="*.ts" --include="*.tsx" --include="*.py" \
               --include="*.js" --include="*.jsx" \
+              --include="*.json" --include="*.yml" --include="*.yaml" \
               --exclude-dir=node_modules --exclude-dir=.git \
               .; then
             echo "::error::Merge conflict markers found — resolve before merging"
