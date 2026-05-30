@@ -119,26 +119,32 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
   const crack0Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[0]}deg` }, { scaleX: crack0.value }],
     opacity: crack0.value,
+    transformOrigin: "center",
   }));
   const crack1Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[1]}deg` }, { scaleX: crack1.value }],
     opacity: crack1.value,
+    transformOrigin: "center",
   }));
   const crack2Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[2]}deg` }, { scaleX: crack2.value }],
     opacity: crack2.value,
+    transformOrigin: "center",
   }));
   const crack3Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[3]}deg` }, { scaleX: crack3.value }],
     opacity: crack3.value,
+    transformOrigin: "center",
   }));
   const crack4Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[4]}deg` }, { scaleX: crack4.value }],
     opacity: crack4.value,
+    transformOrigin: "center",
   }));
   const crack5Style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${CRACK_ANGLES[5]}deg` }, { scaleX: crack5.value }],
     opacity: crack5.value,
+    transformOrigin: "center",
   }));
   const crackStyles = [
     crack0Style,
