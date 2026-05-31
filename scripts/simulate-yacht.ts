@@ -81,6 +81,18 @@ function playGame(
 // Simulation
 // ---------------------------------------------------------------------------
 
+// Lower-section categories tracked for per-category hit rates.
+const LOWER_CATS = [
+  "three_of_a_kind",
+  "four_of_a_kind",
+  "full_house",
+  "small_straight",
+  "large_straight",
+  "yacht",
+  "chance",
+] as const;
+type LowerCat = (typeof LOWER_CATS)[number];
+
 interface GameResult {
   humanScore: number;
   aiScore: number;
@@ -90,6 +102,8 @@ interface GameResult {
   yahtzeeCountHuman: number;
   yahtzeeCountAi: number;
   chanceHuman: number;
+  /** Whether the AI scored > 0 in each lower-section category */
+  lowerHitAi: Record<LowerCat, boolean>;
 }
 
 function simulateGame(
@@ -101,6 +115,11 @@ function simulateGame(
 
   const humanScore = humanState.total_score;
   const aiScore = aiState.total_score;
+
+  const lowerHitAi = {} as Record<LowerCat, boolean>;
+  for (const cat of LOWER_CATS) {
+    lowerHitAi[cat] = (aiState.scores[cat] ?? 0) > 0;
+  }
 
   return {
     humanScore,
@@ -116,6 +135,7 @@ function simulateGame(
     yahtzeeCountAi:
       aiState.yacht_bonus_count + (aiState.scores["yacht"] === 50 ? 1 : 0),
     chanceHuman: humanState.scores["chance"] ?? 0,
+    lowerHitAi,
   };
 }
 
@@ -247,6 +267,8 @@ interface Batch {
   aiDiff: AiDifficulty;
   /** Expected human win rate band [lo, hi] for acceptance check */
   expectedBand: [number, number];
+  /** Expected AI upper-bonus hit rate band [lo, hi] */
+  expectedBonusBandAi: [number, number];
 }
 
 const ALL_BATCHES: Batch[] = [
@@ -255,36 +277,46 @@ const ALL_BATCHES: Batch[] = [
     humanDiff: "easy",
     aiDiff: "easy",
     expectedBand: [0.45, 0.55],
+    // Easy has no bonus logic; incidental upper accumulation
+    expectedBonusBandAi: [0.01, 0.06],
   },
   {
     label: "Medium (human) vs Easy (AI)",
     humanDiff: "medium",
     aiDiff: "easy",
     expectedBand: [0.58, 0.72],
+    expectedBonusBandAi: [0.01, 0.06],
   },
   {
     label: "Hard (human) vs Easy (AI)",
     humanDiff: "hard",
     aiDiff: "easy",
     expectedBand: [0.72, 0.88],
+    expectedBonusBandAi: [0.01, 0.06],
   },
   {
     label: "Medium (human) vs Medium (AI) — baseline",
     humanDiff: "medium",
     aiDiff: "medium",
     expectedBand: [0.45, 0.55],
+    // Medium heuristic pursuit; single-step EV limits how high this can go
+    expectedBonusBandAi: [0.07, 0.18],
   },
   {
     label: "Hard (human) vs Medium (AI)",
     humanDiff: "hard",
     aiDiff: "medium",
     expectedBand: [0.58, 0.72],
+    expectedBonusBandAi: [0.07, 0.18],
   },
   {
     label: "Hard (human) vs Hard (AI) — baseline",
     humanDiff: "hard",
     aiDiff: "hard",
     expectedBand: [0.45, 0.55],
+    // Hard EV optimises for straights (EV ~33) over single upper dice (EV ~10);
+    // bonus rate is structurally lower than medium despite smarter hold/score
+    expectedBonusBandAi: [0.02, 0.1],
   },
 ];
 
@@ -315,6 +347,7 @@ const batchResults: Array<{
   avgYahtzeeHuman: number;
   avgYahtzeeAi: number;
   avgChanceHuman: number;
+  lowerHitRateAi: Record<LowerCat, number>;
 }> = [];
 
 for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -353,6 +386,11 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   const avgYahtzeeAi = mean(yahtzeeAi);
   const avgChanceHuman = mean(chanceHuman);
 
+  const lowerHitRateAi = {} as Record<LowerCat, number>;
+  for (const cat of LOWER_CATS) {
+    lowerHitRateAi[cat] = mean(results.map((r) => (r.lowerHitAi[cat] ? 1 : 0)));
+  }
+
   batchResults.push({
     batch,
     winRate,
@@ -363,10 +401,14 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     avgYahtzeeHuman,
     avgYahtzeeAi,
     avgChanceHuman,
+    lowerHitRateAi,
   });
 
   const inBand =
     winRate >= batch.expectedBand[0] && winRate <= batch.expectedBand[1];
+  const inBonusBandAi =
+    upperBonusRateAi >= batch.expectedBonusBandAi[0] &&
+    upperBonusRateAi <= batch.expectedBonusBandAi[1];
 
   console.log(batch.label);
   console.log(`  Games: ${n}`);
@@ -380,12 +422,16 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     `  Avg AI Score:    ${avgAiScore.toFixed(1)} ± ${sdAiScore.toFixed(1)}`,
   );
   console.log(
-    `  Upper Bonus Rate: human ${pct(upperBonusRateHuman)}, AI ${pct(upperBonusRateAi)}`,
+    `  Upper Bonus Rate: human ${pct(upperBonusRateHuman)}, AI ${pct(upperBonusRateAi)}  ${check(inBonusBandAi)} expected AI [${pct(batch.expectedBonusBandAi[0])}, ${pct(batch.expectedBonusBandAi[1])}]`,
   );
   console.log(
     `  Avg Yahtzees/game: human ${avgYahtzeeHuman.toFixed(2)}, AI ${avgYahtzeeAi.toFixed(2)}`,
   );
   console.log(`  Avg Chance score (human): ${avgChanceHuman.toFixed(1)}`);
+  console.log(`  AI lower-section hit rates (% of games scored > 0):`);
+  for (const cat of LOWER_CATS) {
+    console.log(`    ${cat.padEnd(18)}: ${pct(lowerHitRateAi[cat])}`);
+  }
   console.log();
 }
 
@@ -399,8 +445,14 @@ for (const r of batchResults) {
   const inBand =
     r.winRate >= r.batch.expectedBand[0] &&
     r.winRate <= r.batch.expectedBand[1];
+  const inBonusBandAi =
+    r.upperBonusRateAi >= r.batch.expectedBonusBandAi[0] &&
+    r.upperBonusRateAi <= r.batch.expectedBonusBandAi[1];
   console.log(
     `  ${check(inBand)} ${r.batch.label}: human win rate ${pct(r.winRate)}`,
+  );
+  console.log(
+    `  ${check(inBonusBandAi)} ${r.batch.label} — AI bonus rate ${pct(r.upperBonusRateAi)} (expected [${pct(r.batch.expectedBonusBandAi[0])}, ${pct(r.batch.expectedBonusBandAi[1])}])`,
   );
 }
 

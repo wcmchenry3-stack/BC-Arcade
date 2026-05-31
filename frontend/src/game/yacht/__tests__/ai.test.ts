@@ -110,13 +110,33 @@ describe("holdStrategy — Medium", () => {
     expect(heldDice.every((d) => d === 4)).toBe(true);
   });
 
-  it("pursues upper bonus when within 55 pts — holds open face appearing ≥2 times", () => {
-    // upperSubtotal = ones(3)+twos(6) = 9 → toBonus = 54 ≤ 55
+  it("pursues upper bonus when toBonus > 0 — holds open face appearing ≥2 times", () => {
+    // upperSubtotal = ones(3)+twos(6) = 9 → toBonus = 54
     // dice [4,4,1,6,2]: no run ≥3, no trips; fours is open and appears twice → hold 4s
     const state = withScores(makeGame([4, 4, 1, 6, 2]), { ones: 3, twos: 6 });
     const held = holdStrategy(state, "medium");
     const heldDice = state.dice.filter((_, i) => held[i]);
     expect(heldDice.every((d) => d === 4)).toBe(true);
+  });
+
+  it("pursues upper bonus at game start (toBonus=63) — holds pair over 3-run", () => {
+    // Fresh game: all cats open, toBonus=63
+    // dice [6,6,1,2,3]: 3-run [1,2,3] is available but sixes open and appear twice
+    // Bonus-aware hold prefers the pair of 6s (higher value face) over the run
+    const state = makeGame([6, 6, 1, 2, 3]);
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 6)).toBe(true);
+  });
+
+  it("holds single 6 over 3-run — high-value face (≥5) threshold is 1 die", () => {
+    // dice [6,1,2,3,4]: 4-run [1,2,3,4] beats bonus pursuit, but [6,1,2,3] has only 3-run
+    // Use a dice set with a 3-run and a lone 6: [6,5,1,2,3] → 3-run [1,2,3], lone 5 and 6
+    // Bonus pursuit: best open high face is 6 (cnt=1, face>=5 → minCnt=1) → holds 6
+    const state = makeGame([6, 5, 1, 2, 3]);
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 6)).toBe(true);
   });
 });
 
@@ -212,9 +232,15 @@ describe("scoreStrategy — Medium", () => {
     expect(scoreStrategy(state, "medium")).toBe("full_house");
   });
 
-  it("takes Three of a Kind when score > 15", () => {
-    // [5,5,5,1,2]: no yacht/straight/four-of-a-kind/full-house; three_of_a_kind = 18 > 15
+  it("scores upper category at par over three_of_a_kind (bonus path prioritised)", () => {
+    // [5,5,5,1,2]: fives open, cnt=3 → bonus pursuit fires before three_of_a_kind (18 pts)
     const state = makeGame([5, 5, 5, 1, 2], 3);
+    expect(scoreStrategy(state, "medium")).toBe("fives");
+  });
+
+  it("takes Three of a Kind when no upper category is at par", () => {
+    // fives already scored; no other face has cnt >= 3 → three_of_a_kind = 21 > 15
+    const state = withScores(makeGame([6, 6, 6, 1, 2], 3), { sixes: 18 });
     expect(scoreStrategy(state, "medium")).toBe("three_of_a_kind");
   });
 
@@ -228,6 +254,19 @@ describe("scoreStrategy — Medium", () => {
       sixes: 0,
     });
     expect(scoreStrategy(state, "medium")).toBe("ones");
+  });
+
+  it("takes bonus-closing upper category over full house", () => {
+    // upper=48 (ones=3,twos=10,threes=15,fours=20), toBonus=15
+    // dice [5,5,5,2,2]: full house available (25 pts) but fives (15) closes bonus → +35 deferred
+    const state = withScores(makeGame([5, 5, 5, 2, 2], 3), {
+      ones: 3,
+      twos: 10,
+      threes: 15,
+      fours: 20,
+      sixes: 0,
+    });
+    expect(scoreStrategy(state, "medium")).toBe("fives");
   });
 });
 
@@ -281,5 +320,18 @@ describe("scoreStrategy — Hard", () => {
       sixes: 0,
     });
     expect(scoreStrategy(state, "hard", 0)).toBe("ones");
+  });
+
+  it("takes bonus-closing upper category over three_of_a_kind", () => {
+    // upper=54 (ones=3,twos=6,fours=20,fives=15,sixes=10), toBonus=9
+    // dice [3,3,3,1,2]: three_of_a_kind=10 pts, but threes (9) closes bonus → +35 deferred
+    const state = withScores(makeGame([3, 3, 3, 1, 2], 3), {
+      ones: 3,
+      twos: 6,
+      fours: 20,
+      fives: 15,
+      sixes: 10,
+    });
+    expect(scoreStrategy(state, "hard", 0)).toBe("threes");
   });
 });
