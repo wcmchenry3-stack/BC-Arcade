@@ -2257,3 +2257,160 @@ describe("selectCardToPlay — Daring difficulty, adversarial void discard (edge
     expect(pick).toEqual(c("spades", 12));
   });
 });
+
+// ---------------------------------------------------------------------------
+// First-trick club play — all personas should play highest club (#firstTrick)
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — first trick, play highest club (all personas)", () => {
+  function mkTrick0State(playerHands: Card[][]): HeartsState {
+    return mkState({
+      playerHands,
+      tricksPlayedInHand: 0,
+      heartsBroken: false,
+    });
+  }
+
+  const personas = ["cautious", "schemer", "daring"] as const;
+
+  for (const persona of personas) {
+    it(`${persona}: 2nd follower plays highest club, not lowest`, () => {
+      // Player 1 leads 2♣; player 2 (2nd follower, not last) has 6♣ 5♣ 3♣.
+      const hand2 = [c("clubs", 6), c("clubs", 5), c("clubs", 3)];
+      const trick: TrickCard[] = [{ card: c("clubs", 2), playerIndex: 1 }];
+      const state = mkTrick0State([[], hand2, hand2, []]);
+      // currentTrick must match trick so getValidPlays sees a following situation.
+      const pick = selectCardToPlay(
+        hand2,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 2,
+          currentTrick: trick,
+        },
+        2,
+        persona
+      );
+      expect(pick).toEqual(c("clubs", 6));
+    });
+
+    it(`${persona}: 3rd follower plays highest club, not lowest`, () => {
+      // Player 1 leads 2♣, player 2 played 5♣; player 3 has K♣ J♣ 10♣ — should play K♣.
+      const hand3 = [c("clubs", 13), c("clubs", 11), c("clubs", 10)];
+      const trick: TrickCard[] = [
+        { card: c("clubs", 2), playerIndex: 1 },
+        { card: c("clubs", 5), playerIndex: 2 },
+      ];
+      const state = mkTrick0State([[], [], [], hand3]);
+      const pick = selectCardToPlay(
+        hand3,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 3,
+          currentTrick: trick,
+        },
+        3,
+        persona
+      );
+      expect(pick).toEqual(c("clubs", 13));
+    });
+
+    it(`${persona}: last follower (4th) plays highest club`, () => {
+      // Last to play — should also play highest club (A♣ over 4♣).
+      const hand0 = [c("clubs", 1), c("clubs", 9), c("clubs", 4)];
+      const trick: TrickCard[] = [
+        { card: c("clubs", 2), playerIndex: 1 },
+        { card: c("clubs", 7), playerIndex: 2 },
+        { card: c("clubs", 11), playerIndex: 3 },
+      ];
+      const state = mkTrick0State([hand0, [], [], []]);
+      const pick = selectCardToPlay(
+        hand0,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 0,
+          currentTrick: trick,
+        },
+        0,
+        persona
+      );
+      expect(pick).toEqual(c("clubs", 1)); // Ace (rank 1) is highest
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Schemer passing — filler (step 6) must not strip K♠/A♠ cover from Q♠
+// ---------------------------------------------------------------------------
+
+describe("selectCardsToPass — Schemer filler does not strip Q♠ protection", () => {
+  it("does not pass K♠ as filler when K♠ is the only Q♠ cover (passing left)", () => {
+    // Hand: Q♠ K♠ + a bunch of medium/high cards. Direction left → protection fires (K♠ alone).
+    // Step 6 filler used to pick K♠ (highest safe card), stripping Q♠ cover.
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 13), // K♠ — only cover
+      c("spades", 7),
+      c("hearts", 9),
+      c("hearts", 6),
+      c("diamonds", 10),
+      c("diamonds", 8),
+      c("clubs", 11), // J♣ — would be filler pick before fix
+      c("clubs", 9),
+      c("clubs", 8),
+      c("clubs", 7),
+      c("clubs", 6),
+      c("clubs", 3),
+    ];
+    const passed = selectCardsToPass(hand, "left", "schemer");
+    // Q♠ must be kept (protected by K♠)
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
+    // K♠ must NOT be passed as filler — it's the cover card
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 13)).toBe(false);
+  });
+
+  it("does not pass A♠ as filler when A♠ is Q♠ cover and no K♠ present (passing left)", () => {
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 1), // A♠ — only cover
+      c("spades", 7),
+      c("hearts", 9),
+      c("hearts", 6),
+      c("diamonds", 10),
+      c("diamonds", 8),
+      c("clubs", 11),
+      c("clubs", 9),
+      c("clubs", 8),
+      c("clubs", 7),
+      c("clubs", 6),
+      c("clubs", 3),
+    ];
+    const passed = selectCardsToPass(hand, "left", "schemer");
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 1)).toBe(false);
+  });
+
+  it("does not pass K♠ or A♠ as filler when holding Q♠ + K♠ + A♠ (double-cover)", () => {
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 13), // K♠
+      c("spades", 1), // A♠
+      c("spades", 7),
+      c("hearts", 9),
+      c("hearts", 6),
+      c("diamonds", 10),
+      c("diamonds", 8),
+      c("clubs", 11),
+      c("clubs", 9),
+      c("clubs", 8),
+      c("clubs", 7),
+      c("clubs", 6),
+    ];
+    const passed = selectCardsToPass(hand, "left", "schemer");
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 13)).toBe(false);
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 1)).toBe(false);
+  });
+});
