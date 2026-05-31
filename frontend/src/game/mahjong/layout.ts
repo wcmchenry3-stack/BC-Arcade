@@ -31,12 +31,9 @@ export interface MahjongLayout {
   boardHeight: number;
   availWidth: number;
   availHeight: number;
-  /** boardLayers × layerDy — added to tileToScreen y so the highest layer sits at padY from the canvas top. */
-  layerOffsetY: number;
-  /** minRow × tileHeight — subtracted from tileToScreen y so the top row sits at the top of the tile area. */
-  rowOffset: number;
-  /** (minCol/2) × tileWidth — subtracted from tileToScreen x so the left column sits at padX. */
-  colOffset: number;
+  boardLayers: number;
+  minRow: number;
+  minCol: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,10 +104,14 @@ export function makeBoardCamera(
     padY,
     boardWidth,
     boardHeight,
-    layerOffsetY,
-    rowOffset,
-    colOffset,
+    boardLayers,
+    minRow,
+    minCol,
   } = layout;
+  // Derived coordinate-transform values — internal to the camera.
+  const layerOffsetY = boardLayers * layerDy;
+  const rowOffset = minRow * tileHeight;
+  const colOffset = Math.round((minCol / 2) * tileWidth);
   const { scale, offsetX, offsetY } = fitToScreen(
     boardWidth,
     boardHeight,
@@ -202,18 +203,19 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
 
   // Target padding is ~1 tile on each side. Cap it so the board never exceeds
   // the available viewport even when tileWidth is clamped to MIN_TILE_W.
-  const slotsW = Math.ceil(boardCols * tileWidth) + boardLayers * layerDx;
+  const slotsW = boardCols * tileWidth + boardLayers * layerDx;
   const slotsH = boardRows * tileHeight + boardLayers * layerDy;
-  const padX = Math.max(4, Math.min(Math.round(tileWidth * PAD_X_R), Math.floor((availW - slotsW) / 2)));
-  const padY = Math.max(6, Math.min(Math.round(tileWidth * PAD_Y_R), Math.floor((availH - slotsH) / 2)));
+  const padX = Math.max(
+    4,
+    Math.min(Math.round(tileWidth * PAD_X_R), Math.floor((availW - slotsW) / 2))
+  );
+  const padY = Math.max(
+    6,
+    Math.min(Math.round(tileWidth * PAD_Y_R), Math.floor((availH - slotsH) / 2))
+  );
 
   const boardWidth = padX + boardCols * tileWidth + boardLayers * layerDx + padX;
   const boardHeight = padY + boardRows * tileHeight + boardLayers * layerDy + padY;
-
-  // Precomputed offsets used in tileToScreen (see makeBoardCamera).
-  const layerOffsetY = boardLayers * layerDy;
-  const rowOffset = minRow * tileHeight;
-  const colOffset = Math.round((minCol / 2) * tileWidth);
 
   return {
     tileWidth,
@@ -227,9 +229,9 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     boardHeight,
     availWidth: availW,
     availHeight: availH,
-    layerOffsetY,
-    rowOffset,
-    colOffset,
+    boardLayers,
+    minRow,
+    minCol,
   };
 }
 
@@ -255,8 +257,9 @@ export function layoutBounds(slots: readonly Slot[]): {
   let maxCol = 0,
     maxRow = 0,
     maxLayer = 0;
-  let minCol = slots[0].col,
-    minRow = slots[0].row;
+  // Non-null: length check above guarantees slots[0] exists.
+  let minCol = slots[0]!.col,
+    minRow = slots[0]!.row;
   for (const s of slots) {
     if (s.col > maxCol) maxCol = s.col;
     if (s.col < minCol) minCol = s.col;

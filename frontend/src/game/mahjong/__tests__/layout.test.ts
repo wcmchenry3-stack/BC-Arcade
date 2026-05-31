@@ -250,12 +250,11 @@ describe("makeBoardCamera", () => {
     expect(y).toBe(layout.padY);
   });
 
-  it("tileToScreen(0, 0, 0) is offset below padY by layerOffsetY", () => {
-    // Layer-0 tiles at the top row are pushed down by layerOffsetY to leave
-    // room for higher-layer tiles above them.
+  it("tileToScreen(0, 0, 0) is offset below padY by boardLayers*layerDy", () => {
+    // Layer-0 tiles at the top row are pushed down to leave room for higher-layer tiles above them.
     const { x, y } = cam.tileToScreen(0, 0, 0);
     expect(x).toBe(layout.padX);
-    expect(y).toBe(layout.padY + layout.layerOffsetY);
+    expect(y).toBe(layout.padY + TURTLE.boardLayers * layout.layerDy);
   });
 
   it("tileToScreen advances x by tileWidth per 2 col units", () => {
@@ -287,10 +286,27 @@ describe("makeBoardCamera", () => {
     expect(cam.boardHeight).toBe(layout.boardHeight);
   });
 
-  it("exposes layerOffsetY, rowOffset, colOffset from the layout", () => {
-    expect(layout.layerOffsetY).toBe(TURTLE.boardLayers * layout.layerDy);
-    expect(layout.rowOffset).toBe(0); // TURTLE minRow = 0
-    expect(layout.colOffset).toBe(0); // TURTLE minCol = 0
+  it("exposes boardLayers, minRow, minCol from the layout", () => {
+    expect(layout.boardLayers).toBe(TURTLE.boardLayers);
+    expect(layout.minRow).toBe(0); // TURTLE minRow = 0
+    expect(layout.minCol).toBe(0); // TURTLE minCol = 0
+  });
+
+  it("tileToScreen(minCol, minRow, boardLayers) = (padX+layers*dx, padY) for non-zero minRow/minCol", () => {
+    // Pyramid: rows 2–5 (minRow=2), cols 4–24 (minCol=4)
+    const PYRAMID = { boardRows: 4, boardCols: 11, boardLayers: 4, minRow: 2, minCol: 4 };
+    const pLayout = calculateMahjongLayout({
+      screenWidth: 800,
+      screenHeight: 600,
+      safeAreaTop: 0,
+      safeAreaBottom: 0,
+      ...PYRAMID,
+    });
+    const pCam = makeBoardCamera(pLayout);
+    // The topmost tile (highest layer, first row, leftmost col) must land at (padX+layers*dx, padY).
+    const { x, y } = pCam.tileToScreen(PYRAMID.minCol, PYRAMID.minRow, PYRAMID.boardLayers);
+    expect(x).toBe(pLayout.padX + PYRAMID.boardLayers * pLayout.layerDx);
+    expect(y).toBe(pLayout.padY);
   });
 
   it("defaults to scale=1 and zero offsets when no viewport args are given", () => {
