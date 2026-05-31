@@ -6,6 +6,7 @@ import { useTheme } from "../../theme/ThemeContext";
 import type { Card } from "../../game/hearts/types";
 import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
+import { sortHand } from "./cardSort";
 
 interface Props {
   cardCount: number;
@@ -77,7 +78,7 @@ export default function OpponentHand({
         </View>
         {__DEV__ && revealCards && (
           <Text style={[styles.revealText, { color: colors.textMuted }]}>
-            {revealCards
+            {sortHand(revealCards)
               .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
               .join(" ")}
           </Text>
@@ -115,7 +116,7 @@ export default function OpponentHand({
       </View>
       {__DEV__ && revealCards && (
         <Text style={[styles.revealText, { color: colors.textMuted }]}>
-          {revealCards
+          {sortHand(revealCards)
             .map((c) => `${rankLabel(c.rank)}${suitEmoji(c.suit as CanonicalSuit)}`)
             .join(" ")}
         </Text>
