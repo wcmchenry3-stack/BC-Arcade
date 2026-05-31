@@ -32,23 +32,22 @@ function SnapBackTrigger() {
   );
 }
 
+/** Registers a drop zone with optional pre-cached bounds. */
 function DropZoneRegistrar({
   id,
-  onMeasureFresh,
+  bounds,
+  onDrop = () => false,
 }: {
   id: string;
-  onMeasureFresh?: (
-    cb: (bounds: { x: number; y: number; width: number; height: number } | null) => void
-  ) => void;
+  bounds?: { x: number; y: number; width: number; height: number };
+  onDrop?: (source: DragSource, cards: DragCard[]) => boolean;
 }) {
-  const { registerDropZone, unregisterDropZone } = useDragContext();
+  const { registerDropZone, unregisterDropZone, updateDropZoneLayout } = useDragContext();
   React.useEffect(() => {
-    registerDropZone(id, {
-      measureFresh: onMeasureFresh ?? ((cb) => cb(null)),
-      onDrop: () => false,
-    });
+    registerDropZone(id, { onDrop });
+    if (bounds) updateDropZoneLayout(id, bounds);
     return () => unregisterDropZone(id);
-  }, [id, onMeasureFresh, registerDropZone, unregisterDropZone]);
+  }, [id, bounds, onDrop, registerDropZone, unregisterDropZone, updateDropZoneLayout]);
   return null;
 }
 
@@ -71,37 +70,6 @@ describe("DragContext", () => {
 
     expect(withSpring).toHaveBeenCalled();
     withSpring.mockRestore();
-  });
-
-  it("endDrag calls measureFresh on every registered drop zone", () => {
-    const measure1 = jest.fn((cb: (b: null) => void) => cb(null));
-    const measure2 = jest.fn((cb: (b: null) => void) => cb(null));
-
-    function EndDragTrigger() {
-      const { endDrag } = useDragContext();
-      return (
-        <Text accessibilityLabel="end" onPress={() => endDrag(999, 999)}>
-          end
-        </Text>
-      );
-    }
-
-    const { getByLabelText } = render(
-      <DragProvider>
-        <ThemeProvider>
-          <DropZoneRegistrar id="zone-a" onMeasureFresh={measure1} />
-          <DropZoneRegistrar id="zone-b" onMeasureFresh={measure2} />
-          <StartDragTrigger />
-          <EndDragTrigger />
-        </ThemeProvider>
-      </DragProvider>
-    );
-
-    fireEvent.press(getByLabelText("start"));
-    fireEvent.press(getByLabelText("end"));
-
-    expect(measure1).toHaveBeenCalledTimes(1);
-    expect(measure2).toHaveBeenCalledTimes(1);
   });
 
   it("endDrag snaps back immediately when no drop zones are registered", () => {
@@ -129,21 +97,8 @@ describe("DragContext", () => {
     withSpring.mockRestore();
   });
 
-  it("endDrag calls onDrop and clears drag when finger lands inside a zone", () => {
+  it("endDrag calls onDrop synchronously when finger lands inside pre-cached bounds", () => {
     const onDrop = jest.fn().mockReturnValue(true);
-    const measureFresh = jest.fn(
-      (cb: (b: { x: number; y: number; width: number; height: number }) => void) =>
-        cb({ x: 0, y: 0, width: 1000, height: 1000 })
-    );
-
-    function HitZoneRegistrar() {
-      const { registerDropZone, unregisterDropZone } = useDragContext();
-      React.useEffect(() => {
-        registerDropZone("zone-hit", { measureFresh, onDrop });
-        return () => unregisterDropZone("zone-hit");
-      }, [registerDropZone, unregisterDropZone]);
-      return null;
-    }
 
     function StartEndTrigger() {
       const { startDrag, endDrag } = useDragContext();
@@ -162,7 +117,11 @@ describe("DragContext", () => {
     const { getByLabelText } = render(
       <DragProvider>
         <ThemeProvider>
-          <HitZoneRegistrar />
+          <DropZoneRegistrar
+            id="zone-hit"
+            bounds={{ x: 0, y: 0, width: 1000, height: 1000 }}
+            onDrop={onDrop}
+          />
           <StartEndTrigger />
         </ThemeProvider>
       </DragProvider>
@@ -173,5 +132,72 @@ describe("DragContext", () => {
 
     expect(onDrop).toHaveBeenCalledTimes(1);
     expect(onDrop).toHaveBeenCalledWith(dragSource, dragCards);
+  });
+
+  it("endDrag snaps back when finger is outside all cached bounds", () => {
+    const withSpring = jest.spyOn(Reanimated, "withSpring");
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start4" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          {/* Drop at (9999, 9999) — outside the 100x100 zone */}
+          <Text accessibilityLabel="end4" onPress={() => endDrag(9999, 9999)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = render(
+      <DragProvider>
+        <ThemeProvider>
+          <DropZoneRegistrar id="zone-miss" bounds={{ x: 0, y: 0, width: 100, height: 100 }} />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    fireEvent.press(getByLabelText("start4"));
+    fireEvent.press(getByLabelText("end4"));
+
+    expect(withSpring).toHaveBeenCalled();
+    withSpring.mockRestore();
+  });
+
+  it("endDrag skips zones with no cached bounds rather than crashing", () => {
+    const onDrop = jest.fn().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start5" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          <Text accessibilityLabel="end5" onPress={() => endDrag(50, 50)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = render(
+      <DragProvider>
+        <ThemeProvider>
+          {/* No bounds provided — layout hasn't fired yet */}
+          <DropZoneRegistrar id="zone-no-bounds" onDrop={onDrop} />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    fireEvent.press(getByLabelText("start5"));
+    expect(() => fireEvent.press(getByLabelText("end5"))).not.toThrow();
+    // onDrop should NOT be called because no bounds were cached
+    expect(onDrop).not.toHaveBeenCalled();
   });
 });

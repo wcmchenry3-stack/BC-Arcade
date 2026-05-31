@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { View } from "react-native";
 import type { ViewStyle } from "react-native";
 import { useTheme } from "../../../theme/ThemeContext";
@@ -36,25 +36,29 @@ export function DropTarget({
     onDropRef.current = onDrop;
   });
 
-  const { dragState, legalTargetIds, registerDropZone, unregisterDropZone } = useDragContext();
+  const { dragState, legalTargetIds, registerDropZone, unregisterDropZone, updateDropZoneLayout } =
+    useDragContext();
 
   useEffect(() => {
     registerDropZone(id, {
-      // Always measure fresh via measureInWindow so the hit-test uses current
-      // window coordinates — cached onLayout values can be stale or zero on iOS.
-      measureFresh: (cb) => {
-        if (!viewRef.current) {
-          cb(null);
-          return;
-        }
-        viewRef.current.measureInWindow((x, y, w, h) => {
-          cb({ x, y, width: w, height: h });
-        });
-      },
       onDrop: (source, cards) => onDropRef.current(source, cards),
     });
     return () => unregisterDropZone(id);
   }, [id, registerDropZone, unregisterDropZone]);
+
+  // Proactively cache absolute window bounds whenever React Native recalculates
+  // layout. requestAnimationFrame defers the measureInWindow call until after
+  // the native view is actually painted — calling it synchronously inside onLayout
+  // returns 0,0 on Android before the first paint.
+  const handleLayout = useCallback(() => {
+    requestAnimationFrame(() => {
+      viewRef.current?.measureInWindow((x, y, w, h) => {
+        if (w > 0 && h > 0) {
+          updateDropZoneLayout(id, { x, y, width: w, height: h });
+        }
+      });
+    });
+  }, [id, updateDropZoneLayout]);
 
   const isDragActive = dragState !== null;
   const isLegal = legalTargetIds.has(id);
@@ -64,6 +68,7 @@ export function DropTarget({
     <View
       ref={viewRef}
       testID={testID}
+      onLayout={handleLayout}
       style={[
         style,
         isDragActive && isLegal && { backgroundColor: colors.accent + "33" },
