@@ -65,10 +65,11 @@ export function DraggableCard({
 
   const panActivated = useSharedValue(false);
 
+  // minDistance(5) replaces activeOffsetX/Y([-12,12]) — 12 px was too coarse for
+  // FreeCell's narrower cards, causing drags to feel unresponsive.
   const pan = Gesture.Pan()
     .minPointers(1)
-    .activeOffsetX([-12, 12])
-    .activeOffsetY([-12, 12])
+    .minDistance(5)
     .enabled(draggable)
     .onStart((e) => {
       "worklet";
@@ -82,7 +83,6 @@ export function DraggableCard({
       }
       // rnMeasure can return null on iOS/Android before the first native layout pass.
       // RNGH guarantee: e.absoluteX - e.x = absolute window X of the gesture view's origin.
-      // Assumes GestureDetector + innerEl share the same origin as viewRef (no intervening padding).
       const pageX = cardMeasured?.pageX ?? e.absoluteX - e.x;
       const pageY = cardMeasured?.pageY ?? e.absoluteY - e.y;
       const localX = pageX - containerOffsetX.value;
@@ -109,7 +109,7 @@ export function DraggableCard({
     });
 
   // For non-draggable (face-down) cards, RNGH tap works correctly and is unchanged.
-  // For draggable cards, pan-only in GestureDetector: when pan fails (< 12 px movement),
+  // For draggable cards, pan-only in GestureDetector: when pan fails (< 5 px movement),
   // the touch is released and the native onPress cloned onto the child below handles tap.
   // This avoids the Simultaneous/requireExternalGestureToFail iOS UIGestureRecognizer
   // deadlock that kept both tap and drag broken (#1101, #1102).
