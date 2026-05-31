@@ -350,7 +350,8 @@ function buildBoardLegacy(
       .filter((s) => s.layer === layer)
       .sort((a, b) => a.row - b.row || a.col - b.col);
 
-    const N = layerSlots.length; // always even for valid layouts
+    const N = layerSlots.length;
+    if (N % 2 !== 0) throw new Error(`buildBoardLegacy: layer ${layer} has odd slot count ${N}`);
     for (let i = 0; i < N / 2; i++) {
       const slotA = layerSlots[i]!;
       const slotB = layerSlots[N - 1 - i]!;

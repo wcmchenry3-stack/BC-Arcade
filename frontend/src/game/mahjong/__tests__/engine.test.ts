@@ -1013,16 +1013,7 @@ describe("timer helpers", () => {
 // Double-pyramid solvability simulation
 // ---------------------------------------------------------------------------
 
-/**
- * Plays the guaranteed forward solution produced by tryBuildBoard:
- * remove positional pairs (tile[0],tile[1]), (tile[2],tile[3]), … in order.
- *
- * tryBuildBoard places each pair at slots that are simultaneously accessible
- * given all later-placed tiles are still present and all earlier-placed tiles
- * are already gone — which is exactly the board state at each removal step.
- * shuffleFaceAssignments preserves this invariant (it only reorders which
- * matching face-pair occupies which positional pair, never the positions).
- */
+// Removes positional pairs (0,1), (2,3), … in build order — valid by construction.
 function verifyForwardSolution(tiles: readonly SlotTile[]): boolean {
   let remaining: SlotTile[] = [...tiles];
 
@@ -1039,6 +1030,25 @@ function verifyForwardSolution(tiles: readonly SlotTile[]): boolean {
 }
 
 describe("double pyramid solvability", () => {
+  // buildBoardLegacy is private and unreachable in practice (requires all 50
+  // tryBuildBoard retries to fail, probability ≈ 0.01^50). The invariant guard
+  // it now enforces (even per-layer slot count) is validated here at the layout
+  // level — which also confirms that individual rows CAN be odd (the old crash).
+  it("each layer has an even total slot count (some rows are odd)", () => {
+    const byLayer = new Map<number, number>();
+    for (const slot of DOUBLE_PYRAMID_LAYOUT) {
+      byLayer.set(slot.layer, (byLayer.get(slot.layer) ?? 0) + 1);
+    }
+    for (const [_layer, count] of byLayer) {
+      expect(count % 2).toBe(0); // even layer totals — required by buildBoardLegacy
+    }
+    // Layer 0 rows have 15 slots each — the exact case that crashed the old code.
+    const layer0Row5Count = DOUBLE_PYRAMID_LAYOUT.filter(
+      (s) => s.layer === 0 && s.row === 5
+    ).length;
+    expect(layer0Row5Count).toBe(15);
+  });
+
   it("forward solution path succeeds for 100 seeded games", () => {
     const failures: number[] = [];
 
