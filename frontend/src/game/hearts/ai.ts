@@ -241,8 +241,16 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
   }
 
   // 6. Filler: highest remaining safe card.
+  // When protecting Q♠, exclude Q♠ itself plus K♠/A♠ cover cards — step 4.5 skips them
+  // intentionally, and passing them here would strip the cover Q♠ needs on future spade leads.
   if (selected.length < 3) {
-    const candidates = hand.filter(safe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+    const candidates = hand
+      .filter(safe)
+      .filter(
+        (c) =>
+          !(keepingQSpade && c.suit === "spades" && (c.rank === 1 || c.rank === 12 || c.rank === 13))
+      )
+      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
@@ -474,6 +482,9 @@ function selectCardToPlayEasy(
   // Void in led suit — discard lowest
   if (inSuit.length === 0) return lowest(valid) ?? valid[0]!;
 
+  // First trick: play highest club — burns dangerous high clubs before they can win later tricks.
+  if (state.tricksPlayedInHand === 0) return highest(inSuit) ?? valid[0]!;
+
   return lowest(inSuit) ?? valid[0]!;
 }
 
@@ -544,6 +555,12 @@ function selectCardToPlayMedium(
     }
     for (const tc of state.currentTrick) seenMedium.add(`${tc.card.suit}:${tc.card.rank}`);
     return chooseLead(valid, seenMedium.has("spades:12"));
+  }
+
+  // First trick: play highest club — burns dangerous high clubs before they can win later tricks.
+  if (state.tricksPlayedInHand === 0) {
+    const clubs = valid.filter((c) => c.suit === "clubs");
+    if (clubs.length > 0) return highest(clubs) ?? valid[0]!;
   }
 
   return chooseFollow(valid, trick);
@@ -744,6 +761,12 @@ function selectCardToPlayHard(
 
   if (isLeading) {
     return chooseLeadHard(valid, seenKeys);
+  }
+
+  // First trick: play highest club — burns dangerous high clubs before they can win later tricks.
+  if (state.tricksPlayedInHand === 0) {
+    const clubs = valid.filter((c) => c.suit === "clubs");
+    if (clubs.length > 0) return highest(clubs) ?? valid[0]!;
   }
 
   return chooseFollow(valid, trick, isMoonAttempt);
