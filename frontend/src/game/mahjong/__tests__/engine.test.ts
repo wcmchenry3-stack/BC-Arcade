@@ -24,6 +24,7 @@ import {
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { DOUBLE_PYRAMID_LAYOUT } from "../layouts/double_pyramid";
 import { getLayout, LAYOUTS } from "../layouts/registry";
 
 // Pin the RNG so every test run is identical.
@@ -1005,6 +1006,56 @@ describe("timer helpers", () => {
   it("resumeGame is a no-op when already running", () => {
     const state: MahjongState = { ...createGame(TURTLE_LAYOUT), startedAt: 1000 };
     expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Double-pyramid solvability simulation
+// ---------------------------------------------------------------------------
+
+/**
+ * Plays the guaranteed forward solution produced by tryBuildBoard:
+ * remove positional pairs (tile[0],tile[1]), (tile[2],tile[3]), … in order.
+ *
+ * tryBuildBoard places each pair at slots that are simultaneously accessible
+ * given all later-placed tiles are still present and all earlier-placed tiles
+ * are already gone — which is exactly the board state at each removal step.
+ * shuffleFaceAssignments preserves this invariant (it only reorders which
+ * matching face-pair occupies which positional pair, never the positions).
+ */
+function verifyForwardSolution(tiles: readonly SlotTile[]): boolean {
+  let remaining: SlotTile[] = [...tiles];
+
+  for (let k = 0; k < tiles.length / 2; k++) {
+    const a = remaining.find((t) => t.id === 2 * k);
+    const b = remaining.find((t) => t.id === 2 * k + 1);
+    if (!a || !b) return false;
+    if (!isFreeTile(a, remaining) || !isFreeTile(b, remaining)) return false;
+    if (!tilesMatch(a, b)) return false;
+    remaining = remaining.filter((t) => t.id !== a.id && t.id !== b.id);
+  }
+
+  return remaining.length === 0;
+}
+
+describe("double pyramid solvability", () => {
+  it("forward solution path succeeds for 100 seeded games", () => {
+    const failures: number[] = [];
+
+    for (let seed = 0; seed < 100; seed++) {
+      const game = createGame(DOUBLE_PYRAMID_LAYOUT, seed);
+      expect(game.tiles.length).toBe(144);
+      if (!verifyForwardSolution(game.tiles)) failures.push(seed);
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  it("all 100 games start with at least one free pair", () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const game = createGame(DOUBLE_PYRAMID_LAYOUT, seed);
+      expect(hasFreePairs(game.tiles)).toBe(true);
+    }
   });
 });
 
