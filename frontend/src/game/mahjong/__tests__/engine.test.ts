@@ -24,6 +24,7 @@ import {
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
+import { DOUBLE_PYRAMID_LAYOUT } from "../layouts/double_pyramid";
 import { getLayout, LAYOUTS } from "../layouts/registry";
 
 // Pin the RNG so every test run is identical.
@@ -1005,6 +1006,66 @@ describe("timer helpers", () => {
   it("resumeGame is a no-op when already running", () => {
     const state: MahjongState = { ...createGame(TURTLE_LAYOUT), startedAt: 1000 };
     expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Double-pyramid solvability simulation
+// ---------------------------------------------------------------------------
+
+// Removes positional pairs (0,1), (2,3), … in build order — valid by construction.
+function verifyForwardSolution(tiles: readonly SlotTile[]): boolean {
+  let remaining: SlotTile[] = [...tiles];
+
+  for (let k = 0; k < tiles.length / 2; k++) {
+    const a = remaining.find((t) => t.id === 2 * k);
+    const b = remaining.find((t) => t.id === 2 * k + 1);
+    if (!a || !b) return false;
+    if (!isFreeTile(a, remaining) || !isFreeTile(b, remaining)) return false;
+    if (!tilesMatch(a, b)) return false;
+    remaining = remaining.filter((t) => t.id !== a.id && t.id !== b.id);
+  }
+
+  return remaining.length === 0;
+}
+
+describe("double pyramid solvability", () => {
+  // buildBoardLegacy is private and unreachable in practice (requires all 50
+  // tryBuildBoard retries to fail, probability ≈ 0.01^50). The invariant guard
+  // it now enforces (even per-layer slot count) is validated here at the layout
+  // level — which also confirms that individual rows CAN be odd (the old crash).
+  it("each layer has an even total slot count (some rows are odd)", () => {
+    const byLayer = new Map<number, number>();
+    for (const slot of DOUBLE_PYRAMID_LAYOUT) {
+      byLayer.set(slot.layer, (byLayer.get(slot.layer) ?? 0) + 1);
+    }
+    for (const [_layer, count] of byLayer) {
+      expect(count % 2).toBe(0); // even layer totals — required by buildBoardLegacy
+    }
+    // Layer 0 rows have 15 slots each — the exact case that crashed the old code.
+    const layer0Row5Count = DOUBLE_PYRAMID_LAYOUT.filter(
+      (s) => s.layer === 0 && s.row === 5
+    ).length;
+    expect(layer0Row5Count).toBe(15);
+  });
+
+  it("forward solution path succeeds for 100 seeded games", () => {
+    const failures: number[] = [];
+
+    for (let seed = 0; seed < 100; seed++) {
+      const game = createGame(DOUBLE_PYRAMID_LAYOUT, seed);
+      expect(game.tiles.length).toBe(144);
+      if (!verifyForwardSolution(game.tiles)) failures.push(seed);
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  it("all 100 games start with at least one free pair", () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const game = createGame(DOUBLE_PYRAMID_LAYOUT, seed);
+      expect(hasFreePairs(game.tiles)).toBe(true);
+    }
   });
 });
 
