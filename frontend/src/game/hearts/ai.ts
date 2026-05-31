@@ -241,14 +241,19 @@ function selectCardsToPassMedium(hand: Card[], direction: PassDirection): Card[]
   }
 
   // 6. Filler: highest remaining safe card.
-  // When protecting Q♠, exclude Q♠ itself plus K♠/A♠ cover cards — step 4.5 skips them
-  // intentionally, and passing them here would strip the cover Q♠ needs on future spade leads.
+  // When protecting Q♠, exclude Q♠ itself plus K♠/A♠ cover cards — the void-suit step above
+  // skips them intentionally, and passing them here would strip the cover Q♠ needs on future
+  // spade leads.
   if (selected.length < 3) {
     const candidates = hand
       .filter(safe)
       .filter(
         (c) =>
-          !(keepingQSpade && c.suit === "spades" && (c.rank === 1 || c.rank === 12 || c.rank === 13))
+          !(
+            keepingQSpade &&
+            c.suit === "spades" &&
+            (c.rank === 1 || c.rank === 12 || c.rank === 13)
+          )
       )
       .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
@@ -483,6 +488,7 @@ function selectCardToPlayEasy(
   if (inSuit.length === 0) return lowest(valid) ?? valid[0]!;
 
   // First trick: play highest club — burns dangerous high clubs before they can win later tricks.
+  // inSuit is always clubs on trick 1 (leader is forced to play 2♣ by getValidPlays).
   if (state.tricksPlayedInHand === 0) return highest(inSuit) ?? valid[0]!;
 
   return lowest(inSuit) ?? valid[0]!;

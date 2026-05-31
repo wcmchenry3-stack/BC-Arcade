@@ -2280,11 +2280,17 @@ describe("selectCardToPlay — first trick, play highest club (all personas)", (
       const trick: TrickCard[] = [{ card: c("clubs", 2), playerIndex: 1 }];
       const state = mkTrick0State([[], hand2, hand2, []]);
       // currentTrick must match trick so getValidPlays sees a following situation.
-      const pick = selectCardToPlay(hand2, trick, {
-        ...state,
-        currentPlayerIndex: 2,
-        currentTrick: trick,
-      }, 2, persona);
+      const pick = selectCardToPlay(
+        hand2,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 2,
+          currentTrick: trick,
+        },
+        2,
+        persona
+      );
       expect(pick).toEqual(c("clubs", 6));
     });
 
@@ -2296,11 +2302,17 @@ describe("selectCardToPlay — first trick, play highest club (all personas)", (
         { card: c("clubs", 5), playerIndex: 2 },
       ];
       const state = mkTrick0State([[], [], [], hand3]);
-      const pick = selectCardToPlay(hand3, trick, {
-        ...state,
-        currentPlayerIndex: 3,
-        currentTrick: trick,
-      }, 3, persona);
+      const pick = selectCardToPlay(
+        hand3,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 3,
+          currentTrick: trick,
+        },
+        3,
+        persona
+      );
       expect(pick).toEqual(c("clubs", 13));
     });
 
@@ -2313,11 +2325,17 @@ describe("selectCardToPlay — first trick, play highest club (all personas)", (
         { card: c("clubs", 11), playerIndex: 3 },
       ];
       const state = mkTrick0State([hand0, [], [], []]);
-      const pick = selectCardToPlay(hand0, trick, {
-        ...state,
-        currentPlayerIndex: 0,
-        currentTrick: trick,
-      }, 0, persona);
+      const pick = selectCardToPlay(
+        hand0,
+        trick,
+        {
+          ...state,
+          currentPlayerIndex: 0,
+          currentTrick: trick,
+        },
+        0,
+        persona
+      );
       expect(pick).toEqual(c("clubs", 1)); // Ace (rank 1) is highest
     });
   }
@@ -2356,7 +2374,7 @@ describe("selectCardsToPass — Schemer filler does not strip Q♠ protection", 
   it("does not pass A♠ as filler when A♠ is Q♠ cover and no K♠ present (passing left)", () => {
     const hand = [
       c("spades", 12), // Q♠
-      c("spades", 1),  // A♠ — only cover
+      c("spades", 1), // A♠ — only cover
       c("spades", 7),
       c("hearts", 9),
       c("hearts", 6),
@@ -2371,6 +2389,28 @@ describe("selectCardsToPass — Schemer filler does not strip Q♠ protection", 
     ];
     const passed = selectCardsToPass(hand, "left", "schemer");
     expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 1)).toBe(false);
+  });
+
+  it("does not pass K♠ or A♠ as filler when holding Q♠ + K♠ + A♠ (double-cover)", () => {
+    const hand = [
+      c("spades", 12), // Q♠
+      c("spades", 13), // K♠
+      c("spades", 1), // A♠
+      c("spades", 7),
+      c("hearts", 9),
+      c("hearts", 6),
+      c("diamonds", 10),
+      c("diamonds", 8),
+      c("clubs", 11),
+      c("clubs", 9),
+      c("clubs", 8),
+      c("clubs", 7),
+      c("clubs", 6),
+    ];
+    const passed = selectCardsToPass(hand, "left", "schemer");
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
+    expect(passed.some((card) => card.suit === "spades" && card.rank === 13)).toBe(false);
     expect(passed.some((card) => card.suit === "spades" && card.rank === 1)).toBe(false);
   });
 });
