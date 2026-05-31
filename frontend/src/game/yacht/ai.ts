@@ -130,7 +130,7 @@ function longestRunFaces(dice: readonly number[], minLength: number): Set<number
 function maxImmediateScore(
   dice: readonly number[],
   scores: GameState["scores"],
-  curUpperSubtotal: number,
+  curUpperSubtotal: number
 ): number {
   let best = 0;
   for (const cat of CATEGORIES) {
@@ -313,7 +313,9 @@ function scoreMedium(
   // Yacht — always take 50 pts
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
 
-  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 beats most combos
+  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 beats most combos.
+  // cnt >= 3 of any face makes a legal large straight impossible, so this safely fires before
+  // the large_straight check below without ever sacrificing 40 pts for a weak bonus-closer.
   if (toBonus > 0) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
       if (cat in legal) {
@@ -387,7 +389,10 @@ function scoreHard(
   // Always take Large Straight
   if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
 
-  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 outweighs any combo
+  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 outweighs any combo.
+  // Hard uses cnt >= 2 for high-value faces (≥5) because 2×5+35=45 and 2×6+35=47 both beat
+  // full_house (25). Medium requires cnt >= 3 because it lacks the EV context to judge looser
+  // holds safely.
   if (toBonus > 0) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
       if (cat in legal) {

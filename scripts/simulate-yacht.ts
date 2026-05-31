@@ -316,7 +316,7 @@ const ALL_BATCHES: Batch[] = [
     expectedBand: [0.45, 0.55],
     // Hard EV optimises for straights (EV ~33) over single upper dice (EV ~10);
     // bonus rate is structurally lower than medium despite smarter hold/score
-    expectedBonusBandAi: [0.02, 0.10],
+    expectedBonusBandAi: [0.02, 0.1],
   },
 ];
 
@@ -428,9 +428,7 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     `  Avg Yahtzees/game: human ${avgYahtzeeHuman.toFixed(2)}, AI ${avgYahtzeeAi.toFixed(2)}`,
   );
   console.log(`  Avg Chance score (human): ${avgChanceHuman.toFixed(1)}`);
-  console.log(
-    `  AI lower-section hit rates (% of games scored > 0):`,
-  );
+  console.log(`  AI lower-section hit rates (% of games scored > 0):`);
   for (const cat of LOWER_CATS) {
     console.log(`    ${cat.padEnd(18)}: ${pct(lowerHitRateAi[cat])}`);
   }
