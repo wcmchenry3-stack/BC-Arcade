@@ -208,8 +208,11 @@ function holdMedium(dice: readonly number[], scores: GameState["scores"]): boole
   const run4 = longestRunFaces(dice, 4);
   if (run4) return holdForRun(dice, run4);
 
-  // Upper bonus pursuit: hold an open upper face that appears ≥ 2 times.
-  // Active whenever the bonus is not yet secured (toBonus > 0).
+  // Upper bonus pursuit: hold the best open upper face.
+  // Threshold: ≥2 of any face, or ≥1 for high-value faces (5,6) whose par scores
+  // (15, 18) contribute the most to reaching 63. Single high-value dice beat a
+  // 3-run because the 3-run leads to only small_straight (30 pts) while the bonus
+  // itself is worth 35 pts deferred.
   if (toBonus > 0) {
     let bestFace = 0;
     let bestCnt = 0;
@@ -220,7 +223,8 @@ function holdMedium(dice: readonly number[], scores: GameState["scores"]): boole
         bestFace = face;
       }
     }
-    if (bestFace > 0 && bestCnt >= 2) return holdFace(dice, bestFace);
+    const minCnt = bestFace >= 5 ? 1 : 2;
+    if (bestFace > 0 && bestCnt >= minCnt) return holdFace(dice, bestFace);
   }
 
   // 3-run: keep for potential small/large straight

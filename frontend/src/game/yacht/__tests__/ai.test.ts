@@ -128,6 +128,16 @@ describe("holdStrategy — Medium", () => {
     const heldDice = state.dice.filter((_, i) => held[i]);
     expect(heldDice.every((d) => d === 6)).toBe(true);
   });
+
+  it("holds single 6 over 3-run — high-value face (≥5) threshold is 1 die", () => {
+    // dice [6,1,2,3,4]: 4-run [1,2,3,4] beats bonus pursuit, but [6,1,2,3] has only 3-run
+    // Use a dice set with a 3-run and a lone 6: [6,5,1,2,3] → 3-run [1,2,3], lone 5 and 6
+    // Bonus pursuit: best open high face is 6 (cnt=1, face>=5 → minCnt=1) → holds 6
+    const state = makeGame([6, 5, 1, 2, 3]);
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 6)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
