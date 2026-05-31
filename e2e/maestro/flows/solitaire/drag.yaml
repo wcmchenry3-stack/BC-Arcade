@@ -1,0 +1,27 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 8000
+# Draw one card from stock so the waste pile is non-empty.
+- tapOn:
+    id: "solitaire-stock-pile"
+- assertVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+# Drag the waste top card toward tableau column 0.
+# The move may or may not be valid (deal is random); either outcome — card placed
+# or snap-back — exercises the full drag gesture path and drop-zone hit-test.
+- swipe:
+    from:
+      id: "solitaire-waste-top"
+    to:
+      id: "solitaire-tableau-0"
+    duration: 600
+- takeScreenshot: solitaire-drag

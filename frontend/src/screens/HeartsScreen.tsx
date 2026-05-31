@@ -5,7 +5,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
-import type { Colors } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -46,6 +45,8 @@ import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnim
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import { resolvePersona } from "../game/hearts/types";
+import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
+import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
 
 const HUMAN = 0;
 const MAX_NAME_LENGTH = 32;
@@ -54,18 +55,17 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
-type SubmitState = "idle" | "submitting" | "done" | "error";
-
-// Side-seat label for narrow slots (West/East). Just the player name; the
-// captured pile beneath provides the only seat-level visual weight.
-function SideSeatLabel({ label, colors }: { label: string; colors: Colors }) {
-  return <Text style={[sideSeatStyles.label, { color: colors.textMuted }]}>{label}</Text>;
+function buildDebugTrick(plays: readonly TrickCard[], winnerIndex: number): DebugTrick {
+  const pointsWon = plays.reduce((sum, tc) => {
+    if (tc.card.suit === "hearts") return sum + 1;
+    if (isQueenOfSpades(tc.card)) return sum + 13;
+    return sum;
+  }, 0);
+  return { plays, winnerIndex, pointsWon };
 }
 
-const sideSeatStyles = StyleSheet.create({
-  label: { fontSize: 11, fontWeight: "600" },
-});
+type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
+type SubmitState = "idle" | "submitting" | "done" | "error";
 
 export default function HeartsScreen() {
   const { t } = useTranslation("hearts");
@@ -89,6 +89,18 @@ export default function HeartsScreen() {
 
   // scoreHistory now lives on HeartsState (engine-authoritative, persisted).
   const scoreHistory = useMemo(() => gameState?.scoreHistory ?? [], [gameState?.scoreHistory]);
+
+  // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
+  const debugMode = __DEV__;
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [handNotes, setHandNotes] = useState<string[]>([]);
+  const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
+  const dealSnapshotRef = useRef<{
+    initialHands: readonly (readonly Card[])[];
+    passSelections: readonly (readonly Card[])[];
+    finalHands: readonly (readonly Card[])[];
+  } | null>(null);
+  const trickLogBufferRef = useRef<DebugTrick[]>([]);
 
   const unmountedRef = useRef(false);
   const loopActiveRef = useRef(false);
@@ -126,6 +138,15 @@ export default function HeartsScreen() {
       if (!unmountedRef.current && saved) {
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
+        if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
+          // Best-effort: saved state doesn't preserve the original deal, so
+          // playerHands approximates both initial and final hands for resumed games.
+          dealSnapshotRef.current = {
+            initialHands: saved.playerHands,
+            passSelections: saved.passSelections ?? [[], [], [], []],
+            finalHands: saved.playerHands,
+          };
+        }
       }
     });
     loadPlayerNames().then((names) => {
@@ -150,6 +171,32 @@ export default function HeartsScreen() {
   useEffect(() => {
     if (gameState) reportIntegrity(gameState);
   }, [gameState, reportIntegrity]);
+
+  // ─── Commit hand log entry when a hand ends ───────────────────────────────
+  useEffect(() => {
+    if (!__DEV__ || !debugMode) return;
+    if (!gameState) return;
+    if (gameState.phase !== "dealing" && gameState.phase !== "game_over") return;
+    const snapshot = dealSnapshotRef.current;
+    if (!snapshot) return;
+    const histLen = gameState.scoreHistory.length;
+    if (histLen === 0) return;
+    const entry: HandDebugLog = {
+      handNumber: gameState.handNumber,
+      passDirection: gameState.passDirection,
+      initialHands: snapshot.initialHands,
+      passSelections: snapshot.passSelections,
+      finalHands: snapshot.finalHands,
+      tricks: [...trickLogBufferRef.current],
+      scoreDeltas: gameState.scoreHistory[histLen - 1] ?? [],
+      cumulativeScoresAfter: gameState.cumulativeScores,
+    };
+    setHandLogs((prev) => [...prev, entry]);
+    setHandNotes((prev) => [...prev, ""]);
+    trickLogBufferRef.current = [];
+    dealSnapshotRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState?.phase]);
 
   // ─── Save on blur ─────────────────────────────────────────────────────────
   // Tab switches unmount the Lobby HomeStack; without this, mid-trick or
@@ -252,6 +299,9 @@ export default function HeartsScreen() {
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
             void saveGame(s);
+            if (__DEV__) {
+              trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
+            }
           }
           setGameState(s);
           // Clear events so the next playCard call doesn't re-emit them via a new array reference.
@@ -323,6 +373,11 @@ export default function HeartsScreen() {
     const newState = playCard(gameState, HUMAN, card);
 
     if (completedTrick) {
+      if (__DEV__ && debugMode) {
+        trickLogBufferRef.current.push(
+          buildDebugTrick(completedTrick, newState.currentLeaderIndex)
+        );
+      }
       void saveGame(newState);
       if (newState.phase === "playing") {
         setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
@@ -369,7 +424,15 @@ export default function HeartsScreen() {
         s = selectPassCard(s, i, c);
       }
     }
-    setGameState(commitPass(s));
+    const committed = commitPass(s);
+    if (__DEV__ && debugMode && dealSnapshotRef.current) {
+      dealSnapshotRef.current = {
+        ...dealSnapshotRef.current,
+        passSelections: s.passSelections,
+        finalHands: committed.playerHands,
+      };
+    }
+    setGameState(committed);
   }
 
   // ─── Hand end / next hand ─────────────────────────────────────────────────
@@ -380,6 +443,14 @@ export default function HeartsScreen() {
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     const next = dealNextHand(gameState);
+    if (__DEV__ && debugMode) {
+      dealSnapshotRef.current = {
+        initialHands: next.playerHands,
+        passSelections: [[], [], [], []],
+        finalHands: next.playerHands,
+      };
+      trickLogBufferRef.current = [];
+    }
     setGameState(next);
     void saveGame(next);
   }
@@ -411,6 +482,18 @@ export default function HeartsScreen() {
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
     const fresh = dealGame(difficulty);
+    if (__DEV__) {
+      setHandLogs([]);
+      trickLogBufferRef.current = [];
+      dealSnapshotRef.current = debugMode
+        ? {
+            initialHands: fresh.playerHands,
+            passSelections: [[], [], [], []],
+            finalHands: fresh.playerHands,
+          }
+        : null;
+      setHandNotes([]);
+    }
     setGameState(fresh);
   }
 
@@ -424,6 +507,12 @@ export default function HeartsScreen() {
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
+    if (__DEV__) {
+      setHandLogs([]);
+      trickLogBufferRef.current = [];
+      dealSnapshotRef.current = null;
+      setHandNotes([]);
+    }
     setGameState(null);
   }
 
@@ -499,6 +588,7 @@ export default function HeartsScreen() {
           <OpponentHand
             cardCount={gameState.playerHands[2]?.length ?? 0}
             label={playerLabels[2] ?? ""}
+            revealCards={__DEV__ && debugMode ? gameState.playerHands[2] : undefined}
           />
           <OpponentCapturedPile
             cards={gameState.wonCards[2] ?? []}
@@ -509,7 +599,12 @@ export default function HeartsScreen() {
         {/* Middle: Left AI | TrickArea | Right AI */}
         <View style={styles.middleRow}>
           <View style={styles.sideColumn}>
-            <SideSeatLabel label={playerLabels[1] ?? ""} colors={colors} />
+            <OpponentHand
+              cardCount={gameState.playerHands[1]?.length ?? 0}
+              label={playerLabels[1] ?? ""}
+              layout="vertical"
+              revealCards={__DEV__ && debugMode ? gameState.playerHands[1] : undefined}
+            />
             <OpponentCapturedPile
               cards={gameState.wonCards[1] ?? []}
               seatLabel={playerLabels[1] ?? ""}
@@ -529,7 +624,12 @@ export default function HeartsScreen() {
             />
           </View>
           <View style={styles.sideColumn}>
-            <SideSeatLabel label={playerLabels[3] ?? ""} colors={colors} />
+            <OpponentHand
+              cardCount={gameState.playerHands[3]?.length ?? 0}
+              label={playerLabels[3] ?? ""}
+              layout="vertical"
+              revealCards={__DEV__ && debugMode ? gameState.playerHands[3] : undefined}
+            />
             <OpponentCapturedPile
               cards={gameState.wonCards[3] ?? []}
               seatLabel={playerLabels[3] ?? ""}
@@ -567,6 +667,18 @@ export default function HeartsScreen() {
           takerLabel={queenOfSpadesLabel}
           onAnimationEnd={() => setShowQueenOfSpades(false)}
         />
+        {__DEV__ && (
+          <Pressable
+            style={[styles.devButton, { backgroundColor: colors.accent }]}
+            onPress={() => setDebugPanelOpen((prev) => !prev)}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle Hearts debugger panel"
+          >
+            <Text style={[styles.devButtonText, { color: colors.textOnAccent }]}>
+              {debugPanelOpen ? "DBG ▾" : "DBG ▴"}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
@@ -746,6 +858,25 @@ export default function HeartsScreen() {
             </View>
           </View>
         </Modal>
+      )}
+
+      {/* ── Hearts debug panel (__DEV__ only) ────────────────────── */}
+      {__DEV__ && (
+        <HeartsDebugPanel
+          visible={debugPanelOpen}
+          onClose={() => setDebugPanelOpen(false)}
+          logs={handLogs}
+          notes={handNotes}
+          playerLabels={playerLabels}
+          aiDifficulty={gameState.aiDifficulty}
+          onNotesChange={(idx, text) =>
+            setHandNotes((prev) => {
+              const next = [...prev];
+              next[idx] = text;
+              return next;
+            })
+          }
+        />
       )}
 
       {/* ── Rename players modal ───────────────────────────────────── */}
@@ -955,6 +1086,19 @@ const styles = StyleSheet.create({
   },
   preGameTitle: {
     fontSize: 18,
+    fontWeight: "700",
+  },
+  devButton: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    opacity: 0.8,
+  },
+  devButtonText: {
+    fontSize: 10,
     fontWeight: "700",
   },
 });

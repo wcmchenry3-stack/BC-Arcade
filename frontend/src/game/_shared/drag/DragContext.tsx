@@ -31,8 +31,11 @@ export interface DragState {
 /** Return true if the drop was accepted, false to trigger snap-back. */
 export type DropHandler = (source: DragSource, cards: DragCard[]) => boolean;
 
+type Bounds = { x: number; y: number; width: number; height: number };
+
 interface DropZoneEntry {
-  getMeasurement: () => { x: number; y: number; width: number; height: number } | null;
+  /** Measure the zone's window bounds right now, calling cb when ready. */
+  measureFresh: (cb: (bounds: Bounds | null) => void) => void;
   onDrop: DropHandler;
 }
 
@@ -131,23 +134,59 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       const state = dragStateRef.current;
       if (!state) return;
 
-      for (const [, zone] of dropZonesRef.current) {
-        const bounds = zone.getMeasurement();
-        if (!bounds) continue;
-        if (
-          absoluteX >= bounds.x &&
-          absoluteX <= bounds.x + bounds.width &&
-          absoluteY >= bounds.y &&
-          absoluteY <= bounds.y + bounds.height
-        ) {
-          const accepted = zone.onDrop(state.source, state.cards);
-          if (accepted) {
-            clearDrag();
-            return;
-          }
-        }
+      // Take a snapshot of zones at this moment (Map entry order = registration order).
+      const zones = Array.from(dropZonesRef.current.values());
+      if (zones.length === 0) {
+        snapBackAndClear();
+        return;
       }
-      snapBackAndClear();
+
+      // Measure every zone fresh via measureInWindow so we always use current
+      // window coordinates — cached onLayout values can be stale or zero on iOS.
+      let remaining = zones.length;
+      const results: { bounds: Bounds | null; zone: DropZoneEntry }[] = zones.map((zone) => ({
+        bounds: null,
+        zone,
+      }));
+
+      // Safety net: if any measureInWindow callback never fires (e.g. view unmounted
+      // mid-drag on Android) the card must not stay frozen on screen indefinitely.
+      const timeout = setTimeout(() => {
+        if (remaining > 0) snapBackAndClear();
+      }, 300);
+
+      results.forEach((entry) => {
+        entry.zone.measureFresh((bounds) => {
+          // No-op if the timeout already fired and snapped back.
+          if (remaining <= 0) return;
+          entry.bounds = bounds;
+          remaining--;
+          if (remaining > 0) return;
+
+          clearTimeout(timeout);
+
+          // All measurements received — run hit-test.
+          // Guard against a second drag starting before this callback fires.
+          if (dragStateRef.current !== state) return;
+
+          for (const { bounds: b, zone } of results) {
+            if (!b) continue;
+            if (
+              absoluteX >= b.x &&
+              absoluteX <= b.x + b.width &&
+              absoluteY >= b.y &&
+              absoluteY <= b.y + b.height
+            ) {
+              const accepted = zone.onDrop(state.source, state.cards);
+              if (accepted) {
+                clearDrag();
+                return;
+              }
+            }
+          }
+          snapBackAndClear();
+        });
+      });
     },
     [clearDrag, snapBackAndClear]
   );

@@ -47,15 +47,18 @@ function scoringCards(cards: readonly Card[]): Card[] {
 const OPP_CARD_W = 24;
 const OPP_CARD_H = 28;
 const OPP_OFFSET = 8;
-const OPP_MAX_VISIBLE = 4;
+const OPP_MAX_VISIBLE = 5;
 
 const SELF_CARD_W = 28;
 const SELF_CARD_H = 40;
 const SELF_OFFSET = 18;
 
-// Append alpha ~0.4 (hex 66) to a 6-digit hex color.
+// Append alpha to a 6-digit hex color.
 function alpha40(hex: string): string {
-  return hex.length === 7 ? `${hex}66` : hex;
+  return hex.length === 7 ? `${hex}66` : hex; // ~40% opacity
+}
+function alpha13(hex: string): string {
+  return hex.length === 7 ? `${hex}22` : hex; // ~13% opacity
 }
 
 interface OpponentProps {
@@ -95,6 +98,13 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
           />
         ))}
       </View>
+      {points > 0 && (
+        <Text
+          style={[styles.oppBadge, { color: colors.error, backgroundColor: alpha13(colors.error) }]}
+        >
+          {`${scoredCount} · +${points}`}
+        </Text>
+      )}
     </View>
   );
 }
@@ -130,7 +140,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                   styles.selfCard,
                   {
                     left: i * SELF_OFFSET,
-                    backgroundColor: colors.surface,
+                    backgroundColor: "#fff",
                     borderColor: colors.border,
                   },
                 ]}
@@ -138,7 +148,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfRank,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.text },
+                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
                   ]}
                 >
                   {rankText(card.rank)}
@@ -146,7 +156,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfSuit,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.text },
+                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
                   ]}
                 >
                   {SUIT_SYMBOL[card.suit]}
@@ -165,6 +175,14 @@ const styles = StyleSheet.create({
   oppContainer: {
     alignItems: "center",
     gap: 4,
+  },
+  oppBadge: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
   },
   oppFan: {
     position: "relative",

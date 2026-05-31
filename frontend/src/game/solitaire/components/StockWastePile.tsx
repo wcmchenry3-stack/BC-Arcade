@@ -173,6 +173,7 @@ function Waste({
   if (drawMode !== 3) {
     return (
       <DraggableCard
+        testID="solitaire-waste-top"
         onTap={onPress}
         dragCards={topDragCards}
         dragSource={{ game: "solitaire", type: "waste" }}
@@ -209,6 +210,7 @@ function Waste({
               style={[styles.wasteFanCard, { left: i * wasteFanOffset }]}
             >
               <DraggableCard
+                testID="solitaire-waste-top"
                 onTap={onPress}
                 dragCards={topDragCards}
                 dragSource={{ game: "solitaire", type: "waste" }}
