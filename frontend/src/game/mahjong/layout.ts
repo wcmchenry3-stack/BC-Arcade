@@ -13,6 +13,10 @@ export interface MahjongLayoutInput {
   boardRows: number;
   boardCols: number;
   boardLayers: number;
+  /** Smallest row index in the layout (default 0). Used to eliminate empty canvas space above the top tile row. */
+  minRow?: number;
+  /** Smallest col index in the layout (default 0). Used to eliminate empty canvas space left of the first tile column. */
+  minCol?: number;
 }
 
 export interface MahjongLayout {
@@ -27,6 +31,12 @@ export interface MahjongLayout {
   boardHeight: number;
   availWidth: number;
   availHeight: number;
+  /** boardLayers × layerDy — added to tileToScreen y so the highest layer sits at padY from the canvas top. */
+  layerOffsetY: number;
+  /** minRow × tileHeight — subtracted from tileToScreen y so the top row sits at the top of the tile area. */
+  rowOffset: number;
+  /** (minCol/2) × tileWidth — subtracted from tileToScreen x so the left column sits at padX. */
+  colOffset: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +107,9 @@ export function makeBoardCamera(
     padY,
     boardWidth,
     boardHeight,
+    layerOffsetY,
+    rowOffset,
+    colOffset,
   } = layout;
   const { scale, offsetX, offsetY } = fitToScreen(
     boardWidth,
@@ -108,8 +121,11 @@ export function makeBoardCamera(
   return {
     tileToScreen(col, row, layer) {
       return {
-        x: padX + (col / 2) * tileWidth + layer * layerDx,
-        y: padY + row * tileHeight - layer * layerDy,
+        // colOffset shifts the origin so the leftmost used column starts at padX.
+        x: padX + (col / 2) * tileWidth + layer * layerDx - colOffset,
+        // layerOffsetY pushes tiles down so the highest layer sits at y=padY
+        // (not negative). rowOffset removes empty rows above the first used row.
+        y: padY + layerOffsetY + row * tileHeight - layer * layerDy - rowOffset,
       };
     },
     tileWidth,
@@ -135,8 +151,10 @@ const MAX_TILE_W = 56;
 const SIDE_R = 5 / 44;
 const LAYER_DX_R = 6 / 44;
 const LAYER_DY_R = 5 / 44;
-const PAD_X_R = 10 / 44;
-const PAD_Y_R = 14 / 44;
+// Target ~1 tile of green margin on every side. Overflow protection in
+// calculateMahjongLayout caps padX/padY so the board always fits the viewport.
+const PAD_X_R = 1; // 1 × tileWidth on left and right
+const PAD_Y_R = 56 / 44; // 1 × tileHeight on top and bottom
 
 // Keep APP_HEADER_H in sync with AppHeader.APP_HEADER_HEIGHT
 const APP_HEADER_H = 64;
@@ -159,6 +177,8 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     boardRows,
     boardCols,
     boardLayers,
+    minRow = 0,
+    minCol = 0,
   } = input;
 
   const horizPad =
@@ -166,10 +186,9 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   const availW = Math.max(1, screenWidth - horizPad);
   const availH = Math.max(1, screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H);
 
-  // Approximate board dimensions as a multiplier of tileWidth (all derived
-  // values scale proportionally, so we can solve for tileWidth directly).
-  // widthFactor: boardCols half-steps + layer offsets + two padX amounts
-  // heightFactor: board rows (tile-height units) + layer offsets + two padY amounts
+  // Solve for the largest tileWidth that fits the tile + layer area within the
+  // viewport. Padding is added separately (with overflow protection) so that
+  // the MIN_TILE_W clamp never causes the board to exceed the available space.
   const widthFactor = boardCols + boardLayers * LAYER_DX_R + 2 * PAD_X_R;
   const heightFactor = boardRows * TILE_ASPECT + boardLayers * LAYER_DY_R + 2 * PAD_Y_R;
 
@@ -180,11 +199,21 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   const sideWidth = Math.max(3, Math.round(tileWidth * SIDE_R));
   const layerDx = Math.max(3, Math.round(tileWidth * LAYER_DX_R));
   const layerDy = Math.max(2, Math.round(tileWidth * LAYER_DY_R));
-  const padX = Math.max(4, Math.round(tileWidth * PAD_X_R));
-  const padY = Math.max(6, Math.round(tileWidth * PAD_Y_R));
+
+  // Target padding is ~1 tile on each side. Cap it so the board never exceeds
+  // the available viewport even when tileWidth is clamped to MIN_TILE_W.
+  const slotsW = Math.ceil(boardCols * tileWidth) + boardLayers * layerDx;
+  const slotsH = boardRows * tileHeight + boardLayers * layerDy;
+  const padX = Math.max(4, Math.min(Math.round(tileWidth * PAD_X_R), Math.floor((availW - slotsW) / 2)));
+  const padY = Math.max(6, Math.min(Math.round(tileWidth * PAD_Y_R), Math.floor((availH - slotsH) / 2)));
 
   const boardWidth = padX + boardCols * tileWidth + boardLayers * layerDx + padX;
   const boardHeight = padY + boardRows * tileHeight + boardLayers * layerDy + padY;
+
+  // Precomputed offsets used in tileToScreen (see makeBoardCamera).
+  const layerOffsetY = boardLayers * layerDy;
+  const rowOffset = minRow * tileHeight;
+  const colOffset = Math.round((minCol / 2) * tileWidth);
 
   return {
     tileWidth,
@@ -198,10 +227,13 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     boardHeight,
     availWidth: availW,
     availHeight: availH,
+    layerOffsetY,
+    rowOffset,
+    colOffset,
   };
 }
 
-const TURTLE_BOUNDS = { boardCols: 12, boardRows: 8, boardLayers: 4 };
+const TURTLE_BOUNDS = { boardCols: 12, boardRows: 8, boardLayers: 4, minRow: 0, minCol: 0 };
 
 /**
  * Compute the grid dimensions needed to render a layout without clipping.
@@ -216,27 +248,38 @@ export function layoutBounds(slots: readonly Slot[]): {
   boardCols: number;
   boardRows: number;
   boardLayers: number;
+  minRow: number;
+  minCol: number;
 } {
   if (slots.length === 0) throw new Error("layoutBounds: empty slot array");
   let maxCol = 0,
     maxRow = 0,
     maxLayer = 0;
+  let minCol = slots[0].col,
+    minRow = slots[0].row;
   for (const s of slots) {
     if (s.col > maxCol) maxCol = s.col;
+    if (s.col < minCol) minCol = s.col;
     if (s.row > maxRow) maxRow = s.row;
+    if (s.row < minRow) minRow = s.row;
     if (s.layer > maxLayer) maxLayer = s.layer;
   }
   return {
-    boardCols: maxCol / 2 + 1,
-    boardRows: maxRow + 1,
+    // Use the actual used range so unused rows/cols don't leave empty canvas space.
+    boardCols: (maxCol - minCol) / 2 + 1,
+    boardRows: maxRow - minRow + 1,
     boardLayers: maxLayer,
+    minRow,
+    minCol,
   };
 }
 
 export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { boardCols, boardRows, boardLayers } = slots ? layoutBounds(slots) : TURTLE_BOUNDS;
+  const { boardCols, boardRows, boardLayers, minRow, minCol } = slots
+    ? layoutBounds(slots)
+    : TURTLE_BOUNDS;
   return useMemo(
     () =>
       calculateMahjongLayout({
@@ -249,6 +292,8 @@ export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
         boardCols,
         boardRows,
         boardLayers,
+        minRow,
+        minCol,
       }),
     [
       width,
@@ -260,6 +305,8 @@ export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
       boardCols,
       boardRows,
       boardLayers,
+      minRow,
+      minCol,
     ]
   );
 }
