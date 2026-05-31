@@ -28,6 +28,7 @@ export function DropTarget({
   testID,
 }: DropTargetProps) {
   const viewRef = useRef<View>(null);
+  const rafRef = useRef<ReturnType<typeof requestAnimationFrame>>();
   const { colors } = useTheme();
 
   // Keep the latest onDrop in a ref so re-renders don't force re-registration.
@@ -49,9 +50,12 @@ export function DropTarget({
   // Proactively cache absolute window bounds whenever React Native recalculates
   // layout. requestAnimationFrame defers the measureInWindow call until after
   // the native view is actually painted — calling it synchronously inside onLayout
-  // returns 0,0 on Android before the first paint.
+  // returns 0,0 on Android before the first paint. Cancelling the previous rAF
+  // prevents stale callbacks from piling up on rapid re-renders.
   const handleLayout = useCallback(() => {
-    requestAnimationFrame(() => {
+    if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = undefined;
       viewRef.current?.measureInWindow((x, y, w, h) => {
         if (w > 0 && h > 0) {
           updateDropZoneLayout(id, { x, y, width: w, height: h });

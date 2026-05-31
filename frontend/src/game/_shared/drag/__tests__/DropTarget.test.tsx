@@ -1,6 +1,6 @@
 import React from "react";
 import { Text } from "react-native";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { render, fireEvent } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
@@ -100,8 +100,10 @@ describe("DropTarget", () => {
     expect(() => fireEvent.press(getByLabelText("end-drag"))).not.toThrow();
   });
 
-  it("calls measureInWindow via requestAnimationFrame when onLayout fires", async () => {
-    const measureInWindow = jest.fn();
+  it("schedules measureInWindow via requestAnimationFrame on layout, not synchronously", () => {
+    jest.useFakeTimers();
+    const rafSpy = jest.spyOn(global, "requestAnimationFrame");
+    const countBefore = rafSpy.mock.calls.length;
 
     const { getByTestId } = render(
       wrap(
@@ -111,24 +113,41 @@ describe("DropTarget", () => {
       )
     );
 
-    // Inject measureInWindow spy onto the native instance.
-    const target = getByTestId("target");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (target as any).measureInWindow = measureInWindow;
-
-    await act(async () => {
-      fireEvent(target, "layout", {
-        nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 50 } },
-      });
-      // Flush the requestAnimationFrame callback.
-      await Promise.resolve();
+    fireEvent(getByTestId("target"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 50 } },
     });
 
-    // measureInWindow is called asynchronously via requestAnimationFrame;
-    // in jsdom/jest the rAF callback is not auto-flushed, so we verify the
-    // call was scheduled (target.measureInWindow was referenced) rather than
-    // asserting a specific invocation count that depends on rAF scheduling.
-    expect(target).toBeTruthy();
+    // A new rAF should have been scheduled (measureInWindow is NOT called synchronously)
+    expect(rafSpy.mock.calls.length).toBeGreaterThan(countBefore);
+
+    rafSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it("cancels a pending rAF before scheduling a new one on rapid re-layout", () => {
+    jest.useFakeTimers();
+    const cancelSpy = jest.spyOn(global, "cancelAnimationFrame");
+
+    const { getByTestId } = render(
+      wrap(
+        <DropTarget id="pile-cancel" onDrop={() => false} testID="target">
+          <Text>Content</Text>
+        </DropTarget>
+      )
+    );
+
+    const target = getByTestId("target");
+    const layoutEvent = { nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 50 } } };
+
+    // First layout fires a rAF
+    fireEvent(target, "layout", layoutEvent);
+    // Second layout before first rAF runs — should cancel the first
+    fireEvent(target, "layout", layoutEvent);
+
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+
+    cancelSpy.mockRestore();
+    jest.useRealTimers();
   });
 
   it("applies dimStyle when drag is active and this target is not legal", () => {

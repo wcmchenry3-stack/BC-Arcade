@@ -1,11 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
 import { Text } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 import * as Reanimated from "react-native-reanimated";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
-import type { DragCard, DragSource } from "../DragContext";
+import type { Bounds, DragCard, DragSource, DropHandler } from "../DragContext";
 
 const dragCards: DragCard[] = [{ suit: "hearts", rank: 5, faceDown: false, width: 60, height: 90 }];
 const dragSource: DragSource = { game: "solitaire", type: "waste" };
@@ -32,32 +32,28 @@ function SnapBackTrigger() {
   );
 }
 
-/** Registers a drop zone with optional pre-cached bounds. */
+/**
+ * Registers a drop zone with optional pre-cached bounds.
+ * Uses refs for onDrop and bounds to keep effect deps stable across re-renders.
+ */
 function DropZoneRegistrar({
   id,
   bounds,
-  onDrop = () => false,
+  onDrop,
 }: {
   id: string;
-  bounds?: { x: number; y: number; width: number; height: number };
-  onDrop?: (source: DragSource, cards: DragCard[]) => boolean;
+  bounds?: Bounds;
+  onDrop?: DropHandler;
 }) {
   const { registerDropZone, unregisterDropZone, updateDropZoneLayout } = useDragContext();
+  const onDropRef = useRef<DropHandler>(onDrop ?? (() => false));
+  const boundsRef = useRef(bounds);
   React.useEffect(() => {
-    registerDropZone(id, { onDrop });
-    if (bounds) updateDropZoneLayout(id, bounds);
+    registerDropZone(id, { onDrop: (s, c) => onDropRef.current(s, c) });
+    if (boundsRef.current) updateDropZoneLayout(id, boundsRef.current);
     return () => unregisterDropZone(id);
-  }, [id, bounds, onDrop, registerDropZone, unregisterDropZone, updateDropZoneLayout]);
+  }, [id, registerDropZone, unregisterDropZone, updateDropZoneLayout]);
   return null;
-}
-
-function StartDragTrigger() {
-  const { startDrag } = useDragContext();
-  return (
-    <Text accessibilityLabel="start" onPress={() => startDrag(dragSource, dragCards)}>
-      start
-    </Text>
-  );
 }
 
 describe("DragContext", () => {
@@ -69,6 +65,44 @@ describe("DragContext", () => {
     fireEvent.press(getByLabelText("snap"));
 
     expect(withSpring).toHaveBeenCalled();
+    withSpring.mockRestore();
+  });
+
+  it("snapBackAndClear clears drag state when spring callback fires (finished=false)", () => {
+    // Override withSpring to immediately call the completion callback simulating
+    // an interrupted animation (finished=false) — the original `if (finished)` guard
+    // would have silently dropped this, leaving the board stuck in drag-active state.
+    const withSpring = jest
+      .spyOn(Reanimated, "withSpring")
+      .mockImplementation(
+        (toValue: unknown, _config: unknown, cb?: (finished: boolean) => void) => {
+          cb?.(false);
+          return toValue as number;
+        }
+      );
+
+    function Checker() {
+      const { startDrag, snapBackAndClear, dragState } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start-c" onPress={() => startDrag(dragSource, dragCards)}>
+            s
+          </Text>
+          <Text accessibilityLabel="snap-c" onPress={() => snapBackAndClear()}>
+            snap
+          </Text>
+          <Text testID="state-c">{dragState ? "active" : "idle"}</Text>
+        </>
+      );
+    }
+
+    const { getByLabelText, getByTestId } = render(wrap(<Checker />));
+    fireEvent.press(getByLabelText("start-c"));
+    expect(getByTestId("state-c").props.children).toBe("active");
+
+    fireEvent.press(getByLabelText("snap-c"));
+    expect(getByTestId("state-c").props.children).toBe("idle");
+
     withSpring.mockRestore();
   });
 
@@ -98,7 +132,7 @@ describe("DragContext", () => {
   });
 
   it("endDrag calls onDrop synchronously when finger lands inside pre-cached bounds", () => {
-    const onDrop = jest.fn().mockReturnValue(true);
+    const onDrop = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
 
     function StartEndTrigger() {
       const { startDrag, endDrag } = useDragContext();
@@ -169,7 +203,7 @@ describe("DragContext", () => {
   });
 
   it("endDrag skips zones with no cached bounds rather than crashing", () => {
-    const onDrop = jest.fn().mockReturnValue(true);
+    const onDrop = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
 
     function StartEndTrigger() {
       const { startDrag, endDrag } = useDragContext();
@@ -197,7 +231,7 @@ describe("DragContext", () => {
 
     fireEvent.press(getByLabelText("start5"));
     expect(() => fireEvent.press(getByLabelText("end5"))).not.toThrow();
-    // onDrop should NOT be called because no bounds were cached
+    // onDrop must NOT be called because no bounds were cached
     expect(onDrop).not.toHaveBeenCalled();
   });
 });

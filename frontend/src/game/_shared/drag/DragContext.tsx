@@ -98,6 +98,9 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
   const containerOffsetX = useSharedValue(0);
   const containerOffsetY = useSharedValue(0);
   const containerRef = useAnimatedRef<Animated.View>();
+  // Incremented each time a new drag starts; the snap-back callback compares
+  // against the generation it captured to avoid clearing a superseding drag.
+  const dragGeneration = useSharedValue(0);
 
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
   const dropZoneBoundsRef = useRef<Map<string, Bounds>>(new Map());
@@ -111,6 +114,7 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
 
   const startDrag = useCallback(
     (source: DragSource, cards: DragCard[]) => {
+      dragGeneration.value += 1;
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
@@ -118,19 +122,22 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
         setLegalTargetIds(new Set(getLegalDropIds(source, cards)));
       }
     },
-    [getLegalDropIds]
+    [dragGeneration, getLegalDropIds]
   );
 
   const snapBackAndClear = useCallback(() => {
+    // Capture the generation at the moment snap-back starts. If a new drag
+    // begins before the spring callback fires (interrupting it), the generation
+    // will have incremented and clearDrag will be skipped — the new drag's own
+    // lifecycle owns the cleanup. Without this guard, the snap-back callback
+    // could clear a drag that started after this one.
+    const gen = dragGeneration.value;
     cardX.value = withSpring(originX.value, SNAP_SPRING);
-    // Always clear drag state regardless of whether the animation completes
-    // normally — an interrupted spring (new gesture, unmount) must not leave
-    // the board stuck in drag-active state indefinitely.
     cardY.value = withSpring(originY.value, SNAP_SPRING, () => {
       "worklet";
-      runOnJS(clearDrag)();
+      if (dragGeneration.value === gen) runOnJS(clearDrag)();
     });
-  }, [cardX, cardY, clearDrag, originX, originY]);
+  }, [cardX, cardY, clearDrag, dragGeneration, originX, originY]);
 
   const endDrag = useCallback(
     (absoluteX: number, absoluteY: number) => {
