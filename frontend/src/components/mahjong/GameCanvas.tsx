@@ -325,10 +325,10 @@ export default function GameCanvas({
               {/* Blue glow behind matching free tiles */}
               {isHint && (
                 <Rect
-                  x={x - 2}
-                  y={y - 2}
-                  width={faceWidth + 4}
-                  height={faceHeight + 4}
+                  x={x - 4}
+                  y={y - 4}
+                  width={faceWidth + 8}
+                  height={faceHeight + 8}
                   color={MAHJONG_HINT_GLOW_BG}
                 />
               )}
