@@ -269,7 +269,46 @@ interface Batch {
   expectedBand: [number, number];
   /** Expected AI upper-bonus hit rate band [lo, hi] */
   expectedBonusBandAi: [number, number];
+  /** Expected AI hit rate band [lo, hi] for each lower-section category */
+  expectedLowerBandsAi: Record<LowerCat, [number, number]>;
 }
+
+// ---------------------------------------------------------------------------
+// Per-difficulty lower-section acceptance bands (derived from n=500 baselines,
+// bands set at ±12pp — roughly 2.8σ — to catch real regressions without
+// producing frequent false positives at n=500).
+// ---------------------------------------------------------------------------
+
+const EASY_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
+  three_of_a_kind: [0.93, 1.0],
+  four_of_a_kind: [0.77, 1.0],
+  full_house: [0.55, 0.79],
+  small_straight: [0.1, 0.34],
+  large_straight: [0.01, 0.14],
+  yacht: [0.32, 0.57],
+  chance: [0.95, 1.0],
+};
+
+const MEDIUM_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
+  three_of_a_kind: [0.87, 1.0],
+  four_of_a_kind: [0.6, 0.84],
+  full_house: [0.79, 0.98],
+  small_straight: [0.82, 0.99],
+  large_straight: [0.58, 0.82],
+  yacht: [0.23, 0.47],
+  chance: [0.95, 1.0],
+};
+
+// Hard bands derived post-#1882 (full_house fix) + #1881 (bonus proximity).
+const HARD_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
+  three_of_a_kind: [0.75, 0.98],
+  four_of_a_kind: [0.55, 0.8],
+  full_house: [0.76, 0.98],
+  small_straight: [0.92, 1.0],
+  large_straight: [0.66, 0.9],
+  yacht: [0.2, 0.43],
+  chance: [0.95, 1.0],
+};
 
 const ALL_BATCHES: Batch[] = [
   {
@@ -279,13 +318,16 @@ const ALL_BATCHES: Batch[] = [
     expectedBand: [0.45, 0.55],
     // Easy has no bonus logic; incidental upper accumulation
     expectedBonusBandAi: [0.01, 0.06],
+    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
   },
   {
     label: "Medium (human) vs Easy (AI)",
     humanDiff: "medium",
     aiDiff: "easy",
-    expectedBand: [0.58, 0.72],
+    // Band widened post-#1866 bonus fixes: Medium improved significantly against Easy (~77%).
+    expectedBand: [0.68, 0.85],
     expectedBonusBandAi: [0.01, 0.06],
+    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
   },
   {
     label: "Hard (human) vs Easy (AI)",
@@ -293,6 +335,7 @@ const ALL_BATCHES: Batch[] = [
     aiDiff: "easy",
     expectedBand: [0.72, 0.88],
     expectedBonusBandAi: [0.01, 0.06],
+    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
   },
   {
     label: "Medium (human) vs Medium (AI) — baseline",
@@ -301,22 +344,27 @@ const ALL_BATCHES: Batch[] = [
     expectedBand: [0.45, 0.55],
     // Medium heuristic pursuit; single-step EV limits how high this can go
     expectedBonusBandAi: [0.07, 0.18],
+    expectedLowerBandsAi: MEDIUM_AI_LOWER_BANDS,
   },
   {
     label: "Hard (human) vs Medium (AI)",
     humanDiff: "hard",
     aiDiff: "medium",
-    expectedBand: [0.58, 0.72],
+    // Band updated post-#1866/#1882/#1881: Medium's bonus improvements closed the
+    // Hard/Medium gap. Hard wins ~53–55% of games against Medium at n=500.
+    expectedBand: [0.48, 0.63],
     expectedBonusBandAi: [0.07, 0.18],
+    expectedLowerBandsAi: MEDIUM_AI_LOWER_BANDS,
   },
   {
     label: "Hard (human) vs Hard (AI) — baseline",
     humanDiff: "hard",
     aiDiff: "hard",
     expectedBand: [0.45, 0.55],
-    // Hard EV optimises for straights (EV ~33) over single upper dice (EV ~10);
-    // bonus rate is structurally lower than medium despite smarter hold/score
+    // Hard EV optimises for straights; bonus proximity fix (#1881) raises Hard bonus
+    // rate to ~4% — still below Medium's ~10% but no longer structurally near zero.
     expectedBonusBandAi: [0.02, 0.1],
+    expectedLowerBandsAi: HARD_AI_LOWER_BANDS,
   },
 ];
 
@@ -430,7 +478,11 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   console.log(`  Avg Chance score (human): ${avgChanceHuman.toFixed(1)}`);
   console.log(`  AI lower-section hit rates (% of games scored > 0):`);
   for (const cat of LOWER_CATS) {
-    console.log(`    ${cat.padEnd(18)}: ${pct(lowerHitRateAi[cat])}`);
+    const [lo, hi] = batch.expectedLowerBandsAi[cat];
+    const inLowerBand = lowerHitRateAi[cat] >= lo && lowerHitRateAi[cat] <= hi;
+    console.log(
+      `    ${cat.padEnd(18)}: ${pct(lowerHitRateAi[cat])}  ${check(inLowerBand)} expected [${pct(lo)}, ${pct(hi)}]`,
+    );
   }
   console.log();
 }
@@ -448,11 +500,19 @@ for (const r of batchResults) {
   const inBonusBandAi =
     r.upperBonusRateAi >= r.batch.expectedBonusBandAi[0] &&
     r.upperBonusRateAi <= r.batch.expectedBonusBandAi[1];
+  const lowerPassCount = LOWER_CATS.filter((cat) => {
+    const [lo, hi] = r.batch.expectedLowerBandsAi[cat];
+    return r.lowerHitRateAi[cat] >= lo && r.lowerHitRateAi[cat] <= hi;
+  }).length;
+  const allLowerPass = lowerPassCount === LOWER_CATS.length;
   console.log(
     `  ${check(inBand)} ${r.batch.label}: human win rate ${pct(r.winRate)}`,
   );
   console.log(
     `  ${check(inBonusBandAi)} ${r.batch.label} — AI bonus rate ${pct(r.upperBonusRateAi)} (expected [${pct(r.batch.expectedBonusBandAi[0])}, ${pct(r.batch.expectedBonusBandAi[1])}])`,
+  );
+  console.log(
+    `  ${check(allLowerPass)} ${r.batch.label} — AI lower section: ${lowerPassCount}/${LOWER_CATS.length} bands pass`,
   );
 }
 
