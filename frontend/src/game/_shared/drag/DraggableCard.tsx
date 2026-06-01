@@ -145,7 +145,6 @@ export function DraggableCard({
   );
 
   const child = React.Children.only(children) as React.ReactElement<AnyProps>;
-
   return (
     <Animated.View
       ref={viewRef}

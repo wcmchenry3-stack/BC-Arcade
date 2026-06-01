@@ -55,6 +55,9 @@ describe("DraggableCard", () => {
   it("fires onTap exactly once per press — not double-fired via both gesture and onPress", () => {
     // Regression: the old Simultaneous composition wired onTap to both the RNGH
     // tap gesture (runOnJS) and the native onPress clone, risking two calls per touch.
+    // Invariant: a 4–7 px release (pan fails, tap maxDistance(8) passes) should also
+    // fire onTap exactly once — Gesture.Exclusive hands off to tap within RNGH, no
+    // cross-system path remains to double-fire.
     const onTap = jest.fn();
     const { getByRole } = render(
       wrap(
