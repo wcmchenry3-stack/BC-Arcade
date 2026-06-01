@@ -49,7 +49,13 @@ import {
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { loadState, saveState, clearState, saveTodayMeta, loadTodayMeta } from "../game/daily_word/storage";
+import {
+  loadState,
+  saveState,
+  clearState,
+  saveTodayMeta,
+  loadTodayMeta,
+} from "../game/daily_word/storage";
 import { ApiError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
 import type { DevLogEntry } from "../game/daily_word/devLog";

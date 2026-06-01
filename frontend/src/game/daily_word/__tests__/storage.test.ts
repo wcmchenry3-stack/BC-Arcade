@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveState, loadState, clearState, looksValid, saveTodayMeta, loadTodayMeta } from "../storage";
+import {
+  saveState,
+  loadState,
+  clearState,
+  looksValid,
+  saveTodayMeta,
+  loadTodayMeta,
+} from "../storage";
 import { initialState } from "../engine";
 
 const STORAGE_KEY = "daily_word_state_v1";
