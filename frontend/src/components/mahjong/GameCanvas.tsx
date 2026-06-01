@@ -18,6 +18,7 @@ import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { TILE_REQUIRES } from "./tileAssets";
 import {
   MAHJONG_GLOW_BG,
+  MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
   MAHJONG_TILE_FACE_SELECTED,
 } from "../../theme/theme.constants";
@@ -33,7 +34,7 @@ const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
 const TILE_FACE_LOCKED = "#d0c8b8";
 const BORDER_NORMAL = "#8b7355";
 const BORDER_SELECTED = "#ffd700";
-const BORDER_HINT = "#5dbcd2";
+const BORDER_HINT = MAHJONG_HINT_COLOR;
 const SIDE_R = "#a89070";
 const SIDE_B = "#987860";
 const SHADOW = "rgba(0,0,0,0.35)";
@@ -325,10 +326,10 @@ export default function GameCanvas({
               {/* Blue glow behind matching free tiles */}
               {isHint && (
                 <Rect
-                  x={x - 2}
-                  y={y - 2}
-                  width={faceWidth + 4}
-                  height={faceHeight + 4}
+                  x={x - 4}
+                  y={y - 4}
+                  width={faceWidth + 8}
+                  height={faceHeight + 8}
                   color={MAHJONG_HINT_GLOW_BG}
                 />
               )}

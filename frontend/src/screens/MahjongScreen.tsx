@@ -48,6 +48,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
+import { MAHJONG_HINT_COLOR } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
@@ -860,91 +861,99 @@ export default function MahjongScreen() {
       onLevelSelect={goToLevelSelect}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
       rightSlot={
-        <Pressable
-          onPress={handleUndo}
-          disabled={undoDisabled}
-          style={[
-            styles.headerBtn,
-            { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.undoLabel")}
-          accessibilityState={{ disabled: undoDisabled }}
-          testID="mahjong-undo-button"
-        >
-          <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-        </Pressable>
+        <View style={styles.hudGroup}>
+          <Pressable
+            onPress={handleUndo}
+            disabled={undoDisabled}
+            style={[
+              styles.headerBtn,
+              { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t("action.undoLabel")}
+            accessibilityState={{ disabled: undoDisabled }}
+            testID="mahjong-undo-button"
+          >
+            <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleHint}
+            disabled={state?.isComplete || state?.isDeadlocked}
+            style={[
+              styles.headerBtn,
+              {
+                borderColor: MAHJONG_HINT_COLOR,
+                opacity: state?.isComplete || state?.isDeadlocked ? 0.3 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t("action.hintLabel")}
+            accessibilityState={{ disabled: state?.isComplete || state?.isDeadlocked }}
+            testID="mahjong-hint-button"
+          >
+            <Text style={[styles.headerBtnText, { color: MAHJONG_HINT_COLOR }]}>
+              {t("action.hint")}
+            </Text>
+          </Pressable>
+        </View>
       }
     >
       {state !== null && (
         <View style={{ flex: 1, alignItems: "center" }}>
           <View style={styles.hudRow} accessibilityRole="summary">
-            {__DEV__ ? (
-              <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+            <View style={styles.hudGroup}>
+              {__DEV__ ? (
+                <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+                  <Text style={[styles.hudText, { color: colors.text }]}>
+                    {t("hud.score")} {state.score}
+                  </Text>
+                </Pressable>
+              ) : (
                 <Text style={[styles.hudText, { color: colors.text }]}>
                   {t("hud.score")} {state.score}
                 </Text>
-              </Pressable>
-            ) : (
-              <Text style={[styles.hudText, { color: colors.text }]}>
-                {t("hud.score")} {state.score}
+              )}
+              <Text style={[styles.hudText, { color: colors.textMuted }]}>
+                {t("hud.pairs")} {state.pairsRemoved}/72
               </Text>
-            )}
-            <Text style={[styles.hudText, { color: colors.textMuted }]}>
-              {t("hud.pairs")} {state.pairsRemoved}/72
-            </Text>
-            <Pressable
-              onPress={handleShuffle}
-              disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-              style={[
-                styles.headerBtn,
-                {
-                  borderColor: "#ffd700",
-                  opacity:
-                    state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
-                },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={t("action.shuffleLabel")}
-              accessibilityState={{
-                disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
-              }}
-              testID="mahjong-shuffle-button"
-            >
-              <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
-                {t("action.shuffle")} {state.shufflesLeft}
-              </Text>
-            </Pressable>
-            <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
-              {t("hud.deal")} #{state.dealId}
-            </Text>
-            <Pressable
-              onPress={handleHint}
-              disabled={state.isComplete || state.isDeadlocked}
-              style={[
-                styles.headerBtn,
-                {
-                  borderColor: "#5dbcd2",
-                  opacity: state.isComplete || state.isDeadlocked ? 0.3 : 1,
-                },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={t("action.hintLabel")}
-              accessibilityState={{ disabled: state.isComplete || state.isDeadlocked }}
-              testID="mahjong-hint-button"
-            >
-              <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
-            </Pressable>
-            {__DEV__ && (
+            </View>
+            <View style={styles.hudGroup}>
               <Pressable
-                onPress={() => setDevPanelOpen((o) => !o)}
-                style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
+                onPress={handleShuffle}
+                disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
+                style={[
+                  styles.headerBtn,
+                  {
+                    borderColor: "#ffd700",
+                    opacity:
+                      state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
+                  },
+                ]}
                 accessibilityRole="button"
-                accessibilityLabel="Toggle dev panel"
+                accessibilityLabel={t("action.shuffleLabel")}
+                accessibilityState={{
+                  disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
+                }}
+                testID="mahjong-shuffle-button"
               >
-                <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
+                <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
+                  {t("action.shuffle")} {state.shufflesLeft}
+                </Text>
               </Pressable>
-            )}
+              <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
+                {t("hud.deal")} #{state.dealId}
+              </Text>
+              {__DEV__ && (
+                <Pressable
+                  onPress={() => setDevPanelOpen((o) => !o)}
+                  style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Toggle dev panel"
+                >
+                  <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
 
           {noHintVisible && (
@@ -1247,16 +1256,22 @@ const styles = StyleSheet.create({
   hudRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     alignSelf: "stretch",
     paddingHorizontal: 4,
     paddingVertical: 8,
+  },
+  hudGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   noHintToast: {
     fontFamily: typography.heading,
     fontSize: 12,
     letterSpacing: 0.5,
     paddingBottom: 4,
-    color: "#5dbcd2",
+    color: MAHJONG_HINT_COLOR,
   },
   hudText: {
     fontFamily: typography.heading,
