@@ -322,6 +322,18 @@ describe("scoreStrategy — Hard", () => {
     expect(scoreStrategy(state, "hard", 0)).toBe("ones");
   });
 
+  it("takes full_house over upper par pursuit when full_house is in hand", () => {
+    // [5,5,5,6,6]: full_house (25 pts); fives open with cnt=3 fires par pursuit first without fix
+    const state = makeGame([5, 5, 5, 6, 6], 3);
+    expect(scoreStrategy(state, "hard", 0)).toBe("full_house");
+  });
+
+  it("takes full_house over par pursuit with two high-value face in full_house", () => {
+    // [6,6,3,3,3]: full_house (25 pts); sixes open, cnt=2 face=6≥5 fires par pursuit first without fix
+    const state = makeGame([6, 6, 3, 3, 3], 3);
+    expect(scoreStrategy(state, "hard", 0)).toBe("full_house");
+  });
+
   it("takes bonus-closing upper category over three_of_a_kind", () => {
     // upper=54 (ones=3,twos=6,fours=20,fives=15,sixes=10), toBonus=9
     // dice [3,3,3,1,2]: three_of_a_kind=10 pts, but threes (9) closes bonus → +35 deferred

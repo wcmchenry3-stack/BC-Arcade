@@ -425,7 +425,11 @@ function scoreHard(
   // Four of a kind
   if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 18) return "four_of_a_kind";
 
-  // Aggressively pursue upper bonus before full_house — the deferred +35 outweighs 25 pts
+  // Full house — scored before par pursuit because no upper cat at par (≤18 pts for 3×face ≤6)
+  // beats the guaranteed 25. Par pursuit below only fires when full_house is unavailable.
+  if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
+
+  // Upper bonus pursuit at par — fires only when full_house is not in hand
   if (toBonus > 0) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
       if (cat in legal) {
@@ -435,9 +439,6 @@ function scoreHard(
       }
     }
   }
-
-  // Full house
-  if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
 
   // Three of a kind with high sum
   if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) >= 18) return "three_of_a_kind";
