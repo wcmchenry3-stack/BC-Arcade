@@ -65,10 +65,11 @@ export function DraggableCard({
 
   const panActivated = useSharedValue(false);
 
+  // minDistance(5) replaces activeOffsetX/Y([-12,12]) — 12 px was too coarse for
+  // FreeCell's narrower cards, causing drags to feel unresponsive.
   const pan = Gesture.Pan()
     .minPointers(1)
-    .activeOffsetX([-12, 12])
-    .activeOffsetY([-12, 12])
+    .minDistance(5)
     .enabled(draggable)
     .onStart((e) => {
       "worklet";
@@ -82,7 +83,6 @@ export function DraggableCard({
       }
       // rnMeasure can return null on iOS/Android before the first native layout pass.
       // RNGH guarantee: e.absoluteX - e.x = absolute window X of the gesture view's origin.
-      // Assumes GestureDetector + innerEl share the same origin as viewRef (no intervening padding).
       const pageX = cardMeasured?.pageX ?? e.absoluteX - e.x;
       const pageY = cardMeasured?.pageY ?? e.absoluteY - e.y;
       const localX = pageX - containerOffsetX.value;
@@ -108,11 +108,6 @@ export function DraggableCard({
       panActivated.value = false;
     });
 
-  // For non-draggable (face-down) cards, RNGH tap works correctly and is unchanged.
-  // For draggable cards, pan-only in GestureDetector: when pan fails (< 12 px movement),
-  // the touch is released and the native onPress cloned onto the child below handles tap.
-  // This avoids the Simultaneous/requireExternalGestureToFail iOS UIGestureRecognizer
-  // deadlock that kept both tap and drag broken (#1101, #1102).
   const tap = Gesture.Tap()
     .maxDistance(8)
     .onEnd((_e, success) => {
@@ -120,7 +115,9 @@ export function DraggableCard({
       if (success && onTap) runOnJS(onTap)();
     });
 
-  const gesture = draggable ? pan : tap;
+  // Gesture.Exclusive keeps both gestures inside RNGH: pan wins on movement ≥ 5 px,
+  // tap fires natively when pan fails — no cross-system handoff needed on iOS.
+  const gesture = draggable ? Gesture.Exclusive(pan, tap) : tap;
 
   const beingDragged = dragState !== null && isCardInDragStack(dragState.source, dragSource);
 
@@ -148,8 +145,11 @@ export function DraggableCard({
   );
 
   const child = React.Children.only(children) as React.ReactElement<AnyProps>;
+  // onPress on the child is a test-only path: fireEvent.press bypasses RN's
+  // responder system and calls onPress directly. On device, GestureDetector
+  // claims the responder via onStartShouldSetResponder so the child's onPress
+  // never fires — tap is handled entirely within RNGH (Gesture.Exclusive).
   const innerEl = onTap ? React.cloneElement(child, { onPress: onTap }) : child;
-
   return (
     <Animated.View
       ref={viewRef}

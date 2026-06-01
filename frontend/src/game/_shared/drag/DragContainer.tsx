@@ -15,14 +15,17 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
-      // measureInWindow is more reliable than measure on iOS for first-render window coords.
-      (
-        containerRef.current as unknown as {
-          measureInWindow?: (cb: (x: number, y: number) => void) => void;
-        }
-      )?.measureInWindow?.((x, y) => {
-        containerOffsetX.value = x;
-        containerOffsetY.value = y;
+      // requestAnimationFrame defers measureInWindow until after the native view
+      // is painted — calling it synchronously inside onLayout returns 0,0 on Android.
+      requestAnimationFrame(() => {
+        (
+          containerRef.current as unknown as {
+            measureInWindow?: (cb: (x: number, y: number) => void) => void;
+          }
+        )?.measureInWindow?.((x, y) => {
+          containerOffsetX.value = x;
+          containerOffsetY.value = y;
+        });
       });
       externalOnLayout?.(e);
     },

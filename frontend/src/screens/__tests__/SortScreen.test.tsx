@@ -30,6 +30,8 @@ jest.mock("../../game/sort/storage", () => ({
   loadProgress: jest.fn(),
   saveProgress: jest.fn(),
   clearGame: jest.fn(),
+  saveLevelsCache: jest.fn().mockResolvedValue(undefined),
+  loadLevelsCache: jest.fn().mockResolvedValue(null), // cold cache by default
 }));
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,8 @@ const { sortApi } = jest.requireMock("../../game/sort/api") as {
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
   saveProgress: jest.Mock;
+  saveLevelsCache: jest.Mock;
+  loadLevelsCache: jest.Mock;
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +91,8 @@ beforeEach(() => {
   sortApi.getLeaderboard.mockResolvedValue({ scores: [] });
   storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
   storage.saveProgress.mockResolvedValue(undefined);
+  storage.saveLevelsCache.mockResolvedValue(undefined);
+  storage.loadLevelsCache.mockResolvedValue(null); // cold cache by default
 });
 
 // ---------------------------------------------------------------------------
@@ -285,5 +291,106 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
 
     // Original state should be unchanged.
     expect(await findByLabelText(/^Bottle 1, 2 of/)).toBeTruthy();
+  });
+});
+
+describe("SortScreen — TypeError auto-retry (#1862)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("auto-retries a transient TypeError and loads levels without showing an error", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels
+      .mockRejectedValueOnce(new TypeError("Network request failed"))
+      .mockResolvedValueOnce({ levels: MOCK_LEVELS });
+
+    const { findByText, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Choose a Level");
+    expect(queryByText("Could not load this level.")).toBeNull();
+    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows error UI only after all retries are exhausted", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
+
+    const { findByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Could not load this level.");
+    // 1 initial + 3 retries = 4 total calls
+    expect(sortApi.getLevels).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("SortScreen — offline levels cache (#1887)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("serves cached levels when API fails and cache is warm", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
+    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
+
+    const { findByText, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Choose a Level");
+    expect(queryByText("Could not load this level.")).toBeNull();
+  });
+
+  it("shows error when API fails and cache is cold", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
+    storage.loadLevelsCache.mockResolvedValue(null);
+
+    const { findByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Could not load this level.");
+  });
+
+  it("writes the cache on a successful fetch", async () => {
+    const { findByText } = renderScreen();
+    await findByText("Choose a Level");
+    expect(storage.saveLevelsCache).toHaveBeenCalledWith({ levels: MOCK_LEVELS });
+  });
+
+  it("does not write the cache when the fetch fails", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
+
+    renderScreen();
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    expect(storage.saveLevelsCache).not.toHaveBeenCalled();
+  });
+
+  it("does not serve cache on non-network errors (e.g. 401 entitlement expired)", async () => {
+    sortApi.getLevels.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
+    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
+
+    const { findByText } = renderScreen();
+
+    await findByText("Could not load this level.");
+    expect(storage.loadLevelsCache).not.toHaveBeenCalled();
   });
 });

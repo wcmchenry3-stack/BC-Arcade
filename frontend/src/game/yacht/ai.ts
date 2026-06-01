@@ -123,13 +123,22 @@ function longestRunFaces(dice: readonly number[], minLength: number): Set<number
 /**
  * Returns the maximum immediate score available for `dice` across all open
  * categories. This is what the AI would get if it stopped rolling now.
+ *
+ * Upper-section scores that would push the running subtotal to ≥ 63 receive a
+ * +35 bonus credit so the EV calculation correctly values those outcomes.
  */
-function maxImmediateScore(dice: readonly number[], scores: GameState["scores"]): number {
+function maxImmediateScore(
+  dice: readonly number[],
+  scores: GameState["scores"],
+  curUpperSubtotal: number
+): number {
   let best = 0;
   for (const cat of CATEGORIES) {
     if (isOpen(scores, cat)) {
       const s = calculateScore(cat, dice);
-      if (s > best) best = s;
+      const bonusCredit =
+        UPPER_FACE[cat] !== undefined && s > 0 && curUpperSubtotal + s >= 63 ? 35 : 0;
+      if (s + bonusCredit > best) best = s + bonusCredit;
     }
   }
   return best;
@@ -146,7 +155,8 @@ function evForHold(
 ): number {
   const keptValues = keptIndices.map((i) => dice[i]!);
   const freeCount = 5 - keptIndices.length;
-  if (freeCount === 0) return maxImmediateScore(keptValues, scores);
+  const curUpperSubtotal = upperSubtotal(scores);
+  if (freeCount === 0) return maxImmediateScore(keptValues, scores, curUpperSubtotal);
 
   const outcomes = Math.pow(6, freeCount);
   let total = 0;
@@ -158,7 +168,7 @@ function evForHold(
       freeRoll.push((rem % 6) + 1);
       rem = Math.floor(rem / 6);
     }
-    total += maxImmediateScore([...keptValues, ...freeRoll], scores);
+    total += maxImmediateScore([...keptValues, ...freeRoll], scores, curUpperSubtotal);
   }
 
   return total / outcomes;
@@ -198,19 +208,23 @@ function holdMedium(dice: readonly number[], scores: GameState["scores"]): boole
   const run4 = longestRunFaces(dice, 4);
   if (run4) return holdForRun(dice, run4);
 
-  // Upper bonus pursuit: hold an open upper face that appears ≥ 2 times.
-  // Threshold of 55 keeps this active early in the game (all cats open → toBonus=63).
-  if (toBonus > 0 && toBonus <= 55) {
+  // Upper bonus pursuit: hold the best open upper face.
+  // Threshold: ≥2 of any face, or ≥1 for high-value faces (5,6) whose par scores
+  // (15, 18) contribute the most to reaching 63. Single high-value dice beat a
+  // 3-run because the 3-run leads to only small_straight (30 pts) while the bonus
+  // itself is worth 35 pts deferred.
+  if (toBonus > 0) {
     let bestFace = 0;
     let bestCnt = 0;
     for (const [face, cnt] of counts) {
       const cat = FACE_TO_CAT[face];
-      if (cat && isOpen(scores, cat) && cnt > bestCnt) {
+      if (cat && isOpen(scores, cat) && (cnt > bestCnt || (cnt === bestCnt && face > bestFace))) {
         bestCnt = cnt;
         bestFace = face;
       }
     }
-    if (bestFace > 0 && bestCnt >= 2) return holdFace(dice, bestFace);
+    const minCnt = bestFace >= 5 ? 1 : 2;
+    if (bestFace > 0 && bestCnt >= minCnt) return holdFace(dice, bestFace);
   }
 
   // 3-run: keep for potential small/large straight
@@ -246,11 +260,21 @@ function holdHard(
     // For earlier holds — or if called unexpectedly at rollsUsed === 0 —
     // fall back to the medium heuristic. 2-step lookahead is O(6^10) and
     // infeasible at runtime.
+    // Note: the bonus proximity override below does NOT apply here; holdMedium's
+    // 4-run check fires before its bonus pursuit, so Hard still chases straights
+    // on rolls 1 and 2. Fixing that path is a separate concern.
     return holdMedium(dice, scores);
   }
 
+  const toBonus = Math.max(0, 63 - upperSubtotal(scores));
+  // Bonus proximity: the single-roll EV model can't see multi-turn bonus accumulation.
+  // When within 30 pts of the bonus, inflate the effective EV of holding same-face
+  // upper dice so the EV comparison favours bonus building over 4-run pursuit.
+  // Linear scale: 0 tolerance at toBonus=30, full 35 pts at toBonus=0.
+  const bonusTolerance = toBonus > 0 && toBonus <= 30 ? (35 * (30 - toBonus)) / 30 : 0;
+
   // rollsUsed === 2: one roll remaining — enumerate all 32 hold patterns and
-  // pick the one with highest expected score across all 6^(free) outcomes.
+  // pick the one with highest adjusted expected score across all 6^(free) outcomes.
   let bestHeld: boolean[] = [false, false, false, false, false];
   let bestEV = -Infinity;
 
@@ -260,8 +284,20 @@ function holdHard(
       if (mask & (1 << i)) keptIndices.push(i);
     }
     const ev = evForHold(dice, keptIndices, scores);
-    if (ev > bestEV) {
-      bestEV = ev;
+
+    // Apply proximity tolerance to mono-face upper-die holds (e.g. hold all 6s).
+    // Excludes mixed patterns like 4-runs whose faces span multiple upper cats.
+    let adjustedEV = ev;
+    if (bonusTolerance > 0 && keptIndices.length > 0) {
+      const face = dice[keptIndices[0]!]!;
+      const cat = FACE_TO_CAT[face];
+      if (cat !== undefined && isOpen(scores, cat) && keptIndices.every((i) => dice[i] === face)) {
+        adjustedEV = ev + bonusTolerance;
+      }
+    }
+
+    if (adjustedEV > bestEV) {
+      bestEV = adjustedEV;
       bestHeld = [false, false, false, false, false];
       for (const i of keptIndices) bestHeld[i] = true;
     }
@@ -294,9 +330,23 @@ function scoreMedium(
   const upper = upperSubtotal(scores);
   const toBonus = Math.max(0, 63 - upper);
   const s = diceSum(dice);
+  const counts = faceCounts(dice);
 
   // Yacht — always take 50 pts
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
+
+  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 beats most combos.
+  // cnt >= 3 of any face makes a legal large straight impossible, so this safely fires before
+  // the large_straight check below without ever sacrificing 40 pts for a weak bonus-closer.
+  if (toBonus > 0) {
+    for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
+      if (cat in legal) {
+        const face = UPPER_FACE[cat]!;
+        const cnt = counts.get(face) ?? 0;
+        if (cnt >= 3 && upper + cnt * face >= 63) return cat;
+      }
+    }
+  }
 
   // Large straight — always take 40 pts
   if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
@@ -307,12 +357,8 @@ function scoreMedium(
   // Full house — always take
   if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
 
-  // Three of a kind — take when sum is decent
-  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) > 15) return "three_of_a_kind";
-
-  // Upper bonus: score an upper category when hitting par (3× the face)
-  if (toBonus > 0 && toBonus <= 40) {
-    const counts = faceCounts(dice);
+  // Upper bonus pursuit at par (≥3×face); scored before three_of_a_kind to secure the bonus path
+  if (toBonus > 0) {
     for (const cat of ["sixes", "fives", "fours", "threes"] as Category[]) {
       if (cat in legal) {
         const face = UPPER_FACE[cat]!;
@@ -320,6 +366,9 @@ function scoreMedium(
       }
     }
   }
+
+  // Three of a kind — take when sum is decent
+  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) > 15) return "three_of_a_kind";
 
   // Small straight — take 30 pts
   if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";
@@ -362,6 +411,20 @@ function scoreHard(
   // Always take Large Straight
   if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
 
+  // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 outweighs any combo.
+  // Hard uses cnt >= 2 for high-value faces (≥5) because 2×5+35=45 and 2×6+35=47 both beat
+  // full_house (25). Medium requires cnt >= 3 because it lacks the EV context to judge looser
+  // holds safely.
+  if (toBonus > 0) {
+    for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
+      if (cat in legal) {
+        const face = UPPER_FACE[cat]!;
+        const cnt = counts.get(face) ?? 0;
+        if ((cnt >= 3 || (face >= 5 && cnt >= 2)) && upper + cnt * face >= 63) return cat;
+      }
+    }
+  }
+
   // Trailing: take high-variance plays before medium-value ones.
   // Floor of 16 avoids counting four-1s (score=4) as a meaningful high-variance play.
   if (trailing) {
@@ -384,14 +447,12 @@ function scoreHard(
   // Four of a kind
   if ("four_of_a_kind" in legal && (legal["four_of_a_kind"] ?? 0) > 18) return "four_of_a_kind";
 
-  // Full house
+  // Full house — scored before par pursuit because no upper cat at par (≤18 pts for 3×face ≤6)
+  // beats the guaranteed 25. Par pursuit below only fires when full_house is unavailable.
   if ("full_house" in legal && (legal["full_house"] ?? 0) > 0) return "full_house";
 
-  // Three of a kind with high sum
-  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) >= 18) return "three_of_a_kind";
-
-  // Aggressively pursue upper bonus (worth 35 pts — highest EV in the game)
-  if (toBonus > 0 && toBonus <= 50) {
+  // Upper bonus pursuit at par — fires only when full_house is not in hand
+  if (toBonus > 0) {
     for (const cat of ["sixes", "fives", "fours", "threes", "twos", "ones"] as Category[]) {
       if (cat in legal) {
         const face = UPPER_FACE[cat]!;
@@ -400,6 +461,9 @@ function scoreHard(
       }
     }
   }
+
+  // Three of a kind with high sum
+  if ("three_of_a_kind" in legal && (legal["three_of_a_kind"] ?? 0) >= 18) return "three_of_a_kind";
 
   // Small straight
   if ("small_straight" in legal && (legal["small_straight"] ?? 0) > 0) return "small_straight";

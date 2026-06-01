@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveState, loadState, clearState, looksValid } from "../storage";
+import {
+  saveState,
+  loadState,
+  clearState,
+  looksValid,
+  saveTodayMeta,
+  loadTodayMeta,
+} from "../storage";
 import { initialState } from "../engine";
 
 const STORAGE_KEY = "daily_word_state_v1";
@@ -75,5 +82,35 @@ describe("looksValid", () => {
   it("rejects rows.length > 6", () => {
     const s = initialState("2026-05-03:en", 5, "en");
     expect(looksValid({ ...s, rows: [...s.rows, ...s.rows] })).toBe(false);
+  });
+});
+
+describe("saveTodayMeta / loadTodayMeta", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("round-trip save/load for today's date key", async () => {
+    const meta = { puzzle_id: "2026-05-31:en", word_length: 5 };
+    await saveTodayMeta("2026-05-31_en", meta);
+    const loaded = await loadTodayMeta("2026-05-31_en");
+    expect(loaded).toEqual(meta);
+  });
+
+  it("returns null for a different date key (cache miss)", async () => {
+    const meta = { puzzle_id: "2026-05-30:en", word_length: 5 };
+    await saveTodayMeta("2026-05-30_en", meta);
+    expect(await loadTodayMeta("2026-05-31_en")).toBeNull();
+  });
+
+  it("returns null when nothing has been saved", async () => {
+    expect(await loadTodayMeta("2026-05-31_en")).toBeNull();
+  });
+
+  it("overwrites previous entry for the same date key", async () => {
+    await saveTodayMeta("2026-05-31_en", { puzzle_id: "2026-05-31:en", word_length: 5 });
+    const updated = { puzzle_id: "2026-05-31:en", word_length: 6 };
+    await saveTodayMeta("2026-05-31_en", updated);
+    expect(await loadTodayMeta("2026-05-31_en")).toEqual(updated);
   });
 });

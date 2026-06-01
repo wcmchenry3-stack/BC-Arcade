@@ -35,7 +35,14 @@ import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
-import { loadProgress, saveProgress, type SortProgress } from "../game/sort/storage";
+import { withRetry } from "../game/_shared/withRetry";
+import {
+  loadProgress,
+  saveProgress,
+  loadLevelsCache,
+  saveLevelsCache,
+  type SortProgress,
+} from "../game/sort/storage";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { useSortAudio } from "../game/sort/useSortAudio";
@@ -116,7 +123,17 @@ export default function SortScreen() {
     setLoadError(false);
     setView("loading");
     const [levelsResult, prog] = await Promise.all([
-      sortApi.getLevels().catch(() => null),
+      withRetry(() => sortApi.getLevels())
+        .then((result) => {
+          // Cache the level definitions for offline use. Fire-and-forget —
+          // don't block the render on the AsyncStorage write.
+          saveLevelsCache(result).catch(() => {});
+          return result;
+        })
+        // Only serve cached levels on network failures (TypeError). HTTP errors
+        // such as 401 Unauthorized mean the server is actively denying access
+        // (e.g. entitlement expired) — falling back to cache would bypass that.
+        .catch((e) => (e instanceof TypeError ? loadLevelsCache() : null)),
       loadProgress(),
     ]);
     if (!levelsResult) {

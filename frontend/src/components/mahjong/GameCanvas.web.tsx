@@ -16,6 +16,7 @@ import { loadTileAssets } from "./tileAssetLoader";
 import {
   MAHJONG_BOARD_BG,
   MAHJONG_GLOW_SHADOW,
+  MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_SHADOW,
   MAHJONG_TILE_FACE_SELECTED,
 } from "../../theme/theme.constants";
@@ -31,7 +32,7 @@ const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
 const TILE_FACE_LOCKED = "#d0c8b8";
 const BORDER_NORMAL = "#8b7355";
 const BORDER_SELECTED = "#ffd700";
-const BORDER_HINT = "#5dbcd2";
+const BORDER_HINT = MAHJONG_HINT_COLOR;
 const SIDE_R = "#a89070";
 const SIDE_B = "#987860";
 

@@ -323,10 +323,12 @@ function tryBuildBoard(
 }
 
 /**
- * Deterministic symmetric fallback — layer-by-layer, row-by-row,
- * inner-to-outer pairing. Guaranteed to succeed on any layout where every
- * row in every layer has an even slot count. Used only when all random
- * attempts dead-end (probability ≈ 0.01^50).
+ * Deterministic symmetric fallback — layer-by-layer inner-to-outer pairing.
+ * All slots in each layer are sorted by (row, col) and paired symmetrically:
+ * (first, last), (second, second-to-last), … This handles layouts where
+ * individual rows have odd slot counts (e.g. double-pyramid layer 0), as long
+ * as the total slot count per layer is even — which all valid 144-slot layouts
+ * satisfy. Used only when all random attempts dead-end (probability ≈ 0.01^50).
  */
 function buildBoardLegacy(
   slots: readonly Slot[],
@@ -342,28 +344,22 @@ function buildBoardLegacy(
   const maxLayer = slots.reduce((m, s) => Math.max(m, s.layer), 0);
 
   for (let layer = 0; layer <= maxLayer; layer++) {
-    const layerSlots = slots.filter((s) => s.layer === layer);
+    // Sort all slots in the layer by (row, col) and pair inner-to-outer across
+    // the whole layer. This avoids row-by-row odd-count issues.
+    const layerSlots = slots
+      .filter((s) => s.layer === layer)
+      .sort((a, b) => a.row - b.row || a.col - b.col);
 
-    const byRow = new Map<number, Slot[]>();
-    for (const s of layerSlots) {
-      const arr = byRow.get(s.row) ?? [];
-      arr.push(s);
-      byRow.set(s.row, arr);
-    }
-    const rowList = fisherYates([...byRow.values()], rng);
-
-    for (const rowSlots of rowList) {
-      rowSlots.sort((a, b) => a.col - b.col);
-      const N = rowSlots.length;
-      for (let i = N / 2 - 1; i >= 0; i--) {
-        const slotA = rowSlots[i]!;
-        const slotB = rowSlots[N - 1 - i]!;
-        const pair = shuffledPairs[pairIdx++]!;
-        result.push(
-          { ...pair[0], id: nextId++, col: slotA.col, row: slotA.row, layer: slotA.layer },
-          { ...pair[1], id: nextId++, col: slotB.col, row: slotB.row, layer: slotB.layer }
-        );
-      }
+    const N = layerSlots.length;
+    if (N % 2 !== 0) throw new Error(`buildBoardLegacy: layer ${layer} has odd slot count ${N}`);
+    for (let i = 0; i < N / 2; i++) {
+      const slotA = layerSlots[i]!;
+      const slotB = layerSlots[N - 1 - i]!;
+      const pair = shuffledPairs[pairIdx++]!;
+      result.push(
+        { ...pair[0], id: nextId++, col: slotA.col, row: slotA.row, layer: slotA.layer },
+        { ...pair[1], id: nextId++, col: slotB.col, row: slotB.row, layer: slotB.layer }
+      );
     }
   }
   return result;

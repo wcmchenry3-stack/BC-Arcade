@@ -165,7 +165,9 @@ describe("SudokuScreen — in-game input", () => {
     act(() => {
       fireEvent.press(getByLabelText(/enter digit 1/i));
     });
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    // ensureSyncStarted runs inside a setState updater; waitFor lets React 18
+    // flush the batch before asserting.
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
     expect(mockStartGame.mock.calls[0]![0]).toBe("sudoku");
   });
 

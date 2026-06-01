@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNetwork } from "./NetworkContext";
+import { withRetry } from "./withRetry";
 
 export interface UseLeaderboardResult<T> {
   data: T | null;
@@ -63,9 +64,9 @@ export function useLeaderboard<T>(
       // Cache miss — proceed to network fetch.
     }
 
-    // Network fetch.
+    // Network fetch — retry up to 3× on transient TypeError failures.
     try {
-      const result = await fetcherRef.current();
+      const result = await withRetry(() => fetcherRef.current());
       setData(result);
       setOffline(false);
       const entry: CacheEntry<T> = { data: result, fetchedAt: Date.now() };

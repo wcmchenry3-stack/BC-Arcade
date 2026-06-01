@@ -9,7 +9,7 @@
  */
 
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -45,6 +45,8 @@ jest.mock("../../game/daily_word/storage", () => ({
   loadState: jest.fn(),
   saveState: jest.fn(),
   clearState: jest.fn(),
+  saveTodayMeta: jest.fn().mockResolvedValue(undefined),
+  loadTodayMeta: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock("expo-haptics", () => ({
@@ -68,6 +70,8 @@ const storage = jest.requireMock("../../game/daily_word/storage") as {
   loadState: jest.Mock;
   saveState: jest.Mock;
   clearState: jest.Mock;
+  saveTodayMeta: jest.Mock;
+  loadTodayMeta: jest.Mock;
 };
 
 // ---------------------------------------------------------------------------
@@ -153,6 +157,8 @@ beforeEach(() => {
   storage.loadState.mockResolvedValue(null);
   storage.saveState.mockResolvedValue(undefined);
   storage.clearState.mockResolvedValue(undefined);
+  storage.saveTodayMeta.mockResolvedValue(undefined);
+  storage.loadTodayMeta.mockResolvedValue(null); // cold cache by default
 });
 
 // ---------------------------------------------------------------------------
@@ -229,5 +235,109 @@ describe("DailyWordScreen — error state", () => {
 
     const { findByText } = renderScreen();
     await expect(findByText("Could not load today's puzzle")).resolves.toBeTruthy();
+  });
+});
+
+describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("auto-retries a transient TypeError and loads the puzzle without showing an error", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday
+      .mockRejectedValueOnce(new TypeError("Network request failed"))
+      .mockResolvedValueOnce(TODAY_META);
+
+    const { findByTestId, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows load error only after all retries are exhausted", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+
+    const { findByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Could not load today's puzzle");
+    // 1 initial + 3 retries = 4 total calls
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("serves cached meta when API fails and cache is warm", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+    storage.loadTodayMeta.mockResolvedValue(TODAY_META);
+
+    const { findByTestId, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+  });
+
+  it("shows error when API fails and cache is cold", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+    storage.loadTodayMeta.mockResolvedValue(null);
+
+    const { findByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Could not load today's puzzle");
+  });
+
+  it("writes the cache on a successful fetch", async () => {
+    const { findByTestId } = renderScreen();
+    await findByTestId("tile-0-0");
+    expect(storage.saveTodayMeta).toHaveBeenCalledWith(
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}_en$/),
+      TODAY_META
+    );
+  });
+
+  it("does not write the cache when the fetch fails", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+
+    renderScreen();
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    expect(storage.saveTodayMeta).not.toHaveBeenCalled();
+  });
+
+  it("does not serve cache on non-network errors", async () => {
+    dailyWordApi.getToday.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
+    storage.loadTodayMeta.mockResolvedValue(TODAY_META);
+
+    const { findByText } = renderScreen();
+
+    await findByText("Could not load today's puzzle");
+    expect(storage.loadTodayMeta).not.toHaveBeenCalled();
   });
 });
