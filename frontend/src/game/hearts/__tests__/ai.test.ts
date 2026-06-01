@@ -643,13 +643,14 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
   });
 
   it("leads highest non-heart (A♦) in earlyMoon to stay in control", () => {
-    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 9 cards remaining (trick 4)
+    // earlyMoon: 6 hearts + Q♠ in hand, no hearts won, 10 cards remaining (trick 3)
     const hand = [
       c("hearts", 2),
       c("hearts", 4),
       c("hearts", 6),
       c("hearts", 8),
       c("hearts", 10),
+      c("hearts", 12),
       c("spades", 12),
       c("diamonds", 1),
       c("diamonds", 8),
@@ -658,7 +659,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
-      tricksPlayedInHand: 4,
+      tricksPlayedInHand: 3,
       currentPlayerIndex: 1,
       heartsBroken: false,
       handScores: [0, 0, 0, 0],
@@ -671,37 +672,39 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
   });
 
   it("leads highest heart when only hearts and Q♠ remain in midMoon", () => {
-    // midMoon: totalHearts=5, Q♠ in hand, myPoints=0=totalPointsTaken, 6 cards left
+    // midMoon: totalHearts=6, Q♠ in hand, myPoints=0=totalPointsTaken, 7 cards left
     const hand = [
       c("hearts", 2),
       c("hearts", 4),
       c("hearts", 6),
       c("hearts", 8),
       c("hearts", 10),
+      c("hearts", 12),
       c("spades", 12),
     ];
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
-      tricksPlayedInHand: 7,
+      tricksPlayedInHand: 6,
       currentPlayerIndex: 1,
       heartsBroken: true,
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
     });
     const pick = selectCardToPlay(hand, [], state, 1, "daring");
-    // No non-hearts besides Q♠ — fall back to highest heart (10♥) to force wins.
-    expect(pick).toEqual(c("hearts", 10));
+    // No non-hearts besides Q♠ — fall back to highest heart (Q♥) to force wins.
+    expect(pick).toEqual(c("hearts", 12));
   });
 
   it("wins point trick with lowest winning card (10♥) in earlyMoon", () => {
-    // earlyMoon: 5 hearts + Q♠ in hand, no hearts won, 8 cards remaining (trick 5)
+    // earlyMoon: 6 hearts + Q♠ in hand, no hearts won, 9 cards remaining (trick 4)
     const hand = [
       c("hearts", 10),
       c("hearts", 8),
       c("hearts", 6),
       c("hearts", 4),
       c("hearts", 2),
+      c("hearts", 12),
       c("spades", 12),
       c("diamonds", 1),
       c("clubs", 13),
@@ -713,7 +716,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: trick,
-      tricksPlayedInHand: 5,
+      tricksPlayedInHand: 4,
       currentPlayerIndex: 1,
       heartsBroken: true,
       handScores: [0, 0, 0, 0],
@@ -1525,7 +1528,7 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
 
 describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
   it("wins 0-pt trick with lowest winning card when last to play in earlyMoon", () => {
-    // earlyMoon: 5 hearts + Q♠ in hand, 9 cards, no hearts won.
+    // earlyMoon: 6 hearts + Q♠ in hand, 10 cards, no hearts won.
     // Clubs led (0-pt trick). Player 3 is last; should win with lowest winner (9♣)
     // rather than exhausting a high card, to conserve trick-control resources.
     const hand = [
@@ -1534,6 +1537,7 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
       c("hearts", 11),
       c("hearts", 9),
       c("hearts", 7),
+      c("hearts", 5),
       c("spades", 12), // Q♠
       c("clubs", 9),
       c("clubs", 10),
@@ -2490,5 +2494,102 @@ describe("selectCardsToPass — Schemer filler does not strip Q♠ protection", 
     expect(passed.some((card) => card.suit === "spades" && card.rank === 12)).toBe(false);
     expect(passed.some((card) => card.suit === "spades" && card.rank === 13)).toBe(false);
     expect(passed.some((card) => card.suit === "spades" && card.rank === 1)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Daring AI — Q♠ spade-follow behavior (#1893)
+// ---------------------------------------------------------------------------
+
+describe("selectCardToPlay — Daring Q♠ spade-follow behavior (#1893)", () => {
+  it("dumps Q♠ when following spades with no A♠/K♠ cover and Q♠ won't win", () => {
+    // Player 1 (Daring) follows spades: holds Q♠ + J♠ but NO A♠/K♠.
+    // Seat 0 led A♠ — Q♠ (rank 12) loses to A♠ (aceHigh=14). Dump Q♠.
+    const hand = [c("spades", 12), c("spades", 11), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 1), playerIndex: 0 }, // A♠ winning
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
+    expect(pick).toEqual(c("spades", 12));
+  });
+
+  it("plays A♠ to win safely when holding Q♠ + A♠ and a low spade leads", () => {
+    // Player 1 holds Q♠ + A♠. Low 5♠ leads — both Q♠ and A♠ would win.
+    // chooseFollow plays lowestNonPoint (A♠) to win without taking 13 pts.
+    const hand = [c("spades", 12), c("spades", 1), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 5), playerIndex: 0 }, // low spade — both Q♠ and A♠ win
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
+    // lowestNonPoint wins: A♠ (0 pts) is played, not Q♠ (13 pts).
+    expect(pick).toEqual(c("spades", 1));
+  });
+
+  it("does NOT dump Q♠ when it would win the trick (no higher spade played)", () => {
+    // Only J♠ in trick — Q♠ (rank 12) would WIN. Play 9♠ to lose instead.
+    const hand = [c("spades", 12), c("spades", 9), c("hearts", 5), c("diamonds", 7)];
+    const trick: TrickCard[] = [
+      { card: c("spades", 11), playerIndex: 0 }, // J♠ winning
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: trick,
+      tricksPlayedInHand: 3,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 0, 0, 0],
+      wonCards: [[], [], [], []],
+      cumulativeScores: [10, 10, 10, 10],
+    });
+    const pick = selectCardToPlay(hand, trick, state, 1, "daring");
+    // Q♠ would win — play 9♠ (the highest loser) to avoid taking 13 pts.
+    expect(pick).toEqual(c("spades", 9));
+  });
+
+  it("does NOT enter midMoon at exactly 5 total hearts (below new threshold)", () => {
+    // totalHearts = 5 (3 in hand + 2 won) + Q♠ in wonCards.
+    // myPoints(15) === totalPointsTaken(15): Q♠(13) + 2 hearts. hand.length=6 >= 5.
+    // Old threshold (>=5) fired here; new threshold (>=6) does not.
+    //
+    // Distinguishing signal: when LEADING in moon-attempt mode the AI leads the HIGHEST
+    // non-heart (K♦). When not in moon mode it leads the lowest of the longest safe suit
+    // via chooseLeadHard → 8♦ (lowest of the 2-card diamond holding).
+    const heartsInHand = [c("hearts", 2), c("hearts", 4), c("hearts", 6)];
+    const heartsWon = [c("hearts", 10), c("hearts", 11)];
+    const alreadyWon = [c("spades", 12), ...heartsWon]; // Q♠ + 2 hearts
+    const hand = [...heartsInHand, c("diamonds", 13), c("diamonds", 8), c("clubs", 7)]; // 6 cards
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [],
+      tricksPlayedInHand: 7,
+      currentPlayerIndex: 1,
+      heartsBroken: false,
+      handScores: [0, 15, 0, 0], // Q♠(13) + 2 hearts won
+      wonCards: [[], alreadyWon, [], []],
+    });
+    const pick = selectCardToPlay(hand, [], state, 1, "daring");
+    // Not in moon mode → chooseLeadHard → lowest of longest safe suit (2-card diamonds) = 8♦.
+    // Old code (midMoon at 5) would have returned K♦ (highest non-heart in moon mode).
+    expect(pick).toEqual(c("diamonds", 8));
   });
 });
