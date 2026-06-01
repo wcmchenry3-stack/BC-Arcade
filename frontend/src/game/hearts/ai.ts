@@ -633,8 +633,11 @@ function selectCardToPlayHard(
   // blocking opponents, making the attempt a net liability vs standard play.
   // Active for the first 5 tricks (hand.length >= 8); hands off to midMoon after.
   const earlyMoon = heartsInHand >= 6 && myHasQ && heartsWon === 0 && hand.length >= 8;
-  // Mid-game moon: accumulated 5+ hearts + Q♠ and hold every point taken so far.
-  const midMoon = totalHearts >= 5 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
+  // Mid-game moon: accumulated 6+ hearts + Q♠ and hold every point taken so far.
+  // Threshold raised from 5 to 6: winning Q♠ (13 pts) + 2 hearts can satisfy
+  // myPoints===totalPointsTaken at only 3 total hearts, effectively bypassing the
+  // intended 5-heart bar. Matching earlyMoon at 6 closes this gap.
+  const midMoon = totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
   const isMoonAttempt = earlyMoon || midMoon;
 
   // Moon blocking — dump highest safe point card on the moon-shooter's trick.
