@@ -634,9 +634,10 @@ function selectCardToPlayHard(
   // Active for the first 5 tricks (hand.length >= 8); hands off to midMoon after.
   const earlyMoon = heartsInHand >= 6 && myHasQ && heartsWon === 0 && hand.length >= 8;
   // Mid-game moon: accumulated 6+ hearts + Q♠ and hold every point taken so far.
-  // Threshold raised from 5 to 6: winning Q♠ (13 pts) + 2 hearts can satisfy
-  // myPoints===totalPointsTaken at only 3 total hearts, effectively bypassing the
-  // intended 5-heart bar. Matching earlyMoon at 6 closes this gap.
+  // Threshold raised from 5 to 6: with Q♠ already won (13 pts), a player who has also
+  // taken even a couple of hearts satisfies myPoints===totalPointsTaken while holding as
+  // few as 3 hearts total — well below the intended bar. Matching earlyMoon at 6 closes
+  // this gap (e.g. heartsWon=2 + heartsInHand=4 = 6 required before midMoon fires).
   const midMoon = totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
   const isMoonAttempt = earlyMoon || midMoon;
 
