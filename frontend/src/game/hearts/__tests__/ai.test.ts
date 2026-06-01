@@ -2012,7 +2012,7 @@ describe("selectCardsToPass — #1595 direction awareness (Daring)", () => {
     // Going right: Q♠ (slot 1), A♥ (slot 2), 10♥ (slot 3) — threshold=10 includes 10♥.
     // Going left: Q♠ (slot 1), A♥ (slot 2), filler (slot 3) — threshold=11 excludes 10♥.
     // Q♠ is the only spade (no K♠ singleton for void to consume).
-    // 4 hearts total → moon-viable mode does NOT fire (requires 5+).
+    // 4 hearts total → moon-viable mode does NOT fire (requires 6+).
     const hand = [
       c("spades", 12), // Q♠ — only spade; after passing, no spades remain for void
       c("hearts", 1), // A♥ — danger both directions
@@ -2256,6 +2256,33 @@ describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
     const passed = selectCardsToPass(hand, "left", "daring", 3);
     expect(passed).toHaveLength(3);
     expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept for moon attempt
+  });
+
+  it("left-pass protection beats adversarial targeting when Daring holds A♠/K♠ cover", () => {
+    // Seat 3 passes left → (3+1)%4=0 → targeting seat 0 (human).
+    // Adversarial targeting normally pressures Q♠ toward seat 0, but left-pass protection
+    // takes precedence when Daring holds cover: keeping Q♠ has a ~4% failure rate vs
+    // ~18% if passed left — self-management is strictly better even against the human.
+    const hand = [
+      c("spades", 12), // Q♠ — kept (left-pass protection with A♠)
+      c("spades", 1), // A♠ — cover, must not be passed as filler
+      c("spades", 5),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+      c("hearts", 5), // 4 hearts — below moon-viable threshold
+      c("clubs", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+    ];
+    // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
+    const passed = selectCardsToPass(hand, "left", "daring", 3);
+    expect(passed).toHaveLength(3);
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept (protection > adversarial)
+    expect(passed).not.toContainEqual(c("spades", 1)); // A♠ kept (cover card)
   });
 });
 

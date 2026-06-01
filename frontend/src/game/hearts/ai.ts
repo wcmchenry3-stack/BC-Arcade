@@ -297,8 +297,11 @@ function selectCardsToPassHard(
   const hasQSpades = spades.some(isQueenOfSpades);
   const voidInSpades = spades.length === 0;
 
-  // Adversarial targeting (#1638): when passing to seat 0, always send Q♠ — skip moon-viable.
-  // Standard mode already passes Q♠ first, so only moon-viable needs suppressing.
+  // Adversarial targeting (#1638): when passing to seat 0, prefer sending Q♠.
+  // This suppresses moon-viable mode (which would keep Q♠). Left-pass protection
+  // (direction="left" + A♠/K♠ cover) still takes precedence in standard mode:
+  // keeping Q♠ with cover has a ~4% failure rate vs ~18% if passed left, so
+  // self-management is strictly better even against the human target.
   const targetingHuman = passingToSeat0(playerIndex, direction);
 
   // Moon-viable passing (#1637): 6+ hearts + Q♠ → keep both, pass lowest non-hearts.
