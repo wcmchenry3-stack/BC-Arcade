@@ -49,7 +49,7 @@ import {
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { loadState, saveState, clearState } from "../game/daily_word/storage";
+import { loadState, saveState, clearState, saveTodayMeta, loadTodayMeta } from "../game/daily_word/storage";
 import { ApiError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
 import type { DevLogEntry } from "../game/daily_word/devLog";
@@ -95,6 +95,16 @@ function msUntilMidnight(tzOffsetMinutes: number): number {
   const localMs = nowMs + tzOffsetMs;
   const startOfLocalDayMs = Math.floor(localMs / 86400000) * 86400000;
   return startOfLocalDayMs + 86400000 - localMs;
+}
+
+function localDateKey(tzOffsetMinutes: number, lang: string): string {
+  const localMs = Date.now() + tzOffsetMinutes * 60_000;
+  const dayMs = Math.floor(localMs / 86_400_000) * 86_400_000;
+  const d = new Date(dayMs);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dy = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${mo}-${dy}_${lang}`;
 }
 
 function formatCountdown(ms: number): string {
@@ -703,13 +713,27 @@ export default function DailyWordScreen() {
     let alive = true;
 
     async function load() {
+      const dateKey = localDateKey(tzOffset, language);
       try {
         const [todayMeta, saved] = await Promise.all([
-          withRetry(() => dailyWordApi.getToday(tzOffset, language)),
+          withRetry(() => dailyWordApi.getToday(tzOffset, language))
+            .then((meta) => {
+              saveTodayMeta(dateKey, meta).catch(() => {});
+              return meta;
+            })
+            // Only serve cached meta on network failures (TypeError). HTTP errors
+            // such as 401 mean the server is actively denying access — falling
+            // back to cache would bypass that.
+            .catch((e) => (e instanceof TypeError ? loadTodayMeta(dateKey) : null)),
           loadState(),
         ]);
 
         if (!alive) return;
+
+        if (!todayMeta) {
+          setLoadError(t("error.couldNotLoad"));
+          return;
+        }
 
         hasLoadedRef.current = true;
 

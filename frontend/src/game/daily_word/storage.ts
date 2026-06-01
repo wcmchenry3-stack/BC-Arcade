@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { DailyWordState } from "./types";
+import type { TodayResponse } from "./api";
 
 const STORAGE_KEY = "daily_word_state_v1";
 
@@ -51,5 +52,25 @@ export async function clearState(): Promise<void> {
     await AsyncStorage.removeItem(STORAGE_KEY);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "daily_word.storage", op: "clear" } });
+  }
+}
+
+const TODAY_META_KEY_PREFIX = "daily_word_today_";
+
+export async function saveTodayMeta(dateKey: string, meta: TodayResponse): Promise<void> {
+  try {
+    await AsyncStorage.setItem(`${TODAY_META_KEY_PREFIX}${dateKey}`, JSON.stringify(meta));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "daily_word.storage", op: "saveTodayMeta" } });
+  }
+}
+
+export async function loadTodayMeta(dateKey: string): Promise<TodayResponse | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${TODAY_META_KEY_PREFIX}${dateKey}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as TodayResponse;
+  } catch {
+    return null;
   }
 }
