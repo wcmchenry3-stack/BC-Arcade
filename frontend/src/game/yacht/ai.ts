@@ -260,11 +260,21 @@ function holdHard(
     // For earlier holds — or if called unexpectedly at rollsUsed === 0 —
     // fall back to the medium heuristic. 2-step lookahead is O(6^10) and
     // infeasible at runtime.
+    // Note: the bonus proximity override below does NOT apply here; holdMedium's
+    // 4-run check fires before its bonus pursuit, so Hard still chases straights
+    // on rolls 1 and 2. Fixing that path is a separate concern.
     return holdMedium(dice, scores);
   }
 
+  const toBonus = Math.max(0, 63 - upperSubtotal(scores));
+  // Bonus proximity: the single-roll EV model can't see multi-turn bonus accumulation.
+  // When within 30 pts of the bonus, inflate the effective EV of holding same-face
+  // upper dice so the EV comparison favours bonus building over 4-run pursuit.
+  // Linear scale: 0 tolerance at toBonus=30, full 35 pts at toBonus=0.
+  const bonusTolerance = toBonus > 0 && toBonus <= 30 ? (35 * (30 - toBonus)) / 30 : 0;
+
   // rollsUsed === 2: one roll remaining — enumerate all 32 hold patterns and
-  // pick the one with highest expected score across all 6^(free) outcomes.
+  // pick the one with highest adjusted expected score across all 6^(free) outcomes.
   let bestHeld: boolean[] = [false, false, false, false, false];
   let bestEV = -Infinity;
 
@@ -274,8 +284,20 @@ function holdHard(
       if (mask & (1 << i)) keptIndices.push(i);
     }
     const ev = evForHold(dice, keptIndices, scores);
-    if (ev > bestEV) {
-      bestEV = ev;
+
+    // Apply proximity tolerance to mono-face upper-die holds (e.g. hold all 6s).
+    // Excludes mixed patterns like 4-runs whose faces span multiple upper cats.
+    let adjustedEV = ev;
+    if (bonusTolerance > 0 && keptIndices.length > 0) {
+      const face = dice[keptIndices[0]!]!;
+      const cat = FACE_TO_CAT[face];
+      if (cat !== undefined && isOpen(scores, cat) && keptIndices.every((i) => dice[i] === face)) {
+        adjustedEV = ev + bonusTolerance;
+      }
+    }
+
+    if (adjustedEV > bestEV) {
+      bestEV = adjustedEV;
       bestHeld = [false, false, false, false, false];
       for (const i of keptIndices) bestHeld[i] = true;
     }

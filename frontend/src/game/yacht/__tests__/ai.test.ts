@@ -160,6 +160,35 @@ describe("holdStrategy — Hard", () => {
     const state = makeGame([3, 3, 3, 3, 3], 2);
     expect(holdStrategy(state, "hard")).toEqual([true, true, true, true, true]);
   });
+
+  it("at rollsUsed=2 holds upper face over 4-run when close to bonus (toBonus=20)", () => {
+    // upper=43 → toBonus=20; tolerance=35*(30-20)/30=11.7.
+    // Closing in one roll needs sixes≥20 (P≈1.6%) → existing credit barely fires.
+    // Proximity tolerance inflates adjusted EV([6])≈25+11.7=36.7 > 4-run EV≈33.
+    const state = withScores(makeGame([1, 2, 3, 4, 6], 2), {
+      ones: 3,
+      twos: 4,
+      threes: 9,
+      fours: 12,
+      fives: 15,
+    });
+    const held = holdStrategy(state, "hard");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 6)).toBe(true);
+  });
+
+  it("at rollsUsed=2 still holds 4-run when outside proximity threshold (toBonus=45)", () => {
+    // upper=18 → toBonus=45 > 30; bonusTolerance=0, no proximity override.
+    // Normal EV picks 4-run [1,2,3,4] over lone-6 (covers toBonus=63 case too).
+    const state = withScores(makeGame([1, 2, 3, 4, 6], 2), {
+      ones: 3,
+      twos: 6,
+      threes: 9,
+    });
+    const held = holdStrategy(state, "hard");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.includes(6)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
