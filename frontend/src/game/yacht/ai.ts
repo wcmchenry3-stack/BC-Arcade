@@ -260,6 +260,9 @@ function holdHard(
     // For earlier holds — or if called unexpectedly at rollsUsed === 0 —
     // fall back to the medium heuristic. 2-step lookahead is O(6^10) and
     // infeasible at runtime.
+    // Note: the bonus proximity override below does NOT apply here; holdMedium's
+    // 4-run check fires before its bonus pursuit, so Hard still chases straights
+    // on rolls 1 and 2. Fixing that path is a separate concern.
     return holdMedium(dice, scores);
   }
 
