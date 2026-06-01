@@ -287,3 +287,41 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
     expect(await findByLabelText(/^Bottle 1, 2 of/)).toBeTruthy();
   });
 });
+
+describe("SortScreen — TypeError auto-retry (#1862)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("auto-retries a transient TypeError and loads levels without showing an error", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels
+      .mockRejectedValueOnce(new TypeError("Network request failed"))
+      .mockResolvedValueOnce({ levels: MOCK_LEVELS });
+
+    const { findByText, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Choose a Level");
+    expect(queryByText("Could not load this level.")).toBeNull();
+    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows error UI only after all retries are exhausted", async () => {
+    jest.useFakeTimers();
+    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
+
+    const { findByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByText("Could not load this level.");
+    // 1 initial + 3 retries = 4 total calls
+    expect(sortApi.getLevels).toHaveBeenCalledTimes(4);
+  });
+});

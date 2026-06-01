@@ -35,6 +35,7 @@ import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
+import { withRetry } from "../game/_shared/withRetry";
 import { loadProgress, saveProgress, type SortProgress } from "../game/sort/storage";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
@@ -116,7 +117,9 @@ export default function SortScreen() {
     setLoadError(false);
     setView("loading");
     const [levelsResult, prog] = await Promise.all([
-      sortApi.getLevels().catch(() => null),
+      // .catch converts both retry-exhausted TypeErrors and non-network errors
+      // into null so the caller can show the error state unconditionally.
+      withRetry(() => sortApi.getLevels()).catch(() => null),
       loadProgress(),
     ]);
     if (!levelsResult) {
