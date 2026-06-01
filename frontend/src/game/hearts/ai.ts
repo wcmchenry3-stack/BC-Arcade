@@ -301,11 +301,13 @@ function selectCardsToPassHard(
   // Standard mode already passes Q♠ first, so only moon-viable needs suppressing.
   const targetingHuman = passingToSeat0(playerIndex, direction);
 
-  // Moon-viable passing (#1637): 5+ hearts + Q♠ → keep both, pass lowest non-hearts.
+  // Moon-viable passing (#1637): 6+ hearts + Q♠ → keep both, pass lowest non-hearts.
+  // Threshold raised from 5 to 6: at 5 hearts the moon success rate against blocking
+  // opponents is ~3%, making the attempt a net liability vs normal play.
   // strongMoon bypasses adversarial targeting: a moon attempt is impossible without Q♠,
   // so passing it to the human prevents any attempt. At 7+ hearts the completion odds
   // justify keeping Q♠ over the guaranteed adversarial damage.
-  const moonViable = heartsInHand >= 5 && hasQSpades; // hasQSpades implies !voidInSpades
+  const moonViable = heartsInHand >= 6 && hasQSpades; // hasQSpades implies !voidInSpades
   const strongMoon = heartsInHand >= 7 && hasQSpades;
   if (moonViable && (!targetingHuman || strongMoon)) {
     const notSel = (c: Card) => !selected.some((s) => s.suit === c.suit && s.rank === c.rank);
@@ -344,21 +346,30 @@ function selectCardsToPassHard(
 
   // Standard Hard passing — Q♠ first, then danger cards.
 
-  // 1. Q♠ — Hard always passes Q♠ regardless of direction.
-  if (hasQSpades && !voidInSpades) {
+  // 1. Q♠ — pass unless going "left" with A♠ or K♠ cover.
+  // On "left", Q♠ lands on the immediate left neighbor (highest return risk).
+  // Holding A♠/K♠ means we can protect Q♠ ourselves — same threshold as Schemer.
+  // Right/across: Q♠ travels far enough that passing is always correct.
+  const hasASpades = spades.some((c) => c.rank === 1);
+  const hasKSpades = spades.some((c) => c.rank === 13);
+  const qSpadeProtectedHard = direction === "left" && (hasASpades || hasKSpades);
+  if (hasQSpades && !voidInSpades && !qSpadeProtectedHard) {
     selected.push({ suit: "spades", rank: 12 });
   }
 
   const safe = passSafeFilter(selected);
 
+  // When keeping Q♠ with cover, don't void spades or pass the cover cards.
+  const keepingQSpadeHard = hasQSpades && qSpadeProtectedHard;
+
   // 2. Void creation — immediately after Q♠; loop until no more voids fire (#1645).
   // Handles: Q♠ + two singletons (uses all 3 slots), no-Q♠ + doubleton + singleton, etc.
-  // Hard always passes Q♠ in standard mode so keepingQSpade is never true here.
+  // Skip spades when keeping Q♠ — A♠/K♠ must stay in hand as cover.
   {
     let prevLen = -1;
     while (selected.length < 3 && selected.length !== prevLen) {
       prevLen = selected.length;
-      voidOneSuit(hand, selected, has2Clubs, false, 3 - selected.length);
+      voidOneSuit(hand, selected, has2Clubs, keepingQSpadeHard, 3 - selected.length);
     }
   }
 
@@ -393,8 +404,19 @@ function selectCardsToPassHard(
   }
 
   // 5. Fill remaining slots with highest safe cards.
+  // Exclude Q♠ + cover cards (A♠/K♠) when keeping Q♠ to avoid stripping protection.
   if (selected.length < 3) {
-    const candidates = hand.filter(safe).sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
+    const candidates = hand
+      .filter(safe)
+      .filter(
+        (c) =>
+          !(
+            keepingQSpadeHard &&
+            c.suit === "spades" &&
+            (c.rank === 1 || c.rank === 12 || c.rank === 13)
+          )
+      )
+      .sort((a, b) => aceHigh(b.rank) - aceHigh(a.rank));
     for (const c of candidates) {
       if (selected.length >= 3) break;
       selected.push(c);
@@ -603,9 +625,11 @@ function selectCardToPlayHard(
     hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
   const myPoints = state.handScores[playerIndex] ?? 0;
-  // Early moon: dealt 5+ hearts + Q♠ — commit from trick 1 before points accumulate.
+  // Early moon: dealt 6+ hearts + Q♠ — commit from trick 1 before points accumulate.
+  // Threshold raised from 5 to 6: at 5 hearts the moon success rate is ~3% against
+  // blocking opponents, making the attempt a net liability vs standard play.
   // Active for the first 5 tricks (hand.length >= 8); hands off to midMoon after.
-  const earlyMoon = heartsInHand >= 5 && myHasQ && heartsWon === 0 && hand.length >= 8;
+  const earlyMoon = heartsInHand >= 6 && myHasQ && heartsWon === 0 && hand.length >= 8;
   // Mid-game moon: accumulated 5+ hearts + Q♠ and hold every point taken so far.
   const midMoon = totalHearts >= 5 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
   const isMoonAttempt = earlyMoon || midMoon;

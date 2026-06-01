@@ -889,12 +889,13 @@ describe("selectCardsToPass — #1636 void creation (Daring)", () => {
   });
 
   it("double-void — Q♠ + two singletons uses all 3 pass slots (#1645)", () => {
-    // Q♠ (slot 1); K♠ is a singleton after Q♠ excluded from spades (slot 2);
+    // Q♠ (slot 1); 5♠ is a singleton after Q♠ excluded from spades (slot 2);
     // 5♦ singleton fires in the second loop iteration (slot 3).
-    // 4 hearts → moon-viable mode does NOT fire (requires 5+).
+    // No A♠/K♠ in hand → no left-pass Q♠ protection, standard mode runs.
+    // 4 hearts → moon-viable mode does NOT fire (requires 6+).
     const hand = [
       c("spades", 12), // Q♠
-      c("spades", 13), // K♠ — singleton after Q♠ passes
+      c("spades", 5), // 5♠ — singleton after Q♠ passes (no cover → Q♠ still passed)
       c("diamonds", 5), // 5♦ — singleton
       c("clubs", 6),
       c("clubs", 7),
@@ -908,8 +909,8 @@ describe("selectCardsToPass — #1636 void creation (Daring)", () => {
       c("hearts", 7),
     ];
     const passed = selectCardsToPass(hand, "left", "daring");
-    expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed
-    expect(passed).toContainEqual(c("spades", 13)); // K♠ (spade void)
+    expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed (no cover)
+    expect(passed).toContainEqual(c("spades", 5)); // 5♠ (spade void)
     expect(passed).toContainEqual(c("diamonds", 5)); // 5♦ (diamond void)
     expect(passed).toHaveLength(3);
   });
@@ -1043,9 +1044,9 @@ describe("selectCardsToPass — #1636 void creation (Schemer)", () => {
 // ---------------------------------------------------------------------------
 
 describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
-  it("keeps Q♠ and all hearts when dealt 5+ hearts + Q♠", () => {
-    // 5 hearts + Q♠ → moon-viable. Daring passes LOWEST non-hearts (3♠, 5♠, 7♣) to
-    // keep Aces and Kings for trick control during the moon attempt (#1647).
+  it("keeps Q♠ and all hearts when dealt 6+ hearts + Q♠", () => {
+    // 6 hearts + Q♠ → moon-viable (threshold raised from 5 to 6). Daring passes LOWEST
+    // non-hearts (3♠, 5♠, 7♣) to keep Aces and Kings for trick control (#1647).
     const hand = [
       c("spades", 12), // Q♠ — kept for moon attempt
       c("hearts", 1), // A♥ — kept
@@ -1053,11 +1054,11 @@ describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
       c("hearts", 11), // J♥ — kept
       c("hearts", 9),
       c("hearts", 7),
+      c("hearts", 5), // 6th heart — triggers the 6+ threshold
       c("diamonds", 1), // A♦ — kept for trick control
       c("diamonds", 13), // K♦ — kept for trick control
       c("clubs", 1), // A♣ — kept for trick control
       c("clubs", 7),
-      c("clubs", 8),
       c("spades", 3),
       c("spades", 5),
     ];
@@ -1073,8 +1074,8 @@ describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
     expect(passed).toContainEqual(c("clubs", 7)); // 7♣ passed
   });
 
-  it("uses standard passing when fewer than 5 hearts (no moon-viable)", () => {
-    // 4 hearts → NOT moon-viable. Standard Daring passing: Q♠ always passed.
+  it("uses standard passing when fewer than 6 hearts (no moon-viable)", () => {
+    // 4 hearts → NOT moon-viable. Standard Daring passing: Q♠ passed (no cover on left).
     const hand = [
       c("spades", 12), // Q♠ — passed in standard mode
       c("hearts", 1),
@@ -1959,8 +1960,10 @@ describe("selectCardsToPass — #1595 direction awareness (Schemer)", () => {
 });
 
 describe("selectCardsToPass — #1595 direction awareness (Daring)", () => {
-  it("passes Q♠ regardless of direction (left and right both always pass Q♠)", () => {
-    // Daring is more aggressive than Schemer — direction does not protect Q♠.
+  it("keeps Q♠ on left with A♠/K♠ cover; passes Q♠ right regardless", () => {
+    // Daring now matches Schemer's left-pass threshold: keep Q♠ when holding A♠ or K♠.
+    // Left neighbor plays right after us — too risky to send Q♠ with cover in hand.
+    // Right/across: Q♠ always passed (travels far, low return risk).
     const hand = [
       c("spades", 12),
       c("spades", 1),
@@ -1978,8 +1981,29 @@ describe("selectCardsToPass — #1595 direction awareness (Daring)", () => {
     ];
     const passedLeft = selectCardsToPass(hand, "left", "daring");
     const passedRight = selectCardsToPass(hand, "right", "daring");
-    expect(passedLeft).toContainEqual(c("spades", 12));
-    expect(passedRight).toContainEqual(c("spades", 12));
+    expect(passedLeft).not.toContainEqual(c("spades", 12)); // Q♠ kept (left + A♠/K♠)
+    expect(passedRight).toContainEqual(c("spades", 12)); // Q♠ passed (right, always)
+  });
+
+  it("passes Q♠ left when no A♠/K♠ cover (standard hard behavior)", () => {
+    // Without high-spade cover, left-pass protection does not apply.
+    const hand = [
+      c("spades", 12), // Q♠ — only spade, no cover
+      c("hearts", 5),
+      c("hearts", 6),
+      c("clubs", 7),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("diamonds", 6),
+      c("diamonds", 7),
+      c("hearts", 2),
+      c("clubs", 10),
+      c("diamonds", 3),
+    ];
+    const passedLeft = selectCardsToPass(hand, "left", "daring");
+    expect(passedLeft).toContainEqual(c("spades", 12)); // Q♠ passed (no cover)
   });
 
   it("includes 10♥ as a danger heart when passing right but not left", () => {
@@ -2137,8 +2161,10 @@ describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
     expect(passed).toContainEqual(c("spades", 12));
   });
 
-  it("keeps Q♠ in moon-viable mode when NOT passing to seat 0 (left pass from seat 1)", () => {
-    // Seat 1 passes left → recipient is seat 2 (not seat 0). Moon-viable should activate.
+  it("passes Q♠ on left with 5 hearts (below 6-heart moon threshold, no A♠/K♠ cover)", () => {
+    // 5 hearts + Q♠ no longer triggers moon-viable (threshold raised to 6).
+    // No A♠/K♠ cover → left-pass protection also does not apply.
+    // Standard mode fires and Q♠ is passed regardless of adversarial direction.
     const hand = [
       c("hearts", 1),
       c("hearts", 10),
@@ -2157,7 +2183,32 @@ describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
     // playerIndex=1, direction="left" → (1+1)%4=2 → not targeting seat 0
     const passed = selectCardsToPass(hand, "left", "daring", 1);
     expect(passed).toHaveLength(3);
-    expect(passed).not.toContainEqual(c("spades", 12));
+    expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed — moon-viable requires 6+ hearts
+  });
+
+  it("keeps Q♠ in moon-viable mode when NOT passing to seat 0 (6+ hearts, left from seat 1)", () => {
+    // 6 hearts + Q♠ → moon-viable activates. Seat 1 passes left to seat 2 (not seat 0).
+    // Moon-viable keeps Q♠ and all hearts; passes lowest non-hearts.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("hearts", 7),
+      c("hearts", 5), // 6th heart
+      c("spades", 12),
+      c("diamonds", 1),
+      c("clubs", 1),
+      c("diamonds", 8),
+      c("clubs", 8),
+      c("diamonds", 7),
+      c("clubs", 7),
+    ];
+    // playerIndex=1, direction="left" → (1+1)%4=2 → not targeting seat 0
+    const passed = selectCardsToPass(hand, "left", "daring", 1);
+    expect(passed).toHaveLength(3);
+    expect(passed).not.toContainEqual(c("spades", 12)); // Q♠ kept (moon-viable)
+    expect(passed).not.toContainEqual(c("hearts", 1)); // A♥ kept
   });
 
   it("passes Q♠ to seat 0 in moon-viable mode via across pass from seat 2", () => {
