@@ -48,6 +48,7 @@ import {
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
+import { withRetry } from "../game/_shared/withRetry";
 import { loadState, saveState, clearState } from "../game/daily_word/storage";
 import { ApiError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
@@ -704,7 +705,7 @@ export default function DailyWordScreen() {
     async function load() {
       try {
         const [todayMeta, saved] = await Promise.all([
-          dailyWordApi.getToday(tzOffset, language),
+          withRetry(() => dailyWordApi.getToday(tzOffset, language)),
           loadState(),
         ]);
 

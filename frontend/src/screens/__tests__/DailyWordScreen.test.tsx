@@ -9,7 +9,7 @@
  */
 
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render, waitFor } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -229,5 +229,45 @@ describe("DailyWordScreen — error state", () => {
 
     const { findByText } = renderScreen();
     await expect(findByText("Could not load today's puzzle")).resolves.toBeTruthy();
+  });
+});
+
+describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("auto-retries a transient TypeError and loads the puzzle without showing an error", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday
+      .mockRejectedValueOnce(new TypeError("Network request failed"))
+      .mockResolvedValueOnce(TODAY_META);
+
+    const { findByTestId, queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows load error only after all retries are exhausted", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+
+    const { queryByText } = renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await waitFor(() => {
+      expect(queryByText("Could not load today's puzzle")).toBeTruthy();
+    });
+    // 1 initial + 3 retries = 4 total calls
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });
 });

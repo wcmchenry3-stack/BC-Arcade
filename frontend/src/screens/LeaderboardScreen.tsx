@@ -6,6 +6,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { starSwarmApi } from "../game/starswarm/api";
 import type { LeaderboardEntry } from "../game/starswarm/api";
+import { withRetry } from "../game/_shared/withRetry";
 import { formatDate } from "../utils/formatTimestamp";
 
 export default function LeaderboardScreen() {
@@ -20,7 +21,7 @@ export default function LeaderboardScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await starSwarmApi.getLeaderboard();
+      const data = await withRetry(() => starSwarmApi.getLeaderboard());
       setEntries(data.scores);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
