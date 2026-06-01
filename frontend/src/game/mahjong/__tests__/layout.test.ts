@@ -15,25 +15,45 @@ describe("layoutBounds", () => {
       { col: 0, row: 0, layer: 0 },
       { col: 22, row: 7, layer: 4 },
     ];
-    expect(layoutBounds(slots)).toEqual({ boardCols: 12, boardRows: 8, boardLayers: 4 });
+    expect(layoutBounds(slots)).toEqual({
+      boardCols: 12,
+      boardRows: 8,
+      boardLayers: 4,
+      minRow: 0,
+      minCol: 0,
+    });
   });
 
-  it("returns correct dims for pyramid coordinate range", () => {
-    // Pyramid: cols 4–24 (step 2), rows 2–5, layers 0–4
+  it("returns correct dims for a layout with non-zero minRow/minCol (e.g. pyramid range)", () => {
+    // Pyramid: cols 4–24 (step 2), rows 2–5, layers 0–4.
+    // boardCols = (24-4)/2+1 = 11, boardRows = 5-2+1 = 4.
     const slots = [
       { col: 4, row: 2, layer: 0 },
       { col: 24, row: 5, layer: 4 },
     ];
-    expect(layoutBounds(slots)).toEqual({ boardCols: 13, boardRows: 6, boardLayers: 4 });
+    expect(layoutBounds(slots)).toEqual({
+      boardCols: 11,
+      boardRows: 4,
+      boardLayers: 4,
+      minRow: 2,
+      minCol: 4,
+    });
   });
 
-  it("returns correct dims for a tall layout like four_rivers (16 rows)", () => {
-    // Four Rivers: cols 4–24, rows 0–15, layers 0–1
+  it("returns correct dims for a tall layout starting at row 0 (e.g. four_rivers)", () => {
+    // Four Rivers: cols 4–24, rows 0–15, layers 0–1.
+    // boardCols = (24-4)/2+1 = 11, boardRows = 15-0+1 = 16.
     const slots = [
       { col: 4, row: 0, layer: 0 },
       { col: 24, row: 15, layer: 1 },
     ];
-    expect(layoutBounds(slots)).toEqual({ boardCols: 13, boardRows: 16, boardLayers: 1 });
+    expect(layoutBounds(slots)).toEqual({
+      boardCols: 11,
+      boardRows: 16,
+      boardLayers: 1,
+      minRow: 0,
+      minCol: 4,
+    });
   });
 
   it("boardLayers equals maxLayer (not maxLayer+1)", () => {
@@ -41,9 +61,10 @@ describe("layoutBounds", () => {
     expect(layoutBounds(slots).boardLayers).toBe(3);
   });
 
-  it("boardCols = maxCol/2 + 1 because tiles are 2 grid units wide", () => {
+  it("boardCols = (maxCol - minCol)/2 + 1 because tiles are 2 grid units wide", () => {
+    // Single tile at col=10: boardCols = (10-10)/2+1 = 1.
     const slots = [{ col: 10, row: 0, layer: 0 }];
-    expect(layoutBounds(slots).boardCols).toBe(6);
+    expect(layoutBounds(slots).boardCols).toBe(1);
   });
 });
 
@@ -110,8 +131,8 @@ describe("calculateMahjongLayout", () => {
       safeAreaBottom: 34,
       ...TURTLE,
     });
-    // availW = screenWidth - (max(0,12) + max(0,12)) = screenWidth - 24
-    const availW = screenWidth - 24;
+    // availW = screenWidth - MIN_HORIZ_MARGIN * 2 = screenWidth - 16
+    const availW = screenWidth - 16;
     expect(l.boardWidth).toBeLessThanOrEqual(availW + 1);
   });
 
@@ -221,10 +242,19 @@ describe("makeBoardCamera", () => {
   });
   const cam = makeBoardCamera(layout);
 
-  it("tileToScreen(0, 0, 0) returns the pad origin", () => {
+  it("tileToScreen(0, 0, boardLayers) places the topmost tile at (padX, padY)", () => {
+    // The highest-layer tile at the top row is the uppermost visible tile;
+    // it should sit exactly at padX / padY from the canvas edges.
+    const { x, y } = cam.tileToScreen(0, 0, TURTLE.boardLayers);
+    expect(x).toBe(layout.padX + TURTLE.boardLayers * layout.layerDx);
+    expect(y).toBe(layout.padY);
+  });
+
+  it("tileToScreen(0, 0, 0) is offset below padY by boardLayers*layerDy", () => {
+    // Layer-0 tiles at the top row are pushed down to leave room for higher-layer tiles above them.
     const { x, y } = cam.tileToScreen(0, 0, 0);
     expect(x).toBe(layout.padX);
-    expect(y).toBe(layout.padY);
+    expect(y).toBe(layout.padY + TURTLE.boardLayers * layout.layerDy);
   });
 
   it("tileToScreen advances x by tileWidth per 2 col units", () => {
@@ -254,6 +284,29 @@ describe("makeBoardCamera", () => {
   it("exposes boardWidth and boardHeight matching the source layout", () => {
     expect(cam.boardWidth).toBe(layout.boardWidth);
     expect(cam.boardHeight).toBe(layout.boardHeight);
+  });
+
+  it("exposes boardLayers, minRow, minCol from the layout", () => {
+    expect(layout.boardLayers).toBe(TURTLE.boardLayers);
+    expect(layout.minRow).toBe(0); // TURTLE minRow = 0
+    expect(layout.minCol).toBe(0); // TURTLE minCol = 0
+  });
+
+  it("tileToScreen(minCol, minRow, boardLayers) = (padX+layers*dx, padY) for non-zero minRow/minCol", () => {
+    // Pyramid: rows 2–5 (minRow=2), cols 4–24 (minCol=4)
+    const PYRAMID = { boardRows: 4, boardCols: 11, boardLayers: 4, minRow: 2, minCol: 4 };
+    const pLayout = calculateMahjongLayout({
+      screenWidth: 800,
+      screenHeight: 600,
+      safeAreaTop: 0,
+      safeAreaBottom: 0,
+      ...PYRAMID,
+    });
+    const pCam = makeBoardCamera(pLayout);
+    // The topmost tile (highest layer, first row, leftmost col) must land at (padX+layers*dx, padY).
+    const { x, y } = pCam.tileToScreen(PYRAMID.minCol, PYRAMID.minRow, PYRAMID.boardLayers);
+    expect(x).toBe(pLayout.padX + PYRAMID.boardLayers * pLayout.layerDx);
+    expect(y).toBe(pLayout.padY);
   });
 
   it("defaults to scale=1 and zero offsets when no viewport args are given", () => {
