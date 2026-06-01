@@ -130,7 +130,10 @@ export default function SortScreen() {
           saveLevelsCache(result).catch(() => {});
           return result;
         })
-        .catch(() => loadLevelsCache()), // warm cache → serve stale; cold → null
+        // Only serve cached levels on network failures (TypeError). HTTP errors
+        // such as 401 Unauthorized mean the server is actively denying access
+        // (e.g. entitlement expired) — falling back to cache would bypass that.
+        .catch((e) => (e instanceof TypeError ? loadLevelsCache() : null)),
       loadProgress(),
     ]);
     if (!levelsResult) {

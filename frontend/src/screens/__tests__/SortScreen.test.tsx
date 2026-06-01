@@ -383,4 +383,14 @@ describe("SortScreen — offline levels cache (#1887)", () => {
 
     expect(storage.saveLevelsCache).not.toHaveBeenCalled();
   });
+
+  it("does not serve cache on non-network errors (e.g. 401 entitlement expired)", async () => {
+    sortApi.getLevels.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
+    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
+
+    const { findByText } = renderScreen();
+
+    await findByText("Could not load this level.");
+    expect(storage.loadLevelsCache).not.toHaveBeenCalled();
+  });
 });
