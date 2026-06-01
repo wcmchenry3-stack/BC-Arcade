@@ -396,6 +396,7 @@ const batchResults: Array<{
   avgYahtzeeAi: number;
   avgChanceHuman: number;
   lowerHitRateAi: Record<LowerCat, number>;
+  lowerBandPassCount: number;
 }> = [];
 
 for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -439,6 +440,11 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     lowerHitRateAi[cat] = mean(results.map((r) => (r.lowerHitAi[cat] ? 1 : 0)));
   }
 
+  const lowerBandPassCount = LOWER_CATS.filter((cat) => {
+    const [lo, hi] = batch.expectedLowerBandsAi[cat];
+    return lowerHitRateAi[cat] >= lo && lowerHitRateAi[cat] <= hi;
+  }).length;
+
   batchResults.push({
     batch,
     winRate,
@@ -450,6 +456,7 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     avgYahtzeeAi,
     avgChanceHuman,
     lowerHitRateAi,
+    lowerBandPassCount,
   });
 
   const inBand =
@@ -500,10 +507,7 @@ for (const r of batchResults) {
   const inBonusBandAi =
     r.upperBonusRateAi >= r.batch.expectedBonusBandAi[0] &&
     r.upperBonusRateAi <= r.batch.expectedBonusBandAi[1];
-  const lowerPassCount = LOWER_CATS.filter((cat) => {
-    const [lo, hi] = r.batch.expectedLowerBandsAi[cat];
-    return r.lowerHitRateAi[cat] >= lo && r.lowerHitRateAi[cat] <= hi;
-  }).length;
+  const lowerPassCount = r.lowerBandPassCount;
   const allLowerPass = lowerPassCount === LOWER_CATS.length;
   console.log(
     `  ${check(inBand)} ${r.batch.label}: human win rate ${pct(r.winRate)}`,
