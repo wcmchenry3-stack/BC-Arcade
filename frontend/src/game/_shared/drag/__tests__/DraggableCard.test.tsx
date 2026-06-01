@@ -53,8 +53,12 @@ describe("DraggableCard", () => {
   });
 
   it("fires onTap exactly once per press — not double-fired via both gesture and onPress", () => {
-    // Regression: the old Simultaneous composition wired onTap to both the RNGH
-    // tap gesture (runOnJS) and the native onPress clone, risking two calls per touch.
+    // Regression guard: each press must fire onTap exactly once.
+    // In tests, fireEvent.press calls the child's onPress directly (RNGH mocked).
+    // On device, GestureDetector claims the RN responder so the child's onPress
+    // never fires — only RNGH's tap.onEnd (via runOnJS) triggers onTap.
+    // Invariant holds for short drags too: pan fails → Gesture.Exclusive activates
+    // tap → single onTap call, child onPress suppressed by responder ownership.
     const onTap = jest.fn();
     const { getByRole } = render(
       wrap(
