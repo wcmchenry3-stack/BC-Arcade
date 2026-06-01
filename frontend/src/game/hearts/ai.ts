@@ -307,6 +307,9 @@ function selectCardsToPassHard(
   // Moon-viable passing (#1637): 6+ hearts + Q♠ → keep both, pass lowest non-hearts.
   // Threshold raised from 5 to 6: at 5 hearts the moon success rate against blocking
   // opponents is ~3%, making the attempt a net liability vs normal play.
+  // moonViable is intentionally 1 below earlyMoon (7): with exactly 6 hearts we keep Q♠
+  // conservatively in case mid-hand accumulation reaches midMoon, but we don't commit to
+  // the aggressive earlyMoon play mode until we have 7+ hearts.
   // strongMoon bypasses adversarial targeting: a moon attempt is impossible without Q♠,
   // so passing it to the human prevents any attempt. At 7+ hearts the completion odds
   // justify keeping Q♠ over the guaranteed adversarial damage.
@@ -628,11 +631,12 @@ function selectCardToPlayHard(
     hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
   const myPoints = state.handScores[playerIndex] ?? 0;
-  // Early moon: dealt 6+ hearts + Q♠ — commit from trick 1 before points accumulate.
-  // Threshold raised from 5 to 6: at 5 hearts the moon success rate is ~3% against
-  // blocking opponents, making the attempt a net liability vs standard play.
-  // Active for the first 5 tricks (hand.length >= 8); hands off to midMoon after.
-  const earlyMoon = heartsInHand >= 6 && myHasQ && heartsWon === 0 && hand.length >= 8;
+  // Early moon: dealt 7+ hearts + Q♠ — commit from trick 1 before points accumulate.
+  // Threshold raised from 6 to 7: at 6 hearts the moon success rate is ~12% against
+  // Schemer (a blocking opponent), making the attempt a net liability vs standard play.
+  // 7+ hearts aligns with strongMoon in passing, where completion odds justify keeping Q♠.
+  // Active while hand.length >= 8; hands off to midMoon after.
+  const earlyMoon = heartsInHand >= 7 && myHasQ && heartsWon === 0 && hand.length >= 8;
   // Mid-game moon: accumulated 6+ hearts + Q♠ and hold every point taken so far.
   // Threshold raised from 5 to 6: with Q♠ already won (13 pts), a player who has also
   // taken even a couple of hearts satisfies myPoints===totalPointsTaken while holding as
