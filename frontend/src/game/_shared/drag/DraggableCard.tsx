@@ -108,11 +108,6 @@ export function DraggableCard({
       panActivated.value = false;
     });
 
-  // For non-draggable (face-down) cards, RNGH tap works correctly and is unchanged.
-  // For draggable cards, pan-only in GestureDetector: when pan fails (< 5 px movement),
-  // the touch is released and the native onPress cloned onto the child below handles tap.
-  // This avoids the Simultaneous/requireExternalGestureToFail iOS UIGestureRecognizer
-  // deadlock that kept both tap and drag broken (#1101, #1102).
   const tap = Gesture.Tap()
     .maxDistance(8)
     .onEnd((_e, success) => {
@@ -120,7 +115,9 @@ export function DraggableCard({
       if (success && onTap) runOnJS(onTap)();
     });
 
-  const gesture = draggable ? pan : tap;
+  // Gesture.Exclusive keeps both gestures inside RNGH: pan wins on movement ≥ 5 px,
+  // tap fires natively when pan fails — no cross-system handoff needed on iOS.
+  const gesture = draggable ? Gesture.Exclusive(pan, tap) : tap;
 
   const beingDragged = dragState !== null && isCardInDragStack(dragState.source, dragSource);
 
@@ -148,7 +145,6 @@ export function DraggableCard({
   );
 
   const child = React.Children.only(children) as React.ReactElement<AnyProps>;
-  const innerEl = onTap ? React.cloneElement(child, { onPress: onTap }) : child;
 
   return (
     <Animated.View
@@ -157,7 +153,7 @@ export function DraggableCard({
       style={[style, webHitSlopStyle, dimmedStyle]}
       hitSlop={Platform.OS !== "web" ? hitSlop : undefined}
     >
-      <GestureDetector gesture={gesture}>{innerEl}</GestureDetector>
+      <GestureDetector gesture={gesture}>{child}</GestureDetector>
     </Animated.View>
   );
 }
