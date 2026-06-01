@@ -643,7 +643,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
   });
 
   it("leads highest non-heart (A♦) in earlyMoon to stay in control", () => {
-    // earlyMoon: 6 hearts + Q♠ in hand, no hearts won, 10 cards remaining (trick 3)
+    // earlyMoon: 7 hearts + Q♠ in hand, no hearts won, 11 cards remaining (trick 2)
     const hand = [
       c("hearts", 2),
       c("hearts", 4),
@@ -651,6 +651,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
       c("hearts", 8),
       c("hearts", 10),
       c("hearts", 12),
+      c("hearts", 3),
       c("spades", 12),
       c("diamonds", 1),
       c("diamonds", 8),
@@ -659,7 +660,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
-      tricksPlayedInHand: 3,
+      tricksPlayedInHand: 2,
       currentPlayerIndex: 1,
       heartsBroken: false,
       handScores: [0, 0, 0, 0],
@@ -697,7 +698,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
   });
 
   it("wins point trick with lowest winning card (10♥) in earlyMoon", () => {
-    // earlyMoon: 6 hearts + Q♠ in hand, no hearts won, 9 cards remaining (trick 4)
+    // earlyMoon: 7 hearts + Q♠ in hand, no hearts won, 10 cards remaining (trick 3)
     const hand = [
       c("hearts", 10),
       c("hearts", 8),
@@ -705,6 +706,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
       c("hearts", 4),
       c("hearts", 2),
       c("hearts", 12),
+      c("hearts", 3),
       c("spades", 12),
       c("diamonds", 1),
       c("clubs", 13),
@@ -716,7 +718,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: trick,
-      tricksPlayedInHand: 4,
+      tricksPlayedInHand: 3,
       currentPlayerIndex: 1,
       heartsBroken: true,
       handScores: [0, 0, 0, 0],
@@ -1528,7 +1530,7 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
 
 describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
   it("wins 0-pt trick with lowest winning card when last to play in earlyMoon", () => {
-    // earlyMoon: 6 hearts + Q♠ in hand, 10 cards, no hearts won.
+    // earlyMoon: 7 hearts + Q♠ in hand, 11 cards, no hearts won.
     // Clubs led (0-pt trick). Player 3 is last; should win with lowest winner (9♣)
     // rather than exhausting a high card, to conserve trick-control resources.
     const hand = [
@@ -1538,6 +1540,7 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
       c("hearts", 9),
       c("hearts", 7),
       c("hearts", 5),
+      c("hearts", 3),
       c("spades", 12), // Q♠
       c("clubs", 9),
       c("clubs", 10),
@@ -1561,7 +1564,7 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
   });
 
   it("wins 0-pt trick but guards Q♠ when not last to play in earlyMoon", () => {
-    // earlyMoon: player 1 holds 5 hearts + Q♠ + K♠ + A♠, 9 cards, 0 hearts won.
+    // earlyMoon: player 1 holds 7 hearts + Q♠ + K♠ + A♠, 11 cards, 0 hearts won.
     // Spades led (0-pt). Player 1 is NOT last (players 2 and 3 still to play).
     // Should win with lowest non-Q♠ winner (K♠), keeping Q♠ safe from later K♠/A♠.
     const hand = [
@@ -1569,7 +1572,9 @@ describe("chooseFollow — moon attempt, 0-pt trick (#1647)", () => {
       c("hearts", 4),
       c("hearts", 6),
       c("hearts", 8),
-      c("hearts", 10), // 5 hearts
+      c("hearts", 10),
+      c("hearts", 12),
+      c("hearts", 3), // 7 hearts
       c("spades", 12), // Q♠ — must NOT be played (not last)
       c("spades", 13), // K♠
       c("spades", 1), // A♠
@@ -1703,11 +1708,16 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
 
   it("does not enter moon-attempt mode when fewer than 5 tricks remain", () => {
     // AI (player 1) has already won 6 hearts; holds 2 hearts + Q♠ + 1 diamond in hand (4 cards).
-    // hand.length=4 < 5 → not feasible → isMoonAttempt=false → normal discard fires (Q♠ first).
+    // hand.length=4 < 5 → not feasible → isMoonAttempt=false → adversarial fires → dumps Q♠.
+    // trick.length=3 (we are last) so the adversarial Q♠ dump to seat 0 is position-guaranteed.
     const heartsInHand = [c("hearts", 2), c("hearts", 3)];
     const heartsAlreadyWon = Array.from({ length: 6 }, (_, i) => c("hearts", (i + 4) as Rank));
     const hand = [...heartsInHand, c("spades", 12), c("diamonds", 7)]; // 4 cards
-    const trick: TrickCard[] = [{ card: c("clubs", 3), playerIndex: 0 }]; // AI void in clubs
+    const trick: TrickCard[] = [
+      { card: c("clubs", 13), playerIndex: 0 }, // seat 0 winning with K♣
+      { card: c("clubs", 3), playerIndex: 2 },
+      { card: c("clubs", 4), playerIndex: 3 },
+    ]; // AI void in clubs, last to play
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: trick,
@@ -1717,7 +1727,7 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
       wonCards: [[], heartsAlreadyWon, [], []],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Not in moon mode → chooseDiscard fires → dumps Q♠ first
+    // Not in moon mode → last-to-play adversarial → dumps Q♠ on seat 0.
     expect(pick).toEqual(c("spades", 12));
   });
 
@@ -1751,10 +1761,15 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
 
   it("exits moon-attempt mode when another player also has points (split points)", () => {
     // AI has 8 hearts in hand + 2 won; opponent also has 2 points → aiHasAllPoints=false.
+    // trick.length=3 (we are last) so adversarial Q♠ dump to seat 0 is position-guaranteed.
     const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
     const heartsAlreadyWon = [c("hearts", 10), c("hearts", 11)];
     const hand = [...heartsInHand, c("spades", 12), c("clubs", 7)];
-    const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }];
+    const trick: TrickCard[] = [
+      { card: c("diamonds", 13), playerIndex: 0 }, // seat 0 winning with K♦
+      { card: c("diamonds", 3), playerIndex: 2 },
+      { card: c("diamonds", 4), playerIndex: 3 },
+    ]; // AI void in diamonds, last to play
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: trick,
@@ -1764,7 +1779,7 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
       wonCards: [[], heartsAlreadyWon, [c("hearts", 12), c("hearts", 13)], []],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Not in moon mode (split points) → void in diamonds → chooseDiscard → dumps Q♠
+    // Not in moon mode (split points) → last-to-play adversarial → dumps Q♠ on seat 0.
     expect(pick).toEqual(c("spades", 12));
   });
 });
@@ -2094,11 +2109,12 @@ describe("selectCardsToPass — #1595 across direction (Schemer)", () => {
 describe("selectCardToPlay — Daring difficulty, adversarial void discard", () => {
   it("dumps Q♠ on seat 0 when seat 0 is winning the trick and Daring is void", () => {
     // Player 1 (Daring) is void in clubs and holds Q♠ + hearts.
-    // Seat 0 is currently winning the trick with K♣.
+    // Seat 0 is winning with K♣. Dump Q♠ on any void opportunity (not gated on position).
     const hand = [c("spades", 12), c("hearts", 5), c("hearts", 9), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 13), playerIndex: 0 }, // seat 0 winning
       { card: c("clubs", 3), playerIndex: 2 },
+      { card: c("clubs", 4), playerIndex: 3 },
     ];
     const state = mkState({
       playerHands: [[], hand, [], []],
@@ -2108,7 +2124,7 @@ describe("selectCardToPlay — Daring difficulty, adversarial void discard", () 
       heartsBroken: true,
       handScores: [0, 0, 0, 0],
       wonCards: [[], [], [], []],
-      cumulativeScores: [10, 10, 10, 10], // below endgame threshold
+      cumulativeScores: [10, 10, 10, 10],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Seat 0 is winning — adversarial: dump Q♠ on human.
