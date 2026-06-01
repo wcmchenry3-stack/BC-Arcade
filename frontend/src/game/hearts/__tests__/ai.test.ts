@@ -1727,7 +1727,7 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
       wonCards: [[], heartsAlreadyWon, [], []],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Not in moon mode → last-to-play adversarial → dumps Q♠ on seat 0.
+    // Not in moon mode → adversarial targeting fires (seat 0 winning K♣) → dumps Q♠.
     expect(pick).toEqual(c("spades", 12));
   });
 
@@ -1779,7 +1779,7 @@ describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
       wonCards: [[], heartsAlreadyWon, [c("hearts", 12), c("hearts", 13)], []],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Not in moon mode (split points) → last-to-play adversarial → dumps Q♠ on seat 0.
+    // Not in moon mode (split points) → adversarial targeting fires (seat 0 winning K♦) → dumps Q♠.
     expect(pick).toEqual(c("spades", 12));
   });
 });

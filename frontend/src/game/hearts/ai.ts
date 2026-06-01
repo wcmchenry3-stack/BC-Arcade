@@ -307,6 +307,9 @@ function selectCardsToPassHard(
   // Moon-viable passing (#1637): 6+ hearts + Q♠ → keep both, pass lowest non-hearts.
   // Threshold raised from 5 to 6: at 5 hearts the moon success rate against blocking
   // opponents is ~3%, making the attempt a net liability vs normal play.
+  // moonViable is intentionally 1 below earlyMoon (7): with exactly 6 hearts we keep Q♠
+  // conservatively in case mid-hand accumulation reaches midMoon, but we don't commit to
+  // the aggressive earlyMoon play mode until we have 7+ hearts.
   // strongMoon bypasses adversarial targeting: a moon attempt is impossible without Q♠,
   // so passing it to the human prevents any attempt. At 7+ hearts the completion odds
   // justify keeping Q♠ over the guaranteed adversarial damage.

@@ -46,7 +46,7 @@ interface GameResult {
   passingRounds: number; // total non-"none" passing rounds
   moonShotsByPlayer: [number, number, number, number]; // rounds each seat shot the moon
   handScoreSumByPlayer: [number, number, number, number]; // sum of per-hand scores
-  // Moon attempt instrumentation (#1895): earlyMoon triggers (6+ hearts + Q♠ at hand start)
+  // Moon attempt instrumentation (#1895): earlyMoon triggers (7+ hearts + Q♠ at hand start)
   moonAttemptsByPlayer: [number, number, number, number];
 }
 
@@ -487,6 +487,8 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   console.log(`  Moon Shots/Round:   ${fmt4pct(moonAgg, totalHands)}`);
   console.log(`  Avg Hand Score:     ${fmt4score(handScoreAgg, totalHands)}`);
   // earlyMoon success rate: shots / attempts per seat (n/a when no Daring at that seat).
+  // Values >100% mean midMoon completions in that hand exceeded earlyMoon triggers —
+  // moonShotsByPlayer counts all moon completions, not just earlyMoon-initiated ones.
   const moonSuccessRate = moonAttemptsAgg.map((attempts, i) =>
     attempts === 0
       ? "    n/a"
