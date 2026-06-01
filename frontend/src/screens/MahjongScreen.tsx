@@ -48,6 +48,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
+import { MAHJONG_HINT_COLOR } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
@@ -860,7 +861,7 @@ export default function MahjongScreen() {
       onLevelSelect={goToLevelSelect}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
       rightSlot={
-        <View style={styles.headerBtnRow}>
+        <View style={styles.hudGroup}>
           <Pressable
             onPress={handleUndo}
             disabled={undoDisabled}
@@ -881,7 +882,7 @@ export default function MahjongScreen() {
             style={[
               styles.headerBtn,
               {
-                borderColor: "#5dbcd2",
+                borderColor: MAHJONG_HINT_COLOR,
                 opacity: state?.isComplete || state?.isDeadlocked ? 0.3 : 1,
               },
             ]}
@@ -890,7 +891,9 @@ export default function MahjongScreen() {
             accessibilityState={{ disabled: state?.isComplete || state?.isDeadlocked }}
             testID="mahjong-hint-button"
           >
-            <Text style={[styles.headerBtnText, { color: "#5dbcd2" }]}>{t("action.hint")}</Text>
+            <Text style={[styles.headerBtnText, { color: MAHJONG_HINT_COLOR }]}>
+              {t("action.hint")}
+            </Text>
           </Pressable>
         </View>
       }
@@ -1263,17 +1266,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  headerBtnRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
   noHintToast: {
     fontFamily: typography.heading,
     fontSize: 12,
     letterSpacing: 0.5,
     paddingBottom: 4,
-    color: "#5dbcd2",
+    color: MAHJONG_HINT_COLOR,
   },
   hudText: {
     fontFamily: typography.heading,

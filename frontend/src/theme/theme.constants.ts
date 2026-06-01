@@ -48,6 +48,9 @@ export const MAHJONG_GLOW_BG = "rgba(255,215,0,0.35)";
 /** Mahjong selected tile glow — stronger gold shadow effect. */
 export const MAHJONG_GLOW_SHADOW = "rgba(255,215,0,0.7)";
 
+/** Mahjong hint tile accent colour — used for borders, text, and glow tints. */
+export const MAHJONG_HINT_COLOR = "#5dbcd2";
+
 /** Mahjong hint tile glow — blue background for matching free tiles. */
 export const MAHJONG_HINT_GLOW_BG = "rgba(93,188,210,0.65)";
 
