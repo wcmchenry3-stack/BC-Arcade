@@ -322,6 +322,27 @@ describe("scoreStrategy — Hard", () => {
     expect(scoreStrategy(state, "hard", 0)).toBe("ones");
   });
 
+  it("takes full_house over upper par pursuit when full_house is in hand", () => {
+    // Fresh game: all upper cats open, toBonus=63 → par pursuit is active.
+    // [5,5,5,6,6]: fives open, cnt=3 ≥ 3 would fire par pursuit (fives=15) without fix.
+    const state = makeGame([5, 5, 5, 6, 6], 3);
+    expect(scoreStrategy(state, "hard", 0)).toBe("full_house");
+  });
+
+  it("takes full_house over par pursuit with two high-value face in full_house", () => {
+    // Fresh game: all upper cats open, toBonus=63 → par pursuit is active.
+    // [6,6,3,3,3]: sixes open, cnt=2 face=6≥5 would fire par pursuit (sixes=12) without fix.
+    const state = makeGame([6, 6, 3, 3, 3], 3);
+    expect(scoreStrategy(state, "hard", 0)).toBe("full_house");
+  });
+
+  it("falls through to par pursuit when full_house is already scored", () => {
+    // full_house scored → new check skipped; par pursuit fires correctly for open upper cat.
+    // [5,5,5,2,1]: fives open, cnt=3 → par pursuit returns fives (15 pts).
+    const state = withScores(makeGame([5, 5, 5, 2, 1], 3), { full_house: 25 });
+    expect(scoreStrategy(state, "hard", 0)).toBe("fives");
+  });
+
   it("takes bonus-closing upper category over three_of_a_kind", () => {
     // upper=54 (ones=3,twos=6,fours=20,fives=15,sixes=10), toBonus=9
     // dice [3,3,3,1,2]: three_of_a_kind=10 pts, but threes (9) closes bonus → +35 deferred
