@@ -117,6 +117,8 @@ export default function SortScreen() {
     setLoadError(false);
     setView("loading");
     const [levelsResult, prog] = await Promise.all([
+      // .catch converts both retry-exhausted TypeErrors and non-network errors
+      // into null so the caller can show the error state unconditionally.
       withRetry(() => sortApi.getLevels()).catch(() => null),
       loadProgress(),
     ]);

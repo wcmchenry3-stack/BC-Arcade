@@ -9,7 +9,7 @@
  */
 
 import React from "react";
-import { act, render, waitFor } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -258,15 +258,13 @@ describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
     jest.useFakeTimers();
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
 
-    const { queryByText } = renderScreen();
+    const { findByText } = renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
     });
 
-    await waitFor(() => {
-      expect(queryByText("Could not load today's puzzle")).toBeTruthy();
-    });
+    await findByText("Could not load today's puzzle");
     // 1 initial + 3 retries = 4 total calls
     expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });

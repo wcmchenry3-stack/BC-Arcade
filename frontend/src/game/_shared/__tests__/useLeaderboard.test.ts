@@ -51,9 +51,7 @@ describe("useLeaderboard — happy path", () => {
     const data: FakeData = { scores: [{ rank: 1 }] };
     const fetcher = jest.fn().mockResolvedValue(data);
 
-    const { result } = renderHook(() =>
-      useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key")
-    );
+    const { result } = renderHook(() => useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toEqual(data);
@@ -62,14 +60,10 @@ describe("useLeaderboard — happy path", () => {
 
   it("returns cached data immediately when the cache is fresh", async () => {
     const cached: FakeData = { scores: [{ rank: 2 }] };
-    asyncStorage.getItem.mockResolvedValue(
-      JSON.stringify({ data: cached, fetchedAt: Date.now() })
-    );
+    asyncStorage.getItem.mockResolvedValue(JSON.stringify({ data: cached, fetchedAt: Date.now() }));
     const fetcher = jest.fn(); // should not be called
 
-    const { result } = renderHook(() =>
-      useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key")
-    );
+    const { result } = renderHook(() => useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key"));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toEqual(cached);
@@ -86,9 +80,7 @@ describe("useLeaderboard — TypeError retry", () => {
       .mockRejectedValueOnce(new TypeError("Network request failed"))
       .mockResolvedValueOnce(data);
 
-    const { result } = renderHook(() =>
-      useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key")
-    );
+    const { result } = renderHook(() => useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key"));
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -105,9 +97,7 @@ describe("useLeaderboard — TypeError retry", () => {
     jest.useFakeTimers();
     const fetcher = jest.fn().mockRejectedValue(new TypeError("Network request failed"));
 
-    const { result } = renderHook(() =>
-      useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key")
-    );
+    const { result } = renderHook(() => useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key"));
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -129,9 +119,7 @@ describe("useLeaderboard — TypeError retry", () => {
     );
     const fetcher = jest.fn().mockRejectedValue(new TypeError("Network request failed"));
 
-    const { result } = renderHook(() =>
-      useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key")
-    );
+    const { result } = renderHook(() => useLeaderboard<FakeData>(makeFetcher(fetcher), "test_key"));
 
     await act(async () => {
       await jest.runAllTimersAsync();

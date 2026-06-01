@@ -80,9 +80,7 @@ describe("LeaderboardScreen — TypeError auto-retry (#1874)", () => {
       await jest.runAllTimersAsync();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("leaderboard.error")).toBeTruthy();
-    });
+    await screen.findByText("leaderboard.error");
     // 1 initial + 3 retries = 4 total calls
     expect(mockGetLeaderboard).toHaveBeenCalledTimes(4);
   });
