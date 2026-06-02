@@ -35,6 +35,10 @@ export type Bounds = { x: number; y: number; width: number; height: number };
 
 interface DropZoneEntry {
   onDrop: DropHandler;
+  /** Re-measures the zone's window position. Called at drag-start so bounds
+   *  reflect the current layout even if onLayout fired before the board settled
+   *  (e.g. safe-area insets resolving late on notched iPhones). */
+  refreshBounds?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,12 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       setDragState(state);
       if (getLegalDropIds) {
         setLegalTargetIds(new Set(getLegalDropIds(source, cards)));
+      }
+      // Re-measure every drop zone at drag-start so the hit-test uses current
+      // window coordinates. onLayout + rAF bounds can be stale when safe-area
+      // insets or navigation animations settle after the initial render.
+      for (const [, entry] of dropZonesRef.current) {
+        entry.refreshBounds?.();
       }
     },
     [dragGeneration, getLegalDropIds]
