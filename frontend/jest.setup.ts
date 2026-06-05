@@ -1,3 +1,11 @@
+// Expo SDK 56: winter/fetch/FetchResponse extends Response, which jest-expo's
+// test environment doesn't expose even though Node 20 has it on globalThis.
+if (!global.Response && typeof globalThis.Response !== "undefined") {
+  (global as typeof globalThis).Response = globalThis.Response;
+  (global as typeof globalThis).Request = globalThis.Request;
+  (global as typeof globalThis).Headers = globalThis.Headers;
+}
+
 // Gesture handler requires native setup in Jest
 import "react-native-gesture-handler/jestSetup";
 
