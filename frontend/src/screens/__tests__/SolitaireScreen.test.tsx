@@ -497,6 +497,68 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     expect(api.getByLabelText("5 of Hearts (selected)")).toBeTruthy();
     expect(api.queryByLabelText("8 of Clubs (selected)")).toBeNull();
   });
+
+  // Regression #1927 — double-fire in DraggableCard caused a single tap on the
+  // waste card to trigger the double-tap handler and auto-move to foundation.
+  it("single tap on waste card with valid foundation move selects it, does not auto-move", async () => {
+    // A♠ in waste + empty spades foundation = a legal waste-to-foundation move.
+    // The pre-fix double-fire would deliver handleWastePress twice within 300 ms,
+    // causing isDouble=true on the second spurious call and moving the card.
+    const state = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [{ suit: "spades", rank: 1, faceUp: true }],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("A of Spades")); // single tap — should select only
+    });
+
+    // Card must still be in the waste pile, not auto-moved to foundation.
+    expect(api.getByLabelText("Empty Spades foundation")).toBeTruthy();
+    expect(api.getByLabelText("A of Spades")).toBeTruthy();
+    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+  });
+
+  it("double-tap on waste card with valid foundation move moves it to foundation", async () => {
+    const state = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [{ suit: "spades", rank: 1, faceUp: true }],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("A of Spades")); // first tap — select
+    });
+    await act(async () => {
+      fireEvent.press(api.getByLabelText("A of Spades")); // second tap — double-tap → waste-to-foundation
+    });
+
+    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
 });
 
 describe("SolitaireScreen — stats tracking", () => {
