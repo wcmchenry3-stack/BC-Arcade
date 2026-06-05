@@ -18,6 +18,7 @@ import { statsApi } from "../api/stats";
 import type { StatsResponse, GameRow } from "../api/types";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
+import OfflineBanner from "../components/OfflineBanner";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
 
@@ -64,6 +65,21 @@ function deriveBentoTiles(stats: StatsResponse, t: (k: string) => string): Stats
   ];
 }
 
+async function withNetworkRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof TypeError && attempt < maxRetries) {
+        await new Promise<void>((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new TypeError("network retry exhausted");
+}
+
 function formatGameType(raw: string): string {
   switch (raw) {
     case "twenty48":
@@ -104,16 +120,25 @@ export default function ProfileScreen() {
   const [games, setGames] = useState<GameRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gamesError, setGamesError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
-    try {
-      const [s, g] = await Promise.all([statsApi.getMyStats(), statsApi.getMyGames(20)]);
-      setStats(s);
-      setGames(g.items);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    setGamesError(false);
+    const [statsResult, gamesResult] = await Promise.allSettled([
+      withNetworkRetry(() => statsApi.getMyStats()),
+      withNetworkRetry(() => statsApi.getMyGames(20)),
+    ]);
+    if (statsResult.status === "fulfilled") setStats(statsResult.value);
+    if (gamesResult.status === "fulfilled") {
+      setGames(gamesResult.value.items);
+    } else {
+      setGamesError(true);
+    }
+    if (statsResult.status === "rejected" && gamesResult.status === "rejected") {
+      const err = statsResult.reason;
+      setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
@@ -207,21 +232,6 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
     );
-  } else if (games && games.length === 0) {
-    body = (
-      <FlatList
-        data={[]}
-        keyExtractor={() => "empty"}
-        renderItem={() => null}
-        ListHeaderComponent={listHeader}
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.textMuted }]}>{t("recentGames.empty")}</Text>
-        }
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-        }
-      />
-    );
   } else {
     body = (
       <FlatList
@@ -229,6 +239,11 @@ export default function ProfileScreen() {
         keyExtractor={(g) => g.id}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <Text style={[styles.empty, { color: colors.textMuted }]}>
+            {gamesError ? t("recentGames.loadError") : t("recentGames.empty")}
+          </Text>
+        }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
         }
@@ -249,6 +264,7 @@ export default function ProfileScreen() {
       ]}
     >
       <AppHeader title={t("title")} />
+      <OfflineBanner />
       {body}
     </View>
   );
