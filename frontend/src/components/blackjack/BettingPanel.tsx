@@ -39,6 +39,13 @@ export default function BettingPanel({
   const effectiveDenominations = chips < betMin ? [chips] : chipDenominations;
   const [bet, setBet] = useState<number>(0);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState<"soft17" | "decks" | "penetration" | null>(
+    null
+  );
+
+  function toggleTooltip(key: "soft17" | "decks" | "penetration") {
+    setActiveTooltip((prev) => (prev === key ? null : key));
+  }
 
   function addChip(denomination: number) {
     setBet((b) => Math.min(maxBet, b + denomination));
@@ -141,134 +148,195 @@ export default function BettingPanel({
       {rulesOpen && (
         <View style={[styles.rulesPanel, { borderColor: colors.border }]}>
           {/* H17 toggle */}
-          <View style={styles.ruleRow}>
-            <Text style={[styles.ruleLabel, { color: colors.text }]}>
-              {t("rules.dealerSoft17")}
-            </Text>
-            <View style={styles.ruleOptions}>
-              <Pressable
-                style={[
-                  styles.ruleOptionBtn,
-                  {
-                    backgroundColor: !rules.hit_soft_17 ? colors.accent : colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onRulesChange({ ...rules, hit_soft_17: false })}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.s17Label")}
-              >
-                <Text
-                  style={[
-                    styles.ruleOptionText,
-                    { color: !rules.hit_soft_17 ? colors.textOnAccent : colors.text },
-                  ]}
-                >
-                  {t("rules.s17")}
+          <View style={styles.ruleSection}>
+            <View style={styles.ruleRow}>
+              <View style={styles.ruleLabelRow}>
+                <Text style={[styles.ruleLabel, { color: colors.text }]}>
+                  {t("rules.dealerSoft17")}
                 </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.ruleOptionBtn,
-                  {
-                    backgroundColor: rules.hit_soft_17 ? colors.accent : colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => onRulesChange({ ...rules, hit_soft_17: true })}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.h17Label")}
-              >
-                <Text
-                  style={[
-                    styles.ruleOptionText,
-                    { color: rules.hit_soft_17 ? colors.textOnAccent : colors.text },
-                  ]}
+                <Pressable
+                  onPress={() => toggleTooltip("soft17")}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.soft17TooltipLabel")}
+                  hitSlop={8}
                 >
-                  {t("rules.h17")}
-                </Text>
-              </Pressable>
+                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                </Pressable>
+              </View>
+              <View style={styles.ruleOptions}>
+                <Pressable
+                  style={[
+                    styles.ruleOptionBtn,
+                    {
+                      backgroundColor: !rules.hit_soft_17 ? colors.accent : colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => onRulesChange({ ...rules, hit_soft_17: false })}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.s17Label")}
+                >
+                  <Text
+                    style={[
+                      styles.ruleOptionText,
+                      { color: !rules.hit_soft_17 ? colors.textOnAccent : colors.text },
+                    ]}
+                  >
+                    {t("rules.s17")}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.ruleOptionBtn,
+                    {
+                      backgroundColor: rules.hit_soft_17 ? colors.accent : colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => onRulesChange({ ...rules, hit_soft_17: true })}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.h17Label")}
+                >
+                  <Text
+                    style={[
+                      styles.ruleOptionText,
+                      { color: rules.hit_soft_17 ? colors.textOnAccent : colors.text },
+                    ]}
+                  >
+                    {t("rules.h17")}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
+            {activeTooltip === "soft17" && (
+              <Text style={[styles.tooltipText, { color: colors.textMuted }]}>
+                {t("rules.soft17Tooltip")}
+              </Text>
+            )}
           </View>
 
           {/* Deck count */}
-          <View style={styles.ruleRow}>
-            <Text style={[styles.ruleLabel, { color: colors.text }]}>{t("rules.deckCount")}</Text>
-            <View style={styles.stepper}>
-              <Pressable
-                style={[
-                  styles.ruleStepBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-                onPress={() =>
-                  onRulesChange({ ...rules, deck_count: Math.max(1, rules.deck_count - 1) })
-                }
-                disabled={rules.deck_count <= 1}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.decreaseDeckLabel")}
-              >
-                <Text style={[styles.stepBtnText, { color: colors.text }]}>−</Text>
-              </Pressable>
-              <Text style={[styles.ruleValue, { color: colors.text }]}>{rules.deck_count}</Text>
-              <Pressable
-                style={[
-                  styles.ruleStepBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-                onPress={() =>
-                  onRulesChange({ ...rules, deck_count: Math.min(8, rules.deck_count + 1) })
-                }
-                disabled={rules.deck_count >= 8}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.increaseDeckLabel")}
-              >
-                <Text style={[styles.stepBtnText, { color: colors.text }]}>+</Text>
-              </Pressable>
+          <View style={styles.ruleSection}>
+            <View style={styles.ruleRow}>
+              <View style={styles.ruleLabelRow}>
+                <Text style={[styles.ruleLabel, { color: colors.text }]}>
+                  {t("rules.deckCount")}
+                </Text>
+                <Pressable
+                  onPress={() => toggleTooltip("decks")}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.decksTooltipLabel")}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                </Pressable>
+              </View>
+              <View style={styles.stepper}>
+                <Pressable
+                  style={[
+                    styles.ruleStepBtn,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ]}
+                  onPress={() =>
+                    onRulesChange({ ...rules, deck_count: Math.max(1, rules.deck_count - 1) })
+                  }
+                  disabled={rules.deck_count <= 1}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.decreaseDeckLabel")}
+                >
+                  <Text style={[styles.stepBtnText, { color: colors.text }]}>−</Text>
+                </Pressable>
+                <Text style={[styles.ruleValue, { color: colors.text }]}>{rules.deck_count}</Text>
+                <Pressable
+                  style={[
+                    styles.ruleStepBtn,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ]}
+                  onPress={() =>
+                    onRulesChange({ ...rules, deck_count: Math.min(8, rules.deck_count + 1) })
+                  }
+                  disabled={rules.deck_count >= 8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.increaseDeckLabel")}
+                >
+                  <Text style={[styles.stepBtnText, { color: colors.text }]}>+</Text>
+                </Pressable>
+              </View>
             </View>
+            {activeTooltip === "decks" && (
+              <Text style={[styles.tooltipText, { color: colors.textMuted }]}>
+                {t("rules.decksTooltip")}
+              </Text>
+            )}
           </View>
 
           {/* Penetration */}
-          <View style={styles.ruleRow}>
-            <Text style={[styles.ruleLabel, { color: colors.text }]}>{t("rules.penetration")}</Text>
-            <View style={styles.stepper}>
-              <Pressable
-                style={[
-                  styles.ruleStepBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-                onPress={() =>
-                  onRulesChange({
-                    ...rules,
-                    penetration: Math.max(0.5, Math.round((rules.penetration - 0.05) * 100) / 100),
-                  })
-                }
-                disabled={rules.penetration <= 0.5}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.decreasePenetrationLabel")}
-              >
-                <Text style={[styles.stepBtnText, { color: colors.text }]}>−</Text>
-              </Pressable>
-              <Text style={[styles.ruleValue, { color: colors.text }]}>
-                {Math.round(rules.penetration * 100)}%
-              </Text>
-              <Pressable
-                style={[
-                  styles.ruleStepBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-                onPress={() =>
-                  onRulesChange({
-                    ...rules,
-                    penetration: Math.min(0.9, Math.round((rules.penetration + 0.05) * 100) / 100),
-                  })
-                }
-                disabled={rules.penetration >= 0.9}
-                accessibilityRole="button"
-                accessibilityLabel={t("rules.increasePenetrationLabel")}
-              >
-                <Text style={[styles.stepBtnText, { color: colors.text }]}>+</Text>
-              </Pressable>
+          <View style={styles.ruleSection}>
+            <View style={styles.ruleRow}>
+              <View style={styles.ruleLabelRow}>
+                <Text style={[styles.ruleLabel, { color: colors.text }]}>
+                  {t("rules.penetration")}
+                </Text>
+                <Pressable
+                  onPress={() => toggleTooltip("penetration")}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.penetrationTooltipLabel")}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                </Pressable>
+              </View>
+              <View style={styles.stepper}>
+                <Pressable
+                  style={[
+                    styles.ruleStepBtn,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ]}
+                  onPress={() =>
+                    onRulesChange({
+                      ...rules,
+                      penetration: Math.max(
+                        0.5,
+                        Math.round((rules.penetration - 0.05) * 100) / 100
+                      ),
+                    })
+                  }
+                  disabled={rules.penetration <= 0.5}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.decreasePenetrationLabel")}
+                >
+                  <Text style={[styles.stepBtnText, { color: colors.text }]}>−</Text>
+                </Pressable>
+                <Text style={[styles.ruleValue, { color: colors.text }]}>
+                  {Math.round(rules.penetration * 100)}%
+                </Text>
+                <Pressable
+                  style={[
+                    styles.ruleStepBtn,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                  ]}
+                  onPress={() =>
+                    onRulesChange({
+                      ...rules,
+                      penetration: Math.min(
+                        0.9,
+                        Math.round((rules.penetration + 0.05) * 100) / 100
+                      ),
+                    })
+                  }
+                  disabled={rules.penetration >= 0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("rules.increasePenetrationLabel")}
+                >
+                  <Text style={[styles.stepBtnText, { color: colors.text }]}>+</Text>
+                </Pressable>
+              </View>
             </View>
+            {activeTooltip === "penetration" && (
+              <Text style={[styles.tooltipText, { color: colors.textMuted }]}>
+                {t("rules.penetrationTooltip")}
+              </Text>
+            )}
           </View>
         </View>
       )}
@@ -344,15 +412,30 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 12,
   },
+  ruleSection: {
+    gap: 6,
+  },
   ruleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+  ruleLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
   ruleLabel: {
     fontSize: 13,
     fontWeight: "500",
-    flex: 1,
+  },
+  tooltipIcon: {
+    fontSize: 13,
+  },
+  tooltipText: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   ruleOptions: {
     flexDirection: "row",

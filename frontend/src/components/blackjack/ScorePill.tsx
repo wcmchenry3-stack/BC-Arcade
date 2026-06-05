@@ -22,11 +22,11 @@ export default function ScorePill({ value, soft = false, concealed = false, vari
       <View
         style={[
           styles.dealerBadge,
-          { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+          { backgroundColor: colors.text, borderColor: colors.text },
         ]}
         accessibilityLabel={concealed ? "Dealer score hidden" : `Dealer score ${label}`}
       >
-        <Text style={[styles.dealerText, { color: colors.text }]}>{label}</Text>
+        <Text style={[styles.dealerText, { color: colors.surface }]}>{label}</Text>
       </View>
     );
   }
