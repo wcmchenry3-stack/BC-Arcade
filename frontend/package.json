@@ -82,7 +82,7 @@
     "poly-decomp": "^0.3.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "react-i18next": "^16.6.2",
+    "react-i18next": "^17.0.8",
     "react-native": "0.83.6",
     "react-native-audio-api": "0.12.2",
     "react-native-gesture-handler": "~2.30.0",
