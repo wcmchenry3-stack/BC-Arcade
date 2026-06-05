@@ -136,7 +136,10 @@ export default function BettingPanel({
       {/* Collapsible Table Rules */}
       <Pressable
         style={styles.rulesToggle}
-        onPress={() => setRulesOpen((o) => !o)}
+        onPress={() => {
+          setRulesOpen((o) => !o);
+          setActiveTooltip(null);
+        }}
         accessibilityRole="button"
         accessibilityLabel={t("rules.toggleLabel")}
       >
@@ -158,6 +161,7 @@ export default function BettingPanel({
                   onPress={() => toggleTooltip("soft17")}
                   accessibilityRole="button"
                   accessibilityLabel={t("rules.soft17TooltipLabel")}
+                  accessibilityState={{ expanded: activeTooltip === "soft17" }}
                   hitSlop={8}
                 >
                   <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
@@ -226,6 +230,7 @@ export default function BettingPanel({
                   onPress={() => toggleTooltip("decks")}
                   accessibilityRole="button"
                   accessibilityLabel={t("rules.decksTooltipLabel")}
+                  accessibilityState={{ expanded: activeTooltip === "decks" }}
                   hitSlop={8}
                 >
                   <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
@@ -281,6 +286,7 @@ export default function BettingPanel({
                   onPress={() => toggleTooltip("penetration")}
                   accessibilityRole="button"
                   accessibilityLabel={t("rules.penetrationTooltipLabel")}
+                  accessibilityState={{ expanded: activeTooltip === "penetration" }}
                   hitSlop={8}
                 >
                   <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>

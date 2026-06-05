@@ -20,10 +20,7 @@ export default function ScorePill({ value, soft = false, concealed = false, vari
   if (variant === "dealer") {
     return (
       <View
-        style={[
-          styles.dealerBadge,
-          { backgroundColor: colors.text, borderColor: colors.text },
-        ]}
+        style={[styles.dealerBadge, { backgroundColor: colors.text, borderColor: colors.text }]}
         accessibilityLabel={concealed ? "Dealer score hidden" : `Dealer score ${label}`}
       >
         <Text style={[styles.dealerText, { color: colors.surface }]}>{label}</Text>

@@ -15,8 +15,6 @@ interface Props {
   activeHandIndex?: number;
   /** Per-hand bets (when split). */
   handBets?: number[];
-  /** Per-hand outcomes (when split, in result phase). */
-  handOutcomes?: (string | null)[];
   /** Shrink card sizes and table padding on short-height viewports. */
   compact?: boolean;
 }
@@ -28,7 +26,6 @@ export default function BlackjackTable({
   playerHands,
   activeHandIndex = 0,
   handBets,
-  handOutcomes,
   compact = false,
 }: Props) {
   const { t } = useTranslation("blackjack");
@@ -55,7 +52,6 @@ export default function BlackjackTable({
           {playerHands.map((hand, i) => {
             const isActive = isPlayerPhase && i === activeHandIndex;
             const bet = handBets?.[i];
-            const outcome = handOutcomes?.[i];
             const label = t("hand.playerHand", { number: i + 1 });
 
             return (
