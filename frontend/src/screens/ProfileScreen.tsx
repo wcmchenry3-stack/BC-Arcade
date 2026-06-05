@@ -18,6 +18,7 @@ import { statsApi } from "../api/stats";
 import type { StatsResponse, GameRow } from "../api/types";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
+import { withRetry } from "../game/_shared/withRetry";
 import OfflineBanner from "../components/OfflineBanner";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
@@ -63,21 +64,6 @@ function deriveBentoTiles(stats: StatsResponse, t: (k: string) => string): Stats
       value: String(typesTried),
     },
   ];
-}
-
-async function withNetworkRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (e instanceof TypeError && attempt < maxRetries) {
-        await new Promise<void>((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw new TypeError("network retry exhausted");
 }
 
 function formatGameType(raw: string): string {
@@ -127,8 +113,8 @@ export default function ProfileScreen() {
     setError(null);
     setGamesError(false);
     const [statsResult, gamesResult] = await Promise.allSettled([
-      withNetworkRetry(() => statsApi.getMyStats()),
-      withNetworkRetry(() => statsApi.getMyGames(20)),
+      withRetry(() => statsApi.getMyStats()),
+      withRetry(() => statsApi.getMyGames(20)),
     ]);
     if (statsResult.status === "fulfilled") setStats(statsResult.value);
     if (gamesResult.status === "fulfilled") {
@@ -204,6 +190,11 @@ export default function ProfileScreen() {
         </View>
       )}
       <Text style={[styles.sectionTitle, { color: colors.text }]}>{t("recentGames.title")}</Text>
+      {gamesError && (
+        <Text style={[styles.sectionErrorText, { color: colors.error }]}>
+          {t("recentGames.loadError")}
+        </Text>
+      )}
     </View>
   );
 
@@ -240,9 +231,11 @@ export default function ProfileScreen() {
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.textMuted }]}>
-            {gamesError ? t("recentGames.loadError") : t("recentGames.empty")}
-          </Text>
+          !gamesError ? (
+            <Text style={[styles.empty, { color: colors.textMuted }]}>
+              {t("recentGames.empty")}
+            </Text>
+          ) : null
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
@@ -313,6 +306,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   listContent: { paddingBottom: 32 },
+  sectionErrorText: {
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

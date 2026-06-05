@@ -4,6 +4,10 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import ProfileScreen from "../ProfileScreen";
 import type { StatsResponse, GameHistoryResponse } from "../../api/types";
 
+jest.mock("../../game/_shared/NetworkContext", () => ({
+  useNetwork: () => ({ isOnline: true, isInitialized: true }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -178,13 +182,15 @@ describe("ProfileScreen", () => {
     });
   });
 
-  it("shows an error state and a Retry button when the stats fetch fails", async () => {
+  it("shows full-screen error with Retry when both requests fail", async () => {
     mockGetMyStats.mockRejectedValue(new Error("Network down"));
+    mockGetMyGames.mockRejectedValue(new Error("Network down"));
     renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Couldn't load recent games")).toBeTruthy();
+      expect(screen.getByText("Retry")).toBeTruthy();
     });
-    // Retry re-triggers the fetch.
+    // Retry re-triggers the fetch; stats resolves, games still fails → inline error.
     mockGetMyStats.mockResolvedValue(SAMPLE_STATS);
     await act(async () => {
       fireEvent.press(screen.getByText("Retry"));
@@ -192,6 +198,50 @@ describe("ProfileScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Games Played")).toBeTruthy();
     });
+  });
+
+  it("shows game history without bento tiles when only stats fails", async () => {
+    mockGetMyStats.mockRejectedValue(new Error("500 server error"));
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Recent Games")).toBeTruthy();
+    });
+    expect(screen.queryByText("Games Played")).toBeNull();
+    expect(screen.getAllByText("Yacht").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Retry")).toBeNull();
+  });
+
+  it("shows bento tiles and inline games error when only games fails", async () => {
+    mockGetMyGames.mockRejectedValue(new Error("500 server error"));
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Games Played")).toBeTruthy();
+    });
+    expect(screen.getByText("Couldn't load recent games")).toBeTruthy();
+    expect(screen.queryByText("Retry")).toBeNull();
+    // Game rows absent — Blackjack only appears in rows, never in the bento tiles.
+    expect(screen.queryByText("Blackjack")).toBeNull();
+  });
+
+  it("retries on TypeError and shows data after backoff", async () => {
+    jest.useFakeTimers();
+    mockGetMyStats
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(SAMPLE_STATS);
+    mockGetMyGames.mockResolvedValue(SAMPLE_GAMES);
+
+    renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Games Played")).toBeTruthy();
+    });
+    expect(mockGetMyStats).toHaveBeenCalledTimes(2);
+
+    jest.useRealTimers();
   });
 
   it("calls the API with the correct limit on mount", async () => {
