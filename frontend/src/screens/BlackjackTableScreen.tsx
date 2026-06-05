@@ -253,7 +253,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             playerHands={state.player_hands}
             activeHandIndex={state.active_hand_index}
             handBets={state.hand_bets}
-            handOutcomes={state.hand_outcomes}
             compact={isCompact}
           />
           <Animated.View style={bustFlashStyle} />
@@ -298,12 +297,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             {isSplit && (
               <View style={styles.splitResultRow}>
                 {state.player_hands?.map((_, i) => (
-                  <ResultBanner
-                    key={i}
-                    outcome={state.hand_outcomes?.[i] ?? "push"}
-                    payout={state.hand_payouts?.[i] ?? 0}
-                    compact
-                  />
+                  <View key={i} style={styles.splitResultItem}>
+                    <ResultBanner
+                      outcome={state.hand_outcomes?.[i] ?? "push"}
+                      payout={state.hand_payouts?.[i] ?? 0}
+                      compact
+                    />
+                  </View>
                 ))}
               </View>
             )}
@@ -435,6 +435,9 @@ const styles = StyleSheet.create({
     gap: 8,
     width: "100%",
     maxWidth: 320,
+  },
+  splitResultItem: {
+    flex: 1,
   },
   actionBtn: {
     width: "100%",
