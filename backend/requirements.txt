@@ -7,7 +7,7 @@ pydantic==2.11.3
 pytest==9.0.3
 httpx==0.28.1
 slowapi==0.1.9
-limits==3.14.0
+limits==5.8.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
