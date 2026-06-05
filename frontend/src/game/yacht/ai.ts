@@ -59,6 +59,12 @@ function isOpen(scores: GameState["scores"], cat: Category): boolean {
   return scores[cat] === null || scores[cat] === undefined;
 }
 
+/** True when the current roll is a Joker (all-same dice with yacht already scored). */
+function isJokerRoll(dice: readonly number[], scores: GameState["scores"]): boolean {
+  const c = faceCounts(dice);
+  return c.size === 1 && (dice[0] ?? 0) > 0 && scores.yacht === 50;
+}
+
 /** Returns the highest-scoring category from a pre-computed legal move set. */
 function bestInLegal(legal: Record<string, number>): Category | null {
   let bestCat: Category | null = null;
@@ -184,29 +190,30 @@ function holdEasy(dice: readonly number[]): boolean[] {
 function holdMedium(dice: readonly number[], scores: GameState["scores"]): boolean[] {
   const counts = faceCounts(dice);
   const toBonus = Math.max(0, 63 - upperSubtotal(scores));
+  const straightOpen = isOpen(scores, "large_straight") || isOpen(scores, "small_straight");
 
   // 4+ of a kind: lock those
   for (const [face, cnt] of counts) {
     if (cnt >= 4) return holdFace(dice, face);
   }
 
-  // Full house already in hand (3+2): keep all
+  // Full house already in hand (3+2): keep all — only if full_house is still open
   const sortedCnts = [...counts.values()].sort((a, b) => b - a);
-  if (sortedCnts[0] === 3 && (sortedCnts[1] ?? 0) >= 2) {
+  if (sortedCnts[0] === 3 && (sortedCnts[1] ?? 0) >= 2 && isOpen(scores, "full_house")) {
     return [true, true, true, true, true];
   }
 
-  // 5-run: keep all
-  if (longestRunFaces(dice, 5)) return [true, true, true, true, true];
+  // 5-run: keep all — only if a straight category is still open
+  if (longestRunFaces(dice, 5) && straightOpen) return [true, true, true, true, true];
 
   // Trips: hold the 3
   for (const [face, cnt] of counts) {
     if (cnt === 3) return holdFace(dice, face);
   }
 
-  // 4-run: hold the run to complete a large straight
+  // 4-run: hold the run to complete a large straight — only if a straight is open
   const run4 = longestRunFaces(dice, 4);
-  if (run4) return holdForRun(dice, run4);
+  if (run4 && straightOpen) return holdForRun(dice, run4);
 
   // Upper bonus pursuit: hold the best open upper face.
   // Threshold: ≥2 of any face, or ≥1 for high-value faces (5,6) whose par scores
@@ -227,9 +234,9 @@ function holdMedium(dice: readonly number[], scores: GameState["scores"]): boole
     if (bestFace > 0 && bestCnt >= minCnt) return holdFace(dice, bestFace);
   }
 
-  // 3-run: keep for potential small/large straight
+  // 3-run: keep for potential small/large straight — only if a straight is open
   const run3 = longestRunFaces(dice, 3);
-  if (run3) return holdForRun(dice, run3);
+  if (run3 && straightOpen) return holdForRun(dice, run3);
 
   // Highest pair
   let bestPairFace = 0;
@@ -332,6 +339,9 @@ function scoreMedium(
   const s = diceSum(dice);
   const counts = faceCounts(dice);
 
+  // Joker: jokerPossibleScores already enforces priority rules; just pick highest value.
+  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
+
   // Yacht — always take 50 pts
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
 
@@ -404,6 +414,9 @@ function scoreHard(
   const myScore = Object.values(scores).reduce<number>((acc, v) => acc + (v ?? 0), 0);
   const trailing = myScore < opponentScore - 30;
   const leading = myScore > opponentScore + 50;
+
+  // Joker: jokerPossibleScores already enforces priority rules; just pick highest value.
+  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
 
   // Always take Yacht
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";

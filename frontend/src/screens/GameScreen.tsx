@@ -515,9 +515,11 @@ export default function GameScreen({ navigation, route }: Props) {
             playerRollsUsed={gameState.rolls_used}
             playerGameOver={gameState.game_over}
             playerUpperBonus={gameState.upper_bonus}
+            playerYachtBonusTotal={gameState.yacht_bonus_total}
             playerTotalScore={gameState.total_score}
             cpuScores={aiGameState.scores}
             cpuUpperBonus={aiGameState.upper_bonus}
+            cpuYachtBonusTotal={aiGameState.yacht_bonus_total}
             cpuTotalScore={aiGameState.total_score}
             isAiTurn={isAiTurn}
             onScore={handleScore}
