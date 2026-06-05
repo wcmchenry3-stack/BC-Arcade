@@ -101,7 +101,7 @@
     "@types/react": "~19.2.2",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
-    "bundlesize2": "^0.0.31",
+    "bundlesize2": "^0.0.35",
     "eslint": "^8.57.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.0",
