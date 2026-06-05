@@ -144,7 +144,7 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
           cards: cards.length,
           legalZones: legalIds.length,
           registeredZones: dropZonesRef.current.size,
-          zonesWithCachedBounds: zonesWithBounds,
+          boundsPreRefresh: zonesWithBounds,
         },
       });
     },
@@ -178,7 +178,10 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
       for (const [id, entry] of dropZonesRef.current) {
         const b = dropZoneBoundsRef.current.get(id);
-        if (!b) { missingBounds++; continue; }
+        if (!b) {
+          missingBounds++;
+          continue;
+        }
         if (
           absoluteX >= b.x &&
           absoluteX <= b.x + b.width &&
@@ -200,19 +203,36 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
         }
       }
 
-      // No zone accepted — snap back and report so the failure is visible in Sentry.
-      Sentry.captureMessage("drag.snapBack: no zone accepted drop", {
-        level: "info",
-        tags: { subsystem: "drag", game: state.source.game },
-        extra: {
-          source: JSON.stringify(state.source),
-          fingerX: absoluteX,
-          fingerY: absoluteY,
-          totalZones,
-          missingBounds,
-          hitButRejected,
-        },
-      });
+      // Snap back. Only escalate to a Sentry issue when bounds were missing (a real bug —
+      // stale onLayout coords meant the hit-test skipped zones). Normal invalid drops
+      // (user moved card to an illegal stack) are breadcrumbs only to avoid Sentry noise.
+      if (missingBounds > 0) {
+        Sentry.captureMessage("drag.snapBack: missing zone bounds at drop time", {
+          level: "info",
+          tags: { subsystem: "drag", game: state.source.game },
+          extra: {
+            source: JSON.stringify(state.source),
+            fingerX: absoluteX,
+            fingerY: absoluteY,
+            totalZones,
+            missingBounds,
+            hitButRejected,
+          },
+        });
+      } else {
+        Sentry.addBreadcrumb({
+          category: "drag",
+          level: "info",
+          message: "drag.snapBack",
+          data: {
+            source: JSON.stringify(state.source),
+            fingerX: absoluteX,
+            fingerY: absoluteY,
+            totalZones,
+            hitButRejected,
+          },
+        });
+      }
       snapBackAndClear();
     },
     [clearDrag, snapBackAndClear]

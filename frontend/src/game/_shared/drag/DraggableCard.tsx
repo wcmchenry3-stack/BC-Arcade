@@ -145,17 +145,9 @@ export function DraggableCard({
   );
 
   const child = React.Children.only(children) as React.ReactElement<AnyProps>;
-  // On device, tap is handled entirely by Gesture.Tap() inside Gesture.Exclusive —
-  // no onPress on the child is needed or wanted. Injecting onPress onto children
-  // that internally render a Pressable (e.g. PlayingCard) creates a competing
-  // UIGestureRecognizer on iOS that races with RNGH's pan and cancels it, causing
-  // the drag ghost to flash and snap back immediately without following the finger.
-  //
-  // In Jest, RNGH gestures are mocked and Gesture.Tap.onEnd never fires, so the
-  // only way fireEvent.press can reach onTap is via the child's onPress prop.
-  // process.env.NODE_ENV === "test" is always true in Jest and always false in
-  // Metro device bundles (dev or prod), so this clone is completely tree-shaken
-  // from device builds.
+  // Device: injecting onPress onto Pressable-backed children creates a competing UIGestureRecognizer
+  // that cancels RNGH's pan on iOS. Test-only: Jest mocks RNGH so onTap is only reachable via
+  // onPress; process.env.NODE_ENV === "test" is Metro dead-code-eliminated in device builds.
   const innerEl =
     onTap && process.env.NODE_ENV === "test"
       ? React.cloneElement(child, { onPress: onTap })
