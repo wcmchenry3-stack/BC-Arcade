@@ -555,7 +555,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
       - name: Check Gradle build file consistency
         run: |
           CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)
