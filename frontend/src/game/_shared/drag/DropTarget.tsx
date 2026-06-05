@@ -43,9 +43,14 @@ export function DropTarget({
   useEffect(() => {
     registerDropZone(id, {
       onDrop: (source, cards) => onDropRef.current(source, cards),
+      refreshBounds: () => {
+        viewRef.current?.measureInWindow((x, y, w, h) => {
+          if (w > 0 && h > 0) updateDropZoneLayout(id, { x, y, width: w, height: h });
+        });
+      },
     });
     return () => unregisterDropZone(id);
-  }, [id, registerDropZone, unregisterDropZone]);
+  }, [id, registerDropZone, unregisterDropZone, updateDropZoneLayout]);
 
   // Proactively cache absolute window bounds whenever React Native recalculates
   // layout. requestAnimationFrame defers the measureInWindow call until after

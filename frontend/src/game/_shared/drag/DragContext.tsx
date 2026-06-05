@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useRef, useState } from 
 import Animated from "react-native-reanimated";
 import { useSharedValue, useAnimatedRef, runOnJS, withSpring } from "react-native-reanimated";
 import type { SharedValue, AnimatedRef } from "react-native-reanimated";
+import * as Sentry from "@sentry/react-native";
 import type { CanonicalSuit } from "../decks/types";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,10 @@ export type Bounds = { x: number; y: number; width: number; height: number };
 
 interface DropZoneEntry {
   onDrop: DropHandler;
+  /** Re-measures the zone's window position. Called at drag-start so bounds
+   *  reflect the current layout even if onLayout fired before the board settled
+   *  (e.g. safe-area insets resolving late on notched iPhones). */
+  refreshBounds?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,9 +123,30 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
-      if (getLegalDropIds) {
-        setLegalTargetIds(new Set(getLegalDropIds(source, cards)));
+      const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
+      setLegalTargetIds(new Set(legalIds));
+
+      // Re-measure every drop zone at drag-start so the hit-test uses current
+      // window coordinates. onLayout + rAF bounds can be stale when safe-area
+      // insets or navigation animations settle after the initial render.
+      let zonesWithBounds = 0;
+      for (const [id, entry] of dropZonesRef.current) {
+        entry.refreshBounds?.();
+        if (dropZoneBoundsRef.current.has(id)) zonesWithBounds++;
       }
+
+      Sentry.addBreadcrumb({
+        category: "drag",
+        level: "info",
+        message: "drag.start",
+        data: {
+          source: JSON.stringify(source),
+          cards: cards.length,
+          legalZones: legalIds.length,
+          registeredZones: dropZonesRef.current.size,
+          boundsPreRefresh: zonesWithBounds,
+        },
+      });
     },
     [dragGeneration, getLegalDropIds]
   );
@@ -144,12 +170,18 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       const state = dragStateRef.current;
       if (!state) return;
 
+      const totalZones = dropZonesRef.current.size;
+      let missingBounds = 0;
+      let hitButRejected = 0;
+
       // Synchronous hit-test against pre-cached bounds (populated via onLayout in
-      // DropTarget). No async bridge calls at drop time — eliminates the race
-      // against the old 300 ms safety-net timeout that caused snap-back on iOS/Android.
+      // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
       for (const [id, entry] of dropZonesRef.current) {
         const b = dropZoneBoundsRef.current.get(id);
-        if (!b) continue;
+        if (!b) {
+          missingBounds++;
+          continue;
+        }
         if (
           absoluteX >= b.x &&
           absoluteX <= b.x + b.width &&
@@ -158,10 +190,48 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
         ) {
           const accepted = entry.onDrop(state.source, state.cards);
           if (accepted) {
+            Sentry.addBreadcrumb({
+              category: "drag",
+              level: "info",
+              message: "drag.accepted",
+              data: { zone: id, fingerX: absoluteX, fingerY: absoluteY },
+            });
             clearDrag();
             return;
           }
+          hitButRejected++;
         }
+      }
+
+      // Snap back. Only escalate to a Sentry issue when bounds were missing (a real bug —
+      // stale onLayout coords meant the hit-test skipped zones). Normal invalid drops
+      // (user moved card to an illegal stack) are breadcrumbs only to avoid Sentry noise.
+      if (missingBounds > 0) {
+        Sentry.captureMessage("drag.snapBack: missing zone bounds at drop time", {
+          level: "info",
+          tags: { subsystem: "drag", game: state.source.game },
+          extra: {
+            source: JSON.stringify(state.source),
+            fingerX: absoluteX,
+            fingerY: absoluteY,
+            totalZones,
+            missingBounds,
+            hitButRejected,
+          },
+        });
+      } else {
+        Sentry.addBreadcrumb({
+          category: "drag",
+          level: "info",
+          message: "drag.snapBack",
+          data: {
+            source: JSON.stringify(state.source),
+            fingerX: absoluteX,
+            fingerY: absoluteY,
+            totalZones,
+            hitButRejected,
+          },
+        });
       }
       snapBackAndClear();
     },
