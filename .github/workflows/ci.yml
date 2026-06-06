@@ -56,10 +56,55 @@ jobs:
           fi
           echo "No conflict markers found"
 
+  forbidden-terms:
+    name: Forbidden brand/trademark terms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Scan for trademarked or competitor brand references
+        run: |
+          # Third-party trademarks and competitor brands must not appear in source,
+          # docs, or config. To add a term, append it to TERMS below.
+          # Use \b word-boundary anchors where a term could appear as a substring
+          # of a legitimate word (e.g. "Fruit Merge" vs "fruit merged").
+          #
+          # Intentional exclusions:
+          #   .github/    — this file contains the terms as grep patterns
+          #   .claude/    — tool-config files, not product code
+          #   BRANDING.md — anti-guidance doc ("never say X")
+          #   CLAUDE.md   — project guide that lists prohibited names
+          #   alembic/    — DB migration history; old display names are immutable
+          TERMS=(
+            "Yahtzee"
+            "\bFruit Merge\b"
+            "Galaga"
+            "Neon Arcade"
+          )
+          PATTERN=$(printf "%s\n" "${TERMS[@]}" | paste -sd "|")
+          if grep -rniE "$PATTERN" \
+              --include="*.ts" --include="*.tsx" \
+              --include="*.py" \
+              --include="*.js" --include="*.jsx" \
+              --include="*.json" \
+              --include="*.yml" --include="*.yaml" \
+              --include="*.md" \
+              --exclude-dir=node_modules \
+              --exclude-dir=.git \
+              --exclude-dir=.github \
+              --exclude-dir=.claude \
+              --exclude-dir=alembic \
+              --exclude=BRANDING.md \
+              --exclude=CLAUDE.md \
+              .; then
+            echo "::error::Forbidden brand/trademark references found — remove before merging"
+            exit 1
+          fi
+          echo "No forbidden terms found"
+
   # === Tier 1: Substantive fast checks (need lint + secret-scan) ===========
 
   backend-health:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-backend-health.yml@main
     with:
       # Direct Render origin intentionally used here instead of dev-games-api.buffingchi.com.
@@ -73,7 +118,7 @@ jobs:
     secrets: inherit
 
   expo-compat:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -108,7 +153,7 @@ jobs:
           fi
 
   sentry-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-sentry-check.yml@main
     with:
       working-directory: backend
@@ -116,7 +161,7 @@ jobs:
       SENTRY_DSN: ${{ secrets.SENTRY_BC_GAMES }}
 
   local-path-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-local-path-check.yml@main
     with:
       scan-paths: "frontend/ios/GamingApp.xcodeproj,frontend/android"
@@ -124,21 +169,21 @@ jobs:
     secrets: inherit
 
   test-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
     secrets: inherit
 
   test-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
     secrets: inherit
 
   cve-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-python.yml@main
     with:
       working-directory: backend
@@ -146,7 +191,7 @@ jobs:
     secrets: inherit
 
   cve-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-frontend.yml@main
     with:
       working-directory: frontend
@@ -154,7 +199,7 @@ jobs:
 
   detect-e2e-scope:
     name: Detect E2E scope
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     outputs:
       projects: ${{ steps.scope.outputs.projects }}
@@ -325,7 +370,7 @@ jobs:
 
   check-i18n:
     name: i18n completeness check
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -342,17 +387,17 @@ jobs:
         working-directory: frontend
 
   openai-policy:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-openai-policy.yml@main
     secrets: inherit
 
   feedback-token-lint:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-feedback-token-lint.yml@main
     secrets: inherit
 
   provenance-coverage:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-provenance-coverage.yml@main
     secrets: inherit
 
@@ -362,7 +407,7 @@ jobs:
   # so it cannot detect issues with the JS bundler or entry-point resolution.
 
   android-bundle-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -550,7 +595,7 @@ jobs:
 
   sentry-cli-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -586,7 +631,7 @@ jobs:
 
   gradle-wrapper-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

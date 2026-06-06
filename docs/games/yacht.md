@@ -6,7 +6,7 @@
 
 ## How to Play
 
-Yacht is a Yahtzee-style dice game. Each turn the player rolls 5 dice and may re-roll any subset up to two more times. After the third roll the player must assign the result to one of 13 scoring categories. Each category can only be scored once per game. The game ends when all 13 categories are filled.
+Yacht is a classic dice scoring game. Each turn the player rolls 5 dice and may re-roll any subset up to two more times. After the third roll the player must assign the result to one of 13 scoring categories. Each category can only be scored once per game. The game ends when all 13 categories are filled.
 
 BC Arcade's Yacht mode is 1v1 against an AI opponent. Both players alternate turns under the same rules.
 
