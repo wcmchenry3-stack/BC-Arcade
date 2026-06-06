@@ -6,4 +6,4 @@ pytest-cov==6.1.0
 coverage>=7.6
 locust==2.44.1
 hypothesis==6.131.15
-pip-audit==2.7.3
+pip-audit==2.10.0
