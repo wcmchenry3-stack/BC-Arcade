@@ -77,12 +77,14 @@ test("tableau-to-tableau: move 7♥ from column 1 onto 8♠ in column 2", async 
   // Select the 7♥ in column 1.
   await page.getByLabel("7 of Hearts").click();
 
-  // Tap the 8♠ card button — it is the top face-up card in column 2 and the
-  // valid drop target for 7♥. Use .or() to handle both the unselected and
-  // selected-state aria-label variants.
+  // Tap the 8♠ card — it is the top face-up card in column 2 and the valid
+  // drop target for 7♥. Use getByLabel (not getByRole("button")) because
+  // DraggableCard only injects onPress in Jest; in the real browser the card
+  // renders with role="img", so the aria-label is the reliable locator. Use
+  // .or() to handle both the unselected and selected-state label variants.
   await page
-    .getByRole("button", { name: "8 of Spades" })
-    .or(page.getByRole("button", { name: "8 of Spades (selected)" }))
+    .getByLabel("8 of Spades")
+    .or(page.getByLabel("8 of Spades (selected)"))
     .click();
 
   // Column 1 is now empty; column 2 gained one card (now 3).
