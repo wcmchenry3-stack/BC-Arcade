@@ -426,9 +426,9 @@ A game must be built as a standalone app if it meets **any** of the following th
 5. If assets are 10–20 MB (approaching threshold) → bring to team for review before starting
 6. Document the evaluation result in the game's design document and `GAME-CONTRACT.md` checklist
 
-### Galaga-style game evaluation (worked example)
+### Arcade shooter evaluation (worked example)
 
-A Galaga-style arcade shooter is listed as a potential future paid game. Evaluated against the criteria above:
+A vertical arcade shooter is listed as a potential future paid game. Evaluated against the criteria above:
 
 | Requirement                                           | Estimate                 | Budget impact                |
 | ----------------------------------------------------- | ------------------------ | ---------------------------- |
@@ -439,7 +439,7 @@ A Galaga-style arcade shooter is listed as a potential future paid game. Evaluat
 | Potential native library (GPU particles, 3D elements) | 8–15 MB per ABI          | Standalone trigger           |
 | **Estimated total**                                   | **10–38 MB**             | **Likely exceeds threshold** |
 
-**Provisional verdict:** A Galaga-style game almost certainly exceeds the 20 MB asset threshold and may require a unique native rendering library. **Build as a standalone app if pursued.** Confirm this evaluation against the actual design spec before development begins.
+**Provisional verdict:** An arcade shooter almost certainly exceeds the 20 MB asset threshold and may require a unique native rendering library. **Build as a standalone app if pursued.** Confirm this evaluation against the actual design spec before development begins.
 
 ### Pachisi decision
 

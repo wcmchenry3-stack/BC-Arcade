@@ -28,7 +28,7 @@ All games are in active development. Nothing is released yet.
 
 | Game        | Category | Notes                                   |
 | ----------- | -------- | --------------------------------------- |
-| Yacht       | Dice     | Yahtzee variant, 3 AI difficulty levels |
+| Yacht       | Dice     | Dice scoring game, 3 AI difficulty levels |
 | Hearts      | Card     | Trick-taking, avoid hearts + queen      |
 | Blackjack   | Card     | 3 table tiers, chip progression         |
 | Solitaire   | Card     | Klondike, draw-3 mode, undo             |
