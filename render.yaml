@@ -70,7 +70,7 @@ services:
 
   # --- Python FastAPI backend (dev environment) ---
   - type: web
-    name: gaming-app-api-dev
+    name: bc-arcade-api-dev
     runtime: python
     branch: dev
     rootDir: backend
@@ -91,7 +91,7 @@ services:
 
   # --- Expo Web static frontend (dev environment) ---
   - type: web
-    name: gaming-app-frontend-dev
+    name: bc-arcade-frontend-dev
     runtime: static
     branch: dev
     rootDir: frontend
