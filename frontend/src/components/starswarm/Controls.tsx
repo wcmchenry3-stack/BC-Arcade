@@ -72,7 +72,7 @@ export default function Controls({
     })
     .onChange((e) => {
       if (!activeDragRef.current) return;
-      if (phase === "WinTransition") return; // AI controls the ship during cinematic
+      if (phaseRef.current === "WinTransition") return; // AI controls the ship during cinematic
       const hw = PLAYER_W / 2;
       const rawX = shipXAtDragStartRef.current + e.translationX / scale;
       const newX = clamp(rawX, hw, CANVAS_W - hw);

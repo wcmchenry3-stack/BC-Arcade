@@ -10,7 +10,6 @@ import {
   POWERUP_DURATION,
   HIT_FLASH_DURATION,
   BULLET_C_W,
-  WIN_FREEZE_MS,
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
@@ -832,66 +831,66 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             if (countdownMsRef.current === 0) countdownMsRef.current = null;
           } else {
             try {
-            const prevCooldown = prev.player.shootCooldown;
-            const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
-            const tickInput =
-              prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
-            const next = tick(tickInput, dtMs, {
-              playerX: inputRef.current.playerX,
-              fire: inputRef.current.fire,
-            });
-            let applied = next;
-            if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
-              applied = {
-                ...next,
-                phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
-                player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
-              };
-            }
-            stateRef.current = applied;
-            if (applied.score !== prevScoreRef.current) {
-              prevScoreRef.current = applied.score;
-              onScoreChangeRef.current?.(applied.score);
-            }
-            if (
-              applied.player.shootCooldown > prevCooldown &&
-              applied.activePowerUp?.type === "lightning"
-            ) {
-              onLaserFireRef.current?.();
-            }
-            const nowType = applied.activePowerUp?.type ?? null;
-            if (prevActivePowerUpRef.current === null && nowType !== null) {
-              onPowerUpCollectRef.current?.(nowType);
-            }
-            prevActivePowerUpRef.current = nowType;
-            if (applied.explosions.length > prev.explosions.length) {
-              onExplosionRef.current?.();
-            }
-            if (applied.player.lives < prevLivesRef.current) {
-              if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
-            }
-            prevLivesRef.current = applied.player.lives;
-            // WinTransition replaces WaveClear for all normal wave clears
-            if (applied.phase === "WinTransition" && prevPhaseRef.current !== "WinTransition") {
-              onWaveClearRef.current?.();
-              if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
-            }
-            if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
-              onWaveClearRef.current?.();
-              if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
-            }
-            if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
-              onFreeFireZoneRef.current?.();
-            }
-            // WinTransition → SwoopIn: engine has already built the next wave; start countdown
-            if (prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn") {
-              countdownMsRef.current = 5000;
-              inputRef.current.playerX = applied.player.x; // stay where AI left the ship
-            }
-            prevPhaseRef.current = applied.phase;
-            if (applied.phase === "GameOver") {
-              onGameOverRef.current?.(applied.score, applied.wave);
-            }
+              const prevCooldown = prev.player.shootCooldown;
+              const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
+              const tickInput =
+                prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
+              const next = tick(tickInput, dtMs, {
+                playerX: inputRef.current.playerX,
+                fire: inputRef.current.fire,
+              });
+              let applied = next;
+              if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
+                applied = {
+                  ...next,
+                  phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
+                  player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
+                };
+              }
+              stateRef.current = applied;
+              if (applied.score !== prevScoreRef.current) {
+                prevScoreRef.current = applied.score;
+                onScoreChangeRef.current?.(applied.score);
+              }
+              if (
+                applied.player.shootCooldown > prevCooldown &&
+                applied.activePowerUp?.type === "lightning"
+              ) {
+                onLaserFireRef.current?.();
+              }
+              const nowType = applied.activePowerUp?.type ?? null;
+              if (prevActivePowerUpRef.current === null && nowType !== null) {
+                onPowerUpCollectRef.current?.(nowType);
+              }
+              prevActivePowerUpRef.current = nowType;
+              if (applied.explosions.length > prev.explosions.length) {
+                onExplosionRef.current?.();
+              }
+              if (applied.player.lives < prevLivesRef.current) {
+                if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
+              }
+              prevLivesRef.current = applied.player.lives;
+              // WinTransition replaces WaveClear for all normal wave clears
+              if (applied.phase === "WinTransition" && prevPhaseRef.current !== "WinTransition") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
+              if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
+              if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
+                onFreeFireZoneRef.current?.();
+              }
+              // WinTransition → SwoopIn: engine has already built the next wave; start countdown
+              if (prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn") {
+                countdownMsRef.current = 5000;
+                inputRef.current.playerX = applied.player.x; // stay where AI left the ship
+              }
+              prevPhaseRef.current = applied.phase;
+              if (applied.phase === "GameOver") {
+                onGameOverRef.current?.(applied.score, applied.wave);
+              }
             } catch (e) {
               Sentry.captureException(e, { tags: { subsystem: "starswarm.loop" } });
             }

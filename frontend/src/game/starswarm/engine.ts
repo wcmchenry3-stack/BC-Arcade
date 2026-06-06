@@ -72,8 +72,10 @@ const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
 const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 
-const WAVE_CLEAR_PAUSE = 1600; // ms (legacy path; normal waves use WinTransition)
-const FREE_FIRE_CLEAR_PAUSE = 2200; // ms (legacy; free-fire also uses WinTransition now)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const WAVE_CLEAR_PAUSE = 1600; // unused — normal waves now use WinTransition
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const FREE_FIRE_CLEAR_PAUSE = 2200; // unused — free-fire waves also use WinTransition
 
 // WinTransition cinematic sequence
 export const WIN_FREEZE_MS = 900; // ms hard freeze before autopilot kicks in

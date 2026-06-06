@@ -18,7 +18,6 @@ import {
   BULLET_C_W,
   HIT_FLASH_DURATION,
   POWERUP_DURATION,
-  WIN_FREEZE_MS,
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
@@ -146,6 +145,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in renderState must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
+    // True when the active countdown follows a WinTransition (shows wave banner + 5 beats).
+    // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
+    const winTransitionCountdownRef = useRef(false);
     const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
@@ -253,6 +255,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
       pendingFreeFireZoneRef.current = false;
+      winTransitionCountdownRef.current = false;
       setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3, winTransitionCountdown: false });
     }, [resetTick, width, height]);
 
@@ -364,6 +367,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const startingCountdown = fromWaveClear || fromWinTransition;
               if (startingCountdown) {
                 countdownMsRef.current = fromWinTransition ? 5000 : 3000;
+                winTransitionCountdownRef.current = fromWinTransition;
                 if (fromWinTransition) {
                   // Sync input to where AI parked the ship
                   inputRef.current.playerX = applied.player.x;
@@ -392,13 +396,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           countdownMsRef.current !== null
             ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
             : null;
-        const isWinTransitionCountdown =
-          countdownMsRef.current !== null && countdownMsRef.current > 3000;
         setRenderState({
           game: gameRef.current,
           sf: sfRef.current,
           countdownDigit,
-          winTransitionCountdown: isWinTransitionCountdown,
+          winTransitionCountdown: winTransitionCountdownRef.current,
         });
         id = requestAnimationFrame(loop);
       }
