@@ -266,10 +266,8 @@ function holdHard(
     // Only the final hold (rollsUsed === 2) warrants full EV enumeration.
     // For earlier holds — or if called unexpectedly at rollsUsed === 0 —
     // fall back to the medium heuristic. 2-step lookahead is O(6^10) and
-    // infeasible at runtime.
-    // Note: the bonus proximity override below does NOT apply here; holdMedium's
-    // 4-run check fires before its bonus pursuit, so Hard still chases straights
-    // on rolls 1 and 2. Fixing that path is a separate concern.
+    // infeasible at runtime. The holdMedium already-scored-category guards
+    // (full_house, straights) therefore apply to Hard rolls 1 and 2 as well.
     return holdMedium(dice, scores);
   }
 
@@ -339,11 +337,12 @@ function scoreMedium(
   const s = diceSum(dice);
   const counts = faceCounts(dice);
 
-  // Joker: jokerPossibleScores already enforces priority rules; just pick highest value.
-  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
-
   // Yacht — always take 50 pts
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
+
+  // Joker: yacht is already scored when isJokerRoll is true, so the Yacht branch above is
+  // unreachable for jokers. jokerPossibleScores enforces priority rules; just pick highest value.
+  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
 
   // Bonus-closing: scoring this upper cat reaches ≥ 63; the deferred +35 beats most combos.
   // cnt >= 3 of any face makes a legal large straight impossible, so this safely fires before
@@ -415,11 +414,12 @@ function scoreHard(
   const trailing = myScore < opponentScore - 30;
   const leading = myScore > opponentScore + 50;
 
-  // Joker: jokerPossibleScores already enforces priority rules; just pick highest value.
-  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
-
   // Always take Yacht
   if ("yacht" in legal && legal["yacht"] === 50) return "yacht";
+
+  // Joker: yacht is already scored when isJokerRoll is true, so the Yacht branch above is
+  // unreachable for jokers. jokerPossibleScores enforces priority rules; just pick highest value.
+  if (isJokerRoll(dice, scores)) return bestInLegal(legal) ?? open[0]!;
 
   // Always take Large Straight
   if ("large_straight" in legal && (legal["large_straight"] ?? 0) > 0) return "large_straight";
