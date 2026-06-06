@@ -4,6 +4,8 @@ import BettingPanel from "../BettingPanel";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { DEFAULT_RULES } from "../../../game/blackjack/engine";
 
+jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
+
 function renderPanel(
   overrides: Partial<{
     chips: number;
@@ -103,5 +105,46 @@ describe("BettingPanel", () => {
     const { getByLabelText } = renderPanel({ chips: 10 });
     const btn = getByLabelText(/25.*not available/i);
     expect(btn.props.accessibilityState.disabled).toBe(true);
+  });
+
+  describe("tooltip toggle", () => {
+    function openRules(utils: ReturnType<typeof renderPanel>) {
+      fireEvent.press(utils.getByLabelText(/table rules/i));
+    }
+
+    it("tapping soft17 info button shows tooltip text", () => {
+      const utils = renderPanel();
+      openRules(utils);
+      fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      expect(utils.getByText(/dealer stands on soft 17/i)).toBeTruthy();
+    });
+
+    it("tapping soft17 info button again hides tooltip text", () => {
+      const utils = renderPanel();
+      openRules(utils);
+      fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+    });
+
+    it("only one tooltip is visible at a time", () => {
+      const utils = renderPanel();
+      openRules(utils);
+      fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      fireEvent.press(utils.getByLabelText(/information about deck count/i));
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+      expect(utils.getByText(/number of decks shuffled/i)).toBeTruthy();
+    });
+
+    it("closing the rules panel resets active tooltip", () => {
+      const utils = renderPanel();
+      openRules(utils);
+      fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      // Close the panel
+      fireEvent.press(utils.getByLabelText(/table rules/i));
+      // Reopen — tooltip should not be visible
+      openRules(utils);
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+    });
   });
 });
