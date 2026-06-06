@@ -6,6 +6,7 @@
   "hud.score": "SCORE",
   "hud.best": "BEST",
   "hud.wave": "WAVE",
+  "phase.missionComplete": "MISSION COMPLETE",
   "phase.waveClear": "WAVE CLEAR",
   "phase.freeFireZone": "FREE FIRE ZONE",
   "phase.hits": "HITS: {{count}}",

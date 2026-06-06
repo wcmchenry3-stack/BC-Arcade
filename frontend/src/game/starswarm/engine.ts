@@ -72,8 +72,14 @@ const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
 const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 
-const WAVE_CLEAR_PAUSE = 1600; // ms
-const FREE_FIRE_CLEAR_PAUSE = 2200; // ms
+const WAVE_CLEAR_PAUSE = 1600; // ms (legacy path; normal waves use WinTransition)
+const FREE_FIRE_CLEAR_PAUSE = 2200; // ms (legacy; free-fire also uses WinTransition now)
+
+// WinTransition cinematic sequence
+export const WIN_FREEZE_MS = 900; // ms hard freeze before autopilot kicks in
+const WIN_AUTOPILOT_ACCEL = 0.0009; // px/ms² upward acceleration
+const WIN_AUTOPILOT_MAX_VY = 1.3; // px/ms terminal upward speed
+const WIN_AUTOPILOT_STEER = 0.45; // px/ms lateral AI steering speed
 const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
@@ -681,6 +687,10 @@ function buildWaveState(
     freeFirePerfect: false,
     playerFireDisabled: false,
     enemyFireDisabled: false,
+    winTransitionStage: "freeze",
+    winTransitionElapsed: 0,
+    playerYOffset: 0,
+    playerVY: 0,
   };
 }
 
@@ -695,6 +705,10 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
     const timer = state.phaseTimer - dtMs;
     if (timer <= 0) return startNextWave(state);
     return { ...state, phaseTimer: timer };
+  }
+
+  if (state.phase === "WinTransition") {
+    return tickWinTransition(state, dtMs);
   }
 
   // #1078: decrement slow-mo timer with real time; scale all gameplay by BONUS_LIFE_SLOW_MO_SCALE
@@ -1731,6 +1745,82 @@ function tickExplosions(state: StarSwarmState, dtMs: number): StarSwarmState {
 }
 
 // ---------------------------------------------------------------------------
+// WinTransition — cinematic handoff between waves
+// ---------------------------------------------------------------------------
+
+function tickWinTransition(state: StarSwarmState, dtMs: number): StarSwarmState {
+  const elapsed = state.winTransitionElapsed + dtMs;
+
+  if (state.winTransitionStage === "freeze") {
+    if (elapsed >= WIN_FREEZE_MS) {
+      return { ...state, winTransitionElapsed: elapsed, winTransitionStage: "autopilot" };
+    }
+    return { ...state, winTransitionElapsed: elapsed };
+  }
+
+  // Autopilot: advance enemy bullets (so AI has something to dodge) and finish explosions
+  const enemyBullets = state.enemyBullets
+    .map((b) => ({ ...b, x: b.x + b.vx * dtMs, y: b.y + b.vy * dtMs }))
+    .filter((b) => b.y - b.height / 2 < state.canvasH && b.x > -10 && b.x < state.canvasW + 10);
+
+  const explosions = state.explosions
+    .map((ex) => {
+      const ft = ex.frameTimer - dtMs;
+      return ft <= 0 ? { ...ex, frame: ex.frame + 1, frameTimer: EXPLOSION_FRAME_MS } : { ...ex, frameTimer: ft };
+    })
+    .filter((ex) => ex.frame < EXPLOSION_FRAMES);
+
+  // AI dodge: scan bullets within 220 px above the ship and 100 px to either side
+  const currentShipX = state.player.x;
+  const currentShipY = state.player.y - state.playerYOffset;
+  const threats = enemyBullets.filter(
+    (b) => b.y > currentShipY - 220 && b.y < currentShipY + 30 && Math.abs(b.x - currentShipX) < 100
+  );
+
+  let targetX = currentShipX;
+  if (threats.length > 0) {
+    const nearest = threats.reduce((best, b) =>
+      Math.abs(b.y - currentShipY) < Math.abs(best.y - currentShipY) ? b : best
+    );
+    const dodge = nearest.x < currentShipX ? 90 : -90;
+    const hw = PLAYER_W / 2;
+    targetX = Math.max(hw, Math.min(state.canvasW - hw, currentShipX + dodge));
+  }
+
+  const dxToTarget = targetX - currentShipX;
+  const stepX = Math.sign(dxToTarget) * Math.min(Math.abs(dxToTarget), WIN_AUTOPILOT_STEER * dtMs);
+  const newPlayerX = currentShipX + stepX;
+
+  const newVY = Math.min(state.playerVY + WIN_AUTOPILOT_ACCEL * dtMs, WIN_AUTOPILOT_MAX_VY);
+  const newYOffset = state.playerYOffset + newVY * dtMs;
+
+  // Once ship has flown fully off the top → hand off to the next wave
+  if (state.player.y - newYOffset < -(PLAYER_H + 20)) {
+    return startNextWave({
+      ...state,
+      player: { ...state.player, x: newPlayerX },
+      enemyBullets: [],
+      playerBullets: [],
+      explosions,
+      playerYOffset: 0,
+      playerVY: 0,
+      winTransitionElapsed: 0,
+      winTransitionStage: "freeze",
+    });
+  }
+
+  return {
+    ...state,
+    enemyBullets,
+    explosions,
+    player: { ...state.player, x: newPlayerX },
+    playerYOffset: newYOffset,
+    playerVY: newVY,
+    winTransitionElapsed: elapsed,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Phase transitions
 // ---------------------------------------------------------------------------
 
@@ -1744,7 +1834,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     return state;
   }
 
-  // FreeFireZone → WaveClear once all challenge enemies have exited
+  // FreeFireZone → WinTransition once all challenge enemies have exited
   if (state.phase === "FreeFireZone") {
     // Enemies exit when their path completes (they reach formationY which is off-screen bottom)
     const anyAlive = liveEnemies.length > 0;
@@ -1759,8 +1849,11 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
         ...state,
         score:
           state.score + waveClearBonus + Math.round(state.freeFireHits * 50 * sm) + perfectBonus,
-        phase: "WaveClear",
-        phaseTimer: FREE_FIRE_CLEAR_PAUSE,
+        phase: "WinTransition",
+        winTransitionStage: "freeze",
+        winTransitionElapsed: 0,
+        playerYOffset: 0,
+        playerVY: 0,
         freeFirePerfect: perfect,
         bombFlashTimer: 0,
       };
@@ -1768,7 +1861,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     return state;
   }
 
-  // Playing → WaveClear once all enemies dead
+  // Playing → WinTransition once all enemies dead
   if (state.phase === "Playing") {
     if (liveEnemies.length === 0) {
       const sm = difficultyMultiplier(state.difficulty);
@@ -1776,8 +1869,11 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
       return {
         ...state,
         score: state.score + waveClearBonus,
-        phase: "WaveClear",
-        phaseTimer: WAVE_CLEAR_PAUSE,
+        phase: "WinTransition",
+        winTransitionStage: "freeze",
+        winTransitionElapsed: 0,
+        playerYOffset: 0,
+        playerVY: 0,
         bombFlashTimer: 0,
       };
     }
