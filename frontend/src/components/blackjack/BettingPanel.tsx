@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { GameRules } from "../../game/blackjack/types";
@@ -164,7 +165,7 @@ export default function BettingPanel({
                   accessibilityState={{ expanded: activeTooltip === "soft17" }}
                   hitSlop={8}
                 >
-                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                  <MaterialIcons name="info-outline" size={14} color={colors.textMuted} />
                 </Pressable>
               </View>
               <View style={styles.ruleOptions}>
@@ -233,7 +234,7 @@ export default function BettingPanel({
                   accessibilityState={{ expanded: activeTooltip === "decks" }}
                   hitSlop={8}
                 >
-                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                  <MaterialIcons name="info-outline" size={14} color={colors.textMuted} />
                 </Pressable>
               </View>
               <View style={styles.stepper}>
@@ -289,7 +290,7 @@ export default function BettingPanel({
                   accessibilityState={{ expanded: activeTooltip === "penetration" }}
                   hitSlop={8}
                 >
-                  <Text style={[styles.tooltipIcon, { color: colors.textMuted }]}>ⓘ</Text>
+                  <MaterialIcons name="info-outline" size={14} color={colors.textMuted} />
                 </Pressable>
               </View>
               <View style={styles.stepper}>
@@ -435,9 +436,6 @@ const styles = StyleSheet.create({
   ruleLabel: {
     fontSize: 13,
     fontWeight: "500",
-  },
-  tooltipIcon: {
-    fontSize: 13,
   },
   tooltipText: {
     fontSize: 12,
