@@ -446,13 +446,13 @@ describe("Scoring", () => {
 // ---------------------------------------------------------------------------
 
 describe("Wave progression", () => {
-  it("advances to next wave after WaveClear pause", () => {
+  it("advances to next wave after WinTransition", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    // Kill all enemies to trigger WaveClear
+    // Kill all enemies to trigger WinTransition
     s = advanceMs(s, 8000);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
 
     // Advance through pause
     s = advanceMs(s, 3000);
@@ -519,11 +519,11 @@ describe("FreeFireZone", () => {
     expect(s.freeFireHits).toBe(1);
   });
 
-  it("transitions to WaveClear when all challenge enemies exit", () => {
+  it("transitions to WinTransition when all challenge enemies exit", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
   });
 });
 
@@ -778,7 +778,7 @@ describe("GameOver terminal state", () => {
 // ---------------------------------------------------------------------------
 
 describe("FreeFireZone off-screen cleanup", () => {
-  it("transitions to WaveClear after enemies exit without being shot", () => {
+  it("transitions to WinTransition after enemies exit without being shot", () => {
     // Wave 3 starts as FreeFireZone; enemies follow a path to canvasH + 80
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("FreeFireZone");
@@ -787,7 +787,7 @@ describe("FreeFireZone off-screen cleanup", () => {
     // It exits the canvas after 39*400 + 5000 = 20600 ms.
     // Advance past that with no firing so enemies scroll off instead of being shot.
     s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
   });
 
   it("transitions immediately if player shoots all enemies early", () => {
@@ -797,7 +797,7 @@ describe("FreeFireZone off-screen cleanup", () => {
     // Force all enemies dead to simulate shooting them all
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
   });
 });
 
@@ -2292,9 +2292,9 @@ describe("#1037 Difficulty tiers", () => {
     base = tick(wipeAll(base), 16, NO_INPUT);
     hard = tick(wipeAll(hard), 16, NO_INPUT);
 
-    // Both should be in WaveClear and hard score should be ≥ 4× base score
-    expect(base.phase).toBe("WaveClear");
-    expect(hard.phase).toBe("WaveClear");
+    // Both should be in WinTransition and hard score should be ≥ 4× base score
+    expect(base.phase).toBe("WinTransition");
+    expect(hard.phase).toBe("WinTransition");
     expect(hard.score).toBeGreaterThanOrEqual(base.score * 4);
   });
 });
@@ -2329,7 +2329,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
     expect(s.freeFirePerfect).toBe(false);
   });
 
-  it("freeFirePerfect is true on WaveClear when all 40 enemies were hit", () => {
+  it("freeFirePerfect is true on WinTransition when all 40 enemies were hit", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // Force all 40 hits and kill every enemy in one tick
     s = {
@@ -2338,15 +2338,15 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
     expect(s.freeFirePerfect).toBe(true);
   });
 
-  it("freeFirePerfect is false on WaveClear when enemies scroll off without being shot", () => {
+  it("freeFirePerfect is false on WinTransition when enemies scroll off without being shot", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
     s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
     expect(s.freeFirePerfect).toBe(false);
   });
 
@@ -2354,7 +2354,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
     // Zero-hit path: enemies scroll off — wave-clear bonus is 0 (conditional on hits, #1463)
     let noPerfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     noPerfect = advanceMs(noPerfect, 22000, NO_INPUT);
-    expect(noPerfect.phase).toBe("WaveClear");
+    expect(noPerfect.phase).toBe("WinTransition");
     expect(noPerfect.score).toBe(0); // zero kills → zero wave-clear bonus
 
     // Full-hit path: all 40 hit + perfect → waveClear(1500) + hits(2000) + perfect(10000) = 13500
@@ -2365,7 +2365,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: perfect.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     perfect = tick(perfect, 16, NO_INPUT);
-    expect(perfect.phase).toBe("WaveClear");
+    expect(perfect.phase).toBe("WinTransition");
 
     // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
     expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
@@ -2380,7 +2380,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WaveClear");
+    expect(s.phase).toBe("WinTransition");
     // waveClear(750) + hits(20×50=1000) + no perfect bonus = 1750
     expect(s.score).toBe(750 + 20 * 50);
   });
