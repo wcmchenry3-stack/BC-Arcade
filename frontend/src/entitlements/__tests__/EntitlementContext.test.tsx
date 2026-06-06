@@ -262,6 +262,78 @@ describe("EntitlementProvider", () => {
       expect(ctx.canPlay("starswarm")).toBe(true);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Dev-override cache persistence (regression: Sentry GAMESAPI-4D9816B4)
+  //
+  // When ENTITLEMENT_DEV_OVERRIDE was active in Render, the backend issued JWTs
+  // listing all premium games. Devices cached those tokens. After the override was
+  // removed, network failures prevented fetching a corrected token, so the stale
+  // all-games cache remained in effect for up to 7 days.
+  // ---------------------------------------------------------------------------
+
+  describe("dev-override cache persistence (Sentry GAMESAPI-4D9816B4)", () => {
+    const ALL_PREMIUM = ["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"];
+
+    it("all-games token from dev-override period still grants access on cold-launch network failure within grace period", async () => {
+      // Simulate a device that cached an all-games token while ENTITLEMENT_DEV_OVERRIDE was active
+      await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload(ALL_PREMIUM)));
+      await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+      mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+
+      await renderProvider();
+
+      // The cached token is still within its 7-day grace period, so all premium games unlock.
+      // This is the expected (by-design) offline grace behavior — any change to deny access
+      // here would break legitimate offline users. The fix is to ensure the server can be
+      // reached so the stale token is replaced.
+      for (const slug of ALL_PREMIUM) {
+        expect(ctx.canPlay(slug)).toBe(true);
+      }
+    });
+
+    it("foreground refresh network failure preserves fresh in-memory state and does not regress to stale cache", async () => {
+      // Seed an all-games cache (simulates what a dev-override period left behind)
+      await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload(ALL_PREMIUM)));
+      await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+
+      // First init succeeds with a clean no-entitlements token (override now off on server)
+      mockRequest.mockResolvedValueOnce({
+        token: makeToken(makePayload([])),
+        expires_at: "2099-01-01T00:00:00Z",
+      });
+
+      await renderProvider();
+      expect(ctx.canPlay("cascade")).toBe(false);
+
+      // Foreground refresh fails at the network level
+      mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+      const listener = getAppStateListener();
+      await act(async () => {
+        listener("active");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+
+      // refresh() preserves the last successful in-memory state; it does NOT re-load from cache
+      expect(ctx.canPlay("cascade")).toBe(false);
+    });
+
+    it("all-games dev-override cache is denied once the 7-day grace period expires", async () => {
+      const expiredPayload = makePayload(ALL_PREMIUM, -3_600_000); // token itself expired
+      await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(expiredPayload));
+      await AsyncStorage.setItem(
+        CACHED_AT_STORAGE_KEY,
+        new Date(Date.now() - (OFFLINE_GRACE_MS + 24 * 60 * 60 * 1000)).toISOString()
+      );
+      mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+
+      await renderProvider();
+
+      for (const slug of ALL_PREMIUM) {
+        expect(ctx.canPlay(slug)).toBe(false);
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
