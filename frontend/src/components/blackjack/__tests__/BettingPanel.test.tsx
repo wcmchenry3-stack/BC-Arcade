@@ -116,9 +116,7 @@ describe("BettingPanel", () => {
       const utils = renderPanel();
       openRules(utils);
       fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
-      expect(
-        utils.getByText(/dealer stands on soft 17/i)
-      ).toBeTruthy();
+      expect(utils.getByText(/dealer stands on soft 17/i)).toBeTruthy();
     });
 
     it("tapping soft17 info button again hides tooltip text", () => {
@@ -126,9 +124,7 @@ describe("BettingPanel", () => {
       openRules(utils);
       fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
       fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
-      expect(
-        utils.queryByText(/dealer stands on soft 17/i)
-      ).toBeNull();
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
     });
 
     it("only one tooltip is visible at a time", () => {
