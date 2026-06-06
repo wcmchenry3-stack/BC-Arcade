@@ -95,7 +95,7 @@
   },
   "devDependencies": {
     "@expo/config-plugins": "~56.0.8",
-    "@lhci/cli": "^0.14.0",
+    "@lhci/cli": "^0.15.1",
     "@react-native/jest-preset": "~0.85.3",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "29.5.14",
