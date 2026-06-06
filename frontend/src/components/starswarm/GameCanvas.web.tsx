@@ -740,10 +740,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       if (state.phase === "WinTransition") {
         // MISSION COMPLETE fades in 200ms after the freeze starts
-        const bannerAlpha = Math.min(
-          1,
-          Math.max(0, (state.winTransitionElapsed - 200) / 400)
-        );
+        const bannerAlpha = Math.min(1, Math.max(0, (state.winTransitionElapsed - 200) / 400));
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
           ctx.font = "bold 26px 'Courier New', monospace";

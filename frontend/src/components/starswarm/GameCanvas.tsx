@@ -256,7 +256,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       bonusFlashEndRef.current = 0;
       pendingFreeFireZoneRef.current = false;
       winTransitionCountdownRef.current = false;
-      setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3, winTransitionCountdown: false });
+      setRenderState({
+        game: gameRef.current,
+        sf: sfRef.current,
+        countdownDigit: 3,
+        winTransitionCountdown: false,
+      });
     }, [resetTick, width, height]);
 
     // RAF game loop — drives both engine tick and Skia re-renders
@@ -362,8 +367,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 applied.phase !== "WaveClear" &&
                 applied.phase !== "GameOver";
               const fromWinTransition =
-                prevPhaseRef.current === "WinTransition" &&
-                applied.phase === "SwoopIn";
+                prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn";
               const startingCountdown = fromWaveClear || fromWinTransition;
               if (startingCountdown) {
                 countdownMsRef.current = fromWinTransition ? 5000 : 3000;
@@ -551,7 +555,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             })}
 
             {/* Player — hidden once off-screen during WinTransition */}
-            {!blink && shipVisible &&
+            {!blink &&
+              shipVisible &&
               (images.playerShip ? (
                 <SkiaImage
                   image={images.playerShip}
@@ -776,9 +781,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               {winTransitionCountdown && (
-                <Text style={styles.waveIncomingText}>
-                  {`— ${t("hud.wave")} ${state.wave} —`}
-                </Text>
+                <Text style={styles.waveIncomingText}>{`— ${t("hud.wave")} ${state.wave} —`}</Text>
               )}
               <Text style={styles.countdownText}>{countdownDigit}</Text>
             </View>
@@ -790,10 +793,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 style={[
                   styles.overlayTitle,
                   {
-                    opacity: Math.min(
-                      1,
-                      Math.max(0, (state.winTransitionElapsed - 200) / 400)
-                    ),
+                    opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 200) / 400)),
                   },
                 ]}
               >
@@ -804,10 +804,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                   style={[
                     styles.perfectBanner,
                     {
-                      opacity: Math.min(
-                        1,
-                        Math.max(0, (state.winTransitionElapsed - 400) / 400)
-                      ),
+                      opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 400) / 400)),
                     },
                   ]}
                 >

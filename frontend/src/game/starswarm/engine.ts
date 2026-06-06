@@ -1768,7 +1768,9 @@ function tickWinTransition(state: StarSwarmState, dtMs: number): StarSwarmState 
   const explosions = state.explosions
     .map((ex) => {
       const ft = ex.frameTimer - dtMs;
-      return ft <= 0 ? { ...ex, frame: ex.frame + 1, frameTimer: EXPLOSION_FRAME_MS } : { ...ex, frameTimer: ft };
+      return ft <= 0
+        ? { ...ex, frame: ex.frame + 1, frameTimer: EXPLOSION_FRAME_MS }
+        : { ...ex, frameTimer: ft };
     })
     .filter((ex) => ex.frame < EXPLOSION_FRAMES);
 
