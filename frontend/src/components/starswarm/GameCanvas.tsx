@@ -90,6 +90,8 @@ interface RenderState {
   game: StarSwarmState;
   sf: StarfieldState;
   countdownDigit: number | null;
+  /** True when the active countdown follows a WinTransition (shows wave banner). */
+  winTransitionCountdown: boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -143,6 +145,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in renderState must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
+    // True when the active countdown follows a WinTransition (shows wave banner + 5 beats).
+    // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
+    const winTransitionCountdownRef = useRef(false);
     const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
@@ -204,6 +209,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       game: gameRef.current,
       sf: sfRef.current,
       countdownDigit: initialState ? null : 3,
+      winTransitionCountdown: false,
     });
 
     useImperativeHandle(
@@ -249,7 +255,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
       pendingFreeFireZoneRef.current = false;
-      setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit: 3 });
+      winTransitionCountdownRef.current = false;
+      setRenderState({
+        game: gameRef.current,
+        sf: sfRef.current,
+        countdownDigit: 3,
+        winTransitionCountdown: false,
+      });
     }, [resetTick, width, height]);
 
     // RAF game loop — drives both engine tick and Skia re-renders
@@ -337,21 +349,36 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
+              // WinTransition replaces WaveClear for all normal/free-fire clears
+              if (applied.phase === "WinTransition" && prevPhaseRef.current !== "WinTransition") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
               if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
                 onWaveClearRef.current?.();
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
-              // Start countdown when WaveClear ends. Evaluated before phase callbacks so
-              // onFreeFireZone fires after the countdown expires, not during it.
-              // prevPhaseRef.current is updated below — after this check — so the WaveClear
-              // guard remains valid for the full duration of this tick.
-              const startingCountdown =
+              // Start countdown when WaveClear or WinTransition ends.
+              // WinTransition gets a 5-beat countdown; legacy WaveClear keeps 3 s.
+              // Evaluated before phase callbacks so onFreeFireZone fires after countdown expires.
+              // prevPhaseRef.current is updated below — after this check.
+              const fromWaveClear =
                 prevPhaseRef.current === "WaveClear" &&
                 applied.phase !== "WaveClear" &&
                 applied.phase !== "GameOver";
-              if (startingCountdown) countdownMsRef.current = 3000;
+              const fromWinTransition =
+                prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn";
+              const startingCountdown = fromWaveClear || fromWinTransition;
+              if (startingCountdown) {
+                countdownMsRef.current = fromWinTransition ? 5000 : 3000;
+                winTransitionCountdownRef.current = fromWinTransition;
+                if (fromWinTransition) {
+                  // Sync input to where AI parked the ship
+                  inputRef.current.playerX = applied.player.x;
+                }
+              }
               if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
-                if (startingCountdown) {
+                if (fromWaveClear) {
                   pendingFreeFireZoneRef.current = true;
                 } else {
                   onFreeFireZoneRef.current?.();
@@ -373,7 +400,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           countdownMsRef.current !== null
             ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
             : null;
-        setRenderState({ game: gameRef.current, sf: sfRef.current, countdownDigit });
+        setRenderState({
+          game: gameRef.current,
+          sf: sfRef.current,
+          countdownDigit,
+          winTransitionCountdown: winTransitionCountdownRef.current,
+        });
         id = requestAnimationFrame(loop);
       }
 
@@ -381,8 +413,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit } = renderState;
+    const { game: state, sf, countdownDigit, winTransitionCountdown } = renderState;
     const { player } = state;
+    const playerDisplayY =
+      state.phase === "WinTransition" ? player.y - state.playerYOffset : player.y;
+    const shipVisible = playerDisplayY + player.height > 0;
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, state.score);
@@ -519,13 +554,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               );
             })}
 
-            {/* Player */}
+            {/* Player — hidden once off-screen during WinTransition */}
             {!blink &&
+              shipVisible &&
               (images.playerShip ? (
                 <SkiaImage
                   image={images.playerShip}
                   x={player.x - player.width / 2}
-                  y={player.y - player.height / 2}
+                  y={playerDisplayY - player.height / 2}
                   width={player.width}
                   height={player.height}
                   fit="fill"
@@ -533,7 +569,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ) : (
                 <Rect
                   x={player.x - player.width / 2}
-                  y={player.y - player.height / 2}
+                  y={playerDisplayY - player.height / 2}
                   width={player.width}
                   height={player.height}
                   color="#00ffcc"
@@ -541,19 +577,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ))}
 
             {/* #1033 Shield aura — glowing ring when shield is active */}
-            {!blink && state.activePowerUp?.type === "shield" && (
+            {!blink && shipVisible && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
-                cy={player.y}
+                cy={playerDisplayY}
                 r={player.width * 0.8}
                 color="rgba(0,170,255,0.25)"
                 style="fill"
               />
             )}
-            {!blink && state.activePowerUp?.type === "shield" && (
+            {!blink && shipVisible && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
-                cy={player.y}
+                cy={playerDisplayY}
                 r={player.width * 0.8}
                 color="rgba(0,170,255,0.75)"
                 style="stroke"
@@ -562,10 +598,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             )}
 
             {/* Lightning super-state electric tint on player ship */}
-            {!blink && state.activePowerUp?.type === "lightning" && (
+            {!blink && shipVisible && state.activePowerUp?.type === "lightning" && (
               <Rect
                 x={player.x - player.width / 2}
-                y={player.y - player.height / 2}
+                y={playerDisplayY - player.height / 2}
                 width={player.width}
                 height={player.height}
                 color="rgba(255,238,0,0.45)"
@@ -744,7 +780,37 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
           {countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
+              {winTransitionCountdown && (
+                <Text style={styles.waveIncomingText}>{`— ${t("hud.wave")} ${state.wave} —`}</Text>
+              )}
               <Text style={styles.countdownText}>{countdownDigit}</Text>
+            </View>
+          )}
+
+          {state.phase === "WinTransition" && (
+            <View style={styles.phaseOverlay} pointerEvents="none">
+              <Text
+                style={[
+                  styles.overlayTitle,
+                  {
+                    opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 200) / 400)),
+                  },
+                ]}
+              >
+                {t("phase.missionComplete")}
+              </Text>
+              {state.freeFirePerfect && (
+                <Text
+                  style={[
+                    styles.perfectBanner,
+                    {
+                      opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 400) / 400)),
+                    },
+                  ]}
+                >
+                  {t("phase.perfect")}
+                </Text>
+              )}
             </View>
           )}
 
@@ -861,6 +927,14 @@ const styles = StyleSheet.create({
     textShadowColor: "#ff8800",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+  },
+  waveIncomingText: {
+    color: "#00ffcc",
+    fontSize: 16,
+    fontWeight: "bold",
+    textAlign: "center",
+    letterSpacing: 1,
+    marginBottom: 12,
   },
   countdownText: {
     color: "#00ffcc",

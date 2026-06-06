@@ -28,7 +28,8 @@ export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid
   | "Playing" // normal combat
   | "FreeFireZone" // non-hostile bonus wave
-  | "WaveClear" // brief pause before next wave
+  | "WaveClear" // brief pause before next wave (legacy / backward-compat)
+  | "WinTransition" // cinematic win sequence: freeze → AI autopilot → fly off
   | "GameOver";
 
 export interface Vec2 {
@@ -215,6 +216,15 @@ export interface StarSwarmState {
   readonly playerFireDisabled: boolean;
   /** Dev: enemy bullets are never pushed to the bullet list. */
   readonly enemyFireDisabled: boolean;
+  // --- WinTransition fields (meaningful only while phase === "WinTransition") ---
+  /** Sub-stage of the win-transition sequence. */
+  readonly winTransitionStage: "freeze" | "autopilot";
+  /** ms elapsed since WinTransition phase started. */
+  readonly winTransitionElapsed: number;
+  /** px the player ship has moved upward from its resting row; 0 normally. */
+  readonly playerYOffset: number;
+  /** Upward velocity px/ms for the ship during autopilot; 0 normally. */
+  readonly playerVY: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */

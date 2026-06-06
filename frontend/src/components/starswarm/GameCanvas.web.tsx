@@ -237,6 +237,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevPhaseRef = useRef(stateRef.current.phase);
+    // Pre-wave countdown: null = no countdown, positive ms = ticking, drives the 5-beat visual
+    const countdownMsRef = useRef<number | null>(null);
     const imagesRef = useRef<Images>({
       playerShip: null,
       buddyShip: null,
@@ -412,6 +414,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = stateRef.current.phase;
       prevActivePowerUpRef.current = null;
       triggerPowerUpRef.current = null;
+      countdownMsRef.current = null;
     }, [resetTick, width, height]);
 
     const draw = useCallback(() => {
@@ -427,6 +430,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       const t = tRef.current;
       const hs = Math.max(highScoreRef.current, state.score);
       const { player } = state;
+      // During WinTransition the ship flies upward; offset its rendered Y accordingly
+      const playerDisplayY =
+        state.phase === "WinTransition" ? player.y - state.playerYOffset : player.y;
+      const shipVisible = playerDisplayY + player.height > 0;
+      // Countdown digit (null = no countdown active)
+      const cMs = countdownMsRef.current;
+      const countdownDigit = cMs !== null ? Math.max(1, Math.ceil(cMs / 1000)) : null;
 
       const displayW = width * s;
       const displayH = height * s;
@@ -529,26 +539,26 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // Player (blink during invincibility)
+      // Player (blink during invincibility; hidden once off-screen during WinTransition)
       const blink =
         player.invincibleTimer > 0 &&
         Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
-      if (!blink) {
+      if (!blink && shipVisible) {
         const img = imgs.playerShip;
         if (img) {
           ctx.drawImage(
             img,
             player.x - player.width / 2,
-            player.y - player.height / 2,
+            playerDisplayY - player.height / 2,
             player.width,
             player.height
           );
         } else {
           ctx.fillStyle = C.player;
           ctx.beginPath();
-          ctx.moveTo(player.x, player.y - player.height / 2);
-          ctx.lineTo(player.x - player.width / 2, player.y + player.height / 2);
-          ctx.lineTo(player.x + player.width / 2, player.y + player.height / 2);
+          ctx.moveTo(player.x, playerDisplayY - player.height / 2);
+          ctx.lineTo(player.x - player.width / 2, playerDisplayY + player.height / 2);
+          ctx.lineTo(player.x + player.width / 2, playerDisplayY + player.height / 2);
           ctx.closePath();
           ctx.fill();
         }
@@ -557,13 +567,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.globalAlpha = 0.25;
           ctx.fillStyle = C.shieldAura;
           ctx.beginPath();
-          ctx.arc(player.x, player.y, player.width * 0.8, 0, Math.PI * 2);
+          ctx.arc(player.x, playerDisplayY, player.width * 0.8, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 0.8;
           ctx.strokeStyle = C.shieldRing;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(player.x, player.y, player.width * 0.8, 0, Math.PI * 2);
+          ctx.arc(player.x, playerDisplayY, player.width * 0.8, 0, Math.PI * 2);
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.lineWidth = 1;
@@ -575,7 +585,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.fillStyle = C.superTint;
           ctx.fillRect(
             player.x - player.width / 2,
-            player.y - player.height / 2,
+            playerDisplayY - player.height / 2,
             player.width,
             player.height
           );
@@ -728,6 +738,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
+      if (state.phase === "WinTransition") {
+        // MISSION COMPLETE fades in 200ms after the freeze starts
+        const bannerAlpha = Math.min(1, Math.max(0, (state.winTransitionElapsed - 200) / 400));
+        if (bannerAlpha > 0) {
+          ctx.globalAlpha = bannerAlpha;
+          ctx.font = "bold 26px 'Courier New', monospace";
+          ctx.fillStyle = C.waveClear;
+          ctx.shadowColor = C.waveClear;
+          ctx.shadowBlur = 18;
+          ctx.fillText(t("phase.missionComplete"), width / 2, height / 2);
+          ctx.shadowBlur = 0;
+          if (state.freeFirePerfect) {
+            ctx.font = "bold 18px 'Courier New', monospace";
+            ctx.fillStyle = "#ffdd00";
+            ctx.shadowColor = "#ff8800";
+            ctx.shadowBlur = 8;
+            ctx.fillText(t("phase.perfect"), width / 2, height / 2 + 34);
+            ctx.shadowBlur = 0;
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+
       if (state.phase === "FreeFireZone") {
         ctx.font = "bold 20px 'Courier New', monospace";
         ctx.fillStyle = C.freeFireZone;
@@ -746,6 +779,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.font = "16px 'Courier New', monospace";
         ctx.fillStyle = C.hudText;
         ctx.fillText(`${t("hud.score")} ${state.score}`, width / 2, height / 2 + 18);
+      }
+
+      // Pre-wave countdown (after WinTransition flies off)
+      if (countdownDigit !== null) {
+        // Wave incoming banner above the digit
+        ctx.font = "bold 16px 'Courier New', monospace";
+        ctx.fillStyle = C.waveClear;
+        ctx.fillText(`— ${t("hud.wave")} ${state.wave} —`, width / 2, height / 2 - 64);
+        // Large countdown digit
+        ctx.font = "bold 96px 'Courier New', monospace";
+        ctx.fillStyle = C.waveClear;
+        ctx.shadowColor = C.waveClear;
+        ctx.shadowBlur = 20;
+        ctx.fillText(String(countdownDigit), width / 2, height / 2);
+        ctx.shadowBlur = 0;
       }
 
       ctx.restore();
@@ -774,60 +822,76 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         const prev = stateRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
-          try {
-            const prevCooldown = prev.player.shootCooldown;
-            const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
-            const tickInput =
-              prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
-            const next = tick(tickInput, dtMs, {
-              playerX: inputRef.current.playerX,
-              fire: inputRef.current.fire,
-            });
-            let applied = next;
-            if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
-              applied = {
-                ...next,
-                phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
-                player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
-              };
+          if (countdownMsRef.current !== null) {
+            // Pre-wave countdown: freeze the engine, just tick the timer
+            countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
+            if (countdownMsRef.current === 0) countdownMsRef.current = null;
+          } else {
+            try {
+              const prevCooldown = prev.player.shootCooldown;
+              const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
+              const tickInput =
+                prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
+              const next = tick(tickInput, dtMs, {
+                playerX: inputRef.current.playerX,
+                fire: inputRef.current.fire,
+              });
+              let applied = next;
+              if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
+                applied = {
+                  ...next,
+                  phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
+                  player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
+                };
+              }
+              stateRef.current = applied;
+              if (applied.score !== prevScoreRef.current) {
+                prevScoreRef.current = applied.score;
+                onScoreChangeRef.current?.(applied.score);
+              }
+              if (
+                applied.player.shootCooldown > prevCooldown &&
+                applied.activePowerUp?.type === "lightning"
+              ) {
+                onLaserFireRef.current?.();
+              }
+              const nowType = applied.activePowerUp?.type ?? null;
+              if (prevActivePowerUpRef.current === null && nowType !== null) {
+                onPowerUpCollectRef.current?.(nowType);
+              }
+              prevActivePowerUpRef.current = nowType;
+              if (applied.explosions.length > prev.explosions.length) {
+                onExplosionRef.current?.();
+              }
+              if (applied.player.lives < prevLivesRef.current) {
+                if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
+              }
+              prevLivesRef.current = applied.player.lives;
+              // WinTransition replaces WaveClear for all normal wave clears
+              if (applied.phase === "WinTransition" && prevPhaseRef.current !== "WinTransition") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
+              if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
+                onWaveClearRef.current?.();
+                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
+              }
+              if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
+                onFreeFireZoneRef.current?.();
+              }
+              // WinTransition → SwoopIn: engine has already built the next wave; start countdown
+              if (prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn") {
+                countdownMsRef.current = 5000;
+                inputRef.current.playerX = applied.player.x; // stay where AI left the ship
+              }
+              prevPhaseRef.current = applied.phase;
+              if (applied.phase === "GameOver") {
+                onGameOverRef.current?.(applied.score, applied.wave);
+              }
+            } catch (e) {
+              Sentry.captureException(e, { tags: { subsystem: "starswarm.loop" } });
             }
-            stateRef.current = applied;
-            if (applied.score !== prevScoreRef.current) {
-              prevScoreRef.current = applied.score;
-              onScoreChangeRef.current?.(applied.score);
-            }
-            if (
-              applied.player.shootCooldown > prevCooldown &&
-              applied.activePowerUp?.type === "lightning"
-            ) {
-              onLaserFireRef.current?.();
-            }
-            const nowType = applied.activePowerUp?.type ?? null;
-            if (prevActivePowerUpRef.current === null && nowType !== null) {
-              onPowerUpCollectRef.current?.(nowType);
-            }
-            prevActivePowerUpRef.current = nowType;
-            if (applied.explosions.length > prev.explosions.length) {
-              onExplosionRef.current?.();
-            }
-            if (applied.player.lives < prevLivesRef.current) {
-              if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
-            }
-            prevLivesRef.current = applied.player.lives;
-            if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
-              onWaveClearRef.current?.();
-              if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
-            }
-            if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
-              onFreeFireZoneRef.current?.();
-            }
-            prevPhaseRef.current = applied.phase;
-            if (applied.phase === "GameOver") {
-              onGameOverRef.current?.(applied.score, applied.wave);
-            }
-          } catch (e) {
-            Sentry.captureException(e, { tags: { subsystem: "starswarm.loop" } });
-          }
+          } // end else (countdown not active)
         }
         // Starfield scrolls continuously, even on game over
         sfRef.current = tickStarfield(sfRef.current, dtMs);
