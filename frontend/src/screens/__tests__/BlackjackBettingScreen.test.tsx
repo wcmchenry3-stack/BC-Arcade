@@ -154,14 +154,14 @@ describe("BlackjackBettingScreen — chip balance visibility (GH #227)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GH #226 — Persistent table layout visible during betting phase
+// GH #226 — Persistent table layout; GH #1912 — labels hidden before deal
 // ---------------------------------------------------------------------------
 
-describe("BlackjackBettingScreen — persistent table layout (GH #226)", () => {
-  it("Dealer's Hand and Your Hand labels are visible during betting phase", async () => {
+describe("BlackjackBettingScreen — persistent table, no pre-deal labels", () => {
+  it("hand labels are hidden during betting phase when no cards are dealt", async () => {
     renderScreen();
     await screen.findByText("Deal");
-    expect(screen.getByText("Dealer's Hand")).toBeTruthy();
-    expect(screen.getByText("Your Hand")).toBeTruthy();
+    expect(screen.queryByText("Dealer's Hand")).toBeNull();
+    expect(screen.queryByText("Your Hand")).toBeNull();
   });
 });
