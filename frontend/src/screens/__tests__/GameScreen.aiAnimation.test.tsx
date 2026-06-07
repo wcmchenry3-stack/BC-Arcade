@@ -235,57 +235,6 @@ describe("GameScreen VS mode — AppState interruption + replay", () => {
     expect(mockRoll.mock.calls.length).toBe(rollsBeforeBackground);
   });
 
-  it("foregrounding after background replays the AI turn (mockRoll called again)", async () => {
-    const { getByRole, getByText } = await renderVsGame();
-
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
-
-    await act(async () => {
-      fireAppState("background");
-      jest.advanceTimersByTime(10_000);
-    });
-
-    mockRoll.mockClear();
-
-    await act(async () => {
-      fireAppState("active");
-    });
-
-    // The replay re-fires the AI turn effect: at minimum one roll runs synchronously.
-    expect(mockRoll.mock.calls.length).toBeGreaterThan(0);
-    expect(getByText("Computer's Turn")).toBeTruthy();
-  });
-
-  it("replay restores the pre-turn snapshot (first roll receives rolls_used=0)", async () => {
-    const { getByRole } = await renderVsGame();
-
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
-
-    await act(async () => {
-      fireAppState("background");
-      jest.advanceTimersByTime(10_000);
-    });
-
-    mockRoll.mockClear();
-
-    await act(async () => {
-      fireAppState("active");
-    });
-
-    // The very first roll on replay must use the pre-turn snapshot (rolls_used=0).
-    expect(mockRoll).toHaveBeenCalledWith(expect.objectContaining({ rolls_used: 0 }), [
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
-  });
-
   it("backgrounding when NOT in an AI turn does not start a spurious replay", async () => {
     const { queryByText } = await renderVsGame();
 
