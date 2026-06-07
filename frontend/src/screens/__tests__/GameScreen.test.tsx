@@ -147,7 +147,10 @@ describe("GameScreen", () => {
   });
 
   it("play again button starts a new game in place", async () => {
-const { getByRole, getByText, queryByRole } = await renderScreen({ game_over: true, total_score: 100 });
+    const { getByRole, getByText, queryByRole } = await renderScreen({
+      game_over: true,
+      total_score: 100,
+    });
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
@@ -225,7 +228,7 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
   });
 
   it("Play Again resets round to 1", async () => {
-const { getByRole, getByText, queryByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, getByText, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
@@ -338,7 +341,7 @@ describe("GameScreen — New Game button (GH #393)", () => {
   });
 
   it("confirm modal 'Start new game' calls startNewGame and closes modal", async () => {
-const { getByRole, queryByText, queryByRole } = await renderScreen({ round: 2 });
+    const { getByRole, queryByText, queryByRole } = await renderScreen({ round: 2 });
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
@@ -578,7 +581,7 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets all upper section rows to 'not available'", async () => {
-const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
@@ -593,7 +596,7 @@ const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
   });
 
   it("Play Again resets all lower section rows to 'not available'", async () => {
-const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
@@ -615,7 +618,8 @@ const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
   });
 
   it("Play Again resets upper bonus display to 0 / 63 progress", async () => {
-const { getByRole, getByText, queryByText, queryByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, getByText, queryByText, queryByRole } =
+      await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
