@@ -158,7 +158,7 @@ test.describe("Yacht — error paths and navigation", () => {
     await expect(page.getByText("Game Over!")).toBeVisible();
     await expect(page.getByText(/Final Score/i)).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /start a new game/i }),
+      page.getByRole("button", { name: /play again/i }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: /dismiss/i })).toBeVisible();
   });
@@ -246,7 +246,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
   test("Play Again resets to Round 1 / 13", async ({ page }) => {
     await playFullGame(page);
 
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
 
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
@@ -255,7 +255,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
 
   test("Play Again clears all scored categories", async ({ page }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });
@@ -274,7 +274,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     page,
   }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });
@@ -291,7 +291,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     page,
   }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });

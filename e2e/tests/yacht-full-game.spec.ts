@@ -97,7 +97,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     }
 
     await expect(page.getByText("Game Over!")).toBeVisible();
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
 
     await expect(page.getByText(/Round 1/i)).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("button", { name: /Roll/i })).toBeVisible();
@@ -115,7 +115,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     }
 
     await expect(page.getByText("Game Over!")).toBeVisible();
-    await page.getByRole("button", { name: /start a new game/i }).click();
+    await page.getByRole("button", { name: /play again/i }).click();
     await expect(page.getByText(/Round 1/i)).toBeVisible({ timeout: 10000 });
 
     // All 13 category rows must show "not available" — no score should persist
