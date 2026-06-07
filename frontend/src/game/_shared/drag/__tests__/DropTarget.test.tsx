@@ -40,8 +40,8 @@ function StartDragTrigger({ source, cards }: { source: DragSource; cards: DragCa
 }
 
 describe("DropTarget", () => {
-  it("renders children without highlight when no drag is active", () => {
-    const { getByTestId } = render(
+  it("renders children without highlight when no drag is active", async () => {
+    const { getByTestId } = await render(
       wrap(
         <DropTarget id="pile-1" onDrop={() => false} testID="target">
           <Text>Content</Text>
@@ -51,8 +51,8 @@ describe("DropTarget", () => {
     expect(getByTestId("target")).not.toHaveStyle({ backgroundColor: expect.anything() });
   });
 
-  it("applies highlight backgroundColor when drag is active and this target is legal", () => {
-    const { getByLabelText, getByTestId } = render(
+  it("applies highlight backgroundColor when drag is active and this target is legal", async () => {
+    const { getByLabelText, getByTestId } = await render(
       wrap(
         <>
           <DragTrigger source={dragSource} cards={dragCards} />
@@ -64,7 +64,7 @@ describe("DropTarget", () => {
       )
     );
 
-    fireEvent.press(getByLabelText("trigger"));
+    await fireEvent.press(getByLabelText("trigger"));
     const target = getByTestId("target");
     const flatStyle = target.props.style?.flat?.() ?? [target.props.style].flat();
     const merged = Object.assign({}, ...flatStyle.filter(Boolean));
@@ -72,7 +72,7 @@ describe("DropTarget", () => {
     expect(merged.backgroundColor).toMatch(/33$/);
   });
 
-  it("does not throw when endDrag fires with a registered zone that has no cached bounds", () => {
+  it("does not throw when endDrag fires with a registered zone that has no cached bounds", async () => {
     // Simulates the case where onLayout hasn't fired yet — bounds are absent from
     // the cache. endDrag should skip the zone gracefully and snap back.
     function EndDragTrigger() {
@@ -84,7 +84,7 @@ describe("DropTarget", () => {
       );
     }
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       wrap(
         <>
           <StartDragTrigger source={dragSource} cards={dragCards} />
@@ -96,16 +96,16 @@ describe("DropTarget", () => {
       )
     );
 
-    fireEvent.press(getByLabelText("start-drag"));
-    expect(() => fireEvent.press(getByLabelText("end-drag"))).not.toThrow();
+    await fireEvent.press(getByLabelText("start-drag"));
+    await fireEvent.press(getByLabelText("end-drag"));
   });
 
-  it("schedules measureInWindow via requestAnimationFrame on layout, not synchronously", () => {
+  it("schedules measureInWindow via requestAnimationFrame on layout, not synchronously", async () => {
     jest.useFakeTimers();
     const rafSpy = jest.spyOn(global, "requestAnimationFrame");
     const countBefore = rafSpy.mock.calls.length;
 
-    const { getByTestId } = render(
+    const { getByTestId } = await render(
       wrap(
         <DropTarget id="pile-layout" onDrop={() => false} testID="target">
           <Text>Content</Text>
@@ -113,7 +113,7 @@ describe("DropTarget", () => {
       )
     );
 
-    fireEvent(getByTestId("target"), "layout", {
+    await fireEvent(getByTestId("target"), "layout", {
       nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 50 } },
     });
 
@@ -124,11 +124,14 @@ describe("DropTarget", () => {
     jest.useRealTimers();
   });
 
-  it("cancels a pending rAF before scheduling a new one on rapid re-layout", () => {
+  it("cancels a pending rAF before scheduling a new one on rapid re-layout", async () => {
+    // Fake timers prevent the first rAF from running between the two layout
+    // events (with real timers, await act() inside fireEvent flushes it).
     jest.useFakeTimers();
     const cancelSpy = jest.spyOn(global, "cancelAnimationFrame");
+    const countBefore = cancelSpy.mock.calls.length;
 
-    const { getByTestId } = render(
+    const { getByTestId } = await render(
       wrap(
         <DropTarget id="pile-cancel" onDrop={() => false} testID="target">
           <Text>Content</Text>
@@ -139,20 +142,20 @@ describe("DropTarget", () => {
     const target = getByTestId("target");
     const layoutEvent = { nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 50 } } };
 
-    // First layout fires a rAF
-    fireEvent(target, "layout", layoutEvent);
-    // Second layout before first rAF runs — should cancel the first
-    fireEvent(target, "layout", layoutEvent);
+    // First layout fires a rAF; second fires before the first rAF runs
+    await fireEvent(target, "layout", layoutEvent);
+    await fireEvent(target, "layout", layoutEvent);
 
-    expect(cancelSpy).toHaveBeenCalledTimes(1);
+    // Second layout should have called cancelAnimationFrame once
+    expect(cancelSpy.mock.calls.length).toBe(countBefore + 1);
 
     cancelSpy.mockRestore();
     jest.useRealTimers();
   });
 
-  it("applies dimStyle when drag is active and this target is not legal", () => {
+  it("applies dimStyle when drag is active and this target is not legal", async () => {
     const dimStyle = { opacity: 0.4 };
-    const { getByLabelText, getByTestId } = render(
+    const { getByLabelText, getByTestId } = await render(
       wrap(
         <>
           <DragTrigger source={dragSource} cards={dragCards} />
@@ -164,7 +167,7 @@ describe("DropTarget", () => {
       )
     );
 
-    fireEvent.press(getByLabelText("trigger"));
+    await fireEvent.press(getByLabelText("trigger"));
     expect(getByTestId("target")).toHaveStyle({ opacity: 0.4 });
   });
 });

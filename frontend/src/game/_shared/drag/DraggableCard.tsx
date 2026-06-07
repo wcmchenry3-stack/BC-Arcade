@@ -145,11 +145,13 @@ export function DraggableCard({
   );
 
   const child = React.Children.only(children) as React.ReactElement<AnyProps>;
-  // onPress on the child is a test-only path: fireEvent.press bypasses RN's
-  // responder system and calls onPress directly. On device, GestureDetector
-  // claims the responder via onStartShouldSetResponder so the child's onPress
-  // never fires — tap is handled entirely within RNGH (Gesture.Exclusive).
-  const innerEl = onTap ? React.cloneElement(child, { onPress: onTap }) : child;
+  // Device: injecting onPress onto Pressable-backed children creates a competing UIGestureRecognizer
+  // that cancels RNGH's pan on iOS. Test-only: Jest mocks RNGH so onTap is only reachable via
+  // onPress; process.env.NODE_ENV === "test" is Metro dead-code-eliminated in device builds.
+  const innerEl =
+    onTap && process.env.NODE_ENV === "test"
+      ? React.cloneElement(child, { onPress: onTap })
+      : child;
   return (
     <Animated.View
       ref={viewRef}

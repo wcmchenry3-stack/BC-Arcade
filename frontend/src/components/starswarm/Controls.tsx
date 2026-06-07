@@ -40,6 +40,8 @@ export default function Controls({
   const dragZoneY = displayH * DRAG_ZONE_Y_RATIO;
 
   const playerXRef = useRef(CANVAS_W / 2);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const activeDragRef = useRef(false);
   // Ship X captured at each touch-start — used to compute delta from gesture start,
   // avoiding cumulative drift from per-event changeX accumulation.
@@ -70,6 +72,7 @@ export default function Controls({
     })
     .onChange((e) => {
       if (!activeDragRef.current) return;
+      if (phaseRef.current === "WinTransition") return; // AI controls the ship during cinematic
       const hw = PLAYER_W / 2;
       const rawX = shipXAtDragStartRef.current + e.translationX / scale;
       const newX = clamp(rawX, hw, CANVAS_W - hw);
@@ -117,7 +120,7 @@ export default function Controls({
     let rafId: number;
 
     function loop() {
-      if (held.size > 0) {
+      if (held.size > 0 && phaseRef.current !== "WinTransition") {
         const dx = (held.has("ArrowRight") ? STEP : 0) - (held.has("ArrowLeft") ? STEP : 0);
         if (dx !== 0) {
           const hw = PLAYER_W / 2;

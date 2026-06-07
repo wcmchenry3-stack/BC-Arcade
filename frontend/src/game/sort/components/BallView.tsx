@@ -126,6 +126,7 @@ export default function BallView({
     >
       {colorblindMode && (
         <Svg
+          testID="colorblind-overlay"
           width={size * 0.6}
           height={size * 0.6}
           viewBox="0 0 100 100"

@@ -12,8 +12,8 @@ import type {
   SudokuCell as SudokuCellData,
 } from "../../../game/sudoku/types";
 
-function wrap(ui: React.ReactElement) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>);
+async function wrap(ui: React.ReactElement) {
+  return await render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
 function cell(overrides: Partial<SudokuCellData> = {}): SudokuCellData {
@@ -48,8 +48,8 @@ function asGrid(g: SudokuCellData[][]): Grid {
 // ---------------------------------------------------------------------------
 
 describe("SudokuCell", () => {
-  it("renders a given digit", () => {
-    const { getByText } = wrap(
+  it("renders a given digit", async () => {
+    const { getByText } = await wrap(
       <SudokuCell
         size={9}
         cell={cell({ value: 5, given: true })}
@@ -64,9 +64,9 @@ describe("SudokuCell", () => {
     expect(getByText("5")).toBeTruthy();
   });
 
-  it("renders pencil notes when no value is set", () => {
+  it("renders pencil notes when no value is set", async () => {
     const notes = new Set<NoteDigit>([1, 4, 7]);
-    const { getByText } = wrap(
+    const { getByText } = await wrap(
       <SudokuCell
         size={9}
         cell={cell({ notes })}
@@ -83,8 +83,8 @@ describe("SudokuCell", () => {
     expect(getByText("7")).toBeTruthy();
   });
 
-  it("exposes accessibility role=button with row/col label", () => {
-    const { getByRole } = wrap(
+  it("exposes accessibility role=button with row/col label", async () => {
+    const { getByRole } = await wrap(
       <SudokuCell
         size={9}
         cell={cell({ value: 3 })}
@@ -101,9 +101,9 @@ describe("SudokuCell", () => {
     expect(btn.props.accessibilityLabel).toMatch(/column 7/i);
   });
 
-  it("calls onPress when pressed", () => {
+  it("calls onPress when pressed", async () => {
     const onPress = jest.fn();
-    const { getByRole } = wrap(
+    const { getByRole } = await wrap(
       <SudokuCell
         size={9}
         cell={cell()}
@@ -115,54 +115,60 @@ describe("SudokuCell", () => {
         onPress={onPress}
       />
     );
-    fireEvent.press(getByRole("button"));
+    await fireEvent.press(getByRole("button"));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("matches snapshot — given value", () => {
-    const tree = wrap(
-      <SudokuCell
-        size={9}
-        cell={cell({ value: 7, given: true })}
-        row={0}
-        col={0}
-        selected={false}
-        highlighted={false}
-        peer={false}
-        onPress={() => {}}
-      />
+  it("matches snapshot — given value", async () => {
+    const tree = (
+      await wrap(
+        <SudokuCell
+          size={9}
+          cell={cell({ value: 7, given: true })}
+          row={0}
+          col={0}
+          selected={false}
+          highlighted={false}
+          peer={false}
+          onPress={() => {}}
+        />
+      )
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
 
-  it("matches snapshot — selected error cell", () => {
-    const tree = wrap(
-      <SudokuCell
-        size={9}
-        cell={cell({ value: 2, isError: true })}
-        row={3}
-        col={3}
-        selected={true}
-        highlighted={false}
-        peer={false}
-        onPress={() => {}}
-      />
+  it("matches snapshot — selected error cell", async () => {
+    const tree = (
+      await wrap(
+        <SudokuCell
+          size={9}
+          cell={cell({ value: 2, isError: true })}
+          row={3}
+          col={3}
+          selected={true}
+          highlighted={false}
+          peer={false}
+          onPress={() => {}}
+        />
+      )
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
 
-  it("matches snapshot — peer cell", () => {
-    const tree = wrap(
-      <SudokuCell
-        size={9}
-        cell={cell({ value: 4 })}
-        row={0}
-        col={3}
-        selected={false}
-        highlighted={false}
-        peer={true}
-        onPress={() => {}}
-      />
+  it("matches snapshot — peer cell", async () => {
+    const tree = (
+      await wrap(
+        <SudokuCell
+          size={9}
+          cell={cell({ value: 4 })}
+          row={0}
+          col={3}
+          selected={false}
+          highlighted={false}
+          peer={true}
+          onPress={() => {}}
+        />
+      )
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
@@ -173,8 +179,8 @@ describe("SudokuCell", () => {
 // ---------------------------------------------------------------------------
 
 describe("SudokuGrid", () => {
-  it("renders 81 cell buttons", () => {
-    const { getAllByRole } = wrap(
+  it("renders 81 cell buttons", async () => {
+    const { getAllByRole } = await wrap(
       <SudokuGrid
         variant="classic"
         grid={asGrid(emptyGrid())}
@@ -186,9 +192,9 @@ describe("SudokuGrid", () => {
     expect(getAllByRole("button")).toHaveLength(81);
   });
 
-  it("propagates onCellPress with (row, col) args", () => {
+  it("propagates onCellPress with (row, col) args", async () => {
     const onCellPress = jest.fn();
-    const { getAllByRole } = wrap(
+    const { getAllByRole } = await wrap(
       <SudokuGrid
         variant="classic"
         grid={asGrid(emptyGrid())}
@@ -199,23 +205,25 @@ describe("SudokuGrid", () => {
     );
     // Cells are rendered row-major — index 10 is (row 1, col 1).
     const cells = getAllByRole("button");
-    fireEvent.press(cells[10]!);
+    await fireEvent.press(cells[10]!);
     expect(onCellPress).toHaveBeenCalledWith(1, 1);
   });
 
-  it("matches snapshot with a typical mid-game state", () => {
+  it("matches snapshot with a typical mid-game state", async () => {
     const g = emptyGrid();
     g[0]![0] = cell({ value: 5, given: true });
     g[4]![4] = cell({ value: 3 });
     g[8]![8] = cell({ value: 7, isError: true });
-    const tree = wrap(
-      <SudokuGrid
-        variant="classic"
-        grid={asGrid(g)}
-        selectedRow={4}
-        selectedCol={4}
-        onCellPress={() => {}}
-      />
+    const tree = (
+      await wrap(
+        <SudokuGrid
+          variant="classic"
+          grid={asGrid(g)}
+          selectedRow={4}
+          selectedCol={4}
+          onCellPress={() => {}}
+        />
+      )
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
@@ -224,8 +232,8 @@ describe("SudokuGrid", () => {
     // Select cell (4,4): same row = row 4, same col = col 4,
     // same 3×3 box = rows 3-5, cols 3-5.
 
-    it("marks cells in the same row as peers", () => {
-      const { getAllByRole } = wrap(
+    it("marks cells in the same row as peers", async () => {
+      const { getAllByRole } = await wrap(
         <SudokuGrid
           variant="classic"
           grid={asGrid(emptyGrid())}
@@ -247,8 +255,8 @@ describe("SudokuGrid", () => {
       );
     });
 
-    it("does not apply peer highlight to the selected cell itself", () => {
-      const { getAllByRole } = wrap(
+    it("does not apply peer highlight to the selected cell itself", async () => {
+      const { getAllByRole } = await wrap(
         <SudokuGrid
           variant="classic"
           grid={asGrid(emptyGrid())}
@@ -266,8 +274,8 @@ describe("SudokuGrid", () => {
       );
     });
 
-    it("does not mark box-only cells as peers", () => {
-      const { getAllByRole } = wrap(
+    it("does not mark box-only cells as peers", async () => {
+      const { getAllByRole } = await wrap(
         <SudokuGrid
           variant="classic"
           grid={asGrid(emptyGrid())}
@@ -284,8 +292,8 @@ describe("SudokuGrid", () => {
       );
     });
 
-    it("clears peers when no cell is selected", () => {
-      const { getAllByRole } = wrap(
+    it("clears peers when no cell is selected", async () => {
+      const { getAllByRole } = await wrap(
         <SudokuGrid
           variant="classic"
           grid={asGrid(emptyGrid())}
@@ -311,8 +319,8 @@ describe("SudokuGrid", () => {
 // ---------------------------------------------------------------------------
 
 describe("NumberPad", () => {
-  it("renders 9 digits + erase + notes + hint actions", () => {
-    const { getAllByRole, getByLabelText } = wrap(
+  it("renders 9 digits + erase + notes + hint actions", async () => {
+    const { getAllByRole, getByLabelText } = await wrap(
       <NumberPad
         variant="classic"
         grid={asGrid(emptyGrid())}
@@ -330,9 +338,9 @@ describe("NumberPad", () => {
     expect(getByLabelText(/hint/i)).toBeTruthy();
   });
 
-  it("fires onDigit with the placed digit", () => {
+  it("fires onDigit with the placed digit", async () => {
     const onDigit = jest.fn();
-    const { getByLabelText } = wrap(
+    const { getByLabelText } = await wrap(
       <NumberPad
         variant="classic"
         grid={asGrid(emptyGrid())}
@@ -343,14 +351,14 @@ describe("NumberPad", () => {
         onHint={() => {}}
       />
     );
-    fireEvent.press(getByLabelText(/enter digit 5/i));
+    await fireEvent.press(getByLabelText(/enter digit 5/i));
     expect(onDigit).toHaveBeenCalledWith(5);
   });
 
-  it("fires onErase and onToggleNotes", () => {
+  it("fires onErase and onToggleNotes", async () => {
     const onErase = jest.fn();
     const onToggleNotes = jest.fn();
-    const { getByLabelText } = wrap(
+    const { getByLabelText } = await wrap(
       <NumberPad
         variant="classic"
         grid={asGrid(emptyGrid())}
@@ -361,13 +369,13 @@ describe("NumberPad", () => {
         onHint={() => {}}
       />
     );
-    fireEvent.press(getByLabelText(/erase/i));
-    fireEvent.press(getByLabelText(/pencil/i));
+    await fireEvent.press(getByLabelText(/erase/i));
+    await fireEvent.press(getByLabelText(/pencil/i));
     expect(onErase).toHaveBeenCalledTimes(1);
     expect(onToggleNotes).toHaveBeenCalledTimes(1);
   });
 
-  it("dims digits where all 9 instances are placed", () => {
+  it("dims digits where all 9 instances are placed", async () => {
     // Seed 9 cells of value 4 across different rows/cols so the count reaches 9.
     const g = emptyGrid();
     const positions: Array<[number, number]> = [
@@ -385,7 +393,7 @@ describe("NumberPad", () => {
       g[r]![c] = cell({ value: 4 as CellValue, given: true });
     }
     const onDigit = jest.fn();
-    const { getByLabelText } = wrap(
+    const { getByLabelText } = await wrap(
       <NumberPad
         variant="classic"
         grid={asGrid(g)}
@@ -398,22 +406,24 @@ describe("NumberPad", () => {
     );
     const btn = getByLabelText(/enter digit 4/i);
     expect(btn.props.accessibilityState?.disabled).toBe(true);
-    fireEvent.press(btn);
+    await fireEvent.press(btn);
     // Disabled Pressable shouldn't fire onPress.
     expect(onDigit).not.toHaveBeenCalled();
   });
 
-  it("matches snapshot — notes mode active", () => {
-    const tree = wrap(
-      <NumberPad
-        variant="classic"
-        grid={asGrid(emptyGrid())}
-        notesMode={true}
-        onDigit={() => {}}
-        onErase={() => {}}
-        onToggleNotes={() => {}}
-        onHint={() => {}}
-      />
+  it("matches snapshot — notes mode active", async () => {
+    const tree = (
+      await wrap(
+        <NumberPad
+          variant="classic"
+          grid={asGrid(emptyGrid())}
+          notesMode={true}
+          onDigit={() => {}}
+          onErase={() => {}}
+          onToggleNotes={() => {}}
+          onHint={() => {}}
+        />
+      )
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
@@ -424,28 +434,30 @@ describe("NumberPad", () => {
 // ---------------------------------------------------------------------------
 
 describe("DifficultySelector", () => {
-  it("renders three radio buttons labelled easy/medium/hard", () => {
-    const { getByLabelText } = wrap(<DifficultySelector value="medium" onChange={() => {}} />);
+  it("renders three radio buttons labelled easy/medium/hard", async () => {
+    const { getByLabelText } = await wrap(
+      <DifficultySelector value="medium" onChange={() => {}} />
+    );
     expect(getByLabelText(/easy/i)).toBeTruthy();
     expect(getByLabelText(/medium/i)).toBeTruthy();
     expect(getByLabelText(/hard/i)).toBeTruthy();
   });
 
-  it("marks the current value as selected", () => {
-    const { getByLabelText } = wrap(<DifficultySelector value="hard" onChange={() => {}} />);
+  it("marks the current value as selected", async () => {
+    const { getByLabelText } = await wrap(<DifficultySelector value="hard" onChange={() => {}} />);
     expect(getByLabelText(/hard/i).props.accessibilityState?.selected).toBe(true);
     expect(getByLabelText(/easy/i).props.accessibilityState?.selected).toBe(false);
   });
 
-  it("fires onChange with the new difficulty", () => {
+  it("fires onChange with the new difficulty", async () => {
     const onChange = jest.fn();
-    const { getByLabelText } = wrap(<DifficultySelector value="easy" onChange={onChange} />);
-    fireEvent.press(getByLabelText(/hard/i));
+    const { getByLabelText } = await wrap(<DifficultySelector value="easy" onChange={onChange} />);
+    await fireEvent.press(getByLabelText(/hard/i));
     expect(onChange).toHaveBeenCalledWith("hard");
   });
 
-  it("matches snapshot — medium selected", () => {
-    const tree = wrap(<DifficultySelector value="medium" onChange={() => {}} />).toJSON();
+  it("matches snapshot — medium selected", async () => {
+    const tree = (await wrap(<DifficultySelector value="medium" onChange={() => {}} />)).toJSON();
     expect(tree).toMatchSnapshot();
   });
 });

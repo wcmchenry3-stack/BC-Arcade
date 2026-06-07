@@ -138,8 +138,8 @@ const STALE_STATE: DailyWordState = {
 // Helper
 // ---------------------------------------------------------------------------
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <DailyWordScreen />
     </ThemeProvider>
@@ -167,7 +167,7 @@ beforeEach(() => {
 
 describe("DailyWordScreen — loading", () => {
   it("renders a fresh grid after loading with no saved state", async () => {
-    const { findByTestId } = renderScreen();
+    const { findByTestId } = await renderScreen();
     await expect(findByTestId("tile-0-0")).resolves.toBeTruthy();
   });
 });
@@ -176,7 +176,7 @@ describe("DailyWordScreen — stale state", () => {
   it("discards saved state when puzzle_id does not match today's", async () => {
     storage.loadState.mockResolvedValue(STALE_STATE);
 
-    const { findByTestId } = renderScreen();
+    const { findByTestId } = await renderScreen();
     // Wait for load to complete (grid renders)
     await findByTestId("tile-0-0");
 
@@ -186,7 +186,7 @@ describe("DailyWordScreen — stale state", () => {
   it("preserves saved state when puzzle_id matches today's", async () => {
     storage.loadState.mockResolvedValue(WIN_STATE);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     // Wait for load to complete (win modal renders)
     await findByText("Brilliant!");
 
@@ -198,7 +198,7 @@ describe("DailyWordScreen — win modal", () => {
   it("shows win modal when state is already won on mount", async () => {
     storage.loadState.mockResolvedValue(WIN_STATE);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await expect(findByText("Brilliant!")).resolves.toBeTruthy();
   });
 });
@@ -207,21 +207,21 @@ describe("DailyWordScreen — loss modal", () => {
   it("shows loss modal when state is already lost on mount", async () => {
     storage.loadState.mockResolvedValue(LOSS_STATE);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await expect(findByText("Better luck tomorrow")).resolves.toBeTruthy();
   });
 
   it("shows the answer in loss modal after answer fetch resolves", async () => {
     storage.loadState.mockResolvedValue(LOSS_STATE);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await expect(findByText(/The word was CRANE/i)).resolves.toBeTruthy();
   });
 
   it("fetches the answer on loss modal open", async () => {
     storage.loadState.mockResolvedValue(LOSS_STATE);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     // Wait for modal to appear
     await findByText("Better luck tomorrow");
 
@@ -233,7 +233,7 @@ describe("DailyWordScreen — error state", () => {
   it("shows load error message when getToday rejects", async () => {
     dailyWordApi.getToday.mockRejectedValue(new Error("network"));
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await expect(findByText("Could not load today's puzzle")).resolves.toBeTruthy();
   });
 });
@@ -249,7 +249,7 @@ describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
       .mockRejectedValueOnce(new TypeError("Network request failed"))
       .mockResolvedValueOnce(TODAY_META);
 
-    const { findByTestId, queryByText } = renderScreen();
+    const { findByTestId, queryByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -264,7 +264,7 @@ describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
     jest.useFakeTimers();
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -286,7 +286,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
     storage.loadTodayMeta.mockResolvedValue(TODAY_META);
 
-    const { findByTestId, queryByText } = renderScreen();
+    const { findByTestId, queryByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -301,7 +301,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
     storage.loadTodayMeta.mockResolvedValue(null);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -311,7 +311,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
   });
 
   it("writes the cache on a successful fetch", async () => {
-    const { findByTestId } = renderScreen();
+    const { findByTestId } = await renderScreen();
     await findByTestId("tile-0-0");
     expect(storage.saveTodayMeta).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}_en$/),
@@ -323,7 +323,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     jest.useFakeTimers();
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
 
-    renderScreen();
+    await renderScreen();
     await act(async () => {
       await jest.runAllTimersAsync();
     });
@@ -335,7 +335,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     dailyWordApi.getToday.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
     storage.loadTodayMeta.mockResolvedValue(TODAY_META);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await findByText("Could not load today's puzzle");
     expect(storage.loadTodayMeta).not.toHaveBeenCalled();

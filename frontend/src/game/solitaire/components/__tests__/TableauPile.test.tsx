@@ -5,7 +5,6 @@ import { ThemeProvider } from "../../../../theme/ThemeContext";
 import type { Card, Rank, Suit } from "../../types";
 import TableauPile from "../TableauPile";
 import { DragProvider } from "../../../_shared/drag/DragContext";
-import { DraggableCard } from "../../../_shared/drag/DraggableCard";
 
 function withTheme(children: React.ReactNode) {
   return (
@@ -20,23 +19,23 @@ function card(suit: Suit, rank: Rank, faceUp = true): Card {
 }
 
 describe("TableauPile", () => {
-  it("renders a dashed placeholder when the column is empty", () => {
-    const { getByLabelText } = render(withTheme(<TableauPile pile={[]} colIndex={0} />));
+  it("renders a dashed placeholder when the column is empty", async () => {
+    const { getByLabelText } = await render(withTheme(<TableauPile pile={[]} colIndex={0} />));
     expect(getByLabelText(/Empty tableau column 1/)).toBeTruthy();
   });
 
-  it("fires onEmptyPress when the empty placeholder is tapped", () => {
+  it("fires onEmptyPress when the empty placeholder is tapped", async () => {
     const onEmptyPress = jest.fn();
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(<TableauPile pile={[]} colIndex={2} onEmptyPress={onEmptyPress} />)
     );
-    fireEvent.press(getByLabelText(/Empty tableau column 3/));
+    await fireEvent.press(getByLabelText(/Empty tableau column 3/));
     expect(onEmptyPress).toHaveBeenCalledWith(2);
   });
 
-  it("renders every card in the pile and exposes the pile-size label", () => {
+  it("renders every card in the pile and exposes the pile-size label", async () => {
     const pile = [card("spades", 5, false), card("hearts", 6), card("clubs", 5)];
-    const { getByText, getByLabelText } = render(
+    const { getByText, getByLabelText } = await render(
       withTheme(<TableauPile pile={pile} colIndex={1} />)
     );
     // Face-up cards contribute their rank text; the face-down one does not.
@@ -45,20 +44,20 @@ describe("TableauPile", () => {
     expect(getByLabelText(/Tableau column 2, 3 cards/)).toBeTruthy();
   });
 
-  it("fires onCardPress with (colIndex, cardIndex) when a card is tapped", () => {
+  it("fires onCardPress with (colIndex, cardIndex) when a card is tapped", async () => {
     const onCardPress = jest.fn();
     const pile = [card("spades", 1), card("hearts", 2)];
-    const { getAllByRole } = render(
+    const { getAllByRole } = await render(
       withTheme(<TableauPile pile={pile} colIndex={4} onCardPress={onCardPress} />)
     );
     const buttons = getAllByRole("button");
-    fireEvent.press(buttons[1]!); // second card (index 1)
+    await fireEvent.press(buttons[1]!); // second card (index 1)
     expect(onCardPress).toHaveBeenCalledWith(4, 1);
   });
 
-  it("highlights the selected card and every card stacked on top of it", () => {
+  it("highlights the selected card and every card stacked on top of it", async () => {
     const pile = [card("spades", 5), card("hearts", 4), card("clubs", 3)];
-    const { getAllByLabelText } = render(
+    const { getAllByLabelText } = await render(
       withTheme(<TableauPile pile={pile} colIndex={0} selectedIndex={1} />)
     );
     // Index 0 not selected; indices 1 and 2 are.
@@ -68,7 +67,7 @@ describe("TableauPile", () => {
 });
 
 describe("TableauPile — cascade offsets (#1247)", () => {
-  it("12-card column height snapshot (6 face-down + 6 face-up, natural card size)", () => {
+  it("12-card column height snapshot (6 face-down + 6 face-up, natural card size)", async () => {
     const pile: Card[] = [
       card("spades", 13, false),
       card("spades", 12, false),
@@ -83,31 +82,28 @@ describe("TableauPile — cascade offsets (#1247)", () => {
       card("hearts", 3),
       card("spades", 2),
     ];
-    const { getByLabelText } = render(withTheme(<TableauPile pile={pile} colIndex={0} />));
+    const { getByLabelText } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
     const container = getByLabelText("Tableau column 1, 12 cards");
     expect(container.props.style).toMatchSnapshot();
   });
 });
 
 describe("TableauPile — hitSlop on buried cards (#1248)", () => {
-  it("buried DraggableCard wrappers receive hitSlop; top card does not", () => {
+  it("buried DraggableCard wrappers receive hitSlop; top card does not", async () => {
     const pile = [card("spades", 5, false), card("hearts", 6), card("clubs", 5)];
-    const { UNSAFE_getAllByType } = render(withTheme(<TableauPile pile={pile} colIndex={0} />));
-    const draggables = UNSAFE_getAllByType(DraggableCard);
-    expect(draggables).toHaveLength(3);
+    const { getByTestId } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
     // Cards at index 0 and 1 are buried — must have hitSlop.
-    expect(draggables[0]!.props.hitSlop).toBeDefined();
-    expect(draggables[1]!.props.hitSlop).toBeDefined();
+    expect(getByTestId("draggable-card-0").props.hitSlop).toBeDefined();
+    expect(getByTestId("draggable-card-1").props.hitSlop).toBeDefined();
     // Top card (index 2) must NOT have hitSlop.
-    expect(draggables[2]!.props.hitSlop).toBeUndefined();
+    expect(getByTestId("draggable-card-2").props.hitSlop).toBeUndefined();
   });
 
-  it("hitSlop bottom is clamped to the visible strip height (face-down strip < 24pt)", () => {
+  it("hitSlop bottom is clamped to the visible strip height (face-down strip < 24pt)", async () => {
     // face-down strip = FACE_DOWN_OFFSET (20) < 24, so bottom = 20.
     const pile = [card("spades", 5, false), card("hearts", 6)];
-    const { UNSAFE_getAllByType } = render(withTheme(<TableauPile pile={pile} colIndex={0} />));
-    const draggables = UNSAFE_getAllByType(DraggableCard);
-    const buriedSlop = draggables[0]!.props.hitSlop;
+    const { getByTestId } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
+    const buriedSlop = getByTestId("draggable-card-0").props.hitSlop;
     expect(buriedSlop).toBeDefined();
     expect(buriedSlop.top).toBe(0);
     expect(buriedSlop.left).toBe(4);

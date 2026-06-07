@@ -1,6 +1,5 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
-import Svg from "react-native-svg";
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import BallView from "../BallView";
 
@@ -9,12 +8,12 @@ function withTheme(children: React.ReactNode) {
 }
 
 describe("BallView", () => {
-  it("renders with the color name as accessibilityLabel", () => {
-    const { getByLabelText } = render(withTheme(<BallView color="red" />));
+  it("renders with the color name as accessibilityLabel", async () => {
+    const { getByLabelText } = await render(withTheme(<BallView color="red" />));
     expect(getByLabelText("Red")).toBeTruthy();
   });
 
-  it("renders each color with the correct label", () => {
+  it("renders each color with the correct label", async () => {
     const cases: [import("../../types").Color, string][] = [
       ["blue", "Blue"],
       ["green", "Green"],
@@ -25,28 +24,29 @@ describe("BallView", () => {
       ["teal", "Teal"],
     ];
     for (const [color, label] of cases) {
-      const { getByLabelText } = render(withTheme(<BallView color={color} />));
+      const { getByLabelText } = await render(withTheme(<BallView color={color} />));
       expect(getByLabelText(label)).toBeTruthy();
     }
   });
 
-  it("renders an Svg symbol overlay when colorblindMode is true", () => {
-    const { UNSAFE_getByType } = render(withTheme(<BallView color="red" colorblindMode />));
-    expect(UNSAFE_getByType(Svg)).toBeTruthy();
+  it("renders an Svg symbol overlay when colorblindMode is true", async () => {
+    const { getByTestId } = await render(withTheme(<BallView color="red" colorblindMode />));
+    // Svg has accessibilityElementsHidden — must opt-in to find it
+    expect(getByTestId("colorblind-overlay", { includeHiddenElements: true })).toBeTruthy();
   });
 
-  it("does not render an Svg when colorblindMode is false (default)", () => {
-    const { UNSAFE_queryAllByType } = render(withTheme(<BallView color="red" />));
-    expect(UNSAFE_queryAllByType(Svg)).toHaveLength(0);
+  it("does not render an Svg when colorblindMode is false (default)", async () => {
+    const { queryByTestId } = await render(withTheme(<BallView color="red" />));
+    expect(queryByTestId("colorblind-overlay", { includeHiddenElements: true })).toBeNull();
   });
 
-  it("matches snapshot without colorblind mode", () => {
-    const { toJSON } = render(withTheme(<BallView color="blue" />));
+  it("matches snapshot without colorblind mode", async () => {
+    const { toJSON } = await render(withTheme(<BallView color="blue" />));
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it("matches snapshot with colorblind mode", () => {
-    const { toJSON } = render(withTheme(<BallView color="blue" colorblindMode />));
+  it("matches snapshot with colorblind mode", async () => {
+    const { toJSON } = await render(withTheme(<BallView color="blue" colorblindMode />));
     expect(toJSON()).toMatchSnapshot();
   });
 });

@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react-native";
+import { renderHook } from "@testing-library/react-native";
 import React from "react";
 import { SoundProvider } from "../SoundContext";
 import { useBackgroundMusic } from "../useBackgroundMusic";
@@ -36,61 +36,60 @@ beforeEach(() => {
 });
 
 describe("useBackgroundMusic — unmount cleanup", () => {
-  it("calls pause() before remove() on unmount while music is active", () => {
+  it("calls pause() before remove() on unmount while music is active", async () => {
     const callOrder: string[] = [];
     mockPause.mockImplementation(() => callOrder.push("pause"));
     mockRemove.mockImplementation(() => callOrder.push("remove"));
 
-    const { unmount } = renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), {
-      wrapper,
-    });
-    unmount();
+    const { unmount } = await renderHook(
+      () => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true),
+      {
+        wrapper,
+      }
+    );
+    await unmount();
 
     expect(callOrder).toEqual(["pause", "remove"]);
   });
 
-  it("calls pause() before remove() on unmount even when active is false", () => {
+  it("calls pause() before remove() on unmount even when active is false", async () => {
     const callOrder: string[] = [];
     mockPause.mockImplementation(() => callOrder.push("pause"));
     mockRemove.mockImplementation(() => callOrder.push("remove"));
 
-    const { rerender, unmount } = renderHook(
+    const { rerender, unmount } = await renderHook(
       ({ active }: { active: boolean }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active),
       { wrapper, initialProps: { active: true } }
     );
-    act(() => {
-      rerender({ active: false });
-    });
-    unmount();
+    await rerender({ active: false });
+    await unmount();
 
     expect(callOrder).toEqual(["pause", "pause", "remove"]);
   });
 });
 
 describe("useBackgroundMusic — active flag", () => {
-  it("plays on mount when active is true", () => {
-    renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), { wrapper });
+  it("plays on mount when active is true", async () => {
+    await renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), { wrapper });
     expect(mockPlay).toHaveBeenCalled();
   });
 
-  it("pauses when active transitions to false", () => {
-    const { rerender } = renderHook(
+  it("pauses when active transitions to false", async () => {
+    const { rerender } = await renderHook(
       ({ active }: { active: boolean }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active),
       { wrapper, initialProps: { active: true } }
     );
-    act(() => {
-      rerender({ active: false });
-    });
+    await rerender({ active: false });
     expect(mockPause).toHaveBeenCalledTimes(1);
   });
 
-  it("does not start playback when active is false on mount", () => {
-    renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, false), { wrapper });
+  it("does not start playback when active is false on mount", async () => {
+    await renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, false), { wrapper });
     expect(mockPlay).not.toHaveBeenCalled();
   });
 
-  it("starts a new session after game-over then new-game (false→true)", () => {
-    const { rerender } = renderHook(
+  it("starts a new session after game-over then new-game (false→true)", async () => {
+    const { rerender } = await renderHook(
       ({ active }: { active: boolean }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active),
       { wrapper, initialProps: { active: true } }
     );
@@ -99,30 +98,26 @@ describe("useBackgroundMusic — active flag", () => {
     jest.clearAllMocks();
 
     // Game over
-    act(() => {
-      rerender({ active: false });
-    });
+    await rerender({ active: false });
     expect(mockPause).toHaveBeenCalledTimes(1);
     jest.clearAllMocks();
 
     // New game — must pick and play a new track
-    act(() => {
-      rerender({ active: true });
-    });
+    await rerender({ active: true });
     expect(mockPlay).toHaveBeenCalled();
   });
 });
 
 describe("useBackgroundMusic — empty / missing keys", () => {
-  it("does not crash and does not play when keys array is empty", () => {
-    renderHook(() => useBackgroundMusic([], TEST_REGISTRY, true), { wrapper });
+  it("does not crash and does not play when keys array is empty", async () => {
+    await renderHook(() => useBackgroundMusic([], TEST_REGISTRY, true), { wrapper });
     expect(mockPlay).not.toHaveBeenCalled();
   });
 });
 
 describe("useBackgroundMusic — newGameTick", () => {
-  it("starts a new session when newGameTick increments while active", () => {
-    const { rerender } = renderHook(
+  it("starts a new session when newGameTick increments while active", async () => {
+    const { rerender } = await renderHook(
       ({ tick }: { tick: number }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, tick),
       { wrapper, initialProps: { tick: 0 } }
     );
@@ -131,14 +126,12 @@ describe("useBackgroundMusic — newGameTick", () => {
     jest.clearAllMocks();
 
     // New game tick — should pick and play a new track
-    act(() => {
-      rerender({ tick: 1 });
-    });
+    await rerender({ tick: 1 });
     expect(mockPlay).toHaveBeenCalled();
   });
 
-  it("starts a new session after game-over when both active and newGameTick change", () => {
-    const { rerender } = renderHook(
+  it("starts a new session after game-over when both active and newGameTick change", async () => {
+    const { rerender } = await renderHook(
       ({ active, tick }: { active: boolean; tick: number }) =>
         useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active, tick),
       { wrapper, initialProps: { active: true, tick: 0 } }
@@ -147,21 +140,17 @@ describe("useBackgroundMusic — newGameTick", () => {
     jest.clearAllMocks();
 
     // Game over
-    act(() => {
-      rerender({ active: false, tick: 0 });
-    });
+    await rerender({ active: false, tick: 0 });
     expect(mockPause).toHaveBeenCalled();
     jest.clearAllMocks();
 
     // New game: both active true and tick increments (as StarSwarmScreen does)
-    act(() => {
-      rerender({ active: true, tick: 1 });
-    });
+    await rerender({ active: true, tick: 1 });
     expect(mockPlay).toHaveBeenCalled();
   });
 
-  it("starts a new session from newGameTick even when active stays true (new game from pause)", () => {
-    const { rerender } = renderHook(
+  it("starts a new session from newGameTick even when active stays true (new game from pause)", async () => {
+    const { rerender } = await renderHook(
       ({ tick }: { tick: number }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, tick),
       { wrapper, initialProps: { tick: 1 } }
     );
@@ -169,23 +158,19 @@ describe("useBackgroundMusic — newGameTick", () => {
     jest.clearAllMocks();
 
     // New game tick, active stays true throughout
-    act(() => {
-      rerender({ tick: 2 });
-    });
+    await rerender({ tick: 2 });
     expect(mockPlay).toHaveBeenCalled();
   });
 
-  it("does not play when newGameTick increments but active is false", () => {
-    const { rerender } = renderHook(
+  it("does not play when newGameTick increments but active is false", async () => {
+    const { rerender } = await renderHook(
       ({ tick }: { tick: number }) => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, false, tick),
       { wrapper, initialProps: { tick: 0 } }
     );
     expect(mockPlay).not.toHaveBeenCalled();
     jest.clearAllMocks();
 
-    act(() => {
-      rerender({ tick: 1 });
-    });
+    await rerender({ tick: 1 });
     expect(mockPlay).not.toHaveBeenCalled();
   });
 });

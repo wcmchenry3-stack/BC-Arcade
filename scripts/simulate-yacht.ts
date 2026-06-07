@@ -99,8 +99,8 @@ interface GameResult {
   winner: 0 | 1;
   upperBonusHuman: boolean;
   upperBonusAi: boolean;
-  yahtzeeCountHuman: number;
-  yahtzeeCountAi: number;
+  yachtCountHuman: number;
+  yachtCountAi: number;
   chanceHuman: number;
   /** Whether the AI scored > 0 in each lower-section category */
   lowerHitAi: Record<LowerCat, boolean>;
@@ -127,12 +127,12 @@ function simulateGame(
     winner: humanScore >= aiScore ? 0 : 1,
     upperBonusHuman: humanState.upper_bonus === 35,
     upperBonusAi: aiState.upper_bonus === 35,
-    // yacht_bonus_count counts bonus Yahtzees only (2nd, 3rd, …).
-    // Adding 1 when scores["yacht"] === 50 includes the first Yahtzee.
-    yahtzeeCountHuman:
+    // yacht_bonus_count counts bonus Yachts only (2nd, 3rd, …).
+    // Adding 1 when scores["yacht"] === 50 includes the first Yacht.
+    yachtCountHuman:
       humanState.yacht_bonus_count +
       (humanState.scores["yacht"] === 50 ? 1 : 0),
-    yahtzeeCountAi:
+    yachtCountAi:
       aiState.yacht_bonus_count + (aiState.scores["yacht"] === 50 ? 1 : 0),
     chanceHuman: humanState.scores["chance"] ?? 0,
     lowerHitAi,
@@ -392,8 +392,8 @@ const batchResults: Array<{
   avgAiScore: number;
   upperBonusRateHuman: number;
   upperBonusRateAi: number;
-  avgYahtzeeHuman: number;
-  avgYahtzeeAi: number;
+  avgYachtHuman: number;
+  avgYachtAi: number;
   avgChanceHuman: number;
   lowerHitRateAi: Record<LowerCat, number>;
   lowerBandPassCount: number;
@@ -419,8 +419,8 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   const aiScores = results.map((r) => r.aiScore);
   const upperHuman = results.map((r) => (r.upperBonusHuman ? 1 : 0));
   const upperAi = results.map((r) => (r.upperBonusAi ? 1 : 0));
-  const yahtzeeHuman = results.map((r) => r.yahtzeeCountHuman);
-  const yahtzeeAi = results.map((r) => r.yahtzeeCountAi);
+  const yachtHuman = results.map((r) => r.yachtCountHuman);
+  const yachtAi = results.map((r) => r.yachtCountAi);
   const chanceHuman = results.map((r) => r.chanceHuman);
 
   const winRate = mean(wins);
@@ -431,8 +431,8 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
   const sdAiScore = stdDev(aiScores, avgAiScore);
   const upperBonusRateHuman = mean(upperHuman);
   const upperBonusRateAi = mean(upperAi);
-  const avgYahtzeeHuman = mean(yahtzeeHuman);
-  const avgYahtzeeAi = mean(yahtzeeAi);
+  const avgYachtHuman = mean(yachtHuman);
+  const avgYachtAi = mean(yachtAi);
   const avgChanceHuman = mean(chanceHuman);
 
   const lowerHitRateAi = {} as Record<LowerCat, number>;
@@ -452,8 +452,8 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     avgAiScore,
     upperBonusRateHuman,
     upperBonusRateAi,
-    avgYahtzeeHuman,
-    avgYahtzeeAi,
+    avgYachtHuman,
+    avgYachtAi,
     avgChanceHuman,
     lowerHitRateAi,
     lowerBandPassCount,
@@ -480,7 +480,7 @@ for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     `  Upper Bonus Rate: human ${pct(upperBonusRateHuman)}, AI ${pct(upperBonusRateAi)}  ${check(inBonusBandAi)} expected AI [${pct(batch.expectedBonusBandAi[0])}, ${pct(batch.expectedBonusBandAi[1])}]`,
   );
   console.log(
-    `  Avg Yahtzees/game: human ${avgYahtzeeHuman.toFixed(2)}, AI ${avgYahtzeeAi.toFixed(2)}`,
+    `  Avg Yachts/game: human ${avgYachtHuman.toFixed(2)}, AI ${avgYachtAi.toFixed(2)}`,
   );
   console.log(`  Avg Chance score (human): ${avgChanceHuman.toFixed(1)}`);
   console.log(`  AI lower-section hit rates (% of games scored > 0):`);

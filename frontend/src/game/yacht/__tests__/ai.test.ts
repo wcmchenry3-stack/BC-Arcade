@@ -110,6 +110,44 @@ describe("holdStrategy — Medium", () => {
     expect(heldDice.every((d) => d === 4)).toBe(true);
   });
 
+  it("holds only trips (not all 5) when full_house is already scored", () => {
+    const state = withScores(makeGame([3, 3, 3, 5, 5]), { full_house: 25 });
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 3)).toBe(true);
+    expect(heldDice).toHaveLength(3);
+  });
+
+  it("does not hold 5-run when both large_straight and small_straight are already scored", () => {
+    const state = withScores(makeGame([1, 2, 3, 4, 5]), {
+      large_straight: 40,
+      small_straight: 30,
+    });
+    const held = holdStrategy(state, "medium");
+    expect(held).not.toEqual([true, true, true, true, true]);
+  });
+
+  it("does not hold 4-run when both straights are already scored", () => {
+    const state = withScores(makeGame([1, 2, 3, 4, 6]), {
+      large_straight: 40,
+      small_straight: 30,
+    });
+    const held = holdStrategy(state, "medium");
+    const heldDice = state.dice.filter((_, i) => held[i]).sort((a, b) => a - b);
+    expect(heldDice).not.toEqual([1, 2, 3, 4]);
+  });
+
+  it("does not hold 3-run when both straights are already scored", () => {
+    const state = withScores(makeGame([1, 2, 3, 5, 5]), {
+      large_straight: 40,
+      small_straight: 30,
+    });
+    const held = holdStrategy(state, "medium");
+    // With both straights gone, run is useless — should hold the pair of 5s instead
+    const heldDice = state.dice.filter((_, i) => held[i]);
+    expect(heldDice.every((d) => d === 5)).toBe(true);
+  });
+
   it("pursues upper bonus when toBonus > 0 — holds open face appearing ≥2 times", () => {
     // upperSubtotal = ones(3)+twos(6) = 9 → toBonus = 54
     // dice [4,4,1,6,2]: no run ≥3, no trips; fours is open and appears twice → hold 4s
@@ -297,6 +335,21 @@ describe("scoreStrategy — Medium", () => {
     });
     expect(scoreStrategy(state, "medium")).toBe("fives");
   });
+
+  it("Joker: picks highest-value open lower cat, not hard-coded full_house (25 pts)", () => {
+    // yacht=50 (joker active), sixes filled, large_straight filled, four_of_a_kind scored 0
+    // Joker legal set: three_of_a_kind=30, full_house=25, small_straight=30, chance=30
+    // Without the fix, scoreMedium's "always take full_house" branch fires → 25 pts.
+    // With the fix, bestInLegal returns one of the 30-pt options.
+    const state = withScores(makeGame([6, 6, 6, 6, 6], 3), {
+      yacht: 50,
+      sixes: 30,
+      large_straight: 40,
+      four_of_a_kind: 0,
+    });
+    const cat = scoreStrategy(state, "medium");
+    expect(cat).not.toBe("full_house");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -370,6 +423,18 @@ describe("scoreStrategy — Hard", () => {
     // [5,5,5,2,1]: fives open, cnt=3 → par pursuit returns fives (15 pts).
     const state = withScores(makeGame([5, 5, 5, 2, 1], 3), { full_house: 25 });
     expect(scoreStrategy(state, "hard", 0)).toBe("fives");
+  });
+
+  it("Joker: picks highest-value open lower cat, not hard-coded full_house (25 pts)", () => {
+    // Same setup as Medium Joker test — verifies Hard also short-circuits to bestInLegal.
+    const state = withScores(makeGame([6, 6, 6, 6, 6], 3), {
+      yacht: 50,
+      sixes: 30,
+      large_straight: 40,
+      four_of_a_kind: 0,
+    });
+    const cat = scoreStrategy(state, "hard", 0);
+    expect(cat).not.toBe("full_house");
   });
 
   it("takes bonus-closing upper category over three_of_a_kind", () => {

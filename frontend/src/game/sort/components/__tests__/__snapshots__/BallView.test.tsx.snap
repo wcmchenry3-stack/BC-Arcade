@@ -47,6 +47,7 @@ exports[`BallView matches snapshot with colorblind mode 1`] = `
         },
       ]
     }
+    testID="colorblind-overlay"
     vbHeight={100}
     vbWidth={100}
     width={21.599999999999998}

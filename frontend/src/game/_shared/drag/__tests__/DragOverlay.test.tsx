@@ -28,13 +28,13 @@ function wrap(children: React.ReactNode) {
 }
 
 describe("DragOverlay", () => {
-  it("renders nothing when no drag is active", () => {
-    const { queryByTestId } = render(wrap(<DragOverlay />));
+  it("renders nothing when no drag is active", async () => {
+    const { queryByTestId } = await render(wrap(<DragOverlay />));
     expect(queryByTestId("drag-overlay-ghost")).toBeNull();
   });
 
-  it("lifts the ghost 8pt above the card position (translateY = cardY - 8)", () => {
-    const { getByLabelText, getByTestId } = render(
+  it("lifts the ghost 8pt above the card position (translateY = cardY - 8)", async () => {
+    const { getByLabelText, getByTestId } = await render(
       wrap(
         <>
           <DragStarter />
@@ -43,7 +43,7 @@ describe("DragOverlay", () => {
       )
     );
 
-    fireEvent.press(getByLabelText("start"));
+    await fireEvent.press(getByLabelText("start"));
 
     const ghost = getByTestId("drag-overlay-ghost");
     // useAnimatedStyle mock calls fn() immediately; cardY starts at 0, so translateY = 0 - 8 = -8.

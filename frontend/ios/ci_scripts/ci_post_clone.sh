@@ -31,13 +31,17 @@ echo "export PATH=\"/usr/local/opt/node@22/bin:/usr/local/bin:/opt/homebrew/bin:
 
 # -------------------------------------------------------
 # 3. Write environment variables for the JS bundle
+#    Remove .env.production so Expo CLI does not load it and
+#    override the dev URL below (APP_ENV=production is set in
+#    Xcode Cloud, causing .env.production to win otherwise).
 # -------------------------------------------------------
 cd "$CI_PRIMARY_REPOSITORY_PATH/frontend"
+rm -f .env.production
 cat > .env <<'DOTENV'
 EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com
 EXPO_PUBLIC_SENTRY_DSN=https://4e8b2bd816cbce3f73b0cd6923530d53@o4511129011093504.ingest.us.sentry.io/4511129020334080
 DOTENV
-echo "=== .env written ==="
+echo "=== .env written (.env.production removed) ==="
 cat .env
 
 # -------------------------------------------------------

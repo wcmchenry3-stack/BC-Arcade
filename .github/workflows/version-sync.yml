@@ -21,7 +21,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -74,7 +74,7 @@ jobs:
             frontend/ios/GamingApp.xcodeproj/project.pbxproj
 
       - name: Open PR to dev
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/sync-native-version-${{ steps.ver.outputs.version }}

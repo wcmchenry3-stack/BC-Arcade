@@ -3,7 +3,7 @@ import { useGameEvents } from "../useGameEvents";
 import type { GameEvent } from "../../hearts/types";
 
 describe("useGameEvents", () => {
-  it("fires the correct callback for each event type in the array", () => {
+  it("fires the correct callback for each event type in the array", async () => {
     const onMoonShot = jest.fn();
     const onHeartsBroken = jest.fn();
     const onQueenOfSpades = jest.fn();
@@ -15,7 +15,7 @@ describe("useGameEvents", () => {
       { type: "queenOfSpades", takerSeat: 2 },
     ];
 
-    renderHook(() =>
+    await renderHook(() =>
       useGameEvents(
         events,
         { moonShot: onMoonShot, heartsBroken: onHeartsBroken, queenOfSpades: onQueenOfSpades },
@@ -29,70 +29,68 @@ describe("useGameEvents", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it("does not re-fire events that have already been processed", () => {
+  it("does not re-fire events that have already been processed", async () => {
     const onMoonShot = jest.fn();
     const onClear = jest.fn();
     const events: GameEvent[] = [{ type: "moonShot", shooter: 1 }];
 
-    const { rerender } = renderHook(
+    const { rerender } = await renderHook(
       ({ evts }: { evts: readonly GameEvent[] }) =>
         useGameEvents(evts, { moonShot: onMoonShot }, onClear),
       { initialProps: { evts: events } }
     );
 
     // Same array reference — must not re-fire.
-    rerender({ evts: events });
+    await rerender({ evts: events });
 
     expect(onMoonShot).toHaveBeenCalledTimes(1);
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it("processes a new events array after the previous one was cleared", () => {
+  it("processes a new events array after the previous one was cleared", async () => {
     const onMoonShot = jest.fn();
     const onClear = jest.fn();
     const first: GameEvent[] = [{ type: "moonShot", shooter: 0 }];
     const second: GameEvent[] = [{ type: "moonShot", shooter: 3 }];
 
-    const { rerender } = renderHook(
+    const { rerender } = await renderHook(
       ({ evts }: { evts: readonly GameEvent[] }) =>
         useGameEvents(evts, { moonShot: onMoonShot }, onClear),
       { initialProps: { evts: first } }
     );
 
-    rerender({ evts: second });
+    await rerender({ evts: second });
 
     expect(onMoonShot).toHaveBeenCalledTimes(2);
     expect(onClear).toHaveBeenCalledTimes(2);
   });
 
-  it("is a no-op when events is undefined", () => {
+  it("is a no-op when events is undefined", async () => {
     const onMoonShot = jest.fn();
     const onClear = jest.fn();
 
-    renderHook(() => useGameEvents(undefined, { moonShot: onMoonShot }, onClear));
+    await renderHook(() => useGameEvents(undefined, { moonShot: onMoonShot }, onClear));
 
     expect(onMoonShot).not.toHaveBeenCalled();
     expect(onClear).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when events is empty", () => {
+  it("is a no-op when events is empty", async () => {
     const onMoonShot = jest.fn();
     const onClear = jest.fn();
 
-    renderHook(() => useGameEvents([], { moonShot: onMoonShot }, onClear));
+    await renderHook(() => useGameEvents([], { moonShot: onMoonShot }, onClear));
 
     expect(onMoonShot).not.toHaveBeenCalled();
     expect(onClear).not.toHaveBeenCalled();
   });
 
-  it("silently skips events with no registered handler", () => {
+  it("silently skips events with no registered handler", async () => {
     const onClear = jest.fn();
     const events: GameEvent[] = [{ type: "moonShot", shooter: 0 }];
 
     // No moonShot handler registered — should not throw.
-    expect(() =>
-      renderHook(() => useGameEvents(events, { heartsBroken: jest.fn() }, onClear))
-    ).not.toThrow();
+    await renderHook(() => useGameEvents(events, { heartsBroken: jest.fn() }, onClear));
 
     expect(onClear).toHaveBeenCalledTimes(1);
   });

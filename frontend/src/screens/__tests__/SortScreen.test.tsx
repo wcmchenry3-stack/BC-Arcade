@@ -2,11 +2,27 @@ import React from "react";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
-import SortBoard from "../../game/sort/components/SortBoard";
 
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
 // ---------------------------------------------------------------------------
+
+// Pass-through mock that stores the latest SortBoard props in global so tests
+// can call onPourComplete directly (v14: composite components unavailable in
+// host tree, so UNSAFE_getByType is gone).
+jest.mock("../../game/sort/components/SortBoard", () => {
+  const mod = jest.requireActual("../../game/sort/components/SortBoard");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const React = require("react");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function MockSortBoard(props: any) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps = props;
+    return React.createElement(mod.default, props);
+  }
+  MockSortBoard.displayName = "SortBoard";
+  return { __esModule: true, default: MockSortBoard, POUR_PER_UNIT_MS: mod.POUR_PER_UNIT_MS };
+});
 
 const mockGoBack = jest.fn();
 jest.mock("@react-navigation/native", () => ({
@@ -72,8 +88,8 @@ const DEFAULT_PROGRESS = { unlockedLevel: 3, currentLevelId: null, currentState:
 // Helper
 // ---------------------------------------------------------------------------
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <SortScreen />
     </ThemeProvider>
@@ -101,12 +117,12 @@ beforeEach(() => {
 
 describe("SortScreen — loading and level select", () => {
   it("shows the level select screen after levels load", async () => {
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     expect(await findByText("Choose a Level")).toBeTruthy();
   });
 
   it("renders a card for each level after load", async () => {
-    const { findByLabelText } = renderScreen();
+    const { findByLabelText } = await renderScreen();
     expect(await findByLabelText("Level 1")).toBeTruthy();
     expect(await findByLabelText("Level 2")).toBeTruthy();
     expect(await findByLabelText("Level 3")).toBeTruthy();
@@ -114,18 +130,18 @@ describe("SortScreen — loading and level select", () => {
 
   it("shows error and retry when API fails", async () => {
     sortApi.getLevels.mockRejectedValue(new Error("network"));
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     expect(await findByText("Could not load this level.")).toBeTruthy();
     expect(await findByText("Retry")).toBeTruthy();
   });
 
   it("retries loading when Retry is pressed", async () => {
     sortApi.getLevels.mockRejectedValueOnce(new Error("network"));
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     // Wait for the error to appear, then press Retry
     const retryBtn = await findByText("Retry");
     await act(async () => {
-      fireEvent.press(retryBtn);
+      await fireEvent.press(retryBtn);
     });
     expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
   });
@@ -134,65 +150,65 @@ describe("SortScreen — loading and level select", () => {
 describe("SortScreen — entering and playing a level", () => {
   // Await the element BEFORE act() — mixing findBy* inside act() breaks polling.
   it("transitions to the play view when a level card is tapped", async () => {
-    const { findByLabelText, findByText } = renderScreen();
+    const { findByLabelText, findByText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
     expect(await findByText("Level 1")).toBeTruthy(); // HUD text
   });
 
   it("back button in play view returns to level select", async () => {
-    const { findByLabelText, findByText } = renderScreen();
+    const { findByLabelText, findByText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
     const backBtn = await findByLabelText("Back to levels");
     await act(async () => {
-      fireEvent.press(backBtn);
+      await fireEvent.press(backBtn);
     });
     expect(await findByText("Choose a Level")).toBeTruthy();
   });
 
   it("undo button is disabled initially (no history)", async () => {
-    const { findByLabelText } = renderScreen();
+    const { findByLabelText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
     const undoBtn = await findByLabelText("Undo");
     expect(undoBtn.props.accessibilityState?.disabled).toBe(true);
   });
 
   it("selecting a bottle updates its accessibility label", async () => {
-    const { findByLabelText } = renderScreen();
+    const { findByLabelText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
     // Bottle 1 has balls — tapping it selects it
     const bottle = await findByLabelText(/^Bottle 1,/);
     await act(async () => {
-      fireEvent.press(bottle);
+      await fireEvent.press(bottle);
     });
     expect(await findByLabelText(/Bottle 1 selected/)).toBeTruthy();
   });
 
   it("undo button becomes enabled after a valid pour", async () => {
-    const { findByLabelText } = renderScreen();
+    const { findByLabelText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
     // Bottle 1 = ["red","blue"] (top: blue), Bottle 3 = [] (empty) — valid pour
     const bottle1 = await findByLabelText(/^Bottle 1,/);
     await act(async () => {
-      fireEvent.press(bottle1);
+      await fireEvent.press(bottle1);
     });
     const bottle3 = await findByLabelText(/^Bottle 3,/);
     await act(async () => {
-      fireEvent.press(bottle3);
+      await fireEvent.press(bottle3);
     });
     const undoBtn = await findByLabelText("Undo");
     expect(undoBtn.props.accessibilityState?.disabled).toBeFalsy();
@@ -204,22 +220,22 @@ describe("SortScreen — leaderboard tab", () => {
     sortApi.getLeaderboard.mockResolvedValue({
       scores: [{ player_name: "Alice", level_reached: 5, rank: 1 }],
     });
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await findByText("Choose a Level");
     const leaderboardTab = await findByText("Leaderboard");
     await act(async () => {
-      fireEvent.press(leaderboardTab);
+      await fireEvent.press(leaderboardTab);
     });
     expect(await findByText("Alice")).toBeTruthy();
     expect(await findByText("Level 5")).toBeTruthy();
   });
 
   it("shows empty state when leaderboard has no scores", async () => {
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await findByText("Choose a Level");
     const leaderboardTab = await findByText("Leaderboard");
     await act(async () => {
-      fireEvent.press(leaderboardTab);
+      await fireEvent.press(leaderboardTab);
     });
     expect(await findByText("No scores yet.")).toBeTruthy();
   });
@@ -241,31 +257,31 @@ describe("SortScreen — leaderboard tab", () => {
 
 describe("SortScreen — pour completion callback (regression #1567)", () => {
   it("updates bottle state immediately when onPourComplete fires — no timer needed", async () => {
-    const { findByLabelText, UNSAFE_getByType } = renderScreen();
+    const { findByLabelText } = await renderScreen();
 
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
 
     // Select bottle 1 (["red","blue"], 2 balls), then pour into bottle 3 (empty).
     // This sets pendingPourRef so onPourComplete can apply the state update.
     const bottle1 = await findByLabelText(/^Bottle 1, 2 of/);
     await act(async () => {
-      fireEvent.press(bottle1);
+      await fireEvent.press(bottle1);
     });
     const bottle3 = await findByLabelText("Bottle 3, empty");
     await act(async () => {
-      fireEvent.press(bottle3);
+      await fireEvent.press(bottle3);
     });
 
     // Simulate the moment SortBoard's return animation finishes and fires
     // onPourComplete (in production this is via runOnJS inside the worklet;
     // here we call it directly because Reanimated's jest mock does not invoke
-    // animation callbacks).
-    const board = UNSAFE_getByType(SortBoard);
+    // animation callbacks). Props captured via the pass-through SortBoard mock.
     await act(async () => {
-      board.props.onPourComplete?.();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
 
     // Bottle 1 should now show 1 ball ("red" remains; "blue" was poured out).
@@ -276,17 +292,17 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
   });
 
   it("is a no-op when onPourComplete fires with no pending pour", async () => {
-    const { findByLabelText, UNSAFE_getByType } = renderScreen();
+    const { findByLabelText } = await renderScreen();
 
     const levelCard = await findByLabelText("Level 1");
     await act(async () => {
-      fireEvent.press(levelCard);
+      await fireEvent.press(levelCard);
     });
 
     // Call onPourComplete without initiating any pour first.
-    const board = UNSAFE_getByType(SortBoard);
     await act(async () => {
-      board.props.onPourComplete?.();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
 
     // Original state should be unchanged.
@@ -305,7 +321,7 @@ describe("SortScreen — TypeError auto-retry (#1862)", () => {
       .mockRejectedValueOnce(new TypeError("Network request failed"))
       .mockResolvedValueOnce({ levels: MOCK_LEVELS });
 
-    const { findByText, queryByText } = renderScreen();
+    const { findByText, queryByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -320,7 +336,7 @@ describe("SortScreen — TypeError auto-retry (#1862)", () => {
     jest.useFakeTimers();
     sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -342,7 +358,7 @@ describe("SortScreen — offline levels cache (#1887)", () => {
     sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
     storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
 
-    const { findByText, queryByText } = renderScreen();
+    const { findByText, queryByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -357,7 +373,7 @@ describe("SortScreen — offline levels cache (#1887)", () => {
     sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
     storage.loadLevelsCache.mockResolvedValue(null);
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -367,7 +383,7 @@ describe("SortScreen — offline levels cache (#1887)", () => {
   });
 
   it("writes the cache on a successful fetch", async () => {
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
     await findByText("Choose a Level");
     expect(storage.saveLevelsCache).toHaveBeenCalledWith({ levels: MOCK_LEVELS });
   });
@@ -376,7 +392,7 @@ describe("SortScreen — offline levels cache (#1887)", () => {
     jest.useFakeTimers();
     sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
 
-    renderScreen();
+    await renderScreen();
     await act(async () => {
       await jest.runAllTimersAsync();
     });
@@ -388,7 +404,7 @@ describe("SortScreen — offline levels cache (#1887)", () => {
     sortApi.getLevels.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
     storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
 
-    const { findByText } = renderScreen();
+    const { findByText } = await renderScreen();
 
     await findByText("Could not load this level.");
     expect(storage.loadLevelsCache).not.toHaveBeenCalled();

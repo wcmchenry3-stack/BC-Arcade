@@ -81,8 +81,8 @@ const REVERSIBLE_ONLY_STATE: FreeCellState = {
 
 jest.useFakeTimers();
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <FreeCellScreen />
     </ThemeProvider>
@@ -100,7 +100,7 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
   });
 
   it("shows 'No moves left' banner with message and Undo action when Hint is pressed", async () => {
-    const { getByLabelText, queryByText, getAllByLabelText } = renderScreen();
+    const { getByLabelText, queryByText, getAllByLabelText } = await renderScreen();
 
     // Wait for loadGame to resolve and state to mount
     await waitFor(() => getByLabelText("Hint"));
@@ -108,8 +108,8 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
     // Before pressing Hint, no banner
     expect(queryByText(/no moves left/i)).toBeNull();
 
-    act(() => {
-      fireEvent.press(getByLabelText("Hint"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Hint"));
     });
 
     await waitFor(() => {
@@ -121,7 +121,7 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
   });
 
   it("banner does not appear before Hint is pressed", async () => {
-    const { getByLabelText, queryByText } = renderScreen();
+    const { getByLabelText, queryByText } = await renderScreen();
 
     await waitFor(() => getByLabelText("Hint"));
     expect(queryByText(/no moves left/i)).toBeNull();

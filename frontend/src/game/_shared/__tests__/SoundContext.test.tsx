@@ -22,14 +22,14 @@ beforeEach(() => {
 
 describe("SoundContext — initial state", () => {
   it("defaults to unmuted when no value in AsyncStorage", async () => {
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
     expect(result.current.muted).toBe(false);
   });
 
   it("reads saved muted=true from AsyncStorage on mount", async () => {
     mockGetItem.mockResolvedValueOnce("true");
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
     expect(result.current.muted).toBe(true);
     expect(mockGetItem).toHaveBeenCalledWith("settings.soundMuted");
@@ -37,7 +37,7 @@ describe("SoundContext — initial state", () => {
 
   it("reads saved muted=false from AsyncStorage on mount", async () => {
     mockGetItem.mockResolvedValueOnce("false");
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
     expect(result.current.muted).toBe(false);
   });
@@ -45,18 +45,18 @@ describe("SoundContext — initial state", () => {
 
 describe("SoundContext — setMuted", () => {
   it("updates muted state immediately", async () => {
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
-    act(() => {
+    await act(() => {
       result.current.setMuted(true);
     });
     expect(result.current.muted).toBe(true);
   });
 
   it("persists muted=true to AsyncStorage", async () => {
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
-    act(() => {
+    await act(() => {
       result.current.setMuted(true);
     });
     expect(mockSetItem).toHaveBeenCalledWith("settings.soundMuted", "true");
@@ -64,9 +64,9 @@ describe("SoundContext — setMuted", () => {
 
   it("persists muted=false to AsyncStorage", async () => {
     mockGetItem.mockResolvedValueOnce("true");
-    const { result } = renderHook(() => useSoundSettings(), { wrapper });
+    const { result } = await renderHook(() => useSoundSettings(), { wrapper });
     await act(async () => {});
-    act(() => {
+    await act(() => {
       result.current.setMuted(false);
     });
     expect(mockSetItem).toHaveBeenCalledWith("settings.soundMuted", "false");

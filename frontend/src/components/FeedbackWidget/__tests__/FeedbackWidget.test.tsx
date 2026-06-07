@@ -20,9 +20,9 @@ afterEach(() => {
   SessionLogger._reset();
 });
 
-function renderWidget(opts: { visible?: boolean; onClose?: () => void } = {}) {
+async function renderWidget(opts: { visible?: boolean; onClose?: () => void } = {}) {
   const { visible = true, onClose = jest.fn() } = opts;
-  return render(
+  return await render(
     <ThemeProvider>
       <FeedbackWidget visible={visible} onClose={onClose} />
     </ThemeProvider>
@@ -31,58 +31,58 @@ function renderWidget(opts: { visible?: boolean; onClose?: () => void } = {}) {
 
 describe("FeedbackWidget", () => {
   describe("rendering", () => {
-    it("renders the heading when visible", () => {
-      const { getByText } = renderWidget();
+    it("renders the heading when visible", async () => {
+      const { getByText } = await renderWidget();
       expect(getByText("Send Feedback")).toBeTruthy();
     });
 
-    it("renders type chips for Bug and Feature request", () => {
-      const { getByText } = renderWidget();
+    it("renders type chips for Bug and Feature request", async () => {
+      const { getByText } = await renderWidget();
       expect(getByText("Bug")).toBeTruthy();
       expect(getByText("Feature request")).toBeTruthy();
     });
 
-    it("renders Title and Description fields", () => {
-      const { getByPlaceholderText } = renderWidget();
+    it("renders Title and Description fields", async () => {
+      const { getByPlaceholderText } = await renderWidget();
       expect(getByPlaceholderText("Brief summary of the issue or idea")).toBeTruthy();
       expect(
         getByPlaceholderText("Describe what happened, or what you'd like to see...")
       ).toBeTruthy();
     });
 
-    it("renders the Submit button", () => {
-      const { getByText } = renderWidget();
+    it("renders the Submit button", async () => {
+      const { getByText } = await renderWidget();
       expect(getByText("Submit")).toBeTruthy();
     });
   });
 
   describe("close button", () => {
-    it("calls onClose when the close button is pressed", () => {
+    it("calls onClose when the close button is pressed", async () => {
       const onClose = jest.fn();
-      const { getByLabelText } = renderWidget({ onClose });
-      fireEvent.press(getByLabelText("Close"));
+      const { getByLabelText } = await renderWidget({ onClose });
+      await fireEvent.press(getByLabelText("Close"));
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("validation", () => {
     it("shows title error when submitting without a title", async () => {
-      const { getByText } = renderWidget();
+      const { getByText } = await renderWidget();
       await act(async () => {
-        fireEvent.press(getByText("Submit"));
+        await fireEvent.press(getByText("Submit"));
       });
       expect(getByText("Title is required.")).toBeTruthy();
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("shows description error when submitting without a description", async () => {
-      const { getByText, getByPlaceholderText } = renderWidget();
-      fireEvent.changeText(
+      const { getByText, getByPlaceholderText } = await renderWidget();
+      await fireEvent.changeText(
         getByPlaceholderText("Brief summary of the issue or idea"),
         "Some title"
       );
       await act(async () => {
-        fireEvent.press(getByText("Submit"));
+        await fireEvent.press(getByText("Submit"));
       });
       expect(getByText("Description is required.")).toBeTruthy();
       expect(mockFetch).not.toHaveBeenCalled();
@@ -97,16 +97,19 @@ describe("FeedbackWidget", () => {
         headers: { get: () => null },
       } as unknown as Response);
 
-      const { getByText, getByPlaceholderText } = renderWidget();
+      const { getByText, getByPlaceholderText } = await renderWidget();
 
-      fireEvent.changeText(getByPlaceholderText("Brief summary of the issue or idea"), "My title");
-      fireEvent.changeText(
+      await fireEvent.changeText(
+        getByPlaceholderText("Brief summary of the issue or idea"),
+        "My title"
+      );
+      await fireEvent.changeText(
         getByPlaceholderText("Describe what happened, or what you'd like to see..."),
         "My description"
       );
 
       await act(async () => {
-        fireEvent.press(getByText("Submit"));
+        await fireEvent.press(getByText("Submit"));
       });
 
       await waitFor(() => {
@@ -124,16 +127,19 @@ describe("FeedbackWidget", () => {
         json: async () => ({}),
       } as unknown as Response);
 
-      const { getByText, getByPlaceholderText } = renderWidget();
+      const { getByText, getByPlaceholderText } = await renderWidget();
 
-      fireEvent.changeText(getByPlaceholderText("Brief summary of the issue or idea"), "Title");
-      fireEvent.changeText(
+      await fireEvent.changeText(
+        getByPlaceholderText("Brief summary of the issue or idea"),
+        "Title"
+      );
+      await fireEvent.changeText(
         getByPlaceholderText("Describe what happened, or what you'd like to see..."),
         "Description"
       );
 
       await act(async () => {
-        fireEvent.press(getByText("Submit"));
+        await fireEvent.press(getByText("Submit"));
       });
 
       await waitFor(() => {
@@ -144,16 +150,19 @@ describe("FeedbackWidget", () => {
     it("shows network error message when fetch throws", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Network failed"));
 
-      const { getByText, getByPlaceholderText } = renderWidget();
+      const { getByText, getByPlaceholderText } = await renderWidget();
 
-      fireEvent.changeText(getByPlaceholderText("Brief summary of the issue or idea"), "Title");
-      fireEvent.changeText(
+      await fireEvent.changeText(
+        getByPlaceholderText("Brief summary of the issue or idea"),
+        "Title"
+      );
+      await fireEvent.changeText(
         getByPlaceholderText("Describe what happened, or what you'd like to see..."),
         "Description"
       );
 
       await act(async () => {
-        fireEvent.press(getByText("Submit"));
+        await fireEvent.press(getByText("Submit"));
       });
 
       await waitFor(() => {
@@ -165,10 +174,10 @@ describe("FeedbackWidget", () => {
   });
 
   describe("type selection", () => {
-    it("switches to Feature request type when chip is pressed", () => {
-      const { getByLabelText } = renderWidget();
+    it("switches to Feature request type when chip is pressed", async () => {
+      const { getByLabelText } = await renderWidget();
       const featureChip = getByLabelText("Feature request");
-      fireEvent.press(featureChip);
+      await fireEvent.press(featureChip);
       // Verify it's now selected (aria state)
       expect(featureChip.props.accessibilityState?.selected).toBe(true);
     });

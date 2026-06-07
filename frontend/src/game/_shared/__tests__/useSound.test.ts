@@ -33,9 +33,9 @@ beforeEach(() => {
 });
 
 describe("useSound — unregistered key", () => {
-  it("play() is a no-op when key has no entry in registry", () => {
-    const { result } = renderHook(() => useSound("unknown.key", EMPTY_REGISTRY), { wrapper });
-    act(() => {
+  it("play() is a no-op when key has no entry in registry", async () => {
+    const { result } = await renderHook(() => useSound("unknown.key", EMPTY_REGISTRY), { wrapper });
+    await act(() => {
       result.current.play();
     });
     expect(mockPlay).not.toHaveBeenCalled();
@@ -43,9 +43,9 @@ describe("useSound — unregistered key", () => {
 });
 
 describe("useSound — registered key", () => {
-  it("play() calls seekTo(0) then play() on the audio player", () => {
-    const { result } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
-    act(() => {
+  it("play() calls seekTo(0) then play() on the audio player", async () => {
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await act(() => {
       result.current.play();
     });
     expect(mockSeekTo).toHaveBeenCalledWith(0);
@@ -55,27 +55,27 @@ describe("useSound — registered key", () => {
   it("play() is a no-op when muted", async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("true");
 
-    const { result } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
     // Wait for AsyncStorage to resolve
     await act(async () => {});
-    act(() => {
+    await act(() => {
       result.current.play();
     });
     expect(mockPlay).not.toHaveBeenCalled();
   });
 
-  it("returns a stable play reference across re-renders", () => {
-    const { result, rerender } = renderHook(() => useSound("test.beep", TEST_REGISTRY), {
+  it("returns a stable play reference across re-renders", async () => {
+    const { result, rerender } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), {
       wrapper,
     });
     const first = result.current.play;
-    rerender({});
+    await rerender({});
     expect(result.current.play).toBe(first);
   });
 
-  it("calls remove() on the player when unmounted", () => {
-    const { unmount } = renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
-    unmount();
+  it("calls remove() on the player when unmounted", async () => {
+    const { unmount } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await unmount();
     expect(mockRemove).toHaveBeenCalledTimes(1);
   });
 });

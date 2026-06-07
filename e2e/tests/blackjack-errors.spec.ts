@@ -224,19 +224,19 @@ test.describe("Blackjack — error paths and guardrails", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Persistent table layout (GH #226 regression guard)
+  // Persistent table layout (GH #226 regression guard / GH #1912 fix)
   // ---------------------------------------------------------------------------
 
-  test("Dealer's Hand and Your Hand labels visible during betting phase", async ({
+  test("hand labels are hidden during betting phase before any cards are dealt", async ({
     page,
   }) => {
     await gotoBlackjack(page);
-    // Table should always be visible, even before a hand is dealt
-    await expect(page.getByText("Dealer's Hand")).toBeVisible();
-    await expect(page.getByText("Your Hand")).toBeVisible();
+    // Labels must not appear before cards are dealt (GH #1912)
+    await expect(page.getByText("Dealer's Hand")).not.toBeVisible();
+    await expect(page.getByText("Your Hand")).not.toBeVisible();
   });
 
-  test("table labels remain after transitioning back to betting via Next Hand", async ({
+  test("hand labels are hidden after transitioning back to betting via Next Hand", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
@@ -245,8 +245,8 @@ test.describe("Blackjack — error paths and guardrails", () => {
 
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Dealer's Hand")).toBeVisible();
-    await expect(page.getByText("Your Hand")).toBeVisible();
+    await expect(page.getByText("Dealer's Hand")).not.toBeVisible();
+    await expect(page.getByText("Your Hand")).not.toBeVisible();
   });
 
   // ---------------------------------------------------------------------------

@@ -12,22 +12,24 @@ afterEach(() => {
 });
 
 describe("AnimationOverlay — pointer events", () => {
-  it("is pointer-transparent when visible=false", () => {
-    const { getByTestId } = render(<AnimationOverlay visible={false} onDismiss={jest.fn()} />);
+  it("is pointer-transparent when visible=false", async () => {
+    const { getByTestId } = await render(
+      <AnimationOverlay visible={false} onDismiss={jest.fn()} />
+    );
     const overlay = getByTestId("animation-overlay");
     expect(overlay.props.pointerEvents).toBe("none");
   });
 
-  it("is interactive when visible=true", () => {
-    const { getByTestId } = render(<AnimationOverlay visible={true} onDismiss={jest.fn()} />);
+  it("is interactive when visible=true", async () => {
+    const { getByTestId } = await render(<AnimationOverlay visible={true} onDismiss={jest.fn()} />);
     const overlay = getByTestId("animation-overlay");
     expect(overlay.props.pointerEvents).toBe("auto");
   });
 });
 
 describe("AnimationOverlay — children", () => {
-  it("renders children without crashing", () => {
-    const { getByTestId } = render(
+  it("renders children without crashing", async () => {
+    const { getByTestId } = await render(
       <AnimationOverlay visible={true} onDismiss={jest.fn()}>
         <></>
       </AnimationOverlay>
@@ -35,13 +37,13 @@ describe("AnimationOverlay — children", () => {
     expect(getByTestId("animation-overlay")).toBeTruthy();
   });
 
-  it("calls onDismiss when backdrop is pressed", () => {
+  it("calls onDismiss when backdrop is pressed", async () => {
     const onDismiss = jest.fn();
-    const { getByTestId } = render(<AnimationOverlay visible={true} onDismiss={onDismiss} />);
+    const { getByTestId } = await render(<AnimationOverlay visible={true} onDismiss={onDismiss} />);
     // The Pressable backdrop is the first child of the overlay
     const overlay = getByTestId("animation-overlay");
     // Fire press on the first child (backdrop Pressable)
-    fireEvent.press(overlay.children[0]);
+    await fireEvent.press(overlay.children[0]);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
@@ -50,7 +52,7 @@ describe("AnimationOverlay — reduced motion", () => {
   it("renders the static fallback when isReduceMotionEnabled returns true", async () => {
     jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
 
-    const { getByTestId } = render(<AnimationOverlay visible={true} onDismiss={jest.fn()} />);
+    const { getByTestId } = await render(<AnimationOverlay visible={true} onDismiss={jest.fn()} />);
 
     // Flush the AccessibilityInfo.isReduceMotionEnabled promise.
     await act(async () => {});
@@ -61,7 +63,9 @@ describe("AnimationOverlay — reduced motion", () => {
   it("static fallback is pointer-transparent when visible=false", async () => {
     jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
 
-    const { getByTestId } = render(<AnimationOverlay visible={false} onDismiss={jest.fn()} />);
+    const { getByTestId } = await render(
+      <AnimationOverlay visible={false} onDismiss={jest.fn()} />
+    );
     await act(async () => {});
 
     const overlay = getByTestId("animation-overlay-static");

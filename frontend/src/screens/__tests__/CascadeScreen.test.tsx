@@ -140,17 +140,17 @@ function advanceOneFrame() {
 }
 
 /** Inject an engine merge event and drive one tick. */
-function injectMerge(tier: number, x: number, y: number) {
+async function injectMerge(tier: number, x: number, y: number) {
   pendingEngineEvents.push({ type: "merge", result: tier, x, y });
-  act(() => {
+  await act(() => {
     advanceOneFrame();
   });
 }
 
 /** Inject an engine gameOver event and drive one tick. */
-function injectGameOver() {
+async function injectGameOver() {
   pendingEngineEvents.push({ type: "gameOver" });
-  act(() => {
+  await act(() => {
     advanceOneFrame();
   });
 }
@@ -182,9 +182,9 @@ afterEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderScreen() {
+async function renderScreen() {
   let renderer!: ReturnType<typeof create>;
-  act(() => {
+  await act(() => {
     renderer = create(
       <CascadeScoreboardProvider>
         <CascadeScreen />
@@ -194,7 +194,7 @@ function renderScreen() {
 
   // Trigger onLayout so scale > 0 and the game area renders
   // containerWidth=300, containerHeight=600 → scale=min(300/400,600/600)=0.75
-  act(() => {
+  await act(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const outer = renderer.root.findAll((node: any) => node.props.onLayout !== undefined)[0];
     outer?.props.onLayout({
@@ -203,7 +203,7 @@ function renderScreen() {
   });
 
   // Advance one RAF frame so the engine effect fires and engineRef is set
-  act(() => {
+  await act(() => {
     advanceOneFrame();
   });
 
@@ -220,9 +220,9 @@ function findGameArea(renderer: ReturnType<typeof create>) {
  * Simulate a tap on the game area at the given world x-coordinate.
  * scale = 0.75 with the mock layout (width=300, height=600).
  */
-function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
+async function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
   const area = findGameArea(renderer);
-  act(() => {
+  await act(() => {
     area?.props.onPress({ nativeEvent: { locationX: worldX * 0.75 } });
   });
 }
@@ -232,58 +232,58 @@ function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
 // ---------------------------------------------------------------------------
 
 describe("CascadeGame", () => {
-  it("score starts at 0", () => {
-    const renderer = renderScreen();
+  it("score starts at 0", async () => {
+    const renderer = await renderScreen();
     expect(JSON.stringify(renderer.toJSON())).toContain('"0"');
   });
 
-  it("handleTap calls engine.drop once", () => {
-    const renderer = renderScreen();
-    triggerTap(renderer);
+  it("handleTap calls engine.drop once", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer);
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
   });
 
-  it("second tap within 200ms cooldown is ignored", () => {
-    const renderer = renderScreen();
-    triggerTap(renderer);
-    triggerTap(renderer); // immediate second tap
+  it("second tap within 200ms cooldown is ignored", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer);
+    await triggerTap(renderer); // immediate second tap
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
   });
 
-  it("tap succeeds again after the 200ms cooldown expires", () => {
-    const renderer = renderScreen();
-    triggerTap(renderer);
-    act(() => {
+  it("tap succeeds again after the 200ms cooldown expires", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer);
+    await act(() => {
       jest.advanceTimersByTime(201);
     });
-    triggerTap(renderer);
+    await triggerTap(renderer);
     expect(mockEngineDrop).toHaveBeenCalledTimes(2);
   });
 
-  it("tap after game over is ignored", () => {
-    const renderer = renderScreen();
-    injectGameOver();
-    triggerTap(renderer);
+  it("tap after game over is ignored", async () => {
+    const renderer = await renderScreen();
+    await injectGameOver();
+    await triggerTap(renderer);
     expect(mockEngineDrop).not.toHaveBeenCalled();
   });
 
-  it("handleRestart resets score and recreates the engine", () => {
-    const renderer = renderScreen();
+  it("handleRestart resets score and recreates the engine", async () => {
+    const renderer = await renderScreen();
     const instancesBefore = mockEngineInstanceCount;
 
     // Inject merge + game over to put the screen in a post-game state
-    injectMerge(2, 150, 300);
-    injectGameOver();
+    await injectMerge(2, 150, 300);
+    await injectGameOver();
 
     const overlay = renderer.root.findAll(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (node: any) => typeof node.props.onRestart === "function"
     )[0];
-    act(() => {
+    await act(() => {
       overlay?.props.onRestart();
     });
     // Advance frame so the new engine's RAF loop fires
-    act(() => {
+    await act(() => {
       advanceOneFrame();
     });
 
@@ -301,8 +301,8 @@ describe("CascadeGame", () => {
 const RESERVED_KEYS = ["game_id", "event_index", "event_type"];
 
 describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
-  it("calls startGame('cascade') with fruit_set/theme on mount", () => {
-    renderScreen();
+  it("calls startGame('cascade') with fruit_set/theme on mount", async () => {
+    await renderScreen();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     const startCall = mockStartGame.mock.calls[0];
     if (startCall === undefined) throw new Error("Expected startGame call");
@@ -321,10 +321,10 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     }
   });
 
-  it("emits a 'drop' event with expected payload shape on each tap", () => {
-    const renderer = renderScreen();
+  it("emits a 'drop' event with expected payload shape on each tap", async () => {
+    const renderer = await renderScreen();
     mockEnqueueEvent.mockClear();
-    triggerTap(renderer, 123);
+    await triggerTap(renderer, 123);
     const dropCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "drop");
     expect(dropCall).toBeDefined();
     const [gameId, event] = dropCall!;
@@ -342,11 +342,11 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     }
   });
 
-  it("emits a 'merge' event with from_tier/to_tier and x/y", () => {
-    const _renderer = renderScreen();
+  it("emits a 'merge' event with from_tier/to_tier and x/y", async () => {
+    const _renderer = await renderScreen();
     // Make sure game area is rendered (it is after renderScreen)
     mockEnqueueEvent.mockClear();
-    injectMerge(4, 200, 300);
+    await injectMerge(4, 200, 300);
     const mergeCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "merge");
     expect(mergeCall).toBeDefined();
     expect(mergeCall![1].data).toEqual(
@@ -363,14 +363,14 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     }
   });
 
-  it("capture ordering: drops emit in tap order", () => {
-    const renderer = renderScreen();
+  it("capture ordering: drops emit in tap order", async () => {
+    const renderer = await renderScreen();
     mockEnqueueEvent.mockClear();
-    triggerTap(renderer, 50);
-    act(() => {
+    await triggerTap(renderer, 50);
+    await act(() => {
       jest.advanceTimersByTime(201);
     });
-    triggerTap(renderer, 250);
+    await triggerTap(renderer, 250);
     const drops = mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "drop");
     expect(drops.length).toBe(2);
     expect(drops[0]?.data.drop_index).toBe(1);
@@ -379,15 +379,15 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(drops[1]?.data.x).toBe(250);
   });
 
-  it("fires completeGame with snake_case payload on handleGameOver", () => {
-    const renderer = renderScreen();
-    triggerTap(renderer, 100);
-    act(() => {
+  it("fires completeGame with snake_case payload on handleGameOver", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
       jest.advanceTimersByTime(201);
     });
-    injectMerge(3, 100, 200);
+    await injectMerge(3, 100, 200);
     mockCompleteGame.mockClear();
-    injectGameOver();
+    await injectGameOver();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const completeCall = mockCompleteGame.mock.calls[0];
     if (completeCall === undefined) throw new Error("Expected completeGame call");
@@ -408,15 +408,15 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     }
   });
 
-  it("does not emit drop or merge events after game_over", () => {
-    const renderer = renderScreen();
-    injectGameOver();
+  it("does not emit drop or merge events after game_over", async () => {
+    const renderer = await renderScreen();
+    await injectGameOver();
     mockEnqueueEvent.mockClear();
 
     // Tap is blocked by gameOver state
-    triggerTap(renderer, 100);
+    await triggerTap(renderer, 100);
     // Merge event from engine (engine would be in gameOver, but mock still emits)
-    injectMerge(2, 50, 50);
+    await injectMerge(2, 50, 50);
 
     const postDrops = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "drop");
     const postMerges = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "merge");
@@ -424,18 +424,18 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(postMerges).toHaveLength(0);
   });
 
-  it("does not double-fire game_ended when handleGameOver runs after completion", () => {
-    const _renderer = renderScreen();
-    injectGameOver();
+  it("does not double-fire game_ended when handleGameOver runs after completion", async () => {
+    const _renderer = await renderScreen();
+    await injectGameOver();
     mockCompleteGame.mockClear();
-    injectGameOver(); // second game-over event
+    await injectGameOver(); // second game-over event
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
-  it("Restart abandons/completes the old session and starts a new one", () => {
-    const renderer = renderScreen();
-    injectMerge(2, 150, 300);
-    injectGameOver();
+  it("Restart abandons/completes the old session and starts a new one", async () => {
+    const renderer = await renderScreen();
+    await injectMerge(2, 150, 300);
+    await injectGameOver();
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
     mockCompleteGame.mockClear();
@@ -443,10 +443,10 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (node: any) => typeof node.props.onRestart === "function"
     )[0];
-    act(() => {
+    await act(() => {
       overlay?.props.onRestart();
     });
-    act(() => {
+    await act(() => {
       advanceOneFrame();
     });
     // The previous session already completed on handleGameOver, so restart
@@ -460,25 +460,23 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     );
   });
 
-  it("fires abandoned on unmount mid-game", () => {
-    const renderer = renderScreen();
-    triggerTap(renderer, 100);
+  it("fires abandoned on unmount mid-game", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
     mockCompleteGame.mockClear();
-    act(() => {
+    await act(() => {
       renderer.unmount();
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
 
-  it("client failures do not block gameplay (enqueueEvent throws)", () => {
-    const renderer = renderScreen();
+  it("client failures do not block gameplay (enqueueEvent throws)", async () => {
+    const renderer = await renderScreen();
     mockEnqueueEvent.mockImplementation(() => {
       throw new Error("boom");
     });
-    expect(() => {
-      triggerTap(renderer, 150);
-    }).not.toThrow();
+    await triggerTap(renderer, 150);
     // engine.drop still called despite the throw
     expect(mockEngineDrop).toHaveBeenCalled();
     mockEnqueueEvent.mockReset();

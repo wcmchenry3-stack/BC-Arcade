@@ -15,9 +15,11 @@ export interface VsScorecardProps {
   playerRollsUsed: number;
   playerGameOver: boolean;
   playerUpperBonus: number;
+  playerYachtBonusTotal: number;
   playerTotalScore: number;
   cpuScores: Record<string, number | null>;
   cpuUpperBonus: number;
+  cpuYachtBonusTotal: number;
   cpuTotalScore: number;
   isAiTurn: boolean;
   onScore: (category: string) => void;
@@ -29,9 +31,11 @@ export default function VsScorecard({
   playerRollsUsed,
   playerGameOver,
   playerUpperBonus,
+  playerYachtBonusTotal,
   playerTotalScore,
   cpuScores,
   cpuUpperBonus,
+  cpuYachtBonusTotal,
   cpuTotalScore,
   isAiTurn,
   onScore,
@@ -248,6 +252,41 @@ export default function VsScorecard({
     );
   }
 
+  function renderJokerBonusRow() {
+    if (playerYachtBonusTotal === 0 && cpuYachtBonusTotal === 0) return null;
+    return (
+      <View style={[styles.vsRow, styles.vsBonusRow, { borderBottomColor: colors.border }]}>
+        <View style={styles.vsRowLeft}>
+          <Text style={[styles.vsBonusLbl, { color: colors.textMuted }]}>
+            {t("bonus.yachtLabel")}
+          </Text>
+        </View>
+        <View style={[styles.vsCell, { backgroundColor: "transparent" }]}>
+          <Text
+            style={{
+              color: playerYachtBonusTotal > 0 ? colors.bonus : colors.textMuted,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
+            {playerYachtBonusTotal > 0 ? `+${playerYachtBonusTotal}` : "—"}
+          </Text>
+        </View>
+        <View style={[styles.vsCell, { backgroundColor: "transparent" }]}>
+          <Text
+            style={{
+              color: cpuYachtBonusTotal > 0 ? colors.bonus : colors.textMuted,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
+            {cpuYachtBonusTotal > 0 ? `+${cpuYachtBonusTotal}` : "—"}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       focusable={Platform.OS === "web"}
@@ -276,6 +315,7 @@ export default function VsScorecard({
         {(LOWER_CATEGORY_KEYS as readonly string[]).map((key, i) =>
           renderCategoryRow(key, "lower", i === LOWER_CATEGORY_KEYS.length - 1)
         )}
+        {renderJokerBonusRow()}
         {renderSubtotalRow(t("vsMode.lowerSubtotal"), playerLowerSubtotal, cpuLowerSubtotal, false)}
       </View>
 

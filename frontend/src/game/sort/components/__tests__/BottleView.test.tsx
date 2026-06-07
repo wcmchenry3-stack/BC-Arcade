@@ -9,41 +9,43 @@ function withTheme(children: React.ReactNode) {
 }
 
 describe("BottleView", () => {
-  it("labels an empty bottle correctly", () => {
-    const { getByLabelText } = render(withTheme(<BottleView bottle={[]} index={0} />));
+  it("labels an empty bottle correctly", async () => {
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={[]} index={0} />));
     expect(getByLabelText("Bottle 1, empty")).toBeTruthy();
   });
 
-  it("labels a partially filled bottle with count info", () => {
+  it("labels a partially filled bottle with count info", async () => {
     const bottle: Color[] = ["red", "blue"];
-    const { getByLabelText } = render(withTheme(<BottleView bottle={bottle} index={1} />));
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={bottle} index={1} />));
     expect(getByLabelText("Bottle 2, 2 of 4 filled")).toBeTruthy();
   });
 
-  it("labels a selected bottle with the pour instruction", () => {
+  it("labels a selected bottle with the pour instruction", async () => {
     const bottle: Color[] = ["red"];
-    const { getByLabelText } = render(withTheme(<BottleView bottle={bottle} index={2} selected />));
+    const { getByLabelText } = await render(
+      withTheme(<BottleView bottle={bottle} index={2} selected />)
+    );
     expect(getByLabelText(/Bottle 3 selected/)).toBeTruthy();
   });
 
-  it("labels a solved bottle as complete", () => {
+  it("labels a solved bottle as complete", async () => {
     const solved: Color[] = ["red", "red", "red", "red"];
-    const { getByLabelText } = render(withTheme(<BottleView bottle={solved} index={0} />));
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={solved} index={0} />));
     expect(getByLabelText("Bottle 1, complete")).toBeTruthy();
   });
 
-  it("fires onTap when pressed", () => {
+  it("fires onTap when pressed", async () => {
     const onTap = jest.fn();
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(<BottleView bottle={[]} index={0} onTap={onTap} />)
     );
-    fireEvent.press(getByLabelText("Bottle 1, empty"));
+    await fireEvent.press(getByLabelText("Bottle 1, empty"));
     expect(onTap).toHaveBeenCalledTimes(1);
   });
 
-  it("renders a BallView for each color in the bottle", () => {
+  it("renders a BallView for each color in the bottle", async () => {
     const bottle: Color[] = ["red", "blue", "green"];
-    const { getByLabelText } = render(withTheme(<BottleView bottle={bottle} index={0} />));
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={bottle} index={0} />));
     expect(getByLabelText("Red")).toBeTruthy();
     expect(getByLabelText("Blue")).toBeTruthy();
     expect(getByLabelText("Green")).toBeTruthy();

@@ -4,7 +4,9 @@ import BettingPanel from "../BettingPanel";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { DEFAULT_RULES } from "../../../game/blackjack/engine";
 
-function renderPanel(
+jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
+
+async function renderPanel(
   overrides: Partial<{
     chips: number;
     loading: boolean;
@@ -24,7 +26,7 @@ function renderPanel(
     betMax = 25,
     chipDenominations = [5, 10, 25],
   } = overrides;
-  const utils = render(
+  const utils = await render(
     <ThemeProvider>
       <BettingPanel
         chips={chips}
@@ -43,65 +45,106 @@ function renderPanel(
 }
 
 describe("BettingPanel", () => {
-  it("renders Deal button", () => {
-    const { getByText } = renderPanel();
+  it("renders Deal button", async () => {
+    const { getByText } = await renderPanel();
     expect(getByText("Deal")).toBeTruthy();
   });
 
-  it("Deal button is disabled when bet is 0", () => {
-    const { getByLabelText } = renderPanel({ chips: 1000 });
+  it("Deal button is disabled when bet is 0", async () => {
+    const { getByLabelText } = await renderPanel({ chips: 1000 });
     const dealBtn = getByLabelText(/deal cards with 0-chip bet/i);
     expect(dealBtn.props.accessibilityState.disabled).toBe(true);
   });
 
-  it("calls onDeal with bet amount after placing a chip", () => {
-    const { getByLabelText, getByText, onDeal } = renderPanel({ chips: 1000 });
-    fireEvent.press(getByLabelText(/add 25 to bet/i));
-    fireEvent.press(getByText("Deal"));
+  it("calls onDeal with bet amount after placing a chip", async () => {
+    const { getByLabelText, getByText, onDeal } = await renderPanel({ chips: 1000 });
+    await fireEvent.press(getByLabelText(/add 25 to bet/i));
+    await fireEvent.press(getByText("Deal"));
     expect(onDeal).toHaveBeenCalledWith(25);
   });
 
-  it("does not call onDeal when loading", () => {
-    const { getByText, onDeal } = renderPanel({ loading: true });
-    fireEvent.press(getByText("Deal"));
+  it("does not call onDeal when loading", async () => {
+    const { getByText, onDeal } = await renderPanel({ loading: true });
+    await fireEvent.press(getByText("Deal"));
     expect(onDeal).not.toHaveBeenCalled();
   });
 
-  it("renders error message when error prop is set", () => {
-    const { getByText } = renderPanel({ error: "Something went wrong" });
+  it("renders error message when error prop is set", async () => {
+    const { getByText } = await renderPanel({ error: "Something went wrong" });
     expect(getByText("Something went wrong")).toBeTruthy();
   });
 
-  it("renders chip denomination buttons", () => {
-    const { getByLabelText } = renderPanel();
+  it("renders chip denomination buttons", async () => {
+    const { getByLabelText } = await renderPanel();
     expect(getByLabelText(/add 5 to bet/i)).toBeTruthy();
     expect(getByLabelText(/add 10 to bet/i)).toBeTruthy();
     expect(getByLabelText(/add 25 to bet/i)).toBeTruthy();
   });
 
-  it("chip click adds denomination to displayed bet", () => {
-    const { getByLabelText } = renderPanel({ chips: 1000 });
-    fireEvent.press(getByLabelText(/add 25 to bet/i));
+  it("chip click adds denomination to displayed bet", async () => {
+    const { getByLabelText } = await renderPanel({ chips: 1000 });
+    await fireEvent.press(getByLabelText(/add 25 to bet/i));
     expect(getByLabelText(/deal cards with 25-chip bet/i)).toBeTruthy();
   });
 
-  it("multiple chip clicks accumulate", () => {
-    const { getByLabelText } = renderPanel({ chips: 1000 });
-    fireEvent.press(getByLabelText(/add 10 to bet/i));
-    fireEvent.press(getByLabelText(/add 5 to bet/i));
+  it("multiple chip clicks accumulate", async () => {
+    const { getByLabelText } = await renderPanel({ chips: 1000 });
+    await fireEvent.press(getByLabelText(/add 10 to bet/i));
+    await fireEvent.press(getByLabelText(/add 5 to bet/i));
     expect(getByLabelText(/deal cards with 15-chip bet/i)).toBeTruthy();
   });
 
-  it("Clear Bet button resets bet to 0", () => {
-    const { getByLabelText } = renderPanel({ chips: 1000 });
-    fireEvent.press(getByLabelText(/add 5 to bet/i));
-    fireEvent.press(getByLabelText(/clear bet/i));
+  it("Clear Bet button resets bet to 0", async () => {
+    const { getByLabelText } = await renderPanel({ chips: 1000 });
+    await fireEvent.press(getByLabelText(/add 5 to bet/i));
+    await fireEvent.press(getByLabelText(/clear bet/i));
     expect(getByLabelText(/deal cards with 0-chip bet/i)).toBeTruthy();
   });
 
-  it("25 chip is disabled when chips < 25", () => {
-    const { getByLabelText } = renderPanel({ chips: 10 });
+  it("25 chip is disabled when chips < 25", async () => {
+    const { getByLabelText } = await renderPanel({ chips: 10 });
     const btn = getByLabelText(/25.*not available/i);
     expect(btn.props.accessibilityState.disabled).toBe(true);
+  });
+
+  describe("tooltip toggle", () => {
+    async function openRules(utils: ReturnType<typeof renderPanel>) {
+      await fireEvent.press(utils.getByLabelText(/table rules/i));
+    }
+
+    it("tapping soft17 info button shows tooltip text", async () => {
+      const utils = await renderPanel();
+      await openRules(utils);
+      await fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      expect(utils.getByText(/dealer stands on soft 17/i)).toBeTruthy();
+    });
+
+    it("tapping soft17 info button again hides tooltip text", async () => {
+      const utils = await renderPanel();
+      await openRules(utils);
+      await fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      await fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+    });
+
+    it("only one tooltip is visible at a time", async () => {
+      const utils = await renderPanel();
+      await openRules(utils);
+      await fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      await fireEvent.press(utils.getByLabelText(/information about deck count/i));
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+      expect(utils.getByText(/number of decks shuffled/i)).toBeTruthy();
+    });
+
+    it("closing the rules panel resets active tooltip", async () => {
+      const utils = await renderPanel();
+      await openRules(utils);
+      await fireEvent.press(utils.getByLabelText(/information about dealer soft 17/i));
+      // Close the panel
+      await fireEvent.press(utils.getByLabelText(/table rules/i));
+      // Reopen — tooltip should not be visible
+      await openRules(utils);
+      expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+    });
   });
 });

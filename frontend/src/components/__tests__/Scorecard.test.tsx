@@ -26,7 +26,7 @@ const ALL_CATEGORIES = [
 
 const emptyScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, null]));
 
-function renderScorecard(overrides: Partial<React.ComponentProps<typeof Scorecard>> = {}) {
+async function renderScorecard(overrides: Partial<React.ComponentProps<typeof Scorecard>> = {}) {
   const defaults = {
     scores: emptyScores,
     possibleScores: {},
@@ -40,7 +40,7 @@ function renderScorecard(overrides: Partial<React.ComponentProps<typeof Scorecar
     onScore: jest.fn(),
   };
   const props = { ...defaults, ...overrides };
-  return render(
+  return await render(
     <ThemeProvider>
       <Scorecard {...props} />
     </ThemeProvider>
@@ -48,35 +48,35 @@ function renderScorecard(overrides: Partial<React.ComponentProps<typeof Scorecar
 }
 
 describe("Scorecard — tabs", () => {
-  it("renders Upper and Lower tabs", () => {
-    const { getAllByRole } = renderScorecard();
+  it("renders Upper and Lower tabs", async () => {
+    const { getAllByRole } = await renderScorecard();
     const tabs = getAllByRole("tab");
     expect(tabs.length).toBe(2);
   });
 
-  it("defaults to upper tab selected", () => {
-    const { getAllByRole } = renderScorecard();
+  it("defaults to upper tab selected", async () => {
+    const { getAllByRole } = await renderScorecard();
     const tabs = getAllByRole("tab");
     expect(tabs[0]?.props.accessibilityState?.selected).toBe(true);
     expect(tabs[1]?.props.accessibilityState?.selected).toBe(false);
   });
 
-  it("shows 6 upper category rows by default", () => {
-    const { getAllByRole } = renderScorecard();
+  it("shows 6 upper category rows by default", async () => {
+    const { getAllByRole } = await renderScorecard();
     const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
     expect(rows.length).toBe(6);
   });
 
-  it("shows 7 lower category rows after switching to lower tab", () => {
-    const { getAllByRole, getByRole } = renderScorecard();
-    fireEvent.press(getByRole("tab", { name: /lower/i }));
+  it("shows 7 lower category rows after switching to lower tab", async () => {
+    const { getAllByRole, getByRole } = await renderScorecard();
+    await fireEvent.press(getByRole("tab", { name: /lower/i }));
     const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
     expect(rows.length).toBe(7);
   });
 
-  it("lower tab becomes selected after pressing it", () => {
-    const { getAllByRole, getByRole } = renderScorecard();
-    fireEvent.press(getByRole("tab", { name: /lower/i }));
+  it("lower tab becomes selected after pressing it", async () => {
+    const { getAllByRole, getByRole } = await renderScorecard();
+    await fireEvent.press(getByRole("tab", { name: /lower/i }));
     const tabs = getAllByRole("tab");
     expect(tabs[0]?.props.accessibilityState?.selected).toBe(false);
     expect(tabs[1]?.props.accessibilityState?.selected).toBe(true);
@@ -100,8 +100,8 @@ describe("Scorecard — wide layout (≥600dp)", () => {
       .mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
   });
 
-  it("renders all 13 categories without tabs", () => {
-    const { queryByRole, getAllByRole } = renderScorecard({ rollsUsed: 0 });
+  it("renders all 13 categories without tabs", async () => {
+    const { queryByRole, getAllByRole } = await renderScorecard({ rollsUsed: 0 });
     expect(queryByRole("tab")).toBeNull();
     const rows = getAllByRole("button").filter((b) => b.props.accessibilityLabel?.includes(":"));
     expect(rows.length).toBe(13);
@@ -109,14 +109,14 @@ describe("Scorecard — wide layout (≥600dp)", () => {
 });
 
 describe("Scorecard", () => {
-  it("displays the total score", () => {
-    const { getByText } = renderScorecard({ totalScore: 142 });
+  it("displays the total score", async () => {
+    const { getByText } = await renderScorecard({ totalScore: 142 });
     expect(getByText("142")).toBeTruthy();
   });
 
-  it("shows potential scores when rollsUsed > 0", () => {
+  it("shows potential scores when rollsUsed > 0", async () => {
     // Use distinct values that don't collide with CategoryIcon glyphs (1–6)
-    const { getByText } = renderScorecard({
+    const { getByText } = await renderScorecard({
       rollsUsed: 1,
       possibleScores: { ones: 17, twos: 23 },
     });
@@ -124,51 +124,51 @@ describe("Scorecard", () => {
     expect(getByText("23")).toBeTruthy();
   });
 
-  it("does not show potential scores when rollsUsed === 0", () => {
-    const { queryByText } = renderScorecard({
+  it("does not show potential scores when rollsUsed === 0", async () => {
+    const { queryByText } = await renderScorecard({
       rollsUsed: 0,
       possibleScores: { ones: 17 },
     });
     expect(queryByText("17")).toBeNull();
   });
 
-  it("calls onScore with the correct category key when a row is pressed", () => {
+  it("calls onScore with the correct category key when a row is pressed", async () => {
     const onScore = jest.fn();
-    const { getByRole } = renderScorecard({
+    const { getByRole } = await renderScorecard({
       rollsUsed: 1,
       possibleScores: { ones: 3 },
       onScore,
     });
-    fireEvent.press(getByRole("button", { name: /^Ones:/i }));
+    await fireEvent.press(getByRole("button", { name: /^Ones:/i }));
     expect(onScore).toHaveBeenCalledWith("ones");
   });
 
-  it("does not call onScore when rollsUsed === 0", () => {
+  it("does not call onScore when rollsUsed === 0", async () => {
     const onScore = jest.fn();
-    const { getByRole } = renderScorecard({ rollsUsed: 0, onScore });
-    fireEvent.press(getByRole("button", { name: /^Ones:/i }));
+    const { getByRole } = await renderScorecard({ rollsUsed: 0, onScore });
+    await fireEvent.press(getByRole("button", { name: /^Ones:/i }));
     expect(onScore).not.toHaveBeenCalled();
   });
 
-  it("does not call onScore for an already-scored category", () => {
+  it("does not call onScore for an already-scored category", async () => {
     const onScore = jest.fn();
-    const { getByRole } = renderScorecard({
+    const { getByRole } = await renderScorecard({
       rollsUsed: 1,
       scores: { ...emptyScores, ones: 3 },
       possibleScores: { twos: 6 },
       onScore,
     });
-    fireEvent.press(getByRole("button", { name: /^Ones:/i }));
+    await fireEvent.press(getByRole("button", { name: /^Ones:/i }));
     expect(onScore).not.toHaveBeenCalled();
   });
 
-  it("shows bonus progress text when upperBonus === 0", () => {
-    const { getAllByText } = renderScorecard({ upperSubtotal: 21, upperBonus: 0 });
+  it("shows bonus progress text when upperBonus === 0", async () => {
+    const { getAllByText } = await renderScorecard({ upperSubtotal: 21, upperBonus: 0 });
     expect(getAllByText(/21 \/ 63/).length).toBeGreaterThan(0);
   });
 
-  it("shows bonus achieved text when upperBonus > 0", () => {
-    const { getAllByText } = renderScorecard({ upperSubtotal: 63, upperBonus: 35 });
+  it("shows bonus achieved text when upperBonus > 0", async () => {
+    const { getAllByText } = await renderScorecard({ upperSubtotal: 63, upperBonus: 35 });
     expect(getAllByText(/✓/).length).toBeGreaterThan(0);
   });
 });
@@ -189,16 +189,16 @@ const LOWER_CATS = [
 ];
 
 describe("Scorecard — reset to all-null scores (GH #263)", () => {
-  it("renders all upper section rows as 'not available' when scores are null", () => {
-    const { getByRole } = renderScorecard({ rollsUsed: 0 });
+  it("renders all upper section rows as 'not available' when scores are null", async () => {
+    const { getByRole } = await renderScorecard({ rollsUsed: 0 });
     for (const cat of UPPER_CATS) {
       expect(getByRole("button", { name: new RegExp(`${cat}:.*not available`, "i") })).toBeTruthy();
     }
   });
 
-  it("renders all lower section rows as 'not available' when scores are null", () => {
-    const { getByRole } = renderScorecard({ rollsUsed: 0 });
-    fireEvent.press(getByRole("tab", { name: /lower/i }));
+  it("renders all lower section rows as 'not available' when scores are null", async () => {
+    const { getByRole } = await renderScorecard({ rollsUsed: 0 });
+    await fireEvent.press(getByRole("tab", { name: /lower/i }));
     for (const cat of LOWER_CATS) {
       expect(
         getByRole("button", {
@@ -209,15 +209,15 @@ describe("Scorecard — reset to all-null scores (GH #263)", () => {
     }
   });
 
-  it("transitions upper rows from scored to 'not available' when scores reset to null", () => {
+  it("transitions upper rows from scored to 'not available' when scores reset to null", async () => {
     const filledScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, 5]));
-    const { rerender, getByRole } = renderScorecard({
+    const { rerender, getByRole } = await renderScorecard({
       scores: filledScores,
       rollsUsed: 0,
     });
     expect(getByRole("button", { name: /Ones:.*scored/i })).toBeTruthy();
 
-    rerender(
+    await rerender(
       <ThemeProvider>
         <Scorecard
           scores={emptyScores}
@@ -238,16 +238,16 @@ describe("Scorecard — reset to all-null scores (GH #263)", () => {
     }
   });
 
-  it("transitions lower rows from scored to 'not available' when scores reset to null", () => {
+  it("transitions lower rows from scored to 'not available' when scores reset to null", async () => {
     const filledScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, 5]));
-    const { rerender, getByRole } = renderScorecard({
+    const { rerender, getByRole } = await renderScorecard({
       scores: filledScores,
       rollsUsed: 0,
     });
-    fireEvent.press(getByRole("tab", { name: /lower/i }));
+    await fireEvent.press(getByRole("tab", { name: /lower/i }));
     expect(getByRole("button", { name: /Chance:.*scored/i })).toBeTruthy();
 
-    rerender(
+    await rerender(
       <ThemeProvider>
         <Scorecard
           scores={emptyScores}

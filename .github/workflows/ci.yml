@@ -56,10 +56,55 @@ jobs:
           fi
           echo "No conflict markers found"
 
+  forbidden-terms:
+    name: Forbidden brand/trademark terms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Scan for trademarked or competitor brand references
+        run: |
+          # Third-party trademarks and competitor brands must not appear in source,
+          # docs, or config. To add a term, append it to TERMS below.
+          # Use \b word-boundary anchors where a term could appear as a substring
+          # of a legitimate word (e.g. "Fruit Merge" vs "fruit merged").
+          #
+          # Intentional exclusions:
+          #   .github/    — this file contains the terms as grep patterns
+          #   .claude/    — tool-config files, not product code
+          #   BRANDING.md — anti-guidance doc ("never say X")
+          #   CLAUDE.md   — project guide that lists prohibited names
+          #   alembic/    — DB migration history; old display names are immutable
+          TERMS=(
+            "Yahtzee"
+            "\bFruit Merge\b"
+            "Galaga"
+            "Neon Arcade"
+          )
+          PATTERN=$(printf "%s\n" "${TERMS[@]}" | paste -sd "|")
+          if grep -rniE "$PATTERN" \
+              --include="*.ts" --include="*.tsx" \
+              --include="*.py" \
+              --include="*.js" --include="*.jsx" \
+              --include="*.json" \
+              --include="*.yml" --include="*.yaml" \
+              --include="*.md" \
+              --exclude-dir=node_modules \
+              --exclude-dir=.git \
+              --exclude-dir=.github \
+              --exclude-dir=.claude \
+              --exclude-dir=alembic \
+              --exclude=BRANDING.md \
+              --exclude=CLAUDE.md \
+              .; then
+            echo "::error::Forbidden brand/trademark references found — remove before merging"
+            exit 1
+          fi
+          echo "No forbidden terms found"
+
   # === Tier 1: Substantive fast checks (need lint + secret-scan) ===========
 
   backend-health:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-backend-health.yml@main
     with:
       # Direct Render origin intentionally used here instead of dev-games-api.buffingchi.com.
@@ -73,14 +118,42 @@ jobs:
     secrets: inherit
 
   expo-compat:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
-    uses: wcmchenry3-stack/.github/.github/workflows/called-expo-compat.yml@main
-    with:
-      working-directory: frontend
-    secrets: inherit
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Expo Compatibility Check
+        run: |
+          echo "Checking dependency compatibility with Expo SDK..."
+          # Approved version overrides — packages intentionally ahead of Expo's compat matrix:
+          #   @sentry/react-native: Expo 56 matrix predates Sentry 8, but Sentry 8 declares
+          #   peerDependencies: { expo: ">=49.0.0" }, so it is compatible with Expo 56.
+          APPROVED_OVERRIDES="@sentry/react-native"
+          npx expo install --check 2>&1 | tee /tmp/expo-check.log || true
+          UNAPPROVED=$(grep -E "^\s+@" /tmp/expo-check.log | grep -Ev "$APPROVED_OVERRIDES" || true)
+          if [ -n "$UNAPPROVED" ]; then
+            echo ""
+            echo "::error::Expo dependency compatibility check failed. Run 'npx expo install --fix' locally to resolve."
+            exit 1
+          fi
+          if grep -q "Your project may not work correctly" /tmp/expo-check.log; then
+            echo "::warning::Approved version override active: $APPROVED_OVERRIDES (see comment above for rationale)."
+          else
+            echo "All dependencies are compatible with the installed Expo SDK"
+          fi
 
   sentry-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-sentry-check.yml@main
     with:
       working-directory: backend
@@ -88,7 +161,7 @@ jobs:
       SENTRY_DSN: ${{ secrets.SENTRY_BC_GAMES }}
 
   local-path-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-local-path-check.yml@main
     with:
       scan-paths: "frontend/ios/GamingApp.xcodeproj,frontend/android"
@@ -96,21 +169,21 @@ jobs:
     secrets: inherit
 
   test-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
     secrets: inherit
 
   test-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
     secrets: inherit
 
   cve-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-python.yml@main
     with:
       working-directory: backend
@@ -118,7 +191,7 @@ jobs:
     secrets: inherit
 
   cve-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-frontend.yml@main
     with:
       working-directory: frontend
@@ -126,7 +199,7 @@ jobs:
 
   detect-e2e-scope:
     name: Detect E2E scope
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     outputs:
       projects: ${{ steps.scope.outputs.projects }}
@@ -134,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -251,7 +324,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -297,13 +370,13 @@ jobs:
 
   check-i18n:
     name: i18n completeness check
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend deps
@@ -314,17 +387,17 @@ jobs:
         working-directory: frontend
 
   openai-policy:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-openai-policy.yml@main
     secrets: inherit
 
   feedback-token-lint:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-feedback-token-lint.yml@main
     secrets: inherit
 
   provenance-coverage:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-provenance-coverage.yml@main
     secrets: inherit
 
@@ -334,7 +407,7 @@ jobs:
   # so it cannot detect issues with the JS bundler or entry-point resolution.
 
   android-bundle-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -372,12 +445,22 @@ jobs:
             exit 1
           fi
           BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE / 1048576}")
-          MAX_BYTES=6291456
+          # Limit history (update this when you raise it so future readers understand the trend):
+          #   4.5 MB — original baseline
+          #   6.0 MB — raised for Expo SDK 56 + game additions (#1977)
+          #   8.0 MB — raised for @sentry/react-native 7→8 (#1965)
+          #            Sentry 8 ships tracing, session replay, and feedback widget code in its
+          #            default CJS build. Metro cannot tree-shake CJS modules, so all of it is
+          #            bundled even though we only use basic crash reporting. This is a Sentry
+          #            packaging limitation — NOT a Sentry/Metro resolver hack on our side.
+          #            If the bundle approaches 8 MB before this is resolved, hold further
+          #            dependency upgrades and investigate Metro ESM tree-shaking first.
+          MAX_BYTES=8388608
           if [ "$BUNDLE_SIZE" -gt "$MAX_BYTES" ]; then
-            echo "::error::JS bundle exceeds 6.0 MB hard limit: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes). See docs/PERFORMANCE.md for how to update the limit."
+            echo "::error::JS bundle exceeds 8.0 MB hard limit: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes). See docs/PERFORMANCE.md for how to update the limit."
             exit 1
           fi
-          echo "Android JS bundle: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes) — within 6.0 MB limit"
+          echo "Android JS bundle: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes) — within 8.0 MB limit"
           echo "BUNDLE_SIZE_BYTES=$BUNDLE_SIZE" >> "$GITHUB_ENV"
           echo "BUNDLE_SIZE_MB=$BUNDLE_SIZE_MB" >> "$GITHUB_ENV"
       - name: Check bundle size (bundlesize)
@@ -400,7 +483,7 @@ jobs:
           |---|---|
           | JS bundle (Hermes, Android) | ${BUNDLE_SIZE_MB} MB |
           | Delta vs 4.5 MB baseline | ${DELTA_STR} |
-          | Hard limit | 6.0 MB |
+          | Hard limit | 8.0 MB |
 
           _Measured from \`dist/index.android.bundle\` (uncompressed Hermes bytecode). See [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail) for details._"
           gh pr comment "${{ github.event.pull_request.number }}" \
@@ -458,7 +541,7 @@ jobs:
             echo "::notice::No Android-relevant file changes — skipping release smoke test"
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         if: steps.changes.outputs.should_run == 'true'
         with:
           distribution: zulu
@@ -512,7 +595,7 @@ jobs:
 
   sentry-cli-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -548,14 +631,14 @@ jobs:
 
   gradle-wrapper-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers]
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
       - name: Check Gradle build file consistency
         run: |
           CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)
