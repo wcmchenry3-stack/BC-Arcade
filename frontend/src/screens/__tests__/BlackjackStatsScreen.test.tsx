@@ -66,8 +66,8 @@ function makeRun(overrides: Partial<RunRecord> = {}): RunRecord {
   };
 }
 
-function renderScreen(nav = mockNav()) {
-  return render(
+async function renderScreen(nav = mockNav()) {
+  return await render(
     <ThemeProvider>
       <BlackjackGameProvider>
         <BlackjackStatsScreen navigation={nav} />
@@ -88,17 +88,17 @@ beforeEach(() => {
 
 describe("BlackjackStatsScreen — empty state", () => {
   it("shows current run empty message when no hands played", async () => {
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("Start a run to see your stats here.")).toBeTruthy();
   });
 
   it("shows run history empty message when no completed runs", async () => {
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("Complete a run to see your history.")).toBeTruthy();
   });
 
   it("does not render All-Time Best section when there are no runs", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Run Statistics");
     expect(screen.queryByText("All-Time Best")).toBeNull();
   });
@@ -115,13 +115,13 @@ describe("BlackjackStatsScreen — empty state", () => {
 describe("BlackjackStatsScreen — outcome badges", () => {
   it("shows Completed outcome for a successful run with no comeback", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ completed: true, lowestChips: 80 })]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByLabelText(/Completed/)).toBeTruthy();
   });
 
   it("shows Busted outcome for a run that ended in bankruptcy", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ completed: false, finalChips: 0 })]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByLabelText(/Busted/)).toBeTruthy();
   });
 
@@ -129,7 +129,7 @@ describe("BlackjackStatsScreen — outcome badges", () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([
       makeRun({ completed: true, startingChips: 100, lowestChips: 24 }),
     ]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByLabelText(/Comeback/)).toBeTruthy();
   });
 
@@ -137,7 +137,7 @@ describe("BlackjackStatsScreen — outcome badges", () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([
       makeRun({ completed: true, startingChips: 100, lowestChips: 25 }),
     ]);
-    renderScreen();
+    await renderScreen();
     await screen.findByLabelText(/Completed/);
     expect(screen.queryByLabelText(/Comeback/)).toBeNull();
   });
@@ -150,13 +150,13 @@ describe("BlackjackStatsScreen — outcome badges", () => {
 describe("BlackjackStatsScreen — All-Time Best", () => {
   it("renders the section when at least one run exists", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun()]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("All-Time Best")).toBeTruthy();
   });
 
   it("shows the best completed run's chip count", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ finalChips: 350 })]);
-    renderScreen();
+    await renderScreen();
     await screen.findByText("All-Time Best");
     // "350 chips" appears in both the All-Time Best row and the run history row.
     expect(screen.getAllByText("350 chips").length).toBeGreaterThanOrEqual(1);
@@ -164,7 +164,7 @@ describe("BlackjackStatsScreen — All-Time Best", () => {
 
   it("shows Most Hands row with the run that has the most hands played", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ handsPlayed: 42 })]);
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Most Hands");
     expect(screen.getByText("42 hands")).toBeTruthy();
   });
@@ -173,7 +173,7 @@ describe("BlackjackStatsScreen — All-Time Best", () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([
       makeRun({ completed: true, startingChips: 100, lowestChips: 20 }),
     ]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("Biggest Comeback")).toBeTruthy();
     expect(screen.getByText("20 chips low")).toBeTruthy();
   });
@@ -182,7 +182,7 @@ describe("BlackjackStatsScreen — All-Time Best", () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([
       makeRun({ completed: true, startingChips: 100, lowestChips: 50 }),
     ]);
-    renderScreen();
+    await renderScreen();
     await screen.findByText("All-Time Best");
     expect(screen.queryByText("Biggest Comeback")).toBeNull();
   });
@@ -191,7 +191,7 @@ describe("BlackjackStatsScreen — All-Time Best", () => {
     const worse = makeRun({ completed: true, startingChips: 100, lowestChips: 20, startedAt: 1 });
     const better = makeRun({ completed: true, startingChips: 100, lowestChips: 10, startedAt: 2 });
     (loadRuns as jest.Mock).mockResolvedValueOnce([worse, better]);
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Biggest Comeback");
     expect(screen.getByText("10 chips low")).toBeTruthy();
   });
@@ -204,7 +204,7 @@ describe("BlackjackStatsScreen — All-Time Best", () => {
 describe("BlackjackStatsScreen — run history list", () => {
   it("shows the table name for each run row", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ table: "beginner" })]);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("Beginner")).toBeTruthy();
   });
 
@@ -212,7 +212,7 @@ describe("BlackjackStatsScreen — run history list", () => {
     const older = makeRun({ startedAt: 1_000_000_000_000, table: "beginner" });
     const newer = makeRun({ startedAt: 2_000_000_000_000, table: "intermediate" });
     (loadRuns as jest.Mock).mockResolvedValueOnce([older, newer]);
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Intermediate");
     const labels = screen
       .getAllByText(/Beginner|Intermediate/)
@@ -229,10 +229,10 @@ describe("BlackjackStatsScreen — run history list", () => {
 describe("BlackjackStatsScreen — navigation", () => {
   it("calls navigation.goBack when back button is pressed", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await screen.findByText("Run Statistics");
     await act(async () => {
-      fireEvent.press(screen.getByLabelText("Go back to home screen"));
+      await fireEvent.press(screen.getByLabelText("Go back to home screen"));
     });
     expect(nav.goBack).toHaveBeenCalled();
   });

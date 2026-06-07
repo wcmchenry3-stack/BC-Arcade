@@ -4,19 +4,19 @@ import BlackjackScoreboard from "../BlackjackScoreboard";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { initialSessionStats } from "../../../game/blackjack/sessionStats";
 
-function wrap(ui: React.ReactElement) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>);
+async function wrap(ui: React.ReactElement) {
+  return await render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
 describe("BlackjackScoreboard", () => {
-  it("renders a zero-state hero + 'No hands yet' sub-line when no hands played", () => {
-    const { getByText } = wrap(<BlackjackScoreboard stats={initialSessionStats(1000)} />);
+  it("renders a zero-state hero + 'No hands yet' sub-line when no hands played", async () => {
+    const { getByText } = await wrap(<BlackjackScoreboard stats={initialSessionStats(1000)} />);
     expect(getByText(/no hands yet/i)).toBeTruthy();
     // Chip balance card shows the starting chips with thousands separator.
     expect(getByText("1,000")).toBeTruthy();
   });
 
-  it("renders a positive-P/L sign and win-rate sub-line for a winning session", () => {
+  it("renders a positive-P/L sign and win-rate sub-line for a winning session", async () => {
     const stats = {
       ...initialSessionStats(1000),
       chips: 2240,
@@ -29,7 +29,7 @@ describe("BlackjackScoreboard", () => {
       busts: 1,
       biggestWin: 75,
     };
-    const { getByText } = wrap(<BlackjackScoreboard stats={stats} />);
+    const { getByText } = await wrap(<BlackjackScoreboard stats={stats} />);
     // Hero P/L formatted with sign + thousands separator and template suffix.
     expect(getByText(/\+1,240/)).toBeTruthy();
     // Sub-line from i18n: "13 hands · 62% win rate" (8/13 = 62%)
@@ -44,7 +44,7 @@ describe("BlackjackScoreboard", () => {
     expect(getByText("1")).toBeTruthy(); // busts
   });
 
-  it("biggest-win card shows em-dash placeholder when no win has been recorded", () => {
+  it("biggest-win card shows em-dash placeholder when no win has been recorded", async () => {
     const stats = {
       ...initialSessionStats(1000),
       handsPlayed: 3,
@@ -53,7 +53,7 @@ describe("BlackjackScoreboard", () => {
       chips: 850,
       plChips: -150,
     };
-    const { getAllByText } = wrap(<BlackjackScoreboard stats={stats} />);
+    const { getAllByText } = await wrap(<BlackjackScoreboard stats={stats} />);
     expect(getAllByText("—").length).toBeGreaterThan(0);
   });
 });

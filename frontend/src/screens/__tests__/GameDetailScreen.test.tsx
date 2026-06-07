@@ -39,13 +39,13 @@ const mockNavigation = {
   navigate: jest.fn(),
 } as unknown as Parameters<typeof GameDetailScreen>[0]["navigation"];
 
-function renderScreen(gameId = "abc-123"): ReturnType<typeof render> {
+async function renderScreen(gameId = "abc-123"): ReturnType<typeof render> {
   const route = {
     key: "GameDetail-1",
     name: "GameDetail" as const,
     params: { gameId },
   } as unknown as Parameters<typeof GameDetailScreen>[0]["route"];
-  return render(
+  return await render(
     <ThemeProvider>
       <GameDetailScreen navigation={mockNavigation} route={route} />
     </ThemeProvider>
@@ -58,21 +58,21 @@ beforeEach(() => {
 });
 
 describe("GameDetailScreen", () => {
-  it("shows a loading spinner while fetching", () => {
+  it("shows a loading spinner while fetching", async () => {
     mockGetGameDetail.mockImplementation(() => new Promise(() => {}));
-    renderScreen();
+    await renderScreen();
     expect(screen.getByLabelText("Loading")).toBeTruthy();
   });
 
   it("fetches the game detail with the route gameId", async () => {
-    renderScreen("abc-123");
+    await renderScreen("abc-123");
     await waitFor(() => {
       expect(mockGetGameDetail).toHaveBeenCalledWith("abc-123", false);
     });
   });
 
   it("renders formatted detail rows on success", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Yacht")).toBeTruthy();
     });
@@ -84,7 +84,7 @@ describe("GameDetailScreen", () => {
 
   it("renders an error state when the fetch fails", async () => {
     mockGetGameDetail.mockRejectedValue(new Error("boom"));
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Couldn't load this game")).toBeTruthy();
     });

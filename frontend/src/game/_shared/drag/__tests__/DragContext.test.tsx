@@ -57,18 +57,18 @@ function DropZoneRegistrar({
 }
 
 describe("DragContext", () => {
-  it("snapBackAndClear calls withSpring for the animation", () => {
+  it("snapBackAndClear calls withSpring for the animation", async () => {
     const withSpring = jest.spyOn(Reanimated, "withSpring");
 
-    const { getByLabelText } = render(wrap(<SnapBackTrigger />));
-    fireEvent.press(getByLabelText("start"));
-    fireEvent.press(getByLabelText("snap"));
+    const { getByLabelText } = await render(wrap(<SnapBackTrigger />));
+    await fireEvent.press(getByLabelText("start"));
+    await fireEvent.press(getByLabelText("snap"));
 
     expect(withSpring).toHaveBeenCalled();
     withSpring.mockRestore();
   });
 
-  it("snapBackAndClear clears drag state when spring callback fires (finished=false)", () => {
+  it("snapBackAndClear clears drag state when spring callback fires (finished=false)", async () => {
     // Override withSpring to immediately call the completion callback simulating
     // an interrupted animation (finished=false) — the original `if (finished)` guard
     // would have silently dropped this, leaving the board stuck in drag-active state.
@@ -96,17 +96,17 @@ describe("DragContext", () => {
       );
     }
 
-    const { getByLabelText, getByTestId } = render(wrap(<Checker />));
-    fireEvent.press(getByLabelText("start-c"));
+    const { getByLabelText, getByTestId } = await render(wrap(<Checker />));
+    await fireEvent.press(getByLabelText("start-c"));
     expect(getByTestId("state-c").props.children).toBe("active");
 
-    fireEvent.press(getByLabelText("snap-c"));
+    await fireEvent.press(getByLabelText("snap-c"));
     expect(getByTestId("state-c").props.children).toBe("idle");
 
     withSpring.mockRestore();
   });
 
-  it("endDrag snaps back immediately when no drop zones are registered", () => {
+  it("endDrag snaps back immediately when no drop zones are registered", async () => {
     const withSpring = jest.spyOn(Reanimated, "withSpring");
 
     function StartEndTrigger() {
@@ -123,15 +123,15 @@ describe("DragContext", () => {
       );
     }
 
-    const { getByLabelText } = render(wrap(<StartEndTrigger />));
-    fireEvent.press(getByLabelText("start2"));
-    fireEvent.press(getByLabelText("end2"));
+    const { getByLabelText } = await render(wrap(<StartEndTrigger />));
+    await fireEvent.press(getByLabelText("start2"));
+    await fireEvent.press(getByLabelText("end2"));
 
     expect(withSpring).toHaveBeenCalled();
     withSpring.mockRestore();
   });
 
-  it("endDrag calls onDrop synchronously when finger lands inside pre-cached bounds", () => {
+  it("endDrag calls onDrop synchronously when finger lands inside pre-cached bounds", async () => {
     const onDrop = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
 
     function StartEndTrigger() {
@@ -148,7 +148,7 @@ describe("DragContext", () => {
       );
     }
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <DragProvider>
         <ThemeProvider>
           <DropZoneRegistrar
@@ -161,14 +161,14 @@ describe("DragContext", () => {
       </DragProvider>
     );
 
-    fireEvent.press(getByLabelText("start3"));
-    fireEvent.press(getByLabelText("end3"));
+    await fireEvent.press(getByLabelText("start3"));
+    await fireEvent.press(getByLabelText("end3"));
 
     expect(onDrop).toHaveBeenCalledTimes(1);
     expect(onDrop).toHaveBeenCalledWith(dragSource, dragCards);
   });
 
-  it("endDrag snaps back when finger is outside all cached bounds", () => {
+  it("endDrag snaps back when finger is outside all cached bounds", async () => {
     const withSpring = jest.spyOn(Reanimated, "withSpring");
 
     function StartEndTrigger() {
@@ -186,7 +186,7 @@ describe("DragContext", () => {
       );
     }
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <DragProvider>
         <ThemeProvider>
           <DropZoneRegistrar id="zone-miss" bounds={{ x: 0, y: 0, width: 100, height: 100 }} />
@@ -195,14 +195,14 @@ describe("DragContext", () => {
       </DragProvider>
     );
 
-    fireEvent.press(getByLabelText("start4"));
-    fireEvent.press(getByLabelText("end4"));
+    await fireEvent.press(getByLabelText("start4"));
+    await fireEvent.press(getByLabelText("end4"));
 
     expect(withSpring).toHaveBeenCalled();
     withSpring.mockRestore();
   });
 
-  it("endDrag skips zones with no cached bounds rather than crashing", () => {
+  it("endDrag skips zones with no cached bounds rather than crashing", async () => {
     const onDrop = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
 
     function StartEndTrigger() {
@@ -219,7 +219,7 @@ describe("DragContext", () => {
       );
     }
 
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <DragProvider>
         <ThemeProvider>
           {/* No bounds provided — layout hasn't fired yet */}
@@ -229,8 +229,8 @@ describe("DragContext", () => {
       </DragProvider>
     );
 
-    fireEvent.press(getByLabelText("start5"));
-    expect(() => fireEvent.press(getByLabelText("end5"))).not.toThrow();
+    await fireEvent.press(getByLabelText("start5"));
+    await fireEvent.press(getByLabelText("end5"));
     // onDrop must NOT be called because no bounds were cached
     expect(onDrop).not.toHaveBeenCalled();
   });

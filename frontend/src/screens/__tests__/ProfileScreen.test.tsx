@@ -103,8 +103,8 @@ const SAMPLE_GAMES: GameHistoryResponse = {
   next_cursor: null,
 };
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <ProfileScreen />
     </ThemeProvider>
@@ -119,7 +119,7 @@ beforeEach(() => {
 
 describe("ProfileScreen", () => {
   it("renders the AppHeader", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByRole("header")).toBeTruthy();
     });
@@ -129,12 +129,12 @@ describe("ProfileScreen", () => {
     // Leave the mocks unresolved to keep loading state visible.
     mockGetMyStats.mockImplementation(() => new Promise(() => {}));
     mockGetMyGames.mockImplementation(() => new Promise(() => {}));
-    renderScreen();
+    await renderScreen();
     expect(screen.getByLabelText("Loading")).toBeTruthy();
   });
 
   it("renders stats bento tiles after loading", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Games Played")).toBeTruthy();
     });
@@ -151,7 +151,7 @@ describe("ProfileScreen", () => {
   });
 
   it("renders the recent games list with formatted rows", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Recent Games")).toBeTruthy();
     });
@@ -164,19 +164,19 @@ describe("ProfileScreen", () => {
   });
 
   it("navigates to GameDetail when a row is pressed", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Recent Games")).toBeTruthy();
     });
     const row = screen.getByLabelText(/Yacht 280/);
-    fireEvent.press(row);
+    await fireEvent.press(row);
     expect(mockNavigate).toHaveBeenCalledWith("GameDetail", { gameId: "g1" });
   });
 
   it("shows an empty state when the recent games list is empty", async () => {
     mockGetMyGames.mockResolvedValue({ items: [], next_cursor: null });
     mockGetMyStats.mockResolvedValue({ total_games: 0, by_game: {}, favorite_game: null });
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Play a game to see it here")).toBeTruthy();
     });
@@ -185,7 +185,7 @@ describe("ProfileScreen", () => {
   it("shows full-screen error with Retry when both requests fail", async () => {
     mockGetMyStats.mockRejectedValue(new Error("Network down"));
     mockGetMyGames.mockRejectedValue(new Error("Network down"));
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Couldn't load recent games")).toBeTruthy();
       expect(screen.getByText("Retry")).toBeTruthy();
@@ -193,7 +193,7 @@ describe("ProfileScreen", () => {
     // Retry re-triggers the fetch; stats resolves, games still fails → inline error.
     mockGetMyStats.mockResolvedValue(SAMPLE_STATS);
     await act(async () => {
-      fireEvent.press(screen.getByText("Retry"));
+      await fireEvent.press(screen.getByText("Retry"));
     });
     await waitFor(() => {
       expect(screen.getByText("Games Played")).toBeTruthy();
@@ -202,7 +202,7 @@ describe("ProfileScreen", () => {
 
   it("shows game history without bento tiles when only stats fails", async () => {
     mockGetMyStats.mockRejectedValue(new Error("500 server error"));
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Recent Games")).toBeTruthy();
     });
@@ -213,7 +213,7 @@ describe("ProfileScreen", () => {
 
   it("shows bento tiles and inline games error when only games fails", async () => {
     mockGetMyGames.mockRejectedValue(new Error("500 server error"));
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Games Played")).toBeTruthy();
     });
@@ -230,7 +230,7 @@ describe("ProfileScreen", () => {
       .mockResolvedValue(SAMPLE_STATS);
     mockGetMyGames.mockResolvedValue(SAMPLE_GAMES);
 
-    renderScreen();
+    await renderScreen();
 
     await act(async () => {
       await jest.runAllTimersAsync();
@@ -245,7 +245,7 @@ describe("ProfileScreen", () => {
   });
 
   it("calls the API with the correct limit on mount", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(mockGetMyStats).toHaveBeenCalledTimes(1);
     });

@@ -20,7 +20,7 @@ const ALL_CATEGORIES = [
 ];
 const filledScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, 0]));
 
-function renderModal(overrides: Partial<React.ComponentProps<typeof GameOverModal>> = {}) {
+async function renderModal(overrides: Partial<React.ComponentProps<typeof GameOverModal>> = {}) {
   const defaults: React.ComponentProps<typeof GameOverModal> = {
     visible: true,
     totalScore: 250,
@@ -31,7 +31,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof GameOverModa
     onPlayAgain: jest.fn(),
     onDismiss: jest.fn(),
   };
-  return render(
+  return await render(
     <ThemeProvider>
       <GameOverModal {...defaults} {...overrides} />
     </ThemeProvider>
@@ -39,29 +39,29 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof GameOverModa
 }
 
 describe("GameOverModal — joker bonus row", () => {
-  it("does not show joker bonus row when yachtBonusTotal is 0", () => {
-    const { queryByText } = renderModal({ yachtBonusTotal: 0, yachtBonusCount: 0 });
+  it("does not show joker bonus row when yachtBonusTotal is 0", async () => {
+    const { queryByText } = await renderModal({ yachtBonusTotal: 0, yachtBonusCount: 0 });
     expect(queryByText("+100")).toBeNull();
     expect(queryByText("+200")).toBeNull();
   });
 
-  it("shows joker bonus row with '+100' when yachtBonusTotal is 100", () => {
-    const { getByText } = renderModal({ yachtBonusTotal: 100, yachtBonusCount: 1 });
+  it("shows joker bonus row with '+100' when yachtBonusTotal is 100", async () => {
+    const { getByText } = await renderModal({ yachtBonusTotal: 100, yachtBonusCount: 1 });
     expect(getByText("+100")).toBeTruthy();
   });
 
-  it("shows joker bonus row with '+200' when yachtBonusTotal is 200", () => {
-    const { getByText } = renderModal({ yachtBonusTotal: 200, yachtBonusCount: 2 });
+  it("shows joker bonus row with '+200' when yachtBonusTotal is 200", async () => {
+    const { getByText } = await renderModal({ yachtBonusTotal: 200, yachtBonusCount: 2 });
     expect(getByText("+200")).toBeTruthy();
   });
 
-  it("shows 'Yacht Bonus' label when joker row is present", () => {
-    const { getByText } = renderModal({ yachtBonusTotal: 100, yachtBonusCount: 1 });
+  it("shows 'Yacht Bonus' label when joker row is present", async () => {
+    const { getByText } = await renderModal({ yachtBonusTotal: 100, yachtBonusCount: 1 });
     expect(getByText("Yacht Bonus")).toBeTruthy();
   });
 
-  it("does not show 'Yacht Bonus' scorecard row when yachtBonusTotal is 0", () => {
-    const { queryAllByText } = renderModal({ yachtBonusTotal: 0 });
+  it("does not show 'Yacht Bonus' scorecard row when yachtBonusTotal is 0", async () => {
+    const { queryAllByText } = await renderModal({ yachtBonusTotal: 0 });
     expect(queryAllByText("Yacht Bonus")).toHaveLength(0);
   });
 });
@@ -74,8 +74,8 @@ describe("GameOverModal — joker bonus row in VS mode", () => {
     aiScores: filledScores,
   };
 
-  it("shows joker row with player '+100' and CPU '—' when only player has jokers", () => {
-    const { getByTestId } = renderModal({
+  it("shows joker row with player '+100' and CPU '—' when only player has jokers", async () => {
+    const { getByTestId } = await renderModal({
       ...vsDefaults,
       yachtBonusTotal: 100,
       yachtBonusCount: 1,
@@ -86,8 +86,8 @@ describe("GameOverModal — joker bonus row in VS mode", () => {
     expect(within(bonusRow).getByText("—")).toBeTruthy();
   });
 
-  it("shows joker row with both '+100' values when both players have jokers", () => {
-    const { getAllByText } = renderModal({
+  it("shows joker row with both '+100' values when both players have jokers", async () => {
+    const { getAllByText } = await renderModal({
       ...vsDefaults,
       yachtBonusTotal: 100,
       yachtBonusCount: 1,
@@ -96,8 +96,8 @@ describe("GameOverModal — joker bonus row in VS mode", () => {
     expect(getAllByText("+100")).toHaveLength(2);
   });
 
-  it("shows joker row when only CPU has jokers (player shows '—', CPU shows '+100')", () => {
-    const { getByText } = renderModal({
+  it("shows joker row when only CPU has jokers (player shows '—', CPU shows '+100')", async () => {
+    const { getByText } = await renderModal({
       ...vsDefaults,
       yachtBonusTotal: 0,
       yachtBonusCount: 0,
@@ -106,8 +106,8 @@ describe("GameOverModal — joker bonus row in VS mode", () => {
     expect(getByText("+100")).toBeTruthy();
   });
 
-  it("hides joker row when neither player has jokers in VS mode", () => {
-    const { queryByText } = renderModal({
+  it("hides joker row when neither player has jokers in VS mode", async () => {
+    const { queryByText } = await renderModal({
       ...vsDefaults,
       yachtBonusTotal: 0,
       yachtBonusCount: 0,

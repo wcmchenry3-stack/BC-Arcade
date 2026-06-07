@@ -23,8 +23,8 @@ beforeEach(() => {
   mockGetLeaderboard.mockResolvedValue({ scores: [] });
 });
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <LeaderboardScreen />
     </ThemeProvider>
@@ -32,19 +32,19 @@ function renderScreen() {
 }
 
 describe("LeaderboardScreen", () => {
-  it("renders the AppHeader", () => {
-    renderScreen();
+  it("renders the AppHeader", async () => {
+    await renderScreen();
     expect(screen.getByRole("header")).toBeTruthy();
   });
 
-  it("shows a loading indicator before the API resolves", () => {
+  it("shows a loading indicator before the API resolves", async () => {
     mockGetLeaderboard.mockImplementation(() => new Promise(() => {}));
-    renderScreen();
+    await renderScreen();
     expect(screen.getByLabelText("Loading")).toBeTruthy();
   });
 
   it("shows empty-state text when there are no scores", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("leaderboard.empty")).toBeTruthy();
     });
@@ -62,7 +62,7 @@ describe("LeaderboardScreen — TypeError auto-retry (#1874)", () => {
       .mockRejectedValueOnce(new TypeError("Network request failed"))
       .mockResolvedValueOnce({ scores: [] });
 
-    renderScreen();
+    await renderScreen();
     await act(async () => {
       await jest.runAllTimersAsync();
     });
@@ -75,7 +75,7 @@ describe("LeaderboardScreen — TypeError auto-retry (#1874)", () => {
     jest.useFakeTimers();
     mockGetLeaderboard.mockRejectedValue(new TypeError("Network request failed"));
 
-    renderScreen();
+    await renderScreen();
     await act(async () => {
       await jest.runAllTimersAsync();
     });

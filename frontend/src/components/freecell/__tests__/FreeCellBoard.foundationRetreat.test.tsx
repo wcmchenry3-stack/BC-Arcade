@@ -33,8 +33,8 @@ const BASE: FreeCellState = {
   moveCount: 0,
 };
 
-function renderBoard(state = BASE, onMove = jest.fn()) {
-  const utils = render(
+async function renderBoard(state = BASE, onMove = jest.fn()) {
+  const utils = await render(
     <ThemeProvider>
       <FreeCellBoard state={state} onMove={onMove} />
     </ThemeProvider>
@@ -47,22 +47,22 @@ afterEach(() => jest.useRealTimers());
 // ── Selection ────────────────────────────────────────────────────────────────
 
 describe("foundation retreat — selection", () => {
-  it("selects a non-empty foundation on first tap", () => {
-    const { getByLabelText } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades"));
+  it("selects a non-empty foundation on first tap", async () => {
+    const { getByLabelText } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades"));
     expect(getByLabelText("2 of Spades (selected)")).toBeTruthy();
   });
 
-  it("deselects when the same foundation is tapped again", () => {
-    const { getByLabelText } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades")); // select
-    fireEvent.press(getByLabelText("2 of Spades (selected)")); // deselect
+  it("deselects when the same foundation is tapped again", async () => {
+    const { getByLabelText } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades")); // select
+    await fireEvent.press(getByLabelText("2 of Spades (selected)")); // deselect
     expect(getByLabelText("2 of Spades")).toBeTruthy();
   });
 
-  it("does not select an empty foundation", () => {
-    const { queryByLabelText } = renderBoard();
-    fireEvent.press(queryByLabelText("Empty Hearts foundation")!);
+  it("does not select an empty foundation", async () => {
+    const { queryByLabelText } = await renderBoard();
+    await fireEvent.press(queryByLabelText("Empty Hearts foundation")!);
     // Nothing should be selected — no "(selected)" labels
     expect(queryByLabelText(/\(selected\)/)).toBeNull();
   });
@@ -71,11 +71,11 @@ describe("foundation retreat — selection", () => {
 // ── Valid retreat ────────────────────────────────────────────────────────────
 
 describe("foundation retreat — valid move", () => {
-  it("calls onMove with foundation-to-tableau when a valid column is tapped after selection", () => {
+  it("calls onMove with foundation-to-tableau when a valid column is tapped after selection", async () => {
     // 2♠ (black rank 2) can go on 3♥ (red rank 3) in col 0
-    const { getByLabelText, onMove } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades")); // select foundation
-    fireEvent.press(getByLabelText("3 of Hearts")); // destination card in col 0
+    const { getByLabelText, onMove } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades")); // select foundation
+    await fireEvent.press(getByLabelText("3 of Hearts")); // destination card in col 0
     expect(onMove).toHaveBeenCalledWith({
       type: "foundation-to-tableau",
       fromSuit: "spades",
@@ -83,7 +83,7 @@ describe("foundation retreat — valid move", () => {
     });
   });
 
-  it("calls onMove when a valid empty column is tapped (King only)", () => {
+  it("calls onMove when a valid empty column is tapped (King only)", async () => {
     const stateWithKing: FreeCellState = {
       ...BASE,
       foundations: {
@@ -94,9 +94,9 @@ describe("foundation retreat — valid move", () => {
         })),
       },
     };
-    const { getByLabelText, onMove } = renderBoard(stateWithKing);
-    fireEvent.press(getByLabelText("K of Hearts")); // select hearts foundation
-    fireEvent.press(getByLabelText("Empty tableau column 2")); // empty col (1-indexed col 2)
+    const { getByLabelText, onMove } = await renderBoard(stateWithKing);
+    await fireEvent.press(getByLabelText("K of Hearts")); // select hearts foundation
+    await fireEvent.press(getByLabelText("Empty tableau column 2")); // empty col (1-indexed col 2)
     expect(onMove).toHaveBeenCalledWith({
       type: "foundation-to-tableau",
       fromSuit: "hearts",
@@ -108,19 +108,19 @@ describe("foundation retreat — valid move", () => {
 // ── Invalid retreat ───────────────────────────────────────────────────────────
 
 describe("foundation retreat — invalid move", () => {
-  it("does not call onMove when stacking rule is violated", () => {
+  it("does not call onMove when stacking rule is violated", async () => {
     // 2♠ (black rank 2) cannot go on 3♥... wait that's valid. Use a bad target.
     // 2♠ cannot go to an empty column (only Kings can).
-    const { getByLabelText, onMove } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades")); // select foundation
-    fireEvent.press(getByLabelText("Empty tableau column 2")); // empty col — invalid for non-King
+    const { getByLabelText, onMove } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades")); // select foundation
+    await fireEvent.press(getByLabelText("Empty tableau column 2")); // empty col — invalid for non-King
     expect(onMove).not.toHaveBeenCalled();
   });
 
-  it("preserves selection after an invalid attempt", () => {
-    const { getByLabelText, queryByLabelText } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades"));
-    fireEvent.press(getByLabelText("Empty tableau column 2")); // invalid — non-King on empty col
+  it("preserves selection after an invalid attempt", async () => {
+    const { getByLabelText, queryByLabelText } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades"));
+    await fireEvent.press(getByLabelText("Empty tableau column 2")); // invalid — non-King on empty col
     expect(queryByLabelText(/\(selected\)/)).toBeTruthy();
   });
 });
@@ -128,10 +128,10 @@ describe("foundation retreat — invalid move", () => {
 // ── Interaction with other selection kinds ────────────────────────────────────
 
 describe("foundation retreat — interaction with other selections", () => {
-  it("selecting a tableau card clears any foundation selection", () => {
-    const { getByLabelText, queryByLabelText } = renderBoard();
-    fireEvent.press(getByLabelText("2 of Spades")); // select foundation
-    fireEvent.press(getByLabelText("3 of Hearts")); // this executes the move (valid)
+  it("selecting a tableau card clears any foundation selection", async () => {
+    const { getByLabelText, queryByLabelText } = await renderBoard();
+    await fireEvent.press(getByLabelText("2 of Spades")); // select foundation
+    await fireEvent.press(getByLabelText("3 of Hearts")); // this executes the move (valid)
     // After a valid move, selection is cleared
     expect(queryByLabelText(/\(selected\)/)).toBeNull();
   });

@@ -32,11 +32,11 @@ jest.mock("../../i18n/locales", () => ({
 }));
 
 describe("LanguageSwitcher", () => {
-  it("uses button accessibilityRole on language options (not option)", () => {
-    const { getByLabelText } = render(<LanguageSwitcher />);
+  it("uses button accessibilityRole on language options (not option)", async () => {
+    const { getByLabelText } = await render(<LanguageSwitcher />);
 
     // Open the modal
-    fireEvent.press(getByLabelText("lang.switcherLabel"));
+    await fireEvent.press(getByLabelText("lang.switcherLabel"));
 
     // Each language option should have accessibilityRole="button", not "option"
     const englishOption = getByLabelText("English — English");
@@ -46,9 +46,9 @@ describe("LanguageSwitcher", () => {
     expect(spanishOption.props.accessibilityRole).toBe("button");
   });
 
-  it("does not use 'option' as accessibilityRole anywhere", () => {
-    const { getByLabelText } = render(<LanguageSwitcher />);
-    fireEvent.press(getByLabelText("lang.switcherLabel"));
+  it("does not use 'option' as accessibilityRole anywhere", async () => {
+    const { getByLabelText } = await render(<LanguageSwitcher />);
+    await fireEvent.press(getByLabelText("lang.switcherLabel"));
 
     const englishOption = getByLabelText("English — English");
     const spanishOption = getByLabelText("Español — Spanish");

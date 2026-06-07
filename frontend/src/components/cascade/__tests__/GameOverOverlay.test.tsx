@@ -57,8 +57,8 @@ const mockSubmitPlayerName = cascadeApi.submitPlayerName as jest.Mock;
 
 const GAME_ID = "test-game-id-abc";
 
-function renderOverlay(score = 1234, gameId: string | null = GAME_ID, onRestart = jest.fn()) {
-  return render(<GameOverOverlay score={score} gameId={gameId} onRestart={onRestart} />);
+async function renderOverlay(score = 1234, gameId: string | null = GAME_ID, onRestart = jest.fn()) {
+  return await render(<GameOverOverlay score={score} gameId={gameId} onRestart={onRestart} />);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,23 +73,23 @@ describe("GameOverOverlay", () => {
     useNetworkMock.mockReturnValue({ isOnline: true, isInitialized: true });
   });
 
-  it("renders score and Game Over heading", () => {
-    renderOverlay(5678);
+  it("renders score and Game Over heading", async () => {
+    await renderOverlay(5678);
     expect(screen.getByText("Game Over")).toBeTruthy();
     expect(screen.getByText("5,678")).toBeTruthy();
   });
 
-  it("pressing save with no name does not call the API", () => {
-    renderOverlay();
-    fireEvent.press(screen.getByLabelText("Save score"));
+  it("pressing save with no name does not call the API", async () => {
+    await renderOverlay();
+    await fireEvent.press(screen.getByLabelText("Save score"));
     expect(mockSubmitPlayerName).not.toHaveBeenCalled();
   });
 
   it("pressing save after entering a name calls the API with gameId and player_name", async () => {
     mockSubmitPlayerName.mockResolvedValueOnce({ player_name: "Alice", score: 1234, rank: 1 });
-    renderOverlay(1234);
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await renderOverlay(1234);
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
+    await fireEvent.press(screen.getByLabelText("Save score"));
     await waitFor(() => expect(mockSubmitPlayerName).toHaveBeenCalledWith(GAME_ID, "Alice"));
   });
 
@@ -97,10 +97,10 @@ describe("GameOverOverlay", () => {
     // Regression guard for #195: previously the score was displayed where
     // rank belonged ("Saved! #1234" for a score=1234 / rank=2).
     mockSubmitPlayerName.mockResolvedValueOnce({ player_name: "Alice", score: 1234, rank: 2 });
-    renderOverlay(1234);
+    await renderOverlay(1234);
 
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
+    await fireEvent.press(screen.getByLabelText("Save score"));
 
     await waitFor(() => {
       expect(screen.getByText("Saved! #2")).toBeTruthy();
@@ -110,10 +110,10 @@ describe("GameOverOverlay", () => {
 
   it("shows error message when submit fails", async () => {
     mockSubmitPlayerName.mockRejectedValueOnce(new Error("Invalid score"));
-    renderOverlay(1234);
+    await renderOverlay(1234);
 
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
+    await fireEvent.press(screen.getByLabelText("Save score"));
 
     await waitFor(() => {
       expect(screen.getByText(/Could not save score/i)).toBeTruthy();
@@ -121,28 +121,28 @@ describe("GameOverOverlay", () => {
   });
 
   it("shows error when gameId is null", async () => {
-    renderOverlay(1234, null);
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await renderOverlay(1234, null);
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
+    await fireEvent.press(screen.getByLabelText("Save score"));
     await waitFor(() => {
       expect(screen.getByText(/Could not save score/i)).toBeTruthy();
     });
     expect(mockSubmitPlayerName).not.toHaveBeenCalled();
   });
 
-  it("calls onRestart when Play Again is pressed", () => {
+  it("calls onRestart when Play Again is pressed", async () => {
     const onRestart = jest.fn();
-    renderOverlay(100, GAME_ID, onRestart);
-    fireEvent.press(screen.getByLabelText("Play again"));
+    await renderOverlay(100, GAME_ID, onRestart);
+    await fireEvent.press(screen.getByLabelText("Play again"));
     expect(onRestart).toHaveBeenCalledTimes(1);
   });
 
   it("queues score locally when offline; skips API call", async () => {
     useNetworkMock.mockReturnValue({ isOnline: false, isInitialized: true });
-    renderOverlay(4850);
+    await renderOverlay(4850);
 
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Alice");
+    await fireEvent.press(screen.getByLabelText("Save score"));
 
     await waitFor(() => {
       expect(mockEnqueue).toHaveBeenCalledWith("cascade", {
@@ -156,10 +156,10 @@ describe("GameOverOverlay", () => {
 
   it("queues score when online submit fails with a network error (TypeError)", async () => {
     mockSubmitPlayerName.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    renderOverlay(1234);
+    await renderOverlay(1234);
 
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
+    await fireEvent.press(screen.getByLabelText("Save score"));
 
     await waitFor(() => {
       expect(mockEnqueue).toHaveBeenCalledWith("cascade", {
@@ -172,10 +172,10 @@ describe("GameOverOverlay", () => {
 
   it("shows error (no queue) when online submit fails with an app error", async () => {
     mockSubmitPlayerName.mockRejectedValueOnce(new Error("Invalid score"));
-    renderOverlay(1234);
+    await renderOverlay(1234);
 
-    fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
-    fireEvent.press(screen.getByLabelText("Save score"));
+    await fireEvent.changeText(screen.getByLabelText("Your name"), "Bob");
+    await fireEvent.press(screen.getByLabelText("Save score"));
 
     await waitFor(() => {
       expect(screen.getByText(/Could not save score/i)).toBeTruthy();

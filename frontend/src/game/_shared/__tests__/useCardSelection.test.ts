@@ -7,12 +7,12 @@ describe("useCardSelection", () => {
     jest.restoreAllMocks();
   });
 
-  it("triggerShake runs withSequence with 5 steps and does not call sound", () => {
+  it("triggerShake runs withSequence with 5 steps and does not call sound", async () => {
     const withSequenceSpy = jest.spyOn(Reanimated, "withSequence");
     const playInvalidMove = jest.fn();
-    const { result } = renderHook(() => useCardSelection(playInvalidMove));
+    const { result } = await renderHook(() => useCardSelection(playInvalidMove));
 
-    act(() => {
+    await act(() => {
       result.current.triggerShake();
     });
 
@@ -21,12 +21,12 @@ describe("useCardSelection", () => {
     expect(playInvalidMove).not.toHaveBeenCalled();
   });
 
-  it("triggerIllegal calls shake and playInvalidMove", () => {
+  it("triggerIllegal calls shake and playInvalidMove", async () => {
     const withSequenceSpy = jest.spyOn(Reanimated, "withSequence");
     const playInvalidMove = jest.fn();
-    const { result } = renderHook(() => useCardSelection(playInvalidMove));
+    const { result } = await renderHook(() => useCardSelection(playInvalidMove));
 
-    act(() => {
+    await act(() => {
       result.current.triggerIllegal();
     });
 

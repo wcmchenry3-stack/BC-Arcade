@@ -54,7 +54,7 @@
   "gameOver.upperBonus": "+35 Upper Bonus included!",
   "gameOver.yachtBonus": "+{{total}} Yacht Bonus ({{count}}×100)!",
   "gameOver.playAgain": "Play Again",
-  "gameOver.playAgainLabel": "Start a new game",
+  "gameOver.playAgainLabel": "Play Again",
   "gameOver.dismiss": "No Thanks",
   "gameOver.dismissLabel": "Dismiss and keep current score visible",
   "tab.upper": "Upper",

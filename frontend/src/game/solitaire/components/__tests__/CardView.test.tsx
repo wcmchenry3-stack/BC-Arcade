@@ -15,67 +15,69 @@ function c(overrides: Partial<Card> = {}): Card {
 }
 
 describe("CardView", () => {
-  it("renders rank and suit for a face-up spade ace", () => {
-    const { getByText } = render(withTheme(<CardView card={c()} />));
+  it("renders rank and suit for a face-up spade ace", async () => {
+    const { getByText } = await render(withTheme(<CardView card={c()} />));
     expect(getByText("A")).toBeTruthy();
     expect(getByText("♠")).toBeTruthy();
   });
 
-  it("renders J/Q/K labels for royals", () => {
-    const { getByText: getJ } = render(withTheme(<CardView card={c({ rank: 11 })} />));
+  it("renders J/Q/K labels for royals", async () => {
+    const { getByText: getJ } = await render(withTheme(<CardView card={c({ rank: 11 })} />));
     expect(getJ("J")).toBeTruthy();
-    const { getByText: getQ } = render(withTheme(<CardView card={c({ rank: 12 })} />));
+    const { getByText: getQ } = await render(withTheme(<CardView card={c({ rank: 12 })} />));
     expect(getQ("Q")).toBeTruthy();
-    const { getByText: getK } = render(withTheme(<CardView card={c({ rank: 13 })} />));
+    const { getByText: getK } = await render(withTheme(<CardView card={c({ rank: 13 })} />));
     expect(getK("K")).toBeTruthy();
   });
 
-  it("renders numeric labels for 2-10", () => {
-    const { getByText } = render(withTheme(<CardView card={c({ rank: 7 })} />));
+  it("renders numeric labels for 2-10", async () => {
+    const { getByText } = await render(withTheme(<CardView card={c({ rank: 7 })} />));
     expect(getByText("7")).toBeTruthy();
   });
 
-  it("renders no rank/suit text when face-down", () => {
-    const { queryByText } = render(withTheme(<CardView card={c({ faceUp: false, rank: 5 })} />));
+  it("renders no rank/suit text when face-down", async () => {
+    const { queryByText } = await render(
+      withTheme(<CardView card={c({ faceUp: false, rank: 5 })} />)
+    );
     expect(queryByText("5")).toBeNull();
     expect(queryByText("♠")).toBeNull();
   });
 
-  it("has an accessibility label describing the face-up card", () => {
-    const { getByLabelText } = render(
+  it("has an accessibility label describing the face-up card", async () => {
+    const { getByLabelText } = await render(
       withTheme(<CardView card={c({ rank: 13, suit: "hearts" })} />)
     );
     expect(getByLabelText(/K of Hearts/)).toBeTruthy();
   });
 
-  it("labels a face-down card as such", () => {
-    const { getByLabelText } = render(withTheme(<CardView card={c({ faceUp: false })} />));
+  it("labels a face-down card as such", async () => {
+    const { getByLabelText } = await render(withTheme(<CardView card={c({ faceUp: false })} />));
     expect(getByLabelText(/face-down/i)).toBeTruthy();
   });
 
-  it("annotates 'selected' in the label when selected", () => {
-    const { getByLabelText } = render(withTheme(<CardView card={c()} selected />));
+  it("annotates 'selected' in the label when selected", async () => {
+    const { getByLabelText } = await render(withTheme(<CardView card={c()} selected />));
     expect(getByLabelText(/\(selected\)/)).toBeTruthy();
   });
 
-  it("fires onPress when tapped", () => {
+  it("fires onPress when tapped", async () => {
     const onPress = jest.fn();
-    const { getByRole } = render(withTheme(<CardView card={c()} onPress={onPress} />));
-    fireEvent.press(getByRole("button"));
+    const { getByRole } = await render(withTheme(<CardView card={c()} onPress={onPress} />));
+    await fireEvent.press(getByRole("button"));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("does not register a button role when no onPress is provided", () => {
-    const { queryByRole } = render(withTheme(<CardView card={c()} />));
+  it("does not register a button role when no onPress is provided", async () => {
+    const { queryByRole } = await render(withTheme(<CardView card={c()} />));
     expect(queryByRole("button")).toBeNull();
   });
 });
 
 describe("CardView — natural size without Provider", () => {
-  it("renders at natural CARD_WIDTH × CARD_HEIGHT when no CardSizeContext.Provider ancestor exists", () => {
+  it("renders at natural CARD_WIDTH × CARD_HEIGHT when no CardSizeContext.Provider ancestor exists", async () => {
     // CardSizeContext defaults to { cardWidth: CARD_WIDTH, cardHeight: CARD_HEIGHT }
     // so components outside a Provider should render at the natural card size, not 0×0.
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       <ThemeProvider>
         <CardView card={c({ rank: 7, suit: "diamonds" })} />
       </ThemeProvider>

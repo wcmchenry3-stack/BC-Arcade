@@ -58,26 +58,24 @@ function makeState(overrides: Partial<MahjongState> = {}): MahjongState {
 const noop = () => {};
 
 describe("GameCanvas (web)", () => {
-  it("renders without crashing on a fresh game", () => {
-    expect(() => {
-      act(() => {
-        create(
-          <GameCanvas
-            state={makeState()}
-            camera={testCamera}
-            onTilePress={noop}
-            onShufflePress={noop}
-            onNewGamePress={noop}
-          />
-        );
-      });
-    }).not.toThrow();
+  it("renders without crashing on a fresh game", async () => {
+    await act(() => {
+      create(
+        <GameCanvas
+          state={makeState()}
+          camera={testCamera}
+          onTilePress={noop}
+          onShufflePress={noop}
+          onNewGamePress={noop}
+        />
+      );
+    });
   });
 
-  it("shows the win overlay when isComplete", () => {
+  it("shows the win overlay when isComplete", async () => {
     const state = makeState({ isComplete: true, tiles: [], pairsRemoved: 72, score: 1220 });
     let tree: ReturnType<typeof create>;
-    act(() => {
+    await act(() => {
       tree = create(
         <GameCanvas
           state={state}
@@ -92,11 +90,11 @@ describe("GameCanvas (web)", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("overlay.youWon");
   });
 
-  it("shows the deadlock overlay after 500 ms when isDeadlocked", () => {
+  it("shows the deadlock overlay after 500 ms when isDeadlocked", async () => {
     jest.useFakeTimers();
     const state = makeState({ isDeadlocked: true, shufflesLeft: 0 });
     let tree: ReturnType<typeof create>;
-    act(() => {
+    await act(() => {
       tree = create(
         <GameCanvas
           state={state}
@@ -109,14 +107,14 @@ describe("GameCanvas (web)", () => {
     });
     // Overlay is intentionally delayed — not visible before the timer fires.
     expect(JSON.stringify(tree!.toJSON())).not.toContain("overlay.deadlocked");
-    act(() => {
+    await act(() => {
       jest.advanceTimersByTime(500);
     });
     expect(JSON.stringify(tree!.toJSON())).toContain("overlay.deadlocked");
     jest.useRealTimers();
   });
 
-  it("shows the shuffle CTA when no free pairs remain and shuffles are available", () => {
+  it("shows the shuffle CTA when no free pairs remain and shuffles are available", async () => {
     // tiles=[] means hasFreePairs([]) === false; isComplete=false, shufflesLeft>0 → shuffle CTA
     const state = makeState({
       tiles: [],
@@ -125,7 +123,7 @@ describe("GameCanvas (web)", () => {
       shufflesLeft: 2,
     });
     let tree: ReturnType<typeof create>;
-    act(() => {
+    await act(() => {
       tree = create(
         <GameCanvas
           state={state}
@@ -142,10 +140,10 @@ describe("GameCanvas (web)", () => {
     expect(str).toContain("overlay.shuffleButton");
   });
 
-  it("does not show any overlay during normal play", () => {
+  it("does not show any overlay during normal play", async () => {
     const state = makeState();
     let tree: ReturnType<typeof create>;
-    act(() => {
+    await act(() => {
       tree = create(
         <GameCanvas
           state={state}

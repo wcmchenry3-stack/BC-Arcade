@@ -21,7 +21,7 @@ const ALL_CATEGORIES = [
 
 const emptyScores = Object.fromEntries(ALL_CATEGORIES.map((k) => [k, null]));
 
-function renderVs(overrides: Partial<React.ComponentProps<typeof VsScorecard>> = {}) {
+async function renderVs(overrides: Partial<React.ComponentProps<typeof VsScorecard>> = {}) {
   const defaults: React.ComponentProps<typeof VsScorecard> = {
     playerScores: emptyScores,
     playerPossibleScores: {},
@@ -35,7 +35,7 @@ function renderVs(overrides: Partial<React.ComponentProps<typeof VsScorecard>> =
     isAiTurn: false,
     onScore: jest.fn(),
   };
-  return render(
+  return await render(
     <ThemeProvider>
       <VsScorecard {...defaults} {...overrides} />
     </ThemeProvider>
@@ -43,8 +43,8 @@ function renderVs(overrides: Partial<React.ComponentProps<typeof VsScorecard>> =
 }
 
 describe("VsScorecard — ghost scores", () => {
-  it("shows +X ghost when playerRollsUsed > 0 and cell is open", () => {
-    const { getByText } = renderVs({
+  it("shows +X ghost when playerRollsUsed > 0 and cell is open", async () => {
+    const { getByText } = await renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 14, twos: 22 },
     });
@@ -52,16 +52,16 @@ describe("VsScorecard — ghost scores", () => {
     expect(getByText("+22")).toBeTruthy();
   });
 
-  it("does not show ghost when playerRollsUsed === 0", () => {
-    const { queryByText } = renderVs({
+  it("does not show ghost when playerRollsUsed === 0", async () => {
+    const { queryByText } = await renderVs({
       playerRollsUsed: 0,
       playerPossibleScores: { ones: 14 },
     });
     expect(queryByText("+14")).toBeNull();
   });
 
-  it("does not show ghost for an already-scored category", () => {
-    const { queryByText } = renderVs({
+  it("does not show ghost for an already-scored category", async () => {
+    const { queryByText } = await renderVs({
       playerRollsUsed: 1,
       playerScores: { ...emptyScores, ones: 3 },
       playerPossibleScores: { ones: 14 },
@@ -71,9 +71,9 @@ describe("VsScorecard — ghost scores", () => {
 });
 
 describe("VsScorecard — scoring interaction", () => {
-  it("calls onScore with the correct key when an open YOU cell is tapped", () => {
+  it("calls onScore with the correct key when an open YOU cell is tapped", async () => {
     const onScore = jest.fn();
-    const { getAllByRole } = renderVs({
+    const { getAllByRole } = await renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 3 },
       onScore,
@@ -81,21 +81,21 @@ describe("VsScorecard — scoring interaction", () => {
     const buttons = getAllByRole("button").filter((b) =>
       b.props.accessibilityLabel?.startsWith("Ones:")
     );
-    fireEvent.press(buttons[0]!);
+    await fireEvent.press(buttons[0]!);
     expect(onScore).toHaveBeenCalledWith("ones");
   });
 
-  it("does not call onScore when rollsUsed === 0", () => {
+  it("does not call onScore when rollsUsed === 0", async () => {
     const onScore = jest.fn();
-    const { queryAllByRole } = renderVs({ playerRollsUsed: 0, onScore });
+    const { queryAllByRole } = await renderVs({ playerRollsUsed: 0, onScore });
     // No rolls yet → cells render as "text", not "button"
     expect(queryAllByRole("button").length).toBe(0);
     expect(onScore).not.toHaveBeenCalled();
   });
 
-  it("does not call onScore for an already-scored category", () => {
+  it("does not call onScore for an already-scored category", async () => {
     const onScore = jest.fn();
-    const { queryAllByRole } = renderVs({
+    const { queryAllByRole } = await renderVs({
       playerRollsUsed: 1,
       playerScores: { ...emptyScores, ones: 5 },
       playerPossibleScores: { twos: 8 },
@@ -111,9 +111,9 @@ describe("VsScorecard — scoring interaction", () => {
 });
 
 describe("VsScorecard — AI turn lock", () => {
-  it("disables all YOU cells during the AI turn", () => {
+  it("disables all YOU cells during the AI turn", async () => {
     const onScore = jest.fn();
-    const { queryAllByRole } = renderVs({
+    const { queryAllByRole } = await renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 3, twos: 6 },
       isAiTurn: true,
@@ -121,12 +121,12 @@ describe("VsScorecard — AI turn lock", () => {
     });
     // AI turn → cells render as "text", not "button"
     const buttons = queryAllByRole("button");
-    buttons.forEach((b) => fireEvent.press(b));
+    buttons.forEach(async (b) => await fireEvent.press(b));
     expect(onScore).not.toHaveBeenCalled();
   });
 
-  it("marks YOU cells as disabled when isAiTurn", () => {
-    const { queryAllByRole } = renderVs({
+  it("marks YOU cells as disabled when isAiTurn", async () => {
+    const { queryAllByRole } = await renderVs({
       playerRollsUsed: 1,
       playerPossibleScores: { ones: 3 },
       isAiTurn: true,
@@ -137,20 +137,20 @@ describe("VsScorecard — AI turn lock", () => {
 });
 
 describe("VsScorecard — TOTAL row", () => {
-  it("renders both totals", () => {
-    const { getByText } = renderVs({ playerTotalScore: 142, cpuTotalScore: 98 });
+  it("renders both totals", async () => {
+    const { getByText } = await renderVs({ playerTotalScore: 142, cpuTotalScore: 98 });
     expect(getByText("142")).toBeTruthy();
     expect(getByText("98")).toBeTruthy();
   });
 
-  it("renders zero totals when no scores are filled", () => {
-    const { getAllByText } = renderVs({ playerTotalScore: 0, cpuTotalScore: 0 });
+  it("renders zero totals when no scores are filled", async () => {
+    const { getAllByText } = await renderVs({ playerTotalScore: 0, cpuTotalScore: 0 });
     expect(getAllByText("0").length).toBeGreaterThanOrEqual(2);
   });
 });
 
 describe("VsScorecard — upper subtotal progress", () => {
-  it("shows bonus unlock text when playerUpperBonus > 0", () => {
+  it("shows bonus unlock text when playerUpperBonus > 0", async () => {
     const filledUpper = {
       ...emptyScores,
       ones: 3,
@@ -160,15 +160,15 @@ describe("VsScorecard — upper subtotal progress", () => {
       fives: 15,
       sixes: 18,
     };
-    const { getByText } = renderVs({
+    const { getByText } = await renderVs({
       playerScores: filledUpper,
       playerUpperBonus: 35,
     });
     expect(getByText(/✓/)).toBeTruthy();
   });
 
-  it("shows countdown text when bonus is not yet unlocked", () => {
-    const { getByText } = renderVs({
+  it("shows countdown text when bonus is not yet unlocked", async () => {
+    const { getByText } = await renderVs({
       playerScores: { ...emptyScores, ones: 3 },
       playerUpperBonus: 0,
     });

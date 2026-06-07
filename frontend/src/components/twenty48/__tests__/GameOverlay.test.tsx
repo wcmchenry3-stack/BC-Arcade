@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/react-native";
 import GameOverlay from "../GameOverlay";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
-function renderOverlay(
+async function renderOverlay(
   type: "game_over" | "win",
   overrides: Partial<React.ComponentProps<typeof GameOverlay>> = {}
 ) {
@@ -14,7 +14,7 @@ function renderOverlay(
     onHome: jest.fn(),
     ...overrides,
   };
-  return render(
+  return await render(
     <ThemeProvider>
       <GameOverlay {...props} />
     </ThemeProvider>
@@ -22,68 +22,68 @@ function renderOverlay(
 }
 
 describe("GameOverlay — game over state", () => {
-  it('shows "Game Over" title', () => {
-    const { getByText } = renderOverlay("game_over");
+  it('shows "Game Over" title', async () => {
+    const { getByText } = await renderOverlay("game_over");
     expect(getByText("Game Over")).toBeTruthy();
   });
 
-  it("does not show keep playing button", () => {
-    const { queryByText } = renderOverlay("game_over");
+  it("does not show keep playing button", async () => {
+    const { queryByText } = await renderOverlay("game_over");
     expect(queryByText("Keep Playing")).toBeNull();
   });
 
-  it('calls onNewGame when "New Game" is pressed', () => {
+  it('calls onNewGame when "New Game" is pressed', async () => {
     const onNewGame = jest.fn();
-    const { getByLabelText } = renderOverlay("game_over", { onNewGame });
-    fireEvent.press(getByLabelText("Start a new 2048 game"));
+    const { getByLabelText } = await renderOverlay("game_over", { onNewGame });
+    await fireEvent.press(getByLabelText("Start a new 2048 game"));
     expect(onNewGame).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onHome when "Home" is pressed', () => {
+  it('calls onHome when "Home" is pressed', async () => {
     const onHome = jest.fn();
-    const { getByLabelText } = renderOverlay("game_over", { onHome });
-    fireEvent.press(getByLabelText("Quit and return to home screen"));
+    const { getByLabelText } = await renderOverlay("game_over", { onHome });
+    await fireEvent.press(getByLabelText("Quit and return to home screen"));
     expect(onHome).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the score callout with correct accessibility label", () => {
-    const { getByLabelText } = renderOverlay("game_over", { score: 512 });
+  it("renders the score callout with correct accessibility label", async () => {
+    const { getByLabelText } = await renderOverlay("game_over", { score: 512 });
     expect(getByLabelText("Current score: 512")).toBeTruthy();
   });
 });
 
 describe("GameOverlay — win state", () => {
-  it('shows "You Win!" title', () => {
-    const { getByText } = renderOverlay("win");
+  it('shows "You Win!" title', async () => {
+    const { getByText } = await renderOverlay("win");
     expect(getByText("You Win!")).toBeTruthy();
   });
 
-  it("shows keep playing button when onKeepPlaying is provided", () => {
-    const { getByLabelText } = renderOverlay("win", { onKeepPlaying: jest.fn() });
+  it("shows keep playing button when onKeepPlaying is provided", async () => {
+    const { getByLabelText } = await renderOverlay("win", { onKeepPlaying: jest.fn() });
     expect(getByLabelText("Continue playing after reaching 2048")).toBeTruthy();
   });
 
-  it("calls onKeepPlaying when button is pressed", () => {
+  it("calls onKeepPlaying when button is pressed", async () => {
     const onKeepPlaying = jest.fn();
-    const { getByLabelText } = renderOverlay("win", { onKeepPlaying });
-    fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    const { getByLabelText } = await renderOverlay("win", { onKeepPlaying });
+    await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
     expect(onKeepPlaying).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onNewGame when New Game is pressed from win state", () => {
+  it("calls onNewGame when New Game is pressed from win state", async () => {
     const onNewGame = jest.fn();
-    const { getByLabelText } = renderOverlay("win", { onNewGame, onKeepPlaying: jest.fn() });
-    fireEvent.press(getByLabelText("Start a new 2048 game"));
+    const { getByLabelText } = await renderOverlay("win", { onNewGame, onKeepPlaying: jest.fn() });
+    await fireEvent.press(getByLabelText("Start a new 2048 game"));
     expect(onNewGame).toHaveBeenCalledTimes(1);
   });
 
-  it("does not show keep playing button when onKeepPlaying is not provided", () => {
-    const { queryByLabelText } = renderOverlay("win");
+  it("does not show keep playing button when onKeepPlaying is not provided", async () => {
+    const { queryByLabelText } = await renderOverlay("win");
     expect(queryByLabelText("Continue playing after reaching 2048")).toBeNull();
   });
 
-  it("renders the score callout with correct accessibility label", () => {
-    const { getByLabelText } = renderOverlay("win", { score: 2048 });
+  it("renders the score callout with correct accessibility label", async () => {
+    const { getByLabelText } = await renderOverlay("win", { score: 2048 });
     expect(getByLabelText("Current score: 2048")).toBeTruthy();
   });
 });

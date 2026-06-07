@@ -22,8 +22,8 @@ beforeEach(() => {
 });
 
 describe("useStarSwarmAudio — newGameTick passthrough", () => {
-  it("passes newGameTick to useBackgroundMusic", () => {
-    renderHook(() => useStarSwarmAudio(true, undefined, 3));
+  it("passes newGameTick to useBackgroundMusic", async () => {
+    await renderHook(() => useStarSwarmAudio(true, undefined, 3));
     expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
       expect.any(Array),
       expect.any(Object),
@@ -32,8 +32,8 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
     );
   });
 
-  it("passes undefined newGameTick when not provided", () => {
-    renderHook(() => useStarSwarmAudio(true));
+  it("passes undefined newGameTick when not provided", async () => {
+    await renderHook(() => useStarSwarmAudio(true));
     expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
       expect.any(Array),
       expect.any(Object),

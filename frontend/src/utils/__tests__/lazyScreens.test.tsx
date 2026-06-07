@@ -171,7 +171,7 @@ describe("screen_mount_ms timer (withSuspense pattern)", () => {
 
     const startMs = performance.now();
 
-    render(
+    await render(
       <Suspense fallback={<Text>loading</Text>}>
         <SuspenseMountTimer startMs={startMs} screenName="hearts">
           <LazyChild />

@@ -117,8 +117,8 @@ import { scoreQueue } from "../../game/_shared/scoreQueue";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <MahjongScoreboardProvider>
         <MahjongScreen />
@@ -128,7 +128,7 @@ function renderScreen() {
 }
 
 async function mount() {
-  const api = renderScreen();
+  const api = await renderScreen();
   // Flush the initial loadGame()/loadStats()/loadProgress() promises.
   await act(async () => {
     await Promise.resolve();
@@ -139,7 +139,7 @@ async function mount() {
   const layoutCard = api.queryByLabelText("layout.turtle");
   if (layoutCard) {
     await act(async () => {
-      fireEvent.press(layoutCard);
+      await fireEvent.press(layoutCard);
       await Promise.resolve(); // flush saveStats / saveProgress
     });
   }
@@ -238,7 +238,7 @@ describe("MahjongScreen — save/resume lifecycle", () => {
 describe("MahjongScreen — win modal", () => {
   async function mountAtWin() {
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
-    return mount();
+    return await mount();
   }
 
   it("shows the win modal when the game is complete", async () => {
@@ -249,10 +249,10 @@ describe("MahjongScreen — win modal", () => {
   it("enqueues the score via scoreQueue when name is submitted", async () => {
     const api = await mountAtWin();
     await act(async () => {
-      fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
+      await fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText(/submit score/i));
+      await fireEvent.press(api.getByLabelText(/submit score/i));
     });
     await waitFor(() => {
       expect(scoreQueue.enqueue).toHaveBeenCalledWith(
@@ -265,12 +265,12 @@ describe("MahjongScreen — win modal", () => {
   it("shows submitted confirmation after successful enqueue", async () => {
     const api = await mountAtWin();
     await act(async () => {
-      fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
+      await fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
     });
     // Wrap press + async handler resolution in a single act so setSubmitted(true)
     // is flushed before we query the tree.
     await act(async () => {
-      fireEvent.press(api.getByLabelText(/submit score/i));
+      await fireEvent.press(api.getByLabelText(/submit score/i));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -280,13 +280,13 @@ describe("MahjongScreen — win modal", () => {
   it("tapping New Game in the win modal navigates to layout select then starts a fresh game", async () => {
     const api = await mountAtWin();
     await act(async () => {
-      fireEvent.press(api.getByLabelText("action.newGameLabel"));
+      await fireEvent.press(api.getByLabelText("action.newGameLabel"));
     });
     // New Game goes to the layout select screen — win modal is gone.
     expect(api.queryByText("overlay.youWon")).toBeNull();
     // Pick a layout to start the fresh game.
     await act(async () => {
-      fireEvent.press(api.getByLabelText("layout.turtle"));
+      await fireEvent.press(api.getByLabelText("layout.turtle"));
     });
     await waitFor(() => {
       expect(api.getByTestId("game-canvas")).toBeTruthy();
@@ -354,7 +354,7 @@ describe("MahjongScreen — hint button", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("action.hintLabel"));
+      await fireEvent.press(api.getByLabelText("action.hintLabel"));
     });
 
     expect(api.getByTestId("hint-ids-size").props.children).toBe(2);
@@ -384,7 +384,7 @@ describe("MahjongScreen — hint button", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("action.hintLabel"));
+      await fireEvent.press(api.getByLabelText("action.hintLabel"));
     });
 
     expect(api.getByTestId("no-hint-toast")).toBeTruthy();
@@ -430,7 +430,7 @@ describe("MahjongScreen — shuffle button", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("action.shuffleLabel"));
+      await fireEvent.press(api.getByLabelText("action.shuffleLabel"));
     });
 
     // shufflesLeft should now be 2; the HUD text shows the count.

@@ -48,8 +48,8 @@ jest.mock("../../FeedbackWidget/FeedbackWidget", () => {
 const noop = () => {};
 
 describe("GameShell", () => {
-  it("renders the AppHeader with the given title", () => {
-    render(
+  it("renders the AppHeader with the given title", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop}>
         <Text>game content</Text>
       </GameShell>
@@ -57,8 +57,8 @@ describe("GameShell", () => {
     expect(screen.getByText("Yacht")).toBeTruthy();
   });
 
-  it("renders children when not loading", () => {
-    render(
+  it("renders children when not loading", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop}>
         <Text>game content</Text>
       </GameShell>
@@ -66,8 +66,8 @@ describe("GameShell", () => {
     expect(screen.getByText("game content")).toBeTruthy();
   });
 
-  it("renders a loading spinner and hides children when loading=true", () => {
-    render(
+  it("renders a loading spinner and hides children when loading=true", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop} loading>
         <Text>game content</Text>
       </GameShell>
@@ -76,8 +76,8 @@ describe("GameShell", () => {
     expect(screen.queryByText("Yacht")).toBeNull();
   });
 
-  it("renders an error banner when error is a non-empty string", () => {
-    render(
+  it("renders an error banner when error is a non-empty string", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop} error="Something went wrong">
         <Text>game content</Text>
       </GameShell>
@@ -87,8 +87,8 @@ describe("GameShell", () => {
     expect(screen.getByText("game content")).toBeTruthy();
   });
 
-  it("does not render an error banner when error is null", () => {
-    render(
+  it("does not render an error banner when error is null", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop} error={null}>
         <Text>game content</Text>
       </GameShell>
@@ -96,8 +96,8 @@ describe("GameShell", () => {
     expect(screen.queryByText(/Something went wrong/)).toBeNull();
   });
 
-  it("does not render an error banner when error is an empty string", () => {
-    render(
+  it("does not render an error banner when error is an empty string", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop} error="">
         <Text>game content</Text>
       </GameShell>
@@ -106,8 +106,8 @@ describe("GameShell", () => {
     expect(screen.getByText("game content")).toBeTruthy();
   });
 
-  it("renders rightSlot content in the header area", () => {
-    render(
+  it("renders rightSlot content in the header area", async () => {
+    await render(
       <GameShell title="Yacht" onBack={noop} rightSlot={<Text>Round 3</Text>}>
         <Text>game content</Text>
       </GameShell>

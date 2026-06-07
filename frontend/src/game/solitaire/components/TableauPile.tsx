@@ -132,6 +132,7 @@ export default function TableauPile({
     return (
       <DraggableCard
         key={cardIndex}
+        testID={`draggable-card-${cardIndex}`}
         style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }]}
         onTap={handlePress}
         dragCards={dragCards}

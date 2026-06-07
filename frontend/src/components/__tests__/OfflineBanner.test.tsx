@@ -19,21 +19,21 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
 const useNetworkMock = NetworkContext.useNetwork as jest.Mock;
 
 describe("OfflineBanner", () => {
-  it("renders nothing when network state is not yet initialized", () => {
+  it("renders nothing when network state is not yet initialized", async () => {
     useNetworkMock.mockReturnValue({ isOnline: false, isInitialized: false });
-    render(<OfflineBanner />);
+    await render(<OfflineBanner />);
     expect(screen.queryByText(/Offline/i)).toBeNull();
   });
 
-  it("renders nothing when online", () => {
+  it("renders nothing when online", async () => {
     useNetworkMock.mockReturnValue({ isOnline: true, isInitialized: true });
-    render(<OfflineBanner />);
+    await render(<OfflineBanner />);
     expect(screen.queryByText(/Offline/i)).toBeNull();
   });
 
-  it("renders banner text when initialized and offline", () => {
+  it("renders banner text when initialized and offline", async () => {
     useNetworkMock.mockReturnValue({ isOnline: false, isInitialized: true });
-    render(<OfflineBanner />);
+    await render(<OfflineBanner />);
     expect(screen.getByText(/Offline/i)).toBeTruthy();
   });
 });

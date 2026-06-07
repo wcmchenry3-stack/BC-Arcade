@@ -64,50 +64,50 @@ function buildProps(activeIndex = 0): BottomTabBarProps {
 }
 
 describe("BottomTabBar", () => {
-  it("renders all four tab labels", () => {
-    render(<BottomTabBar {...buildProps()} />);
+  it("renders all four tab labels", async () => {
+    await render(<BottomTabBar {...buildProps()} />);
     expect(screen.getByText("Lobby")).toBeTruthy();
     expect(screen.getByText("Ranks")).toBeTruthy();
     expect(screen.getByText("Profile")).toBeTruthy();
     expect(screen.getByText("Settings")).toBeTruthy();
   });
 
-  it("renders a container with accessibilityRole tablist", () => {
-    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
-    expect(UNSAFE_getByProps({ accessibilityRole: "tablist" })).toBeTruthy();
+  it("renders a container with accessibilityRole tablist", async () => {
+    const { getByRole } = await render(<BottomTabBar {...buildProps()} />);
+    expect(getByRole("tablist")).toBeTruthy();
   });
 
-  it("each tab has accessibilityRole tab", () => {
-    const { getAllByRole } = render(<BottomTabBar {...buildProps()} />);
+  it("each tab has accessibilityRole tab", async () => {
+    const { getAllByRole } = await render(<BottomTabBar {...buildProps()} />);
     const tabs = getAllByRole("tab");
     expect(tabs).toHaveLength(4);
   });
 
-  it("active tab has accessibilityState selected=true", () => {
-    const { getAllByRole } = render(<BottomTabBar {...buildProps(1)} />);
+  it("active tab has accessibilityState selected=true", async () => {
+    const { getAllByRole } = await render(<BottomTabBar {...buildProps(1)} />);
     const tabs = getAllByRole("tab");
     expect(tabs[1].props.accessibilityState.selected).toBe(true);
   });
 
-  it("inactive tabs have accessibilityState selected=false", () => {
-    const { getAllByRole } = render(<BottomTabBar {...buildProps(0)} />);
+  it("inactive tabs have accessibilityState selected=false", async () => {
+    const { getAllByRole } = await render(<BottomTabBar {...buildProps(0)} />);
     const tabs = getAllByRole("tab");
     expect(tabs[1].props.accessibilityState.selected).toBe(false);
     expect(tabs[2].props.accessibilityState.selected).toBe(false);
     expect(tabs[3].props.accessibilityState.selected).toBe(false);
   });
 
-  it("calls navigate with route name on press", () => {
+  it("calls navigate with route name on press", async () => {
     const navigate = jest.fn();
     const props = buildProps(0);
     props.navigation.navigate = navigate;
-    render(<BottomTabBar {...props} />);
-    fireEvent.press(screen.getByText("Ranks"));
+    await render(<BottomTabBar {...props} />);
+    await fireEvent.press(screen.getByText("Ranks"));
     expect(navigate).toHaveBeenCalledWith("Ranks");
   });
 
-  it("does not render any emoji characters", () => {
-    render(<BottomTabBar {...buildProps()} />);
+  it("does not render any emoji characters", async () => {
+    await render(<BottomTabBar {...buildProps()} />);
     // Emoji used in old implementation — should be gone
     expect(screen.queryByText("🏠")).toBeNull();
     expect(screen.queryByText("🏆")).toBeNull();
@@ -115,9 +115,9 @@ describe("BottomTabBar", () => {
     expect(screen.queryByText("⚙️")).toBeNull();
   });
 
-  it("wrapper has flexShrink 0 on native", () => {
-    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
-    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+  it("wrapper has flexShrink 0 on native", async () => {
+    const { getByRole } = await render(<BottomTabBar {...buildProps()} />);
+    const wrapper = getByRole("tablist");
     const flat = StyleSheet.flatten(wrapper.props.style);
     expect(flat.flexShrink).toBe(0);
   });
@@ -131,16 +131,16 @@ describe("BottomTabBar — web platform", () => {
     Object.defineProperty(Platform, "OS", { value: "ios", configurable: true });
   });
 
-  it("applies alignSelf stretch on the wrapper", () => {
-    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
-    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+  it("applies alignSelf stretch on the wrapper", async () => {
+    const { getByRole } = await render(<BottomTabBar {...buildProps()} />);
+    const wrapper = getByRole("tablist");
     const flat = StyleSheet.flatten(wrapper.props.style);
     expect(flat.alignSelf).toBe("stretch");
   });
 
-  it("retains flexShrink 0 on the wrapper", () => {
-    const { UNSAFE_getByProps } = render(<BottomTabBar {...buildProps()} />);
-    const wrapper = UNSAFE_getByProps({ accessibilityRole: "tablist" });
+  it("retains flexShrink 0 on the wrapper", async () => {
+    const { getByRole } = await render(<BottomTabBar {...buildProps()} />);
+    const wrapper = getByRole("tablist");
     const flat = StyleSheet.flatten(wrapper.props.style);
     expect(flat.flexShrink).toBe(0);
   });

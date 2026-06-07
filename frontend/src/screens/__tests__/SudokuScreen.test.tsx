@@ -74,8 +74,8 @@ function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): 
   return s;
 }
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <SudokuScoreboardProvider>
         <SudokuScreen />
@@ -85,7 +85,7 @@ function renderScreen() {
 }
 
 async function renderAndAwaitLoad() {
-  const rendered = renderScreen();
+  const rendered = await renderScreen();
   // The pre-game card only mounts after loadGame() resolves.  Waiting
   // on the Start label gives us a deterministic post-load checkpoint.
   await waitFor(() => rendered.getByLabelText(/start/i));
@@ -122,7 +122,7 @@ describe("SudokuScreen — mount resume", () => {
     const saved = loadPuzzle("medium", "classic", () => 0);
     await saveGame(saved);
 
-    const { queryByLabelText, getAllByRole } = renderScreen();
+    const { queryByLabelText, getAllByRole } = await renderScreen();
     // After load, the pre-game "Start" button should no longer exist —
     // the board replaces it.
     await waitFor(() => {
@@ -136,7 +136,7 @@ describe("SudokuScreen — mount resume", () => {
 describe("SudokuScreen — in-game input", () => {
   async function startEasy() {
     const rendered = await renderAndAwaitLoad();
-    fireEvent.press(rendered.getByLabelText(/start/i));
+    await fireEvent.press(rendered.getByLabelText(/start/i));
     return rendered;
   }
 
@@ -149,7 +149,7 @@ describe("SudokuScreen — in-game input", () => {
     const { getAllByLabelText } = await startEasy();
     const toggles = getAllByLabelText(/pencil/i);
     expect(toggles[0]!.props.accessibilityState?.selected).toBe(false);
-    fireEvent.press(toggles[0]!);
+    await fireEvent.press(toggles[0]!);
     const after = getAllByLabelText(/pencil/i);
     expect(after[0]!.props.accessibilityState?.selected).toBe(true);
   });
@@ -159,11 +159,11 @@ describe("SudokuScreen — in-game input", () => {
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
-    act(() => {
-      fireEvent.press(emptyCells[0]!);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
     });
-    act(() => {
-      fireEvent.press(getByLabelText(/enter digit 1/i));
+    await act(async () => {
+      await fireEvent.press(getByLabelText(/enter digit 1/i));
     });
     // ensureSyncStarted runs inside a setState updater; waitFor lets React 18
     // flush the batch before asserting.
@@ -176,11 +176,11 @@ describe("SudokuScreen — in-game input", () => {
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
-    act(() => {
-      fireEvent.press(emptyCells[0]!);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
     });
-    act(() => {
-      fireEvent.press(getByLabelText(/enter digit 5/i));
+    await act(async () => {
+      await fireEvent.press(getByLabelText(/enter digit 5/i));
     });
     await waitFor(async () => {
       const raw = await AsyncStorage.getItem("sudoku_game");
@@ -212,7 +212,7 @@ describe("SudokuScreen — win flow", () => {
     expect(almostSolved.isComplete).toBe(false);
     await saveGame(almostSolved);
 
-    const rendered = renderScreen();
+    const rendered = await renderScreen();
     // Wait for the board to load (no Start button = in-game).
     await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
 
@@ -220,12 +220,14 @@ describe("SudokuScreen — win flow", () => {
     const emptyCells = rendered
       .getAllByRole("button")
       .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
-    act(() => {
-      fireEvent.press(emptyCells[0]!);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
     });
     const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
-    act(() => {
-      fireEvent.press(rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i")));
+    await act(async () => {
+      await fireEvent.press(
+        rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i"))
+      );
     });
 
     await waitFor(() => rendered.getByLabelText(/submit score/i));
@@ -235,11 +237,11 @@ describe("SudokuScreen — win flow", () => {
   it("enqueues score and shows saved confirmation after submit", async () => {
     const { getByLabelText, findByText } = await renderIntoWinModal();
 
-    act(() => {
-      fireEvent.changeText(getByLabelText(/your name/i), "Alice");
+    await act(async () => {
+      await fireEvent.changeText(getByLabelText(/your name/i), "Alice");
     });
     await act(async () => {
-      fireEvent.press(getByLabelText(/submit score/i));
+      await fireEvent.press(getByLabelText(/submit score/i));
     });
     await findByText(/saved/i);
     expect(scoreQueue.enqueue).toHaveBeenCalledWith(
@@ -254,14 +256,14 @@ describe("SudokuScreen — win flow", () => {
       .mockResolvedValueOnce({ id: "q-2" });
 
     const { getByLabelText, findByLabelText, findByText } = await renderIntoWinModal();
-    act(() => fireEvent.changeText(getByLabelText(/your name/i), "Bob"));
+    await act(async () => await fireEvent.changeText(getByLabelText(/your name/i), "Bob"));
     await act(async () => {
-      fireEvent.press(getByLabelText(/submit score/i));
+      await fireEvent.press(getByLabelText(/submit score/i));
     });
 
     const retry = await findByLabelText(/retry submit/i);
     await act(async () => {
-      fireEvent.press(retry);
+      await fireEvent.press(retry);
     });
     await findByText(/saved/i);
     expect(scoreQueue.enqueue).toHaveBeenCalledTimes(2);

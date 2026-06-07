@@ -146,6 +146,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 ]}
               >
                 <Text
+                  testID="card-rank"
                   style={[
                     styles.selfRank,
                     { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },

@@ -30,6 +30,7 @@ export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View
+      accessible={true}
       accessibilityRole="tablist"
       style={[
         styles.wrapper,
