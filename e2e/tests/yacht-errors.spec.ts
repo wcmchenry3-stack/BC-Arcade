@@ -229,8 +229,10 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     await page.goto("/");
   });
 
+  type Page = Parameters<Parameters<typeof test>[1]>[0];
+
   /** Helper: play a full 13-round game and reach the game-over modal. */
-  async function playFullGame(page: Parameters<Parameters<typeof test>[1]>[0]) {
+  async function playFullGame(page: Page) {
     await page.getByRole("button", { name: "Play Yacht" }).click();
     await page.getByRole("button", { name: /^Solo$/i }).click();
     for (let round = 0; round < 13; round++) {
@@ -243,10 +245,15 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     await page.getByText("Game Over!").waitFor({ timeout: 10000 });
   }
 
+  /** Helper: click Play Again then select Solo to dismiss the mode selector. */
+  async function clickPlayAgainAsSolo(page: Page) {
+    await page.getByRole("button", { name: /play again/i }).click();
+    await page.getByRole("button", { name: /^Solo$/i }).click();
+  }
+
   test("Play Again resets to Round 1 / 13", async ({ page }) => {
     await playFullGame(page);
-
-    await page.getByRole("button", { name: /play again/i }).click();
+    await clickPlayAgainAsSolo(page);
 
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
@@ -255,7 +262,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
 
   test("Play Again clears all scored categories", async ({ page }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /play again/i }).click();
+    await clickPlayAgainAsSolo(page);
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });
@@ -274,7 +281,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     page,
   }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /play again/i }).click();
+    await clickPlayAgainAsSolo(page);
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });
@@ -291,7 +298,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     page,
   }) => {
     await playFullGame(page);
-    await page.getByRole("button", { name: /play again/i }).click();
+    await clickPlayAgainAsSolo(page);
     await expect(page.getByText("Round 1 / 13")).toBeVisible({
       timeout: 10000,
     });

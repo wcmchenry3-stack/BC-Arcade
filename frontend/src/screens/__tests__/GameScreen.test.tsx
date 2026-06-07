@@ -147,9 +147,17 @@ describe("GameScreen", () => {
   });
 
   it("play again button starts a new game in place", async () => {
-    const { getByRole, getByText } = await renderScreen({ game_over: true, total_score: 100 });
+    const { getByRole, getByText, queryByRole } = await renderScreen({
+      game_over: true,
+      total_score: 100,
+    });
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
+    });
+    // Play Again now shows the mode selector; pick Solo to start the fresh game.
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     expect(mockNavigation.navigate).not.toHaveBeenCalled();
     expect(getByText(/round.*1/i)).toBeTruthy();
@@ -220,9 +228,13 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
   });
 
   it("Play Again resets round to 1", async () => {
-    const { getByRole, getByText } = await renderScreen(makeGameOverState());
+    const { getByRole, getByText, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
+    });
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
@@ -329,12 +341,17 @@ describe("GameScreen — New Game button (GH #393)", () => {
   });
 
   it("confirm modal 'Start new game' calls startNewGame and closes modal", async () => {
-    const { getByRole, queryByText } = await renderScreen({ round: 2 });
+    const { getByRole, queryByText, queryByRole } = await renderScreen({ round: 2 });
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /start new game/i }));
+    });
+    // startNewGame shows the mode selector; pick Solo to complete the reset.
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     // Modal closes
     expect(queryByText("Start new game?")).toBeNull();
@@ -564,9 +581,13 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets all upper section rows to 'not available'", async () => {
-    const { getByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
+    });
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     // rollsUsed=0 after reset → canScore=false → every ScoreRow shows "not available"
     for (const cat of ["Ones", "Twos", "Threes", "Fours", "Fives", "Sixes"]) {
@@ -575,9 +596,13 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets all lower section rows to 'not available'", async () => {
-    const { getByRole } = await renderScreen(makeGameOverState());
+    const { getByRole, queryByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
+    });
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     for (const cat of [
       "Three of a Kind",
@@ -593,9 +618,14 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets upper bonus display to 0 / 63 progress", async () => {
-    const { getByRole, getByText, queryByText } = await renderScreen(makeGameOverState());
+    const { getByRole, getByText, queryByText, queryByRole } =
+      await renderScreen(makeGameOverState());
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /play again/i }));
+    });
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
     });
     // After reset: upper_subtotal=0, upper_bonus=0 → progress display ("0 / 63")
     expect(getByText("0 / 63")).toBeTruthy();
