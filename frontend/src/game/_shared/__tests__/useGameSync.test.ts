@@ -26,25 +26,25 @@ describe("useGameSync", () => {
   // start
   // ---------------------------------------------------------------------------
 
-  it("start() calls gameEventClient.startGame with the game type", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("start() calls gameEventClient.startGame with the game type", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start({ initial_score: 0 });
     });
     expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, { initial_score: 0 });
   });
 
-  it("start() without eventData calls startGame with empty object", () => {
-    const { result } = renderHook(() => useGameSync("twenty48"));
-    act(() => {
+  it("start() without eventData calls startGame with empty object", async () => {
+    const { result } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
       result.current.start();
     });
     expect(mockStartGame).toHaveBeenCalledWith("twenty48", {}, {});
   });
 
-  it("start() with metadata passes it as the second arg to startGame", () => {
-    const { result } = renderHook(() => useGameSync("sudoku"));
-    act(() => {
+  it("start() with metadata passes it as the second arg to startGame", async () => {
+    const { result } = await renderHook(() => useGameSync("sudoku"));
+    await act(() => {
       result.current.start({ difficulty: "hard" }, { difficulty: "hard" });
     });
     expect(mockStartGame).toHaveBeenCalledWith(
@@ -58,9 +58,9 @@ describe("useGameSync", () => {
   // enqueue
   // ---------------------------------------------------------------------------
 
-  it("enqueue() after start() calls gameEventClient.enqueueEvent", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("enqueue() after start() calls gameEventClient.enqueueEvent", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start();
       result.current.enqueue({ type: "roll", data: { dice: [1, 2, 3] } });
     });
@@ -70,17 +70,17 @@ describe("useGameSync", () => {
     });
   });
 
-  it("enqueue() before start() is a no-op", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("enqueue() before start() is a no-op", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.enqueue({ type: "roll" });
     });
     expect(mockEnqueueEvent).not.toHaveBeenCalled();
   });
 
-  it("enqueue() after complete() is a no-op", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("enqueue() after complete() is a no-op", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start();
       result.current.complete({ finalScore: 100, outcome: "completed" });
       result.current.enqueue({ type: "roll" });
@@ -92,9 +92,9 @@ describe("useGameSync", () => {
   // complete
   // ---------------------------------------------------------------------------
 
-  it("complete() calls gameEventClient.completeGame with summary and payload", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("complete() calls gameEventClient.completeGame with summary and payload", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start();
       result.current.complete({ finalScore: 250, outcome: "completed" }, { final_score: 250 });
     });
@@ -105,18 +105,18 @@ describe("useGameSync", () => {
     );
   });
 
-  it("complete() without payload passes empty object", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("complete() without payload passes empty object", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start();
       result.current.complete({ outcome: "completed" });
     });
     expect(mockCompleteGame).toHaveBeenCalledWith("test-game-id", { outcome: "completed" }, {});
   });
 
-  it("complete() is idempotent — only the first call fires", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("complete() is idempotent — only the first call fires", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.start();
       result.current.complete({ outcome: "completed" });
       result.current.complete({ outcome: "completed" });
@@ -128,23 +128,23 @@ describe("useGameSync", () => {
   // unmount cleanup
   // ---------------------------------------------------------------------------
 
-  it("unmount without markStarted does not abandon the session", () => {
-    const { result, unmount } = renderHook(() => useGameSync("twenty48"));
-    act(() => {
+  it("unmount without markStarted does not abandon the session", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
       result.current.start();
       // player never took an action — no markStarted()
     });
-    unmount();
+    await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
-  it("unmount after markStarted but without complete abandons the open session", () => {
-    const { result, unmount } = renderHook(() => useGameSync("twenty48"));
-    act(() => {
+  it("unmount after markStarted but without complete abandons the open session", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
       result.current.start();
       result.current.markStarted();
     });
-    unmount();
+    await unmount();
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "test-game-id",
       { outcome: "abandoned" },
@@ -152,21 +152,21 @@ describe("useGameSync", () => {
     );
   });
 
-  it("unmount after complete does not call completeGame again", () => {
-    const { result, unmount } = renderHook(() => useGameSync("twenty48"));
-    act(() => {
+  it("unmount after complete does not call completeGame again", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
       result.current.start();
       result.current.markStarted();
       result.current.complete({ finalScore: 512, outcome: "completed" });
     });
-    unmount();
+    await unmount();
     // Only one call: the explicit complete(); unmount cleanup should be silent.
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
-  it("unmount without start does not call completeGame", () => {
-    const { unmount } = renderHook(() => useGameSync("cascade"));
-    unmount();
+  it("unmount without start does not call completeGame", async () => {
+    const { unmount } = await renderHook(() => useGameSync("cascade"));
+    await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
@@ -174,13 +174,13 @@ describe("useGameSync", () => {
   // restart
   // ---------------------------------------------------------------------------
 
-  it("restart() abandons the current session and starts a new one", () => {
+  it("restart() abandons the current session and starts a new one", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
-    const { result } = renderHook(() => useGameSync("cascade"));
-    act(() => {
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
       result.current.start({ fruit_set: "fruits" });
     });
-    act(() => {
+    await act(() => {
       result.current.restart({ fruit_set: "cosmos" });
     });
     // First session abandoned
@@ -194,10 +194,10 @@ describe("useGameSync", () => {
     expect(mockStartGame).toHaveBeenLastCalledWith("cascade", {}, { fruit_set: "cosmos" });
   });
 
-  it("restart() after complete() does not double-abandon", () => {
+  it("restart() after complete() does not double-abandon", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
-    const { result } = renderHook(() => useGameSync("cascade"));
-    act(() => {
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
       result.current.start();
       result.current.complete({ outcome: "completed" });
       result.current.restart();
@@ -209,15 +209,15 @@ describe("useGameSync", () => {
     expect(mockStartGame).toHaveBeenCalledTimes(2);
   });
 
-  it("restart() resets markStarted so unmount of new session without action does not abandon", () => {
+  it("restart() resets markStarted so unmount of new session without action does not abandon", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
-    const { result, unmount } = renderHook(() => useGameSync("cascade"));
-    act(() => {
+    const { result, unmount } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
       result.current.start();
       result.current.markStarted();
       result.current.restart(); // resets startedRef
     });
-    unmount();
+    await unmount();
     // session-1 was abandoned by restart(); session-2 was never markStarted so no extra abandon
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame).toHaveBeenCalledWith(
@@ -227,10 +227,10 @@ describe("useGameSync", () => {
     );
   });
 
-  it("enqueue() after restart() sends to the new session id", () => {
+  it("enqueue() after restart() sends to the new session id", async () => {
     mockStartGame.mockReturnValueOnce("old-id").mockReturnValueOnce("new-id");
-    const { result } = renderHook(() => useGameSync("cascade"));
-    act(() => {
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
       result.current.start();
       result.current.restart();
       result.current.enqueue({ type: "drop", data: { tier: 2 } });
@@ -242,9 +242,9 @@ describe("useGameSync", () => {
   // reportBug
   // ---------------------------------------------------------------------------
 
-  it("reportBug() delegates to gameEventClient.reportBug", () => {
-    const { result } = renderHook(() => useGameSync("yacht"));
-    act(() => {
+  it("reportBug() delegates to gameEventClient.reportBug", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
       result.current.reportBug("warn", "yacht.engine", "unexpected state", { round: 3 });
     });
     expect(mockReportBug).toHaveBeenCalledWith("warn", "yacht.engine", "unexpected state", {

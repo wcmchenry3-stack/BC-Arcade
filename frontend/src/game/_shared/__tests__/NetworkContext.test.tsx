@@ -64,8 +64,8 @@ function getAppStateListener(): (s: AppStateStatus) => void {
   return changeCall[1] as (s: AppStateStatus) => void;
 }
 
-function renderProvider() {
-  return render(
+async function renderProvider() {
+  return await render(
     <NetworkProvider>
       <></>
     </NetworkProvider>
@@ -82,19 +82,19 @@ describe("NetworkContext — foreground flush (#1159)", () => {
   });
 
   it("calls syncWorker.flush() when AppState transitions to active", async () => {
-    renderProvider();
+    await renderProvider();
     await act(async () => {
       await Promise.resolve();
     });
 
     const listener = getAppStateListener();
 
-    act(() => {
+    await act(() => {
       listener("background");
     });
     (syncWorker.flush as jest.Mock).mockClear();
 
-    act(() => {
+    await act(() => {
       listener("active");
     });
 
@@ -102,7 +102,7 @@ describe("NetworkContext — foreground flush (#1159)", () => {
   });
 
   it("does not call syncWorker.flush() when transitioning to background", async () => {
-    renderProvider();
+    await renderProvider();
     await act(async () => {
       await Promise.resolve();
     });
@@ -110,7 +110,7 @@ describe("NetworkContext — foreground flush (#1159)", () => {
     const listener = getAppStateListener();
     (syncWorker.flush as jest.Mock).mockClear();
 
-    act(() => {
+    await act(() => {
       listener("background");
     });
 
@@ -123,13 +123,13 @@ describe("NetworkContext — foreground flush (#1159)", () => {
     const flushError = new Error("flush failed");
     (syncWorker.flush as jest.Mock).mockRejectedValueOnce(flushError);
 
-    renderProvider();
+    await renderProvider();
     await act(async () => {
       await Promise.resolve();
     });
 
     const listener = getAppStateListener();
-    act(() => {
+    await act(() => {
       listener("background");
     });
 

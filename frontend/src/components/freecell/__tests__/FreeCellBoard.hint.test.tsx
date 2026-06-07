@@ -35,8 +35,8 @@ function withHint(hint: FreeCellState["hint"]): FreeCellState {
   return { ...BASE, hint };
 }
 
-function renderBoard(state: FreeCellState) {
-  return render(
+async function renderBoard(state: FreeCellState) {
+  return await render(
     <ThemeProvider>
       <FreeCellBoard state={state} onMove={jest.fn()} />
     </ThemeProvider>
@@ -46,20 +46,20 @@ function renderBoard(state: FreeCellState) {
 // ── No hint ──────────────────────────────────────────────────────────────────
 
 describe("hint destination — no hint active", () => {
-  it("empty free cell slots have normal border (not bonus)", () => {
-    const { getByLabelText } = renderBoard(BASE);
+  it("empty free cell slots have normal border (not bonus)", async () => {
+    const { getByLabelText } = await renderBoard(BASE);
     const slot = getByLabelText("Empty free cell 2");
     expect(slot).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("empty foundation slots have normal border (not bonus)", () => {
-    const { getByLabelText } = renderBoard(BASE);
+  it("empty foundation slots have normal border (not bonus)", async () => {
+    const { getByLabelText } = await renderBoard(BASE);
     const foundation = getByLabelText("Empty Spades foundation");
     expect(foundation).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("empty tableau columns have normal border (not bonus)", () => {
-    const { getByLabelText } = renderBoard(BASE);
+  it("empty tableau columns have normal border (not bonus)", async () => {
+    const { getByLabelText } = await renderBoard(BASE);
     const col = getByLabelText("Empty tableau column 3");
     expect(col).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
@@ -68,16 +68,16 @@ describe("hint destination — no hint active", () => {
 // ── tableau-to-freecell ───────────────────────────────────────────────────────
 
 describe("hint destination — tableau-to-freecell", () => {
-  it("destination free cell slot gets bonus border", () => {
+  it("destination free cell slot gets bonus border", async () => {
     const state = withHint({ type: "tableau-to-freecell", fromCol: 0, toCell: 1 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     // toCell: 1 → "Empty free cell 2" (1-indexed)
     expect(getByLabelText("Empty free cell 2")).toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("non-destination free cell slots do not get bonus border", () => {
+  it("non-destination free cell slots do not get bonus border", async () => {
     const state = withHint({ type: "tableau-to-freecell", fromCol: 0, toCell: 1 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty free cell 3")).not.toHaveStyle({ borderColor: BONUS_COLOR });
     expect(getByLabelText("Empty free cell 4")).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
@@ -86,16 +86,16 @@ describe("hint destination — tableau-to-freecell", () => {
 // ── tableau-to-foundation ─────────────────────────────────────────────────────
 
 describe("hint destination — tableau-to-foundation", () => {
-  it("destination foundation slot gets bonus border (derived from top card suit)", () => {
+  it("destination foundation slot gets bonus border (derived from top card suit)", async () => {
     // Top of col 0 is 2♣ → clubs foundation
     const state = withHint({ type: "tableau-to-foundation", fromCol: 0 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty Clubs foundation")).toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("non-matching foundations do not get bonus border", () => {
+  it("non-matching foundations do not get bonus border", async () => {
     const state = withHint({ type: "tableau-to-foundation", fromCol: 0 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty Spades foundation")).not.toHaveStyle({ borderColor: BONUS_COLOR });
     expect(getByLabelText("Empty Hearts foundation")).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
@@ -104,16 +104,16 @@ describe("hint destination — tableau-to-foundation", () => {
 // ── freecell-to-foundation ────────────────────────────────────────────────────
 
 describe("hint destination — freecell-to-foundation", () => {
-  it("destination foundation slot gets bonus border (derived from freecell card suit)", () => {
+  it("destination foundation slot gets bonus border (derived from freecell card suit)", async () => {
     // freeCells[0] is A♠ → spades foundation
     const state = withHint({ type: "freecell-to-foundation", fromCell: 0 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty Spades foundation")).toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("non-matching foundations do not get bonus border", () => {
+  it("non-matching foundations do not get bonus border", async () => {
     const state = withHint({ type: "freecell-to-foundation", fromCell: 0 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty Clubs foundation")).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
 });
@@ -121,16 +121,16 @@ describe("hint destination — freecell-to-foundation", () => {
 // ── freecell-to-tableau ───────────────────────────────────────────────────────
 
 describe("hint destination — freecell-to-tableau", () => {
-  it("destination empty tableau column gets bonus border", () => {
+  it("destination empty tableau column gets bonus border", async () => {
     // toCol: 2 → "Empty tableau column 3" (1-indexed)
     const state = withHint({ type: "freecell-to-tableau", fromCell: 0, toCol: 2 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty tableau column 3")).toHaveStyle({ borderColor: BONUS_COLOR });
   });
 
-  it("non-destination empty columns do not get bonus border", () => {
+  it("non-destination empty columns do not get bonus border", async () => {
     const state = withHint({ type: "freecell-to-tableau", fromCell: 0, toCol: 2 });
-    const { getByLabelText } = renderBoard(state);
+    const { getByLabelText } = await renderBoard(state);
     expect(getByLabelText("Empty tableau column 4")).not.toHaveStyle({ borderColor: BONUS_COLOR });
   });
 });
@@ -138,7 +138,7 @@ describe("hint destination — freecell-to-tableau", () => {
 // ── tableau-to-tableau ────────────────────────────────────────────────────────
 
 describe("hint destination — tableau-to-tableau", () => {
-  it("renders without error when destination column is non-empty", () => {
+  it("renders without error when destination column is non-empty", async () => {
     // 2♣ → 3♥ (fromCol 0 → toCol 1)
     const state = withHint({
       type: "tableau-to-tableau",
@@ -146,10 +146,10 @@ describe("hint destination — tableau-to-tableau", () => {
       fromIndex: 0,
       toCol: 1,
     });
-    expect(() => renderBoard(state)).not.toThrow();
+    await renderBoard(state);
   });
 
-  it("destination empty column gets bonus border", () => {
+  it("destination empty column gets bonus border", async () => {
     // K♦ → empty col 3
     const stateWithKing: FreeCellState = {
       ...BASE,
@@ -165,7 +165,7 @@ describe("hint destination — tableau-to-tableau", () => {
       ],
       hint: { type: "tableau-to-tableau", fromCol: 0, fromIndex: 0, toCol: 2 },
     };
-    const { getByLabelText } = renderBoard(stateWithKing);
+    const { getByLabelText } = await renderBoard(stateWithKing);
     expect(getByLabelText("Empty tableau column 3")).toHaveStyle({ borderColor: BONUS_COLOR });
   });
 });

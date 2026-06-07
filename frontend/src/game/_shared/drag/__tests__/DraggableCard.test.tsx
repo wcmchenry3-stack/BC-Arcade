@@ -39,20 +39,20 @@ function DragTrigger({ source, cards }: { source: DragSource; cards: DragCard[] 
 }
 
 describe("DraggableCard", () => {
-  it("fires onTap when a draggable card is pressed", () => {
+  it("fires onTap when a draggable card is pressed", async () => {
     const onTap = jest.fn();
-    const { getByRole } = render(
+    const { getByRole } = await render(
       wrap(
         <DraggableCard onTap={onTap} dragCards={dragCards} dragSource={dragSource}>
           <Text accessibilityRole="button">A♠</Text>
         </DraggableCard>
       )
     );
-    fireEvent.press(getByRole("button"));
+    await fireEvent.press(getByRole("button"));
     expect(onTap).toHaveBeenCalledTimes(1);
   });
 
-  it("fires onTap exactly once per press — not double-fired via both gesture and onPress", () => {
+  it("fires onTap exactly once per press — not double-fired via both gesture and onPress", async () => {
     // Regression guard: each press must fire onTap exactly once.
     // In tests, fireEvent.press calls the child's onPress directly (RNGH mocked).
     // On device, GestureDetector claims the RN responder so the child's onPress
@@ -60,21 +60,21 @@ describe("DraggableCard", () => {
     // Invariant holds for short drags too: pan fails → Gesture.Exclusive activates
     // tap → single onTap call, child onPress suppressed by responder ownership.
     const onTap = jest.fn();
-    const { getByRole } = render(
+    const { getByRole } = await render(
       wrap(
         <DraggableCard onTap={onTap} dragCards={dragCards} dragSource={dragSource}>
           <Text accessibilityRole="button">A♠</Text>
         </DraggableCard>
       )
     );
-    fireEvent.press(getByRole("button"));
-    fireEvent.press(getByRole("button"));
+    await fireEvent.press(getByRole("button"));
+    await fireEvent.press(getByRole("button"));
     expect(onTap).toHaveBeenCalledTimes(2);
   });
 
-  it("fires onTap when a non-draggable card is pressed", () => {
+  it("fires onTap when a non-draggable card is pressed", async () => {
     const onTap = jest.fn();
-    const { getByRole } = render(
+    const { getByRole } = await render(
       wrap(
         <DraggableCard
           onTap={onTap}
@@ -86,12 +86,12 @@ describe("DraggableCard", () => {
         </DraggableCard>
       )
     );
-    fireEvent.press(getByRole("button"));
+    await fireEvent.press(getByRole("button"));
     expect(onTap).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fire onTap when draggable=false and no onTap is provided", () => {
-    const { getByText } = render(
+  it("does not fire onTap when draggable=false and no onTap is provided", async () => {
+    const { getByText } = await render(
       wrap(
         <DraggableCard dragCards={dragCards} dragSource={dragSource} draggable={false}>
           <Text>A♠</Text>
@@ -101,19 +101,19 @@ describe("DraggableCard", () => {
     expect(getByText("A♠")).toBeTruthy();
   });
 
-  it("does not throw when pressed with no onTap prop", () => {
-    const { getByRole } = render(
+  it("does not throw when pressed with no onTap prop", async () => {
+    const { getByRole } = await render(
       wrap(
         <DraggableCard dragCards={dragCards} dragSource={dragSource}>
           <Text accessibilityRole="button">A♠</Text>
         </DraggableCard>
       )
     );
-    expect(() => fireEvent.press(getByRole("button"))).not.toThrow();
+    await fireEvent.press(getByRole("button"));
   });
 
-  it("dims the card (opacity 0.6) while it is the active drag source", () => {
-    const { getByLabelText, getByTestId } = render(
+  it("dims the card (opacity 0.6) while it is the active drag source", async () => {
+    const { getByLabelText, getByTestId } = await render(
       <DragProvider>
         <ThemeProvider>
           <DragTrigger source={dragSource} cards={dragCards} />
@@ -125,17 +125,17 @@ describe("DraggableCard", () => {
     );
 
     expect(getByTestId("card")).toHaveStyle({ opacity: 1 });
-    fireEvent.press(getByLabelText("trigger"));
+    await fireEvent.press(getByLabelText("trigger"));
     expect(getByTestId("card")).toHaveStyle({ opacity: 0.6 });
   });
 
-  it("renders without crash when rnMeasure is mocked to return null", () => {
+  it("renders without crash when rnMeasure is mocked to return null", async () => {
     // Pan gesture worklets run natively and can't be simulated in Jest, but we can
     // verify the component mounts and tap-fallback still works when rnMeasure returns null.
     const measureSpy = jest.spyOn(Reanimated, "measure").mockReturnValue(null);
     const onTap = jest.fn();
 
-    const { getByRole } = render(
+    const { getByRole } = await render(
       wrap(
         <DraggableCard onTap={onTap} dragCards={dragCards} dragSource={dragSource}>
           <Text accessibilityRole="button">A♠</Text>
@@ -143,14 +143,14 @@ describe("DraggableCard", () => {
       )
     );
 
-    expect(() => fireEvent.press(getByRole("button"))).not.toThrow();
+    await fireEvent.press(getByRole("button"));
     expect(onTap).toHaveBeenCalledTimes(1);
 
     measureSpy.mockRestore();
   });
 
-  it("accepts hitSlop prop without throwing", () => {
-    const { getByTestId } = render(
+  it("accepts hitSlop prop without throwing", async () => {
+    const { getByTestId } = await render(
       wrap(
         <DraggableCard
           testID="card"

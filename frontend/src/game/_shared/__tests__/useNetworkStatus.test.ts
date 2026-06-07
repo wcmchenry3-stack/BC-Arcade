@@ -30,36 +30,37 @@ describe("useNetworkStatus", () => {
   });
 
   it("starts online/uninitialized, becomes initialized after first event", async () => {
-    const { result } = renderHook(() => useNetworkStatus());
-    expect(result.current).toEqual({ isOnline: true, isInitialized: false });
+    // v14: effects flush before renderHook resolves, so the pre-initialization
+    // state (isInitialized: false) is not observable. Verify post-init state.
+    const { result } = await renderHook(() => useNetworkStatus());
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
     expect(result.current.isOnline).toBe(true);
   });
 
   it("reports offline when isConnected is false", async () => {
     mockFetchResult = { isConnected: false, isInternetReachable: false };
-    const { result } = renderHook(() => useNetworkStatus());
+    const { result } = await renderHook(() => useNetworkStatus());
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
     expect(result.current.isOnline).toBe(false);
   });
 
   it("reports online when isConnected true + isInternetReachable null", async () => {
     mockFetchResult = { isConnected: true, isInternetReachable: null };
-    const { result } = renderHook(() => useNetworkStatus());
+    const { result } = await renderHook(() => useNetworkStatus());
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
     expect(result.current.isOnline).toBe(true);
   });
 
   it("updates on listener events", async () => {
-    const { result } = renderHook(() => useNetworkStatus());
+    const { result } = await renderHook(() => useNetworkStatus());
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
-    act(() => {
+    await act(() => {
       mockListeners.forEach((l) =>
         l({ isConnected: false, isInternetReachable: false } as NetInfoState)
       );
     });
     expect(result.current.isOnline).toBe(false);
-    act(() => {
+    await act(() => {
       mockListeners.forEach((l) =>
         l({ isConnected: true, isInternetReachable: true } as NetInfoState)
       );

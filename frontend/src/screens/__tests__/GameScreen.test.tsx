@@ -77,9 +77,9 @@ const mockNavigation = { navigate: jest.fn(), goBack: jest.fn() } as unknown as 
   typeof GameScreen
 >[0]["navigation"];
 
-function renderScreen(stateOverrides: Record<string, unknown> = {}) {
+async function renderScreen(stateOverrides: Record<string, unknown> = {}) {
   const initialState = makeState(stateOverrides);
-  const result = render(
+  const result = await render(
     <ThemeProvider>
       <YachtScorecardProvider>
         <GameScreen
@@ -95,7 +95,7 @@ function renderScreen(stateOverrides: Record<string, unknown> = {}) {
   // aren't affected by the VS-mode overlay blocking accessibility queries.
   const soloBtn = result.queryByRole("button", { name: /^solo$/i });
   if (soloBtn) {
-    fireEvent.press(soloBtn);
+    await fireEvent.press(soloBtn);
   }
   return result;
 }
@@ -109,68 +109,68 @@ beforeEach(() => {
 });
 
 describe("GameScreen", () => {
-  it("renders the round header", () => {
-    const { getByText } = renderScreen();
+  it("renders the round header", async () => {
+    const { getByText } = await renderScreen();
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
 
   it("rolling updates rolls_used and enables scoring", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     // After a roll, the button label includes the remaining rolls count (2)
     expect(getByRole("button", { name: /roll dice/i })).toBeTruthy();
   });
 
   it("scoring a category after a roll advances the round", async () => {
-    const { getByRole, getByText } = renderScreen();
+    const { getByRole, getByText } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /ones/i }));
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
     expect(getByText(/round.*2/i)).toBeTruthy();
   });
 
-  it("game over modal is not visible initially", () => {
-    const { queryByText } = renderScreen();
+  it("game over modal is not visible initially", async () => {
+    const { queryByText } = await renderScreen();
     expect(queryByText(/game over/i)).toBeNull();
   });
 
-  it("game over modal appears when game_over is true", () => {
-    const { getByText, getAllByText } = renderScreen({ game_over: true, total_score: 250 });
+  it("game over modal appears when game_over is true", async () => {
+    const { getByText, getAllByText } = await renderScreen({ game_over: true, total_score: 250 });
     expect(getByText(/game over/i)).toBeTruthy();
     // Score appears in both the hero display and the scorecard total row
     expect(getAllByText("250").length).toBeGreaterThan(0);
   });
 
   it("play again button starts a new game in place", async () => {
-    const { getByRole, getByText } = renderScreen({ game_over: true, total_score: 100 });
+    const { getByRole, getByText } = await renderScreen({ game_over: true, total_score: 100 });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     expect(mockNavigation.navigate).not.toHaveBeenCalled();
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
 
   it("dismiss button navigates back to HomeScreen", async () => {
-    const { getByRole } = renderScreen({ game_over: true, total_score: 200 });
+    const { getByRole } = await renderScreen({ game_over: true, total_score: 200 });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /dismiss/i }));
+      await fireEvent.press(getByRole("button", { name: /dismiss/i }));
     });
     expect(mockNavigation.goBack).toHaveBeenCalledTimes(1);
   });
 
   it("⋯ menu Scoreboard item navigates to ScoreboardScreen with yacht gameKey", async () => {
     (mockNavigation.navigate as jest.Mock).mockClear();
-    const { getByLabelText, getByText } = renderScreen();
+    const { getByLabelText, getByText } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByLabelText("More options")); // open ⋯ menu
+      await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
     });
     await act(async () => {
-      fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
+      await fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
     });
     expect(mockNavigation.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "yacht" });
   });
@@ -220,17 +220,17 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
   });
 
   it("Play Again resets round to 1", async () => {
-    const { getByRole, getByText } = renderScreen(makeGameOverState());
+    const { getByRole, getByText } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
 
   it("Play Again resets all score categories to null", async () => {
-    const { getByRole, queryByText } = renderScreen(makeGameOverState());
+    const { getByRole, queryByText } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     // After reset, no category should show a filled score — modal is gone too
     expect(queryByText(/game over/i)).toBeNull();
@@ -249,14 +249,14 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
 
     // Mount and flush the initial useEffect (which calls saveGame with the
     // game-over state). We only care about the ordering triggered by "Play Again".
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
       await Promise.resolve(); // flush initial saveGame from useEffect
     });
     callOrder.length = 0; // reset tracker — only track calls from "Play Again" onward
 
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
 
     // clearGame must have been called
@@ -271,9 +271,9 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
   });
 
   it("Play Again saves a fresh state (round:1, game_over:false, scores null)", async () => {
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
 
     await waitFor(() => expect(saveGame).toHaveBeenCalled());
@@ -287,9 +287,9 @@ describe("GameScreen — Play Again reset (GH #225)", () => {
   });
 
   it("Play Again resets total_score to 0", async () => {
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
 
     await waitFor(() => expect(saveGame).toHaveBeenCalled());
@@ -309,9 +309,9 @@ describe("GameScreen — New Game button (GH #393)", () => {
 
   it("fresh game: tapping New Game resets immediately without showing confirm modal", async () => {
     // round=1, rolls_used=0, all scores null → isInProgress() = false
-    const { getByRole, queryByText } = renderScreen();
+    const { getByRole, queryByText } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /new game/i }));
+      await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     // Confirm modal must NOT appear
     expect(queryByText("Start new game?")).toBeNull();
@@ -321,20 +321,20 @@ describe("GameScreen — New Game button (GH #393)", () => {
 
   it("in-progress game: tapping New Game shows confirm modal", async () => {
     // round=2 → isInProgress() = true
-    const { getByRole, getByText } = renderScreen({ round: 2 });
+    const { getByRole, getByText } = await renderScreen({ round: 2 });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /new game/i }));
+      await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     expect(getByText("Start new game?")).toBeTruthy();
   });
 
   it("confirm modal 'Start new game' calls startNewGame and closes modal", async () => {
-    const { getByRole, queryByText } = renderScreen({ round: 2 });
+    const { getByRole, queryByText } = await renderScreen({ round: 2 });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /new game/i }));
+      await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /start new game/i }));
+      await fireEvent.press(getByRole("button", { name: /start new game/i }));
     });
     // Modal closes
     expect(queryByText("Start new game?")).toBeNull();
@@ -344,12 +344,12 @@ describe("GameScreen — New Game button (GH #393)", () => {
   });
 
   it("confirm modal 'Cancel' does not call startNewGame and closes modal", async () => {
-    const { getByRole, queryByText, getByText } = renderScreen({ round: 2 });
+    const { getByRole, queryByText, getByText } = await renderScreen({ round: 2 });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /new game/i }));
+      await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /^cancel$/i }));
+      await fireEvent.press(getByRole("button", { name: /^cancel$/i }));
     });
     // Modal closes
     expect(queryByText("Start new game?")).toBeNull();
@@ -375,21 +375,21 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     mockStartGame.mockReturnValue("game-uuid-test");
   });
 
-  it("calls startGame('yacht') on mount", () => {
-    renderScreen();
+  it("calls startGame('yacht') on mount", async () => {
+    await renderScreen();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
   });
 
-  it("does not start a new session when mounted with a game_over state", () => {
-    renderScreen({ game_over: true, total_score: 200 });
+  it("does not start a new session when mounted with a game_over state", async () => {
+    await renderScreen({ game_over: true, total_score: 200 });
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
   it("emits a 'roll' event after rolling with expected payload shape", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     const rollCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "roll");
     expect(rollCall).toBeDefined();
@@ -410,12 +410,12 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   });
 
   it("emits a 'score' event with category, value, is_joker, and available_alternatives", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /ones/i }));
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
     const scoreCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "score");
     expect(scoreCall).toBeDefined();
@@ -432,12 +432,12 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   });
 
   it("capture ordering: a roll+score sequence emits roll before score", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /ones/i }));
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
     const types = mockEnqueueEvent.mock.calls.map((c) => c[1]?.type);
     const rollIdx = types.indexOf("roll");
@@ -475,9 +475,9 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       yacht_bonus_total: 0,
       total_score: 228,
     };
-    const { getByRole } = renderScreen(almostDone);
+    const { getByRole } = await renderScreen(almostDone);
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /chance/i }));
+      await fireEvent.press(getByRole("button", { name: /chance/i }));
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const completeCall = mockCompleteGame.mock.calls[0];
@@ -500,11 +500,11 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   });
 
   it("fires completeGame with abandoned outcome when the screen unmounts mid-game", async () => {
-    const { getByRole, unmount } = renderScreen();
+    const { getByRole, unmount } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
-    unmount();
+    await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const abandonCall = mockCompleteGame.mock.calls[0];
     if (abandonCall === undefined) throw new Error("Expected completeGame call");
@@ -513,24 +513,24 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   });
 
   it("does not double-fire game_ended: completeGame on unmount is skipped after natural end", async () => {
-    const { unmount } = renderScreen({ game_over: true, total_score: 250 });
-    unmount();
+    const { unmount } = await renderScreen({ game_over: true, total_score: 250 });
+    await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("New Game mid-game abandons the old session and starts a new one", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
     // Mid-game New Game opens the confirm modal; confirm it to trigger startNewGame.
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /new game/i }));
+      await fireEvent.press(getByRole("button", { name: /new game/i }));
     });
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /start new game/i }));
+      await fireEvent.press(getByRole("button", { name: /start new game/i }));
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
@@ -541,18 +541,18 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     mockEnqueueEvent.mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    const { getByRole, queryByText } = renderScreen();
+    const { getByRole, queryByText } = await renderScreen();
     // Instrumentation errors are isolated by useGameSync — they must not
     // crash the render tree, surface as a user-visible error, or prevent
     // the next event from being recorded.
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /roll dice/i }));
+      await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     expect(queryByText("boom")).toBeNull();
     // Round is still 1 (no score yet) and a subsequent successful enqueue works.
     mockEnqueueEvent.mockClear();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /ones/i }));
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
     expect(mockEnqueueEvent).toHaveBeenCalled();
   });
@@ -564,9 +564,9 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets all upper section rows to 'not available'", async () => {
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     // rollsUsed=0 after reset → canScore=false → every ScoreRow shows "not available"
     for (const cat of ["Ones", "Twos", "Threes", "Fours", "Fives", "Sixes"]) {
@@ -575,9 +575,9 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets all lower section rows to 'not available'", async () => {
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     for (const cat of [
       "Three of a Kind",
@@ -593,9 +593,9 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again resets upper bonus display to 0 / 63 progress", async () => {
-    const { getByRole, getByText, queryByText } = renderScreen(makeGameOverState());
+    const { getByRole, getByText, queryByText } = await renderScreen(makeGameOverState());
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     // After reset: upper_subtotal=0, upper_bonus=0 → progress display ("0 / 63")
     expect(getByText("0 / 63")).toBeTruthy();
@@ -604,13 +604,13 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
   });
 
   it("Play Again logs Sentry breadcrumbs for the reset event", async () => {
-    const { getByRole } = renderScreen(makeGameOverState());
+    const { getByRole } = await renderScreen(makeGameOverState());
     const { addBreadcrumb } = jest.requireMock("@sentry/react-native") as {
       addBreadcrumb: jest.Mock;
     };
     addBreadcrumb.mockClear();
     await act(async () => {
-      fireEvent.press(getByRole("button", { name: /play again/i }));
+      await fireEvent.press(getByRole("button", { name: /play again/i }));
     });
     // Should have two breadcrumbs: one before reset, one after
     expect(addBreadcrumb).toHaveBeenCalledWith(

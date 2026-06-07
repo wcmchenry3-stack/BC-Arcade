@@ -30,8 +30,8 @@ function mockNav() {
   } as unknown as Parameters<typeof BlackjackBettingScreen>[0]["navigation"];
 }
 
-function renderScreen(nav = mockNav()) {
-  return render(
+async function renderScreen(nav = mockNav()) {
+  return await render(
     <ThemeProvider>
       <BlackjackGameProvider>
         <BlackjackBettingScreen navigation={nav} />
@@ -55,13 +55,13 @@ beforeEach(() => {
 
 describe("BlackjackBettingScreen — initial load", () => {
   it("renders BettingPanel when a table-selected game is loaded", async () => {
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("Deal")).toBeTruthy();
   });
 
   it("renders TableSelectPanel when no saved game exists (fresh install)", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
-    renderScreen();
+    await renderScreen();
     expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
     expect(screen.getByText("Beginner")).toBeTruthy();
     expect(screen.getByText("Intermediate")).toBeTruthy();
@@ -75,19 +75,19 @@ describe("BlackjackBettingScreen — initial load", () => {
 
 describe("BlackjackBettingScreen — header / navigation", () => {
   it("shows Blackjack title", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => expect(screen.getByText("Blackjack")).toBeTruthy());
   });
 
   it("⋯ menu Scoreboard item navigates to ScoreboardScreen with blackjack gameKey", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await screen.findByText("Deal");
     await act(async () => {
-      fireEvent.press(screen.getByLabelText("More options"));
+      await fireEvent.press(screen.getByLabelText("More options"));
     });
     await act(async () => {
-      fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByText("Scoreboard"));
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
   });
@@ -102,7 +102,7 @@ describe("BlackjackBettingScreen — phase redirect", () => {
     const playerState: EngineState = { ...newGame(), phase: "player", bet: 100 };
     (loadGame as jest.Mock).mockResolvedValueOnce(playerState);
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
     });
@@ -117,7 +117,7 @@ describe("BlackjackBettingScreen — phase redirect", () => {
     };
     (loadGame as jest.Mock).mockResolvedValueOnce(resultState);
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
     });
@@ -125,14 +125,14 @@ describe("BlackjackBettingScreen — phase redirect", () => {
 
   it("calls navigation.replace('BlackjackTable') after Deal transitions phase", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await screen.findByText("Deal");
     // Place a chip first so Deal becomes enabled (beginner table: max bet 25)
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(/add 25 to bet/i));
+      await fireEvent.press(screen.getByLabelText(/add 25 to bet/i));
     });
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(/deal cards with 25-chip bet/i));
+      await fireEvent.press(screen.getByLabelText(/deal cards with 25-chip bet/i));
     });
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
@@ -146,7 +146,7 @@ describe("BlackjackBettingScreen — phase redirect", () => {
 
 describe("BlackjackBettingScreen — chip balance visibility (GH #227)", () => {
   it("chip/goal progress is visible in HUD during betting phase", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Deal");
     // HUD shows goal progress when a table with a runGoal is active
     expect(screen.getByLabelText(/goal progress:/i)).toBeTruthy();
@@ -159,7 +159,7 @@ describe("BlackjackBettingScreen — chip balance visibility (GH #227)", () => {
 
 describe("BlackjackBettingScreen — persistent table, no pre-deal labels", () => {
   it("hand labels are hidden during betting phase when no cards are dealt", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Deal");
     expect(screen.queryByText("Dealer's Hand")).toBeNull();
     expect(screen.queryByText("Your Hand")).toBeNull();

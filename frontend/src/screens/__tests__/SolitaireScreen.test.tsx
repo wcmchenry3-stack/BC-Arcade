@@ -78,8 +78,8 @@ jest.mock("../../game/solitaire/api", () => ({
   },
 }));
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <SolitaireScoreboardProvider>
         <SolitaireScreen />
@@ -91,7 +91,7 @@ function renderScreen() {
 /** Flush the initial `loadGame()` promise so the pre-game modal (or a
  * resumed state, if mocked) is rendered before assertions run. */
 async function mount() {
-  const api = renderScreen();
+  const api = await renderScreen();
   await act(async () => {
     await Promise.resolve();
   });
@@ -100,7 +100,7 @@ async function mount() {
 
 async function chooseDraw1(api: ReturnType<typeof renderScreen>) {
   await act(async () => {
-    fireEvent.press(api.getByLabelText("Draw 1"));
+    await fireEvent.press(api.getByLabelText("Draw 1"));
   });
 }
 
@@ -133,7 +133,7 @@ describe("SolitaireScreen — pre-game modal", () => {
   it("deals a game after choosing Draw 3", async () => {
     const api = await mount();
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 3"));
+      await fireEvent.press(api.getByLabelText("Draw 3"));
     });
     expect(api.getByLabelText("Score: 0")).toBeTruthy();
   });
@@ -169,7 +169,7 @@ describe("SolitaireScreen — stock & waste", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     expect(api.getByLabelText("Draw 1 from stock, 23 cards remaining")).toBeTruthy();
   });
@@ -187,12 +187,12 @@ describe("SolitaireScreen — undo affordance", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     const undo = api.getByLabelText("Undo");
     expect(undo.props.accessibilityState?.disabled).toBe(false);
     await act(async () => {
-      fireEvent.press(undo);
+      await fireEvent.press(undo);
     });
     expect(api.getByLabelText("Draw 1 from stock, 24 cards remaining")).toBeTruthy();
   });
@@ -211,13 +211,13 @@ describe("SolitaireScreen — new game confirmation", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("More options"));
+      await fireEvent.press(api.getByLabelText("More options"));
     });
     await act(async () => {
-      fireEvent.press(api.getByText("New Game"));
+      await fireEvent.press(api.getByText("New Game"));
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Start New"));
+      await fireEvent.press(api.getByLabelText("Start New"));
     });
     expect(api.getByLabelText("Draw 1")).toBeTruthy();
   });
@@ -242,7 +242,7 @@ describe("SolitaireScreen — save/resume lifecycle", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     await waitFor(async () => {
       const raw = await AsyncStorage.getItem("solitaire_game");
@@ -256,19 +256,19 @@ describe("SolitaireScreen — save/resume lifecycle", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     await waitFor(async () => {
       expect(await AsyncStorage.getItem("solitaire_game")).not.toBeNull();
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("More options"));
+      await fireEvent.press(api.getByLabelText("More options"));
     });
     await act(async () => {
-      fireEvent.press(api.getByText("New Game"));
+      await fireEvent.press(api.getByText("New Game"));
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Start New"));
+      await fireEvent.press(api.getByLabelText("Start New"));
     });
     expect(await AsyncStorage.getItem("solitaire_game")).toBeNull();
   });
@@ -280,7 +280,7 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     await chooseDraw1(api);
     expect(mockStartGame).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     const [gameType] = mockStartGame.mock.calls[0] ?? [];
@@ -291,10 +291,10 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 23 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 23 cards remaining"));
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
   });
@@ -303,7 +303,7 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     // Simulate the screen being removed from the navigation stack.
     const handlers = mockNavListeners.get("beforeRemove") ?? [];
@@ -366,10 +366,10 @@ describe("SolitaireScreen — win-modal score submission", () => {
     });
     const api = await mountAtWinState();
     await act(async () => {
-      fireEvent.changeText(api.getByLabelText("Your name"), "Alice");
+      await fireEvent.changeText(api.getByLabelText("Your name"), "Alice");
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Submit Score"));
+      await fireEvent.press(api.getByLabelText("Submit Score"));
     });
     await waitFor(() => {
       expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", 820);
@@ -383,10 +383,10 @@ describe("SolitaireScreen — win-modal score submission", () => {
     (solitaireApi.submitScore as jest.Mock).mockRejectedValueOnce(new Error("network"));
     const api = await mountAtWinState();
     await act(async () => {
-      fireEvent.changeText(api.getByLabelText("Your name"), "Bob");
+      await fireEvent.changeText(api.getByLabelText("Your name"), "Bob");
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Submit Score"));
+      await fireEvent.press(api.getByLabelText("Submit Score"));
     });
     await waitFor(() => {
       expect(api.getByRole("alert")).toBeTruthy();
@@ -400,7 +400,7 @@ describe("SolitaireScreen — win-modal score submission", () => {
   it("returns to the pre-game modal when New Game is tapped in the WinModal", async () => {
     const api = await mountAtWinState();
     await act(async () => {
-      fireEvent.press(api.getByLabelText("New Game"));
+      await fireEvent.press(api.getByLabelText("New Game"));
     });
     expect(api.getByLabelText("Draw 1")).toBeTruthy();
     expect(await AsyncStorage.getItem("solitaire_game")).toBeNull();
@@ -446,14 +446,14 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("2 of Spades")); // select waste
+      await fireEvent.press(api.getByLabelText("2 of Spades")); // select waste
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("Face-down card")); // no-op: face-down card
+      await fireEvent.press(api.getByLabelText("Face-down card")); // no-op: face-down card
     });
     // If selection was preserved, the next press on a valid destination executes the move.
     await act(async () => {
-      fireEvent.press(api.getByLabelText("3 of Hearts")); // waste-to-tableau: 2♠ on 3♥
+      await fireEvent.press(api.getByLabelText("3 of Hearts")); // waste-to-tableau: 2♠ on 3♥
     });
     expect(api.getByLabelText("Moves: 1")).toBeTruthy();
   });
@@ -487,12 +487,12 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("8 of Clubs")); // select col 0
+      await fireEvent.press(api.getByLabelText("8 of Clubs")); // select col 0
     });
     expect(api.getByLabelText("8 of Clubs (selected)")).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("5 of Hearts")); // invalid destination → re-select col 1
+      await fireEvent.press(api.getByLabelText("5 of Hearts")); // invalid destination → re-select col 1
     });
     expect(api.getByLabelText("5 of Hearts (selected)")).toBeTruthy();
     expect(api.queryByLabelText("8 of Clubs (selected)")).toBeNull();
@@ -527,7 +527,7 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("A of Spades")); // single tap — should select only
+      await fireEvent.press(api.getByLabelText("A of Spades")); // single tap — should select only
     });
 
     // "Empty Spades foundation" only exists when the foundation has no cards —
@@ -542,10 +542,10 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     const api = await mount();
 
     await act(async () => {
-      fireEvent.press(api.getByLabelText("A of Spades")); // first tap — select
+      await fireEvent.press(api.getByLabelText("A of Spades")); // first tap — select
     });
     await act(async () => {
-      fireEvent.press(api.getByLabelText("A of Spades")); // second tap — double-tap → waste-to-foundation
+      await fireEvent.press(api.getByLabelText("A of Spades")); // second tap — double-tap → waste-to-foundation
     });
 
     expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();

@@ -7,7 +7,7 @@ import { ThemeProvider, useTheme } from "../ThemeContext";
 // ThemeProvider runs an AsyncStorage read in a useEffect; flush the microtask
 // queue so the resulting state update lands inside act() and doesn't warn.
 async function renderAndSettle(ui: React.ReactElement) {
-  const result = render(ui);
+  const result = await render(ui);
   await act(async () => {});
   return result;
 }
@@ -59,7 +59,7 @@ describe("ThemeContext", () => {
         <Probe />
       </ThemeProvider>
     );
-    fireEvent.press(screen.getByTestId("set-light"));
+    await fireEvent.press(screen.getByTestId("set-light"));
     expect(screen.getByTestId("mode").props.children).toBe("light");
     expect(screen.getByTestId("theme").props.children).toBe("light");
     await waitFor(async () => {
@@ -74,7 +74,7 @@ describe("ThemeContext", () => {
         <Probe />
       </ThemeProvider>
     );
-    fireEvent.press(screen.getByTestId("set-system"));
+    await fireEvent.press(screen.getByTestId("set-system"));
     expect(screen.getByTestId("mode").props.children).toBe("system");
     expect(screen.getByTestId("theme").props.children).toBe("light");
   });
@@ -101,14 +101,14 @@ describe("ThemeContext", () => {
       </ThemeProvider>
     );
     // Starts dark → toggle → light
-    act(() => {
-      fireEvent.press(screen.getByTestId("toggle"));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("toggle"));
     });
     expect(screen.getByTestId("theme").props.children).toBe("light");
     expect(screen.getByTestId("mode").props.children).toBe("light");
     // Toggle again → dark
-    act(() => {
-      fireEvent.press(screen.getByTestId("toggle"));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("toggle"));
     });
     expect(screen.getByTestId("theme").props.children).toBe("dark");
     expect(screen.getByTestId("mode").props.children).toBe("dark");

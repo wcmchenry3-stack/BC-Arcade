@@ -58,8 +58,8 @@ jest.mock("expo-linear-gradient", () => ({
 
 jest.useFakeTimers();
 
-function renderScreen() {
-  return render(
+async function renderScreen() {
+  return await render(
     <ThemeProvider>
       <HeartsRoundsProvider>
         <HeartsScreen />
@@ -74,7 +74,7 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
   });
 
   it("renders all four preset options including Mixed Table", async () => {
-    const { getAllByRole } = renderScreen();
+    const { getAllByRole } = await renderScreen();
     await waitFor(() => {
       const labels = getAllByRole("radio").map((r) => r.props.accessibilityLabel as string);
       expect(labels.some((l) => /cautious/i.test(l))).toBe(true);
@@ -85,7 +85,7 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
   });
 
   it("Mixed Table can be selected and reflects selected state", async () => {
-    const { getAllByRole } = renderScreen();
+    const { getAllByRole } = await renderScreen();
     await waitFor(() =>
       expect(
         getAllByRole("radio").some((r) => /mixed table/i.test(r.props.accessibilityLabel))
@@ -94,7 +94,7 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
     const mixedBtn = getAllByRole("radio").find((r) =>
       /mixed table/i.test(r.props.accessibilityLabel)
     )!;
-    fireEvent.press(mixedBtn);
+    await fireEvent.press(mixedBtn);
     await waitFor(() => {
       const updated = getAllByRole("radio").find((r) =>
         /mixed table/i.test(r.props.accessibilityLabel)
@@ -116,12 +116,12 @@ describe("HeartsScreen — passing phase (inline banner)", () => {
   });
 
   it("shows inline banner with direction instruction", async () => {
-    const { getByText } = renderScreen();
+    const { getByText } = await renderScreen();
     await waitFor(() => expect(getByText(/pass left/i)).toBeTruthy());
   });
 
   it("confirm button starts disabled (no cards selected)", async () => {
-    const { getByRole } = renderScreen();
+    const { getByRole } = await renderScreen();
     await waitFor(() => {
       const btn = getByRole("button", { name: /confirm/i });
       expect(btn.props.accessibilityState.disabled).toBe(true);
@@ -129,19 +129,14 @@ describe("HeartsScreen — passing phase (inline banner)", () => {
   });
 
   it("renders no Modal during passing phase", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Modal } = require("react-native");
-    const { UNSAFE_queryAllByType } = renderScreen();
+    const { queryByRole } = await renderScreen();
     await waitFor(() => {
-      const visibleModals = UNSAFE_queryAllByType(Modal).filter(
-        (m: { props: { visible?: boolean } }) => m.props.visible !== false
-      );
-      expect(visibleModals).toHaveLength(0);
+      expect(queryByRole("dialog")).toBeNull();
     });
   });
 
   it("tapping a card increments the selection counter", async () => {
-    const { getByText, queryAllByRole } = renderScreen();
+    const { getByText, queryAllByRole } = await renderScreen();
     await waitFor(() => expect(getByText(/0 of 3 selected/i)).toBeTruthy());
     const cardBtns = queryAllByRole("button").filter(
       (el) =>
@@ -149,14 +144,14 @@ describe("HeartsScreen — passing phase (inline banner)", () => {
         /of\s+\w+/i.test(el.props.accessibilityLabel)
     );
     expect(cardBtns.length).toBeGreaterThan(0);
-    fireEvent.press(cardBtns[0]!);
+    await fireEvent.press(cardBtns[0]!);
     expect(getByText(/1 of 3 selected/i)).toBeTruthy();
   });
 
   it("unmounts cleanly while AI loop is pending", async () => {
-    const { unmount } = renderScreen();
+    const { unmount } = await renderScreen();
     await waitFor(() => expect(loadGame).toHaveBeenCalled());
-    act(() => {
+    await act(() => {
       jest.runAllTimers();
     });
     expect(() => unmount()).not.toThrow();
@@ -185,30 +180,30 @@ describe("HeartsScreen — playing phase (no modal)", () => {
   });
 
   it("renders the Hearts title in the header", async () => {
-    const { getAllByText } = renderScreen();
+    const { getAllByText } = await renderScreen();
     await waitFor(() => expect(getAllByText("Hearts").length).toBeGreaterThan(0));
   });
 
   it("⋯ menu Scoreboard item navigates to ScoreboardScreen with hearts gameKey", async () => {
     mockNavigate.mockClear();
-    const { getByLabelText, getByText } = renderScreen();
+    const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("More options"));
-    fireEvent.press(getByLabelText("More options")); // open ⋯ menu
-    fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
+    await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
+    await fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
     expect(mockNavigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "hearts" });
   });
 
   it("⋯ menu Edit Names item opens the rename modal", async () => {
-    const { getByLabelText, getByText } = renderScreen();
+    const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("More options"));
-    fireEvent.press(getByLabelText("More options")); // open ⋯ menu
-    fireEvent.press(getByText("Edit Names")); // tap Edit Names item
+    await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
+    await fireEvent.press(getByText("Edit Names")); // tap Edit Names item
     // Rename modal title is in hearts.json under settings.rename_title
     expect(getByText("Player Names")).toBeTruthy();
   });
 
   it("human hand cards are rendered", async () => {
-    const { queryAllByRole } = renderScreen();
+    const { queryAllByRole } = await renderScreen();
     await waitFor(() => {
       const cardBtns = queryAllByRole("button").filter(
         (el) =>
@@ -228,7 +223,7 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     };
     (loadGame as jest.Mock).mockResolvedValue(stateWithScores);
 
-    const { queryByText } = renderScreen();
+    const { queryByText } = await renderScreen();
     await waitFor(() => expect(queryByText("59")).toBeNull());
     expect(queryByText("25")).toBeNull();
     expect(queryByText("41")).toBeNull();
@@ -297,7 +292,7 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
   });
 
   it("AI completes the final trick and the hand-end overlay appears", async () => {
-    const { getByText } = renderScreen();
+    const { getByText } = await renderScreen();
 
     // Wait for the saved game to load.
     await waitFor(() => expect(loadGame).toHaveBeenCalled());

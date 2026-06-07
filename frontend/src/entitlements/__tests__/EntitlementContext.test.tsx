@@ -88,13 +88,13 @@ function Probe() {
   return null;
 }
 
-const flushAsync = () =>
-  act(async () => {
+const flushAsync = async () =>
+  await act(async () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
   });
 
 async function renderProvider() {
-  render(
+  await render(
     <EntitlementProvider>
       <Probe />
     </EntitlementProvider>
@@ -370,7 +370,7 @@ describe("parseRawToken", () => {
 
 describe("revocation flow", () => {
   async function renderAndGetListener() {
-    render(
+    await render(
       <EntitlementProvider>
         <Probe />
       </EntitlementProvider>
@@ -425,7 +425,7 @@ describe("revocation flow", () => {
       token: makeToken(makePayload(["hearts", "yacht"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
-    render(
+    await render(
       <EntitlementProvider>
         <Probe />
       </EntitlementProvider>
@@ -441,7 +441,7 @@ describe("revocation flow", () => {
       token: makeToken(makePayload(["starswarm"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
-    await expect(triggerForegroundWith([])).resolves.toBeUndefined();
+    await triggerForegroundWith([]);
     expect(mockDropByGameType).toHaveBeenCalledWith("starswarm");
   });
 

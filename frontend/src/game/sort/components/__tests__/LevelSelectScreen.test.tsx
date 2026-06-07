@@ -24,8 +24,8 @@ function mkProgress(overrides: Partial<SortProgress> = {}): SortProgress {
 }
 
 describe("LevelSelectScreen", () => {
-  it("renders one card per level", () => {
-    const { getAllByRole } = render(
+  it("renders one card per level", async () => {
+    const { getAllByRole } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -38,8 +38,8 @@ describe("LevelSelectScreen", () => {
     expect(getAllByRole("button")).toHaveLength(LEVELS.length);
   });
 
-  it("renders all levels as buttons", () => {
-    const { getByLabelText } = render(
+  it("renders all levels as buttons", async () => {
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -54,8 +54,8 @@ describe("LevelSelectScreen", () => {
     }
   });
 
-  it("locked levels have a level-specific accessibility label", () => {
-    const { getByLabelText } = render(
+  it("locked levels have a level-specific accessibility label", async () => {
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -69,8 +69,8 @@ describe("LevelSelectScreen", () => {
     expect(getByLabelText("Level 5, locked")).toBeTruthy();
   });
 
-  it("locked levels are disabled", () => {
-    const { getByLabelText } = render(
+  it("locked levels are disabled", async () => {
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -84,9 +84,9 @@ describe("LevelSelectScreen", () => {
     expect(lockedCard.props.accessibilityState?.disabled).toBe(true);
   });
 
-  it("tapping an unlocked level calls onSelectLevel with the correct id", () => {
+  it("tapping an unlocked level calls onSelectLevel with the correct id", async () => {
     const onSelectLevel = jest.fn();
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -96,13 +96,13 @@ describe("LevelSelectScreen", () => {
         />
       )
     );
-    fireEvent.press(getByLabelText("Level 3"));
+    await fireEvent.press(getByLabelText("Level 3"));
     expect(onSelectLevel).toHaveBeenCalledWith(3);
   });
 
-  it("tapping a locked level does not call onSelectLevel", () => {
+  it("tapping a locked level does not call onSelectLevel", async () => {
     const onSelectLevel = jest.fn();
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -112,12 +112,12 @@ describe("LevelSelectScreen", () => {
         />
       )
     );
-    fireEvent.press(getByLabelText("Level 2, locked"));
+    await fireEvent.press(getByLabelText("Level 2, locked"));
     expect(onSelectLevel).not.toHaveBeenCalled();
   });
 
-  it("Continue button is hidden when there is no in-progress level", () => {
-    const { queryByText } = render(
+  it("Continue button is hidden when there is no in-progress level", async () => {
+    const { queryByText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -130,7 +130,7 @@ describe("LevelSelectScreen", () => {
     expect(queryByText(/Continue Level/)).toBeNull();
   });
 
-  it("Continue button is visible and shows the level number when in-progress", () => {
+  it("Continue button is visible and shows the level number when in-progress", async () => {
     const partialState = {
       bottles: [["red" as const]],
       moveCount: 1,
@@ -138,7 +138,7 @@ describe("LevelSelectScreen", () => {
       isComplete: false,
       selectedBottleIndex: null,
     };
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -151,7 +151,7 @@ describe("LevelSelectScreen", () => {
     expect(getByLabelText("Continue Level 2")).toBeTruthy();
   });
 
-  it("Continue button calls onContinue when pressed", () => {
+  it("Continue button calls onContinue when pressed", async () => {
     const onContinue = jest.fn();
     const partialState = {
       bottles: [["red" as const]],
@@ -160,7 +160,7 @@ describe("LevelSelectScreen", () => {
       isComplete: false,
       selectedBottleIndex: null,
     };
-    const { getByLabelText } = render(
+    const { getByLabelText } = await render(
       withTheme(
         <LevelSelectScreen
           levels={LEVELS}
@@ -170,12 +170,12 @@ describe("LevelSelectScreen", () => {
         />
       )
     );
-    fireEvent.press(getByLabelText("Continue Level 1"));
+    await fireEvent.press(getByLabelText("Continue Level 1"));
     expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
-  it("renders an empty grid gracefully when no levels are provided", () => {
-    const { queryByRole } = render(
+  it("renders an empty grid gracefully when no levels are provided", async () => {
+    const { queryByRole } = await render(
       withTheme(
         <LevelSelectScreen
           levels={[]}

@@ -73,14 +73,14 @@ const testInsets = {
   insets: { top: 47, bottom: 34, left: 0, right: 0 },
 };
 
-function renderScreen(windowWidth = 390) {
+async function renderScreen(windowWidth = 390) {
   jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
     width: windowWidth,
     height: 844,
     scale: 2,
     fontScale: 1,
   });
-  return render(
+  return await render(
     <SafeAreaProvider initialMetrics={testInsets}>
       <ThemeProvider>
         <HomeScreen />
@@ -100,8 +100,8 @@ beforeEach(() => {
 });
 
 describe("HomeScreen — game cards", () => {
-  it("renders active game cards (Pachisi disabled)", () => {
-    const { getByLabelText, queryByLabelText } = renderScreen();
+  it("renders active game cards (Pachisi disabled)", async () => {
+    const { getByLabelText, queryByLabelText } = await renderScreen();
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
@@ -113,45 +113,45 @@ describe("HomeScreen — game cards", () => {
     expect(queryByLabelText("Play Pachisi")).toBeNull();
   });
 
-  it("navigates to DailyWord when Daily Word card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Daily Word"));
+  it("navigates to DailyWord when Daily Word card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Daily Word"));
     expect(mockNavigate).toHaveBeenCalledWith("DailyWord");
   });
 
-  it("navigates to Sort when Sort Puzzle card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Sort Puzzle"));
+  it("navigates to Sort when Sort Puzzle card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Sort Puzzle"));
     expect(mockNavigate).toHaveBeenCalledWith("Sort");
   });
 
-  it("navigates to Blackjack when Blackjack card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Blackjack"));
+  it("navigates to Blackjack when Blackjack card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Blackjack"));
     expect(mockNavigate).toHaveBeenCalledWith("BlackjackBetting");
   });
 
-  it("navigates to Cascade when Cascade card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Cascade"));
+  it("navigates to Cascade when Cascade card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Cascade"));
     expect(mockNavigate).toHaveBeenCalledWith("Cascade");
   });
 
-  it("navigates to Solitaire when Solitaire card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Solitaire"));
+  it("navigates to Solitaire when Solitaire card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Solitaire"));
     expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
   });
 
-  it("navigates to Sudoku when Sudoku card pressed", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Sudoku"));
+  it("navigates to Sudoku when Sudoku card pressed", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Sudoku"));
     expect(mockNavigate).toHaveBeenCalledWith("Sudoku");
   });
 
   it("navigates to Game with a new state when Yacht card pressed (no saved game)", async () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Play Yacht"));
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
         "Game",
@@ -168,27 +168,27 @@ describe("HomeScreen — game cards", () => {
 });
 
 describe("HomeScreen — AppHeader", () => {
-  it("renders AppHeader with app title", () => {
-    const { getByRole } = renderScreen();
+  it("renders AppHeader with app title", async () => {
+    const { getByRole } = await renderScreen();
     expect(getByRole("header")).toBeTruthy();
   });
 });
 
 describe("HomeScreen — lobby prefetch (issue #706, #1055)", () => {
   it("warms lobby game chunks after interactions settle", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
   });
 
   it("passes canPlay from useEntitlements to prefetchLobbyGameScreens", async () => {
-    renderScreen();
+    await renderScreen();
     await waitFor(() => expect(mockPrefetch).toHaveBeenCalledWith(mockCanPlay));
   });
 });
 
 describe("HomeScreen — responsive layout (Galaxy Fold fix, #356)", () => {
-  it("renders all game cards at 280 px viewport width", () => {
-    const { getByLabelText } = renderScreen(280);
+  it("renders all game cards at 280 px viewport width", async () => {
+    const { getByLabelText } = await renderScreen(280);
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
@@ -196,8 +196,8 @@ describe("HomeScreen — responsive layout (Galaxy Fold fix, #356)", () => {
     expect(getByLabelText("Play Solitaire")).toBeTruthy();
   });
 
-  it("renders all game cards at 360 px viewport width", () => {
-    const { getByLabelText } = renderScreen(360);
+  it("renders all game cards at 360 px viewport width", async () => {
+    const { getByLabelText } = await renderScreen(360);
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
@@ -212,39 +212,39 @@ describe("HomeScreen — locked game UI (#1054)", () => {
     mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
   });
 
-  it("renders locked card with 'Coming soon' label for unentitled premium game", () => {
-    const { getByLabelText } = renderScreen();
+  it("renders locked card with 'Coming soon' label for unentitled premium game", async () => {
+    const { getByLabelText } = await renderScreen();
     expect(getByLabelText("Cascade — Coming soon")).toBeTruthy();
   });
 
-  it("does not show play label for locked card", () => {
-    const { queryByLabelText } = renderScreen();
+  it("does not show play label for locked card", async () => {
+    const { queryByLabelText } = await renderScreen();
     expect(queryByLabelText("Play Cascade")).toBeNull();
   });
 
-  it("tapping locked card shows coming soon alert, not navigation", () => {
-    const { getByLabelText } = renderScreen();
-    fireEvent.press(getByLabelText("Cascade — Coming soon"));
+  it("tapping locked card shows coming soon alert, not navigation", async () => {
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Cascade — Coming soon"));
     expect(Alert.alert).toHaveBeenCalledWith("This game is coming soon");
     expect(mockNavigate).not.toHaveBeenCalledWith("Cascade");
   });
 
-  it("free games render and navigate normally when a premium game is locked", () => {
-    const { getByLabelText } = renderScreen();
+  it("free games render and navigate normally when a premium game is locked", async () => {
+    const { getByLabelText } = await renderScreen();
     expect(getByLabelText("Play Blackjack")).toBeTruthy();
-    fireEvent.press(getByLabelText("Play Blackjack"));
+    await fireEvent.press(getByLabelText("Play Blackjack"));
     expect(mockNavigate).toHaveBeenCalledWith("BlackjackBetting");
   });
 
-  it("entitled premium games render and navigate normally", () => {
+  it("entitled premium games render and navigate normally", async () => {
     // Yacht is entitled (mockCanPlay returns true for non-cascade)
-    const { getByLabelText } = renderScreen();
+    const { getByLabelText } = await renderScreen();
     expect(getByLabelText("Play Yacht")).toBeTruthy();
   });
 
-  it("all games show play label when all entitled", () => {
+  it("all games show play label when all entitled", async () => {
     mockCanPlay.mockReturnValue(true);
-    const { getByLabelText } = renderScreen();
+    const { getByLabelText } = await renderScreen();
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Sudoku")).toBeTruthy();

@@ -13,8 +13,8 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("SelectableCard", () => {
-  it("snapshot: unselected", () => {
-    const { toJSON } = render(
+  it("snapshot: unselected", async () => {
+    const { toJSON } = await render(
       <Wrapper>
         <SelectableCard suit="spades" rank={1} width={52} height={74} selected={false} />
       </Wrapper>
@@ -22,8 +22,8 @@ describe("SelectableCard", () => {
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it("snapshot: selected", () => {
-    const { toJSON } = render(
+  it("snapshot: selected", async () => {
+    const { toJSON } = await render(
       <Wrapper>
         <SelectableCard suit="spades" rank={1} width={52} height={74} selected />
       </Wrapper>
@@ -31,13 +31,13 @@ describe("SelectableCard", () => {
     expect(toJSON()).toMatchSnapshot();
   });
 
-  it("renders without error when selected changes", () => {
-    const { rerender, toJSON } = render(
+  it("renders without error when selected changes", async () => {
+    const { rerender, toJSON } = await render(
       <Wrapper>
         <SelectableCard suit="hearts" rank={13} width={52} height={74} selected={false} />
       </Wrapper>
     );
-    rerender(
+    await rerender(
       <Wrapper>
         <SelectableCard suit="hearts" rank={13} width={52} height={74} selected />
       </Wrapper>
@@ -45,8 +45,8 @@ describe("SelectableCard", () => {
     expect(toJSON()).not.toBeNull();
   });
 
-  it("renders face-down card without error", () => {
-    const { toJSON } = render(
+  it("renders face-down card without error", async () => {
+    const { toJSON } = await render(
       <Wrapper>
         <SelectableCard suit="clubs" rank={7} width={52} height={74} faceDown selected={false} />
       </Wrapper>

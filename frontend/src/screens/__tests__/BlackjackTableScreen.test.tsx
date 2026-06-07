@@ -68,8 +68,8 @@ function makeResultPhaseState(withRunGoal = false): EngineState {
   return stand(s);
 }
 
-function renderScreen(nav = mockNav()) {
-  return render(
+async function renderScreen(nav = mockNav()) {
+  return await render(
     <ThemeProvider>
       <BlackjackGameProvider>
         <BlackjackTableScreen navigation={nav} />
@@ -91,7 +91,7 @@ describe("BlackjackTableScreen — phase redirect", () => {
   it("calls navigation.replace('BlackjackBetting') when loaded in betting phase (default)", async () => {
     // Default loadGame returns null → newGame() → betting phase
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
     });
@@ -109,26 +109,26 @@ describe("BlackjackTableScreen — player phase", () => {
 
   it("⋯ menu Scoreboard item navigates to ScoreboardScreen with blackjack gameKey", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await screen.findByText("Hit");
     await act(async () => {
-      fireEvent.press(screen.getByLabelText("More options"));
+      await fireEvent.press(screen.getByLabelText("More options"));
     });
     await act(async () => {
-      fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByText("Scoreboard"));
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
   });
 
   it("shows Hit and Stand buttons", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Hit");
     expect(screen.getByText("Stand")).toBeTruthy();
   });
 
   it("chip balance is visible during player phase", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState(true));
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Hit");
     await waitFor(() => {
       expect(screen.queryByLabelText(/goal progress:/i)).toBeTruthy();
@@ -136,10 +136,10 @@ describe("BlackjackTableScreen — player phase", () => {
   });
 
   it("Hit button stays in player/result phase (Deal button absent)", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Hit");
     await act(async () => {
-      fireEvent.press(screen.getByText("Hit"));
+      await fireEvent.press(screen.getByText("Hit"));
     });
     await waitFor(() => {
       const hit = screen.queryByText("Hit");
@@ -159,32 +159,32 @@ describe("BlackjackTableScreen — result phase", () => {
   });
 
   it("shows Next Hand and Quit buttons in result phase", async () => {
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Next Hand");
     expect(screen.getByText("Quit")).toBeTruthy();
   });
 
   it("chip balance is visible during result phase", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makeResultPhaseState(true));
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Next Hand");
     expect(screen.queryByLabelText(/goal progress:/i)).toBeTruthy();
   });
 
   it("Quit button calls goBack()", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     await screen.findByText("Next Hand");
-    fireEvent.press(screen.getByLabelText(/quit/i));
+    await fireEvent.press(screen.getByLabelText(/quit/i));
     expect(nav.goBack).toHaveBeenCalled();
   });
 
   it("Next Hand calls navigation.replace('BlackjackBetting') via phase change", async () => {
     const nav = mockNav();
-    renderScreen(nav);
+    await renderScreen(nav);
     const nextHandBtn = await screen.findByText("Next Hand", {}, { timeout: 5000 });
     await act(async () => {
-      fireEvent.press(nextHandBtn);
+      await fireEvent.press(nextHandBtn);
     });
     await waitFor(() => {
       expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
@@ -199,7 +199,7 @@ describe("BlackjackTableScreen — result phase", () => {
 describe("BlackjackTableScreen — persistent table layout (GH #226)", () => {
   it("table labels visible during player phase", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
-    renderScreen();
+    await renderScreen();
     await screen.findByText("Hit");
     expect(screen.getByText("Dealer's Hand")).toBeTruthy();
     expect(screen.getByText("Your Hand")).toBeTruthy();
@@ -218,7 +218,7 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
   it("handlePlayAgain from player phase triggers navigation.replace('BlackjackBetting')", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
     const nav = mockNav();
-    render(
+    await render(
       <ThemeProvider>
         <BlackjackGameProvider>
           <BlackjackTableScreen navigation={nav} />
@@ -230,7 +230,7 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
     // Sanity: we're on player phase so the effect has not redirected yet.
     expect(nav.replace).not.toHaveBeenCalled();
 
-    act(() => {
+    await act(() => {
       getCtx().handlePlayAgain();
     });
 
@@ -267,9 +267,9 @@ function TestConsumer() {
   return null;
 }
 
-function renderWithConsumer(initial?: EngineState) {
+async function renderWithConsumer(initial?: EngineState) {
   if (initial) (loadGame as jest.Mock).mockResolvedValueOnce(initial);
-  return render(
+  return await render(
     <ThemeProvider>
       <BlackjackGameProvider>
         <TestConsumer />
@@ -310,7 +310,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("calls startGame('blackjack') with starting_chips on mount", async () => {
-    renderWithConsumer();
+    await renderWithConsumer();
     await settle();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     const startCall = mockStartGame.mock.calls[0];
@@ -331,17 +331,17 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
 
   it("does not start a session when loaded state is chips=0 + result", async () => {
     const dead: EngineState = { ...engineNewGame(), chips: 0, phase: "result" };
-    renderWithConsumer(dead);
+    await renderWithConsumer(dead);
     await settle();
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
   it("emits bet_placed and hand_dealt after placeBet() with correct shape", async () => {
-    renderWithConsumer();
+    await renderWithConsumer();
     await settle();
     mockEnqueueEvent.mockClear();
 
-    act(() => {
+    await act(() => {
       getCtx().apply((s) => placeBet(s, 50));
     });
 
@@ -368,11 +368,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("emits player_action for hit/stand/double with hand_value_after", async () => {
-    renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockEnqueueEvent.mockClear();
 
-    act(() => {
+    await act(() => {
       getCtx().apply(hit, "hit");
     });
     const hitCall = mockEnqueueEvent.mock.calls.find(
@@ -389,11 +389,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("emits hand_resolved (single hand) when stand settles the round", async () => {
-    renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockEnqueueEvent.mockClear();
 
-    act(() => {
+    await act(() => {
       getCtx().apply(stand, "stand");
     });
 
@@ -428,19 +428,19 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       split_count: 0,
       split_from_aces: [],
     };
-    renderWithConsumer(splittable);
+    await renderWithConsumer(splittable);
     await settle();
     mockEnqueueEvent.mockClear();
 
     // Perform the split — produces two hands.
-    act(() => {
+    await act(() => {
       getCtx().apply(engineSplit, "split");
     });
     // Stand on each hand until all resolve.
     for (let i = 0; i < 10; i++) {
       const e = getCtx().engine;
       if (!e || e.phase !== "player") break;
-      act(() => {
+      await act(() => {
         getCtx().apply(stand, "stand");
       });
     }
@@ -477,11 +477,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       player_hand: [card("10", "♠"), card("6", "♥")],
       dealer_hand: [card("10", "♦"), card("9", "♣")], // dealer 19, stand → player loses
     };
-    renderWithConsumer(lowChip);
+    await renderWithConsumer(lowChip);
     await settle();
     mockCompleteGame.mockClear();
 
-    act(() => {
+    await act(() => {
       getCtx().apply(stand, "stand");
     });
 
@@ -504,17 +504,17 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("fires abandoned on unmount mid-game", async () => {
-    renderWithConsumer(makePlayerPhaseState());
-    const { unmount } = renderWithConsumer(makePlayerPhaseState()); // resumed mid-game
+    await renderWithConsumer(makePlayerPhaseState());
+    const { unmount } = await renderWithConsumer(makePlayerPhaseState()); // resumed mid-game
     await settle();
     mockCompleteGame.mockClear();
-    unmount();
+    await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
 
   it("New Game mid-session abandons the old session and starts a new one", async () => {
-    renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
@@ -540,7 +540,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       chipDenominations: [5, 25, 100, 500],
       milestones: [1750, 2200],
     };
-    act(() => {
+    await act(() => {
       getCtx().handleTableSelect(fakeConfig);
     });
 
@@ -554,10 +554,10 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("capture ordering: bet_placed emits before hand_dealt", async () => {
-    renderWithConsumer();
+    await renderWithConsumer();
     await settle();
     mockEnqueueEvent.mockClear();
-    act(() => {
+    await act(() => {
       getCtx().apply((s) => placeBet(s, 25));
     });
     const types = mockEnqueueEvent.mock.calls.map((c) => c[1]?.type);
@@ -571,25 +571,23 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     mockEnqueueEvent.mockImplementation(() => {
       throw new Error("boom");
     });
-    renderWithConsumer();
+    await renderWithConsumer();
     await settle();
-    expect(() =>
-      act(() => {
-        getCtx().apply((s) => placeBet(s, 50));
-      })
-    ).not.toThrow();
+    await act(() => {
+      getCtx().apply((s) => placeBet(s, 50));
+    });
     // Engine state still advanced despite the throw.
     expect(getCtx().engine?.phase).not.toBe("betting");
     mockEnqueueEvent.mockReset();
   });
 
   it("does not emit a player_action event without an action hint", async () => {
-    renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockEnqueueEvent.mockClear();
     // Calling apply without an action hint (e.g. the Next Hand transition)
     // must not synthesize a player_action.
-    act(() => {
+    await act(() => {
       getCtx().apply(hit); // no hint
     });
     const actions = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "player_action");

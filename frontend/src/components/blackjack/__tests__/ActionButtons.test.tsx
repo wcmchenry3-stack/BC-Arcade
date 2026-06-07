@@ -11,14 +11,14 @@ import { ThemeProvider } from "../../../theme/ThemeContext";
 jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
 jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
 
-function renderButtons(
+async function renderButtons(
   opts: {
     doubleDownAvailable?: boolean;
     splitAvailable?: boolean;
   } = {}
 ) {
   const { doubleDownAvailable = true, splitAvailable = false } = opts;
-  return render(
+  return await render(
     <ThemeProvider>
       <ActionButtons
         onHit={jest.fn()}
@@ -34,54 +34,54 @@ function renderButtons(
 }
 
 describe("ActionButtons", () => {
-  it("renders Hit, Stand, Double Down, and Split button labels", () => {
-    const { getByText } = renderButtons();
+  it("renders Hit, Stand, Double Down, and Split button labels", async () => {
+    const { getByText } = await renderButtons();
     expect(getByText("Hit")).toBeTruthy();
     expect(getByText("Stand")).toBeTruthy();
     expect(getByText("Double Down")).toBeTruthy();
     expect(getByText("Split")).toBeTruthy();
   });
 
-  it("Double Down has disabled accessibility label when doubleDownAvailable is false", () => {
-    const { getByLabelText } = renderButtons({ doubleDownAvailable: false });
+  it("Double Down has disabled accessibility label when doubleDownAvailable is false", async () => {
+    const { getByLabelText } = await renderButtons({ doubleDownAvailable: false });
     expect(getByLabelText("Double down not available")).toBeTruthy();
   });
 
-  it("Double Down has enabled accessibility label when doubleDownAvailable is true", () => {
-    const { getByLabelText } = renderButtons({ doubleDownAvailable: true });
+  it("Double Down has enabled accessibility label when doubleDownAvailable is true", async () => {
+    const { getByLabelText } = await renderButtons({ doubleDownAvailable: true });
     expect(getByLabelText("Double down — double bet and take one card")).toBeTruthy();
   });
 
-  it("Double Down button has accessibilityState disabled=true when unavailable", () => {
-    const { getByLabelText } = renderButtons({ doubleDownAvailable: false });
+  it("Double Down button has accessibilityState disabled=true when unavailable", async () => {
+    const { getByLabelText } = await renderButtons({ doubleDownAvailable: false });
     const btn = getByLabelText("Double down not available");
     expect(btn.props.accessibilityState?.disabled).toBe(true);
   });
 
-  it("Double Down button has accessibilityState disabled=false when available", () => {
-    const { getByLabelText } = renderButtons({ doubleDownAvailable: true });
+  it("Double Down button has accessibilityState disabled=false when available", async () => {
+    const { getByLabelText } = await renderButtons({ doubleDownAvailable: true });
     const btn = getByLabelText("Double down — double bet and take one card");
     expect(btn.props.accessibilityState?.disabled).toBe(false);
   });
 
-  it("Split has disabled accessibility label when splitAvailable is false", () => {
-    const { getByLabelText } = renderButtons({ splitAvailable: false });
+  it("Split has disabled accessibility label when splitAvailable is false", async () => {
+    const { getByLabelText } = await renderButtons({ splitAvailable: false });
     expect(getByLabelText("Split not available")).toBeTruthy();
   });
 
-  it("Split has enabled accessibility label when splitAvailable is true", () => {
-    const { getByLabelText } = renderButtons({ splitAvailable: true });
+  it("Split has enabled accessibility label when splitAvailable is true", async () => {
+    const { getByLabelText } = await renderButtons({ splitAvailable: true });
     expect(getByLabelText("Split — split pair into two hands")).toBeTruthy();
   });
 
-  it("Split button has accessibilityState disabled=true when unavailable", () => {
-    const { getByLabelText } = renderButtons({ splitAvailable: false });
+  it("Split button has accessibilityState disabled=true when unavailable", async () => {
+    const { getByLabelText } = await renderButtons({ splitAvailable: false });
     const btn = getByLabelText("Split not available");
     expect(btn.props.accessibilityState?.disabled).toBe(true);
   });
 
-  it("Split button has accessibilityState disabled=false when available", () => {
-    const { getByLabelText } = renderButtons({ splitAvailable: true });
+  it("Split button has accessibilityState disabled=false when available", async () => {
+    const { getByLabelText } = await renderButtons({ splitAvailable: true });
     const btn = getByLabelText("Split — split pair into two hands");
     expect(btn.props.accessibilityState?.disabled).toBe(false);
   });

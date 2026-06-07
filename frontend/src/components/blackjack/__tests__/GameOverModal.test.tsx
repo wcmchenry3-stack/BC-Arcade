@@ -3,9 +3,13 @@ import { render, fireEvent } from "@testing-library/react-native";
 import GameOverModal from "../GameOverModal";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
-function renderModal(opts: { visible?: boolean; onPlayAgain?: () => void; onHome?: () => void }) {
+async function renderModal(opts: {
+  visible?: boolean;
+  onPlayAgain?: () => void;
+  onHome?: () => void;
+}) {
   const { visible = true, onPlayAgain = jest.fn(), onHome = jest.fn() } = opts;
-  return render(
+  return await render(
     <ThemeProvider>
       <GameOverModal visible={visible} onPlayAgain={onPlayAgain} onHome={onHome} />
     </ThemeProvider>
@@ -13,42 +17,42 @@ function renderModal(opts: { visible?: boolean; onPlayAgain?: () => void; onHome
 }
 
 describe("GameOverModal", () => {
-  it("renders title when visible", () => {
-    const { getByText } = renderModal({});
+  it("renders title when visible", async () => {
+    const { getByText } = await renderModal({});
     expect(getByText("Out of Chips")).toBeTruthy();
   });
 
-  it("renders body copy", () => {
-    const { getByText } = renderModal({});
+  it("renders body copy", async () => {
+    const { getByText } = await renderModal({});
     expect(getByText(/run out of chips/i)).toBeTruthy();
   });
 
-  it("renders Play Again button", () => {
-    const { getByLabelText } = renderModal({});
+  it("renders Play Again button", async () => {
+    const { getByLabelText } = await renderModal({});
     expect(getByLabelText(/start a new session/i)).toBeTruthy();
   });
 
-  it("renders Home button", () => {
-    const { getByLabelText } = renderModal({});
+  it("renders Home button", async () => {
+    const { getByLabelText } = await renderModal({});
     expect(getByLabelText(/return to home/i)).toBeTruthy();
   });
 
-  it("calls onPlayAgain when Play Again is pressed", () => {
+  it("calls onPlayAgain when Play Again is pressed", async () => {
     const onPlayAgain = jest.fn();
-    const { getByLabelText } = renderModal({ onPlayAgain });
-    fireEvent.press(getByLabelText(/start a new session/i));
+    const { getByLabelText } = await renderModal({ onPlayAgain });
+    await fireEvent.press(getByLabelText(/start a new session/i));
     expect(onPlayAgain).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onHome when Home is pressed", () => {
+  it("calls onHome when Home is pressed", async () => {
     const onHome = jest.fn();
-    const { getByLabelText } = renderModal({ onHome });
-    fireEvent.press(getByLabelText(/return to home/i));
+    const { getByLabelText } = await renderModal({ onHome });
+    await fireEvent.press(getByLabelText(/return to home/i));
     expect(onHome).toHaveBeenCalledTimes(1);
   });
 
-  it("does not render content when not visible", () => {
-    const { queryByText } = renderModal({ visible: false });
+  it("does not render content when not visible", async () => {
+    const { queryByText } = await renderModal({ visible: false });
     expect(queryByText("Out of Chips")).toBeNull();
   });
 });

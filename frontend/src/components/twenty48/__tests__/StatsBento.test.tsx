@@ -74,8 +74,8 @@ function makeState(overrides: Partial<Twenty48State> = {}): Twenty48State {
   };
 }
 
-function renderBento(state: Twenty48State) {
-  return render(
+async function renderBento(state: Twenty48State) {
+  return await render(
     <ThemeProvider>
       <StatsBento state={state} />
     </ThemeProvider>
@@ -83,23 +83,23 @@ function renderBento(state: Twenty48State) {
 }
 
 describe("StatsBento — rendering", () => {
-  it("renders Highest Tile label", () => {
-    const { getByText } = renderBento(makeState());
+  it("renders Highest Tile label", async () => {
+    const { getByText } = await renderBento(makeState());
     expect(getByText("Highest Tile")).toBeTruthy();
   });
 
-  it("renders Time Played label", () => {
-    const { getByText } = renderBento(makeState());
+  it("renders Time Played label", async () => {
+    const { getByText } = await renderBento(makeState());
     expect(getByText("Time Played")).toBeTruthy();
   });
 
-  it("displays the correct highest tile value", () => {
-    const { getByLabelText } = renderBento(makeState());
+  it("displays the correct highest tile value", async () => {
+    const { getByLabelText } = await renderBento(makeState());
     // Board has max value 4.
     expect(getByLabelText("Highest tile: 4")).toBeTruthy();
   });
 
-  it("shows — when board is all zeros", () => {
+  it("shows — when board is all zeros", async () => {
     const state = makeState({
       board: [
         [0, 0, 0, 0],
@@ -108,20 +108,20 @@ describe("StatsBento — rendering", () => {
         [0, 0, 0, 0],
       ],
     });
-    const { getByText } = renderBento(state);
+    const { getByText } = await renderBento(state);
     expect(getByText("—")).toBeTruthy();
   });
 
-  it("displays elapsed time from accumulatedMs when startedAt is null", () => {
+  it("displays elapsed time from accumulatedMs when startedAt is null", async () => {
     const state = makeState({ accumulatedMs: 125_000, startedAt: null });
     // 125 000 ms = 2 min 5 s → "02:05"
-    const { getByText } = renderBento(state);
+    const { getByText } = await renderBento(state);
     expect(getByText("02:05")).toBeTruthy();
   });
 
-  it("time accessibility label includes formatted time", () => {
+  it("time accessibility label includes formatted time", async () => {
     const state = makeState({ accumulatedMs: 61_000, startedAt: null });
-    const { getByLabelText } = renderBento(state);
+    const { getByLabelText } = await renderBento(state);
     expect(getByLabelText("Time played: 01:01")).toBeTruthy();
   });
 });

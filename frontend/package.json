@@ -97,7 +97,7 @@
     "@expo/config-plugins": "~56.0.8",
     "@lhci/cli": "^0.15.1",
     "@react-native/jest-preset": "~0.85.3",
-    "@testing-library/react-native": "^13.3.3",
+    "@testing-library/react-native": "^14.0.0",
     "@types/jest": "29.5.14",
     "@types/matter-js": "^0.20.2",
     "@types/react": "~19.2.16",
@@ -114,6 +114,7 @@
     "prettier": "^3.8.3",
     "sharp": "^0.34.5",
     "source-map-explorer": "^2.5.3",
+    "test-renderer": "^1.2.0",
     "typescript": "~6.0.3"
   },
   "bundlesize": [

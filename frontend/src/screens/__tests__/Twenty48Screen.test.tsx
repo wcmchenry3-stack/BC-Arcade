@@ -74,8 +74,8 @@ function mockNav() {
   } as unknown as Parameters<typeof Twenty48Screen>[0]["navigation"];
 }
 
-function renderScreen(nav = mockNav()) {
-  return render(
+async function renderScreen(nav = mockNav()) {
+  return await render(
     <ThemeProvider>
       <Twenty48ScoreboardProvider>
         <Twenty48Screen navigation={nav} />
@@ -87,7 +87,7 @@ function renderScreen(nav = mockNav()) {
 // Wait for the initial loadGame() promise to resolve so the pending setState
 // doesn't race with the test body.
 async function mountAndSettle() {
-  const r = renderScreen();
+  const r = await renderScreen();
   await act(async () => {
     await Promise.resolve();
   });
@@ -124,7 +124,7 @@ describe("Twenty48Screen — keyboard controls (web)", () => {
     // Try each of the 4 arrow keys. At least one should produce a valid move
     // (the new-game board with 2 spawned tiles has at least one direction
     // that compacts the board).
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
       dispatchKey("ArrowRight");
       dispatchKey("ArrowUp");
@@ -140,7 +140,7 @@ describe("Twenty48Screen — keyboard controls (web)", () => {
   it("WASD keys also work", async () => {
     await mountAndSettle();
     // Dispatch lowercase + uppercase to confirm both are mapped.
-    act(() => {
+    await act(() => {
       dispatchKey("w");
       dispatchKey("W");
       dispatchKey("a");
@@ -155,7 +155,7 @@ describe("Twenty48Screen — keyboard controls (web)", () => {
 
   it("ignores non-direction keys", async () => {
     await mountAndSettle();
-    act(() => {
+    await act(() => {
       dispatchKey(" "); // space
       dispatchKey("Enter");
       dispatchKey("Escape");
@@ -169,7 +169,7 @@ describe("Twenty48Screen — keyboard controls (web)", () => {
     await mountAndSettle();
     const input = document.createElement("input");
     document.body.appendChild(input);
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft", input);
     });
     document.body.removeChild(input);
@@ -183,7 +183,7 @@ describe("Twenty48Screen — keyboard controls (web)", () => {
     const remove = jest.spyOn(window, "removeEventListener");
     const { unmount } = await mountAndSettle();
     expect(add).toHaveBeenCalledWith("keydown", expect.any(Function));
-    unmount();
+    await unmount();
     expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function));
     add.mockRestore();
     remove.mockRestore();
@@ -321,7 +321,7 @@ describe("Twenty48Screen — move persistence", () => {
     jest.clearAllMocks(); // reset the initial saveGame call
 
     // At least one of the four directions will produce a valid move.
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
       dispatchKey("ArrowRight");
       dispatchKey("ArrowUp");
@@ -335,7 +335,7 @@ describe("Twenty48Screen — move persistence", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     await mountAndSettle();
 
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft"); // no-op on this board
     });
 
@@ -388,8 +388,8 @@ describe("Twenty48Screen — win overlay", () => {
     await waitFor(() =>
       expect(getByLabelText("Continue playing after reaching 2048")).toBeTruthy()
     );
-    act(() => {
-      fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
     });
     expect(queryByText("You Win!")).toBeNull();
   });
@@ -414,8 +414,8 @@ describe("Twenty48Screen — new game", () => {
     const { getByLabelText } = await mountAndSettle();
     jest.clearAllMocks();
 
-    act(() => {
-      fireEvent.press(getByLabelText("Start a new 2048 game"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start a new 2048 game"));
     });
 
     expect(saveGame).toHaveBeenCalledTimes(1);
@@ -432,8 +432,8 @@ describe("Twenty48Screen — new game", () => {
 
     // Both the header button and the overlay button share the same label.
     // Press any one of them — they both call handleNewGame.
-    act(() => {
-      fireEvent.press(getAllByLabelText("Start a new 2048 game")[0]);
+    await act(async () => {
+      await fireEvent.press(getAllByLabelText("Start a new 2048 game")[0]);
     });
 
     // New state has has_won=false so overlay should be gone.
@@ -476,7 +476,7 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     await mountAndSettle();
     mockEnqueueEvent.mockClear();
 
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
       dispatchKey("ArrowRight");
       dispatchKey("ArrowUp");
@@ -511,7 +511,7 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     await mountAndSettle();
     mockEnqueueEvent.mockClear();
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
     });
     const moveCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move");
@@ -535,7 +535,7 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
       accumulatedMs: 42000,
     }));
 
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
     });
 
@@ -568,8 +568,8 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     const { getByLabelText } = await mountAndSettle();
     mockCompleteGame.mockClear();
 
-    act(() => {
-      fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
     });
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
@@ -592,7 +592,7 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     const { unmount } = await mountAndSettle();
     mockCompleteGame.mockClear();
-    unmount();
+    await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
@@ -600,11 +600,11 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const { getByLabelText, unmount } = await mountAndSettle();
-    act(() => {
-      fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
     });
     mockCompleteGame.mockClear();
-    unmount();
+    await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
@@ -618,8 +618,8 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     mockStartGame.mockReturnValue("game-uuid-test-2");
     mockCompleteGame.mockClear();
 
-    act(() => {
-      fireEvent.press(getByLabelText("Start a new 2048 game"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start a new 2048 game"));
     });
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
@@ -633,14 +633,14 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     mockEnqueueEvent.mockClear();
 
     // First settled move
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowLeft");
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 200));
     });
     // Second settled move
-    act(() => {
+    await act(() => {
       dispatchKey("ArrowDown");
     });
     await act(async () => {
@@ -661,12 +661,10 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
     // Dispatch a move — throw must not crash the render tree.
-    expect(() =>
-      act(() => {
-        dispatchKey("ArrowLeft");
-        dispatchKey("ArrowRight");
-      })
-    ).not.toThrow();
+    await act(() => {
+      dispatchKey("ArrowLeft");
+      dispatchKey("ArrowRight");
+    });
     // Screen still renders the new-game button.
     expect(r.getByLabelText("Start a new 2048 game")).toBeTruthy();
     await act(async () => {

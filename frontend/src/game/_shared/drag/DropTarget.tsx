@@ -52,6 +52,12 @@ export function DropTarget({
     return () => unregisterDropZone(id);
   }, [id, registerDropZone, unregisterDropZone, updateDropZoneLayout]);
 
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
   // Proactively cache absolute window bounds whenever React Native recalculates
   // layout. requestAnimationFrame defers the measureInWindow call until after
   // the native view is actually painted — calling it synchronously inside onLayout

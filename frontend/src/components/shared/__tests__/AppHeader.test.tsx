@@ -78,47 +78,47 @@ beforeEach(() => {
 });
 
 describe("AppHeader", () => {
-  it("renders the page title", () => {
-    render(<AppHeader title="Settings" />);
+  it("renders the page title", async () => {
+    await render(<AppHeader title="Settings" />);
     expect(screen.getByText("Settings")).toBeTruthy();
   });
 
-  it("renders the BC Arcade logo image", () => {
-    render(<AppHeader title="Profile" />);
+  it("renders the BC Arcade logo image", async () => {
+    await render(<AppHeader title="Profile" />);
     expect(screen.getByLabelText("BC Arcade")).toBeTruthy();
   });
 
-  it("projects the rightSlot when provided", () => {
-    render(<AppHeader title="Game" rightSlot={<Text>Round 3 / 13</Text>} />);
+  it("projects the rightSlot when provided", async () => {
+    await render(<AppHeader title="Game" rightSlot={<Text>Round 3 / 13</Text>} />);
     expect(screen.getByText("Round 3 / 13")).toBeTruthy();
   });
 
-  it("renders nothing in the right slot when omitted", () => {
-    render(<AppHeader title="Ranks" />);
+  it("renders nothing in the right slot when omitted", async () => {
+    await render(<AppHeader title="Ranks" />);
     expect(screen.queryByText("Round")).toBeNull();
   });
 
-  it("has an accessible header role on the wrapper", () => {
-    const { getByRole } = render(<AppHeader title="Lobby" />);
+  it("has an accessible header role on the wrapper", async () => {
+    const { getByRole } = await render(<AppHeader title="Lobby" />);
     expect(getByRole("header", { name: "Lobby" })).toBeTruthy();
   });
 
-  it("renders a help button that opens the FeedbackWidget when pressed", () => {
-    render(<AppHeader title="2048" />);
+  it("renders a help button that opens the FeedbackWidget when pressed", async () => {
+    await render(<AppHeader title="2048" />);
     const helpBtn = screen.getByRole("button", { name: "Send feedback" });
     expect(helpBtn).toBeTruthy();
     expect(screen.queryByText("FeedbackWidgetMock")).toBeNull();
-    fireEvent.press(helpBtn);
+    await fireEvent.press(helpBtn);
     expect(screen.getByText("FeedbackWidgetMock")).toBeTruthy();
   });
 
-  it("renders a back button and hides the logo when onBack is provided", () => {
+  it("renders a back button and hides the logo when onBack is provided", async () => {
     const onBack = jest.fn();
-    render(<AppHeader title="2048" onBack={onBack} />);
+    await render(<AppHeader title="2048" onBack={onBack} />);
     const button = screen.getByRole("button", { name: "Go back to home screen" });
     expect(button).toBeTruthy();
     expect(screen.queryByLabelText("BC Arcade")).toBeNull();
-    fireEvent.press(button);
+    await fireEvent.press(button);
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
@@ -130,8 +130,8 @@ describe("AppHeader", () => {
   // #498 — telemetry: surface regressions where a screen silently drops
   // onBack or the tap never reaches the handler.
   describe("telemetry", () => {
-    it("records a mount breadcrumb with hasBack flag", () => {
-      render(<AppHeader title="Yacht" onBack={() => {}} requireBack />);
+    it("records a mount breadcrumb with hasBack flag", async () => {
+      await render(<AppHeader title="Yacht" onBack={() => {}} requireBack />);
       expect(mockAddBreadcrumb).toHaveBeenCalledWith(
         expect.objectContaining({
           category: "ui.header",
@@ -141,21 +141,21 @@ describe("AppHeader", () => {
       );
     });
 
-    it("captures a Sentry warning when requireBack is set but onBack is missing", () => {
-      render(<AppHeader title="Yacht" requireBack />);
+    it("captures a Sentry warning when requireBack is set but onBack is missing", async () => {
+      await render(<AppHeader title="Yacht" requireBack />);
       expect(mockCaptureMessage).toHaveBeenCalledWith(expect.stringContaining("Yacht"), "warning");
     });
 
-    it("does not warn when requireBack is unset", () => {
-      render(<AppHeader title="Lobby" />);
+    it("does not warn when requireBack is unset", async () => {
+      await render(<AppHeader title="Lobby" />);
       expect(mockCaptureMessage).not.toHaveBeenCalled();
     });
 
-    it("records a tap breadcrumb before invoking onBack", () => {
+    it("records a tap breadcrumb before invoking onBack", async () => {
       const onBack = jest.fn();
-      render(<AppHeader title="Yacht" onBack={onBack} requireBack />);
+      await render(<AppHeader title="Yacht" onBack={onBack} requireBack />);
       mockAddBreadcrumb.mockClear();
-      fireEvent.press(screen.getByRole("button", { name: "Go back to home screen" }));
+      await fireEvent.press(screen.getByRole("button", { name: "Go back to home screen" }));
       expect(mockAddBreadcrumb).toHaveBeenCalledWith(
         expect.objectContaining({
           category: "ui.header",
@@ -169,78 +169,78 @@ describe("AppHeader", () => {
 
   // #711 — overflow menu
   describe("overflow menu", () => {
-    it("shows the ? help button when no menu props are provided", () => {
-      render(<AppHeader title="Lobby" />);
+    it("shows the ? help button when no menu props are provided", async () => {
+      await render(<AppHeader title="Lobby" />);
       expect(screen.getByRole("button", { name: "Send feedback" })).toBeTruthy();
       expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
     });
 
-    it("shows the ⋯ button and hides ? when onNewGame is provided", () => {
-      render(<AppHeader title="Cascade" onNewGame={jest.fn()} />);
+    it("shows the ⋯ button and hides ? when onNewGame is provided", async () => {
+      await render(<AppHeader title="Cascade" onNewGame={jest.fn()} />);
       expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
     });
 
-    it("shows the ⋯ button when onOpenScoreboard is provided", () => {
-      render(<AppHeader title="Hearts" onOpenScoreboard={jest.fn()} />);
+    it("shows the ⋯ button when onOpenScoreboard is provided", async () => {
+      await render(<AppHeader title="Hearts" onOpenScoreboard={jest.fn()} />);
       expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
     });
 
-    it("opens the dropdown when ⋯ is pressed", () => {
-      render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+    it("opens the dropdown when ⋯ is pressed", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
       expect(screen.queryByText("New Game")).toBeNull();
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
       expect(screen.getByText("New Game")).toBeTruthy();
     });
 
-    it("shows Scoreboard item only when onOpenScoreboard is provided", () => {
-      render(<AppHeader title="Hearts" onNewGame={jest.fn()} onOpenScoreboard={jest.fn()} />);
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    it("shows Scoreboard item only when onOpenScoreboard is provided", async () => {
+      await render(<AppHeader title="Hearts" onNewGame={jest.fn()} onOpenScoreboard={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
       expect(screen.getByText("Scoreboard")).toBeTruthy();
       expect(screen.getByText("New Game")).toBeTruthy();
     });
 
-    it("does not show Scoreboard item when onOpenScoreboard is absent", () => {
-      render(<AppHeader title="2048" onNewGame={jest.fn()} />);
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    it("does not show Scoreboard item when onOpenScoreboard is absent", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
       expect(screen.queryByText("Scoreboard")).toBeNull();
     });
 
-    it("calls onOpenScoreboard and closes the menu when Scoreboard is tapped", () => {
+    it("calls onOpenScoreboard and closes the menu when Scoreboard is tapped", async () => {
       const onOpenScoreboard = jest.fn();
-      render(
+      await render(
         <AppHeader title="Hearts" onOpenScoreboard={onOpenScoreboard} onNewGame={jest.fn()} />
       );
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("Scoreboard"));
       expect(onOpenScoreboard).toHaveBeenCalledTimes(1);
       // Menu should be closed after tap
       expect(screen.queryByText("Scoreboard")).toBeNull();
     });
 
-    it("opens the abandon dialog when New Game is tapped", () => {
-      render(<AppHeader title="2048" onNewGame={jest.fn()} />);
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      fireEvent.press(screen.getByText("New Game"));
+    it("opens the abandon dialog when New Game is tapped", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("New Game"));
       expect(screen.getByText("Abandon current game?")).toBeTruthy();
     });
 
-    it("does not call onNewGame when Keep Playing is tapped", () => {
+    it("does not call onNewGame when Keep Playing is tapped", async () => {
       const onNewGame = jest.fn();
-      render(<AppHeader title="2048" onNewGame={onNewGame} />);
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      fireEvent.press(screen.getByText("New Game"));
-      fireEvent.press(screen.getByRole("button", { name: "Keep Playing" }));
+      await render(<AppHeader title="2048" onNewGame={onNewGame} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("New Game"));
+      await fireEvent.press(screen.getByRole("button", { name: "Keep Playing" }));
       expect(onNewGame).not.toHaveBeenCalled();
       expect(screen.queryByText("Abandon current game?")).toBeNull();
     });
 
-    it("calls onNewGame when Start New is tapped", () => {
+    it("calls onNewGame when Start New is tapped", async () => {
       const onNewGame = jest.fn();
-      render(<AppHeader title="2048" onNewGame={onNewGame} />);
-      fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      fireEvent.press(screen.getByText("New Game"));
-      fireEvent.press(screen.getByRole("button", { name: "Start New" }));
+      await render(<AppHeader title="2048" onNewGame={onNewGame} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("New Game"));
+      await fireEvent.press(screen.getByRole("button", { name: "Start New" }));
       expect(onNewGame).toHaveBeenCalledTimes(1);
       expect(screen.queryByText("Abandon current game?")).toBeNull();
     });
