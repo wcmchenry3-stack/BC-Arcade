@@ -65,9 +65,12 @@ export default function Controls({
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
       if (activeDragRef.current) {
-        // Capture ship X at gesture start so we use total translation (not
-        // per-event changeX accumulation) — avoids drift over long gestures.
-        shipXAtDragStartRef.current = playerXRef.current;
+        // Use engine's authoritative player.x — playerXRef is stale when
+        // autopilot moves the ship during the WinTransition cinematic.
+        const engineX = canvasRef.current?.getState()?.player.x;
+        const anchorX = engineX ?? playerXRef.current;
+        playerXRef.current = anchorX;
+        shipXAtDragStartRef.current = anchorX;
       }
     })
     .onChange((e) => {
