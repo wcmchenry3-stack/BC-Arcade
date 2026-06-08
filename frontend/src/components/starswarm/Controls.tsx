@@ -59,6 +59,21 @@ export default function Controls({
     onNewGame();
   }, [resetPlayerX, onNewGame]);
 
+  // When WinTransition ends the AI autopilot has moved the ship to a new X.
+  // GameCanvas syncs inputRef.current.playerX, but playerXRef here is stale
+  // (frozen at the pre-cinematic user position). Without this sync the first
+  // drag of the new wave uses the stale position as its anchor, snapping the
+  // ship to the old edge and making it appear stuck.
+  const prevPhaseRef = useRef<GamePhase>(phase);
+  useEffect(() => {
+    if (prevPhaseRef.current === "WinTransition" && phase !== "WinTransition") {
+      const syncedX = canvasRef.current?.getState()?.player.x ?? CANVAS_W / 2;
+      playerXRef.current = syncedX;
+      shipXAtDragStartRef.current = syncedX;
+    }
+    prevPhaseRef.current = phase;
+  }, [phase, canvasRef]);
+
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .minDistance(0)
