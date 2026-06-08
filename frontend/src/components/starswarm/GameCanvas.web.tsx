@@ -705,21 +705,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         26
       );
 
-      // Lives — small cyan rectangles at bottom-left
-      for (let i = 0; i < player.lives; i++) {
-        ctx.fillStyle = C.lives;
-        ctx.fillRect(10 + i * 16, height - 18, 10, 14);
-      }
-
-      // Power-up countdown bar — above lives
-      if (state.activePowerUp !== null) {
-        const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
-        ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, height - 26, 60, 4);
-        ctx.fillStyle = C.powerBarFill;
-        ctx.fillRect(10, height - 26, 60 * ratio, 4);
-      }
-
       // Phase overlays
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -794,6 +779,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.shadowBlur = 20;
         ctx.fillText(String(countdownDigit), width / 2, height / 2);
         ctx.shadowBlur = 0;
+      }
+
+      // Lives — drawn last so they always appear above phase overlays
+      for (let i = 0; i < player.lives; i++) {
+        ctx.fillStyle = C.lives;
+        ctx.fillRect(10 + i * 16, height - 18, 10, 14);
+      }
+
+      // Power-up countdown bar — above lives
+      if (state.activePowerUp !== null) {
+        const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
+        ctx.fillStyle = C.powerBarBg;
+        ctx.fillRect(10, height - 26, 60, 4);
+        ctx.fillStyle = C.powerBarFill;
+        ctx.fillRect(10, height - 26, 60 * ratio, 4);
       }
 
       ctx.restore();
