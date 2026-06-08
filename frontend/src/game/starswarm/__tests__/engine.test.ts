@@ -169,6 +169,62 @@ describe("player boundary clamping", () => {
     s = tick(s, 16, { playerX: parkedX, fire: false });
     expect(s.player.x).toBe(parkedX);
   });
+
+  // Regression (Controls.tsx desync): when the autopilot actually moves the ship
+  // during WinTransition the engine's player.x at wave-start differs from the
+  // pre-cinematic position. This is the exact condition that caused playerXRef in
+  // Controls.tsx to be stale, snapping the ship to the wrong edge on the first
+  // drag of the new wave.
+  //
+  // Bullet placement: BULLET_E_VY = 0.35 px/ms, freeze lasts WIN_FREEZE_MS = 900 ms.
+  // Bullets are NOT advanced during the freeze stage, so the bullet's y is unchanged
+  // when autopilot starts. Placing it at y = 150 means the AI has to wait ~380 ms of
+  // autopilot before the bullet enters the threat window [currentShipY-220, currentShipY+30].
+  // advanceMs cannot be used here: once wave 2 starts each tick re-applies playerX = 180
+  // via NO_INPUT, immediately overwriting the AI-parked position. We loop tick-by-tick
+  // and capture player.x at the instant the wave increments.
+  it("autopilot moves ship laterally when an enemy bullet threatens during WinTransition", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+
+    // Bullet 50 px to the ship's left → AI dodges right, shifting player.x.
+    const threatBullet: Bullet = {
+      id: 99998,
+      x: s.player.x - 50,
+      y: 150,
+      vx: 0,
+      vy: BULLET_E_VY,
+      owner: "enemy",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    s = { ...s, enemyBullets: [threatBullet] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WinTransition");
+    const xBeforeCinematic = s.player.x;
+
+    // Tick one frame at a time and capture player.x the instant wave increments.
+    // Using advanceMs would overwrite the parked position (tickPlayer re-clamps to 180).
+    let parkedX: number | null = null;
+    for (let i = 0; i < 300; i++) {
+      const prevWave = s.wave;
+      s = tick(s, 16, NO_INPUT);
+      if (s.wave !== prevWave) {
+        parkedX = s.player.x;
+        break;
+      }
+    }
+
+    expect(parkedX).not.toBeNull();
+    // AI dodge moved the ship — player.x at wave-start must differ from the
+    // pre-cinematic value. Controls.tsx re-syncs playerXRef from this value
+    // (via getState().player.x in onBegin) to prevent the stuck-right bug.
+    expect(parkedX!).not.toBeCloseTo(xBeforeCinematic, 0);
+    expect(parkedX!).toBeGreaterThanOrEqual(hw);
+    expect(parkedX!).toBeLessThanOrEqual(CANVAS_W - hw);
+  });
 });
 
 // ---------------------------------------------------------------------------

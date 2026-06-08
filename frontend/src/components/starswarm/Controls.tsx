@@ -59,30 +59,22 @@ export default function Controls({
     onNewGame();
   }, [resetPlayerX, onNewGame]);
 
-  // When WinTransition ends the AI autopilot has moved the ship to a new X.
-  // GameCanvas syncs inputRef.current.playerX, but playerXRef here is stale
-  // (frozen at the pre-cinematic user position). Without this sync the first
-  // drag of the new wave uses the stale position as its anchor, snapping the
-  // ship to the old edge and making it appear stuck.
-  const prevPhaseRef = useRef<GamePhase>(phase);
-  useEffect(() => {
-    if (prevPhaseRef.current === "WinTransition" && phase !== "WinTransition") {
-      const syncedX = canvasRef.current?.getState()?.player.x ?? CANVAS_W / 2;
-      playerXRef.current = syncedX;
-      shipXAtDragStartRef.current = syncedX;
-    }
-    prevPhaseRef.current = phase;
-  }, [phase, canvasRef]);
-
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .minDistance(0)
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
       if (activeDragRef.current) {
-        // Capture ship X at gesture start so we use total translation (not
-        // per-event changeX accumulation) — avoids drift over long gestures.
-        shipXAtDragStartRef.current = playerXRef.current;
+        // Sync from the engine's actual player.x rather than playerXRef. During
+        // WinTransition the engine ignores drag input and moves the ship via
+        // autopilot, then resets inputRef to the AI-parked position — but
+        // playerXRef is stale (wherever the user was dragging during the
+        // cinematic). Using the stale anchor causes the first gesture of the
+        // new wave to snap the ship to the wrong edge ("stuck at right" bug).
+        const engineX = canvasRef.current?.getState()?.player.x;
+        const anchorX = engineX ?? playerXRef.current;
+        playerXRef.current = anchorX;
+        shipXAtDragStartRef.current = anchorX;
       }
     })
     .onChange((e) => {
