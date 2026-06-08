@@ -47,6 +47,15 @@ jobs:
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
+      - name: Generate debug keystore for CI
+        run: |
+          keytool -genkeypair -v \
+            -keystore frontend/android/app/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Build debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
         working-directory: frontend
