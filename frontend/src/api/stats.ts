@@ -21,6 +21,8 @@ export const statsApi = {
 
   getGameDetail: (gameId: string, includeEvents = false): Promise<GameDetailResponse> =>
     request<GameDetailResponse>(`/games/${gameId}?include_events=${includeEvents ? 1 : 0}`),
+
+  deleteMyData: (): Promise<void> => request<void>("/me", { method: "DELETE" }),
 };
 
 export type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./types";

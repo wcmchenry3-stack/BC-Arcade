@@ -25,3 +25,7 @@ export async function getOrCreateSessionId(): Promise<string> {
   }
   return sid;
 }
+
+export async function clearSession(): Promise<void> {
+  await AsyncStorage.removeItem(SESSION_KEY);
+}
