@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Iterator
 
 import pytest
@@ -11,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from db.base import get_session_factory, is_configured
-from db.models import Game, GameEntitlement
+from db.models import BugLog, GameEntitlement
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -45,13 +46,19 @@ async def _grant(session_id: str, game_slug: str) -> None:
         await db.commit()
 
 
-async def _count_games(session_id: str) -> int:
+async def _seed_bug_log(session_id: str) -> None:
     factory = get_session_factory()
     async with factory() as db:
-        result = await db.execute(
-            select(func.count()).select_from(Game).where(Game.session_id == session_id)
+        db.add(
+            BugLog(
+                session_id=session_id,
+                logged_at=datetime.now(timezone.utc),
+                level="warn",
+                source="test",
+                message="test bug log",
+            )
         )
-        return result.scalar_one()
+        await db.commit()
 
 
 async def _count_entitlements(session_id: str) -> int:
@@ -79,8 +86,10 @@ async def _seed_entitlement(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_delete_me_returns_204_with_no_data(client: TestClient, session_id: str) -> None:
-    sid = str(uuid.uuid4())  # fresh session with no data
+def test_delete_me_returns_204_for_empty_session(client: TestClient) -> None:
+    # Use a brand-new UUID unrelated to the session_id fixture so there is
+    # guaranteed to be no data for this session.
+    sid = str(uuid.uuid4())
     r = client.delete("/me", headers=_headers(sid))
     assert r.status_code == 204
     assert r.content == b""
@@ -110,6 +119,22 @@ async def test_delete_me_removes_entitlements(client: TestClient, session_id: st
     assert r.status_code == 204
 
     assert await _count_entitlements(session_id) == 0
+
+
+async def test_delete_me_removes_bug_logs(client: TestClient, session_id: str) -> None:
+    await _seed_bug_log(session_id)
+
+    r = client.delete("/me", headers=_headers(session_id))
+    assert r.status_code == 204
+
+    factory = get_session_factory()
+    async with factory() as db:
+        count = (
+            await db.execute(
+                select(func.count()).select_from(BugLog).where(BugLog.session_id == session_id)
+            )
+        ).scalar_one()
+    assert count == 0
 
 
 def test_delete_me_is_idempotent(client: TestClient, session_id: str) -> None:

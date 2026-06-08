@@ -11,6 +11,9 @@ import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { clearSession } from "../game/_shared/session";
+import { scoreQueue } from "../game/_shared/scoreQueue";
+import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
+import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -32,6 +35,7 @@ export default function SettingsScreen() {
   const [successVisible, setSuccessVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteSuccessVisible, setDeleteSuccessVisible] = useState(false);
+  const [deleteErrorVisible, setDeleteErrorVisible] = useState(false);
 
   const handleClearLogs = async () => {
     setConfirmVisible(false);
@@ -50,13 +54,20 @@ export default function SettingsScreen() {
     setDeleteConfirmVisible(false);
     try {
       await statsApi.deleteMyData();
-      await clearSession();
+      await Promise.all([
+        clearSession(),
+        pendingGamesStore.clearAll(),
+        eventStore.clearAll(),
+        scoreQueue.clearAll(),
+      ]);
       setDeleteSuccessVisible(true);
       setTimeout(() => setDeleteSuccessVisible(false), 3000);
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "settings", op: "deleteData" },
       });
+      setDeleteErrorVisible(true);
+      setTimeout(() => setDeleteErrorVisible(false), 3000);
     }
   };
 
@@ -290,6 +301,12 @@ export default function SettingsScreen() {
       {deleteSuccessVisible && (
         <View style={[styles.toast, { backgroundColor: colors.surface }]}>
           <Text style={{ color: colors.text }}>{t("deleteData.success")}</Text>
+        </View>
+      )}
+
+      {deleteErrorVisible && (
+        <View style={[styles.toast, { backgroundColor: colors.error }]}>
+          <Text style={{ color: colors.textOnAccent }}>{t("deleteData.error")}</Text>
         </View>
       )}
     </View>
