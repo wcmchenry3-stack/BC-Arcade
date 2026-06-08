@@ -26,6 +26,7 @@ import {
   BOSS_BULLET_VY,
   BULLET_E_VY,
   PLAYER_W,
+  WIN_FREEZE_MS,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -478,6 +479,82 @@ describe("Wave progression", () => {
     s = tick(s, 16, NO_INPUT);
     s = advanceMs(s, 3000);
     expect(s.score).toBeGreaterThanOrEqual(1234);
+  });
+
+  it("player bullets keep moving during WinTransition freeze (#2001)", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    // Kill all enemies to enter WinTransition
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    const bullet: Bullet = {
+      id: 99991,
+      x: CANVAS_W / 2,
+      y: 300,
+      vx: 0,
+      vy: -0.5,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    s = { ...s, playerBullets: [bullet] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WinTransition");
+    expect(s.winTransitionStage).toBe("freeze");
+    const afterY = s.playerBullets[0]?.y;
+    expect(afterY).toBeDefined();
+    expect(afterY!).toBeLessThan(300); // bullet moved upward
+  });
+
+  it("player bullets keep moving after WinTransition transitions to autopilot (#2001)", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WinTransition");
+    const bullet: Bullet = {
+      id: 99992,
+      x: CANVAS_W / 2,
+      y: 300,
+      vx: 0,
+      vy: -0.5,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    s = { ...s, playerBullets: [bullet] };
+    // Advance past WIN_FREEZE_MS to reach autopilot stage
+    s = advanceMs(s, WIN_FREEZE_MS + 32);
+    expect(s.winTransitionStage).toBe("autopilot");
+    // Bullet should have moved (or exited screen — either way the array advanced it)
+    const remaining = s.playerBullets.find((b) => b.id === 99992);
+    if (remaining) {
+      expect(remaining.y).toBeLessThan(300);
+    }
+    // If it exited the top of the screen that's also correct movement behaviour
+  });
+
+  it("invincibleTimer is cleared on WinTransition entry from Playing (#2001)", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    // Give player active invincibility as if they were just hit
+    s = { ...s, player: { ...s.player, invincibleTimer: 9999 } };
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WinTransition");
+    expect(s.player.invincibleTimer).toBe(0);
+  });
+
+  it("invincibleTimer does not carry from one wave into the next (#2001)", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, player: { ...s.player, invincibleTimer: 9999 } };
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT); // → WinTransition
+    s = advanceMs(s, 3000); // → wave 2
+    expect(s.wave).toBe(2);
+    expect(s.player.invincibleTimer).toBe(0);
   });
 });
 
