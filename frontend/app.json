@@ -54,7 +54,7 @@
         "react-native-audio-api",
         {
           "disableFFmpeg": true,
-          "iosMicrophonePermission": "Audio playback libraries used for game sound effects and background music require this permission."
+          "iosMicrophonePermission": false
         }
       ]
     ]
