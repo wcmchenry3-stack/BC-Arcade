@@ -72,7 +72,5 @@
 	<string>Light</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Audio playback libraries used for game sound effects and background music require this permission.</string>
 </dict>
 </plist>
