@@ -51,6 +51,10 @@ export default function HandDisplay({
         </Text>
       )}
 
+      {showScore && variant === "player" && (
+        <ScorePill value={hand.value} soft={hand.soft} concealed={concealed} variant={variant} />
+      )}
+
       <View style={styles.rows}>
         {rows.map((rowCards, rowIndex) => (
           <View key={rowIndex} style={styles.row}>
@@ -70,7 +74,7 @@ export default function HandDisplay({
         ))}
       </View>
 
-      {showScore && (
+      {showScore && variant !== "player" && (
         <ScorePill value={hand.value} soft={hand.soft} concealed={concealed} variant={variant} />
       )}
     </View>
