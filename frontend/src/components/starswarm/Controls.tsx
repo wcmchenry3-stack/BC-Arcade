@@ -247,6 +247,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     backgroundColor: "#00ffcc",
+    minWidth: 180,
+    alignItems: "center",
   },
   pauseResumeBtnText: {
     color: "#000010",
@@ -261,6 +263,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.35)",
     paddingHorizontal: 18,
     paddingVertical: 7,
+    minWidth: 180,
+    alignItems: "center",
   },
   pauseNewGameBtnText: {
     color: "rgba(255,255,255,0.55)",
