@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
@@ -56,6 +57,7 @@ export default function SortScreen() {
   const { t } = useTranslation("sort");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const { isOnline, isInitialized } = useNetwork();
   const offline = isInitialized && !isOnline;
@@ -649,7 +651,7 @@ export default function SortScreen() {
         {
           backgroundColor: colors.background,
           paddingTop: insets.top,
-          paddingBottom: insets.bottom,
+          paddingBottom: tabBarHeight,
         },
       ]}
     >
