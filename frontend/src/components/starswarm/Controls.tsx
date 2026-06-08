@@ -65,12 +65,8 @@ export default function Controls({
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
       if (activeDragRef.current) {
-        // Sync from the engine's actual player.x rather than playerXRef. During
-        // WinTransition the engine ignores drag input and moves the ship via
-        // autopilot, then resets inputRef to the AI-parked position — but
-        // playerXRef is stale (wherever the user was dragging during the
-        // cinematic). Using the stale anchor causes the first gesture of the
-        // new wave to snap the ship to the wrong edge ("stuck at right" bug).
+        // Use engine's authoritative player.x — playerXRef is stale when
+        // autopilot moves the ship during the WinTransition cinematic.
         const engineX = canvasRef.current?.getState()?.player.x;
         const anchorX = engineX ?? playerXRef.current;
         playerXRef.current = anchorX;
