@@ -35,6 +35,7 @@ from yacht.router import router as yacht_router
 from entitlements.router import router as entitlements_router
 from games.router import router as games_router
 from logs.router import router as logs_router
+from me.router import router as me_router
 from stats.router import router as stats_router
 
 # ---------------------------------------------------------------------------
@@ -74,6 +75,7 @@ app.include_router(sudoku_router, prefix="/sudoku")
 app.include_router(yacht_router, prefix="/yacht")
 app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
+app.include_router(me_router, prefix="/me")
 app.include_router(stats_router, prefix="/stats")
 
 # ---------------------------------------------------------------------------
@@ -171,7 +173,7 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     expose_headers=["Retry-After"],
     allow_headers=["Content-Type", "X-Session-ID", "X-Admin-Token"],
 )

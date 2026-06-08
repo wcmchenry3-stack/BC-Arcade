@@ -48,5 +48,14 @@
   "overflow.abandon.startNew": "Nieuw starten",
   "home.locked.buttonLabel": "Ontgrendelen",
   "home.locked.cardLabel": "{{title}} — Binnenkort",
-  "home.locked.comingSoon": "Dit spel is binnenkort beschikbaar"
+  "home.locked.comingSoon": "Dit spel is binnenkort beschikbaar",
+  "deleteData.label": "Delete my data",
+  "deleteData.description": "Permanently delete all game history and statistics associated with this device.",
+  "deleteData.button": "Delete",
+  "deleteData.confirm.title": "Delete your data?",
+  "deleteData.confirm.body": "All game records and statistics on this device will be permanently deleted from our servers. This cannot be undone.",
+  "deleteData.confirm.confirm": "Delete my data",
+  "deleteData.confirm.cancel": "Cancel",
+  "deleteData.success": "Your data has been deleted",
+  "deleteData.error": "Deletion failed — please try again"
 }

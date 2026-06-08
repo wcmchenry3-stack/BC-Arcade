@@ -752,26 +752,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </Text>
           </View>
 
-          <View style={styles.hudBottom}>
-            {Array.from({ length: player.lives }, (_, i) => (
-              <View key={i} style={styles.lifeIndicator} />
-            ))}
-            {state.activePowerUp !== null && (
-              <View style={styles.powerUpBarWrap}>
-                <View
-                  style={[
-                    styles.powerUpBar,
-                    {
-                      width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
-                      backgroundColor:
-                        state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
-                    },
-                  ]}
-                />
-              </View>
-            )}
-          </View>
-
           {showBonusFlash && (
             <View style={styles.bonusLifeOverlay} pointerEvents="none">
               <Text style={styles.bonusLifeText}>1UP</Text>
@@ -840,6 +820,39 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               <Text style={styles.gameOverScore}>{`${t("hud.score")} ${state.score}`}</Text>
             </View>
           )}
+
+          {/* Lives rendered last so they always appear on top of phase overlays */}
+          <View style={styles.hudBottom}>
+            {Array.from({ length: player.lives }, (_, i) => (
+              <View key={i} style={styles.lifeIndicator} />
+            ))}
+          </View>
+
+          {/* Power-up indicator — independent bottom-left block, above the lives row */}
+          {state.activePowerUp !== null && (
+            <View style={styles.powerUpIndicator} pointerEvents="none">
+              <Text
+                style={[
+                  styles.powerUpLabel,
+                  { color: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00" },
+                ]}
+              >
+                {state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING"}
+              </Text>
+              <View style={styles.powerUpBarWrap}>
+                <View
+                  style={[
+                    styles.powerUpBar,
+                    {
+                      width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
+                      backgroundColor:
+                        state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -883,20 +896,27 @@ const styles = StyleSheet.create({
     height: 14,
     backgroundColor: "#00ffcc",
   },
-  powerUpBarWrap: {
+  powerUpIndicator: {
     position: "absolute",
-    bottom: 20,
-    left: 0,
+    bottom: 26,
+    left: 10,
+  },
+  powerUpLabel: {
+    fontSize: 8,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  powerUpBarWrap: {
     width: 60,
-    height: 4,
+    height: 6,
     backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 2,
+    borderRadius: 3,
     overflow: "hidden",
   },
   powerUpBar: {
-    height: 4,
-    backgroundColor: "#ffee00",
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
   },
   phaseOverlay: {
     ...StyleSheet.absoluteFillObject,

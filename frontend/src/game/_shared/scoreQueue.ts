@@ -173,9 +173,13 @@ export class ScoreQueue {
     }
   }
 
+  async clearAll(): Promise<void> {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  }
+
   /** For tests only. */
   async _reset(): Promise<void> {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await this.clearAll();
   }
 }
 

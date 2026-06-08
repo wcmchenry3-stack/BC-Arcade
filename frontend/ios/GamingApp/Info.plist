@@ -37,6 +37,8 @@
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>BC Arcade uses audio for game sound effects and music playback. Microphone access is not used.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -72,7 +74,5 @@
 	<string>Light</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Audio playback libraries used for game sound effects and background music require this permission.</string>
 </dict>
 </plist>

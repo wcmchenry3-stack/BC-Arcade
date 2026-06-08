@@ -656,11 +656,14 @@ function buildWaveState(
   // Ensign gets gentler AI; every tier above gets straggler aggression
   const stragglerEnabled = difficulty !== "Ensign";
 
+  // Reset invincibility on each new wave so same-tick hit state never carries forward
+  const wavePlayer: Player = { ...player, invincibleTimer: 0 };
+
   return {
     phase,
     wave,
     score,
-    player,
+    player: wavePlayer,
     enemies,
     playerBullets: [],
     enemyBullets: [],
@@ -1753,11 +1756,21 @@ function tickExplosions(state: StarSwarmState, dtMs: number): StarSwarmState {
 function tickWinTransition(state: StarSwarmState, dtMs: number): StarSwarmState {
   const elapsed = state.winTransitionElapsed + dtMs;
 
+  // Player bullets keep flying in both stages so missiles don't freeze mid-air
+  const playerBullets = state.playerBullets
+    .map((b) => ({ ...b, x: b.x + b.vx * dtMs, y: b.y + b.vy * dtMs }))
+    .filter((b) => b.y + b.height / 2 > 0 && b.x > -10 && b.x < state.canvasW + 10);
+
   if (state.winTransitionStage === "freeze") {
     if (elapsed >= WIN_FREEZE_MS) {
-      return { ...state, winTransitionElapsed: elapsed, winTransitionStage: "autopilot" };
+      return {
+        ...state,
+        playerBullets,
+        winTransitionElapsed: elapsed,
+        winTransitionStage: "autopilot",
+      };
     }
-    return { ...state, winTransitionElapsed: elapsed };
+    return { ...state, playerBullets, winTransitionElapsed: elapsed };
   }
 
   // Autopilot: advance enemy bullets (so AI has something to dodge) and finish explosions
@@ -1815,6 +1828,7 @@ function tickWinTransition(state: StarSwarmState, dtMs: number): StarSwarmState 
 
   return {
     ...state,
+    playerBullets,
     enemyBullets,
     explosions,
     player: { ...state.player, x: newPlayerX },
@@ -1854,6 +1868,8 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
         score:
           state.score + waveClearBonus + Math.round(state.freeFireHits * 50 * sm) + perfectBonus,
         phase: "WinTransition",
+        // Clear any invincibility so the ship doesn't blink during the cinematic
+        player: { ...state.player, invincibleTimer: 0 },
         winTransitionStage: "freeze",
         winTransitionElapsed: 0,
         playerYOffset: 0,
@@ -1874,6 +1890,8 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
         ...state,
         score: state.score + waveClearBonus,
         phase: "WinTransition",
+        // Clear any invincibility from a same-tick hit so the ship doesn't blink during cinematic
+        player: { ...state.player, invincibleTimer: 0 },
         winTransitionStage: "freeze",
         winTransitionElapsed: 0,
         playerYOffset: 0,

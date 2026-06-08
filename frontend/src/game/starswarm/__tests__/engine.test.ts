@@ -135,6 +135,85 @@ describe("player boundary clamping", () => {
     }
     expect(s.player.x).toBe(CANVAS_W - hw);
   });
+
+  // Regression: after the cinematic WinTransition the engine's player.x must be
+  // within valid bounds, and using that position as subsequent input must be a
+  // no-op (no spurious jump). Controls.tsx relies on this contract when it syncs
+  // playerXRef after WinTransition to prevent the "stuck at right edge" bug.
+  it("player.x stays within valid bounds through a complete WinTransition", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    // Drive ship to right edge for the duration of the wave
+    const rightEdgeInput: StarSwarmInput = { playerX: CANVAS_W - hw, fire: false };
+    s = advanceMs(s, 8000, rightEdgeInput);
+    // Kill remaining enemies to trigger WinTransition
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, rightEdgeInput);
+    expect(s.phase).toBe("WinTransition");
+    // Advance through the full cinematic; autopilot moves the ship
+    s = advanceMs(s, 3000, rightEdgeInput);
+    expect(s.wave).toBe(2);
+    expect(s.phase).toBe("SwoopIn");
+    expect(s.player.x).toBeGreaterThanOrEqual(hw);
+    expect(s.player.x).toBeLessThanOrEqual(CANVAS_W - hw);
+  });
+
+  it("first tick of new wave with engine-parked X does not move the ship", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    s = advanceMs(s, 3000);
+    expect(s.wave).toBe(2);
+    // Using the engine's own player.x as the input must be a no-op
+    const parkedX = s.player.x;
+    s = tick(s, 16, { playerX: parkedX, fire: false });
+    expect(s.player.x).toBe(parkedX);
+  });
+
+  // Regression: autopilot must move the ship when a bullet threatens during
+  // WinTransition — this is the desync that made playerXRef stale in Controls.tsx.
+  // Bullet at y=150 gives the AI time to dodge before the wave increments.
+  // Loop tick-by-tick (not advanceMs) so we capture parked X before wave-2
+  // re-clamps it via NO_INPUT.
+  it("autopilot moves ship laterally when an enemy bullet threatens during WinTransition", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+
+    // Bullet 50 px to the ship's left → AI dodges right, shifting player.x.
+    const threatBullet: Bullet = {
+      id: 99998,
+      x: s.player.x - 50,
+      y: 150,
+      vx: 0,
+      vy: BULLET_E_VY,
+      owner: "enemy",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    s = { ...s, enemyBullets: [threatBullet] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("WinTransition");
+    const xBeforeCinematic = s.player.x;
+
+    // Tick one frame at a time and capture player.x the instant wave increments.
+    // Using advanceMs would overwrite the parked position (tickPlayer re-clamps to 180).
+    let parkedX: number | null = null;
+    for (let i = 0; i < 300; i++) {
+      const prevWave = s.wave;
+      s = tick(s, 16, NO_INPUT);
+      if (s.wave !== prevWave) {
+        parkedX = s.player.x;
+        break;
+      }
+    }
+
+    expect(parkedX).not.toBeNull();
+    expect(parkedX!).not.toBeCloseTo(xBeforeCinematic, 0);
+    expect(parkedX!).toBeGreaterThanOrEqual(hw);
+    expect(parkedX!).toBeLessThanOrEqual(CANVAS_W - hw);
+  });
 });
 
 // ---------------------------------------------------------------------------

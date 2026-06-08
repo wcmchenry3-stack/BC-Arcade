@@ -48,5 +48,14 @@
   "overflow.abandon.startNew": "नया शुरू करें",
   "home.locked.buttonLabel": "अनलॉक करें",
   "home.locked.cardLabel": "{{title}} — जल्द आ रहा है",
-  "home.locked.comingSoon": "यह गेम जल्द ही उपलब्ध होगा"
+  "home.locked.comingSoon": "यह गेम जल्द ही उपलब्ध होगा",
+  "deleteData.label": "Delete my data",
+  "deleteData.description": "Permanently delete all game history and statistics associated with this device.",
+  "deleteData.button": "Delete",
+  "deleteData.confirm.title": "Delete your data?",
+  "deleteData.confirm.body": "All game records and statistics on this device will be permanently deleted from our servers. This cannot be undone.",
+  "deleteData.confirm.confirm": "Delete my data",
+  "deleteData.confirm.cancel": "Cancel",
+  "deleteData.success": "Your data has been deleted",
+  "deleteData.error": "Deletion failed — please try again"
 }
