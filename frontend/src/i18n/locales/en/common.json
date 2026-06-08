@@ -48,5 +48,13 @@
   "overflow.abandon.startNew": "Start New",
   "home.locked.buttonLabel": "Unlock",
   "home.locked.cardLabel": "{{title}} — Coming soon",
-  "home.locked.comingSoon": "This game is coming soon"
+  "home.locked.comingSoon": "This game is coming soon",
+  "deleteData.label": "Delete my data",
+  "deleteData.description": "Permanently delete all game history and statistics associated with this device.",
+  "deleteData.button": "Delete",
+  "deleteData.confirm.title": "Delete your data?",
+  "deleteData.confirm.body": "All game records and statistics on this device will be permanently deleted from our servers. This cannot be undone.",
+  "deleteData.confirm.confirm": "Delete my data",
+  "deleteData.confirm.cancel": "Cancel",
+  "deleteData.success": "Your data has been deleted"
 }

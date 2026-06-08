@@ -159,6 +159,9 @@ export function createGameClient(options: HttpClientOptions) {
         }
         throw new ApiError(msg, res.status);
       }
+      if (res.status === 204) {
+        return undefined as unknown as T;
+      }
       return res.json();
     } catch (e) {
       if (e instanceof ApiError) {

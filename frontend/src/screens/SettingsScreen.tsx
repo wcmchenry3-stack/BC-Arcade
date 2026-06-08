@@ -10,6 +10,8 @@ import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
+import { clearSession } from "../game/_shared/session";
+import { statsApi } from "../api/stats";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
@@ -28,6 +30,8 @@ export default function SettingsScreen() {
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteSuccessVisible, setDeleteSuccessVisible] = useState(false);
 
   const handleClearLogs = async () => {
     setConfirmVisible(false);
@@ -38,6 +42,20 @@ export default function SettingsScreen() {
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "settings", op: "clearLogs" },
+      });
+    }
+  };
+
+  const handleDeleteData = async () => {
+    setDeleteConfirmVisible(false);
+    try {
+      await statsApi.deleteMyData();
+      await clearSession();
+      setDeleteSuccessVisible(true);
+      setTimeout(() => setDeleteSuccessVisible(false), 3000);
+    } catch (e) {
+      Sentry.captureException(e, {
+        tags: { subsystem: "settings", op: "deleteData" },
       });
     }
   };
@@ -165,6 +183,28 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <View style={[styles.rowStacked, { borderColor: colors.border }]}>
+        <View style={styles.rowStackedText}>
+          <Text style={[styles.label, { color: colors.text }]}>
+            {t("deleteData.label", "Delete my data")}
+          </Text>
+          <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
+            {t("deleteData.description")}
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => setDeleteConfirmVisible(true)}
+          style={[styles.destructive, { backgroundColor: colors.error }]}
+          testID="delete-data-button"
+          accessibilityRole="button"
+          accessibilityLabel={t("deleteData.label")}
+        >
+          <Text style={[styles.destructiveText, { color: colors.textOnAccent }]}>
+            {t("deleteData.button", "Delete")}
+          </Text>
+        </Pressable>
+      </View>
+
       <Modal
         visible={confirmVisible}
         transparent
@@ -203,9 +243,53 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={deleteConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteConfirmVisible(false)}
+      >
+        <View style={[styles.modalBackdrop, { backgroundColor: MODAL_SCRIM }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {t("deleteData.confirm.title")}
+            </Text>
+            <Text style={[styles.modalBody, { color: colors.text }]}>
+              {t("deleteData.confirm.body")}
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setDeleteConfirmVisible(false)}
+                style={[styles.modalButton, { backgroundColor: colors.surfaceAlt }]}
+                testID="delete-data-cancel"
+                accessibilityRole="button"
+              >
+                <Text style={{ color: colors.text }}>{t("deleteData.confirm.cancel")}</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleDeleteData}
+                style={[styles.modalButton, { backgroundColor: colors.error }]}
+                testID="delete-data-confirm"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.modalDestructiveText, { color: colors.textOnAccent }]}>
+                  {t("deleteData.confirm.confirm")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {successVisible && (
         <View style={[styles.toast, { backgroundColor: colors.surface }]}>
           <Text style={{ color: colors.text }}>{t("clearLogs.success")}</Text>
+        </View>
+      )}
+
+      {deleteSuccessVisible && (
+        <View style={[styles.toast, { backgroundColor: colors.surface }]}>
+          <Text style={{ color: colors.text }}>{t("deleteData.success")}</Text>
         </View>
       )}
     </View>
@@ -233,6 +317,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 16 },
   description: { fontSize: 13, marginTop: 4 },
   destructive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  destructiveText: { fontWeight: "600" },
   segmented: { flexDirection: "row", borderRadius: 8, padding: 2 },
   segment: {
     paddingHorizontal: 12,
