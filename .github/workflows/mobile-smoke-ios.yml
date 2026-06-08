@@ -35,6 +35,19 @@ jobs:
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/ios/Pods
+            ~/.cocoapods
+          key: pods-${{ hashFiles('frontend/ios/Podfile.lock') }}
+          restore-keys: pods-
+
+      - name: Install CocoaPods dependencies
+        run: pod install --repo-update
+        working-directory: frontend/ios
+
       - name: Build app for iOS Simulator
         run: |
           xcodebuild \
