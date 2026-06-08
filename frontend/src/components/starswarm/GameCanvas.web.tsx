@@ -787,13 +787,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillRect(10 + i * 16, height - 18, 10, 14);
       }
 
-      // Power-up countdown bar — above lives
+      // Power-up indicator — label + bar, above lives at bottom-left
       if (state.activePowerUp !== null) {
         const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
+        const barColor =
+          state.activePowerUp.type === "shield" ? C.powerBarFillShield : C.powerBarFill;
+        const label = state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING";
+        ctx.font = "bold 8px 'Courier New', monospace";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = barColor;
+        ctx.fillText(label, 10, height - 44);
         ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, height - 26, 60, 4);
-        ctx.fillStyle = C.powerBarFill;
-        ctx.fillRect(10, height - 26, 60 * ratio, 4);
+        ctx.fillRect(10, height - 34, 60, 6);
+        ctx.fillStyle = barColor;
+        ctx.fillRect(10, height - 34, 60 * ratio, 6);
       }
 
       ctx.restore();
