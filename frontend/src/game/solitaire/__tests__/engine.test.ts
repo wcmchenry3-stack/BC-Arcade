@@ -815,6 +815,21 @@ describe("isProductiveMove", () => {
     expect(isProductiveMove(state, move)).toBe(false);
   });
 
+  it("returns true when the exposed parent card can go to foundation", () => {
+    // Col 0: [A♠ (face-up), 2♥ (face-up)]. Moving 2♥ exposes A♠ → can go to empty spades pile.
+    // Col 1: [3♣ (face-up)]. 2♥ (red) onto 3♣ (black) is a valid tableau move.
+    const state = mkState({
+      tableau: [[c("spades", 1), c("hearts", 2)], [c("clubs", 3)], [], [], [], [], []],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+
   it("returns true when moving the full column (fromIndex === 0) to create empty space", () => {
     const state = mkState({
       tableau: [[c("spades", 5)], [c("hearts", 6)], [], [], [], [], []],

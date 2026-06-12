@@ -674,14 +674,8 @@ export function isProductiveMove(state: SolitaireState, move: Move): boolean {
   const destTop = topOf(dst);
   if (destTop === undefined) return true; // moving to empty column
 
-  // Different color or rank → not a reversible swap
-  const runBase = src[move.fromIndex];
-  if (runBase === undefined) return true;
-  if (runBase.rank + 1 !== destTop.rank || cardColor(runBase) === cardColor(destTop)) return true;
-
-  // Reversible swap: the parent (now-exposed) card is equivalent to dest top
-  // in the sense that after moving back it would produce the same state.
-  // This is the non-productive case — exactly the oscillation we want to filter.
+  // Reversible swap: cardBelowRun is face-up, can't go to foundation, and the
+  // move is valid (validateMove already confirmed rank/color) — no benefit gained.
   return false;
 }
 
@@ -715,8 +709,8 @@ export function getHintMoves(state: SolitaireState): Move[] {
   for (let fromCol = 0; fromCol < TABLEAU_COLUMNS; fromCol++) {
     const src = state.tableau[fromCol];
     if (!src || src.length === 0) continue;
-    // Find the deepest valid fromIndex (largest run that can move as a unit)
-    for (let fromIndex = 0; fromIndex < src.length; fromIndex++) {
+    let foundForCol = false;
+    for (let fromIndex = 0; fromIndex < src.length && !foundForCol; fromIndex++) {
       const card = src[fromIndex];
       if (card === undefined || !card.faceUp) continue;
       for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
@@ -725,7 +719,6 @@ export function getHintMoves(state: SolitaireState): Move[] {
         if (!validateMove(state, m)) continue;
         if (!isProductiveMove(state, m)) continue;
 
-        // Check whether this move reveals a face-down card
         const revealsFaceDown =
           fromIndex > 0 && src[fromIndex - 1] !== undefined && !src[fromIndex - 1]!.faceUp;
 
@@ -734,7 +727,8 @@ export function getHintMoves(state: SolitaireState): Move[] {
         } else {
           otherProductiveMoves.push(m);
         }
-        break; // one destination per run depth is enough
+        foundForCol = true;
+        break;
       }
     }
   }
