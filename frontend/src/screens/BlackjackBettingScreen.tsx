@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -23,6 +24,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useSafeBottomTabBarHeight();
   const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
     useBlackjackGame();
   const [runs, setRuns] = useState<RunRecord[]>([]);
@@ -75,7 +77,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
         {
           backgroundColor: colors.background,
           paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
+          paddingBottom: Math.max(tabBarHeight, 16),
         },
       ]}
     >
