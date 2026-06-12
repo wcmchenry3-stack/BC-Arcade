@@ -49,7 +49,8 @@
  */
 
 import { GameState } from "./types";
-import { CATEGORIES, UPPER_CATEGORIES, Category, calculateScore } from "./engine";
+import { UPPER_CATEGORIES } from "./engine";
+import { maxImmediateScore } from "./aiHelpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,32 +154,6 @@ function upperSubtotal(scores: GameState["scores"]): number {
     if (v !== null && v !== undefined) s += v;
   }
   return s;
-}
-
-// ─── Max immediate score ──────────────────────────────────────────────────────
-
-/**
- * Maximum score available right now across all open categories.
- * Upper-section scores that reach ≥ 63 receive a +35 bonus credit.
- *
- * Mirrors the same helper in ai.ts (evForHold).
- */
-function maxImmediateScore(
-  dice: readonly number[],
-  scores: GameState["scores"],
-  curUpperSubtotal: number
-): number {
-  let best = 0;
-  for (const cat of CATEGORIES) {
-    const v = scores[cat];
-    if (v !== null && v !== undefined) continue; // already filled
-    const s = calculateScore(cat, dice);
-    // Credit the upper bonus if this score would tip us over 63.
-    const isUpper = UPPER_CATEGORIES.has(cat as Category);
-    const bonusCredit = isUpper && s > 0 && curUpperSubtotal + s >= 63 ? 35 : 0;
-    if (s + bonusCredit > best) best = s + bonusCredit;
-  }
-  return best;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
