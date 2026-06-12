@@ -634,3 +634,129 @@ export function autoComplete(state: SolitaireState): SolitaireState {
 
   return state;
 }
+
+// ---------------------------------------------------------------------------
+// Hint engine (#2033)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns false when a tableau-to-tableau move is a pure oscillation: the
+ * moving run's base card's parent card (the card that would be exposed) is
+ * color-rank-equivalent to the destination top card (same rank, same color),
+ * and the move doesn't reveal a face-down card, doesn't empty a column for a
+ * waiting king, and doesn't enable a foundation play. All other move types
+ * are always productive.
+ *
+ * Used by getHintMoves to avoid suggesting reversible swaps (#1295 precedent
+ * from FreeCell). applyMove / validateMove are unaffected.
+ */
+export function isProductiveMove(state: SolitaireState, move: Move): boolean {
+  if (move.type !== "tableau-to-tableau") return true;
+
+  const src = state.tableau[move.fromCol];
+  const dst = state.tableau[move.toCol];
+  if (src === undefined || dst === undefined) return true;
+
+  // Moving from column base — could create an empty column for a king
+  if (move.fromIndex === 0) return true;
+
+  // Reveals a face-down card → productive
+  const cardBelowRun = src[move.fromIndex - 1];
+  if (cardBelowRun !== undefined && !cardBelowRun.faceUp) return true;
+
+  // The parent card (exposed after the move) can go to foundation → productive
+  if (
+    cardBelowRun !== undefined &&
+    canStackOnFoundation(cardBelowRun, state.foundations[cardBelowRun.suit])
+  )
+    return true;
+
+  const destTop = topOf(dst);
+  if (destTop === undefined) return true; // moving to empty column
+
+  // Reversible swap: cardBelowRun is face-up, can't go to foundation, and the
+  // move is valid (validateMove already confirmed rank/color) — no benefit gained.
+  return false;
+}
+
+/**
+ * Returns all legal moves from the current state, ordered by desirability:
+ *   1. Foundation moves (waste→foundation, tableau→foundation) — always progress.
+ *   2. Tableau→tableau moves that reveal a face-down card.
+ *   3. Waste→tableau moves.
+ *   4. Other productive tableau→tableau moves.
+ *
+ * Non-productive moves (reversible swaps with no benefit) are filtered out.
+ * Stock draws and foundation→tableau retreats are excluded from hints.
+ * Returns [] when no productive moves exist.
+ */
+export function getHintMoves(state: SolitaireState): Move[] {
+  const moves: Move[] = [];
+
+  // 1. Foundation moves — always progress
+  const wasteFoundation: Move = { type: "waste-to-foundation" };
+  if (validateMove(state, wasteFoundation)) moves.push(wasteFoundation);
+
+  for (let col = 0; col < TABLEAU_COLUMNS; col++) {
+    const m: Move = { type: "tableau-to-foundation", fromCol: col };
+    if (validateMove(state, m)) moves.push(m);
+  }
+
+  // 2. Tableau→tableau moves that reveal a face-down card
+  const revealingMoves: Move[] = [];
+  const otherProductiveMoves: Move[] = [];
+
+  for (let fromCol = 0; fromCol < TABLEAU_COLUMNS; fromCol++) {
+    const src = state.tableau[fromCol];
+    if (!src || src.length === 0) continue;
+    let foundForCol = false;
+    for (let fromIndex = 0; fromIndex < src.length && !foundForCol; fromIndex++) {
+      const card = src[fromIndex];
+      if (card === undefined || !card.faceUp) continue;
+      for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+        if (toCol === fromCol) continue;
+        const m: Move = { type: "tableau-to-tableau", fromCol, fromIndex, toCol };
+        if (!validateMove(state, m)) continue;
+        if (!isProductiveMove(state, m)) continue;
+
+        const revealsFaceDown =
+          fromIndex > 0 && src[fromIndex - 1] !== undefined && !src[fromIndex - 1]!.faceUp;
+
+        if (revealsFaceDown) {
+          revealingMoves.push(m);
+        } else {
+          otherProductiveMoves.push(m);
+        }
+        foundForCol = true;
+        break;
+      }
+    }
+  }
+
+  moves.push(...revealingMoves);
+
+  // 3. Waste→tableau moves
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const m: Move = { type: "waste-to-tableau", toCol };
+    if (validateMove(state, m)) {
+      moves.push(m);
+      break; // first valid destination is sufficient
+    }
+  }
+
+  // 4. Other productive tableau→tableau moves
+  moves.push(...otherProductiveMoves);
+
+  return moves;
+}
+
+/**
+ * Sets state.hint to the first legal move (for the hint UI to highlight).
+ * Returns state unchanged if there are no legal moves — caller should check
+ * state.hint to decide whether to surface a "no moves" message instead.
+ * Does NOT mutate the input state.
+ */
+export function applyHint(state: SolitaireState): SolitaireState {
+  const moves = getHintMoves(state);
+  return { ...state, hint: moves[0] };
+}
