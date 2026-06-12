@@ -14,6 +14,7 @@
  */
 
 import {
+  applyHint,
   applyMove,
   autoComplete,
   canAutoComplete,
@@ -21,6 +22,8 @@ import {
   createSeededRng,
   dealGame,
   drawFromStock,
+  getHintMoves,
+  isProductiveMove,
   recycleWaste,
   setRng,
   undo,
@@ -53,6 +56,8 @@ function mkState(overrides: Partial<SolitaireState> = {}): SolitaireState {
     recycleCount: 0,
     undoStack: [],
     isComplete: false,
+    startedAt: null,
+    accumulatedMs: 0,
     ...overrides,
   };
 }
@@ -668,5 +673,200 @@ describe("autoComplete", () => {
   it("is a no-op when the game is already complete", () => {
     const state = mkState({ isComplete: true });
     expect(autoComplete(state)).toBe(state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint engine (#2033)
+// ---------------------------------------------------------------------------
+
+describe("getHintMoves", () => {
+  it("returns a foundation move first when one exists", () => {
+    // A♠ on tableau, foundation empty → tableau-to-foundation should be first
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const hints = getHintMoves(state);
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints[0]!.type).toBe("tableau-to-foundation");
+  });
+
+  it("returns waste→foundation first when waste top can go to foundation", () => {
+    const state = mkState({
+      waste: [c("spades", 1)],
+      tableau: [[c("hearts", 2)], [], [], [], [], [], []],
+    });
+    const hints = getHintMoves(state);
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints[0]!.type).toBe("waste-to-foundation");
+  });
+
+  it("returns a face-down-revealing tableau move when no foundation move exists", () => {
+    // Col 0: face-down 9♣ under face-up 8♦ (red). Col 1: face-up 9♠ (black, rank 9).
+    // Moving 8♦ from col 0 index 1 onto 9♠ in col 1 reveals the face-down 9♣.
+    const state = mkState({
+      tableau: [[c("clubs", 9, false), c("diamonds", 8)], [c("spades", 9)], [], [], [], [], []],
+    });
+    const hints = getHintMoves(state);
+    expect(hints.length).toBeGreaterThan(0);
+    const first = hints[0]!;
+    expect(first.type).toBe("tableau-to-tableau");
+    if (first.type === "tableau-to-tableau") {
+      expect(first.fromCol).toBe(0);
+      expect(first.fromIndex).toBe(1);
+      expect(first.toCol).toBe(1);
+    }
+  });
+
+  it("returns waste→tableau before non-revealing tableau moves", () => {
+    // Col 0: face-up K♠ alone. Col 1: face-up Q♥ (red) can go onto K♠.
+    // Waste: J♠ (black) can go onto Q♥.
+    // Moving Q♥→K♠ is a non-revealing move (col 1 becomes empty → productive, but
+    // we specifically want waste→tableau to come before non-revealing non-empty-creating moves).
+    // Let's build a cleaner case: waste has a playable card, tableau move doesn't reveal.
+    const state = mkState({
+      waste: [c("hearts", 5)],
+      tableau: [
+        [c("spades", 6)], // waste 5♥ can go here (non-revealing, no face-down below)
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const hints = getHintMoves(state);
+    // waste→tableau should appear before any tableau→tableau
+    const wasteIdx = hints.findIndex((m) => m.type === "waste-to-tableau");
+    const ttIdx = hints.findIndex((m) => m.type === "tableau-to-tableau");
+    expect(wasteIdx).toBeGreaterThanOrEqual(0);
+    if (ttIdx >= 0) {
+      expect(wasteIdx).toBeLessThan(ttIdx);
+    }
+  });
+
+  it("excludes reversible non-productive tableau swaps", () => {
+    // Col 0: face-up 5♠ (black). Col 1: face-up 6♥ (red).
+    // Moving 5♠ onto 6♥ is valid but non-productive if it doesn't reveal a face-down
+    // card below 5♠ and col 0 is not left with an empty-column king opportunity.
+    // Let's add another card below that is face-up (no reveal benefit).
+    const state = mkState({
+      tableau: [
+        [c("hearts", 7), c("spades", 5)], // 7♥ is face-up, no benefit to expose it
+        [c("hearts", 6)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const hints = getHintMoves(state);
+    // The swap 5♠ col0 → 6♥ col1 is valid but reversible (no face-down card revealed,
+    // no foundation play enabled, no empty column created). It should be excluded.
+    const hasNonProductiveSwap = hints.some(
+      (m) => m.type === "tableau-to-tableau" && m.fromCol === 0 && m.toCol === 1
+    );
+    expect(hasNonProductiveSwap).toBe(false);
+  });
+
+  it("returns [] when no productive moves exist", () => {
+    // A state with no legal moves at all.
+    const state = mkState();
+    const hints = getHintMoves(state);
+    expect(hints).toEqual([]);
+  });
+});
+
+describe("isProductiveMove", () => {
+  it("returns true for non-tableau-to-tableau moves", () => {
+    const state = mkState({ waste: [c("spades", 1)] });
+    expect(isProductiveMove(state, { type: "waste-to-foundation" })).toBe(true);
+    expect(isProductiveMove(state, { type: "waste-to-tableau", toCol: 0 })).toBe(true);
+    expect(isProductiveMove(state, { type: "tableau-to-foundation", fromCol: 0 })).toBe(true);
+  });
+
+  it("returns true when the move reveals a face-down card", () => {
+    const state = mkState({
+      tableau: [[c("clubs", 9, false), c("diamonds", 8)], [c("spades", 9)], [], [], [], [], []],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+
+  it("returns false for a reversible swap that gains nothing", () => {
+    // Col 0: [7♥ (face-up), 5♠ (face-up)]. Col 1: [6♥ (face-up)].
+    // 5♠ → 6♥ is valid but reversible: no face-down revealed, 7♥ can't go to foundation.
+    const state = mkState({
+      tableau: [[c("hearts", 7), c("spades", 5)], [c("hearts", 6)], [], [], [], [], []],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(false);
+  });
+
+  it("returns true when moving the full column (fromIndex === 0) to create empty space", () => {
+    const state = mkState({
+      tableau: [[c("spades", 5)], [c("hearts", 6)], [], [], [], [], []],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 0,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(true);
+  });
+});
+
+describe("applyHint", () => {
+  it("sets hint to the first move from getHintMoves", () => {
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const next = applyHint(state);
+    expect(next.hint).toBeDefined();
+    expect(next.hint?.type).toBe("tableau-to-foundation");
+  });
+
+  it("sets hint to undefined when no moves exist", () => {
+    const state = mkState();
+    const next = applyHint(state);
+    expect(next.hint).toBeUndefined();
+  });
+
+  it("does not mutate the input state", () => {
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const before = JSON.stringify(state);
+    applyHint(state);
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
+  it("returns a new state object even when hint is undefined", () => {
+    const state = mkState();
+    const next = applyHint(state);
+    // applyHint always returns a new spread — reference differs
+    expect(next).not.toBe(state);
+  });
+
+  it("input state undoStack is unaffected (applyHint does not push undo)", () => {
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const next = applyHint(state);
+    expect(next.undoStack).toEqual(state.undoStack);
+    expect(next.undoStack).toHaveLength(0);
   });
 });
