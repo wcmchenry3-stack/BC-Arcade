@@ -153,8 +153,11 @@ function maxImmediateScore(
 /**
  * Expected score when `keptIndices` dice are held and the rest are rerolled once.
  * Enumerates all 6^(free) outcomes — tractable when free ≤ 5.
+ *
+ * Exported for parity testing against the precomputed probability tables in
+ * probTables.ts (GH #2025, story A1).  Do NOT use outside of tests/probTables.
  */
-function evForHold(
+export function evForHold(
   dice: readonly number[],
   keptIndices: readonly number[],
   scores: GameState["scores"]
