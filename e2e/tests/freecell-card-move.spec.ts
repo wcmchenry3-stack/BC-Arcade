@@ -12,10 +12,7 @@ import { mockFreecellApi, injectFreecellState } from "./helpers/freecell";
 // One card (5♥) in tableau column 0; free cells and foundations empty.
 const CARD_MOVE_STATE = {
   _v: 1,
-  tableau: [
-    [{ suit: "hearts", rank: 5 }],
-    [], [], [], [], [], [], [],
-  ],
+  tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
   freeCells: [null, null, null, null],
   foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
   undoStack: [],
@@ -34,7 +31,9 @@ test("tap tableau card then tap free cell: card moves and counter increments", a
     .getByRole("heading", { name: "FreeCell", exact: true })
     .waitFor({ timeout: 10_000 });
 
-  await expect(page.getByLabel("FreeCell board").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
+    timeout: 5_000,
+  });
 
   // Tap 5♥ in the tableau to select it.
   await page.getByLabel("5 of Hearts").click();

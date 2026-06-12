@@ -234,4 +234,247 @@ describe("DragContext", () => {
     // onDrop must NOT be called because no bounds were cached
     expect(onDrop).not.toHaveBeenCalled();
   });
+
+  it("snapRadiusFraction=0 reproduces exact behavior (no inflated bounds)", async () => {
+    const onDropInside = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+    const onDropOutside = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start-zero" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          {/* Drop exactly at boundary (inside) */}
+          <Text accessibilityLabel="end-inside" onPress={() => endDrag(100, 100)}>
+            end-inside
+          </Text>
+          {/* Drop just outside boundary */}
+          <Text accessibilityLabel="end-outside" onPress={() => endDrag(100.1, 100)}>
+            end-outside
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider snapRadiusFraction={0}>
+        <ThemeProvider>
+          <DropZoneRegistrar
+            id="zone-exact"
+            bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+            onDrop={onDropInside}
+          />
+          <DropZoneRegistrar
+            id="zone-outside"
+            bounds={{ x: 200, y: 200, width: 100, height: 100 }}
+            onDrop={onDropOutside}
+          />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-zero"));
+    await fireEvent.press(getByLabelText("end-inside"));
+    expect(onDropInside).toHaveBeenCalledTimes(1);
+
+    // Reset and test outside
+    onDropInside.mockClear();
+    onDropOutside.mockClear();
+
+    await fireEvent.press(getByLabelText("start-zero"));
+    await fireEvent.press(getByLabelText("end-outside"));
+    // With snapRadiusFraction=0, the point just outside should NOT snap
+    expect(onDropInside).not.toHaveBeenCalled();
+    expect(onDropOutside).not.toHaveBeenCalled();
+  });
+
+  it("inflated bounds accept points within snapRadiusFraction of original bounds", async () => {
+    const onDrop = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text
+            accessibilityLabel="start-inflated"
+            onPress={() => startDrag(dragSource, dragCards)}
+          >
+            start
+          </Text>
+          {/* Drop 30% outside the original bounds (should be accepted with default 0.35) */}
+          <Text accessibilityLabel="end-inflated" onPress={() => endDrag(115, 100)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider snapRadiusFraction={0.35}>
+        <ThemeProvider>
+          <DropZoneRegistrar
+            id="zone-inflate"
+            bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+            onDrop={onDrop}
+          />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-inflated"));
+    await fireEvent.press(getByLabelText("end-inflated"));
+    // Point is 15 units right of bounds edge, but inflated radius is 100 * 0.35 = 35
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it("when multiple inflated bounds contain the drop, picks nearest original bounds center", async () => {
+    const onDropNear = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+    const onDropFar = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start-nearest" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          {/* Drop at (105, 50): in both inflated bounds, in neither original */}
+          <Text accessibilityLabel="end-nearest" onPress={() => endDrag(105, 50)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider snapRadiusFraction={0.5}>
+        <ThemeProvider>
+          {/* Zone A: x:0-100, inflated x:-50–150, center=(50,50). distSq=(105-50)²=3025 */}
+          <DropZoneRegistrar
+            id="zone-near"
+            bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+            onDrop={onDropNear}
+          />
+          {/* Zone B: x:120-220, inflated x:70–270, center=(170,50). distSq=(105-170)²=4225 */}
+          <DropZoneRegistrar
+            id="zone-far"
+            bounds={{ x: 120, y: 0, width: 100, height: 100 }}
+            onDrop={onDropFar}
+          />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-nearest"));
+    await fireEvent.press(getByLabelText("end-nearest"));
+    // (105, 50) is in both inflated bounds but neither original bound.
+    // zone-near center (50,50) is closer than zone-far center (170,50) → zone-near wins.
+    expect(onDropNear).toHaveBeenCalledTimes(1);
+    expect(onDropFar).not.toHaveBeenCalled();
+  });
+
+  it("when inflated bounds overlap, picks the one with nearest original bounds center", async () => {
+    const onDropNear = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+    const onDropFar = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text
+            accessibilityLabel="start-close-overlap"
+            onPress={() => startDrag(dragSource, dragCards)}
+          >
+            start
+          </Text>
+          {/* Drop in the overlapping inflated region between two close zones */}
+          <Text accessibilityLabel="end-close-overlap" onPress={() => endDrag(145, 50)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider snapRadiusFraction={0.35}>
+        <ThemeProvider>
+          {/* Zone 1: x: 0-100, inflated to -35-135, center = 50 */}
+          <DropZoneRegistrar
+            id="zone-near"
+            bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+            onDrop={onDropNear}
+          />
+          {/* Zone 2: x: 100-200, inflated to 65-235, center = 150 */}
+          <DropZoneRegistrar
+            id="zone-far"
+            bounds={{ x: 100, y: 0, width: 100, height: 100 }}
+            onDrop={onDropFar}
+          />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-close-overlap"));
+    await fireEvent.press(getByLabelText("end-close-overlap"));
+    // Point at (145, 50): zone-near inflated -35 to 135 (does NOT contain 145)
+    // zone-far inflated 65 to 235 (CONTAINS 145). Center of zone-far is (150, 50)
+    // Distance from (145, 50) to (150, 50) = 25, so zone-far is the match
+    expect(onDropFar).toHaveBeenCalledTimes(1);
+    expect(onDropNear).not.toHaveBeenCalled();
+  });
+
+  it("point inside original bounds always wins over inflated-only", async () => {
+    const onDropInOriginal = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+    const onDropInflatedOnly = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text
+            accessibilityLabel="start-orig-wins"
+            onPress={() => startDrag(dragSource, dragCards)}
+          >
+            start
+          </Text>
+          {/* Drop inside zone-original, but also in inflated region of zone-inflated-only */}
+          <Text accessibilityLabel="end-orig-wins" onPress={() => endDrag(50, 50)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider snapRadiusFraction={0.35}>
+        <ThemeProvider>
+          {/* Zone with the point inside its original bounds */}
+          <DropZoneRegistrar
+            id="zone-original"
+            bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+            onDrop={onDropInOriginal}
+          />
+          {/* Zone whose inflated bounds contain the point but original bounds do not */}
+          <DropZoneRegistrar
+            id="zone-inflated-only"
+            bounds={{ x: 200, y: 0, width: 100, height: 100 }}
+            onDrop={onDropInflatedOnly}
+          />
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-orig-wins"));
+    await fireEvent.press(getByLabelText("end-orig-wins"));
+    // Point (50, 50) is inside zone-original, so it should be tried first
+    expect(onDropInOriginal).toHaveBeenCalledTimes(1);
+    expect(onDropInflatedOnly).not.toHaveBeenCalled();
+  });
 });

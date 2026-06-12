@@ -36,7 +36,9 @@ function stockCards(excluded: string[]) {
 // Tap:    K♥ (waste) → empty col 0
 // Expect: col 0 now has 1 card, move counter = 1
 // ---------------------------------------------------------------------------
-test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({ page }) => {
+test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({
+  page,
+}) => {
   const STATE = {
     _v: 1,
     drawMode: 1,
@@ -57,12 +59,16 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({ page
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
-  await page.getByRole("heading", { name: "Solitaire", exact: true }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Solitaire", exact: true })
+    .waitFor({ timeout: 10_000 });
   await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
 
   // Verify starting layout.
   await expect(page.getByLabel("K of Hearts")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
+    timeout: 3_000,
+  });
 
   // Select K♥ from waste.
   await page.getByLabel("K of Hearts").click();
@@ -71,7 +77,9 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({ page
   await page.getByLabel("Empty tableau column 1").click();
 
   // Column 1 now has 1 card; move counter increments.
-  await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({
+    timeout: 3_000,
+  });
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });
 
@@ -81,7 +89,9 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({ page
 // Tap:    A♠ (col 0) → empty Spades foundation  (select then tap)
 // Expect: spades foundation gains 1 card; col 0 becomes empty
 // ---------------------------------------------------------------------------
-test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async ({ page }) => {
+test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async ({
+  page,
+}) => {
   const STATE = {
     _v: 1,
     drawMode: 1,
@@ -110,7 +120,9 @@ test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
-  await page.getByRole("heading", { name: "Solitaire", exact: true }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Solitaire", exact: true })
+    .waitFor({ timeout: 10_000 });
   await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
 
   await expect(page.getByLabel("A of Spades")).toBeVisible({ timeout: 5_000 });
@@ -122,7 +134,9 @@ test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async
   await page.getByLabel("Empty Spades foundation").click();
 
   // Col 0 is now empty; foundation updated.
-  await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
+    timeout: 3_000,
+  });
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });
 
@@ -164,12 +178,18 @@ test("solitaire drag: multi-card run (Q♣-J♥ onto K♦)", async ({ page }) =>
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
-  await page.getByRole("heading", { name: "Solitaire", exact: true }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Solitaire", exact: true })
+    .waitFor({ timeout: 10_000 });
   await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
 
   // Verify starting column counts.
-  await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByLabel("Tableau column 2, 2 cards")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(page.getByLabel("Tableau column 2, 2 cards")).toBeVisible({
+    timeout: 3_000,
+  });
 
   // Select Q♣ (the base of the run in col 2, index 0).
   // Q♣ is buried under J♥ — its visible stripe is the top ~28px (FACE_UP_OFFSET).
@@ -180,7 +200,11 @@ test("solitaire drag: multi-card run (Q♣-J♥ onto K♦)", async ({ page }) =>
   await page.getByLabel("K of Diamonds").click();
 
   // Col 1 now has 3 cards (K♦, Q♣, J♥); col 2 is empty.
-  await expect(page.getByLabel("Tableau column 1, 3 cards")).toBeVisible({ timeout: 3_000 });
-  await expect(page.getByLabel("Empty tableau column 2")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Tableau column 1, 3 cards")).toBeVisible({
+    timeout: 3_000,
+  });
+  await expect(page.getByLabel("Empty tableau column 2")).toBeVisible({
+    timeout: 3_000,
+  });
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });
