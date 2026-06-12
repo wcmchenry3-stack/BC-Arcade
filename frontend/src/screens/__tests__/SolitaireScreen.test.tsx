@@ -176,11 +176,11 @@ describe("SolitaireScreen — stock & waste", () => {
 });
 
 describe("SolitaireScreen — hint button", () => {
-  it("renders a Hint button in the header that is disabled on a fresh deal", async () => {
+  it("renders an enabled Hint button in the header when hints exist on a fresh deal", async () => {
     const api = await mount();
     await chooseDraw1(api);
     const hint = api.getByLabelText("Hint");
-    expect(hint.props.accessibilityState?.disabled).toBe(true);
+    expect(hint.props.accessibilityState?.disabled).toBe(false);
   });
 
   it("disables Hint after the game is complete", async () => {
@@ -208,7 +208,11 @@ describe("SolitaireScreen — hint button", () => {
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     const api = await mount();
-    const hint = api.getByLabelText("Hint");
+    // WinModal uses accessibilityViewIsModal, which hides the header from
+    // accessibility queries; includeHiddenElements bypasses that restriction
+    const hint = api.getByTestId("solitaire-hint-button", {
+      includeHiddenElements: true,
+    });
     expect(hint.props.accessibilityState?.disabled).toBe(true);
   });
 });
