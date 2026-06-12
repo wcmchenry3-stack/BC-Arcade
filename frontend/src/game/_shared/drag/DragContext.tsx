@@ -185,11 +185,9 @@ export function DragProvider({
       let hitButRejected = 0;
       let closestZoneId: string | null = null;
       let closestDistanceSq = Infinity;
-      let closestInOriginalBounds = false;
 
       // Synchronous hit-test against pre-cached bounds (populated via onLayout in
       // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
-      // First pass: find all hits against inflated bounds and track the closest.
       for (const [id, entry] of dropZonesRef.current) {
         const cached = dropZoneBoundsRef.current.get(id);
         if (!cached) {
@@ -199,7 +197,6 @@ export function DragProvider({
 
         const { originalBounds, inflatedBounds } = cached;
 
-        // Check if point is in original bounds (always wins).
         const inOriginal =
           absoluteX >= originalBounds.x &&
           absoluteX <= originalBounds.x + originalBounds.width &&
@@ -207,7 +204,7 @@ export function DragProvider({
           absoluteY <= originalBounds.y + originalBounds.height;
 
         if (inOriginal) {
-          // Point is inside original bounds — try to drop here first.
+          // Original-bounds hit always takes priority over any inflated-only match.
           const accepted = entry.onDrop(state.source, state.cards);
           if (accepted) {
             Sentry.addBreadcrumb({
@@ -221,7 +218,6 @@ export function DragProvider({
           }
           hitButRejected++;
         } else {
-          // Check if point is in inflated bounds.
           const inInflated =
             absoluteX >= inflatedBounds.x &&
             absoluteX <= inflatedBounds.x + inflatedBounds.width &&
@@ -229,27 +225,20 @@ export function DragProvider({
             absoluteY <= inflatedBounds.y + inflatedBounds.height;
 
           if (inInflated) {
-            // Calculate distance to original bounds center.
             const centerX = originalBounds.x + originalBounds.width / 2;
             const centerY = originalBounds.y + originalBounds.height / 2;
             const dx = absoluteX - centerX;
             const dy = absoluteY - centerY;
             const distanceSq = dx * dx + dy * dy;
 
-            // Track if this is the closest so far, prioritizing points in original bounds.
-            if (
-              distanceSq < closestDistanceSq ||
-              (!closestInOriginalBounds && distanceSq === closestDistanceSq)
-            ) {
+            if (distanceSq < closestDistanceSq) {
               closestZoneId = id;
               closestDistanceSq = distanceSq;
-              closestInOriginalBounds = false;
             }
           }
         }
       }
 
-      // Second pass: if no zone had the point in its original bounds, try the closest inflated match.
       if (closestZoneId !== null) {
         const entry = dropZonesRef.current.get(closestZoneId)!;
         const accepted = entry.onDrop(state.source, state.cards);

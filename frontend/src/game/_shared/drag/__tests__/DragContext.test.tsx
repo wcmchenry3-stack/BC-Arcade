@@ -331,7 +331,7 @@ describe("DragContext", () => {
     expect(onDrop).toHaveBeenCalledTimes(1);
   });
 
-  it("when multiple zones match, picks the one with nearest original bounds center", async () => {
+  it("when multiple inflated bounds contain the drop, picks nearest original bounds center", async () => {
     const onDropNear = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
     const onDropFar = jest.fn<boolean, [DragSource, DragCard[]]>().mockReturnValue(true);
 
@@ -339,11 +339,11 @@ describe("DragContext", () => {
       const { startDrag, endDrag } = useDragContext();
       return (
         <>
-          <Text accessibilityLabel="start-overlap" onPress={() => startDrag(dragSource, dragCards)}>
+          <Text accessibilityLabel="start-nearest" onPress={() => startDrag(dragSource, dragCards)}>
             start
           </Text>
-          {/* Drop in the overlapping inflated region between two zones */}
-          <Text accessibilityLabel="end-overlap" onPress={() => endDrag(140, 50)}>
+          {/* Drop at (105, 50): in both inflated bounds, in neither original */}
+          <Text accessibilityLabel="end-nearest" onPress={() => endDrag(105, 50)}>
             end
           </Text>
         </>
@@ -351,18 +351,18 @@ describe("DragContext", () => {
     }
 
     const { getByLabelText } = await render(
-      <DragProvider snapRadiusFraction={0.35}>
+      <DragProvider snapRadiusFraction={0.5}>
         <ThemeProvider>
-          {/* Zone 1: x: 0-100, inflated to -35-135, center = 50 */}
+          {/* Zone A: x:0-100, inflated x:-50–150, center=(50,50). distSq=(105-50)²=3025 */}
           <DropZoneRegistrar
             id="zone-near"
             bounds={{ x: 0, y: 0, width: 100, height: 100 }}
             onDrop={onDropNear}
           />
-          {/* Zone 2: x: 200-300, inflated to 165-335, center = 250 */}
+          {/* Zone B: x:120-220, inflated x:70–270, center=(170,50). distSq=(105-170)²=4225 */}
           <DropZoneRegistrar
             id="zone-far"
-            bounds={{ x: 200, y: 0, width: 100, height: 100 }}
+            bounds={{ x: 120, y: 0, width: 100, height: 100 }}
             onDrop={onDropFar}
           />
           <StartEndTrigger />
@@ -370,13 +370,12 @@ describe("DragContext", () => {
       </DragProvider>
     );
 
-    await fireEvent.press(getByLabelText("start-overlap"));
-    await fireEvent.press(getByLabelText("end-overlap"));
-    // Point at (140, 50): zone-near inflated bounds -35 to 135 (does NOT contain 140)
-    // zone-far inflated bounds 165 to 335 (does NOT contain 140)
-    // Both zones would miss, so neither drops. Let me adjust the test to make overlapping inflated bounds.
+    await fireEvent.press(getByLabelText("start-nearest"));
+    await fireEvent.press(getByLabelText("end-nearest"));
+    // (105, 50) is in both inflated bounds but neither original bound.
+    // zone-near center (50,50) is closer than zone-far center (170,50) → zone-near wins.
+    expect(onDropNear).toHaveBeenCalledTimes(1);
     expect(onDropFar).not.toHaveBeenCalled();
-    expect(onDropNear).not.toHaveBeenCalled();
   });
 
   it("when inflated bounds overlap, picks the one with nearest original bounds center", async () => {
