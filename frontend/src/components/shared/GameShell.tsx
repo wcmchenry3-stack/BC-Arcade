@@ -1,7 +1,7 @@
 import React from "react";
 import { View, ActivityIndicator, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
 import { useTheme } from "../../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT, AppHeaderProps } from "./AppHeader";
 
@@ -47,7 +47,7 @@ export function GameShell({
 }: GameShellProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = useSafeBottomTabBarHeight();
 
   if (loading) {
     return (
