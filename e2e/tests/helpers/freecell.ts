@@ -1,10 +1,9 @@
 import { Page } from "@playwright/test";
 
-const API_BASE = "http://localhost:8000";
 const STORAGE_KEY = "freecell_game";
 
 export async function mockFreecellApi(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/freecell/**`, async (route) => {
+  await page.route("**/freecell/**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

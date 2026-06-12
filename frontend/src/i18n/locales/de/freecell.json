@@ -28,5 +28,7 @@
   "win.nameLabel": "Dein Name",
   "win.nameHint": "Gib deinen Namen ein, um deine Punktzahl auf der Bestenliste zu speichern",
   "win.rank": "Gespeichert! #{{rank}}",
-  "error.submitFailed": "Submission fehlgeschlagen — versuchen Sie es erneut"
+  "win.rankUnranked": "Punkte eingereicht!",
+  "error.submitFailed": "Submission fehlgeschlagen — versuchen Sie es erneut",
+  "error.submitRetry": "Erneut versuchen"
 }

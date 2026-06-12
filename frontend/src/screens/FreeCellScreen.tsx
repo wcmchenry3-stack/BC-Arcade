@@ -63,12 +63,7 @@ export default function FreeCellScreen() {
 
   const [state, setState] = useState<FreeCellState | null>(null);
   const [loading, setLoading] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [stats, setStats] = useState<FreeCellStats>({
-    bestMoves: 0,
-    gamesPlayed: 0,
-    gamesWon: 0,
-  });
+  const statsRef = useRef<FreeCellStats>({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
 
   const hasLoadedRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -129,7 +124,14 @@ export default function FreeCellScreen() {
       setState(initial);
       // Suppress re-counting a win when resuming an already-won game.
       if (saved?.isComplete) winRecordedRef.current = true;
-      setStats(savedStats);
+      if (!saved) {
+        // First deal (not a resume) — count as a game started.
+        const withPlay = { ...savedStats, gamesPlayed: savedStats.gamesPlayed + 1 };
+        statsRef.current = withPlay;
+        saveStats(withPlay).catch(() => {});
+      } else {
+        statsRef.current = savedStats;
+      }
       setLoading(false);
       startAutoComplete(initial);
     });
@@ -181,16 +183,15 @@ export default function FreeCellScreen() {
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
         const finalMoves = state.moveCount;
-        setStats((prev) => {
-          const updated: FreeCellStats = {
-            ...prev,
-            gamesWon: prev.gamesWon + 1,
-            bestMoves:
-              prev.bestMoves === 0 || finalMoves < prev.bestMoves ? finalMoves : prev.bestMoves,
-          };
-          saveStats(updated);
-          return updated;
-        });
+        const curr = statsRef.current;
+        const updated: FreeCellStats = {
+          ...curr,
+          gamesWon: curr.gamesWon + 1,
+          bestMoves:
+            curr.bestMoves === 0 || finalMoves < curr.bestMoves ? finalMoves : curr.bestMoves,
+        };
+        statsRef.current = updated;
+        saveStats(updated).catch(() => {});
       }
     }
     prevCompleteRef.current = state.isComplete;
@@ -225,11 +226,9 @@ export default function FreeCellScreen() {
   const handleNewGame = useCallback(() => {
     clearGame().catch(() => {});
     setState(dealGame());
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated);
-      return updated;
-    });
+    const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
+    statsRef.current = updated;
+    saveStats(updated).catch(() => {});
     winRecordedRef.current = false;
   }, []);
 
@@ -486,7 +485,9 @@ function WinModal({
               style={[styles.winSaved, { color: colors.bonus }]}
               accessibilityLiveRegion="polite"
             >
-              {t("freecell:win.rank", { rank: submitted.rank })}
+              {submitted.rank <= 10
+                ? t("freecell:win.rank", { rank: submitted.rank })
+                : t("freecell:win.rankUnranked")}
             </Text>
           )}
 

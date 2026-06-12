@@ -28,5 +28,7 @@
   "win.nameLabel": "Your name",
   "win.nameHint": "Enter your name to submit to the leaderboard",
   "win.rank": "Saved! #{{rank}}",
-  "error.submitFailed": "Submission failed — try again"
+  "error.submitFailed": "Submission failed — try again",
+  "win.rankUnranked": "Score submitted!",
+  "error.submitRetry": "Try Again"
 }
