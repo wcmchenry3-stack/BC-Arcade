@@ -83,7 +83,10 @@ test.describe("Solitaire — hint button", () => {
 
     const hintButton = page.getByRole("button", { name: "Hint" });
     await expect(hintButton).toBeVisible();
-    await expect(hintButton).toHaveAttribute("testid", "solitaire-hint-button");
+    await expect(hintButton).toHaveAttribute(
+      "data-testid",
+      "solitaire-hint-button",
+    );
   });
 
   test("tapping hint button shows a hint highlight and decreases score by 20", async ({
