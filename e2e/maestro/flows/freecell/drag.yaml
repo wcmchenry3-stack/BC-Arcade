@@ -27,3 +27,20 @@ appId: com.buffingchi.games
     id: "freecell-slot-0"
     timeout: 2000
 - takeScreenshot: freecell-drag
+# Near-miss snap radius test: drag from column 1 top to a position offset from
+# freecell slot 1, ~30% outside its bounds. The snap radius (default 0.35)
+# should accept the drop even though the finger lands outside the exact bounds.
+- swipe:
+    from:
+      id: "freecell-col-1-top"
+    to:
+      id: "freecell-slot-1"
+    duration: 600
+    offsetEnd:
+      x: 30
+      y: 20
+# Confirm the board accepted the near-miss drop.
+- assertVisible:
+    id: "freecell-slot-1"
+    timeout: 2000
+- takeScreenshot: freecell-drag-snap-radius

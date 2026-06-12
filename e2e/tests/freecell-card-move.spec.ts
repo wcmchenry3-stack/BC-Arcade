@@ -12,10 +12,7 @@ import { mockFreecellApi, injectFreecellState } from "./helpers/freecell";
 // One card (5♥) in tableau column 0; free cells and foundations empty.
 const CARD_MOVE_STATE = {
   _v: 1,
-  tableau: [
-    [{ suit: "hearts", rank: 5 }],
-    [], [], [], [], [], [], [],
-  ],
+  tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
   freeCells: [null, null, null, null],
   foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
   undoStack: [],
@@ -34,7 +31,9 @@ test("tap tableau card then tap free cell: card moves and counter increments", a
     .getByRole("heading", { name: "FreeCell", exact: true })
     .waitFor({ timeout: 10_000 });
 
-  await expect(page.getByLabel("FreeCell board").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
+    timeout: 5_000,
+  });
 
   // Tap 5♥ in the tableau to select it.
   await page.getByLabel("5 of Hearts").click();
@@ -43,5 +42,43 @@ test("tap tableau card then tap free cell: card moves and counter increments", a
   await page.getByLabel("Empty free cell 1").click();
 
   // Move counter increments to 1.
+  await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
+});
+
+test("freecell drag: near-miss drop accepted by snap radius (5♥ ~30% outside empty free cell)", async ({
+  page,
+}) => {
+  const STATE = {
+    _v: 1,
+    tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
+    freeCells: [null, null, null, null],
+    foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+    undoStack: [],
+    isComplete: false,
+    moveCount: 0,
+  };
+
+  await mockFreecellApi(page);
+  await injectFreecellState(page, STATE);
+
+  await page.getByRole("button", { name: "Play FreeCell" }).click();
+  await page
+    .getByRole("heading", { name: "FreeCell", exact: true })
+    .waitFor({ timeout: 10_000 });
+
+  await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
+    timeout: 5_000,
+  });
+
+  // Tap 5♥ in the tableau to select it.
+  await page.getByLabel("5 of Hearts").click();
+
+  // Tap ~30% outside the empty free cell slot 1 bounds to test snap radius accepts the drop.
+  // Free cells are typically compact (60px); drop ~20px outside (30% of width).
+  await page
+    .getByLabel("Empty free cell 1")
+    .click({ position: { x: 80, y: 20 } });
+
+  // Move counter increments to 1, confirming the snap-radius accept.
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });
