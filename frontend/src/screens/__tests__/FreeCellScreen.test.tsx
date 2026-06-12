@@ -38,6 +38,8 @@ jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
+  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 }),
+  saveStats: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { loadGame } from "../../game/freecell/storage";
