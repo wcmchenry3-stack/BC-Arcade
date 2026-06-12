@@ -12,7 +12,8 @@
  */
 
 import { AiDifficulty, GameState } from "./types";
-import { CATEGORIES, UPPER_CATEGORIES, Category, calculateScore, possibleScores } from "./engine";
+import { UPPER_CATEGORIES, Category, possibleScores } from "./engine";
+import { maxImmediateScore } from "./aiHelpers";
 
 // ─── Local maps ──────────────────────────────────────────────────────────────
 
@@ -127,34 +128,13 @@ function longestRunFaces(dice: readonly number[], minLength: number): Set<number
 // ─── Expected-value helpers (used by Hard hold strategy) ─────────────────────
 
 /**
- * Returns the maximum immediate score available for `dice` across all open
- * categories. This is what the AI would get if it stopped rolling now.
- *
- * Upper-section scores that would push the running subtotal to ≥ 63 receive a
- * +35 bonus credit so the EV calculation correctly values those outcomes.
- */
-function maxImmediateScore(
-  dice: readonly number[],
-  scores: GameState["scores"],
-  curUpperSubtotal: number
-): number {
-  let best = 0;
-  for (const cat of CATEGORIES) {
-    if (isOpen(scores, cat)) {
-      const s = calculateScore(cat, dice);
-      const bonusCredit =
-        UPPER_FACE[cat] !== undefined && s > 0 && curUpperSubtotal + s >= 63 ? 35 : 0;
-      if (s + bonusCredit > best) best = s + bonusCredit;
-    }
-  }
-  return best;
-}
-
-/**
  * Expected score when `keptIndices` dice are held and the rest are rerolled once.
  * Enumerates all 6^(free) outcomes — tractable when free ≤ 5.
+ *
+ * Exported for parity testing against the precomputed probability tables in
+ * probTables.ts (GH #2025, story A1).  Do NOT use outside of tests/probTables.
  */
-function evForHold(
+export function evForHold(
   dice: readonly number[],
   keptIndices: readonly number[],
   scores: GameState["scores"]
