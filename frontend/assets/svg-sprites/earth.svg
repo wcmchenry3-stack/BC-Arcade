@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="body" cx="37%" cy="30%" r="68%" fx="37%" fy="30%">
+      <stop offset="0%"   stop-color="#bfdbfe"/>
+      <stop offset="35%"  stop-color="#60a5fa"/>
+      <stop offset="75%"  stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.32)"/>
+    </radialGradient>
+    <radialGradient id="s1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.90)"/>
+      <stop offset="60%"  stop-color="rgba(255,255,255,0.30)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <radialGradient id="s2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.70)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <clipPath id="clip"><circle cx="256" cy="256" r="210"/></clipPath>
+  </defs>
+
+  <circle cx="256" cy="256" r="210" fill="url(#body)"/>
+  <circle cx="256" cy="256" r="210" fill="url(#rim)"/>
+
+  <ellipse cx="183" cy="168" rx="66" ry="46" transform="rotate(-28 183 168)" fill="url(#s1)"/>
+  <ellipse cx="160" cy="192" rx="22" ry="14" transform="rotate(-28 160 192)" fill="url(#s2)" opacity="0.65"/>
+
+  <!-- continent blobs (clipped) -->
+  <g clip-path="url(#clip)">
+    <!-- Americas -->
+    <path d="M 148 130 C 130 160 118 220 124 280 C 130 340 150 380 164 360
+             C 178 340 190 300 186 260 C 182 220 170 170 148 130 Z"
+          fill="rgba(34,197,94,0.60)"/>
+    <!-- Eurasia/Africa -->
+    <path d="M 260 120 C 300 110 360 120 380 160 C 400 200 390 250 370 280
+             C 350 310 320 320 300 300 C 280 280 270 250 260 220
+             C 250 190 240 150 260 120 Z"
+          fill="rgba(34,197,94,0.55)"/>
+    <path d="M 290 310 C 310 300 330 320 326 370 C 322 420 296 440 278 420
+             C 260 400 266 360 290 310 Z"
+          fill="rgba(34,197,94,0.55)"/>
+    <!-- white cloud wisps -->
+    <path d="M 46 220 Q 140 200 200 222 Q 260 244 300 220"
+          stroke="rgba(255,255,255,0.50)" stroke-width="20" fill="none"/>
+    <path d="M 200 350 Q 300 330 380 354"
+          stroke="rgba(255,255,255,0.45)" stroke-width="16" fill="none"/>
+  </g>
+  <path d="M 194 282 Q 210 268 226 282" stroke="#1e3a8a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M 286 282 Q 302 268 318 282" stroke="#1e3a8a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M 220 318 Q 256 346 292 318" stroke="#1e3a8a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <ellipse cx="185" cy="308" rx="24" ry="15" fill="rgba(255,130,130,0.38)"/>
+  <ellipse cx="327" cy="308" rx="24" ry="15" fill="rgba(255,130,130,0.38)"/>
+
+</svg>

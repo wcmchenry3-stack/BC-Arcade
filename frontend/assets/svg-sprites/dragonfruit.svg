@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="bc"><circle cx="256" cy="256" r="210"/></clipPath>
+    <pattern id="scales" x="4" y="4" width="92" height="56" patternUnits="userSpaceOnUse">
+    <path d="M -13,28 A 36,36 0 0,1 59,28 Z" fill="#22c55e"/>
+    <path d="M 2,19 A 21,21 0 0,1 44,19 Z" fill="#bbf7d0" opacity="0.58"/>
+    <path d="M 33,28 A 36,36 0 0,1 105,28 Z" fill="#22c55e"/>
+    <path d="M 48,19 A 21,21 0 0,1 90,19 Z" fill="#bbf7d0" opacity="0.58"/>
+    <path d="M 10,56 A 36,36 0 0,1 82,56 Z" fill="#22c55e"/>
+    <path d="M 25,47 A 21,21 0 0,1 67,47 Z" fill="#bbf7d0" opacity="0.58"/>
+    </pattern>
+    <radialGradient id="face" cx="38%" cy="32%" r="65%" fx="38%" fy="32%">
+      <stop offset="0%"   stop-color="#fde8ef"/>
+      <stop offset="30%"  stop-color="#ec4899"/>
+      <stop offset="70%"  stop-color="#c2185b"/>
+      <stop offset="100%" stop-color="#880e4f"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="65%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.30)"/>
+    </radialGradient>
+    <radialGradient id="depth" cx="42%" cy="35%" r="62%" fx="42%" fy="35%">
+      <stop offset="0%"   stop-color="rgba(80,200,80,0.25)"/>
+      <stop offset="60%"  stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.28)"/>
+    </radialGradient>
+    <radialGradient id="s1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.82)"/>
+      <stop offset="50%"  stop-color="rgba(255,255,255,0.18)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark-green base -->
+  <circle cx="256" cy="256" r="210" fill="#166534"/>
+
+  <!-- Fish-scale pattern (one SVG pattern tile, clipped) -->
+  <rect x="0" y="0" width="512" height="512" fill="url(#scales)" clip-path="url(#bc)"/>
+
+  <!-- Sphere depth/rim shading over scales -->
+  <circle cx="256" cy="256" r="210" fill="url(#depth)"/>
+  <circle cx="256" cy="256" r="210" fill="url(#rim)"/>
+
+  <!-- Crown leaves -->
+  <path d="M 266,125 C 250,99 165,45 144,38 Q 127,49 110,60 C 106,81 118,182 134,207 Z" fill="#16a34a"/>
+  <path d="M 227,145 C 211,120 148,55 133,45 Q 127,49 120,53 C 123,71 153,156 169,181 Z" fill="#bbf7d0" opacity="0.68"/>
+  <path d="M 309,135 C 300,103 227,21 208,8 Q 187,14 165,20 C 156,41 138,149 147,181 Z" fill="#16a34a"/>
+  <path d="M 261,144 C 253,113 207,26 195,11 Q 187,14 178,16 C 176,35 183,133 192,164 Z" fill="#bbf7d0" opacity="0.68"/>
+  <path d="M 343,156 C 343,121 294,17 279,-2 Q 256,-2 233,-2 C 218,17 169,121 169,156 Z" fill="#16a34a"/>
+  <path d="M 294,152 C 294,118 273,16 266,-2 Q 256,-2 246,-2 C 239,16 218,118 218,152 Z" fill="#bbf7d0" opacity="0.68"/>
+  <path d="M 365,181 C 374,149 356,41 347,20 Q 325,14 304,8 C 285,21 212,103 203,135 Z" fill="#16a34a"/>
+  <path d="M 320,164 C 329,133 336,35 334,16 Q 325,14 317,11 C 305,26 259,113 251,144 Z" fill="#bbf7d0" opacity="0.68"/>
+  <path d="M 378,207 C 394,182 406,81 402,60 Q 385,49 368,38 C 347,45 262,99 246,125 Z" fill="#16a34a"/>
+  <path d="M 343,181 C 359,156 389,71 392,53 Q 385,49 379,45 C 364,55 301,120 285,145 Z" fill="#bbf7d0" opacity="0.68"/>
+
+  <!-- Pink face oval -->
+  <ellipse cx="256" cy="294" rx="78" ry="80" fill="url(#face)"/>
+  <ellipse cx="256" cy="294" rx="78" ry="80" fill="url(#rim)"/>
+
+  <!-- Body specular -->
+  <ellipse cx="192" cy="192" rx="50" ry="34"
+           transform="rotate(-28 192 192)" fill="url(#s1)"/>
+
+  <!-- Face -->
+  <circle cx="216" cy="280" r="20" fill="#4a0026"/>
+  <circle cx="222" cy="272" r="7"  fill="white"/>
+  <circle cx="296" cy="280" r="20" fill="#4a0026"/>
+  <circle cx="302" cy="272" r="7"  fill="white"/>
+  <path d="M 224 312 Q 256 338 288 312"
+        stroke="#4a0026" stroke-width="8"
+        fill="none" stroke-linecap="round"/>
+</svg>
