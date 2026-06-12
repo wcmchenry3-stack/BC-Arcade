@@ -178,9 +178,13 @@ function Waste({
     suit: t(`suit.${top.suit}` as const),
   });
 
+  const hintStyle = hintSource
+    ? { borderColor: colors.bonus, borderWidth: 3, borderRadius: 8 }
+    : undefined;
+
   if (drawMode !== 3) {
     return (
-      <View style={hintSource ? { borderColor: colors.bonus, borderWidth: 3, borderRadius: 8 } : undefined}>
+      <View style={hintStyle}>
         <DraggableCard
           testID="solitaire-waste-top"
           onTap={onPress}

@@ -143,12 +143,8 @@ export default function TableauPile({
     return (
       <DraggableCard
         key={cardIndex}
-        testID={`draggable-card-${cardIndex}`}
-        style={[
-          styles.cardSlot,
-          { top: offsets[cardIndex] ?? 0 },
-          isHintSource && hintStyle,
-        ]}
+        testID={isHintSource ? "solitaire-hint-source" : `draggable-card-${cardIndex}`}
+        style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }, isHintSource && hintStyle]}
         onTap={handlePress}
         dragCards={dragCards}
         dragSource={{ game: "solitaire", type: "tableau", col: colIndex, fromIndex: cardIndex }}

@@ -549,7 +549,6 @@ export default function SolitaireScreen() {
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
-    if (getHintMoves(state).length === 0) return;
     setState(applyHint(state));
   }, [state, autoCompleting]);
 
@@ -596,7 +595,9 @@ export default function SolitaireScreen() {
   }, []);
 
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
-  const hintDisabled = state === null || state.isComplete || autoCompleting;
+  const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
+  const hintDisabled =
+    state === null || state.isComplete || autoCompleting || hintMoves.length === 0;
   const showAutoComplete = state !== null && !state.isComplete && canAutoComplete(state);
   const cardSize = useResponsiveCardSize(
     CARD_WIDTH,
@@ -644,16 +645,10 @@ export default function SolitaireScreen() {
   }, [selection, state, t]);
 
   const hint = state?.hint;
-  const hintSourceIndex = useMemo((): number | undefined => {
+  const hintSourceCol = useMemo((): number | undefined => {
     if (!hint) return undefined;
-    if (hint.type === "waste-to-tableau" || hint.type === "waste-to-foundation") {
-      return undefined; // hint source is the waste pile itself
-    }
     if (hint.type === "tableau-to-tableau" || hint.type === "tableau-to-foundation") {
       return hint.fromCol;
-    }
-    if (hint.type === "foundation-to-tableau") {
-      return undefined; // hint source is a foundation, not a tableau
     }
     return undefined;
   }, [hint]);
@@ -672,7 +667,11 @@ export default function SolitaireScreen() {
 
   const hintDestTableauCol = useMemo((): number | undefined => {
     if (!hint) return undefined;
-    if (hint.type === "tableau-to-tableau" || hint.type === "waste-to-tableau" || hint.type === "foundation-to-tableau") {
+    if (
+      hint.type === "tableau-to-tableau" ||
+      hint.type === "waste-to-tableau" ||
+      hint.type === "foundation-to-tableau"
+    ) {
       return hint.toCol;
     }
     return undefined;
@@ -689,11 +688,14 @@ export default function SolitaireScreen() {
       const card = col?.[col.length - 1];
       return card?.suit;
     }
-    if (hint.type === "foundation-to-tableau") {
-      return hint.fromSuit;
-    }
     return undefined;
   }, [hint, state]);
+
+  const hintSourceFoundationSuit = useMemo((): string | undefined => {
+    if (!hint) return undefined;
+    if (hint.type === "foundation-to-tableau") return hint.fromSuit;
+    return undefined;
+  }, [hint]);
 
   const hintSourceIsWaste = useMemo((): boolean => {
     if (!hint) return false;
@@ -795,6 +797,7 @@ export default function SolitaireScreen() {
                           suit={suit}
                           selected={selection?.kind === "foundation" && selection.suit === suit}
                           hintDestination={hintDestSuit === suit}
+                          hintSource={hintSourceFoundationSuit === suit}
                           shakeX={
                             selection?.kind === "foundation" && selection.suit === suit
                               ? shakeX
@@ -825,7 +828,7 @@ export default function SolitaireScreen() {
                       pile={pile}
                       colIndex={col}
                       selectedIndex={tableauSelection(col)}
-                      hintIndex={hintSourceIndex === col ? hintSourceCardIndex : undefined}
+                      hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
                       hintDestination={hintDestTableauCol === col}
                       shakeX={
                         selection?.kind === "tableau" && selection.col === col ? shakeX : undefined

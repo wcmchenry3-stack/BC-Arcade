@@ -32,6 +32,7 @@ export interface FoundationPileProps {
   readonly suit: Suit;
   readonly selected?: boolean;
   readonly hintDestination?: boolean;
+  readonly hintSource?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onPress?: (suit: Suit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades". */
@@ -44,6 +45,7 @@ export default function FoundationPile({
   suit,
   selected = false,
   hintDestination = false,
+  hintSource = false,
   shakeX,
   onPress,
   dropId,
@@ -68,7 +70,7 @@ export default function FoundationPile({
           ? t("card.faceUpSelected", { rank: rl, suit: suitName })
           : t("card.faceUp", { rank: rl, suit: suitName });
         return (
-          <View style={hintDestination ? hintStyle : undefined}>
+          <View style={hintDestination || hintSource ? hintStyle : undefined}>
             <SelectableCard
               suit={top.suit as CanonicalSuit}
               rank={top.rank}
@@ -90,8 +92,9 @@ export default function FoundationPile({
       {
         width: cardWidth,
         height: cardHeight,
-        borderColor: hintDestination ? colors.bonus : selected ? colors.accent : colors.border,
-        borderWidth: hintDestination ? 3 : selected ? 2 : 1,
+        borderColor:
+          hintDestination || hintSource ? colors.bonus : selected ? colors.accent : colors.border,
+        borderWidth: hintDestination || hintSource ? 3 : selected ? 2 : 1,
         backgroundColor: colors.background,
       },
     ];

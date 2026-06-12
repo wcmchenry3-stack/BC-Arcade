@@ -28,13 +28,13 @@ function stockCards(excluded: string[]) {
 
 test.describe("Solitaire — hint button", () => {
   // Board:
-  //   col 0: [3♥(fu)]  — source card for hint (can move to foundation)
-  //   col 1: [A♠(fu)]  — aces start foundations
-  //   col 2: [2♠(fu)]  — in place for tableau-to-foundation move
+  //   col 0: [3♥(fu)]  — occupied column (cannot move to foundation; A♥/2♥ not yet there)
+  //   col 1: [A♠(fu)]  — first hint source: A♠ → spades foundation
+  //   col 2: [2♠(fu)]  — in place for tableau-to-foundation once A♠ is placed
   //   col 3: [K♣(fu)]  — destination for possible tableau moves
   //   col 4: [Q♦(fu)]  — another available card
-  //   col 5: [2♥(fu)]  — will move to hearts foundation
-  //   col 6: [2♦(fu)]  — will move to diamonds foundation
+  //   col 5: [2♥(fu)]  — will move to hearts foundation after A♥ is placed
+  //   col 6: [2♦(fu)]  — will move to diamonds foundation after A♦ is placed
   const BOARD_STATE_WITH_HINT = {
     _v: 1,
     drawMode: 1,
@@ -109,15 +109,11 @@ test.describe("Solitaire — hint button", () => {
     // Score should decrease by 20.
     await expect(page.getByText("Score: 80")).toBeVisible({ timeout: 3_000 });
 
-    // A hint highlight (3px bonus-colored border) should appear on the source
-    // or destination card. The exact card depends on the hint move chosen;
-    // we verify that at least one card has gained a visual highlight by
-    // checking for a card with the bonus color border.
-    // NOTE: In the real DOM, this would be a computed style check, but
-    // Playwright's web testing captures the visual highlight indirectly.
-    // Instead, we verify the hint was applied by checking the board is
-    // still interactive and the score changed.
-    await expect(page.getByLabel("Solitaire board")).toBeVisible();
+    // The source card for the hint move gets testID="solitaire-hint-source",
+    // so we can assert the highlight element is in the DOM and visible.
+    await expect(page.getByTestId("solitaire-hint-source")).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   test("score does not go below 0 when hint is applied with low score", async ({
