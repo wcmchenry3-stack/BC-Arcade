@@ -5,6 +5,8 @@
   "action.undo": "Undo",
   "action.hint": "Hint",
   "action.newGame": "New Game",
+  "action.submitScore": "Submit Score",
+  "action.goHome": "Go Home",
   "noMoves.message": "No moves left — undo to continue?",
   "suit.spades": "Spades",
   "suit.hearts": "Hearts",
@@ -26,9 +28,7 @@
   "win.nameLabel": "Your name",
   "win.nameHint": "Enter your name to submit to the leaderboard",
   "win.rank": "Saved! #{{rank}}",
-  "win.rankUnranked": "Score submitted!",
-  "action.submitScore": "Submit Score",
-  "action.goHome": "Go Home",
   "error.submitFailed": "Submission failed — try again",
+  "win.rankUnranked": "Score submitted!",
   "error.submitRetry": "Try Again"
 }

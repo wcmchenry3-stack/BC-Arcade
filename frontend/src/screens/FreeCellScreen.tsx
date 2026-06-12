@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -23,16 +33,27 @@ import {
   autoComplete,
 } from "../game/freecell/engine";
 import type { FreeCellState, Move } from "../game/freecell/types";
-import { clearGame, loadGame, saveGame } from "../game/freecell/storage";
+import {
+  clearGame,
+  loadGame,
+  saveGame,
+  loadStats,
+  saveStats,
+  type FreeCellStats,
+} from "../game/freecell/storage";
+import { freecellApi, type ScoreEntry } from "../game/freecell/api";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
+import { useNetwork } from "../game/_shared/NetworkContext";
+import { OfflineBanner } from "../components/shared/OfflineBanner";
 
 const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
+const MAX_NAME_LENGTH = 32;
 
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
@@ -42,12 +63,16 @@ export default function FreeCellScreen() {
 
   const [state, setState] = useState<FreeCellState | null>(null);
   const [loading, setLoading] = useState(true);
+  const statsRef = useRef<FreeCellStats>({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
 
   const hasLoadedRef = useRef(false);
   const isMountedRef = useRef(true);
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompleting, setAutoCompleting] = useState(false);
+  /** Guards against double-counting a win within a single game session. */
+  const winRecordedRef = useRef(false);
+  const prevCompleteRef = useRef(false);
 
   const [showFoundation, setShowFoundation] = useState(false);
   const [showGameWin, setShowGameWin] = useState(false);
@@ -89,14 +114,24 @@ export default function FreeCellScreen() {
     };
   }, []);
 
-  // Mount: resume saved game or deal fresh
+  // Mount: resume saved game or deal fresh, load stats
   useEffect(() => {
     let alive = true;
-    loadGame().then((saved) => {
+    Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
       if (!alive) return;
       hasLoadedRef.current = true;
       const initial = saved ?? dealGame();
       setState(initial);
+      // Suppress re-counting a win when resuming an already-won game.
+      if (saved?.isComplete) winRecordedRef.current = true;
+      if (!saved) {
+        // First deal (not a resume) — count as a game started.
+        const withPlay = { ...savedStats, gamesPlayed: savedStats.gamesPlayed + 1 };
+        statsRef.current = withPlay;
+        saveStats(withPlay).catch(() => {});
+      } else {
+        statsRef.current = savedStats;
+      }
       setLoading(false);
       startAutoComplete(initial);
     });
@@ -137,6 +172,31 @@ export default function FreeCellScreen() {
     () => setState((prev) => (prev === null ? null : { ...prev, events: [] }))
   );
 
+  // Handle win: update stats and clear saved game
+  useEffect(() => {
+    if (state === null) {
+      prevCompleteRef.current = false;
+      return;
+    }
+    if (state.isComplete && !prevCompleteRef.current) {
+      clearGame().catch(() => {});
+      if (!winRecordedRef.current) {
+        winRecordedRef.current = true;
+        const finalMoves = state.moveCount;
+        const curr = statsRef.current;
+        const updated: FreeCellStats = {
+          ...curr,
+          gamesWon: curr.gamesWon + 1,
+          bestMoves:
+            curr.bestMoves === 0 || finalMoves < curr.bestMoves ? finalMoves : curr.bestMoves,
+        };
+        statsRef.current = updated;
+        saveStats(updated).catch(() => {});
+      }
+    }
+    prevCompleteRef.current = state.isComplete;
+  }, [state]);
+
   const handleMove = useCallback(
     (move: Move) => {
       if (state === null || autoCompletingRef.current) return;
@@ -166,6 +226,10 @@ export default function FreeCellScreen() {
   const handleNewGame = useCallback(() => {
     clearGame().catch(() => {});
     setState(dealGame());
+    const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
+    statsRef.current = updated;
+    saveStats(updated).catch(() => {});
+    winRecordedRef.current = false;
   }, []);
 
   const undoDisabled =
@@ -300,7 +364,7 @@ export default function FreeCellScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Win modal
+// Win modal — name entry + score POST with retry
 // ---------------------------------------------------------------------------
 
 function WinModal({
@@ -314,6 +378,14 @@ function WinModal({
 }) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
+  const { isOnline, isInitialized } = useNetwork();
+
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState<ScoreEntry | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const offline = isInitialized && !isOnline;
 
   const gradient: ViewStyle =
     Platform.OS === "web"
@@ -321,6 +393,25 @@ function WinModal({
           backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
         } as ViewStyle)
       : { backgroundColor: colors.accentBright };
+
+  const trimmed = name.trim();
+  const canSubmit = !submitting && !offline && trimmed.length > 0;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const entry = await freecellApi.submitScore(trimmed, moves);
+      setSubmitted(entry);
+    } catch {
+      setError(t("freecell:error.submitFailed"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const submitLabel = error ? t("freecell:error.submitRetry") : t("freecell:action.submitScore");
 
   return (
     <Modal visible transparent animationType="fade" accessibilityViewIsModal>
@@ -338,14 +429,77 @@ function WinModal({
             {t("win.moves", { moves })}
           </Text>
 
+          {submitted === null ? (
+            <>
+              <TextInput
+                style={[
+                  styles.nameInput,
+                  {
+                    backgroundColor: colors.surfaceAlt,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                placeholder={t("freecell:win.namePlaceholder")}
+                placeholderTextColor={colors.textMuted}
+                value={name}
+                onChangeText={setName}
+                maxLength={MAX_NAME_LENGTH}
+                editable={!submitting}
+                accessibilityLabel={t("freecell:win.nameLabel")}
+                accessibilityHint={t("freecell:win.nameHint")}
+              />
+              {offline ? (
+                <OfflineBanner />
+              ) : (
+                error !== null && (
+                  <Text
+                    style={[styles.winError, { color: colors.error }]}
+                    accessibilityLiveRegion="assertive"
+                    accessibilityRole="alert"
+                  >
+                    {error}
+                  </Text>
+                )
+              )}
+              <Pressable
+                style={[styles.modalPrimary, gradient, !canSubmit && styles.modalPrimaryDisabled]}
+                onPress={handleSubmit}
+                disabled={!canSubmit}
+                accessibilityRole="button"
+                accessibilityLabel={submitLabel}
+                accessibilityState={{ disabled: !canSubmit, busy: submitting }}
+                testID="freecell-submit-score-button"
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textOnAccent} />
+                ) : (
+                  <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
+                    {submitLabel}
+                  </Text>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <Text
+              style={[styles.winSaved, { color: colors.bonus }]}
+              accessibilityLiveRegion="polite"
+            >
+              {submitted.rank <= 10
+                ? t("freecell:win.rank", { rank: submitted.rank })
+                : t("freecell:win.rankUnranked")}
+            </Text>
+          )}
+
           <Pressable
-            style={[styles.modalPrimary, gradient]}
+            style={[styles.modalSecondary, { borderColor: colors.accent }]}
             onPress={onNewGame}
             accessibilityRole="button"
-            accessibilityLabel={t("win.newGame")}
+            accessibilityLabel={t("freecell:action.newGame")}
+            testID="freecell-new-game-button"
           >
-            <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-              {t("win.newGame")}
+            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
+              {t("freecell:action.newGame")}
             </Text>
           </Pressable>
 
@@ -353,10 +507,10 @@ function WinModal({
             style={[styles.modalSecondary, { borderColor: colors.accent }]}
             onPress={onGoHome}
             accessibilityRole="button"
-            accessibilityLabel={t("win.goHome")}
+            accessibilityLabel={t("freecell:action.goHome")}
           >
             <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("win.goHome")}
+              {t("freecell:action.goHome")}
             </Text>
           </Pressable>
         </View>
@@ -488,5 +642,27 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  nameInput: {
+    width: "100%",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  modalPrimaryDisabled: {
+    opacity: 0.5,
+  },
+  winError: {
+    fontSize: 13,
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  winSaved: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
   },
 });
