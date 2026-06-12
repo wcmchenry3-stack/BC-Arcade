@@ -9,6 +9,7 @@
   "score.label": "النقاط: {{score}}",
   "score.moves": "الحركات: {{moves}}",
   "action.undo": "تراجع",
+  "action.hint": "تلميح",
   "action.autoComplete": "إكمال تلقائي",
   "action.newGame": "لعبة جديدة",
   "action.submitScore": "أرسل النقاط",

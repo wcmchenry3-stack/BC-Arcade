@@ -9,6 +9,7 @@
   "score.label": "Punkte: {{score}}",
   "score.moves": "Züge: {{moves}}",
   "action.undo": "Rückgängig",
+  "action.hint": "Hinweis",
   "action.autoComplete": "Auto-Abschluss",
   "action.newGame": "Neues Spiel",
   "action.submitScore": "Punkte senden",

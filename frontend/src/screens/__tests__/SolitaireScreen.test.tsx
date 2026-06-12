@@ -175,6 +175,44 @@ describe("SolitaireScreen — stock & waste", () => {
   });
 });
 
+describe("SolitaireScreen — hint button", () => {
+  it("renders a Hint button in the header that is disabled on a fresh deal", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    const hint = api.getByLabelText("Hint");
+    expect(hint.props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it("disables Hint after the game is complete", async () => {
+    const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
+    const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+    const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+    const winState = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: {
+        spades: full.filter((c) => c.suit === "spades"),
+        hearts: full.filter((c) => c.suit === "hearts"),
+        diamonds: full.filter((c) => c.suit === "diamonds"),
+        clubs: full.filter((c) => c.suit === "clubs"),
+      },
+      stock: [],
+      waste: [],
+      score: 820,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: true,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
+    const api = await mount();
+    const hint = api.getByLabelText("Hint");
+    expect(hint.props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
 describe("SolitaireScreen — undo affordance", () => {
   it("renders an Undo button in the header that is disabled on a fresh deal", async () => {
     const api = await mount();

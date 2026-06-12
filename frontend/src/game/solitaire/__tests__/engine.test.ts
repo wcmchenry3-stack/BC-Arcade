@@ -884,4 +884,33 @@ describe("applyHint", () => {
     expect(next.undoStack).toEqual(state.undoStack);
     expect(next.undoStack).toHaveLength(0);
   });
+
+  it("applies a 20-point penalty to the score", () => {
+    const state = mkState({
+      score: 100,
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const next = applyHint(state);
+    expect(next.score).toBe(80);
+  });
+
+  it("floors the score at 0 when penalty would go negative", () => {
+    const state = mkState({
+      score: 10,
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const next = applyHint(state);
+    expect(next.score).toBe(0);
+  });
+
+  it("clears hint when a real move is made after applyHint", () => {
+    const state = mkState({
+      tableau: [[c("spades", 1)], [c("hearts", 2)], [], [], [], [], []],
+    });
+    let current = applyHint(state);
+    expect(current.hint).toBeDefined();
+    // Make a move (tableau-to-foundation for the ace)
+    current = applyMove(current, { type: "tableau-to-foundation", fromCol: 0 });
+    expect(current.hint).toBeUndefined();
+  });
 });

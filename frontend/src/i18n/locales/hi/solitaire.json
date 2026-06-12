@@ -9,6 +9,7 @@
   "score.label": "स्कोर: {{score}}",
   "score.moves": "मूव्स: {{moves}}",
   "action.undo": "पूर्ववत",
+  "action.hint": "सुझाव",
   "action.autoComplete": "ऑटो-कंप्लीट",
   "action.newGame": "नया गेम",
   "action.submitScore": "स्कोर सबमिट करें",

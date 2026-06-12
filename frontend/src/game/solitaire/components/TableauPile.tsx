@@ -29,6 +29,8 @@ export interface TableauPileProps {
   readonly pile: readonly Card[];
   readonly colIndex: number;
   readonly selectedIndex?: number;
+  readonly hintIndex?: number;
+  readonly hintDestination?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
@@ -41,6 +43,8 @@ export default function TableauPile({
   pile,
   colIndex,
   selectedIndex,
+  hintIndex,
+  hintDestination,
   shakeX,
   onCardPress,
   onEmptyPress,
@@ -59,6 +63,11 @@ export default function TableauPile({
     borderWidth: 2,
     borderRadius: 8,
   };
+  const hintStyle: ViewStyle = {
+    borderColor: colors.bonus,
+    borderWidth: 3,
+    borderRadius: 8,
+  };
   const dimStyle: ViewStyle = { opacity: 0.4 };
   const hasDrop = dropId !== undefined && onDrop !== undefined;
 
@@ -71,7 +80,8 @@ export default function TableauPile({
           {
             width: cardWidth,
             height: cardHeight,
-            borderColor: colors.border,
+            borderColor: hintDestination ? colors.bonus : colors.border,
+            borderWidth: hintDestination ? 3 : 1,
             backgroundColor: colors.background,
           },
         ]}
@@ -109,6 +119,7 @@ export default function TableauPile({
   const cards = pile.map((card, cardIndex) => {
     const isTop = cardIndex === pile.length - 1;
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
+    const isHintSource = hintIndex !== undefined && cardIndex === hintIndex;
     const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
     const dragCards = pile.slice(cardIndex).map((c) => ({
       suit: c.suit as CanonicalSuit,
@@ -133,7 +144,11 @@ export default function TableauPile({
       <DraggableCard
         key={cardIndex}
         testID={`draggable-card-${cardIndex}`}
-        style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }]}
+        style={[
+          styles.cardSlot,
+          { top: offsets[cardIndex] ?? 0 },
+          isHintSource && hintStyle,
+        ]}
         onTap={handlePress}
         dragCards={dragCards}
         dragSource={{ game: "solitaire", type: "tableau", col: colIndex, fromIndex: cardIndex }}
