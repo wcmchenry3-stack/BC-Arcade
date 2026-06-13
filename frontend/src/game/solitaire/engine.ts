@@ -36,6 +36,7 @@ const SCORE_FOUNDATION_TO_TABLEAU = -15;
 const SCORE_REVEAL = 5;
 const SCORE_RECYCLE_PENALTY = -50;
 const SCORE_WIN_BONUS = 500;
+const HINT_PENALTY = 20;
 
 const UNDO_CAP = 50;
 const TABLEAU_COLUMNS = 7;
@@ -337,7 +338,7 @@ function isWin(foundations: Foundations): boolean {
 
 function finalizeAfterMove(
   prev: SolitaireState,
-  next: Omit<SolitaireState, "undoStack" | "isComplete" | "startedAt" | "accumulatedMs">
+  next: Omit<SolitaireState, "undoStack" | "isComplete" | "startedAt" | "accumulatedMs" | "hint">
 ): SolitaireState {
   const wasComplete = prev.isComplete;
   const nowComplete = isWin(next.foundations);
@@ -360,6 +361,7 @@ function finalizeAfterMove(
       ...next,
       score: finalScore,
       isComplete: nowComplete,
+      hint: undefined,
       events: events.length > 0 ? events : undefined,
     })
   );
@@ -758,5 +760,6 @@ export function getHintMoves(state: SolitaireState): Move[] {
  */
 export function applyHint(state: SolitaireState): SolitaireState {
   const moves = getHintMoves(state);
-  return { ...state, hint: moves[0] };
+  const newScore = Math.max(0, state.score - HINT_PENALTY);
+  return { ...state, hint: moves[0], score: newScore };
 }

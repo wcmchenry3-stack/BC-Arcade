@@ -9,6 +9,7 @@
   "score.label": "分数：{{score}}",
   "score.moves": "步数：{{moves}}",
   "action.undo": "撤销",
+  "action.hint": "提示",
   "action.autoComplete": "自动完成",
   "action.newGame": "新游戏",
   "action.submitScore": "提交分数",

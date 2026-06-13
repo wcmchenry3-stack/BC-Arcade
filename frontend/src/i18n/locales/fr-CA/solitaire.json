@@ -9,6 +9,7 @@
   "score.label": "Score : {{score}}",
   "score.moves": "Coups : {{moves}}",
   "action.undo": "Annuler",
+  "action.hint": "Indice",
   "action.autoComplete": "Auto-Compléter",
   "action.newGame": "Nouvelle Partie",
   "action.submitScore": "Soumettre Score",

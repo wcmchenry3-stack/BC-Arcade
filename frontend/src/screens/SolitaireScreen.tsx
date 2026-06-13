@@ -47,10 +47,12 @@ import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../game/solitaire/components/CardView";
 import {
   applyMove,
+  applyHint,
   autoComplete,
   canAutoComplete,
   dealGame,
   drawFromStock,
+  getHintMoves,
   recycleWaste,
   undo,
   validateMove,
@@ -545,6 +547,11 @@ export default function SolitaireScreen() {
     setMoves((m) => Math.max(0, m - 1));
   }, [state, autoCompleting]);
 
+  const handleHint = useCallback(() => {
+    if (state === null || state.isComplete || autoCompleting) return;
+    setState(applyHint(state));
+  }, [state, autoCompleting]);
+
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
     setAutoCompleting(true);
@@ -588,6 +595,9 @@ export default function SolitaireScreen() {
   }, []);
 
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
+  const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
+  const hintDisabled =
+    state === null || state.isComplete || autoCompleting || hintMoves.length === 0;
   const showAutoComplete = state !== null && !state.isComplete && canAutoComplete(state);
   const cardSize = useResponsiveCardSize(
     CARD_WIDTH,
@@ -634,6 +644,64 @@ export default function SolitaireScreen() {
     });
   }, [selection, state, t]);
 
+  const hint = state?.hint;
+  const hintSourceCol = useMemo((): number | undefined => {
+    if (!hint) return undefined;
+    if (hint.type === "tableau-to-tableau" || hint.type === "tableau-to-foundation") {
+      return hint.fromCol;
+    }
+    return undefined;
+  }, [hint]);
+
+  const hintSourceCardIndex = useMemo((): number | undefined => {
+    if (!hint || !state) return undefined;
+    if (hint.type === "tableau-to-tableau") {
+      return hint.fromIndex;
+    }
+    if (hint.type === "tableau-to-foundation") {
+      const col = state.tableau[hint.fromCol];
+      return col ? col.length - 1 : undefined;
+    }
+    return undefined;
+  }, [hint, state]);
+
+  const hintDestTableauCol = useMemo((): number | undefined => {
+    if (!hint) return undefined;
+    if (
+      hint.type === "tableau-to-tableau" ||
+      hint.type === "waste-to-tableau" ||
+      hint.type === "foundation-to-tableau"
+    ) {
+      return hint.toCol;
+    }
+    return undefined;
+  }, [hint]);
+
+  const hintDestSuit = useMemo((): string | undefined => {
+    if (!hint || !state) return undefined;
+    if (hint.type === "waste-to-foundation") {
+      const card = state.waste[state.waste.length - 1];
+      return card?.suit;
+    }
+    if (hint.type === "tableau-to-foundation") {
+      const col = state.tableau[hint.fromCol];
+      const card = col?.[col.length - 1];
+      return card?.suit;
+    }
+    return undefined;
+  }, [hint, state]);
+
+  const hintSourceFoundationSuit = useMemo((): string | undefined => {
+    if (!hint) return undefined;
+    if (hint.type === "foundation-to-tableau") return hint.fromSuit;
+    return undefined;
+  }, [hint]);
+
+  const hintSourceIsWaste = useMemo((): boolean => {
+    if (!hint) return false;
+    return hint.type === "waste-to-tableau" || hint.type === "waste-to-foundation";
+  }, [hint]);
+
   return (
     <DragProvider getLegalDropIds={getLegalDropIds}>
       <GameShell
@@ -649,21 +717,39 @@ export default function SolitaireScreen() {
         onNewGame={resetToPreGame}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
         rightSlot={
-          <Pressable
-            onPress={handleUndo}
-            disabled={undoDisabled}
-            style={[
-              styles.headerBtn,
-              { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t("solitaire:action.undo")}
-            accessibilityState={{ disabled: undoDisabled }}
-          >
-            <Text style={[styles.headerBtnText, { color: colors.accent }]}>
-              {t("solitaire:action.undo")}
-            </Text>
-          </Pressable>
+          <View style={styles.headerBtnRow}>
+            <Pressable
+              testID="solitaire-hint-button"
+              onPress={handleHint}
+              disabled={hintDisabled}
+              style={[
+                styles.headerBtn,
+                { borderColor: colors.bonus, opacity: hintDisabled ? 0.4 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("solitaire:action.hint")}
+              accessibilityState={{ disabled: hintDisabled }}
+            >
+              <Text style={[styles.headerBtnText, { color: colors.bonus }]}>
+                {t("solitaire:action.hint")}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={handleUndo}
+              disabled={undoDisabled}
+              style={[
+                styles.headerBtn,
+                { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t("solitaire:action.undo")}
+              accessibilityState={{ disabled: undoDisabled }}
+            >
+              <Text style={[styles.headerBtnText, { color: colors.accent }]}>
+                {t("solitaire:action.undo")}
+              </Text>
+            </Pressable>
+          </View>
         }
       >
         {state === null ? (
@@ -696,6 +782,7 @@ export default function SolitaireScreen() {
                     waste={state.waste}
                     drawMode={state.drawMode}
                     wasteSelected={selection?.kind === "waste"}
+                    hintSource={hintSourceIsWaste}
                     shakeX={selection?.kind === "waste" ? shakeX : undefined}
                     onStockPress={handleStockPress}
                     onWastePress={handleWastePress}
@@ -709,6 +796,8 @@ export default function SolitaireScreen() {
                           pile={state.foundations[suit]}
                           suit={suit}
                           selected={selection?.kind === "foundation" && selection.suit === suit}
+                          hintDestination={hintDestSuit === suit}
+                          hintSource={hintSourceFoundationSuit === suit}
                           shakeX={
                             selection?.kind === "foundation" && selection.suit === suit
                               ? shakeX
@@ -739,6 +828,8 @@ export default function SolitaireScreen() {
                       pile={pile}
                       colIndex={col}
                       selectedIndex={tableauSelection(col)}
+                      hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
+                      hintDestination={hintDestTableauCol === col}
                       shakeX={
                         selection?.kind === "tableau" && selection.col === col ? shakeX : undefined
                       }
@@ -1003,6 +1094,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
+  },
+  headerBtnRow: {
+    flexDirection: "row",
+    gap: 8,
   },
   hudRow: {
     flexDirection: "row",

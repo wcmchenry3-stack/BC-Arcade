@@ -9,6 +9,7 @@
   "score.label": "Score: {{score}}",
   "score.moves": "Zetten: {{moves}}",
   "action.undo": "Ongedaan",
+  "action.hint": "Tip",
   "action.autoComplete": "Auto-afmaken",
   "action.newGame": "Nieuw Spel",
   "action.submitScore": "Score Indienen",
