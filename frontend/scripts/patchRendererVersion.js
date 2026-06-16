@@ -4,17 +4,13 @@
 // This transform replaces the check with a no-op so tests can run.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const babelJest = require("babel-jest");
-const createTransformer =
-  babelJest.createTransformer || babelJest.default.createTransformer;
+const createTransformer = babelJest.createTransformer || babelJest.default.createTransformer;
 const delegate = createTransformer({});
 
 module.exports = {
   ...delegate,
   process(sourceText, sourcePath, options) {
-    const patched = sourceText.replace(
-      /"19\.\d+\.\d+" !== isomorphicReactPackageVersion/,
-      "false"
-    );
+    const patched = sourceText.replace(/"19\.\d+\.\d+" !== isomorphicReactPackageVersion/, "false");
     return delegate.process(patched, sourcePath, options);
   },
 };
