@@ -52,6 +52,9 @@
         "lines": 80
       }
     },
+    "transform": {
+      "ReactNativeRenderer-dev\\.js$": "<rootDir>/scripts/patchRendererVersion.js"
+    },
     "moduleNameMapper": {
       "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
     }
