@@ -13,6 +13,7 @@ import {
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
@@ -76,7 +77,6 @@ const EXPLOSION_SRCS = [
 const EXPLOSION_DRAW_SIZE = 48;
 const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
-const WAVE_COUNTDOWN_MS = 3000;
 
 const C = {
   bg: "#000010",
