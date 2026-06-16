@@ -2,15 +2,13 @@
  * Tests for the Yacht Utility AI weight broker and decision selector (GH #2027, story A3).
  *
  * Validates three properties:
- * 1. Flag-off path is a no-op — existing suites cover behaviour; this file just
- *    confirms the flag is off by default and the public API is unchanged.
- * 2. Flag-on legality — every hold and score decision over full seeded games is
- *    a legal action.
+ * 1. Legality — every hold and score decision over full seeded games is a legal action.
+ * 2. Weighted-sum selection — consideration ratings produce correct argmax decisions.
  * 3. Noise determinism — same seed ⇒ same sequence of decisions; Hard ⇒ no
  *    random picks regardless of RNG state.
  */
 
-import { _setUseUtilityAI, holdStrategy, scoreStrategy } from "../ai";
+import { holdStrategy, scoreStrategy } from "../ai";
 import { createSeededRng, newGame, possibleScores, roll, score, setRng } from "../engine";
 import type { AiDifficulty, GameState } from "../types";
 
@@ -49,25 +47,10 @@ function collectDecisions(
 }
 
 // ---------------------------------------------------------------------------
-// Flag-off (default)
+// Legality
 // ---------------------------------------------------------------------------
 
-describe("Utility AI — flag off (default)", () => {
-  it("flag is off by default — holdStrategy and scoreStrategy do not throw", () => {
-    const s = makeGame([1, 2, 3, 4, 5]);
-    expect(() => holdStrategy(s, "hard")).not.toThrow();
-    const s2 = makeGame([6, 6, 6, 6, 6], 3);
-    expect(() => scoreStrategy(s2, "hard", 100)).not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Flag-on: legality
-// ---------------------------------------------------------------------------
-
-describe("Utility AI — flag on: decision legality", () => {
-  beforeAll(() => _setUseUtilityAI(true));
-  afterAll(() => _setUseUtilityAI(false));
+describe("Utility AI — decision legality", () => {
   afterEach(() => setRng(Math.random));
 
   const DIFFICULTIES: AiDifficulty[] = ["easy", "medium", "hard"];
@@ -116,12 +99,10 @@ describe("Utility AI — flag on: decision legality", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Flag-on: weighted-sum selection on hand-built states
+// Weighted-sum selection on hand-built states
 // ---------------------------------------------------------------------------
 
-describe("Utility AI — flag on: weighted-sum selection", () => {
-  beforeAll(() => _setUseUtilityAI(true));
-  afterAll(() => _setUseUtilityAI(false));
+describe("Utility AI — weighted-sum selection", () => {
   // Freeze RNG so noise never fires: getRng() returns a function that always
   // returns 0.99 (> any noise rate), ensuring the best action is always picked.
   beforeEach(() => setRng(() => 0.99));
@@ -159,19 +140,15 @@ describe("Utility AI — flag on: weighted-sum selection", () => {
     const state = makeGame([3, 3, 3, 3, 3], 3);
     const cat = scoreStrategy(state, "hard", 0);
     // With 13 categories remaining, chanceSafetyValve(chance) ≈ 0 → Chance gets low score
-    // (exact result depends on weights but Chance should not be top pick in round 1)
-    // This is a directional test — it may change if weights are retuned in A4.
     expect(cat).not.toBe("chance");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Flag-on: noise determinism
+// Noise determinism
 // ---------------------------------------------------------------------------
 
-describe("Utility AI — flag on: noise determinism", () => {
-  beforeAll(() => _setUseUtilityAI(true));
-  afterAll(() => _setUseUtilityAI(false));
+describe("Utility AI — noise determinism", () => {
   afterEach(() => setRng(Math.random));
 
   it("same seed produces identical hold decisions — easy", () => {

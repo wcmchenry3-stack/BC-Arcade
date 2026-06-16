@@ -13,7 +13,7 @@ import type { AiDifficulty } from "./types";
 // ─── Key types ────────────────────────────────────────────────────────────────
 
 export type HoldWeightKey = "upperBonusUrgency" | "evOfHold";
-export type ScoreWeightKey = "chanceSafetyValve" | "adversarialVariance";
+export type ScoreWeightKey = "immediateValue" | "chanceSafetyValve" | "adversarialVariance";
 
 export type HoldWeights = WeightMap<HoldWeightKey>;
 export type ScoreWeights = WeightMap<ScoreWeightKey>;
@@ -40,22 +40,25 @@ export const HARD_HOLD_WEIGHTS: HoldWeights = {
 
 // ─── Score weight maps ────────────────────────────────────────────────────────
 
-// Easy: reactive, variance-leaning; noise does the heavy lifting
+// Easy: immediate value dominant (greedy); noise does the heavy lifting
 export const EASY_SCORE_WEIGHTS: ScoreWeights = {
-  chanceSafetyValve: 0.3,
-  adversarialVariance: 0.7,
+  immediateValue: 1.0,
+  chanceSafetyValve: 0.2,
+  adversarialVariance: 0.3,
 };
 
-// Medium: Chance-preservation conscious
+// Medium: immediate value + Chance-preservation conscious
 export const MEDIUM_SCORE_WEIGHTS: ScoreWeights = {
+  immediateValue: 1.0,
   chanceSafetyValve: 0.6,
   adversarialVariance: 0.4,
 };
 
-// Hard: adversarial variance dominant; Chance timing emerges from categoriesRemaining ramp
+// Hard: immediate value + adversarial variance dominant
 export const HARD_SCORE_WEIGHTS: ScoreWeights = {
-  chanceSafetyValve: 0.3,
-  adversarialVariance: 0.7,
+  immediateValue: 1.0,
+  chanceSafetyValve: 0.4,
+  adversarialVariance: 0.8,
 };
 
 // ─── Cognitive noise rates ────────────────────────────────────────────────────

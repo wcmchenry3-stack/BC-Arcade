@@ -58,6 +58,7 @@ export default function ScoreRow({
           borderLeftWidth: isFilled ? 3 : 1,
         },
       ]}
+      testID={`score-row-${category}`}
       onPress={isSelectable ? onSelect : undefined}
       disabled={!isSelectable}
       accessibilityRole="button"

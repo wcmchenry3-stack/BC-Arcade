@@ -57,3 +57,6 @@ frontend/assets/source-icons/
 # Pipeline input dirs — large source images (~77 MB / ~86 MB), not shipped in repo
 fruit_images/
 celestial_images/
+
+# AI simulation output (local calibration runs — not committed)
+.sim-out/
