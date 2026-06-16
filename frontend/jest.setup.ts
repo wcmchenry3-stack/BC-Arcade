@@ -6,30 +6,19 @@ import "react-native-gesture-handler/jestSetup";
 // GestureDetector passes through children and Gesture builders are no-ops.
 // (Internal sub-module mocks for native bindings are still handled by ./jestSetup above.)
 jest.mock("react-native-gesture-handler", () => {
+  // Proxy intercepts any method call and returns self — no fixed method list needed.
   const chainable = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const g: Record<string, any> = {};
-    [
-      "enabled",
-      "runOnJS",
-      "minPointers",
-      "maxPointers",
-      "minDistance",
-      "maxDistance",
-      "hitSlop",
-      "onBegin",
-      "onStart",
-      "onUpdate",
-      "onChange",
-      "onEnd",
-      "onFinalize",
-      "onTouchesDown",
-      "onTouchesMove",
-      "onTouchesUp",
-    ].forEach((m) => {
-      g[m] = () => g;
-    });
-    return g;
+    const proxy: any = new Proxy(
+      {},
+      {
+        get:
+          () =>
+          (..._args: unknown[]) =>
+            proxy,
+      }
+    );
+    return proxy;
   };
   return {
     GestureDetector: ({ children }: { children: React.ReactNode }) => children,
