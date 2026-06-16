@@ -1,6 +1,38 @@
 // Gesture handler requires native setup in Jest
 import "react-native-gesture-handler/jestSetup";
 
+// react-native-gesture-handler v3: GestureDetector enforces a GestureHandlerRootView
+// ancestor in DEV and removed the isTestEnv() bypass. Replace the main export so
+// GestureDetector passes through children and Gesture builders are no-ops.
+// (Internal sub-module mocks for native bindings are still handled by ./jestSetup above.)
+jest.mock("react-native-gesture-handler", () => {
+  // Proxy intercepts any method call and returns self — no fixed method list needed.
+  const chainable = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proxy: any = new Proxy(
+      {},
+      {
+        get:
+          () =>
+          (..._args: unknown[]) =>
+            proxy,
+      }
+    );
+    return proxy;
+  };
+  return {
+    GestureDetector: ({ children }: { children: React.ReactNode }) => children,
+    GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,
+    Gesture: {
+      Pan: chainable,
+      Tap: chainable,
+      Pinch: chainable,
+      Exclusive: (...args: unknown[]) => args[0],
+      Simultaneous: (...args: unknown[]) => args[0],
+    },
+  };
+});
+
 // react-native-screens ships native modules that don't exist in Jest's jsdom
 // environment. Without this mock createScreenFactory (and other internals)
 // throw at import time, crashing every test suite that uses navigation.
