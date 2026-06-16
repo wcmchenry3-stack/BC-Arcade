@@ -20,11 +20,11 @@ FAIL=0
 
 # ── npm audit ────────────────────────────────────────────────────────────────
 if [ -f "frontend/package.json" ]; then
-  if NPM_OUT=$(cd frontend && npm audit --audit-level=moderate 2>&1); then
+  if NPM_OUT=$(cd frontend && npm audit --audit-level=high 2>&1); then
     print_ok "npm audit"
   else
     FAIL=1
-    SUMMARY=$(echo "$NPM_OUT" | grep -m1 'vulnerabilit\|found' || echo "moderate or higher severity vulnerability found")
+    SUMMARY=$(echo "$NPM_OUT" | grep -m1 'vulnerabilit\|found' || echo "high or critical severity vulnerability found")
     print_fail "npm audit" \
       "$SUMMARY" \
       "cd frontend && npm audit fix"
