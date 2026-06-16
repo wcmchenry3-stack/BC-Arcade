@@ -2,6 +2,7 @@
 // react-native@0.85.x compiles ReactNativeRenderer-dev.js with a hardcoded
 // version equality check that throws when react is a patch ahead.
 // This transform replaces the check with a no-op so tests can run.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const babelJest = require("babel-jest");
 const createTransformer =
   babelJest.createTransformer || babelJest.default.createTransformer;
