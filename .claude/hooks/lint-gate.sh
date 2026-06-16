@@ -4,57 +4,80 @@
 # lint-review sub-agent to auto-fix before retrying.
 set -uo pipefail
 
-# ── Read tool input from stdin ───────────────────────────────────
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/output.sh
+source "$HOOK_DIR/lib/output.sh"
+
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
-# Only gate on PR-creation commands
-if ! echo "$COMMAND" | grep -qE 'gh\s+pr\s+create'; then
+# Check only the first line to avoid matching text inside heredoc commit messages
+FIRST_LINE=$(echo "$COMMAND" | head -1)
+if ! echo "$FIRST_LINE" | grep -qE '^gh\s+pr\s+create'; then
   exit 0
 fi
 
 FAIL=0
-REPORT=""
 
-# ── Python linting (black + ruff) ───────────────────────────────
-if [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || [ -f "setup.py" ] || [ -f "setup.cfg" ]; then
-  if command -v black &>/dev/null; then
-    OUT=$(black --check --quiet . 2>&1) || {
-      FAIL=1
-      REPORT+="## black\n${OUT}\n\n"
-    }
-  fi
-  if command -v ruff &>/dev/null; then
-    OUT=$(ruff check --no-fix . 2>&1) || {
-      FAIL=1
-      REPORT+="## ruff\n${OUT}\n\n"
-    }
+# ── Python linting (black + ruff) ────────────────────────────────────────────
+if [ -f "backend/requirements.txt" ]; then
+  VENV="backend/.venv/bin/activate"
+  if [ -f "$VENV" ]; then
+    # shellcheck disable=SC1090
+    source "$VENV"
+    if command -v black &>/dev/null; then
+      if OUT=$(cd backend && black --check --quiet . 2>&1); then
+        print_ok "black"
+      else
+        FAIL=1
+        print_fail "black" \
+          "formatting issues in backend/" \
+          "cd backend && source .venv/bin/activate && black ."
+      fi
+    fi
+    if command -v ruff &>/dev/null; then
+      if OUT=$(cd backend && ruff check --no-fix . 2>&1); then
+        print_ok "ruff"
+      else
+        FAIL=1
+        ISSUES=$(echo "$OUT" | grep -c 'error\|warning' 2>/dev/null || echo "?")
+        print_fail "ruff" \
+          "$ISSUES issue(s) in backend/" \
+          "cd backend && source .venv/bin/activate && ruff check --fix ."
+      fi
+    fi
+    deactivate 2>/dev/null || true
   fi
 fi
 
-# ── Frontend linting (eslint + prettier) ─────────────────────────
-if [ -f "package.json" ]; then
-  if [ -x "node_modules/.bin/eslint" ]; then
-    OUT=$(npx eslint . 2>&1) || {
+# ── Frontend linting (eslint + prettier) ─────────────────────────────────────
+if [ -f "frontend/package.json" ]; then
+  if [ -x "frontend/node_modules/.bin/eslint" ]; then
+    if OUT=$(cd frontend && npx eslint . 2>&1); then
+      print_ok "ESLint"
+    else
       FAIL=1
-      REPORT+="## eslint\n${OUT}\n\n"
-    }
+      ERR_COUNT=$(echo "$OUT" | grep -c ' error ' 2>/dev/null || echo "?")
+      print_fail "ESLint" \
+        "$ERR_COUNT error(s) in frontend/" \
+        "cd frontend && npx eslint --fix ."
+    fi
   fi
-  if [ -x "node_modules/.bin/prettier" ]; then
-    OUT=$(npx prettier --check . 2>&1) || {
+  if [ -x "frontend/node_modules/.bin/prettier" ]; then
+    if OUT=$(cd frontend && npx prettier --check . 2>&1); then
+      print_ok "Prettier"
+    else
       FAIL=1
-      REPORT+="## prettier\n${OUT}\n\n"
-    }
+      print_fail "Prettier" \
+        "formatting issues in frontend/" \
+        "cd frontend && npx prettier --write ."
+    fi
   fi
 fi
 
-# ── Verdict ──────────────────────────────────────────────────────
+# ── Verdict ──────────────────────────────────────────────────────────────────
 if [ "$FAIL" -ne 0 ]; then
-  {
-    echo "BLOCKED: Lint check failed. Invoke the lint-review agent to auto-fix."
-    echo ""
-    echo -e "$REPORT"
-  } >&2
+  print_blocked "PR creation"
   exit 2
 fi
 
