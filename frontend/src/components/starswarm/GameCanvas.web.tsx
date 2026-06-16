@@ -13,6 +13,7 @@ import {
   difficultyLabel,
   difficultyMultiplier,
 } from "../../game/starswarm/engine";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
@@ -237,8 +238,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevPhaseRef = useRef(stateRef.current.phase);
-    // Pre-wave countdown: null = no countdown, positive ms = ticking, drives the 5-beat visual
-    const countdownMsRef = useRef<number | null>(null);
+    // Pre-wave countdown: null = no countdown, positive ms = ticking
+    const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
     const imagesRef = useRef<Images>({
       playerShip: null,
       buddyShip: null,
@@ -414,7 +415,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = stateRef.current.phase;
       prevActivePowerUpRef.current = null;
       triggerPowerUpRef.current = null;
-      countdownMsRef.current = null;
+      countdownMsRef.current = WAVE_COUNTDOWN_MS;
     }, [resetTick, width, height]);
 
     const draw = useCallback(() => {
@@ -781,10 +782,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.shadowBlur = 0;
       }
 
-      // Lives — drawn last so they always appear above phase overlays
+      // Lives — drawn last so they always appear above phase overlays; pinned below the score/difficulty rows
       for (let i = 0; i < player.lives; i++) {
         ctx.fillStyle = C.lives;
-        ctx.fillRect(10 + i * 16, height - 18, 10, 14);
+        ctx.fillRect(10 + i * 16, 44, 10, 14);
       }
 
       // Power-up indicator — label + bar, above lives at bottom-left
@@ -889,7 +890,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               }
               // WinTransition → SwoopIn: engine has already built the next wave; start countdown
               if (prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn") {
-                countdownMsRef.current = 5000;
+                countdownMsRef.current = WAVE_COUNTDOWN_MS;
                 inputRef.current.playerX = applied.player.x; // stay where AI left the ship
               }
               prevPhaseRef.current = applied.phase;
