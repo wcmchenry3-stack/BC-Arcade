@@ -95,6 +95,27 @@ jest.mock("expo-audio", () => ({
   AudioPlayer: jest.fn(),
 }));
 
+// bottom-tabs v7.18.2 calls createScreenFactory() at module level; mocking the
+// entire package prevents it from importing @react-navigation/native and
+// failing when individual test files supply a partial native mock.
+jest.mock("@react-navigation/bottom-tabs", () => ({
+  createBottomTabNavigator: jest.fn(() => ({
+    Navigator: jest.fn(({ children }: { children: React.ReactNode }) => children),
+    Screen: jest.fn(() => null),
+    Group: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  })),
+  createBottomTabScreen: jest.fn((config: unknown) => config),
+  useBottomTabBarHeight: jest.fn(() => 0),
+  BottomTabBar: jest.fn(() => null),
+  BottomTabView: jest.fn(() => null),
+  BottomTabBarHeightCallbackContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
+  BottomTabBarHeightContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
+}));
+
 // Safe area context mock — returns zero insets in tests
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),

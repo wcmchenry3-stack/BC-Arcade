@@ -4,26 +4,27 @@
 # patterns, prompting the policy-compliance sub-agent to review.
 set -uo pipefail
 
-# ── Read tool input from stdin ───────────────────────────────────
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/output.sh
+source "$HOOK_DIR/lib/output.sh"
+
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
-# Only gate on PR-creation commands (anchored to start to avoid matching --body text)
-if ! echo "$COMMAND" | grep -qE '^gh\s+pr\s+create'; then
+# Only gate on PR-creation commands; check first line only to avoid matching
+# text inside heredoc commit messages that contain 'gh pr create' in the body.
+FIRST_LINE=$(echo "$COMMAND" | head -1)
+if ! echo "$FIRST_LINE" | grep -qE '^gh\s+pr\s+create'; then
   exit 0
 fi
 
-# ── Locate policy-patterns.json ──────────────────────────────────
+# ── Locate policy-patterns.json ──────────────────────────────────────────────
 PATTERNS_FILE=".claude/policies/policy-patterns.json"
 if [ ! -f "$PATTERNS_FILE" ]; then
-  # No policies configured — pass through
   exit 0
 fi
 
-# ── Get changed files ────────────────────────────────────────────
-# Use merge-base against the PR target branch (dev, then main) so we
-# only see files actually changed on this branch, not everything that
-# dev has over main.
+# ── Get changed files ────────────────────────────────────────────────────────
 MERGE_BASE=$(git merge-base origin/dev HEAD 2>/dev/null || \
              git merge-base origin/main HEAD 2>/dev/null || \
              echo "")
@@ -35,52 +36,47 @@ else
   CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 fi
 
-if [ -z "$CHANGED_FILES" ]; then
-  exit 0
-fi
+[ -z "$CHANGED_FILES" ] && exit 0
 
-# ── Check each policy's detection patterns ───────────────────────
+# ── Check each policy's detection patterns ───────────────────────────────────
 TRIGGERED=""
 
 for POLICY in $(jq -r 'to_entries[] | select(.value | type == "object") | .key' "$PATTERNS_FILE" | tr -d '\r'); do
   DETECT=$(jq -r --arg p "$POLICY" '.[$p].detect' "$PATTERNS_FILE" | tr -d '\r')
   SKIP=$(jq -r --arg p "$POLICY" '.[$p].skip // empty' "$PATTERNS_FILE" | tr -d '\r')
 
-  # Guard: skip policy if detect pattern resolved to null or empty
-  # (prevents any file with the literal string "null" from being flagged)
   [ -z "$DETECT" ] || [ "$DETECT" = "null" ] && continue
 
   while IFS= read -r file; do
-    # Skip .claude/ directory (contains policy definitions with pattern strings)
     case "$file" in .claude/*) continue ;; esac
-    # Skip documentation files — they reference APIs by name but contain no executable code
     case "$file" in *.md|*.mdx|CLAUDE.md) continue ;; esac
 
-    # Skip files matching the skip pattern (checked against full path and basename
-    # so patterns can exclude by directory prefix OR by filename)
     if [ -n "$SKIP" ] && { echo "$file" | grep -qE "$SKIP" || echo "$(basename "$file")" | grep -qE "$SKIP"; }; then
       continue
     fi
 
-    # Check if the diff *introduces* lines matching the detection pattern.
-    # Grep only added lines (^\+[^+]) so pre-existing literals in unchanged
-    # code never trigger the gate — only newly written or modified lines do.
     if git diff "$DIFF_BASE" HEAD -- "$file" 2>/dev/null | grep -qE "^\+[^+].*($DETECT)"; then
       TRIGGERED+="  - $POLICY → $file\n"
-      break  # One match per policy is enough to trigger
+      break
     fi
   done <<< "$CHANGED_FILES"
 done
 
-# ── Verdict ──────────────────────────────────────────────────────
+# ── Verdict ──────────────────────────────────────────────────────────────────
 if [ -n "$TRIGGERED" ]; then
   {
-    echo "BLOCKED: Policy-relevant files changed. Invoke the policy-compliance agent to review."
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "[FAIL] Policy gate — policy-relevant files changed"
+    echo "Fix:   Invoke the policy-compliance agent to review"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     echo "Triggered policies:"
     echo -e "$TRIGGERED"
   } >&2
+  print_blocked "PR creation"
   exit 2
 fi
 
+print_ok "Policy gate"
 exit 0
