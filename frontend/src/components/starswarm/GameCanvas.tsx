@@ -29,6 +29,7 @@ import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/sta
 const EXPLOSION_DRAW_SIZE = 48;
 const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
+const WAVE_COUNTDOWN_MS = 3000;
 
 const C = {
   buddyShip: "rgba(0,120,255,0.8)",
@@ -144,7 +145,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // ms remaining in pre-wave countdown; null = no countdown active.
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in renderState must be initialized consistently with this value.
-    const countdownMsRef = useRef<number | null>(initialState ? null : 3000);
+    const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
     // True when the active countdown follows a WinTransition (shows wave banner + 5 beats).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const winTransitionCountdownRef = useRef(false);
@@ -208,7 +209,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const [renderState, setRenderState] = useState<RenderState>({
       game: gameRef.current,
       sf: sfRef.current,
-      countdownDigit: initialState ? null : 3,
+      countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
       winTransitionCountdown: false,
     });
 
@@ -245,7 +246,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current
       );
       sfRef.current = initStarfield(width, height);
-      countdownMsRef.current = 3000;
+      countdownMsRef.current = WAVE_COUNTDOWN_MS;
       lastFrameTimeRef.current = 0;
       inputRef.current.playerX = width / 2;
       inputRef.current.fire = true;
@@ -259,7 +260,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       setRenderState({
         game: gameRef.current,
         sf: sfRef.current,
-        countdownDigit: 3,
+        countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
         winTransitionCountdown: false,
       });
     }, [resetTick, width, height]);
@@ -359,7 +360,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
               // Start countdown when WaveClear or WinTransition ends.
-              // WinTransition gets a 5-beat countdown; legacy WaveClear keeps 3 s.
               // Evaluated before phase callbacks so onFreeFireZone fires after countdown expires.
               // prevPhaseRef.current is updated below — after this check.
               const fromWaveClear =
@@ -370,7 +370,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn";
               const startingCountdown = fromWaveClear || fromWinTransition;
               if (startingCountdown) {
-                countdownMsRef.current = fromWinTransition ? 5000 : 3000;
+                countdownMsRef.current = WAVE_COUNTDOWN_MS;
                 winTransitionCountdownRef.current = fromWinTransition;
                 if (fromWinTransition) {
                   // Sync input to where AI parked the ship
@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
   },
   hudBottom: {
     position: "absolute",
-    bottom: 8,
+    top: 40,
     left: 10,
     flexDirection: "row",
     gap: 6,
