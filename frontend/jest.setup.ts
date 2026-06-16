@@ -1,6 +1,35 @@
 // Gesture handler requires native setup in Jest
 import "react-native-gesture-handler/jestSetup";
 
+// react-native-screens ships native modules that don't exist in Jest's jsdom
+// environment. Without this mock createScreenFactory (and other internals)
+// throw at import time, crashing every test suite that uses navigation.
+jest.mock("react-native-screens", () => ({
+  __esModule: true,
+  Screen: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenContainer: jest.fn(
+    ({ children }: { children: React.ReactNode }) => children
+  ),
+  ScreenStack: jest.fn(
+    ({ children }: { children: React.ReactNode }) => children
+  ),
+  ScreenStackItem: jest.fn(
+    ({ children }: { children: React.ReactNode }) => children
+  ),
+  ScreenStackHeaderConfig: jest.fn(() => null),
+  ScreenFooter: jest.fn(() => null),
+  ScreenContentWrapper: jest.fn(
+    ({ children }: { children: React.ReactNode }) => children
+  ),
+  enableScreens: jest.fn(),
+  enableFreeze: jest.fn(),
+  screensEnabled: jest.fn(() => true),
+  freezeEnabled: jest.fn(() => true),
+  isSearchBarAvailableForCurrentPlatform: jest.fn(() => false),
+  executeNativeBackPress: jest.fn(),
+  useTransitionProgress: jest.fn(() => ({ closing: 0, goingForward: 0 })),
+}));
+
 // Reanimated v4 — the official mock still imports worklets which require a
 // native runtime. Instead we supply a minimal stub covering the hooks used
 // in AnimatedTile.tsx (useSharedValue, useAnimatedStyle, withTiming, etc.).
