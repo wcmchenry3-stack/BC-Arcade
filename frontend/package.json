@@ -84,7 +84,7 @@
     "matter-js": "^0.20.0",
     "poly-decomp": "^0.3.0",
     "react": "19.2.7",
-    "react-dom": "19.2.3",
+    "react-dom": "19.2.7",
     "react-i18next": "^17.0.8",
     "react-native": "0.85.3",
     "react-native-audio-api": "0.12.2",
