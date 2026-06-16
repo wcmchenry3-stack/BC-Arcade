@@ -78,6 +78,10 @@ export function setRng(fn: RandomSource): void {
   _rng = fn;
 }
 
+export function getRng(): RandomSource {
+  return _rng;
+}
+
 /**
  * LCG (same parameters as Cascade's, Twenty48's, and Blackjack's seeded
  * RNGs). Deterministic for a given seed. Not cryptographic — testing only.
