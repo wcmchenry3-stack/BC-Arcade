@@ -19,17 +19,34 @@ EXT="${FILE##*.}"
 REPORT=""
 FAIL=0
 
+# Locate the nearest node_modules by walking up from the file's directory.
+# This handles monorepo layouts (e.g. frontend/node_modules) where the hook
+# may run from the project root that has no node_modules of its own.
+find_node_modules() {
+  local dir
+  dir=$(dirname "$1")
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/node_modules" ]; then
+      echo "$dir/node_modules"
+      return 0
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+
 # ── JavaScript / TypeScript ───────────────────────────────────────────────
 case "$EXT" in
   js|jsx|ts|tsx|mjs|cjs)
-    if [ -x "node_modules/.bin/eslint" ]; then
-      OUT=$(npx eslint "$FILE" 2>&1) || {
+    NM=$(find_node_modules "$FILE" 2>/dev/null || true)
+    if [ -n "$NM" ] && [ -x "$NM/.bin/eslint" ]; then
+      OUT=$(cd "$(dirname "$NM")" && npx eslint "$FILE" 2>&1) || {
         FAIL=1
         REPORT+="ESLint errors in $FILE:\n$OUT\n\n"
       }
     fi
-    if [ -x "node_modules/.bin/prettier" ]; then
-      OUT=$(npx prettier --check "$FILE" 2>&1) || {
+    if [ -n "$NM" ] && [ -x "$NM/.bin/prettier" ]; then
+      OUT=$(cd "$(dirname "$NM")" && npx prettier --check "$FILE" 2>&1) || {
         FAIL=1
         REPORT+="Prettier formatting in $FILE:\n$OUT\n\n"
       }

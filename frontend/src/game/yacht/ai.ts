@@ -12,8 +12,26 @@
  */
 
 import { AiDifficulty, GameState } from "./types";
-import { UPPER_CATEGORIES, Category, possibleScores } from "./engine";
+import { UPPER_CATEGORIES, Category, possibleScores, getRng } from "./engine";
 import { maxImmediateScore } from "./aiHelpers";
+import { buildYachtInfoSet } from "./aiInfoSet";
+import {
+  rateUpperBonusUrgency,
+  rateEVOfHold,
+  rateScorecardSafety,
+  rateChanceSafetyValve,
+  rateAdversarialVariance,
+  type YachtHoldAction,
+} from "./aiConsiderations";
+import {
+  EASY_HOLD_WEIGHTS,
+  MEDIUM_HOLD_WEIGHTS,
+  HARD_HOLD_WEIGHTS,
+  EASY_SCORE_WEIGHTS,
+  MEDIUM_SCORE_WEIGHTS,
+  HARD_SCORE_WEIGHTS,
+  NOISE_RATE,
+} from "./aiWeights";
 
 // ─── Local maps ──────────────────────────────────────────────────────────────
 
@@ -480,6 +498,90 @@ function scoreHard(
   return bestInLegal(legal) ?? open[0]!;
 }
 
+// ─── Utility AI (strangler pattern; flag off by default) ─────────────────────
+
+let USE_UTILITY_AI = false;
+
+/** Toggle the utility-AI path. Only intended for test use — not stable API. */
+export function _setUseUtilityAI(val: boolean): void {
+  USE_UTILITY_AI = val;
+}
+
+function maskToBools(mask: number): boolean[] {
+  return [!!(mask & 1), !!(mask & 2), !!(mask & 4), !!(mask & 8), !!(mask & 16)];
+}
+
+function holdStrategyUtility(state: GameState, difficulty: AiDifficulty): boolean[] {
+  const infoSet = buildYachtInfoSet(state, 0);
+  const weights =
+    difficulty === "easy"
+      ? EASY_HOLD_WEIGHTS
+      : difficulty === "medium"
+        ? MEDIUM_HOLD_WEIGHTS
+        : HARD_HOLD_WEIGHTS;
+
+  let bestMask = 0;
+  let bestScore = -Infinity;
+  for (let mask = 0; mask < 32; mask++) {
+    const holdMask: YachtHoldAction = maskToBools(mask);
+    const s =
+      weights.upperBonusUrgency * rateUpperBonusUrgency(infoSet, holdMask) +
+      weights.evOfHold * rateEVOfHold(infoSet, holdMask);
+    if (s > bestScore) {
+      bestScore = s;
+      bestMask = mask;
+    }
+  }
+
+  const noiseRate = NOISE_RATE[difficulty];
+  if (noiseRate > 0) {
+    const rng = getRng();
+    if (rng() < noiseRate) {
+      return maskToBools(Math.floor(rng() * 32));
+    }
+  }
+
+  return maskToBools(bestMask);
+}
+
+function scoreStrategyUtility(
+  state: GameState,
+  difficulty: AiDifficulty,
+  opponentScore: number
+): Category {
+  const infoSet = buildYachtInfoSet(state, opponentScore);
+  const legalCats = Object.keys(possibleScores(state)) as Category[];
+  const weights =
+    difficulty === "easy"
+      ? EASY_SCORE_WEIGHTS
+      : difficulty === "medium"
+        ? MEDIUM_SCORE_WEIGHTS
+        : HARD_SCORE_WEIGHTS;
+
+  let bestCat = legalCats[0]!;
+  let bestScore = -Infinity;
+  for (const cat of legalCats) {
+    const s =
+      rateScorecardSafety(infoSet, cat) *
+      (weights.chanceSafetyValve * rateChanceSafetyValve(infoSet, cat) +
+        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat));
+    if (s > bestScore) {
+      bestScore = s;
+      bestCat = cat;
+    }
+  }
+
+  const noiseRate = NOISE_RATE[difficulty];
+  if (noiseRate > 0) {
+    const rng = getRng();
+    if (rng() < noiseRate) {
+      return legalCats[Math.floor(rng() * legalCats.length)]!;
+    }
+  }
+
+  return bestCat;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -489,6 +591,7 @@ function scoreHard(
  * parallel to state.dice — true means keep that die.
  */
 export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolean[] {
+  if (USE_UTILITY_AI) return holdStrategyUtility(state, difficulty);
   const { dice, scores, rolls_used } = state;
   switch (difficulty) {
     case "easy":
@@ -515,6 +618,7 @@ export function scoreStrategy(
   difficulty: AiDifficulty,
   opponentScore = 0
 ): Category {
+  if (USE_UTILITY_AI) return scoreStrategyUtility(state, difficulty, opponentScore);
   const { dice, scores } = state;
   // possibleScores is the single source of truth for legal categories — it
   // handles Joker priority rules so we never suggest an illegal move.
