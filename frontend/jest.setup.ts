@@ -1,19 +1,6 @@
 // Gesture handler requires native setup in Jest
 import "react-native-gesture-handler/jestSetup";
 
-// gesture-handler v3 added a runtime validation that GestureDetector is
-// rendered inside GestureHandlerRootView. Screen tests render in isolation
-// without the app's root hierarchy, so we mock the context to always return
-// true (= "already inside root view") to suppress the warning/error.
-jest.mock("react-native-gesture-handler/lib/commonjs/GestureHandlerRootViewContext", () => {
-  const React = require("react");
-  return { default: React.createContext(true) };
-});
-jest.mock("react-native-gesture-handler/lib/module/GestureHandlerRootViewContext", () => {
-  const React = require("react");
-  return { default: React.createContext(true) };
-});
-
 // react-native-screens ships native modules that don't exist in Jest's jsdom
 // environment. Without this mock createScreenFactory (and other internals)
 // throw at import time, crashing every test suite that uses navigation.
@@ -106,6 +93,27 @@ jest.mock("expo-audio", () => ({
     remove: jest.fn(),
   })),
   AudioPlayer: jest.fn(),
+}));
+
+// bottom-tabs v7.18.2 calls createScreenFactory() at module level; mocking the
+// entire package prevents it from importing @react-navigation/native and
+// failing when individual test files supply a partial native mock.
+jest.mock("@react-navigation/bottom-tabs", () => ({
+  createBottomTabNavigator: jest.fn(() => ({
+    Navigator: jest.fn(({ children }: { children: React.ReactNode }) => children),
+    Screen: jest.fn(() => null),
+    Group: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  })),
+  createBottomTabScreen: jest.fn((config: unknown) => config),
+  useBottomTabBarHeight: jest.fn(() => 0),
+  BottomTabBar: jest.fn(() => null),
+  BottomTabView: jest.fn(() => null),
+  BottomTabBarHeightCallbackContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
+  BottomTabBarHeightContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
 }));
 
 // Safe area context mock — returns zero insets in tests
