@@ -59,7 +59,7 @@ const CATEGORY_VARIANCE: Partial<Record<Category, number>> = {
   yacht: 1.0,
   large_straight: 0.85,
   four_of_a_kind: 0.75,
-  small_straight: 0.70,
+  small_straight: 0.7,
   full_house: 0.65,
   three_of_a_kind: 0.45,
   chance: 0.35,
@@ -178,10 +178,7 @@ export function rateScorecardSafety(infoSet: YachtInfoSet, category: YachtScoreA
  * When scoring Chance: rises linearly from 0 (first turn — don't burn it) to
  * 1 (last turn — must use it now).
  */
-export function rateChanceSafetyValve(
-  infoSet: YachtInfoSet,
-  category: YachtScoreAction
-): number {
+export function rateChanceSafetyValve(infoSet: YachtInfoSet, category: YachtScoreAction): number {
   if (category !== "chance" || !infoSet.openCategories.has("chance")) return 1.0;
   return Math.max(0, (13 - infoSet.categoriesRemaining) / 12);
 }
@@ -198,10 +195,7 @@ export function rateChanceSafetyValve(
  * Between the thresholds, the score interpolates smoothly.  Category variance
  * levels are decomposed from the trailing/leading heuristics in `scoreHard`.
  */
-export function rateAdversarialVariance(
-  infoSet: YachtInfoSet,
-  category: YachtScoreAction
-): number {
+export function rateAdversarialVariance(infoSet: YachtInfoSet, category: YachtScoreAction): number {
   const delta = infoSet.scoreDelta;
   const variance = CATEGORY_VARIANCE[category] ?? UPPER_CAT_VARIANCE;
 

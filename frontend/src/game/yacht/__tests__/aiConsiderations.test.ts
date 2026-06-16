@@ -273,9 +273,19 @@ describe("rateScorecardSafety", () => {
 
   it("returns 1.0 for all open categories in fresh game", () => {
     const categories = [
-      "ones", "twos", "threes", "fours", "fives", "sixes",
-      "three_of_a_kind", "four_of_a_kind", "full_house",
-      "small_straight", "large_straight", "yacht", "chance",
+      "ones",
+      "twos",
+      "threes",
+      "fours",
+      "fives",
+      "sixes",
+      "three_of_a_kind",
+      "four_of_a_kind",
+      "full_house",
+      "small_straight",
+      "large_straight",
+      "yacht",
+      "chance",
     ] as const;
     for (const cat of categories) {
       expect(rateScorecardSafety(freshInfo, cat)).toBe(1.0);
@@ -284,9 +294,18 @@ describe("rateScorecardSafety", () => {
 
   it("returns 0.0 for all filled categories in nearly-full scorecard", () => {
     const filledCats = [
-      "ones", "twos", "threes", "fours", "fives", "sixes",
-      "three_of_a_kind", "four_of_a_kind", "full_house",
-      "small_straight", "large_straight", "yacht",
+      "ones",
+      "twos",
+      "threes",
+      "fours",
+      "fives",
+      "sixes",
+      "three_of_a_kind",
+      "four_of_a_kind",
+      "full_house",
+      "small_straight",
+      "large_straight",
+      "yacht",
     ] as const;
     for (const cat of filledCats) {
       expect(rateScorecardSafety(nearlyFullInfo, cat)).toBe(0.0);
@@ -343,9 +362,18 @@ describe("rateChanceSafetyValve", () => {
     let s = makeGame([1, 2, 3, 4, 5], 1);
     // Fill one cat at a time, recording rateChanceSafetyValve each time
     const fillOrder = [
-      "ones", "twos", "threes", "fours", "fives",
-      "sixes", "three_of_a_kind", "four_of_a_kind", "full_house",
-      "small_straight", "large_straight", "yacht",
+      "ones",
+      "twos",
+      "threes",
+      "fours",
+      "fives",
+      "sixes",
+      "three_of_a_kind",
+      "four_of_a_kind",
+      "full_house",
+      "small_straight",
+      "large_straight",
+      "yacht",
     ] as const;
     for (const cat of fillOrder) {
       s = withScores(s, { [cat]: 0 });
@@ -375,8 +403,14 @@ describe("rateAdversarialVariance", () => {
     // scoreDelta = +50: give info an opponentScore that puts myScore 50 ahead.
     // Use withScores to give the player a score, and pass opponentScore accordingly.
     const scored = withScores(s, {
-      ones: 3, twos: 6, threes: 9, fours: 12, fives: 15, sixes: 18,
-      large_straight: 40, yacht: 50,
+      ones: 3,
+      twos: 6,
+      threes: 9,
+      fours: 12,
+      fives: 15,
+      sixes: 18,
+      large_straight: 40,
+      yacht: 50,
     });
     const myScore = scored.total_score;
     const info = buildYachtInfoSet(scored, myScore - 50);
@@ -404,9 +438,17 @@ describe("rateAdversarialVariance", () => {
 
   it("prefers ones over yacht when leading by > 50", () => {
     const scored = withScores(makeGame([1, 2, 3, 4, 5], 1), {
-      ones: 3, twos: 6, threes: 9, fours: 12, fives: 15, sixes: 18,
-      three_of_a_kind: 20, four_of_a_kind: 22, full_house: 25,
-      small_straight: 30, large_straight: 40,
+      ones: 3,
+      twos: 6,
+      threes: 9,
+      fours: 12,
+      fives: 15,
+      sixes: 18,
+      three_of_a_kind: 20,
+      four_of_a_kind: 22,
+      full_house: 25,
+      small_straight: 30,
+      large_straight: 40,
     });
     const myScore = scored.total_score;
     const info = buildYachtInfoSet(scored, myScore - 100); // leading by 100
@@ -431,9 +473,19 @@ describe("rateAdversarialVariance", () => {
 
   it("returns value in [0, 1] across all extreme deltas and categories", () => {
     const categories = [
-      "ones", "twos", "threes", "fours", "fives", "sixes",
-      "three_of_a_kind", "four_of_a_kind", "full_house",
-      "small_straight", "large_straight", "yacht", "chance",
+      "ones",
+      "twos",
+      "threes",
+      "fours",
+      "fives",
+      "sixes",
+      "three_of_a_kind",
+      "four_of_a_kind",
+      "full_house",
+      "small_straight",
+      "large_straight",
+      "yacht",
+      "chance",
     ] as const;
     const opponentScores = [0, 30, 50, 100, 200];
     const base = makeGame([1, 2, 3, 4, 5], 1);
