@@ -80,9 +80,9 @@ export async function parseRawToken(rawToken: string): Promise<ParseResult> {
 
 export async function loadCachedEntitlements(): Promise<Set<string>> {
   try {
-    const pairs = await AsyncStorage.multiGet([TOKEN_STORAGE_KEY, CACHED_AT_STORAGE_KEY]);
-    const token = pairs[0]?.[1] ?? null;
-    const cachedAt = pairs[1]?.[1] ?? null;
+    const entries = await AsyncStorage.getMany([TOKEN_STORAGE_KEY, CACHED_AT_STORAGE_KEY]);
+    const token = entries[TOKEN_STORAGE_KEY] ?? null;
+    const cachedAt = entries[CACHED_AT_STORAGE_KEY] ?? null;
 
     if (!token || !cachedAt) return new Set();
 
@@ -116,10 +116,10 @@ async function fetchAndApplyToken(
   const rawToken = await fetchRawToken();
   const result = await parseRawToken(rawToken);
   if (result.valid && !result.expired) {
-    await AsyncStorage.multiSet([
-      [TOKEN_STORAGE_KEY, rawToken],
-      [CACHED_AT_STORAGE_KEY, new Date().toISOString()],
-    ]);
+    await AsyncStorage.setMany({
+      [TOKEN_STORAGE_KEY]: rawToken,
+      [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
+    });
     setEntitledGames(new Set(result.payload.entitled_games));
     setLastRefreshed(new Date());
   } else {

@@ -119,8 +119,23 @@ jest.mock("@sentry/react-native", () => ({
   },
 }));
 
-// AsyncStorage mock — v3 removed the jest/ subdirectory; use auto-mock instead
-jest.mock("@react-native-async-storage/async-storage");
+// AsyncStorage mock — v3 ships an in-memory implementation under the /jest export.
+// We wrap each method in jest.fn() so tests can override with mockResolvedValue,
+// while the default implementation is the real in-memory store (needed by eventStore).
+jest.mock("@react-native-async-storage/async-storage", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const inMemory = require("@react-native-async-storage/async-storage/jest").default;
+  return {
+    getItem: jest.fn((key: string) => inMemory.getItem(key)),
+    setItem: jest.fn((key: string, value: string) => inMemory.setItem(key, value)),
+    removeItem: jest.fn((key: string) => inMemory.removeItem(key)),
+    getMany: jest.fn((keys: string[]) => inMemory.getMany(keys)),
+    setMany: jest.fn((entries: Record<string, string>) => inMemory.setMany(entries)),
+    removeMany: jest.fn((keys: string[]) => inMemory.removeMany(keys)),
+    getAllKeys: jest.fn(() => inMemory.getAllKeys()),
+    clear: jest.fn(() => inMemory.clear()),
+  };
+});
 
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
