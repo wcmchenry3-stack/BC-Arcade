@@ -7,20 +7,12 @@ import "react-native-gesture-handler/jestSetup";
 jest.mock("react-native-screens", () => ({
   __esModule: true,
   Screen: jest.fn(({ children }: { children: React.ReactNode }) => children),
-  ScreenContainer: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
-  ScreenStack: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
-  ScreenStackItem: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
+  ScreenContainer: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenStack: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenStackItem: jest.fn(({ children }: { children: React.ReactNode }) => children),
   ScreenStackHeaderConfig: jest.fn(() => null),
   ScreenFooter: jest.fn(() => null),
-  ScreenContentWrapper: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
+  ScreenContentWrapper: jest.fn(({ children }: { children: React.ReactNode }) => children),
   enableScreens: jest.fn(),
   enableFreeze: jest.fn(),
   screensEnabled: jest.fn(() => true),
