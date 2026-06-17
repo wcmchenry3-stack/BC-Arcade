@@ -1,4 +1,5 @@
 // @ts-check
+const path = require("path");
 const { fixupPluginRules } = require("@eslint/compat");
 const tsPlugin = require("@typescript-eslint/eslint-plugin");
 const tsParser = require("@typescript-eslint/parser");
@@ -7,6 +8,38 @@ const pluginReactHooks = require("eslint-plugin-react-hooks");
 const pluginImport = require("eslint-plugin-import");
 const js = require("@eslint/js");
 const globals = require("globals");
+
+// eslint-plugin-import v2's no-restricted-paths silently skips TypeScript imports
+// in ESLint 9 flat config because its resolver returns null without a TS resolver
+// configured. This inline rule enforces the same boundary using path.resolve()
+// directly — no import resolution needed.
+const gameDir = path.resolve(__dirname, "src/game");
+const noGameUiImports = {
+  meta: { type: "problem", schema: [] },
+  create(context) {
+    const filename = context.filename ?? context.getFilename?.() ?? "";
+    if (!filename.startsWith(gameDir + path.sep) && filename !== gameDir) return {};
+    return {
+      ImportDeclaration(node) {
+        const resolved = path.resolve(path.dirname(filename), node.source.value);
+        const componentsDir = path.resolve(__dirname, "src/components");
+        const screensDir = path.resolve(__dirname, "src/screens");
+        if (resolved.startsWith(componentsDir + path.sep) || resolved === componentsDir) {
+          context.report({
+            node,
+            message: "Game engines must not import from components/. Keep logic and UI separate.",
+          });
+        }
+        if (resolved.startsWith(screensDir + path.sep) || resolved === screensDir) {
+          context.report({
+            node,
+            message: "Game engines must not import from screens/. Keep logic and UI separate.",
+          });
+        }
+      },
+    };
+  },
+};
 
 module.exports = [
   // Global ignores
@@ -53,6 +86,7 @@ module.exports = [
     files: ["**/*.ts", "**/*.tsx"],
     plugins: {
       import: fixupPluginRules(pluginImport),
+      "bc-arcade": { rules: { "no-game-ui-imports": noGameUiImports } },
     },
     languageOptions: {
       parser: tsParser,
@@ -83,23 +117,7 @@ module.exports = [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      "import/no-restricted-paths": [
-        "error",
-        {
-          zones: [
-            {
-              target: "./src/game",
-              from: "./src/components",
-              message: "Game engines must not import from components/. Keep logic and UI separate.",
-            },
-            {
-              target: "./src/game",
-              from: "./src/screens",
-              message: "Game engines must not import from screens/. Keep logic and UI separate.",
-            },
-          ],
-        },
-      ],
+      "bc-arcade/no-game-ui-imports": "error",
     },
   },
 ];
