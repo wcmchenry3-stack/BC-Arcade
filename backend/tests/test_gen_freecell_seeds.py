@@ -24,8 +24,6 @@ sys.path.insert(0, str(_BACKEND / "scripts"))
 from gen_freecell_seeds import (  # noqa: E402
     DECK_SIZE,
     EMPTY,
-    FREE_CELLS,
-    SUITS,
     TABLEAU_COLUMNS,
     apply_safe_automoves,
     canonical_key,
