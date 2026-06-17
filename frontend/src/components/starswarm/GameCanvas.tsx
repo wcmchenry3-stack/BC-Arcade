@@ -821,14 +821,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </View>
           )}
 
-          {/* Lives rendered last so they always appear on top of phase overlays */}
+          {/* Lives — bottom-left row, above the power-up bar */}
           <View style={styles.hudBottom}>
             {Array.from({ length: player.lives }, (_, i) => (
               <View key={i} style={styles.lifeIndicator} />
             ))}
           </View>
 
-          {/* Power-up indicator — independent bottom-left block, above the lives row */}
+          {/* Power-up indicator — bottom-left, below the lives row */}
           {state.activePowerUp !== null && (
             <View style={styles.powerUpIndicator} pointerEvents="none">
               <Text
@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
   },
   hudBottom: {
     position: "absolute",
-    top: 44,
+    bottom: 48,
     left: 10,
     flexDirection: "row",
     gap: 6,
