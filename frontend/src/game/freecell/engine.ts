@@ -30,31 +30,6 @@ const DECK_SIZE = 52;
 const FREE_CELL_COUNT = 4;
 
 // ---------------------------------------------------------------------------
-// Seed bank
-// ---------------------------------------------------------------------------
-
-interface SeedBank {
-  readonly seeds: readonly number[];
-}
-
-const SEED_BANK: SeedBank = seedsJson as SeedBank;
-
-function pickSeed(): number {
-  const { seeds } = SEED_BANK;
-  if (seeds.length === 0) {
-    throw new Error(
-      "FreeCell seed bank is empty. Run: python backend/scripts/gen_freecell_seeds.py"
-    );
-  }
-  const idx = Math.floor(_rng() * seeds.length);
-  const seed = seeds[idx];
-  if (seed === undefined) {
-    throw new Error("Seed bank indexing failed");
-  }
-  return seed;
-}
-
-// ---------------------------------------------------------------------------
 // Seedable RNG — same LCG used by Solitaire/Cascade/Blackjack/Twenty48.
 // Tests can pin shuffles via `setRng(createSeededRng(seed))`.
 // ---------------------------------------------------------------------------
@@ -100,6 +75,31 @@ function fisherYates(deck: Card[], rng: RandomSource): Card[] {
     }
   }
   return deck;
+}
+
+// ---------------------------------------------------------------------------
+// Seed bank
+// ---------------------------------------------------------------------------
+
+interface SeedBank {
+  readonly seeds: readonly number[];
+}
+
+const SEED_BANK: SeedBank = seedsJson as SeedBank;
+
+function pickSeed(): number {
+  const { seeds } = SEED_BANK;
+  if (seeds.length === 0) {
+    throw new Error(
+      "FreeCell seed bank is empty. Run: python backend/scripts/gen_freecell_seeds.py"
+    );
+  }
+  const idx = Math.floor(_rng() * seeds.length);
+  const seed = seeds[idx];
+  if (seed === undefined) {
+    throw new Error("Seed bank indexing failed");
+  }
+  return seed;
 }
 
 // ---------------------------------------------------------------------------

@@ -50,8 +50,6 @@ Usage
 from __future__ import annotations
 
 import argparse
-import heapq
-import itertools
 import json
 import sys
 import time
@@ -447,7 +445,7 @@ def _h(state: FCState) -> int:
 def solve(
     initial: FCState,
     state_budget: int = 200_000,
-    limit_seconds: float = 8.0,
+    limit_seconds: float = 0.3,
 ) -> bool:
     """DFS solver with heuristic-sorted children and a transposition table.
 
