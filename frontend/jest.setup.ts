@@ -1,6 +1,59 @@
 // Gesture handler requires native setup in Jest
 import "react-native-gesture-handler/jestSetup";
 
+// react-native-gesture-handler v3: GestureDetector enforces a GestureHandlerRootView
+// ancestor in DEV and removed the isTestEnv() bypass. Replace the main export so
+// GestureDetector passes through children and Gesture builders are no-ops.
+// (Internal sub-module mocks for native bindings are still handled by ./jestSetup above.)
+jest.mock("react-native-gesture-handler", () => {
+  // Proxy intercepts any method call and returns self — no fixed method list needed.
+  const chainable = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const proxy: any = new Proxy(
+      {},
+      {
+        get:
+          () =>
+          (..._args: unknown[]) =>
+            proxy,
+      }
+    );
+    return proxy;
+  };
+  return {
+    GestureDetector: ({ children }: { children: React.ReactNode }) => children,
+    GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,
+    Gesture: {
+      Pan: chainable,
+      Tap: chainable,
+      Pinch: chainable,
+      Exclusive: (...args: unknown[]) => args[0],
+      Simultaneous: (...args: unknown[]) => args[0],
+    },
+  };
+});
+
+// react-native-screens ships native modules that don't exist in Jest's jsdom
+// environment. Without this mock createScreenFactory (and other internals)
+// throw at import time, crashing every test suite that uses navigation.
+jest.mock("react-native-screens", () => ({
+  __esModule: true,
+  Screen: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenContainer: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenStack: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenStackItem: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  ScreenStackHeaderConfig: jest.fn(() => null),
+  ScreenFooter: jest.fn(() => null),
+  ScreenContentWrapper: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  enableScreens: jest.fn(),
+  enableFreeze: jest.fn(),
+  screensEnabled: jest.fn(() => true),
+  freezeEnabled: jest.fn(() => true),
+  isSearchBarAvailableForCurrentPlatform: jest.fn(() => false),
+  executeNativeBackPress: jest.fn(),
+  useTransitionProgress: jest.fn(() => ({ closing: 0, goingForward: 0 })),
+}));
+
 // Reanimated v4 — the official mock still imports worklets which require a
 // native runtime. Instead we supply a minimal stub covering the hooks used
 // in AnimatedTile.tsx (useSharedValue, useAnimatedStyle, withTiming, etc.).
@@ -74,12 +127,25 @@ jest.mock("expo-audio", () => ({
   AudioPlayer: jest.fn(),
 }));
 
-// @react-navigation/bottom-tabs 7.18.x calls createScreenFactory() at module
-// init time, which fails under Jest because the CJS resolution of
-// @react-navigation/native doesn't expose that symbol. Stub the one value
-// tests actually need; type-only imports are erased at compile time.
+// bottom-tabs v7.18.2 calls createScreenFactory() at module level; mocking the
+// entire package prevents it from importing @react-navigation/native and
+// failing when individual test files supply a partial native mock.
 jest.mock("@react-navigation/bottom-tabs", () => ({
-  useBottomTabBarHeight: jest.fn().mockReturnValue(0),
+  createBottomTabNavigator: jest.fn(() => ({
+    Navigator: jest.fn(({ children }: { children: React.ReactNode }) => children),
+    Screen: jest.fn(() => null),
+    Group: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  })),
+  createBottomTabScreen: jest.fn((config: unknown) => config),
+  useBottomTabBarHeight: jest.fn(() => 0),
+  BottomTabBar: jest.fn(() => null),
+  BottomTabView: jest.fn(() => null),
+  BottomTabBarHeightCallbackContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
+  BottomTabBarHeightContext: {
+    Provider: jest.fn(({ children }: { children: React.ReactNode }) => children),
+  },
 }));
 
 // Safe area context mock — returns zero insets in tests
@@ -106,9 +172,23 @@ jest.mock("@sentry/react-native", () => ({
   },
 }));
 
-// AsyncStorage mock (replaces localStorage in ThemeContext / FruitSetContext)
-import mockAsyncStorage from "@react-native-async-storage/async-storage/jest/async-storage-mock";
-jest.mock("@react-native-async-storage/async-storage", () => mockAsyncStorage);
+// AsyncStorage mock — v3 ships an in-memory implementation under the /jest export.
+// We wrap each method in jest.fn() so tests can override with mockResolvedValue,
+// while the default implementation is the real in-memory store (needed by eventStore).
+jest.mock("@react-native-async-storage/async-storage", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const inMemory = require("@react-native-async-storage/async-storage/jest").default;
+  return {
+    getItem: jest.fn((key: string) => inMemory.getItem(key)),
+    setItem: jest.fn((key: string, value: string) => inMemory.setItem(key, value)),
+    removeItem: jest.fn((key: string) => inMemory.removeItem(key)),
+    getMany: jest.fn((keys: string[]) => inMemory.getMany(keys)),
+    setMany: jest.fn((entries: Record<string, string>) => inMemory.setMany(entries)),
+    removeMany: jest.fn((keys: string[]) => inMemory.removeMany(keys)),
+    getAllKeys: jest.fn(() => inMemory.getAllKeys()),
+    clear: jest.fn(() => inMemory.clear()),
+  };
+});
 
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";

@@ -104,6 +104,25 @@ describe("dealGame", () => {
     const all = state.tableau.flat();
     expect(all).toHaveLength(52);
   });
+
+  it("selects a seed from the bank when no explicit seed is provided", () => {
+    // With a known RNG state, pickSeed() selects seeds[idx] from the bank.
+    // Two calls with the same RNG seed produce the same deal (bank pick is deterministic).
+    setRng(createSeededRng(7));
+    const a = dealGame();
+    setRng(createSeededRng(7));
+    const b = dealGame();
+    expect(a.tableau).toEqual(b.tableau);
+  });
+
+  it("explicit seed bypasses the bank and uses the supplied value directly", () => {
+    // Seed 999 is not guaranteed to be in the bank, but dealGame must accept it.
+    const state = dealGame(999);
+    const all = state.tableau.flat();
+    expect(all).toHaveLength(52);
+    // Deterministic with same explicit seed
+    expect(dealGame(999).tableau).toEqual(state.tableau);
+  });
 });
 
 // ---------------------------------------------------------------------------
