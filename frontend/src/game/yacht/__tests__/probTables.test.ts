@@ -16,7 +16,7 @@ import {
   getMultisets,
   multisetCount,
 } from "../probTables";
-import { evForHold } from "../ai";
+import { evForHold } from "../aiHelpers";
 import { computeDerived, newGame } from "../engine";
 import type { GameState } from "../types";
 

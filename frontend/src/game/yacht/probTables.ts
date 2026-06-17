@@ -170,7 +170,7 @@ function upperSubtotal(scores: GameState["scores"]): number {
  * @param keptValues  Values of the dice being kept (may be empty).
  * @param freeCount   Number of dice to be rerolled (0–5).
  * @param scores      Current scorecard (open categories matter for EV).
- * @returns Expected score (same semantics as evForHold in ai.ts).
+ * @returns Expected score (same semantics as evForHold in aiHelpers.ts).
  */
 export function evForHold1Roll(
   keptValues: readonly number[],

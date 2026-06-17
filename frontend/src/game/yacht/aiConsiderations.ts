@@ -1,5 +1,5 @@
 /**
- * Yacht consideration evaluators (GH #2026, story A2).
+ * Yacht consideration evaluators (GH #2026, story A2; extended in A4 #2028).
  *
  * Pure functions — no React, no IO, no Math.random, no Date.now.
  * Each accepts the info set (from #2025) plus a candidate action and returns
@@ -12,12 +12,13 @@
  *
  * Score considerations (action = YachtScoreAction):
  *   rateScorecardSafety    — 0 for filled categories, 1 for open
+ *   rateImmediateValue     — normalized raw points available right now
  *   rateChanceSafetyValve  — penalises burning Chance early in the game
  *   rateAdversarialVariance — boost high-variance plays when trailing, low when leading
  */
 
 import type { YachtInfoSet } from "./aiInfoSet";
-import type { Category } from "./engine";
+import { calculateScore, type Category } from "./engine";
 import type { GameState } from "./types";
 import { evForHold1Roll, evForHold2Roll } from "./probTables";
 
@@ -164,6 +165,26 @@ export function rateEVOfHold(infoSet: YachtInfoSet, holdMask: YachtHoldAction): 
  */
 export function rateScorecardSafety(infoSet: YachtInfoSet, category: YachtScoreAction): number {
   return infoSet.openCategories.has(category) ? 1.0 : 0.0;
+}
+
+/** Yacht score is the highest any single category can return. */
+const MAX_CAT_SCORE = 50;
+
+/**
+ * Normalized raw points available by scoring `category` with the current dice.
+ *
+ * Fills the signal gap that `rateAdversarialVariance` leaves at neutral
+ * scoreDelta: without this, all non-Chance categories receive identical
+ * weighted sums at delta=0, collapsing selection to the first category in
+ * iteration order.
+ *
+ * Returns `calculateScore(category, dice) / 50`, clamped to [0, 1].
+ * A zero here (no matching dice) still permits selection when no better
+ * option exists; the gate is `rateScorecardSafety`, not this signal.
+ */
+export function rateImmediateValue(infoSet: YachtInfoSet, category: YachtScoreAction): number {
+  const raw = calculateScore(category, infoSet.dice);
+  return Math.min(1.0, raw / MAX_CAT_SCORE);
 }
 
 /**
