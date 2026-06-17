@@ -19,6 +19,7 @@ const noGameUiImports = {
   create(context) {
     const filename = context.filename ?? context.getFilename?.() ?? "";
     if (!filename.startsWith(gameDir + path.sep) && filename !== gameDir) return {};
+    if (filename.endsWith(".tsx")) return {}; // game-level UI components may use shared components
     return {
       ImportDeclaration(node) {
         const resolved = path.resolve(path.dirname(filename), node.source.value);
