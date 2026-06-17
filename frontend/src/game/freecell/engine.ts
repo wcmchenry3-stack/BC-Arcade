@@ -4,8 +4,14 @@
  * Pure TypeScript. No React, AsyncStorage, HTTP, timers, or other
  * side-effect imports. The UI replaces the entire FreeCellState object
  * on each transition — state is immutable.
+ *
+ * Deal reproducibility comes from `seeds.json`, a bank of provably
+ * solvable seeds generated offline by `backend/scripts/gen_freecell_seeds.py`.
+ * `dealGame` picks a seed from the bank so the live game never serves an
+ * unsolvable layout. Explicit seeds still work for tests and E2E.
  */
 
+import seedsJson from "./seeds.json";
 import type {
   Card,
   Foundations,
@@ -72,6 +78,31 @@ function fisherYates(deck: Card[], rng: RandomSource): Card[] {
 }
 
 // ---------------------------------------------------------------------------
+// Seed bank
+// ---------------------------------------------------------------------------
+
+interface SeedBank {
+  readonly seeds: readonly number[];
+}
+
+const SEED_BANK: SeedBank = seedsJson as SeedBank;
+
+function pickSeed(): number {
+  const { seeds } = SEED_BANK;
+  if (seeds.length === 0) {
+    throw new Error(
+      "FreeCell seed bank is empty. Run: python backend/scripts/gen_freecell_seeds.py"
+    );
+  }
+  const idx = Math.floor(_rng() * seeds.length);
+  const seed = seeds[idx];
+  if (seed === undefined) {
+    throw new Error("Seed bank indexing failed");
+  }
+  return seed;
+}
+
+// ---------------------------------------------------------------------------
 // Deal
 // ---------------------------------------------------------------------------
 
@@ -88,7 +119,7 @@ function emptyFreeCells(): FreeCells {
  * columns 0–3 receive 7 cards each; columns 4–7 receive 6 cards each.
  */
 export function dealGame(explicitSeed?: number): FreeCellState {
-  const seed = explicitSeed ?? Math.floor(_rng() * 0xffffffff) >>> 0;
+  const seed = explicitSeed ?? pickSeed();
   const deck = fisherYates(createDeck(), createSeededRng(seed));
 
   const tableau: Card[][] = [];
