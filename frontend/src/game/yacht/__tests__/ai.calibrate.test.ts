@@ -29,11 +29,7 @@ interface SimResult {
   winner: 0 | 1;
 }
 
-function simulateOne(
-  humanDiff: AiDifficulty,
-  aiDiff: AiDifficulty,
-  seed: number
-): SimResult {
+function simulateOne(humanDiff: AiDifficulty, aiDiff: AiDifficulty, seed: number): SimResult {
   setRng(createSeededRng(seed));
 
   let humanState = newGame();
@@ -44,10 +40,7 @@ function simulateOne(
     while (humanState.rolls_used < 3) {
       humanState = roll(humanState, holdStrategy(humanState, humanDiff));
     }
-    humanState = score(
-      humanState,
-      scoreStrategy(humanState, humanDiff, aiState.total_score)
-    );
+    humanState = score(humanState, scoreStrategy(humanState, humanDiff, aiState.total_score));
 
     aiState = roll(aiState, [false, false, false, false, false]);
     while (aiState.rolls_used < 3) {
@@ -90,29 +83,23 @@ function runBatch(
 afterEach(() => setRng(Math.random));
 
 describe("Yacht calibration — utility-vs-utility difficulty bands", () => {
-  itFull(
-    "Hard utility vs Easy utility — Hard wins 62–68%",
-    () => {
-      const r = runBatch("hard", "easy", N, 0);
-      console.log(
-        `[band:easy] Hard vs Easy: hard_win=${(r.winRate * 100).toFixed(1)}% ` +
-          `hard_mean=${r.humanMean.toFixed(1)} easy_mean=${r.aiMean.toFixed(1)}`
-      );
-      expect(r.winRate).toBeGreaterThanOrEqual(0.62);
-      expect(r.winRate).toBeLessThanOrEqual(0.68);
-    }
-  );
+  itFull("Hard utility vs Easy utility — Hard wins 62–68%", () => {
+    const r = runBatch("hard", "easy", N, 0);
+    console.log(
+      `[band:easy] Hard vs Easy: hard_win=${(r.winRate * 100).toFixed(1)}% ` +
+        `hard_mean=${r.humanMean.toFixed(1)} easy_mean=${r.aiMean.toFixed(1)}`
+    );
+    expect(r.winRate).toBeGreaterThanOrEqual(0.62);
+    expect(r.winRate).toBeLessThanOrEqual(0.68);
+  });
 
-  itFull(
-    "Hard utility vs Medium utility — Hard wins 47–53%",
-    () => {
-      const r = runBatch("hard", "medium", N, 10000);
-      console.log(
-        `[band:medium] Hard vs Medium: hard_win=${(r.winRate * 100).toFixed(1)}% ` +
-          `hard_mean=${r.humanMean.toFixed(1)} medium_mean=${r.aiMean.toFixed(1)}`
-      );
-      expect(r.winRate).toBeGreaterThanOrEqual(0.47);
-      expect(r.winRate).toBeLessThanOrEqual(0.53);
-    }
-  );
+  itFull("Hard utility vs Medium utility — Hard wins 47–53%", () => {
+    const r = runBatch("hard", "medium", N, 10000);
+    console.log(
+      `[band:medium] Hard vs Medium: hard_win=${(r.winRate * 100).toFixed(1)}% ` +
+        `hard_mean=${r.humanMean.toFixed(1)} medium_mean=${r.aiMean.toFixed(1)}`
+    );
+    expect(r.winRate).toBeGreaterThanOrEqual(0.47);
+    expect(r.winRate).toBeLessThanOrEqual(0.53);
+  });
 });
