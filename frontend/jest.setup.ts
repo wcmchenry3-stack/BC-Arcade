@@ -74,6 +74,14 @@ jest.mock("expo-audio", () => ({
   AudioPlayer: jest.fn(),
 }));
 
+// @react-navigation/bottom-tabs 7.18.x calls createScreenFactory() at module
+// init time, which fails under Jest because the CJS resolution of
+// @react-navigation/native doesn't expose that symbol. Stub the one value
+// tests actually need; type-only imports are erased at compile time.
+jest.mock("@react-navigation/bottom-tabs", () => ({
+  useBottomTabBarHeight: jest.fn().mockReturnValue(0),
+}));
+
 // Safe area context mock — returns zero insets in tests
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
