@@ -1,4 +1,5 @@
 // @ts-check
+const { fixupPluginRules } = require("@eslint/compat");
 const tsPlugin = require("@typescript-eslint/eslint-plugin");
 const tsParser = require("@typescript-eslint/parser");
 const pluginReact = require("eslint-plugin-react");
@@ -51,7 +52,7 @@ module.exports = [
   {
     files: ["**/*.ts", "**/*.tsx"],
     plugins: {
-      import: pluginImport,
+      import: fixupPluginRules(pluginImport),
     },
     languageOptions: {
       parser: tsParser,
@@ -89,14 +90,12 @@ module.exports = [
             {
               target: "./src/game",
               from: "./src/components",
-              message:
-                "Game engines must not import from components/. Keep logic and UI separate.",
+              message: "Game engines must not import from components/. Keep logic and UI separate.",
             },
             {
               target: "./src/game",
               from: "./src/screens",
-              message:
-                "Game engines must not import from screens/. Keep logic and UI separate.",
+              message: "Game engines must not import from screens/. Keep logic and UI separate.",
             },
           ],
         },
