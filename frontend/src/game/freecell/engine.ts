@@ -430,6 +430,135 @@ export function applyMove(state: FreeCellState, move: Move): FreeCellState {
 // Hint / legal-move enumeration
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Smart single-tap auto-move (#2037)
+// ---------------------------------------------------------------------------
+
+export type AutoMoveResult =
+  | { kind: "execute"; move: Move }
+  | { kind: "ambiguous" }
+  | { kind: "supermove-rejected" }
+  | { kind: "no-move" };
+
+function runLengthAt(state: FreeCellState, col: number): number {
+  const pile = state.tableau[col];
+  if (!pile || pile.length === 0) return 0;
+  let len = 1;
+  for (let i = pile.length - 1; i > 0; i--) {
+    const top = pile[i]!;
+    const below = pile[i - 1]!;
+    if (cardColor(top) !== cardColor(below) && top.rank === below.rank - 1) {
+      len++;
+    } else {
+      break;
+    }
+  }
+  return len;
+}
+
+/**
+ * Given a tap source, resolves the smart auto-move priority ladder (#2037):
+ *   1. Foundation — unambiguous when valid
+ *   2. Non-empty tableau — prefer the destination building the longest run;
+ *      if multiple tie, caller enters two-tap selection flow
+ *   3. Empty tableau column — execute first available (interchangeable)
+ *   4. Free cell — execute first available (tableau source, single card only)
+ *
+ * Returns "supermove-rejected" when a multi-card run exceeds the maximum
+ * supermove capacity for any destination — caller should shake + toast.
+ */
+export function resolveAutoMove(
+  state: FreeCellState,
+  source: { type: "tableau"; col: number; index: number } | { type: "freecell"; cell: number }
+): AutoMoveResult {
+  if (source.type === "freecell") {
+    const { cell } = source;
+
+    // 1. Foundation
+    const foundMove: Move = { type: "freecell-to-foundation", fromCell: cell };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+
+    // 2. Non-empty tableau — prefer longest resulting run
+    const nonEmpty: Array<{ move: Move; score: number }> = [];
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length === 0) continue;
+      const m: Move = { type: "freecell-to-tableau", fromCell: cell, toCol };
+      if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+    }
+    if (nonEmpty.length > 0) {
+      const best = Math.max(...nonEmpty.map((s) => s.score));
+      const bestMoves = nonEmpty.filter((s) => s.score === best);
+      if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+      return { kind: "ambiguous" };
+    }
+
+    // 3. Empty tableau column — first available
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length > 0) continue;
+      const m: Move = { type: "freecell-to-tableau", fromCell: cell, toCol };
+      if (validateMove(state, m)) return { kind: "execute", move: m };
+    }
+
+    return { kind: "no-move" };
+  }
+
+  // Tableau source
+  const { col, index } = source;
+  const pile = state.tableau[col];
+  if (!pile || index < 0 || index >= pile.length) return { kind: "no-move" };
+  const run = pile.slice(index);
+
+  // Supermove pre-check for multi-card runs
+  if (run.length > 1) {
+    const emptyCells = state.freeCells.filter((c) => c === null).length;
+    const emptyColumns = state.tableau.filter((c, idx) => idx !== col && c.length === 0).length;
+    if (run.length > (1 + emptyCells) * Math.pow(2, emptyColumns)) {
+      return { kind: "supermove-rejected" };
+    }
+  }
+
+  // 1. Foundation (top card only)
+  if (index === pile.length - 1) {
+    const foundMove: Move = { type: "tableau-to-foundation", fromCol: col };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+  }
+
+  // 2. Non-empty tableau — prefer longest resulting run
+  const nonEmpty: Array<{ move: Move; score: number }> = [];
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length === 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+  }
+  if (nonEmpty.length > 0) {
+    const best = Math.max(...nonEmpty.map((s) => s.score));
+    const bestMoves = nonEmpty.filter((s) => s.score === best);
+    if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+    return { kind: "ambiguous" };
+  }
+
+  // 3. Empty tableau column — first available
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length > 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m)) return { kind: "execute", move: m };
+  }
+
+  // 4. Free cell — first available (single card only)
+  if (run.length === 1) {
+    for (let toCell = 0; toCell < FREE_CELL_COUNT; toCell++) {
+      const m: Move = { type: "tableau-to-freecell", fromCol: col, toCell };
+      if (validateMove(state, m)) return { kind: "execute", move: m };
+    }
+  }
+
+  return { kind: "no-move" };
+}
+
 /**
  * Returns false when a tableau-to-tableau move is a pure oscillation: the
  * moving run's parent card is color-rank-equivalent to the destination card

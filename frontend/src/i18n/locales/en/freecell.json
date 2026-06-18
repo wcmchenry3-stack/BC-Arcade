@@ -30,5 +30,6 @@
   "action.submitScore": "Submit Score",
   "action.goHome": "Go Home",
   "error.submitFailed": "Submission failed — try again",
-  "error.submitRetry": "Try Again"
+  "error.submitRetry": "Try Again",
+  "error.supermoveRejected": "Not enough free spaces to move this stack"
 }
