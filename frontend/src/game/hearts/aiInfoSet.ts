@@ -29,6 +29,9 @@ export type VoidLedger = Readonly<Record<number, Readonly<Partial<Record<Suit, b
 export interface HeartsInfoSet extends InformationSet {
   readonly kind: "hearts";
 
+  /** Seat index (0–3) of the player for whom this snapshot was built. */
+  readonly playerIndex: number;
+
   /** The requesting player's current hand. */
   readonly hand: readonly Card[];
 
@@ -92,7 +95,7 @@ export function buildHeartsInfoSet(
   hand: readonly Card[],
   trick: readonly TrickCard[],
   state: HeartsState,
-  _playerIndex: number
+  playerIndex: number
 ): HeartsInfoSet {
   // ------------------------------------------------------------------
   // ledSuit: null when leading (trick is empty), otherwise the first card's suit.
@@ -168,6 +171,7 @@ export function buildHeartsInfoSet(
 
   return Object.freeze({
     kind: "hearts" as const,
+    playerIndex,
     hand,
     currentTrick: trick,
     ledSuit,
