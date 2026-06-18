@@ -140,8 +140,12 @@ export default function GameScreen({ navigation, route }: Props) {
     };
   }
 
+  // When the mode modal is shown on first render we defer syncStart to the
+  // handler so the session only starts once the player has chosen a mode.
+  const syncOnMount = !isFreshGame || route.params.aiDifficulty !== undefined;
   useEffect(() => {
     if (gameStateRef.current.game_over) return;
+    if (!syncOnMount) return;
     syncStart();
     // Unmount abandon is handled by useGameSync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -347,9 +351,20 @@ export default function GameScreen({ navigation, route }: Props) {
     const pref = await loadLastMode();
     setPendingMode(pref?.mode ?? "solo");
     setPendingDiff(pref?.difficulty ?? "medium");
+    setGameState(newGame());
+    setAiDifficulty(null);
+    setAiGameState(null);
+    setIsAiTurn(false);
+    setGameKey((k) => k + 1);
+    setError(null);
     setDifficultyChosen(false);
-    // Game state and syncStart are set in handleChooseSolo / handleChooseVs
-    // so the game only exists after the user picks a mode.
+    // syncStart is called in handleChooseSolo / handleChooseVs after the player
+    // confirms a mode, so the session only starts once mode is known.
+    Sentry.addBreadcrumb({
+      category: "yacht.game",
+      message: "startNewGame: reset complete",
+      level: "info",
+    });
   }, [syncComplete]);
 
   const handleNewGamePress = useCallback(() => {
@@ -368,28 +383,16 @@ export default function GameScreen({ navigation, route }: Props) {
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
     void saveLastMode("solo", pendingDiff);
-    setGameState(newGame());
-    setAiDifficulty(null);
-    setAiGameState(null);
-    setIsAiTurn(false);
-    setGameKey((k) => k + 1);
-    setError(null);
     setDifficultyChosen(true);
     syncStart();
-    Sentry.addBreadcrumb({ category: "yacht.game", message: "startNewGame: reset complete (solo)", level: "info" });
   }
 
   function handleChooseVs() {
     void saveLastMode("vs", pendingDiff);
-    setGameState(newGame());
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
-    setIsAiTurn(false);
-    setGameKey((k) => k + 1);
-    setError(null);
     setDifficultyChosen(true);
     syncStart();
-    Sentry.addBreadcrumb({ category: "yacht.game", message: "startNewGame: reset complete (vs)", level: "info" });
   }
 
   // VS result computed when both games are complete.
