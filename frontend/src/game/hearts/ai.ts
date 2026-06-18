@@ -37,7 +37,7 @@ import type { PlayWeights } from "./aiWeights";
 // ---------------------------------------------------------------------------
 
 /** When true, `selectCardsToPass` and `selectCardToPlay` use the utility AI. */
-export const USE_UTILITY_AI = false;
+export const USE_UTILITY_AI = true;
 
 // ---------------------------------------------------------------------------
 // Helpers
