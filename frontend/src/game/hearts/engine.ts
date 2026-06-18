@@ -21,6 +21,10 @@ export function setRng(fn: RandomSource): void {
   _rng = fn;
 }
 
+export function getRng(): RandomSource {
+  return _rng;
+}
+
 export function createSeededRng(seed: number): RandomSource {
   let state = seed >>> 0;
   return () => {

@@ -83,6 +83,36 @@ export interface HeartsInfoSet extends InformationSet {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build a minimal HeartsInfoSet for pass-phase scoring.
+ *
+ * Only `hand` and `passDirection` are consumed by the pass considerations
+ * (ratePassingQuality, rateSuitVoidingUtility). All other fields are zeroed
+ * stubs. If a new consideration ever reads seenKeys, voidLedger, pointsPerPlayer,
+ * or cumulativeScores during the pass phase, populate those fields here.
+ */
+export function buildHeartsPassInfoSet(
+  hand: readonly Card[],
+  direction: PassDirection,
+  playerIndex: number
+): HeartsInfoSet {
+  return {
+    kind: "hearts" as const,
+    playerIndex,
+    hand,
+    currentTrick: [],
+    ledSuit: null,
+    seenKeys: new Set<string>() as ReadonlySet<string>,
+    voidLedger: {} as VoidLedger,
+    pointsPerPlayer: [0, 0, 0, 0] as readonly number[],
+    cumulativeScores: [0, 0, 0, 0] as readonly number[],
+    tricksRemaining: 13,
+    passDirection: direction,
+    heartsBroken: false,
+    isFirstTrick: false,
+  };
+}
+
+/**
  * Build a read-only HeartsInfoSet snapshot for `playerIndex` at the current
  * point in `state`.
  *
