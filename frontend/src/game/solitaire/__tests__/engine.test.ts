@@ -937,15 +937,7 @@ describe("resolveAutoMove — tableau source", () => {
     // Col 0: [9♣ face-down, 8♦ face-up]. Col 1: [9♠ face-up].
     // Tapping 8♦ (index 1) reveals 9♣ → single destination → execute.
     const state = mkState({
-      tableau: [
-        [c("clubs", 9, false), c("diamonds", 8)],
-        [c("spades", 9)],
-        [],
-        [],
-        [],
-        [],
-        [],
-      ],
+      tableau: [[c("clubs", 9, false), c("diamonds", 8)], [c("spades", 9)], [], [], [], [], []],
     });
     const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
     expect(result.kind).toBe("execute");
@@ -1000,22 +992,11 @@ describe("resolveAutoMove — tableau source", () => {
     }
   });
 
-  it("falls through to non-reveal non-empty when reveal-move has no valid destination", () => {
-    // Col 0: [9♣ face-down, 8♥ face-up (red)]. No non-empty column has a 9 of black suit.
-    // Col 1: [7♠ face-up] — 8♥ can go onto 9-rank card, but col1 has rank 7, not valid.
-    // Actually let's just make a state where the reveal card has no valid non-empty dest
-    // but does have a valid non-reveal destination. Here: non-reveal case, col 0 has face-up only.
-    // Col 0: [8♥ face-up (no face-down below)]. Col 1: [9♠ face-up]. → non-reveal execute.
+  it("executes non-empty move for a non-reveal card (no face-down below source)", () => {
+    // Col 0: [8♥ face-up only — no face-down below, so not a reveal move].
+    // Col 1: [9♠ face-up]. Single valid non-empty destination → execute.
     const state = mkState({
-      tableau: [
-        [c("hearts", 8)],
-        [c("spades", 9)],
-        [],
-        [],
-        [],
-        [],
-        [],
-      ],
+      tableau: [[c("hearts", 8)], [c("spades", 9)], [], [], [], [], []],
     });
     const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
     expect(result.kind).toBe("execute");
@@ -1024,18 +1005,24 @@ describe("resolveAutoMove — tableau source", () => {
     }
   });
 
+  it("falls through to empty column when source reveals a face-down card but no non-empty destination exists", () => {
+    // Col 0: [10♣ face-down, K♦ face-up]. Moving K♦ would reveal 10♣, but K♦ has no valid
+    // non-empty destination (no rank-14 column). Falls through to level 4 → empty column.
+    const state = mkState({
+      tableau: [[c("clubs", 10, false), c("diamonds", 13)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute" && result.move.type === "tableau-to-tableau") {
+      expect(result.move.fromCol).toBe(0);
+      expect(result.move.fromIndex).toBe(1);
+    }
+  });
+
   it("returns ambiguous when non-reveal non-empty destinations tie on run length", () => {
     // Col 0: [8♥ face-up]. Col 1: [9♠ — run 1]. Col 2: [9♣ — run 1]. Both valid → ambiguous.
     const state = mkState({
-      tableau: [
-        [c("hearts", 8)],
-        [c("spades", 9)],
-        [c("clubs", 9)],
-        [],
-        [],
-        [],
-        [],
-      ],
+      tableau: [[c("hearts", 8)], [c("spades", 9)], [c("clubs", 9)], [], [], [], []],
     });
     const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
     expect(result.kind).toBe("ambiguous");

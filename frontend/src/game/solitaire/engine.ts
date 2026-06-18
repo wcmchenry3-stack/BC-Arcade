@@ -796,6 +796,10 @@ function runLengthAt(state: SolitaireState, col: number): number {
  *      if multiple tie, caller enters two-tap selection flow
  *   3. Other legal tableau move — prefer longest resulting run; ambiguous if tied
  *   4. Empty column — first available (only kings / king-led runs land here)
+ *
+ * Levels 2 and 3 share a single non-empty scan: "reveal" is a source-only property
+ * (whether pile[index-1] is face-down), so every valid non-empty destination from a
+ * given tap is either all level-2 or all level-3 — never mixed.
  */
 export function resolveAutoMove(
   state: SolitaireState,
@@ -843,26 +847,7 @@ export function resolveAutoMove(
     if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
   }
 
-  const revealsCard = index > 0 && pile[index - 1] !== undefined && !pile[index - 1]!.faceUp;
-
-  // 2. Non-empty tableau — reveal-moves take priority when source reveals a face-down card
-  if (revealsCard) {
-    const revealMoves: Array<{ move: Move; score: number }> = [];
-    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
-      const dest = state.tableau[toCol];
-      if (!dest || dest.length === 0) continue;
-      const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
-      if (validateMove(state, m)) revealMoves.push({ move: m, score: runLengthAt(state, toCol) });
-    }
-    if (revealMoves.length > 0) {
-      const best = Math.max(...revealMoves.map((s) => s.score));
-      const bestMoves = revealMoves.filter((s) => s.score === best);
-      if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
-      return { kind: "ambiguous" };
-    }
-  }
-
-  // 3. Other legal tableau move — prefer longest resulting run
+  // 2/3. Non-empty tableau — prefer longest resulting run (single scan; see JSDoc)
   const nonEmpty: Array<{ move: Move; score: number }> = [];
   for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
     const dest = state.tableau[toCol];
