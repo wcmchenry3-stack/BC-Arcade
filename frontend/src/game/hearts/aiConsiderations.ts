@@ -109,11 +109,12 @@ export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
   const maxHigher = 14 - aceHigh(card.rank);
   const basePWin = Math.max(0, 1.0 - higher / Math.max(1, maxHigher));
 
-  // Void bonus: void opponents cannot follow suit and therefore cannot beat us
+  // Void bonus: void opponents cannot follow suit and therefore cannot beat us.
+  // Exclude self (playerIndex) — the engine never marks the acting player void.
   const knownVoidCount = [0, 1, 2, 3].filter(
-    (p) => voidLedger[p]?.[card.suit]
+    (p) => p !== infoSet.playerIndex && voidLedger[p]?.[card.suit]
   ).length;
-  const voidFraction = knownVoidCount / 3;
+  const voidFraction = knownVoidCount / 3; // at most 3 opponents
   return Math.min(1.0, basePWin + voidFraction * (1.0 - basePWin));
 }
 
@@ -130,17 +131,11 @@ export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
  * 1.0: card cannot win the trick, or the trick contains zero points.
  * 0.0: card is certain to win a trick worth 26 pts (maximum danger).
  */
-export const rateMinimizeImmediatePoints: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const rateMinimizeImmediatePoints: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const pWin = computePWin(card, infoSet);
   if (pWin === 0) return 1.0;
 
-  const trickPts = infoSet.currentTrick.reduce(
-    (s, tc) => s + cardPoints(tc.card),
-    0
-  );
+  const trickPts = infoSet.currentTrick.reduce((s, tc) => s + cardPoints(tc.card), 0);
   const totalPts = trickPts + cardPoints(card);
   if (totalPts === 0) return 1.0;
 
@@ -162,10 +157,7 @@ export const rateMinimizeImmediatePoints: Consideration<HeartsInfoSet, Card> = (
  * 1.0: card is the last of its suit in hand — playing it creates an immediate void.
  * 0.0: suit has ≥4 remaining cards — voiding is not achievable in the near term.
  */
-export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const suitCount = infoSet.hand.filter((c) => c.suit === card.suit).length;
   if (suitCount === 1) return 1.0; // immediate void
   // Linear: 2 remaining → 0.67, 3 → 0.33, 4+ → 0
@@ -186,10 +178,7 @@ export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (
  * 1.0: no Q♠ risk (Q♠ already gone, or this card cannot cause self-take).
  * 0.0: near-certain Q♠ self-take (e.g. leading Q♠ into an active spade suit).
  */
-export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const { hand, seenKeys, currentTrick, ledSuit } = infoSet;
 
   // Q♠ is "gone" only when it has been collected into a completed trick (wonCards),
@@ -215,8 +204,7 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (
   }
 
   // Q♠ is in the current trick — winning it costs us 13 pts
-  const qInTrick = currentTrick.some((tc) => isQueenOfSpades(tc.card));
-  if (qInTrick) {
+  if (qInCurrentTrick) {
     const pWin = computePWin(card, infoSet);
     return Math.max(0, 1.0 - pWin);
   }
@@ -250,10 +238,7 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (
  * 0.5: neutral (no moon threat, or card has no blocking effect).
  * 0.0: counter-productive (would win back a point trick, helping the shooter).
  */
-export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const { pointsPerPlayer, playerIndex, ledSuit } = infoSet;
 
   const totalPts = pointsPerPlayer.reduce((s, v) => s + v, 0);
@@ -313,10 +298,7 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (
  * 0.5: neutral (e.g. winning a 0-pt trick for board control).
  * 0.05: catastrophic (discarding a heart/Q♠ during a void, losing it forever).
  */
-export const rateMoonAttemptProgress: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const rateMoonAttemptProgress: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const pts = cardPoints(card);
   const pWin = computePWin(card, infoSet);
   const { ledSuit } = infoSet;
@@ -357,11 +339,11 @@ export const rateMoonAttemptProgress: Consideration<HeartsInfoSet, Card> = (
  *
  * 1.0: ideal pass candidate (unprotected Q♠, A♥, high danger heart).
  * 0.0: must never pass (2♣).
+ *
+ * Callers must weight this consideration at 0 during `passDirection === "none"`
+ * hands — no pass occurs, so any non-zero weight would incorrectly influence play.
  */
-export const ratePassingQuality: Consideration<HeartsInfoSet, Card> = (
-  infoSet,
-  card
-) => {
+export const ratePassingQuality: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const { hand, passDirection } = infoSet;
 
   // 2♣ must never be passed — engine requires it to open the first trick

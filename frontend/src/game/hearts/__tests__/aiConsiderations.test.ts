@@ -287,6 +287,13 @@ describe("rateQueenSpadesRisk", () => {
     expect(aScore).toBeLessThan(0.5);
     expect(kScore).toBeLessThan(0.5);
   });
+
+  it("returns 0.5 for leading a lower spade while holding Q♠", () => {
+    // 6♠ is not a cover card — leading it while holding Q♠ is risky but not catastrophic
+    const hand = [c("spades", 12), c("spades", 6)];
+    const info = mkInfo(hand, []);
+    expect(rateQueenSpadesRisk(info, c("spades", 6))).toBe(0.5);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -341,6 +348,20 @@ describe("rateMoonThreat", () => {
     const info = buildHeartsInfoSet([c("clubs", 5)], [], state, 0);
     expect(rateMoonThreat(info, c("clubs", 5))).toBe(0.5); // no opponent threat
   });
+
+  it("following in-suit point card that probably loses scores near 0.95", () => {
+    // Hearts led. We have K♥ (rank 13, ace-high=13). A♥ is in seenKeys → K♥ is top.
+    // P_win = 1.0 → score = 0.5 + (1 - 1.0) * 0.45 = 0.5. That's not right for this case.
+    // Actually we want: following in-suit point card that LOSES (low pWin) → score near 0.5+0.45=0.95.
+    // Use 2♥ following a hearts trick where K♥ is already winning — 2♥ cannot win.
+    const trick = [tc("hearts", 13, 3)]; // K♥ leading / winning
+    const hand = [c("hearts", 2)]; // 2♥ cannot beat K♥
+    const state = mkState({ handScores: [0, 6, 0, 0], currentTrick: trick, heartsBroken: true });
+    const info = buildHeartsInfoSet(hand, trick, state, 0);
+    // 2♥: pWin=0 (beaten by K♥) → score = 0.5 + (1-0)*0.45 = 0.95
+    const score = rateMoonThreat(info, c("hearts", 2));
+    expect(score).toBeCloseTo(0.95, 2);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -363,21 +384,13 @@ describe("rateMoonAttemptProgress", () => {
   });
 
   it("scores following in-suit point card proportional to P_win", () => {
-    // Hearts led; we have A♥ (certain win since all higher hearts gone)
+    // Hearts led; we have A♥. A♥ (rank=1, ace-high=14) is the highest card in
+    // any suit — nothing beats it → P_win = 1.0 → score = 1 * 0.95 = 0.95
     const trick = [tc("hearts", 3, 3)];
-    const won = [
-      [c("hearts", 1)], // A♥ in seenKeys (in our wonCards)
-      [],
-      [],
-      [],
-    ];
-    // Actually A is rank 1 = ace-high=14 = highest → if A is seen, K♥ wins
-    // Let's use A♥ where all higher are seen. A♥ rank=1 is the highest → P_win=1
-    const hand = [c("hearts", 1)]; // A♥ not seen yet
+    const hand = [c("hearts", 1)];
     const state = mkState({ wonCards: [[], [], [], []], currentTrick: trick, heartsBroken: true });
     const info = buildHeartsInfoSet(hand, trick, state, 0);
     const score = rateMoonAttemptProgress(info, c("hearts", 1));
-    // A♥ wins for sure (nothing beats it) → P_win=1 → 1*0.95 = 0.95
     expect(score).toBeCloseTo(0.95, 2);
   });
 
@@ -463,6 +476,18 @@ describe("ratePassingQuality", () => {
     const lowScore = ratePassingQuality(info, c("clubs", 6));
     expect(aScore).toBeGreaterThan(lowScore);
     expect(kScore).toBeGreaterThan(lowScore);
+  });
+
+  it("Q♠ with passDirection=none: protected only when holding both A♠ and K♠", () => {
+    const handBoth = [c("spades", 12), c("spades", 1), c("spades", 13)];
+    const handOne = [c("spades", 12), c("spades", 1)]; // A♠ but no K♠
+    const stateNone = mkState({ passDirection: "none" });
+    const infoBoth = buildHeartsInfoSet(handBoth, [], stateNone, 0);
+    const infoOne = buildHeartsInfoSet(handOne, [], stateNone, 0);
+    // With both covers: fullyProtected=true → low score (keep Q♠)
+    expect(ratePassingQuality(infoBoth, c("spades", 12))).toBeLessThan(0.3);
+    // With only A♠: fullyProtected=false → high score (pass Q♠)
+    expect(ratePassingQuality(infoOne, c("spades", 12))).toBeGreaterThan(0.9);
   });
 });
 
