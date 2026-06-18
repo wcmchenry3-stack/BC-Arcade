@@ -1,0 +1,28 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 8000
+# Start a Draw 1 game.
+- tapOn:
+    text: "Draw 1"
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 5000
+# Use the Hint button to highlight a movable card, then single-tap it.
+# This guarantees we tap a card with at least one valid move — the smart tap
+# path fires resolveAutoMove and either auto-executes (unambiguous) or
+# falls back to selection (ambiguous). Both outcomes are valid.
+- tapOn:
+    id: "solitaire-hint-button"
+- takeScreenshot: solitaire-tap-automove-hint-highlighted
+# Tap the hint-highlighted card — single tap exercises smart auto-move.
+- tapOn:
+    id: "solitaire-hint-source"
+- takeScreenshot: solitaire-tap-automove-after-tap

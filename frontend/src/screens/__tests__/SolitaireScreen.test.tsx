@@ -561,37 +561,149 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     };
   }
 
-  it("single tap on waste card with valid foundation move selects it, does not auto-move", async () => {
-    // A♠ in waste + empty spades foundation = a legal waste-to-foundation move.
-    // The pre-fix double-fire would deliver handleWastePress twice within 300 ms,
-    // causing isDouble=true on the second spurious call and moving the card.
+  it("single tap on waste ace auto-moves it to foundation (smart tap, #2039)", async () => {
+    // Smart tap: A♠ in waste + empty foundation = unambiguous waste-to-foundation → execute immediately.
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // single tap — should select only
+      await fireEvent.press(api.getByLabelText("A of Spades"));
     });
 
-    // "Empty Spades foundation" only exists when the foundation has no cards —
-    // it's the unambiguous signal that the ace was NOT auto-moved.
-    expect(api.getByLabelText("Empty Spades foundation")).toBeTruthy();
-    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+    // Ace should be on the foundation — "Empty Spades foundation" no longer exists.
+    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
   });
 
-  it("double-tap on waste card with valid foundation move moves it to foundation", async () => {
+  it("double-tap on waste card with valid foundation move still moves it", async () => {
     // Two consecutive act() calls complete in <1 ms, well within DOUBLE_TAP_MS (300 ms).
+    // With smart tap the first tap already auto-moves; the second tap lands on the
+    // foundation ace but triggers no additional move, keeping moves at 1.
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // first tap — select
+      await fireEvent.press(api.getByLabelText("A of Spades")); // smart tap → auto-move
     });
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // second tap — double-tap → waste-to-foundation
+      await fireEvent.press(api.getByLabelText("A of Spades")); // now on foundation → select only
     });
 
     expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
     expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+});
+
+describe("SolitaireScreen — smart single-tap auto-move (#2039)", () => {
+  function buildSmartTapState(overrides: Partial<import("../../game/solitaire/types").SolitaireState> = {}) {
+    return {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      ...overrides,
+    };
+  }
+
+  it("single tap on tableau ace auto-moves to foundation (unambiguous)", async () => {
+    // A♠ alone in col 0 → unambiguous foundation move → execute on first tap.
+    const state = buildSmartTapState({
+      tableau: [
+        [{ suit: "spades", rank: 1, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("A of Spades"));
+    });
+
+    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+
+  it("single tap on tableau card with ambiguous destinations selects instead of auto-moving", async () => {
+    // 8♥ (red) in col 0 can go onto 9♠ (col 1) or 9♣ (col 2) — both run-length 1 → ambiguous → select.
+    const state = buildSmartTapState({
+      tableau: [
+        [{ suit: "hearts", rank: 8, faceUp: true }],
+        [{ suit: "spades", rank: 9, faceUp: true }],
+        [{ suit: "clubs", rank: 9, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("8 of Hearts"));
+    });
+
+    // Selection highlights the card rather than moving it — moves stays at 0.
+    expect(api.getByLabelText("8 of Hearts (selected)")).toBeTruthy();
+    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+  });
+
+  it("second tap on valid destination resolves after ambiguous first tap", async () => {
+    // 8♥ (red) in col 0 ambiguous → select. Tap 9♠ in col 1 → execute tableau move.
+    const state = buildSmartTapState({
+      tableau: [
+        [{ suit: "hearts", rank: 8, faceUp: true }],
+        [{ suit: "spades", rank: 9, faceUp: true }],
+        [{ suit: "clubs", rank: 9, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("8 of Hearts")); // select
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("9 of Spades")); // resolve
+    });
+
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+    expect(api.queryByLabelText("8 of Hearts (selected)")).toBeNull();
+  });
+
+  it("stock tap still draws — smart tap does not intercept stock", async () => {
+    const state = buildSmartTapState({
+      stock: [
+        { suit: "hearts", rank: 3, faceUp: false },
+        { suit: "clubs", rank: 7, faceUp: false },
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 2 cards remaining"));
+    });
+
+    expect(api.getByLabelText("Draw 1 from stock, 1 cards remaining")).toBeTruthy();
   });
 });
 

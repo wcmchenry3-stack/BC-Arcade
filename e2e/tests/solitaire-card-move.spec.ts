@@ -1,10 +1,14 @@
 /**
- * solitaire-card-move.spec.ts — GH #1246
+ * solitaire-card-move.spec.ts — GH #1246, updated for smart single-tap (#2039)
  *
  * Covers the three solitaire card-move flows tested on Playwright/web:
- *   1. waste → tableau  (draw a card, move top waste card to a tableau column)
- *   2. tableau → foundation  (move an Ace to start a foundation)
- *   3. multi-card run  (select a partial tableau run, move it as one unit)
+ *   1. waste → tableau  (K♥ on empty board auto-moves in one tap)
+ *   2. tableau → foundation  (A♠ auto-moves to foundation in one tap)
+ *   3. multi-card run  (Q♣-J♥ run auto-moves onto K♦ in one tap on run base)
+ *
+ * Smart single-tap (#2039): an unambiguous first tap auto-executes the move
+ * without a selection step. Boards with multiple equal-priority destinations
+ * still use the select + second-tap flow (see solitaire-tableau-move.spec.ts).
  *
  * All backend calls are intercepted — no running backend required.
  *
@@ -70,11 +74,9 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({
     timeout: 3_000,
   });
 
-  // Select K♥ from waste.
+  // Smart tap: K♥ is a king with 7 empty columns → single unambiguous destination
+  // (first empty column). One tap auto-executes the move.
   await page.getByLabel("K of Hearts").click();
-
-  // Move to empty tableau column 1.
-  await page.getByLabel("Empty tableau column 1").click();
 
   // Column 1 now has 1 card; move counter increments.
   await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({
@@ -127,11 +129,9 @@ test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async
 
   await expect(page.getByLabel("A of Spades")).toBeVisible({ timeout: 5_000 });
 
-  // Select A♠ from col 0.
+  // Smart tap: A♠ is the top card with an empty spades foundation → unambiguous
+  // foundation move. One tap auto-executes; no second tap to foundation needed.
   await page.getByLabel("A of Spades").click();
-
-  // Tap the Spades foundation.
-  await page.getByLabel("Empty Spades foundation").click();
 
   // Col 0 is now empty; foundation updated.
   await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
@@ -191,13 +191,11 @@ test("solitaire drag: multi-card run (Q♣-J♥ onto K♦)", async ({ page }) =>
     timeout: 3_000,
   });
 
-  // Select Q♣ (the base of the run in col 2, index 0).
-  // Q♣ is buried under J♥ — its visible stripe is the top ~28px (FACE_UP_OFFSET).
-  // Click within that stripe so J♥'s SVG rect doesn't intercept.
+  // Smart tap: click the base of the run (Q♣ at index 0). Q♣ is buried under
+  // J♥ — its visible stripe is the top ~28px (FACE_UP_OFFSET); click within
+  // that stripe so J♥'s SVG rect doesn't intercept. K♦ in col 1 is the single
+  // valid non-empty destination → one tap auto-moves Q♣+J♥ as a run.
   await page.getByLabel("Q of Clubs").click({ position: { x: 26, y: 10 } });
-
-  // Tap K♦ as the destination.
-  await page.getByLabel("K of Diamonds").click();
 
   // Col 1 now has 3 cards (K♦, Q♣, J♥); col 2 is empty.
   await expect(page.getByLabel("Tableau column 1, 3 cards")).toBeVisible({

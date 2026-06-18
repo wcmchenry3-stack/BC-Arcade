@@ -763,3 +763,127 @@ export function applyHint(state: SolitaireState): SolitaireState {
   const newScore = Math.max(0, state.score - HINT_PENALTY);
   return { ...state, hint: moves[0], score: newScore };
 }
+
+// ---------------------------------------------------------------------------
+// Smart single-tap auto-move (#2039)
+// ---------------------------------------------------------------------------
+
+export type AutoMoveResult =
+  | { kind: "execute"; move: Move }
+  | { kind: "ambiguous" }
+  | { kind: "no-move" };
+
+function runLengthAt(state: SolitaireState, col: number): number {
+  const pile = state.tableau[col];
+  if (!pile || pile.length === 0) return 0;
+  let len = 1;
+  for (let i = pile.length - 1; i > 0; i--) {
+    const top = pile[i]!;
+    const below = pile[i - 1]!;
+    if (below.faceUp && cardColor(top) !== cardColor(below) && top.rank === below.rank - 1) {
+      len++;
+    } else {
+      break;
+    }
+  }
+  return len;
+}
+
+/**
+ * Klondike smart single-tap priority ladder (#2039):
+ *   1. Foundation — unambiguous when valid (top card only for tableau source)
+ *   2. Tableau move that reveals a face-down card — prefer destination with longest resulting run;
+ *      if multiple tie, caller enters two-tap selection flow
+ *   3. Other legal tableau move — prefer longest resulting run; ambiguous if tied
+ *   4. Empty column — first available (only kings / king-led runs land here)
+ */
+export function resolveAutoMove(
+  state: SolitaireState,
+  source: { type: "tableau"; col: number; index: number } | { type: "waste" }
+): AutoMoveResult {
+  if (source.type === "waste") {
+    // 1. Foundation
+    const foundMove: Move = { type: "waste-to-foundation" };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+
+    // 2. Non-empty tableau — prefer longest resulting run
+    const nonEmpty: Array<{ move: Move; score: number }> = [];
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length === 0) continue;
+      const m: Move = { type: "waste-to-tableau", toCol };
+      if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+    }
+    if (nonEmpty.length > 0) {
+      const best = Math.max(...nonEmpty.map((s) => s.score));
+      const bestMoves = nonEmpty.filter((s) => s.score === best);
+      if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+      return { kind: "ambiguous" };
+    }
+
+    // 3. Empty tableau column — first available (kings only)
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length > 0) continue;
+      const m: Move = { type: "waste-to-tableau", toCol };
+      if (validateMove(state, m)) return { kind: "execute", move: m };
+    }
+
+    return { kind: "no-move" };
+  }
+
+  // Tableau source
+  const { col, index } = source;
+  const pile = state.tableau[col];
+  if (!pile || index < 0 || index >= pile.length) return { kind: "no-move" };
+
+  // 1. Foundation (top card only)
+  if (index === pile.length - 1) {
+    const foundMove: Move = { type: "tableau-to-foundation", fromCol: col };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+  }
+
+  const revealsCard = index > 0 && pile[index - 1] !== undefined && !pile[index - 1]!.faceUp;
+
+  // 2. Non-empty tableau — reveal-moves take priority when source reveals a face-down card
+  if (revealsCard) {
+    const revealMoves: Array<{ move: Move; score: number }> = [];
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const dest = state.tableau[toCol];
+      if (!dest || dest.length === 0) continue;
+      const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+      if (validateMove(state, m)) revealMoves.push({ move: m, score: runLengthAt(state, toCol) });
+    }
+    if (revealMoves.length > 0) {
+      const best = Math.max(...revealMoves.map((s) => s.score));
+      const bestMoves = revealMoves.filter((s) => s.score === best);
+      if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+      return { kind: "ambiguous" };
+    }
+  }
+
+  // 3. Other legal tableau move — prefer longest resulting run
+  const nonEmpty: Array<{ move: Move; score: number }> = [];
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length === 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+  }
+  if (nonEmpty.length > 0) {
+    const best = Math.max(...nonEmpty.map((s) => s.score));
+    const bestMoves = nonEmpty.filter((s) => s.score === best);
+    if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+    return { kind: "ambiguous" };
+  }
+
+  // 4. Empty column — first available (kings only via validateMove)
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length > 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m)) return { kind: "execute", move: m };
+  }
+
+  return { kind: "no-move" };
+}
