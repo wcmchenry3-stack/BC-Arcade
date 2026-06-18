@@ -18,7 +18,7 @@ import {
   Category,
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
-import { saveGame, clearGame } from "../game/yacht/storage";
+import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -74,6 +74,7 @@ export default function GameScreen({ navigation, route }: Props) {
   const [difficultyChosen, setDifficultyChosen] = useState(
     !isFreshGame || route.params.aiDifficulty !== undefined
   );
+  const [pendingMode, setPendingMode] = useState<"solo" | "vs">("solo");
   const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
@@ -103,6 +104,16 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     isAiTurnRef.current = isAiTurn;
   }, [isAiTurn]);
+
+  // Seed the mode selector with whatever the user picked last.
+  useEffect(() => {
+    loadLastMode().then((pref) => {
+      if (pref) {
+        setPendingMode(pref.mode);
+        setPendingDiff(pref.difficulty);
+      }
+    });
+  }, []);
 
   // Game event instrumentation (#368 / #549).
   const {
@@ -333,20 +344,13 @@ export default function GameScreen({ navigation, route }: Props) {
     const outcome = prev.game_over ? "completed" : "abandoned";
     syncComplete({ finalScore: prev.total_score, outcome }, endedPayload(prev, outcome));
     await clearGame();
-    setPendingDiff(aiDifficultyRef.current ?? "medium");
+    const pref = await loadLastMode();
+    setPendingMode(pref?.mode ?? "solo");
+    setPendingDiff(pref?.difficulty ?? "medium");
     setDifficultyChosen(false);
-    setGameState(newGame());
-    setAiGameState(aiDifficultyRef.current ? newGame() : null);
-    setIsAiTurn(false);
-    setGameKey((k) => k + 1);
-    setError(null);
-    syncStart();
-    Sentry.addBreadcrumb({
-      category: "yacht.game",
-      message: "startNewGame: reset complete",
-      level: "info",
-    });
-  }, [syncComplete, syncStart]);
+    // Game state and syncStart are set in handleChooseSolo / handleChooseVs
+    // so the game only exists after the user picks a mode.
+  }, [syncComplete]);
 
   const handleNewGamePress = useCallback(() => {
     if (isInProgress(gameStateRef.current)) {
@@ -363,15 +367,29 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
+    void saveLastMode("solo", pendingDiff);
+    setGameState(newGame());
     setAiDifficulty(null);
     setAiGameState(null);
+    setIsAiTurn(false);
+    setGameKey((k) => k + 1);
+    setError(null);
     setDifficultyChosen(true);
+    syncStart();
+    Sentry.addBreadcrumb({ category: "yacht.game", message: "startNewGame: reset complete (solo)", level: "info" });
   }
 
   function handleChooseVs() {
+    void saveLastMode("vs", pendingDiff);
+    setGameState(newGame());
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
+    setIsAiTurn(false);
+    setGameKey((k) => k + 1);
+    setError(null);
     setDifficultyChosen(true);
+    syncStart();
+    Sentry.addBreadcrumb({ category: "yacht.game", message: "startNewGame: reset complete (vs)", level: "info" });
   }
 
   // VS result computed when both games are complete.
@@ -566,12 +584,18 @@ export default function GameScreen({ navigation, route }: Props) {
 
               <Pressable
                 testID="yacht-mode-solo"
-                style={[styles.modeBtn, { borderColor: colors.border }]}
+                style={
+                  pendingMode === "solo"
+                    ? [styles.modeBtn, styles.modeBtnPrimary, { borderColor: colors.accent, backgroundColor: colors.accent }]
+                    : [styles.modeBtn, { borderColor: colors.border }]
+                }
                 onPress={handleChooseSolo}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.solo")}
               >
-                <Text style={[styles.modeBtnText, { color: colors.text }]}>{t("vsMode.solo")}</Text>
+                <Text style={[styles.modeBtnText, { color: pendingMode === "solo" ? colors.textOnAccent : colors.text }]}>
+                  {t("vsMode.solo")}
+                </Text>
               </Pressable>
 
               <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
@@ -583,16 +607,16 @@ export default function GameScreen({ navigation, route }: Props) {
               <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
 
               <Pressable
-                style={[
-                  styles.modeBtn,
-                  styles.modeBtnPrimary,
-                  { borderColor: colors.accent, backgroundColor: colors.accent },
-                ]}
+                style={
+                  pendingMode === "vs"
+                    ? [styles.modeBtn, styles.modeBtnPrimary, { borderColor: colors.accent, backgroundColor: colors.accent }]
+                    : [styles.modeBtn, { borderColor: colors.border }]
+                }
                 onPress={handleChooseVs}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.vsComputer")}
               >
-                <Text style={[styles.modeBtnText, { color: colors.textOnAccent }]}>
+                <Text style={[styles.modeBtnText, { color: pendingMode === "vs" ? colors.textOnAccent : colors.text }]}>
                   {t("vsMode.vsComputer")}
                 </Text>
               </Pressable>

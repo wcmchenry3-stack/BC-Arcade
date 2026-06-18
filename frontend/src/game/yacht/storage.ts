@@ -11,6 +11,7 @@ import { GameState } from "./types";
 import type { AiDifficulty } from "./types";
 
 const STORAGE_KEY = "yacht_game_v2";
+const PREF_KEY = "yacht_pref_v1";
 
 export interface SavedGame {
   state: GameState;
@@ -58,6 +59,29 @@ export async function loadGame(): Promise<SavedGame | null> {
       extra: { error: String(e), key: STORAGE_KEY },
     });
     await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+    return null;
+  }
+}
+
+export interface LastModePref {
+  mode: "solo" | "vs";
+  difficulty: AiDifficulty;
+}
+
+export async function saveLastMode(mode: "solo" | "vs", difficulty: AiDifficulty): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PREF_KEY, JSON.stringify({ mode, difficulty }));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "yacht.storage", op: "saveLastMode" } });
+  }
+}
+
+export async function loadLastMode(): Promise<LastModePref | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PREF_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as LastModePref;
+  } catch {
     return null;
   }
 }
