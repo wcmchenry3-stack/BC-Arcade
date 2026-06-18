@@ -14,7 +14,6 @@ from __future__ import annotations
 import pathlib
 import re
 
-import pytest
 import yaml
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent.parent
@@ -33,7 +32,11 @@ def _metaspace_mb(jvmargs: str) -> int:
     m = re.search(r"-XX:MaxMetaspaceSize=(\d+)([mg]?)", jvmargs, re.IGNORECASE)
     assert m, f"-XX:MaxMetaspaceSize not found in jvmargs: {jvmargs!r}"
     value, unit = int(m.group(1)), m.group(2).lower()
-    return value * 1024 if unit == "g" else value
+    if unit == "g":
+        return value * 1024
+    if unit == "m":
+        return value
+    raise ValueError(f"Unexpected unit {unit!r} in jvmargs: {jvmargs!r}")
 
 
 def _ci_job(name: str) -> dict:
