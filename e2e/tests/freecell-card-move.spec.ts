@@ -1,15 +1,20 @@
 /**
- * freecell-card-move.spec.ts — GH #1145
+ * freecell-card-move.spec.ts — GH #1145, updated for smart single-tap (#2037)
  *
- * Card-move mechanic: tap a tableau card to select it, tap an empty free cell
- * slot, and confirm the move counter increments to 1.
+ * Single-tap smart auto-move: tapping a card with exactly one best destination
+ * on the priority ladder (foundation > non-empty tableau > empty col > free cell)
+ * executes the move immediately without a second tap.
+ *
  * All backend calls are intercepted — no running backend needed.
  */
 
 import { test, expect } from "@playwright/test";
 import { mockFreecellApi, injectFreecellState } from "./helpers/freecell";
 
-// One card (5♥) in tableau column 0; free cells and foundations empty.
+// One card (5♥) in tableau column 0; all free cells empty; no valid non-empty
+// tableau or empty-column destination (rank 5 ≠ 13).
+// Priority ladder: foundation (no), non-empty tableau (none), empty col (no —
+// rank 5), free cell (yes — first available) → auto-moves to free cell 1.
 const CARD_MOVE_STATE = {
   _v: 1,
   tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
@@ -20,7 +25,7 @@ const CARD_MOVE_STATE = {
   moveCount: 0,
 };
 
-test("tap tableau card then tap free cell: card moves and counter increments", async ({
+test("single tap on a tableau card auto-moves it via the priority ladder", async ({
   page,
 }) => {
   await mockFreecellApi(page);
@@ -35,12 +40,9 @@ test("tap tableau card then tap free cell: card moves and counter increments", a
     timeout: 5_000,
   });
 
-  // Tap 5♥ in the tableau to select it.
+  // Single tap on 5♥ → auto-move to first free cell (no second tap needed).
   await page.getByLabel("5 of Hearts").click();
 
-  // Tap the empty free cell slot (cell 1 = index 0).
-  await page.getByLabel("Empty free cell 1").click();
-
-  // Move counter increments to 1.
+  // Move counter increments immediately — no second tap required.
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });
