@@ -172,28 +172,37 @@ jest.mock("@sentry/react-native", () => ({
   },
 }));
 
-// AsyncStorage mock — uses the bundled in-memory mock from the package.
-// The mock is a plain CJS export (no .default). We wrap each method in jest.fn()
-// so tests can override with mockResolvedValue while still hitting the real
-// in-memory store by default (needed by eventStore).
+// AsyncStorage mock — self-contained in-memory store, no dependency on the
+// package's own jest helper (removed in v3). Each method is a jest.fn() so
+// tests can spy on calls or override with mockResolvedValue.
 jest.mock("@react-native-async-storage/async-storage", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const inMemory = require("@react-native-async-storage/async-storage/jest/async-storage-mock");
+  const store: Record<string, string> = {};
   return {
-    getItem: jest.fn((key: string) => inMemory.getItem(key)),
-    setItem: jest.fn((key: string, value: string) => inMemory.setItem(key, value)),
-    removeItem: jest.fn((key: string) => inMemory.removeItem(key)),
-    // v3-compat shims: getMany/setMany/removeMany use object API, backed by v2 multiGet/multiSet/multiRemove
-    getMany: jest.fn(async (keys: string[]) => {
-      const pairs: [string, string | null][] = await inMemory.multiGet(keys);
-      return Object.fromEntries(pairs);
+    getItem: jest.fn((key: string) => Promise.resolve(store[key] ?? null)),
+    setItem: jest.fn((key: string, value: string) => {
+      store[key] = value;
+      return Promise.resolve();
     }),
-    setMany: jest.fn(async (entries: Record<string, string>) => {
-      return inMemory.multiSet(Object.entries(entries));
+    removeItem: jest.fn((key: string) => {
+      delete store[key];
+      return Promise.resolve();
     }),
-    removeMany: jest.fn((keys: string[]) => inMemory.multiRemove(keys)),
-    getAllKeys: jest.fn(() => inMemory.getAllKeys()),
-    clear: jest.fn(() => inMemory.clear()),
+    getMany: jest.fn((keys: string[]) =>
+      Promise.resolve(Object.fromEntries(keys.map((k) => [k, store[k] ?? null])))
+    ),
+    setMany: jest.fn((entries: Record<string, string>) => {
+      Object.assign(store, entries);
+      return Promise.resolve();
+    }),
+    removeMany: jest.fn((keys: string[]) => {
+      keys.forEach((k) => delete store[k]);
+      return Promise.resolve();
+    }),
+    getAllKeys: jest.fn(() => Promise.resolve(Object.keys(store))),
+    clear: jest.fn(() => {
+      Object.keys(store).forEach((k) => delete store[k]);
+      return Promise.resolve();
+    }),
   };
 });
 
