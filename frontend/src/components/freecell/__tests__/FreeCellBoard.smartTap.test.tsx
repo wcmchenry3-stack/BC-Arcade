@@ -78,7 +78,7 @@ describe("FreeCellBoard — supermove pre-check (#2037)", () => {
     // Run of 2 (5♥→4♠ from index 0).
     // All 4 free cells occupied; 1 empty column.
     // maxCapacity = (1 + 0) × 2^1 = 2  →  run length 2 = 2 → allowed.
-    // The 6♦ in col 1 is the valid destination (red, rank 6 → 5♥ black rank 5).
+    // The 6♣ in col 1 is the valid destination (black, rank 6 → 5♥ red rank 5).
     // Wait: 5♥ is red, 4♠ is black; the run head is 5♥ (red).
     // Destination needs to be black rank 6 for 5♥ to stack.
     // 6♣ (black, rank 6) in col 1 → canStackOnTableau(5♥, 6♣) ✓.
@@ -139,7 +139,10 @@ describe("FreeCellBoard — priority ladder destination preference (#2037)", () 
       _v: 1,
       tableau: [
         [{ suit: "clubs", rank: 2 }],
-        [{ suit: "spades", rank: 4 }, { suit: "hearts", rank: 3 }],
+        [
+          { suit: "spades", rank: 4 },
+          { suit: "hearts", rank: 3 },
+        ],
         [{ suit: "diamonds", rank: 3 }],
         [],
         [],

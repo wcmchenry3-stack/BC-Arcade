@@ -73,16 +73,7 @@ const AMBIGUOUS_3H: FreeCellState = {
 // → first tap on 2♠ enters selection.  freeCells[1]=2♥ for second-cell tests.
 const AMBIGUOUS_FC: FreeCellState = {
   _v: 1,
-  tableau: [
-    [{ suit: "hearts", rank: 3 }],
-    [{ suit: "diamonds", rank: 3 }],
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-  ],
+  tableau: [[{ suit: "hearts", rank: 3 }], [{ suit: "diamonds", rank: 3 }], [], [], [], [], [], []],
   freeCells: [{ suit: "spades", rank: 2 }, { suit: "hearts", rank: 2 }, null, null],
   foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
   undoStack: [],
@@ -227,16 +218,7 @@ describe("FreeCellBoard — smart single-tap auto-move", () => {
   it("auto-moves a King to the first empty column", async () => {
     const kingState: FreeCellState = {
       _v: 1,
-      tableau: [
-        [{ suit: "diamonds", rank: 13 }],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-      ],
+      tableau: [[{ suit: "diamonds", rank: 13 }], [], [], [], [], [], [], []],
       freeCells: [null, null, null, null],
       foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
       undoStack: [],
@@ -294,16 +276,7 @@ describe("FreeCellBoard — smart single-tap auto-move", () => {
     // freeCells[0]=2♠ with only one valid tableau dest (3♥ col 0); no tie.
     const state: FreeCellState = {
       _v: 1,
-      tableau: [
-        [{ suit: "hearts", rank: 3 }],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-      ],
+      tableau: [[{ suit: "hearts", rank: 3 }], [], [], [], [], [], [], []],
       freeCells: [{ suit: "spades", rank: 2 }, null, null, null],
       foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
       undoStack: [],
@@ -424,10 +397,9 @@ describe("FreeCellBoard — foundation re-select (Story 9)", () => {
 // ── Double-tap → foundation (legacy path still reachable) ────────────────────
 
 describe("FreeCellBoard — double-tap to foundation", () => {
-  it("freecell double-tap within 300ms skips selection and sends to foundation", async () => {
-    // With smart tap the first tap already auto-moves A♠ to foundation.
-    // The double-tap code path is effectively bypassed in production but the
-    // net observable result is the same: onMove fires with freecell-to-foundation.
+  it("freecell single tap on an ace auto-moves to foundation (smart tap path)", async () => {
+    // A♠ has a unique foundation destination → resolveAutoMove executes immediately
+    // on the first tap; the double-tap code path is never reached.
     const onMove = jest.fn();
     const { getByLabelText } = await renderBoard(ACE_FREECELL, onMove);
     await fireEvent.press(getByLabelText("A of Spades"));

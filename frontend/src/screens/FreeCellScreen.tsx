@@ -226,6 +226,13 @@ export default function FreeCellScreen() {
     setState(applyHint(state));
   }, [state]);
 
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    },
+    []
+  );
+
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
