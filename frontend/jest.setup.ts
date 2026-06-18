@@ -172,19 +172,26 @@ jest.mock("@sentry/react-native", () => ({
   },
 }));
 
-// AsyncStorage mock — v3 ships an in-memory implementation under the /jest export.
-// We wrap each method in jest.fn() so tests can override with mockResolvedValue,
-// while the default implementation is the real in-memory store (needed by eventStore).
+// AsyncStorage mock — uses the bundled in-memory mock from the package.
+// The mock is a plain CJS export (no .default). We wrap each method in jest.fn()
+// so tests can override with mockResolvedValue while still hitting the real
+// in-memory store by default (needed by eventStore).
 jest.mock("@react-native-async-storage/async-storage", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const inMemory = require("@react-native-async-storage/async-storage/jest").default;
+  const inMemory = require("@react-native-async-storage/async-storage/jest/async-storage-mock");
   return {
     getItem: jest.fn((key: string) => inMemory.getItem(key)),
     setItem: jest.fn((key: string, value: string) => inMemory.setItem(key, value)),
     removeItem: jest.fn((key: string) => inMemory.removeItem(key)),
-    getMany: jest.fn((keys: string[]) => inMemory.getMany(keys)),
-    setMany: jest.fn((entries: Record<string, string>) => inMemory.setMany(entries)),
-    removeMany: jest.fn((keys: string[]) => inMemory.removeMany(keys)),
+    // v3-compat shims: getMany/setMany/removeMany use object API, backed by v2 multiGet/multiSet/multiRemove
+    getMany: jest.fn(async (keys: string[]) => {
+      const pairs: [string, string | null][] = await inMemory.multiGet(keys);
+      return Object.fromEntries(pairs);
+    }),
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      return inMemory.multiSet(Object.entries(entries));
+    }),
+    removeMany: jest.fn((keys: string[]) => inMemory.multiRemove(keys)),
     getAllKeys: jest.fn(() => inMemory.getAllKeys()),
     clear: jest.fn(() => inMemory.clear()),
   };
