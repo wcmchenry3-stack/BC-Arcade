@@ -8,11 +8,16 @@
  * 4. Pass correctness — always 3 cards, never 2♣, all cards from the hand.
  */
 
+import { selectCardToPlayUtility, selectCardsToPassUtility } from "../ai";
 import {
-  selectCardToPlayUtility,
-  selectCardsToPassUtility,
-} from "../ai";
-import { createSeededRng, getValidPlays, setRng } from "../engine";
+  commitPass,
+  createSeededRng,
+  dealGame,
+  getValidPlays,
+  playCard,
+  selectPassCard,
+  setRng,
+} from "../engine";
 import type { Card, HeartsState, Rank, Suit, TrickCard } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -99,14 +104,85 @@ describe("Utility AI — decision legality", () => {
     }
   });
 
+  it("selectCardToPlayUtility follows in-suit when not void", () => {
+    // Player 1 holds clubs and non-clubs; clubs are led → must return a club.
+    const hand = [c("clubs", 4), c("clubs", 9), c("hearts", 7), c("diamonds", 5)];
+    for (const persona of PERSONAS) {
+      for (const seed of [1, 42, 999]) {
+        setRng(createSeededRng(seed));
+        const state = mkState({
+          playerHands: [[], hand, [], []],
+          currentTrick: [{ card: c("clubs", 3), playerIndex: 0 }],
+          currentPlayerIndex: 1,
+          currentLeaderIndex: 0,
+          heartsBroken: true,
+          tricksPlayedInHand: 5,
+        });
+        const card = selectCardToPlayUtility(
+          hand,
+          state.currentTrick as TrickCard[],
+          state,
+          1,
+          persona
+        );
+        const valid = getValidPlays(state, 1);
+        expect(valid).toContainEqual(card);
+        expect(card.suit).toBe("clubs");
+      }
+    }
+  });
+
+  it("full-game legality sweep: every play is legal across a seeded 13-trick hand", () => {
+    // Deal a real hand via the engine, complete the pass phase with simple selections,
+    // then simulate all AI players (seats 1-3) using selectCardToPlayUtility for each
+    // of their turns. The test only asserts that every returned card is in getValidPlays.
+    setRng(createSeededRng(77));
+    let state = dealGame("daring");
+
+    if (state.phase === "passing") {
+      for (let p = 0; p < 4; p++) {
+        const pHand = state.playerHands[p] ?? [];
+        const eligibleCards = pHand.filter((card) => !(card.suit === "clubs" && card.rank === 2));
+        for (let i = 0; i < 3 && i < eligibleCards.length; i++) {
+          state = selectPassCard(state, p, eligibleCards[i]!);
+        }
+      }
+      state = commitPass(state);
+    }
+
+    while (!state.isComplete && state.phase === "playing") {
+      const pi = state.currentPlayerIndex;
+      const pHand = state.playerHands[pi] ?? [];
+      const trick = state.currentTrick as TrickCard[];
+      const valid = getValidPlays(state, pi);
+
+      let chosen: Card;
+      if (pi === 0) {
+        chosen = valid[0]!;
+      } else {
+        chosen = selectCardToPlayUtility(pHand, trick, state, pi, "daring");
+      }
+
+      expect(valid).toContainEqual(chosen);
+      state = playCard(state, pi, chosen);
+    }
+  });
+
   it("selectCardsToPassUtility always returns exactly 3 cards from the hand", () => {
     const hand = [
-      c("spades", 1), c("spades", 12), c("spades", 13),
-      c("hearts", 1), c("hearts", 13),
-      c("clubs", 7), c("diamonds", 5),
-      c("diamonds", 9), c("clubs", 8),
-      c("clubs", 9), c("clubs", 10),
-      c("diamonds", 3), c("hearts", 5),
+      c("spades", 1),
+      c("spades", 12),
+      c("spades", 13),
+      c("hearts", 1),
+      c("hearts", 13),
+      c("clubs", 7),
+      c("diamonds", 5),
+      c("diamonds", 9),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
+      c("diamonds", 3),
+      c("hearts", 5),
     ];
     for (const persona of PERSONAS) {
       for (const direction of ["left", "right", "across", "none"] as const) {
@@ -124,11 +200,19 @@ describe("Utility AI — decision legality", () => {
 
   it("selectCardsToPassUtility never passes 2♣", () => {
     const hand = [
-      c("clubs", 2), c("clubs", 3), c("clubs", 4),
-      c("clubs", 5), c("clubs", 6), c("clubs", 7),
-      c("hearts", 2), c("hearts", 3), c("hearts", 4),
-      c("diamonds", 2), c("diamonds", 3),
-      c("spades", 2), c("spades", 3),
+      c("clubs", 2),
+      c("clubs", 3),
+      c("clubs", 4),
+      c("clubs", 5),
+      c("clubs", 6),
+      c("clubs", 7),
+      c("hearts", 2),
+      c("hearts", 3),
+      c("hearts", 4),
+      c("diamonds", 2),
+      c("diamonds", 3),
+      c("spades", 2),
+      c("spades", 3),
     ];
     for (const persona of PERSONAS) {
       setRng(createSeededRng(7));
@@ -150,10 +234,15 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
   it("earlyMoon: leads highest non-heart for trick control", () => {
     // 7 hearts + Q♠ + A♣ + 2♦ in hand — earlyMoon condition fires
     const hand = [
-      c("hearts", 1), c("hearts", 13), c("hearts", 12), c("hearts", 11),
-      c("hearts", 10), c("hearts", 9), c("hearts", 8), // 7 hearts
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8), // 7 hearts
       c("spades", 12), // Q♠
-      c("clubs", 1),   // A♣ — highest non-heart, should be led for trick control
+      c("clubs", 1), // A♣ — highest non-heart, should be led for trick control
       c("diamonds", 2),
     ];
     // hand.length = 10 ≥ 8, heartsInHand = 7 ≥ 7, myHasQ = true, heartsWon = 0
@@ -176,8 +265,13 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
   it("earlyMoon: discards junk non-point card when void in led suit (keeps Q♠)", () => {
     // 7 hearts + Q♠ + 2♦ in hand, void in clubs (led suit)
     const hand = [
-      c("hearts", 1), c("hearts", 13), c("hearts", 12), c("hearts", 11),
-      c("hearts", 10), c("hearts", 9), c("hearts", 8),
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
       c("spades", 12),
       c("diamonds", 2),
     ];
@@ -210,8 +304,12 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     // for player 1 (myPoints=0 ≠ totalPointsTaken=3). Falls back to normal Daring weights.
     // Hand has no clubs so player 1 is void in the clubs-led trick.
     const hand = [
-      c("hearts", 1), c("hearts", 13), c("hearts", 12), c("hearts", 11),
-      c("hearts", 10), c("hearts", 9), // 6 hearts
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9), // 6 hearts
       c("spades", 12), // Q♠
       c("diamonds", 4), // non-point discard option
       c("diamonds", 2), // non-point discard option
@@ -239,16 +337,94 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     expect(card).toEqual(c("spades", 12));
   });
 
+  it("endgame mode (Daring, ≥65 pts): dumps Q♠ on score-leader's winning trick when void", () => {
+    // Seat 2 has 70 cumulative pts → inEndgame=true. Player 1 is void in clubs
+    // (led by seat 0); seat 2 is winning with 10♣. Daring should dump Q♠.
+    const hand = [
+      c("spades", 12), // Q♠ — adversarial endgame dump target
+      c("hearts", 5),
+      c("diamonds", 6),
+    ];
+    const state = mkState({
+      playerHands: [[], hand, [], []],
+      currentTrick: [
+        { card: c("clubs", 3), playerIndex: 0 },
+        { card: c("clubs", 10), playerIndex: 2 }, // seat 2 winning
+      ],
+      currentPlayerIndex: 1,
+      currentLeaderIndex: 0,
+      cumulativeScores: [10, 5, 70, 15], // seat 2 at 70 → endgame
+      handScores: [0, 0, 0, 0],
+      heartsBroken: true,
+      tricksPlayedInHand: 5,
+    });
+
+    setRng(() => 0.99); // suppress noise
+    const card = selectCardToPlayUtility(
+      hand,
+      state.currentTrick as TrickCard[],
+      state,
+      1,
+      "daring"
+    );
+    // Endgame weights elevate queenSpadesRisk (2.5), so Q♠ (rateQueenSpadesRisk=1.0)
+    // outscores 5♥/6♦ (rateQueenSpadesRisk=0.8 while holding Q♠).
+    expect(card).toEqual(c("spades", 12));
+  });
+
+  it("adversarial mode (Daring): dumps Q♠ on seat-0's winning trick when void", () => {
+    // Seat 0 is winning a hearts trick; player 2 is void in hearts.
+    // No endgame (maxScore=25 < 65), no moon attempt → adversarial mode fires.
+    const hand = [
+      c("spades", 12), // Q♠
+      c("diamonds", 6),
+      c("clubs", 8),
+    ];
+    const state = mkState({
+      playerHands: [[], [], hand, []],
+      currentTrick: [
+        { card: c("hearts", 5), playerIndex: 0 }, // seat 0 led
+        { card: c("hearts", 3), playerIndex: 1 }, // seat 1 follows (seat 0 still winning)
+        // player 2 (void in hearts) is next
+      ],
+      currentPlayerIndex: 2,
+      currentLeaderIndex: 0,
+      cumulativeScores: [10, 20, 15, 25], // maxScore=25 — not endgame
+      handScores: [0, 0, 0, 0],
+      heartsBroken: true,
+      tricksPlayedInHand: 5,
+    });
+
+    setRng(() => 0.99); // suppress noise
+    const card = selectCardToPlayUtility(
+      hand,
+      state.currentTrick as TrickCard[],
+      state,
+      2,
+      "daring"
+    );
+    // Adversarial weights: queenSpadesRisk=5.0 → Q♠ score 7.0 vs 6♦/8♣ score 6.0.
+    expect(card).toEqual(c("spades", 12));
+  });
+
   it("moon-viable pass: does not pass Q♠ or A♥ when 6+ hearts in hand", () => {
     // moonViable = heartsInHand ≥ 6 && hasQSpades. Use direction "across" for player 1
     // so that passingToSeat0(1, "across") → (1+2)%4=3 ≠ 0 → not targeting human,
     // ensuring moon-viable mode activates.
     const hand = [
-      c("hearts", 1), c("hearts", 13), c("hearts", 12), c("hearts", 11),
-      c("hearts", 10), c("hearts", 9), // 6 hearts
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9), // 6 hearts
       c("spades", 12), // Q♠
-      c("diamonds", 3), c("diamonds", 4), c("diamonds", 5),
-      c("clubs", 8), c("clubs", 9), c("clubs", 10),
+      c("diamonds", 3),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
     ];
     const result = selectCardsToPassUtility(hand, "across", "daring", 1);
     expect(result).toHaveLength(3);
@@ -265,11 +441,19 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     // targeting seat 0, so moon-viable activates for Daring).
     // Schemer has no moon-viable mode and should pass Q♠ (unprotected going across).
     const hand = [
-      c("hearts", 1), c("hearts", 13), c("hearts", 12), c("hearts", 11),
-      c("hearts", 10), c("hearts", 9),
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9),
       c("spades", 12),
-      c("diamonds", 3), c("diamonds", 4), c("diamonds", 5),
-      c("clubs", 8), c("clubs", 9), c("clubs", 10),
+      c("diamonds", 3),
+      c("diamonds", 4),
+      c("diamonds", 5),
+      c("clubs", 8),
+      c("clubs", 9),
+      c("clubs", 10),
     ];
 
     const daringResult = selectCardsToPassUtility(hand, "across", "daring", 1);
@@ -288,12 +472,19 @@ describe("Utility AI — noise determinism", () => {
   afterEach(() => setRng(Math.random));
 
   const hand = [
-    c("spades", 3), c("spades", 7),
-    c("hearts", 2), c("hearts", 6),
-    c("diamonds", 4), c("diamonds", 8),
-    c("clubs", 5), c("clubs", 9),
-    c("clubs", 10), c("clubs", 11),
-    c("diamonds", 10), c("diamonds", 11), c("diamonds", 12),
+    c("spades", 3),
+    c("spades", 7),
+    c("hearts", 2),
+    c("hearts", 6),
+    c("diamonds", 4),
+    c("diamonds", 8),
+    c("clubs", 5),
+    c("clubs", 9),
+    c("clubs", 10),
+    c("clubs", 11),
+    c("diamonds", 10),
+    c("diamonds", 11),
+    c("diamonds", 12),
   ];
 
   it("same seed → identical play decisions — cautious", () => {
@@ -361,6 +552,7 @@ describe("Utility AI — noise determinism", () => {
   it("different seeds produce different play decisions for cautious (probabilistic)", () => {
     // With 25% noise, two different seeds should differ across many calls.
     // Run 20 decisions with each seed; at least one should differ.
+    // Theoretical false-failure probability: ≈ (1/5)^20 ≈ 10^-14 — practically impossible.
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],

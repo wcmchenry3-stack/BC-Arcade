@@ -45,9 +45,10 @@ export const SCHEMER_PLAY_WEIGHTS: PlayWeights = {
   moonProgress: 0.0,
 };
 
-// Daring (standard, no moon attempt active). moonProgress stays 0 here: in normal
-// play the AI still dumps Q♠ first (queenSpadesRisk differentiates) and moon
-// progress only matters inside moon-attempt mode (DARING_MOON_PLAY_WEIGHTS).
+// Daring (standard). moonProgress stays 0: rateQueenSpadesRisk already sorts Q♠ first
+// in void discards (1.0 for off-suit Q♠ dump vs 0.8 for other discards while holding Q♠),
+// so even at weight 1.0 Q♠ beats every other discard. moonProgress only matters inside
+// moon-attempt mode (DARING_MOON_PLAY_WEIGHTS).
 export const DARING_PLAY_WEIGHTS: PlayWeights = {
   minimizePoints: 1.5,
   queenSpadesRisk: 1.0,
@@ -63,6 +64,26 @@ export const DARING_MOON_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 0.2,
   moonThreat: 0.0,
   moonProgress: 100.0,
+};
+
+// Daring endgame mode: any player ≥ 65 cumulative pts, no moon attempt.
+// Dumps Q♠ and high hearts aggressively on the score leader;
+// minimizePoints reduced since self-protection matters less near game end.
+export const DARING_ENDGAME_PLAY_WEIGHTS: PlayWeights = {
+  minimizePoints: 1.0,
+  queenSpadesRisk: 2.5,
+  moonThreat: 2.0,
+  moonProgress: 0.0,
+};
+
+// Daring adversarial mode: void in led suit + seat 0 winning the current trick.
+// Strongly weights Q♠ first (rateQueenSpadesRisk 1.0 vs 0.8 for other off-suit
+// discards while holding Q♠), then hearts, to maximize pressure on the human.
+export const DARING_ADVERSARIAL_PLAY_WEIGHTS: PlayWeights = {
+  minimizePoints: 1.0,
+  queenSpadesRisk: 5.0,
+  moonThreat: 2.0,
+  moonProgress: 0.0,
 };
 
 // ─── Pass weight maps ─────────────────────────────────────────────────────────
@@ -90,6 +111,6 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
 /** Probability of ignoring the best-scoring action and picking a random legal one. */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
   cautious: 0.25,
-  schemer: 0.10,
+  schemer: 0.1,
   daring: 0.0,
 };

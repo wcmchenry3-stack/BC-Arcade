@@ -8,8 +8,7 @@
 
 import { getValidPlays, getRng } from "./engine";
 import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
-import { buildHeartsInfoSet } from "./aiInfoSet";
-import type { HeartsInfoSet, VoidLedger } from "./aiInfoSet";
+import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import {
   rateMinimizeImmediatePoints,
   rateQueenSpadesRisk,
@@ -23,6 +22,8 @@ import {
   SCHEMER_PLAY_WEIGHTS,
   DARING_PLAY_WEIGHTS,
   DARING_MOON_PLAY_WEIGHTS,
+  DARING_ENDGAME_PLAY_WEIGHTS,
+  DARING_ADVERSARIAL_PLAY_WEIGHTS,
   CAUTIOUS_PASS_WEIGHTS,
   SCHEMER_PASS_WEIGHTS,
   DARING_PASS_WEIGHTS,
@@ -482,7 +483,25 @@ export function selectCardsToPassUtility(
   difficulty: AiPersona,
   playerIndex: number
 ): Card[] {
-  // ── Moon-viable override (Daring only) ──────────────────────────────────
+  // 2♣ is never eligible to pass (engine requires it to open the first trick).
+  const eligible = hand.filter((c) => !(c.suit === "clubs" && c.rank === 2));
+
+  // ── Noise gate ───────────────────────────────────────────────────────────
+  // Checked before any mode override so noise fires regardless of persona or
+  // mode. For Daring, NOISE_RATE === 0 → short-circuits without consuming RNG.
+  const rng = getRng();
+  const noiseRate = NOISE_RATE[difficulty];
+  if (noiseRate > 0 && rng() < noiseRate) {
+    const pool = [...eligible];
+    const result: Card[] = [];
+    for (let i = 0; i < 3 && pool.length > 0; i++) {
+      const idx = Math.floor(rng() * pool.length);
+      result.push(pool.splice(idx, 1)[0]!);
+    }
+    return result;
+  }
+
+  // ── Moon-viable override (Daring only) ───────────────────────────────────
   // Threshold mirrors selectCardsToPassHard: 6+ hearts + Q♠ → keep both,
   // pass lowest eligible non-hearts for trick control (#1637, #1647).
   if (difficulty === "daring") {
@@ -493,9 +512,12 @@ export function selectCardsToPassUtility(
     const strongMoon = heartsInHand >= 7 && hasQSpades;
 
     if (moonViable && (!targetingHuman || strongMoon)) {
-      // Utility score: 1.0 for rank-2, 0.0 for Ace — keeps high cards for trick control.
+      // moonPassScore: 1.0 for rank-2, 0.0 for Ace. Sorted descending so lowest-rank
+      // cards appear first — matches the rule-based "pass lowest non-hearts" (#1647).
       const moonPassScore = (c: Card): number => 1.0 - (aceHigh(c.rank) - 2) / 12;
 
+      // `rank >= 3 && rank <= 5` combined with the 2♣ exclusion above is equivalent
+      // to the rule-based `rank > 1 && rank < 6` filter (clubs 2–5 excluded total).
       const candidates = hand
         .filter(
           (c) =>
@@ -524,24 +546,8 @@ export function selectCardsToPassUtility(
     }
   }
 
-  // ── Normal pass mode ─────────────────────────────────────────────────────
-  // Minimal info set — only `hand` and `passDirection` are used by the pass
-  // considerations; other fields are zeroed/empty.
-  const passInfoSet: HeartsInfoSet = {
-    kind: "hearts" as const,
-    playerIndex,
-    hand: hand as readonly Card[],
-    currentTrick: [],
-    ledSuit: null,
-    seenKeys: new Set<string>() as ReadonlySet<string>,
-    voidLedger: {} as VoidLedger,
-    pointsPerPlayer: [0, 0, 0, 0] as readonly number[],
-    cumulativeScores: [0, 0, 0, 0] as readonly number[],
-    tricksRemaining: 13,
-    passDirection: direction,
-    heartsBroken: false,
-    isFirstTrick: false,
-  };
+  // ── Normal pass mode ──────────────────────────────────────────────────────
+  const passInfoSet = buildHeartsPassInfoSet(hand as readonly Card[], direction, playerIndex);
 
   const weights =
     difficulty === "cautious"
@@ -550,7 +556,6 @@ export function selectCardsToPassUtility(
         ? DARING_PASS_WEIGHTS
         : SCHEMER_PASS_WEIGHTS;
 
-  const eligible = hand.filter((c) => !(c.suit === "clubs" && c.rank === 2));
   const scored = eligible
     .map((card) => ({
       card,
@@ -559,20 +564,6 @@ export function selectCardsToPassUtility(
         weights.suitVoiding * rateSuitVoidingUtility(passInfoSet, card),
     }))
     .sort((a, b) => b.score - a.score);
-
-  // ── Noise ────────────────────────────────────────────────────────────────
-  const rng = getRng();
-  const noiseRate = NOISE_RATE[difficulty];
-  if (noiseRate > 0 && rng() < noiseRate) {
-    // Draw 3 random cards from eligible (Fisher-Yates on a copy).
-    const pool = [...eligible];
-    const result: Card[] = [];
-    for (let i = 0; i < 3 && pool.length > 0; i++) {
-      const idx = Math.floor(rng() * pool.length);
-      result.push(pool.splice(idx, 1)[0]!);
-    }
-    return result;
-  }
 
   return scored.slice(0, 3).map((s) => s.card);
 }
@@ -608,31 +599,55 @@ export function selectCardToPlayUtility(
   let isMoonAttempt = false;
   if (difficulty === "daring") {
     const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
-    const heartsWon = (state.wonCards[playerIndex] ?? []).filter(
-      (c) => c.suit === "hearts"
-    ).length;
+    const heartsWon = (state.wonCards[playerIndex] ?? []).filter((c) => c.suit === "hearts").length;
     const totalHearts = heartsInHand + heartsWon;
     const myHasQ =
-      hand.some(isQueenOfSpades) ||
-      (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
+      hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
     const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
     const myPoints = state.handScores[playerIndex] ?? 0;
     // earlyMoon: 7+ hearts + Q♠ at trick start (hand.length ≥ 8)
     const earlyMoon = heartsInHand >= 7 && myHasQ && heartsWon === 0 && hand.length >= 8;
-    // midMoon: 6+ hearts total + Q♠ + we hold all points taken so far
-    const midMoon =
-      totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
+    // midMoon: 6+ hearts total + Q♠ + we hold all points taken so far.
+    // NOTE: fires trivially when totalPointsTaken === 0 — myPoints(0) === 0 always.
+    // This is intentional (matching selectCardToPlayHard): a player with 6+ hearts + Q♠
+    // should play moon-attempt mode from trick 1, even before earlyMoon's 7+ threshold.
+    const midMoon = totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
     isMoonAttempt = earlyMoon || midMoon;
   }
+
+  // ── Endgame detection (Daring only) ──────────────────────────────────────
+  // Mirrors the inEndgame guard in selectCardToPlayHard (maxScore ≥ 65).
+  const inEndgame =
+    difficulty === "daring" &&
+    !isMoonAttempt &&
+    Math.max(...state.cumulativeScores.map((s) => s ?? 0)) >= 65;
+
+  // ── Adversarial targeting detection (Daring only) ─────────────────────────
+  // Mirrors selectCardToPlayHard: void in led suit + seat 0 winning the current
+  // trick → use DARING_ADVERSARIAL weights to prefer dumping Q♠/hearts on the human.
+  // Guard: playerIndex !== 0 (Hard is never seat 0 in real play; without this,
+  // a simulation placing Hard at seat 0 would withhold Q♠ indefinitely).
+  const isAdversarial = (() => {
+    if (difficulty !== "daring" || isMoonAttempt || inEndgame || playerIndex === 0) return false;
+    if (trick.length === 0) return false;
+    const first = trick[0]!;
+    const inSuit = valid.filter((c) => c.suit === first.card.suit);
+    if (inSuit.length > 0) return false;
+    return currentTrickWinner(trick) === 0;
+  })();
 
   // ── Weight selection ──────────────────────────────────────────────────────
   const weights: PlayWeights = isMoonAttempt
     ? DARING_MOON_PLAY_WEIGHTS
-    : difficulty === "cautious"
-      ? CAUTIOUS_PLAY_WEIGHTS
-      : difficulty === "schemer"
-        ? SCHEMER_PLAY_WEIGHTS
-        : DARING_PLAY_WEIGHTS;
+    : inEndgame
+      ? DARING_ENDGAME_PLAY_WEIGHTS
+      : isAdversarial
+        ? DARING_ADVERSARIAL_PLAY_WEIGHTS
+        : difficulty === "cautious"
+          ? CAUTIOUS_PLAY_WEIGHTS
+          : difficulty === "schemer"
+            ? SCHEMER_PLAY_WEIGHTS
+            : DARING_PLAY_WEIGHTS;
 
   // ── Score candidates ──────────────────────────────────────────────────────
   const scored = valid
