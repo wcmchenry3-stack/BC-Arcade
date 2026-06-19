@@ -369,11 +369,12 @@ describe("rateMoonThreat", () => {
 // ---------------------------------------------------------------------------
 
 describe("rateMoonAttemptProgress", () => {
-  it("returns 0.9 for dumping junk (non-point) when void", () => {
+  it("returns ≥0.9 for dumping junk (non-point) when void (rank bonus added)", () => {
     const trick = [tc("clubs", 5, 1)]; // clubs led
     const hand = [c("diamonds", 3)]; // void in clubs, diamond discard
     const info = mkInfo(hand, trick, { currentTrick: trick });
-    expect(rateMoonAttemptProgress(info, c("diamonds", 3))).toBeCloseTo(0.9, 5);
+    expect(rateMoonAttemptProgress(info, c("diamonds", 3))).toBeGreaterThanOrEqual(0.9);
+    expect(rateMoonAttemptProgress(info, c("diamonds", 3))).toBeLessThanOrEqual(1.0);
   });
 
   it("returns ~0.05 for discarding a heart when void (fatal for moon run)", () => {

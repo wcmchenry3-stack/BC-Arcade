@@ -198,9 +198,13 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
       // Off-suit void discard of Q♠: safe dump → excellent
       return 1.0;
     }
-    // In-suit spade follow: good only when Q♠ loses
+    // In-suit spade follow: safe only when Q♠ cannot take the trick.
+    // pWin=0 with outstanding K♠/A♠ still means Q♠ may win if those cards don't appear —
+    // treat "currently leading" as risky (0.5) rather than safe (1.0).
+    const winRank = currentTrickWinRank(currentTrick, "spades");
+    if (aceHigh(card.rank) <= winRank) return 1.0; // already beaten — safe dump
     const pWin = computePWin(card, infoSet);
-    return Math.max(0, 1.0 - pWin);
+    return Math.max(0, 0.5 - pWin * 0.5);
   }
 
   // Q♠ is in the current trick — winning it costs us 13 pts
@@ -220,7 +224,13 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
     return 0.8; // holding Q♠ but this play doesn't directly expose it
   }
 
-  return 1.0; // Q♠ outstanding but we don't hold it and it's not in the trick
+  // Q♠ outstanding but we don't hold it — leading K♠/A♠ risks having Q♠ discarded onto us.
+  // Matches chooseLeadHard: avoid leading K♠/A♠ while Q♠ is still live.
+  if (ledSuit === null && card.suit === "spades" && (card.rank === 13 || card.rank === 1)) {
+    return 0.25;
+  }
+
+  return 1.0;
 };
 
 // ---------------------------------------------------------------------------
@@ -301,28 +311,35 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card
 export const rateMoonAttemptProgress: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
   const pts = cardPoints(card);
   const pWin = computePWin(card, infoSet);
-  const { ledSuit } = infoSet;
+  const { ledSuit, currentTrick } = infoSet;
   const isVoid = ledSuit !== null && card.suit !== ledSuit;
 
   if (isVoid) {
     // Off-suit void discard: dump non-point junk; losing a heart/Q♠ kills a moon run
-    if (pts === 0) return 0.9;
+    if (pts === 0) return 0.9 + aceHigh(card.rank) / 140; // rank bonus: exhaust higher junk first
     return 0.05;
   }
 
   if (ledSuit === null) {
     // Leading: want to win and maintain trick control
     if (card.suit === "hearts" || isQueenOfSpades(card)) {
-      // Lead hearts/Q♠ only when necessary; prefer winning if forced
       return pWin * 0.75;
     }
-    // Non-heart lead for trick control: high pWin = high desirability
     return 0.3 + pWin * 0.65;
   }
 
   // Following in led suit
-  if (pts > 0) return pWin * 0.95; // win point tricks to collect all 26
-  return pWin * 0.65; // win 0-pt tricks for board control
+  if (pts > 0) {
+    if (pWin === 0) return 0.0; // can't win this pts trick — don't waste it
+    // Q♠ in an otherwise 0-pt trick: save it for tricks that already have hearts
+    const trickPts = currentTrick.reduce((s, tc) => s + cardPoints(tc.card), 0);
+    if (isQueenOfSpades(card) && trickPts === 0) return pWin * 0.3;
+    return pWin * 0.95; // win point tricks to collect all 26
+  }
+  // 0-pt trick
+  if (pWin === 0) return 0.1; // neutral, Q♠-preserving
+  // Small rank penalty: prefer lowest winning card to conserve high cards for later
+  return pWin * 0.65 - aceHigh(card.rank) / 1400;
 };
 
 // ---------------------------------------------------------------------------
@@ -367,7 +384,7 @@ export const ratePassingQuality: Consideration<HeartsInfoSet, Card> = (infoSet, 
         : passDirection === "none"
           ? hasASpades && hasKSpades // baseline: need both covers to keep Q♠
           : false; // right/across: always pass Q♠ (travels safely)
-    return fullyProtected ? 0.2 : 0.95;
+    return fullyProtected ? 0.05 : 0.95;
   }
 
   if (card.suit === "hearts") {
