@@ -115,7 +115,7 @@
     "jest-expo": "~56.0.5",
     "prettier": "^3.8.4",
     "react-test-renderer": "19.2.3",
-    "sharp": "^0.35.1",
+    "sharp": "^0.35.2",
     "source-map-explorer": "^2.5.3",
     "test-renderer": "^1.2.0",
     "typescript": "~6.0.3"
