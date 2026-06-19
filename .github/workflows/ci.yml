@@ -41,7 +41,7 @@ jobs:
     name: Conflict marker check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check for merge conflict markers
         run: |
           if grep -rn \
@@ -60,7 +60,7 @@ jobs:
     name: Forbidden brand/trademark terms
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Scan for trademarked or competitor brand references
         run: |
           # Third-party trademarks and competitor brands must not appear in source,
@@ -124,7 +124,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -208,7 +208,7 @@ jobs:
       projects: ${{ steps.scope.outputs.projects }}
       label: ${{ steps.scope.outputs.label }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -323,7 +323,7 @@ jobs:
     needs: [test-python, test-frontend, detect-e2e-scope]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -376,7 +376,7 @@ jobs:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -418,7 +418,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -530,7 +530,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -605,7 +605,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -638,7 +638,7 @@ jobs:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Validate Gradle wrapper
