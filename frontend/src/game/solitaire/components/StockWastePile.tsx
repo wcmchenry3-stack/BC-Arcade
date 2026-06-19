@@ -29,6 +29,7 @@ export interface StockWastePileProps {
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly wasteSelected?: boolean;
+  readonly hintSource?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
@@ -39,6 +40,7 @@ export default function StockWastePile({
   waste,
   drawMode,
   wasteSelected = false,
+  hintSource = false,
   shakeX,
   onStockPress,
   onWastePress,
@@ -59,9 +61,11 @@ export default function StockWastePile({
         waste={waste}
         drawMode={drawMode}
         selected={wasteSelected}
+        hintSource={hintSource}
         shakeX={shakeX}
         onPress={onWastePress}
         t={t}
+        colors={colors}
       />
     </View>
   );
@@ -130,16 +134,20 @@ function Waste({
   waste,
   drawMode,
   selected,
+  hintSource = false,
   shakeX,
   onPress,
   t,
+  colors,
 }: {
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly selected: boolean;
+  readonly hintSource?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onPress?: () => void;
   readonly t: TFunction<"solitaire">;
+  readonly colors: ReturnType<typeof useTheme>["colors"];
 }) {
   const { cardWidth, cardHeight } = useCardSize();
   const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
@@ -170,24 +178,30 @@ function Waste({
     suit: t(`suit.${top.suit}` as const),
   });
 
+  const hintStyle = hintSource
+    ? { borderColor: colors.bonus, borderWidth: 3, borderRadius: 8 }
+    : undefined;
+
   if (drawMode !== 3) {
     return (
-      <DraggableCard
-        testID="solitaire-waste-top"
-        onTap={onPress}
-        dragCards={topDragCards}
-        dragSource={{ game: "solitaire", type: "waste" }}
-      >
-        <SelectableCard
-          suit={top.suit as CanonicalSuit}
-          rank={top.rank}
-          width={cardWidth}
-          height={cardHeight}
-          selected={selected}
-          shakeX={shakeX}
-          accessibilityLabel={topLabel}
-        />
-      </DraggableCard>
+      <View style={hintStyle}>
+        <DraggableCard
+          testID="solitaire-waste-top"
+          onTap={onPress}
+          dragCards={topDragCards}
+          dragSource={{ game: "solitaire", type: "waste" }}
+        >
+          <SelectableCard
+            suit={top.suit as CanonicalSuit}
+            rank={top.rank}
+            width={cardWidth}
+            height={cardHeight}
+            selected={selected}
+            shakeX={shakeX}
+            accessibilityLabel={topLabel}
+          />
+        </DraggableCard>
+      </View>
     );
   }
 

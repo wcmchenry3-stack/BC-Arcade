@@ -9,6 +9,7 @@
   "score.label": "Очки: {{score}}",
   "score.moves": "Ходы: {{moves}}",
   "action.undo": "Отмена",
+  "action.hint": "Подсказка",
   "action.autoComplete": "Автозавершение",
   "action.newGame": "Новая игра",
   "action.submitScore": "Отправить очки",

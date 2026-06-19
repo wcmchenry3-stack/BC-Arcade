@@ -9,6 +9,7 @@
   "score.label": "Pontuação: {{score}}",
   "score.moves": "Jogadas: {{moves}}",
   "action.undo": "Desfazer",
+  "action.hint": "Dica",
   "action.autoComplete": "Auto-Completar",
   "action.newGame": "Novo Jogo",
   "action.submitScore": "Enviar Pontos",

@@ -37,6 +37,9 @@ function stockCards(excluded: string[]) {
 //   col 0: 5♥ (red 5)  — card to move
 //   col 1: 6♦ (red 6)  — invalid destination (same colour as 5♥)
 //   col 2: 6♠ (black 6) — valid destination for 5♥ (alternating colour, rank -1)
+//   col 3: 6♣ (black 6) — second valid destination → smart-tap sees two equal-priority
+//                          destinations, falls back to selection (ambiguous), preserving
+//                          the two-tap flow this test exercises
 const BOARD_STATE = {
   _v: 1,
   drawMode: 1,
@@ -44,13 +47,13 @@ const BOARD_STATE = {
     [{ suit: "hearts", rank: 5, faceUp: true }],
     [{ suit: "diamonds", rank: 6, faceUp: true }],
     [{ suit: "spades", rank: 6, faceUp: true }],
-    [],
+    [{ suit: "clubs", rank: 6, faceUp: true }],
     [],
     [],
     [],
   ],
   foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
-  stock: stockCards(["hearts-5", "diamonds-6", "spades-6"]),
+  stock: stockCards(["hearts-5", "diamonds-6", "spades-6", "clubs-6"]),
   waste: [],
   score: 0,
   undoStack: [],
@@ -166,8 +169,8 @@ test.describe("Solitaire — error paths", () => {
       .waitFor({ timeout: 10_000 });
 
     // Corrupted state is discarded — draw-mode modal appears for a fresh game
-    await expect(
-      page.getByRole("button", { name: "Draw 1" }),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Draw 1" })).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

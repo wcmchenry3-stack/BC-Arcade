@@ -51,6 +51,8 @@ export interface SolitaireState {
   /** Total elapsed milliseconds accumulated across all sessions before the current one. */
   readonly accumulatedMs: number;
   readonly events?: readonly GameEvent[];
+  /** Active hint move. Set by applyHint(), cleared after any real move. */
+  readonly hint?: Move;
 }
 
 export type GameEvent = "cardFlip" | "cardPlace" | "foundationComplete" | "gameWin" | "invalidMove";

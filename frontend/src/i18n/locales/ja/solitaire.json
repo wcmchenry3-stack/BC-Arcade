@@ -9,6 +9,7 @@
   "score.label": "スコア: {{score}}",
   "score.moves": "移動回数: {{moves}}",
   "action.undo": "元に戻す",
+  "action.hint": "ヒント",
   "action.autoComplete": "自動完了",
   "action.newGame": "新しいゲーム",
   "action.submitScore": "スコアを送信",

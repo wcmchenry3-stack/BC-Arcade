@@ -175,6 +175,48 @@ describe("SolitaireScreen — stock & waste", () => {
   });
 });
 
+describe("SolitaireScreen — hint button", () => {
+  it("renders an enabled Hint button in the header when hints exist on a fresh deal", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    const hint = api.getByLabelText("Hint");
+    expect(hint.props.accessibilityState?.disabled).toBe(false);
+  });
+
+  it("disables Hint after the game is complete", async () => {
+    const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
+    const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+    const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+    const winState = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: {
+        spades: full.filter((c) => c.suit === "spades"),
+        hearts: full.filter((c) => c.suit === "hearts"),
+        diamonds: full.filter((c) => c.suit === "diamonds"),
+        clubs: full.filter((c) => c.suit === "clubs"),
+      },
+      stock: [],
+      waste: [],
+      score: 820,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: true,
+      startedAt: null,
+      accumulatedMs: 0,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
+    const api = await mount();
+    // WinModal uses accessibilityViewIsModal, which hides the header from
+    // accessibility queries; includeHiddenElements bypasses that restriction
+    const hint = api.getByTestId("solitaire-hint-button", {
+      includeHiddenElements: true,
+    });
+    expect(hint.props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
 describe("SolitaireScreen — undo affordance", () => {
   it("renders an Undo button in the header that is disabled on a fresh deal", async () => {
     const api = await mount();
@@ -519,37 +561,196 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     };
   }
 
-  it("single tap on waste card with valid foundation move selects it, does not auto-move", async () => {
-    // A♠ in waste + empty spades foundation = a legal waste-to-foundation move.
-    // The pre-fix double-fire would deliver handleWastePress twice within 300 ms,
-    // causing isDouble=true on the second spurious call and moving the card.
+  it("single tap on waste ace auto-moves it to foundation (smart tap, #2039)", async () => {
+    // Smart tap: A♠ in waste + empty foundation = unambiguous waste-to-foundation → execute immediately.
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // single tap — should select only
+      await fireEvent.press(api.getByLabelText("A of Spades"));
     });
 
-    // "Empty Spades foundation" only exists when the foundation has no cards —
-    // it's the unambiguous signal that the ace was NOT auto-moved.
-    expect(api.getByLabelText("Empty Spades foundation")).toBeTruthy();
-    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+    // Ace should be on the foundation — "Empty Spades foundation" no longer exists.
+    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
   });
 
-  it("double-tap on waste card with valid foundation move moves it to foundation", async () => {
+  it("double-tap on waste card with valid foundation move still moves it", async () => {
     // Two consecutive act() calls complete in <1 ms, well within DOUBLE_TAP_MS (300 ms).
+    // With smart tap the first tap already auto-moves; the second tap lands on the
+    // foundation ace but triggers no additional move, keeping moves at 1.
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // first tap — select
+      await fireEvent.press(api.getByLabelText("A of Spades")); // smart tap → auto-move
     });
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // second tap — double-tap → waste-to-foundation
+      await fireEvent.press(api.getByLabelText("A of Spades")); // now on foundation → select only
     });
 
     expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
     expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+});
+
+describe("SolitaireScreen — smart single-tap auto-move (#2039)", () => {
+  function buildSmartTapState(
+    overrides: Partial<import("../../game/solitaire/types").SolitaireState> = {}
+  ) {
+    return {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+      stock: [],
+      waste: [],
+      score: 0,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 0,
+      ...overrides,
+    };
+  }
+
+  it("single tap on tableau ace auto-moves to foundation (unambiguous)", async () => {
+    // A♠ alone in col 0 → unambiguous foundation move → execute on first tap.
+    const state = buildSmartTapState({
+      tableau: [[{ suit: "spades", rank: 1, faceUp: true }], [], [], [], [], [], []],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("A of Spades"));
+    });
+
+    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+
+  it("single tap on tableau card with ambiguous destinations selects instead of auto-moving", async () => {
+    // 8♥ (red) in col 0 can go onto 9♠ (col 1) or 9♣ (col 2) — both run-length 1 → ambiguous → select.
+    const state = buildSmartTapState({
+      tableau: [
+        [{ suit: "hearts", rank: 8, faceUp: true }],
+        [{ suit: "spades", rank: 9, faceUp: true }],
+        [{ suit: "clubs", rank: 9, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("8 of Hearts"));
+    });
+
+    // Selection highlights the card rather than moving it — moves stays at 0.
+    expect(api.getByLabelText("8 of Hearts (selected)")).toBeTruthy();
+    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+  });
+
+  it("second tap on valid destination resolves after ambiguous first tap", async () => {
+    // 8♥ (red) in col 0 ambiguous → select. Tap 9♠ in col 1 → execute tableau move.
+    const state = buildSmartTapState({
+      tableau: [
+        [{ suit: "hearts", rank: 8, faceUp: true }],
+        [{ suit: "spades", rank: 9, faceUp: true }],
+        [{ suit: "clubs", rank: 9, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("8 of Hearts")); // select
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("9 of Spades")); // resolve
+    });
+
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+    expect(api.queryByLabelText("8 of Hearts (selected)")).toBeNull();
+  });
+
+  it("single tap on waste card with ambiguous destinations selects it instead of auto-moving", async () => {
+    // 5♥ (red) in waste; 6♠ (col 0) and 6♣ (col 1) are both valid — equal run length → ambiguous → select.
+    const state = buildSmartTapState({
+      waste: [{ suit: "hearts", rank: 5, faceUp: true }],
+      tableau: [
+        [{ suit: "spades", rank: 6, faceUp: true }],
+        [{ suit: "clubs", rank: 6, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("5 of Hearts"));
+    });
+
+    // Card is still in waste — not auto-moved.
+    expect(api.getByLabelText("5 of Hearts")).toBeTruthy();
+    expect(api.queryByLabelText("Moves: 1")).toBeNull();
+  });
+
+  it("second tap on valid destination resolves ambiguous waste selection", async () => {
+    // 5♥ ambiguous → select, then tap 6♠ → waste-to-tableau executes.
+    const state = buildSmartTapState({
+      waste: [{ suit: "hearts", rank: 5, faceUp: true }],
+      tableau: [
+        [{ suit: "spades", rank: 6, faceUp: true }],
+        [{ suit: "clubs", rank: 6, faceUp: true }],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("5 of Hearts")); // ambiguous → select
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("6 of Spades")); // resolve → waste-to-tableau
+    });
+
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+
+  it("stock tap still draws — smart tap does not intercept stock", async () => {
+    const state = buildSmartTapState({
+      stock: [
+        { suit: "hearts", rank: 3, faceUp: false },
+        { suit: "clubs", rank: 7, faceUp: false },
+      ],
+    });
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
+    const api = await mount();
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 2 cards remaining"));
+    });
+
+    expect(api.getByLabelText("Draw 1 from stock, 1 cards remaining")).toBeTruthy();
   });
 });
 

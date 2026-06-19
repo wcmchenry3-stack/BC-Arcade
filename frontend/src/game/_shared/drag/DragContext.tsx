@@ -42,6 +42,11 @@ interface DropZoneEntry {
   refreshBounds?: () => void;
 }
 
+interface CachedDropZone {
+  originalBounds: Bounds;
+  inflatedBounds: Bounds;
+}
+
 // ---------------------------------------------------------------------------
 // Context value
 // ---------------------------------------------------------------------------
@@ -90,9 +95,14 @@ const SNAP_SPRING = { duration: 250, dampingRatio: 0.8 };
 export interface DragProviderProps {
   children: React.ReactNode;
   getLegalDropIds?: (source: DragSource, cards: DragCard[]) => string[];
+  snapRadiusFraction?: number;
 }
 
-export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
+export function DragProvider({
+  children,
+  getLegalDropIds,
+  snapRadiusFraction = 0.35,
+}: DragProviderProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [legalTargetIds, setLegalTargetIds] = useState<Set<string>>(new Set());
 
@@ -108,7 +118,7 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
   const dragGeneration = useSharedValue(0);
 
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
-  const dropZoneBoundsRef = useRef<Map<string, Bounds>>(new Map());
+  const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
 
   const clearDrag = useCallback(() => {
@@ -173,21 +183,28 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
       const totalZones = dropZonesRef.current.size;
       let missingBounds = 0;
       let hitButRejected = 0;
+      let closestZoneId: string | null = null;
+      let closestDistanceSq = Infinity;
 
       // Synchronous hit-test against pre-cached bounds (populated via onLayout in
       // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
       for (const [id, entry] of dropZonesRef.current) {
-        const b = dropZoneBoundsRef.current.get(id);
-        if (!b) {
+        const cached = dropZoneBoundsRef.current.get(id);
+        if (!cached) {
           missingBounds++;
           continue;
         }
-        if (
-          absoluteX >= b.x &&
-          absoluteX <= b.x + b.width &&
-          absoluteY >= b.y &&
-          absoluteY <= b.y + b.height
-        ) {
+
+        const { originalBounds, inflatedBounds } = cached;
+
+        const inOriginal =
+          absoluteX >= originalBounds.x &&
+          absoluteX <= originalBounds.x + originalBounds.width &&
+          absoluteY >= originalBounds.y &&
+          absoluteY <= originalBounds.y + originalBounds.height;
+
+        if (inOriginal) {
+          // Original-bounds hit always takes priority over any inflated-only match.
           const accepted = entry.onDrop(state.source, state.cards);
           if (accepted) {
             Sentry.addBreadcrumb({
@@ -200,7 +217,47 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
             return;
           }
           hitButRejected++;
+        } else {
+          const inInflated =
+            absoluteX >= inflatedBounds.x &&
+            absoluteX <= inflatedBounds.x + inflatedBounds.width &&
+            absoluteY >= inflatedBounds.y &&
+            absoluteY <= inflatedBounds.y + inflatedBounds.height;
+
+          if (inInflated) {
+            const centerX = originalBounds.x + originalBounds.width / 2;
+            const centerY = originalBounds.y + originalBounds.height / 2;
+            const dx = absoluteX - centerX;
+            const dy = absoluteY - centerY;
+            const distanceSq = dx * dx + dy * dy;
+
+            if (distanceSq < closestDistanceSq) {
+              closestZoneId = id;
+              closestDistanceSq = distanceSq;
+            }
+          }
         }
+      }
+
+      if (closestZoneId !== null) {
+        const entry = dropZonesRef.current.get(closestZoneId)!;
+        const accepted = entry.onDrop(state.source, state.cards);
+        if (accepted) {
+          Sentry.addBreadcrumb({
+            category: "drag",
+            level: "info",
+            message: "drag.accepted",
+            data: {
+              zone: closestZoneId,
+              fingerX: absoluteX,
+              fingerY: absoluteY,
+              snappedFromInflated: true,
+            },
+          });
+          clearDrag();
+          return;
+        }
+        hitButRejected++;
       }
 
       // Snap back. Only escalate to a Sentry issue when bounds were missing (a real bug —
@@ -247,9 +304,21 @@ export function DragProvider({ children, getLegalDropIds }: DragProviderProps) {
     dropZoneBoundsRef.current.delete(id);
   }, []);
 
-  const updateDropZoneLayout = useCallback((id: string, bounds: Bounds) => {
-    dropZoneBoundsRef.current.set(id, bounds);
-  }, []);
+  const updateDropZoneLayout = useCallback(
+    (id: string, bounds: Bounds) => {
+      const inflatedBounds: Bounds = {
+        x: bounds.x - snapRadiusFraction * bounds.width,
+        y: bounds.y - snapRadiusFraction * bounds.height,
+        width: bounds.width * (1 + 2 * snapRadiusFraction),
+        height: bounds.height * (1 + 2 * snapRadiusFraction),
+      };
+      dropZoneBoundsRef.current.set(id, {
+        originalBounds: bounds,
+        inflatedBounds,
+      });
+    },
+    [snapRadiusFraction]
+  );
 
   const value: DragContextValue = {
     dragState,

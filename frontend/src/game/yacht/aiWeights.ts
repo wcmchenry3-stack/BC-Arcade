@@ -1,0 +1,73 @@
+/**
+ * Difficulty weight maps for the Yacht Utility AI (GH #2027, story A3).
+ *
+ * One `WeightMap` pair (hold + score) per difficulty level.  A higher weight
+ * amplifies the corresponding consideration's influence on the weighted-sum
+ * decision score.  Difficulty: Easy 13% / Medium 3% / Hard 0% cognitive noise.
+ * Medium uses Hard's EV-optimal hold weights but greedy (non-adversarial) scoring.
+ * Calibrated in #2028: Hard wins ~62% vs Easy, ~52% vs Medium (1,000-game batches).
+ */
+
+import type { WeightMap } from "../_shared/utilityAi/types";
+import type { AiDifficulty } from "./types";
+
+// ─── Key types ────────────────────────────────────────────────────────────────
+
+export type HoldWeightKey = "upperBonusUrgency" | "evOfHold";
+export type ScoreWeightKey = "immediateValue" | "chanceSafetyValve" | "adversarialVariance";
+
+export type HoldWeights = WeightMap<HoldWeightKey>;
+export type ScoreWeights = WeightMap<ScoreWeightKey>;
+
+// ─── Hold weight maps ─────────────────────────────────────────────────────────
+
+// Easy: balanced hold, greedy score — 13% cognitive noise is the primary lever
+export const EASY_HOLD_WEIGHTS: HoldWeights = {
+  upperBonusUrgency: 0.5,
+  evOfHold: 0.5,
+};
+
+// Medium: EV-optimal hold (same as Hard), greedy score (no adversarial) — 3% noise
+// Calibrated: Hard wins 62% vs Easy, 52% vs Medium at 1 000-game batches (#2028).
+export const MEDIUM_HOLD_WEIGHTS: HoldWeights = {
+  upperBonusUrgency: 0.3,
+  evOfHold: 0.7,
+};
+
+// Hard: EV-dominant — no noise; adds adversarial variance on top of Medium
+export const HARD_HOLD_WEIGHTS: HoldWeights = {
+  upperBonusUrgency: 0.3,
+  evOfHold: 0.7,
+};
+
+// ─── Score weight maps ────────────────────────────────────────────────────────
+
+// Easy: immediate value dominant (greedy); noise does the heavy lifting
+export const EASY_SCORE_WEIGHTS: ScoreWeights = {
+  immediateValue: 1.0,
+  chanceSafetyValve: 0.2,
+  adversarialVariance: 0.3,
+};
+
+// Medium: greedy score (no adversarial); EV-optimal holds distinguish it from Easy
+export const MEDIUM_SCORE_WEIGHTS: ScoreWeights = {
+  immediateValue: 1.0,
+  chanceSafetyValve: 0.4,
+  adversarialVariance: 0.3,
+};
+
+// Hard: immediate value + adversarial variance dominant
+export const HARD_SCORE_WEIGHTS: ScoreWeights = {
+  immediateValue: 1.0,
+  chanceSafetyValve: 0.4,
+  adversarialVariance: 0.8,
+};
+
+// ─── Cognitive noise rates ────────────────────────────────────────────────────
+
+/** Probability of ignoring the best-scoring action and picking a random legal one. */
+export const NOISE_RATE: Readonly<Record<AiDifficulty, number>> = {
+  easy: 0.13,
+  medium: 0.03,
+  hard: 0.0,
+};

@@ -9,6 +9,7 @@
   "score.label": "Score: {{score}}",
   "score.moves": "Moves: {{moves}}",
   "action.undo": "Undo",
+  "action.hint": "Hint",
   "action.autoComplete": "Auto-Complete",
   "action.newGame": "New Game",
   "action.submitScore": "Submit Score",

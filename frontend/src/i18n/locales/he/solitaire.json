@@ -9,6 +9,7 @@
   "score.label": "נקודות: {{score}}",
   "score.moves": "מהלכים: {{moves}}",
   "action.undo": "בטל",
+  "action.hint": "רמז",
   "action.autoComplete": "סיום אוטומטי",
   "action.newGame": "משחק חדש",
   "action.submitScore": "שלחו ניקוד",

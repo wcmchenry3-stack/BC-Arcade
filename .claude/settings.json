@@ -6,6 +6,18 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash .claude/hooks/commit-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/precheck-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pr-title-gate.sh"
+          },
+          {
+            "type": "command",
             "command": "bash .claude/hooks/lint-gate.sh"
           },
           {

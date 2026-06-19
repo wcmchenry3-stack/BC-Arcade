@@ -103,6 +103,13 @@ export interface HeartsState {
   readonly isComplete: boolean;
   readonly winnerIndex: number | null;
   /**
+   * Per-player suits known to be void, inferred from off-suit discards (#2029).
+   * knownVoids[playerIndex] is an array of suits that player is known to be void in.
+   * Populated during trick resolution; reset to empty arrays each new hand.
+   * Optional so legacy persisted states (no `knownVoids` field) deserialize cleanly.
+   */
+  readonly knownVoids?: readonly (readonly Suit[])[];
+  /**
    * One-shot UI events set by the engine and cleared by the animation layer.
    * Optional so legacy serialized states (no `events` field) deserialize cleanly.
    */

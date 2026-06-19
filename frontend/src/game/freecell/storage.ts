@@ -3,6 +3,13 @@ import * as Sentry from "@sentry/react-native";
 import type { FreeCellState } from "./types";
 
 const GAME_KEY = "freecell_game";
+const STATS_KEY = "freecell_stats_v1";
+
+export interface FreeCellStats {
+  bestMoves: number;
+  gamesPlayed: number;
+  gamesWon: number;
+}
 
 function stripNestedUndo(state: FreeCellState): FreeCellState {
   return {
@@ -56,5 +63,31 @@ export async function clearGame(): Promise<void> {
     await AsyncStorage.removeItem(GAME_KEY);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "freecell.storage", op: "clear" } });
+  }
+}
+
+const EMPTY_STATS: FreeCellStats = { bestMoves: 0, gamesPlayed: 0, gamesWon: 0 };
+
+export async function loadStats(): Promise<FreeCellStats> {
+  try {
+    const raw = await AsyncStorage.getItem(STATS_KEY);
+    if (!raw) return { ...EMPTY_STATS };
+    const parsed = JSON.parse(raw);
+    return {
+      bestMoves: typeof parsed.bestMoves === "number" ? parsed.bestMoves : 0,
+      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
+      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
+    };
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "freecell.storage", op: "loadStats" } });
+    return { ...EMPTY_STATS };
+  }
+}
+
+export async function saveStats(stats: FreeCellStats): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "freecell.storage", op: "saveStats" } });
   }
 }

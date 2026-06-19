@@ -36,6 +36,7 @@ const SCORE_FOUNDATION_TO_TABLEAU = -15;
 const SCORE_REVEAL = 5;
 const SCORE_RECYCLE_PENALTY = -50;
 const SCORE_WIN_BONUS = 500;
+const HINT_PENALTY = 20;
 
 const UNDO_CAP = 50;
 const TABLEAU_COLUMNS = 7;
@@ -337,7 +338,7 @@ function isWin(foundations: Foundations): boolean {
 
 function finalizeAfterMove(
   prev: SolitaireState,
-  next: Omit<SolitaireState, "undoStack" | "isComplete" | "startedAt" | "accumulatedMs">
+  next: Omit<SolitaireState, "undoStack" | "isComplete" | "startedAt" | "accumulatedMs" | "hint">
 ): SolitaireState {
   const wasComplete = prev.isComplete;
   const nowComplete = isWin(next.foundations);
@@ -360,6 +361,7 @@ function finalizeAfterMove(
       ...next,
       score: finalScore,
       isComplete: nowComplete,
+      hint: undefined,
       events: events.length > 0 ? events : undefined,
     })
   );
@@ -633,4 +635,243 @@ export function autoComplete(state: SolitaireState): SolitaireState {
   }
 
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// Hint engine (#2033)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns false when a tableau-to-tableau move is a pure oscillation: the
+ * moving run's base card's parent card (the card that would be exposed) is
+ * color-rank-equivalent to the destination top card (same rank, same color),
+ * and the move doesn't reveal a face-down card, doesn't empty a column for a
+ * waiting king, and doesn't enable a foundation play. All other move types
+ * are always productive.
+ *
+ * Used by getHintMoves to avoid suggesting reversible swaps (#1295 precedent
+ * from FreeCell). applyMove / validateMove are unaffected.
+ */
+export function isProductiveMove(state: SolitaireState, move: Move): boolean {
+  if (move.type !== "tableau-to-tableau") return true;
+
+  const src = state.tableau[move.fromCol];
+  const dst = state.tableau[move.toCol];
+  if (src === undefined || dst === undefined) return true;
+
+  // Moving from column base — could create an empty column for a king
+  if (move.fromIndex === 0) return true;
+
+  // Reveals a face-down card → productive
+  const cardBelowRun = src[move.fromIndex - 1];
+  if (cardBelowRun !== undefined && !cardBelowRun.faceUp) return true;
+
+  // The parent card (exposed after the move) can go to foundation → productive
+  if (
+    cardBelowRun !== undefined &&
+    canStackOnFoundation(cardBelowRun, state.foundations[cardBelowRun.suit])
+  )
+    return true;
+
+  const destTop = topOf(dst);
+  if (destTop === undefined) return true; // moving to empty column
+
+  // Reversible swap: cardBelowRun is face-up, can't go to foundation, and the
+  // move is valid (validateMove already confirmed rank/color) — no benefit gained.
+  return false;
+}
+
+/**
+ * Returns all legal moves from the current state, ordered by desirability:
+ *   1. Foundation moves (waste→foundation, tableau→foundation) — always progress.
+ *   2. Tableau→tableau moves that reveal a face-down card.
+ *   3. Waste→tableau moves.
+ *   4. Other productive tableau→tableau moves.
+ *
+ * Non-productive moves (reversible swaps with no benefit) are filtered out.
+ * Stock draws and foundation→tableau retreats are excluded from hints.
+ * Returns [] when no productive moves exist.
+ */
+export function getHintMoves(state: SolitaireState): Move[] {
+  const moves: Move[] = [];
+
+  // 1. Foundation moves — always progress
+  const wasteFoundation: Move = { type: "waste-to-foundation" };
+  if (validateMove(state, wasteFoundation)) moves.push(wasteFoundation);
+
+  for (let col = 0; col < TABLEAU_COLUMNS; col++) {
+    const m: Move = { type: "tableau-to-foundation", fromCol: col };
+    if (validateMove(state, m)) moves.push(m);
+  }
+
+  // 2. Tableau→tableau moves that reveal a face-down card
+  const revealingMoves: Move[] = [];
+  const otherProductiveMoves: Move[] = [];
+
+  for (let fromCol = 0; fromCol < TABLEAU_COLUMNS; fromCol++) {
+    const src = state.tableau[fromCol];
+    if (!src || src.length === 0) continue;
+    let foundForCol = false;
+    for (let fromIndex = 0; fromIndex < src.length && !foundForCol; fromIndex++) {
+      const card = src[fromIndex];
+      if (card === undefined || !card.faceUp) continue;
+      for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+        if (toCol === fromCol) continue;
+        const m: Move = { type: "tableau-to-tableau", fromCol, fromIndex, toCol };
+        if (!validateMove(state, m)) continue;
+        if (!isProductiveMove(state, m)) continue;
+
+        const revealsFaceDown =
+          fromIndex > 0 && src[fromIndex - 1] !== undefined && !src[fromIndex - 1]!.faceUp;
+
+        if (revealsFaceDown) {
+          revealingMoves.push(m);
+        } else {
+          otherProductiveMoves.push(m);
+        }
+        foundForCol = true;
+        break;
+      }
+    }
+  }
+
+  moves.push(...revealingMoves);
+
+  // 3. Waste→tableau moves
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const m: Move = { type: "waste-to-tableau", toCol };
+    if (validateMove(state, m)) {
+      moves.push(m);
+      break; // first valid destination is sufficient
+    }
+  }
+
+  // 4. Other productive tableau→tableau moves
+  moves.push(...otherProductiveMoves);
+
+  return moves;
+}
+
+/**
+ * Sets state.hint to the first legal move (for the hint UI to highlight).
+ * Returns state unchanged if there are no legal moves — caller should check
+ * state.hint to decide whether to surface a "no moves" message instead.
+ * Does NOT mutate the input state.
+ */
+export function applyHint(state: SolitaireState): SolitaireState {
+  const moves = getHintMoves(state);
+  const newScore = Math.max(0, state.score - HINT_PENALTY);
+  return { ...state, hint: moves[0], score: newScore };
+}
+
+// ---------------------------------------------------------------------------
+// Smart single-tap auto-move (#2039)
+// ---------------------------------------------------------------------------
+
+export type AutoMoveResult =
+  | { kind: "execute"; move: Move }
+  | { kind: "ambiguous" }
+  | { kind: "no-move" };
+
+function runLengthAt(state: SolitaireState, col: number): number {
+  const pile = state.tableau[col];
+  if (!pile || pile.length === 0) return 0;
+  let len = 1;
+  for (let i = pile.length - 1; i > 0; i--) {
+    const top = pile[i]!;
+    const below = pile[i - 1]!;
+    if (below.faceUp && cardColor(top) !== cardColor(below) && top.rank === below.rank - 1) {
+      len++;
+    } else {
+      break;
+    }
+  }
+  return len;
+}
+
+/**
+ * Klondike smart single-tap priority ladder (#2039):
+ *   1. Foundation — unambiguous when valid (top card only for tableau source)
+ *   2. Tableau move that reveals a face-down card — prefer destination with longest resulting run;
+ *      if multiple tie, caller enters two-tap selection flow
+ *   3. Other legal tableau move — prefer longest resulting run; ambiguous if tied
+ *   4. Empty column — first available (only kings / king-led runs land here)
+ *
+ * Levels 2 and 3 share a single non-empty scan: "reveal" is a source-only property
+ * (whether pile[index-1] is face-down), so every valid non-empty destination from a
+ * given tap is either all level-2 or all level-3 — never mixed.
+ */
+export function resolveAutoMove(
+  state: SolitaireState,
+  source: { type: "tableau"; col: number; index: number } | { type: "waste" }
+): AutoMoveResult {
+  if (source.type === "waste") {
+    // 1. Foundation
+    const foundMove: Move = { type: "waste-to-foundation" };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+
+    // 2. Non-empty tableau — prefer longest resulting run
+    const nonEmpty: Array<{ move: Move; destRunLength: number }> = [];
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length === 0) continue;
+      const m: Move = { type: "waste-to-tableau", toCol };
+      if (validateMove(state, m))
+        nonEmpty.push({ move: m, destRunLength: runLengthAt(state, toCol) });
+    }
+    if (nonEmpty.length > 0) {
+      const best = Math.max(...nonEmpty.map((s) => s.destRunLength));
+      const bestMoves = nonEmpty.filter((s) => s.destRunLength === best);
+      if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+      return { kind: "ambiguous" };
+    }
+
+    // 3. Empty tableau column — first available (kings only)
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      const pile = state.tableau[toCol];
+      if (!pile || pile.length > 0) continue;
+      const m: Move = { type: "waste-to-tableau", toCol };
+      if (validateMove(state, m)) return { kind: "execute", move: m };
+    }
+
+    return { kind: "no-move" };
+  }
+
+  // Tableau source
+  const { col, index } = source;
+  const pile = state.tableau[col];
+  if (!pile || index < 0 || index >= pile.length) return { kind: "no-move" };
+
+  // 1. Foundation (top card only)
+  if (index === pile.length - 1) {
+    const foundMove: Move = { type: "tableau-to-foundation", fromCol: col };
+    if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
+  }
+
+  // 2/3. Non-empty tableau — prefer longest resulting run (single scan; see JSDoc)
+  const nonEmpty: Array<{ move: Move; destRunLength: number }> = [];
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    if (toCol === col) continue;
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length === 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m))
+      nonEmpty.push({ move: m, destRunLength: runLengthAt(state, toCol) });
+  }
+  if (nonEmpty.length > 0) {
+    const best = Math.max(...nonEmpty.map((s) => s.destRunLength));
+    const bestMoves = nonEmpty.filter((s) => s.destRunLength === best);
+    if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
+    return { kind: "ambiguous" };
+  }
+
+  // 4. Empty column — first available (kings only via validateMove)
+  for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    const dest = state.tableau[toCol];
+    if (!dest || dest.length > 0) continue;
+    const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
+    if (validateMove(state, m)) return { kind: "execute", move: m };
+  }
+
+  return { kind: "no-move" };
 }

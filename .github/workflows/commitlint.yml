@@ -5,7 +5,8 @@ on:
     types: [opened, edited, synchronize, reopened]
     branches: [main, dev]
 
-permissions: {}
+permissions:
+  pull-requests: read
 
 jobs:
   commitlint:

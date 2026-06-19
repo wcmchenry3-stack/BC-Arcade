@@ -9,6 +9,7 @@
   "score.label": "Puntos: {{score}}",
   "score.moves": "Movimientos: {{moves}}",
   "action.undo": "Deshacer",
+  "action.hint": "Pista",
   "action.autoComplete": "Auto-Completar",
   "action.newGame": "Nuevo Juego",
   "action.submitScore": "Enviar Puntos",

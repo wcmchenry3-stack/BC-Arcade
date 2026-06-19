@@ -6,7 +6,7 @@
  * on each transition — state is immutable.
  */
 
-import type { AiPreset, Card, HeartsState, PassDirection, Rank, TrickCard } from "./types";
+import type { AiPreset, Card, HeartsState, PassDirection, Rank, Suit, TrickCard } from "./types";
 import { RANKS, SUITS } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +19,10 @@ let _rng: RandomSource = Math.random;
 
 export function setRng(fn: RandomSource): void {
   _rng = fn;
+}
+
+export function getRng(): RandomSource {
+  return _rng;
 }
 
 export function createSeededRng(seed: number): RandomSource {
@@ -112,6 +116,7 @@ export function dealGame(difficulty: AiPreset = "schemer"): HeartsState {
     tricksPlayedInHand: 0,
     isComplete: false,
     winnerIndex: null,
+    knownVoids: [[], [], [], []],
   };
 }
 
@@ -140,6 +145,7 @@ export function dealNextHand(state: HeartsState): HeartsState {
     heartsBroken: false,
     tricksPlayedInHand: 0,
     events: [],
+    knownVoids: [[], [], [], []],
   };
 }
 
@@ -328,6 +334,23 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
 
   const newTricksPlayed = state.tricksPlayedInHand + 1;
 
+  // Update knownVoids: any player who played off-suit is now known void in the led suit.
+  // We only record a void when the card's suit differs from ledSuit AND the player is not
+  // the leader (the leader never "follows", they set the led suit).
+  // Guard: never record a false positive — only non-leaders playing off-suit are void.
+  const prevKnownVoids: readonly (readonly Suit[])[] = state.knownVoids ?? [[], [], [], []];
+  const newKnownVoids: (readonly Suit[])[] = prevKnownVoids.map((voids) => [...voids]);
+  for (let i = 1; i < trick.length; i++) {
+    const tc = trick[i]!;
+    if (tc.card.suit !== ledSuit) {
+      // This follower played off-suit → they are void in ledSuit.
+      const playerVoids = newKnownVoids[tc.playerIndex] ?? [];
+      if (!playerVoids.includes(ledSuit)) {
+        newKnownVoids[tc.playerIndex] = [...playerVoids, ledSuit];
+      }
+    }
+  }
+
   const queenEvent = trickCards.some(isQueenOfSpades)
     ? ([{ type: "queenOfSpades", takerSeat: winnerPlayerIndex }] as const)
     : ([] as const);
@@ -352,6 +375,7 @@ function resolveTrick(state: HeartsState, trick: readonly TrickCard[]): HeartsSt
     handScores: newHandScores,
     tricksPlayedInHand: newTricksPlayed,
     events: [...(state.events ?? []), ...queenEvent, ...moonEvent],
+    knownVoids: newKnownVoids,
   };
 
   if (newTricksPlayed === 13) {

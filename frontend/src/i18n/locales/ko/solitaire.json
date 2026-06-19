@@ -9,6 +9,7 @@
   "score.label": "점수: {{score}}",
   "score.moves": "이동: {{moves}}",
   "action.undo": "되돌리기",
+  "action.hint": "힌트",
   "action.autoComplete": "자동 완료",
   "action.newGame": "새 게임",
   "action.submitScore": "점수 제출",

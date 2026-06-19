@@ -369,7 +369,7 @@ const keyStyles = StyleSheet.create({
   },
   keyText: {
     fontFamily: typography.label,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
