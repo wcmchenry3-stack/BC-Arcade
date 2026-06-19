@@ -1175,12 +1175,24 @@
   resolved "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.3.1.tgz"
   integrity sha512-+c8ukgwU62DS54nCAjw7keOfHUkmr0B5QHEdcOqRnodF/MNXJbVI8Eopoj4B/0H8Asr65I+A4Amrn7a85/md6A==
 
+"@img/sharp-libvips-linuxmusl-x64@1.3.1":
+  version "1.3.1"
+  resolved "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.3.1.tgz"
+  integrity sha512-yO21HwoUVLN8Qa+/SBjQLMYwBWAVJjeGPNe+hc0OUeMeifEtJqu5a1c4HayE1nNpDih9y3/KkoltfkDodmKAlg==
+
 "@img/sharp-linux-x64@0.35.2":
   version "0.35.2"
   resolved "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.35.2.tgz"
   integrity sha512-gi0zFJJRLswfCZmHtJdikXPOc5u7qamSOS3NHedLqLd4W8Q0NqjdBr6TTRIgsfFjqfTsHFgdfvJ9LwqSgcHiAA==
   optionalDependencies:
     "@img/sharp-libvips-linux-x64" "1.3.1"
+
+"@img/sharp-linuxmusl-x64@0.35.2":
+  version "0.35.2"
+  resolved "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.35.2.tgz"
+  integrity sha512-YBqMMcjDi4QGYiSn4vNOYBhmlC4z5AXqkOUUqI2e0AFA4urNv4ESgOgwNl3K+4etQhha0twXlzeF20bbULm9Yg==
+  optionalDependencies:
+    "@img/sharp-libvips-linuxmusl-x64" "1.3.1"
 
 "@isaacs/ttlcache@^1.4.1":
   version "1.4.1"
@@ -1877,7 +1889,7 @@
 
 "@shopify/react-native-skia@2.6.6":
   version "2.6.6"
-  resolved "https://registry.yarnpkg.com/@shopify/react-native-skia/-/react-native-skia-2.6.6.tgz#65b022b7040deb95084046b0902d1e809594bc7f"
+  resolved "https://registry.npmjs.org/@shopify/react-native-skia/-/react-native-skia-2.6.6.tgz"
   integrity sha512-DBgJOo/srkg06IjS4MXahNrUBeabSTibqZfPFXkv9JzhtM7dABXS+EjtfBHu0e/MB/KQoKBHuB2g7UfTT9bFIQ==
   dependencies:
     canvaskit-wasm "0.41.0"
@@ -7435,22 +7447,22 @@ react-native-screens@4.25.2:
 
 react-native-skia-android@150.0.0:
   version "150.0.0"
-  resolved "https://registry.yarnpkg.com/react-native-skia-android/-/react-native-skia-android-150.0.0.tgz#72b98b9f4a68f7a8744656a7e078b6b72d6d374e"
+  resolved "https://registry.npmjs.org/react-native-skia-android/-/react-native-skia-android-150.0.0.tgz"
   integrity sha512-Eiv52NT6Y1eB8ZGmM8Uz01SQ+U8OAaDy2WSpPQQCpvfCWid1ufpsh1YhWVGrW55IJdJWm6/8DJTDEyQsJLH5ew==
 
 react-native-skia-apple-ios@150.0.0:
   version "150.0.0"
-  resolved "https://registry.yarnpkg.com/react-native-skia-apple-ios/-/react-native-skia-apple-ios-150.0.0.tgz#0cb380d65adf6a0e77430169be81a47725937e43"
+  resolved "https://registry.npmjs.org/react-native-skia-apple-ios/-/react-native-skia-apple-ios-150.0.0.tgz"
   integrity sha512-RrJHQEcsPUN8i/KqBwqEIQ6MmbMvL3nWtlJPQ+K5n6Nw4SF0W9VhL2yf2/jguX0WWydMyR5R4pSrJprfWFBMAg==
 
 react-native-skia-apple-macos@150.0.0:
   version "150.0.0"
-  resolved "https://registry.yarnpkg.com/react-native-skia-apple-macos/-/react-native-skia-apple-macos-150.0.0.tgz#67129daa0009ea3cb0ae847ace5467829003e06b"
+  resolved "https://registry.npmjs.org/react-native-skia-apple-macos/-/react-native-skia-apple-macos-150.0.0.tgz"
   integrity sha512-CBqQvaWRl5U+jBjUPbTGrf3g6M0GM7S0g6Ia6QK91K2G5xkMwrzs9l03zheYSdLzTtRCnW+Tkyws7K4whDJc3g==
 
 react-native-skia-apple-tvos@150.0.0:
   version "150.0.0"
-  resolved "https://registry.yarnpkg.com/react-native-skia-apple-tvos/-/react-native-skia-apple-tvos-150.0.0.tgz#f591fd1c6c67584a396bb2c5e9136d77880c5ea5"
+  resolved "https://registry.npmjs.org/react-native-skia-apple-tvos/-/react-native-skia-apple-tvos-150.0.0.tgz"
   integrity sha512-W1oDsSGK+nRvPu2/b1tUWvOorbYTjhJ3SLWDPAIWH43mSgfdn3zws3AZttfJO81Qmqpf3blJrFCoCzASRdi7qg==
 
 react-native-svg@15.15.5:
