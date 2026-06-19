@@ -2054,10 +2054,10 @@
   dependencies:
     "@sentry/types" "7.120.4"
 
-"@shopify/react-native-skia@2.6.2":
-  version "2.6.2"
-  resolved "https://registry.npmjs.org/@shopify/react-native-skia/-/react-native-skia-2.6.2.tgz"
-  integrity sha512-NzZ3+MRedZAUhguWw9DTCpWFd09Bq+tdGWhimGfJLGckuyoWGyimTiNTmaO2DeeivHTnGdv+eXbw7j/AV3LkRQ==
+"@shopify/react-native-skia@2.6.5":
+  version "2.6.5"
+  resolved "https://registry.yarnpkg.com/@shopify/react-native-skia/-/react-native-skia-2.6.5.tgz#62c957ae3f44d103c5429854d1575c451c32d656"
+  integrity sha512-It2lZlzY3jFZksu/T3ilnibiwZpFb4ZZfGOi6Yw09AVZqVt77bbgMPB1eCpY+LA0PP3D0CN+QzvkZyyj7MY/uA==
   dependencies:
     canvaskit-wasm "0.41.0"
     react-native-skia-android "147.1.0"
