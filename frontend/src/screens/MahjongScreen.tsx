@@ -48,7 +48,11 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR } from "../theme/theme.constants";
+import {
+  MAHJONG_HINT_COLOR,
+  MAHJONG_NO_MOVES_OVERLAY_BG,
+  MAHJONG_OVERLAY_BTN_BG,
+} from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
@@ -57,6 +61,7 @@ import { useMahjongCamera } from "../game/mahjong/layout";
 import type { BoardCamera } from "../game/mahjong/layout";
 import {
   createGame,
+  DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
   getAllFreePairs,
   getAnyFreePair,
@@ -453,7 +458,7 @@ export default function MahjongScreen() {
       setShowDeadlockOverlay(false);
       return;
     }
-    const timer = setTimeout(() => setShowDeadlockOverlay(true), 500);
+    const timer = setTimeout(() => setShowDeadlockOverlay(true), DEADLOCK_OVERLAY_DELAY_MS);
     return () => clearTimeout(timer);
   }, [state?.isDeadlocked]);
 
@@ -470,13 +475,25 @@ export default function MahjongScreen() {
       baseTranslateY.value = 0;
     } else {
       const cfg = { duration: 350, easing: Easing.out(Easing.cubic) };
-      zoomScale.value = withTiming(target, cfg);
-      baseScale.value = target;
-      translateX.value = withTiming(0, cfg);
-      baseTranslateX.value = 0;
-      translateY.value = withTiming(0, cfg);
-      baseTranslateY.value = 0;
+      // baseScale is updated in the completion callback so a pinch gesture started
+      // during the 350 ms animation doesn't jump from an intermediate position.
+      zoomScale.value = withTiming(target, cfg, (finished) => {
+        "worklet";
+        if (finished) baseScale.value = target;
+      });
+      translateX.value = withTiming(0, cfg, (finished) => {
+        "worklet";
+        if (finished) baseTranslateX.value = 0;
+      });
+      translateY.value = withTiming(0, cfg, (finished) => {
+        "worklet";
+        if (finished) baseTranslateY.value = 0;
+      });
     }
+    // Shared values (zoomScale, baseScale, etc.) are stable Reanimated refs whose
+    // object identity never changes — adding them to deps is a no-op that only
+    // suppresses future lint warnings. reduceMotion is excluded because accessibility
+    // settings don't change mid-game.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showShuffleCTA]);
 
@@ -1032,7 +1049,6 @@ export default function MahjongScreen() {
                     hintIds={hintIds}
                     debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
-                    onShufflePress={handleShuffle}
                     onNewGamePress={startNewGame}
                   />
                 </Animated.View>
@@ -1064,7 +1080,7 @@ export default function MahjongScreen() {
                   accessibilityLabel={t("action.shuffleLabel")}
                 >
                   <Text style={styles.overlayBtnText}>
-                    {t("overlay.shuffleButton")} ({state.shufflesLeft})
+                    {t("overlay.shuffleButton")} ({state!.shufflesLeft})
                   </Text>
                 </Pressable>
               </View>
@@ -1493,7 +1509,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   noMovesOverlay: {
-    backgroundColor: "rgba(0,0,0,0.72)",
+    backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
@@ -1512,7 +1528,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   overlayBtn: {
-    backgroundColor: "#2a7a2a",
+    backgroundColor: MAHJONG_OVERLAY_BTN_BG,
     paddingVertical: 10,
     paddingHorizontal: 28,
     borderRadius: 6,
