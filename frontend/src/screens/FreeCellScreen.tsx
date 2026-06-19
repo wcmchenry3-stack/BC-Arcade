@@ -311,10 +311,7 @@ export default function FreeCellScreen() {
               style={styles.boardWrap}
               accessibilityLabel={t("freecell:a11y.boardRegion")}
             >
-              <FreeCellBoard
-                state={state}
-                onMove={handleMove}
-              />
+              <FreeCellBoard state={state} onMove={handleMove} />
             </View>
 
             {showNoMovesBanner && (

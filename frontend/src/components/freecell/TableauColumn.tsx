@@ -119,7 +119,9 @@ export default function TableauColumn({
     return (
       <DraggableCard
         key={cardIndex}
-        testID={isTop ? `freecell-col-${colIndex}-top` : `freecell-col-${colIndex}-card-${cardIndex}`}
+        testID={
+          isTop ? `freecell-col-${colIndex}-top` : `freecell-col-${colIndex}-card-${cardIndex}`
+        }
         style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }]}
         onTap={handlePress}
         dragCards={dragCards}
