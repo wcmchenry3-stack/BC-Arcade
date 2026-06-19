@@ -42,9 +42,11 @@ export function useSound(
     const player = playerRef.current;
     if (!player) return;
     try {
-      player.seekTo(0);
-      // On web play() returns a Promise; catch AbortError from unmount-triggered pause races.
-      Promise.resolve(player.play()).catch(() => {});
+      // Await the seek before playing — on web seekTo is async and calling play() while
+      // the element is still seeking causes an AbortError that silently drops the sound.
+      Promise.resolve(player.seekTo(0))
+        .then(() => Promise.resolve(player.play()))
+        .catch(() => {});
     } catch {
       // expo-audio may throw on web if audio context is suspended; fail silently.
     }
