@@ -187,9 +187,9 @@ test.describe("Solitaire — hint button", () => {
     await page.getByRole("button", { name: "Hint" }).click();
     await expect(page.getByText("Score: 80")).toBeVisible({ timeout: 3_000 });
 
-    // Move a card: A♠ to spades foundation (double-tap or select-tap flow).
+    // Smart tap: A♠ is alone with an empty spades foundation → unambiguous foundation
+    // move executes on the first click. No second tap to the foundation needed.
     await page.getByLabel("A of Spades").click();
-    await page.getByLabel("Empty Spades foundation").click();
 
     // Move was made; verify counter incremented.
     await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });

@@ -75,14 +75,6 @@ test("tableau-to-tableau: move 7♥ from column 1 onto 8♠ in column 2", async 
   // Smart tap: 7♥ has a single valid destination (8♠ in col 2) → auto-move.
   await page.getByLabel("7 of Hearts").click();
 
-  // Second click on 8♠ (now buried under 7♥, index 1). revealsCard=true but
-  // no valid run-destination exists → sets selection only, no structural change.
-  // Use .or() to handle both unselected and selected label variants.
-  await page
-    .getByLabel("8 of Spades")
-    .or(page.getByLabel("8 of Spades (selected)"))
-    .click();
-
   // Column 1 is now empty; column 2 gained one card (now 3).
   await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
     timeout: 3_000,
