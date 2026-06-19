@@ -111,8 +111,9 @@ test.describe("FreeCell — accessibility", () => {
       timeout: 5_000,
     });
 
-    // Single tap auto-moves 5♥ to the first free cell — no second tap required.
+    // Tap 1: select 5♥. Tap 2: send to the first empty free cell.
     await page.getByLabel("5 of Hearts").click();
+    await page.getByLabel("Empty free cell 1").click();
 
     await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
       timeout: 3_000,
