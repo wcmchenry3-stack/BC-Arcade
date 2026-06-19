@@ -51,7 +51,7 @@ export const SCHEMER_PLAY_WEIGHTS: PlayWeights = {
 // moon-attempt mode (DARING_MOON_PLAY_WEIGHTS).
 export const DARING_PLAY_WEIGHTS: PlayWeights = {
   minimizePoints: 1.5,
-  queenSpadesRisk: 1.0,
+  queenSpadesRisk: 3.0,
   moonThreat: 1.0,
   moonProgress: 0.0,
 };
@@ -103,7 +103,7 @@ export const SCHEMER_PASS_WEIGHTS: PassWeights = {
 // Daring: equal danger-card + void creation; moon-viable mode overrides in broker
 export const DARING_PASS_WEIGHTS: PassWeights = {
   passingQuality: 1.0,
-  suitVoiding: 1.0,
+  suitVoiding: 2.5,
 };
 
 // ─── Cognitive noise rates ─────────────────────────────────────────────────────

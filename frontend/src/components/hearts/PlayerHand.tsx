@@ -38,6 +38,7 @@ function AnimatedCardSlot({
   highlighted,
   disabled,
   onPress,
+  testID,
 }: {
   card: Card;
   left: number;
@@ -46,6 +47,7 @@ function AnimatedCardSlot({
   highlighted: boolean;
   disabled: boolean;
   onPress: (() => void) | undefined;
+  testID?: string;
 }) {
   const translateY = useSharedValue(lifted ? -LIFT_AMOUNT : 0);
 
@@ -58,7 +60,7 @@ function AnimatedCardSlot({
   }));
 
   return (
-    <Animated.View style={[styles.cardSlot, { left, zIndex }, animStyle]}>
+    <Animated.View testID={testID} style={[styles.cardSlot, { left, zIndex }, animStyle]}>
       <PlayingCard card={card} highlighted={highlighted} disabled={disabled} onPress={onPress} />
     </Animated.View>
   );
@@ -92,6 +94,7 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
           return (
             <AnimatedCardSlot
               key={cardKey(card)}
+              testID={`hearts-hand-card-${i}`}
               card={card}
               left={i * offset}
               zIndex={i}

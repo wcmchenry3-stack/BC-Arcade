@@ -1,0 +1,70 @@
+appId: com.buffingchi.games
+---
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "hearts"
+      screenLabel: "Hearts"
+# Difficulty picker appears only on first launch; skip if a saved game exists.
+- tapOn:
+    id: "hearts-start-game"
+    optional: true
+    timeout: 3000
+# ── Pass phase (round 1 always passes left) ────────────────────────────────────
+# PlayerHand sorts cards ♣♦♠♥ ascending rank.  Tapping positions 0, 4, and 8
+# reliably lands on 3 different suits, so 3 distinct cards are selected
+# regardless of the random deal.  Any 3 cards are valid to pass in Hearts.
+- assertVisible:
+    text: "Pass left"
+    timeout: 8000
+- tapOn:
+    id: "hearts-hand-card-0"
+    timeout: 3000
+- tapOn:
+    id: "hearts-hand-card-4"
+    timeout: 3000
+- tapOn:
+    id: "hearts-hand-card-8"
+    timeout: 3000
+# Confirm button enables once exactly 3 cards are selected.
+- tapOn:
+    text: "Confirm"
+    timeout: 5000
+# ── Entering the trick phase ────────────────────────────────────────────────────
+# "Pass left" disappears once the engine processes all 4 passes.
+- assertNotVisible:
+    text: "Pass left"
+    timeout: 10000
+# ── Trick 1 ─────────────────────────────────────────────────────────────────────
+# The seat that holds 2♣ leads first.  If an AI leads, the AI turn loop drives
+# seats 1–3 automatically before the human's turn; tapping too early is silently
+# ignored (handleCardPress checks currentPlayerIndex === HUMAN).
+# Card position 4 (mid-range, usually ♦ or ♠) is a conservative default:
+# it's not ♣2 (forced first lead) and not a heart (blocked until broken).
+- tapOn:
+    id: "hearts-hand-card-4"
+    timeout: 8000
+# After the human plays and the AI loop completes all remaining seats, every
+# player's hand shrinks by 1.  "Your hand, 12 cards" confirms trick 1 finished
+# and the AI loop ran 3 turns without crashing.
+- assertVisible:
+    text: "Your hand, 12 cards"
+    timeout: 15000
+# ── Trick 2 ─────────────────────────────────────────────────────────────────────
+- tapOn:
+    id: "hearts-hand-card-4"
+    timeout: 8000
+- assertVisible:
+    text: "Your hand, 11 cards"
+    timeout: 15000
+# ── Trick 3 ─────────────────────────────────────────────────────────────────────
+- tapOn:
+    id: "hearts-hand-card-4"
+    timeout: 8000
+- assertVisible:
+    text: "Your hand, 10 cards"
+    timeout: 15000
+# 3 full tricks completed: the AI turn loop ran ≥ 9 turns across 3 tricks
+# without crashing, exercising all 3 AI personas (Cautious/Schemer/Daring).
+- takeScreenshot: hearts-ai-hand
