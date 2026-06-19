@@ -1,0 +1,26 @@
+# Normalize all text files to LF on checkin, LF on checkout.
+# This keeps line endings consistent across Windows/macOS/Linux
+# and matches Prettier's default endOfLine: "lf".
+* text=auto eol=lf
+
+# Binaries — never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.mp3 binary
+*.mp4 binary
+*.mov binary
+*.jks binary
+*.keystore binary
