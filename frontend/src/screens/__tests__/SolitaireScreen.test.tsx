@@ -561,32 +561,16 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
     };
   }
 
-  it("single tap on waste ace auto-moves it to foundation (smart tap, #2039)", async () => {
-    // Smart tap: A♠ in waste + empty foundation = unambiguous waste-to-foundation → execute immediately.
+  it("double-tap on waste card with valid foundation move moves it", async () => {
+    // First tap selects waste; second tap (within 300ms) triggers double-tap → waste-to-foundation.
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades"));
-    });
-
-    // Ace should be on the foundation — "Empty Spades foundation" no longer exists.
-    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
-    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
-  });
-
-  it("double-tap on waste card with valid foundation move still moves it", async () => {
-    // Two consecutive act() calls complete in <1 ms, well within DOUBLE_TAP_MS (300 ms).
-    // With smart tap the first tap already auto-moves; the second tap lands on the
-    // foundation ace but triggers no additional move, keeping moves at 1.
-    await AsyncStorage.setItem("solitaire_game", JSON.stringify(buildAceOfSpadesState()));
-    const api = await mount();
-
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // smart tap → auto-move
+      await fireEvent.press(api.getByLabelText("A of Spades")); // tap 1 → select
     });
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades")); // now on foundation → select only
+      await fireEvent.press(api.getByLabelText("A of Spades")); // tap 2 → double-tap → foundation
     });
 
     expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
@@ -594,7 +578,7 @@ describe("SolitaireScreen — selection state machine (Story 8)", () => {
   });
 });
 
-describe("SolitaireScreen — smart single-tap auto-move (#2039)", () => {
+describe("SolitaireScreen — tap-to-select and two-tap moves", () => {
   function buildSmartTapState(
     overrides: Partial<import("../../game/solitaire/types").SolitaireState> = {}
   ) {
@@ -615,23 +599,7 @@ describe("SolitaireScreen — smart single-tap auto-move (#2039)", () => {
     };
   }
 
-  it("single tap on tableau ace auto-moves to foundation (unambiguous)", async () => {
-    // A♠ alone in col 0 → unambiguous foundation move → execute on first tap.
-    const state = buildSmartTapState({
-      tableau: [[{ suit: "spades", rank: 1, faceUp: true }], [], [], [], [], [], []],
-    });
-    await AsyncStorage.setItem("solitaire_game", JSON.stringify(state));
-    const api = await mount();
-
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("A of Spades"));
-    });
-
-    expect(api.queryByLabelText("Empty Spades foundation")).toBeNull();
-    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
-  });
-
-  it("single tap on tableau card with ambiguous destinations selects instead of auto-moving", async () => {
+  it("single tap on tableau card selects instead of auto-moving", async () => {
     // 8♥ (red) in col 0 can go onto 9♠ (col 1) or 9♣ (col 2) — both run-length 1 → ambiguous → select.
     const state = buildSmartTapState({
       tableau: [

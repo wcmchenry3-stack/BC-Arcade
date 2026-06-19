@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import type { LayoutChangeEvent, ViewStyle } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, { measure, runOnUI } from "react-native-reanimated";
 import { useDragContext } from "./DragContext";
 import { DragOverlay } from "./DragOverlay";
 
@@ -15,18 +15,18 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
-      // requestAnimationFrame defers measureInWindow until after the native view
-      // is painted — calling it synchronously inside onLayout returns 0,0 on Android.
-      requestAnimationFrame(() => {
-        (
-          containerRef.current as unknown as {
-            measureInWindow?: (cb: (x: number, y: number) => void) => void;
-          }
-        )?.measureInWindow?.((x, y) => {
-          containerOffsetX.value = x;
-          containerOffsetY.value = y;
-        });
-      });
+      // runOnUI schedules a UI-thread worklet that uses Reanimated's measure(),
+      // the only path that correctly reads an AnimatedRef on both Paper and Fabric
+      // (new arch). The previous approach called measureInWindow on containerRef.current
+      // directly, which silently no-ops on Fabric where .current is a shadow node.
+      runOnUI(() => {
+        "worklet";
+        const m = measure(containerRef);
+        if (m) {
+          containerOffsetX.value = m.pageX;
+          containerOffsetY.value = m.pageY;
+        }
+      })();
       externalOnLayout?.(e);
     },
     [containerRef, containerOffsetX, containerOffsetY, externalOnLayout]
