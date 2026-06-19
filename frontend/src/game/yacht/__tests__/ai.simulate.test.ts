@@ -30,13 +30,17 @@ function simulateGame(
   for (let _round = 0; _round < 13; _round++) {
     humanState = roll(humanState, [false, false, false, false, false]);
     while (humanState.rolls_used < 3) {
-      humanState = roll(humanState, holdStrategy(humanState, humanDiff));
+      const holds = holdStrategy(humanState, humanDiff);
+      if (holds.every(h => h)) break;
+      humanState = roll(humanState, holds);
     }
     humanState = score(humanState, scoreStrategy(humanState, humanDiff, aiState.total_score));
 
     aiState = roll(aiState, [false, false, false, false, false]);
     while (aiState.rolls_used < 3) {
-      aiState = roll(aiState, holdStrategy(aiState, aiDiff));
+      const holds = holdStrategy(aiState, aiDiff);
+      if (holds.every(h => h)) break;
+      aiState = roll(aiState, holds);
     }
     aiState = score(aiState, scoreStrategy(aiState, aiDiff, humanState.total_score));
   }
