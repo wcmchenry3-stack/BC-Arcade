@@ -18,7 +18,7 @@ if ! echo "$FIRST_LINE" | grep -qE '^git\s+commit([^-]|$)'; then
 fi
 
 FAIL=0
-STAGED=$(git diff --cached --name-only 2>/dev/null || true)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 
 [ -z "$STAGED" ] && exit 0
 
