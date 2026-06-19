@@ -821,14 +821,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </View>
           )}
 
-          {/* Lives — bottom-left row, above the power-up bar */}
-          <View style={styles.hudBottom}>
-            {Array.from({ length: player.lives }, (_, i) => (
-              <View key={i} style={styles.lifeIndicator} />
-            ))}
-          </View>
-
-          {/* Power-up indicator — bottom-left, below the lives row */}
+          {/* Power-up indicator — bottom-left */}
           {state.activePowerUp !== null && (
             <View style={styles.powerUpIndicator} pointerEvents="none">
               <Text
@@ -853,6 +846,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               </View>
             </View>
           )}
+        </View>
+
+        {/* Lives — rendered outside hud to avoid stacking-context conflicts with phaseOverlay children */}
+        <View style={styles.hudBottom} pointerEvents="none">
+          {Array.from({ length: player.lives }, (_, i) => (
+            <View key={i} style={styles.lifeIndicator} />
+          ))}
         </View>
       </View>
     );
