@@ -40,8 +40,9 @@ appId: com.buffingchi.games
 # The seat that holds 2♣ leads first.  If an AI leads, the AI turn loop drives
 # seats 1–3 automatically before the human's turn; tapping too early is silently
 # ignored (handleCardPress checks currentPlayerIndex === HUMAN).
-# Card position 4 (mid-range, usually ♦ or ♠) is a conservative default:
-# it's not ♣2 (forced first lead) and not a heart (blocked until broken).
+# Card position 4 (mid-range): the ♣♦♠♥ sort order places position 4 in the
+# diamond or low-spade range in most balanced deals — not 2♣ (forced first lead)
+# and not a heart (blocked until broken), so it is a reliable default tap target.
 - tapOn:
     id: "hearts-hand-card-4"
     timeout: 8000

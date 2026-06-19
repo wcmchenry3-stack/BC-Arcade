@@ -2126,9 +2126,10 @@ describe("selectCardToPlay — Daring difficulty, adversarial void discard", () 
     expect(pick).toEqual(c("spades", 12));
   });
 
-  it("saves Q♠ when an AI opponent (not seat 0) is winning the trick", () => {
+  it("dumps Q♠ immediately when void, even when an AI (not seat 0) is winning", () => {
     // Player 1 (Daring) is void in clubs. Seat 2 is winning with K♣ (not seat 0).
-    // Daring holds Q♠, hearts, and a diamond — should not dump Q♠ on an AI.
+    // Adversarial mode only fires when seat 0 is winning; here it does not, so
+    // normal Daring weights apply — Q♠ off-suit dump scores highest (1.0 vs 0.8 for hearts).
     const hand = [c("spades", 12), c("hearts", 5), c("diamonds", 7)];
     const trick: TrickCard[] = [
       { card: c("clubs", 3), playerIndex: 0 },
@@ -2145,7 +2146,6 @@ describe("selectCardToPlay — Daring difficulty, adversarial void discard", () 
       cumulativeScores: [10, 10, 10, 10],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Utility AI dumps Q♠ whenever void in led suit — off-suit Q♠ dump scores highest
     expect(pick).toEqual(c("spades", 12));
   });
 });

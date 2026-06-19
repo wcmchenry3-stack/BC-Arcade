@@ -266,23 +266,15 @@ export function selectCardToPlayUtility(
     const scores = state.cumulativeScores;
     const allScores = scores.map((s) => s ?? 0);
     const myScore = allScores[playerIndex] ?? 0;
+    // When all players are tied amGameLeader is true for everyone, so no one withholds Q♠ —
+    // correct behaviour: in a genuine tie there is no reason to hold back.
     const amGameLeader = myScore <= Math.min(...allScores);
     const trickState = state.currentTrick;
     if (!amGameLeader && trickState.length > 0 && valid.some(isQueenOfSpades)) {
       const first = trickState[0]!;
       const inSuit = valid.filter((c) => c.suit === first.card.suit);
       if (inSuit.length === 0) {
-        const winnerIdx = (() => {
-          let best = first.playerIndex;
-          let bestRank = aceHigh(first.card.rank);
-          for (const tc of trickState) {
-            if (tc.card.suit === first.card.suit && aceHigh(tc.card.rank) > bestRank) {
-              bestRank = aceHigh(tc.card.rank);
-              best = tc.playerIndex;
-            }
-          }
-          return best;
-        })();
+        const winnerIdx = currentTrickWinner(trickState);
         const winnerScore = allScores[winnerIdx] ?? 0;
         if (winnerScore + 13 >= 100) {
           const withoutQ = valid.filter((c) => !isQueenOfSpades(c));
