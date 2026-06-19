@@ -25,6 +25,7 @@ import {
   getHintMoves,
   isProductiveMove,
   recycleWaste,
+  resolveAutoMove,
   setRng,
   undo,
   validateMove,
@@ -912,5 +913,198 @@ describe("applyHint", () => {
     // Make a move (tableau-to-foundation for the ace)
     current = applyMove(current, { type: "tableau-to-foundation", fromCol: 0 });
     expect(current.hint).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveAutoMove — smart single-tap priority ladder (#2039)
+// ---------------------------------------------------------------------------
+
+describe("resolveAutoMove — tableau source", () => {
+  it("executes foundation move on first tap of top-card ace", () => {
+    // Col 0: A♠ alone (top card, can go to empty spades foundation).
+    const state = mkState({
+      tableau: [[c("spades", 1)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute") {
+      expect(result.move.type).toBe("tableau-to-foundation");
+    }
+  });
+
+  it("executes a reveal-move when only one non-empty destination exists", () => {
+    // Col 0: [9♣ face-down, 8♦ face-up]. Col 1: [9♠ face-up].
+    // Tapping 8♦ (index 1) reveals 9♣ → single destination → execute.
+    const state = mkState({
+      tableau: [[c("clubs", 9, false), c("diamonds", 8)], [c("spades", 9)], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute") {
+      expect(result.move.type).toBe("tableau-to-tableau");
+      if (result.move.type === "tableau-to-tableau") {
+        expect(result.move.fromCol).toBe(0);
+        expect(result.move.fromIndex).toBe(1);
+        expect(result.move.toCol).toBe(1);
+      }
+    }
+  });
+
+  it("returns ambiguous when multiple reveal-move destinations tie on run length", () => {
+    // Col 0: [5♣ face-down, 4♦ face-up (red)]. Col 1: [5♠ face-up (black)]. Col 2: [5♣ face-up (black)].
+    // 4♦ (red) can go onto 5♠ or 5♣ (both black 5s) — both reveal 5♣ face-down, equal run length → ambiguous.
+    const state = mkState({
+      tableau: [
+        [c("clubs", 5, false), c("diamonds", 4)],
+        [c("spades", 5)],
+        [c("clubs", 5)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
+    expect(result.kind).toBe("ambiguous");
+  });
+
+  it("prefers the reveal-destination with longer run length", () => {
+    // Col 0: [5♣ face-down, 4♦ face-up (red)].
+    // Col 1: [7♣(black), 6♦(red), 5♠(black)] — alternating run of 3, top is 5♠.
+    // Col 2: [5♣(black)] — run of 1.
+    // 4♦ (red) is valid on 5♠ (col 1) and 5♣ (col 2); col 1 has longer run → execute to col 1.
+    const state = mkState({
+      tableau: [
+        [c("clubs", 5, false), c("diamonds", 4)],
+        [c("clubs", 7), c("diamonds", 6), c("spades", 5)],
+        [c("clubs", 5)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute" && result.move.type === "tableau-to-tableau") {
+      expect(result.move.toCol).toBe(1);
+    }
+  });
+
+  it("executes non-empty move for a non-reveal card (no face-down below source)", () => {
+    // Col 0: [8♥ face-up only — no face-down below, so not a reveal move].
+    // Col 1: [9♠ face-up]. Single valid non-empty destination → execute.
+    const state = mkState({
+      tableau: [[c("hearts", 8)], [c("spades", 9)], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute" && result.move.type === "tableau-to-tableau") {
+      expect(result.move.toCol).toBe(1);
+    }
+  });
+
+  it("falls through to empty column when source reveals a face-down card but no non-empty destination exists", () => {
+    // Col 0: [10♣ face-down, K♦ face-up]. Moving K♦ would reveal 10♣, but K♦ has no valid
+    // non-empty destination (no rank-14 column). Falls through to level 4 → empty column.
+    const state = mkState({
+      tableau: [[c("clubs", 10, false), c("diamonds", 13)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 1 });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute" && result.move.type === "tableau-to-tableau") {
+      expect(result.move.fromCol).toBe(0);
+      expect(result.move.fromIndex).toBe(1);
+    }
+  });
+
+  it("returns ambiguous when non-reveal non-empty destinations tie on run length", () => {
+    // Col 0: [8♥ face-up]. Col 1: [9♠ — run 1]. Col 2: [9♣ — run 1]. Both valid → ambiguous.
+    const state = mkState({
+      tableau: [[c("hearts", 8)], [c("spades", 9)], [c("clubs", 9)], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
+    expect(result.kind).toBe("ambiguous");
+  });
+
+  it("executes to empty column when that is the only option (king)", () => {
+    // Col 0: [K♠ face-up]. All other columns empty.
+    const state = mkState({
+      tableau: [[c("spades", 13)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
+    // Only destination is empty column — execute (first available = col 1 ... col 6).
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute" && result.move.type === "tableau-to-tableau") {
+      expect(result.move.fromCol).toBe(0);
+      expect(result.move.fromIndex).toBe(0);
+    }
+  });
+
+  it("returns no-move for a face-up non-king card with no valid destination", () => {
+    // Col 0: [7♥ face-up]. No column has an 8 of black suit. All other columns empty.
+    const state = mkState({
+      tableau: [[c("hearts", 7)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "tableau", col: 0, index: 0 });
+    expect(result.kind).toBe("no-move");
+  });
+});
+
+describe("resolveAutoMove — waste source", () => {
+  it("executes foundation move when waste top is an ace", () => {
+    const state = mkState({ waste: [c("spades", 1)] });
+    const result = resolveAutoMove(state, { type: "waste" });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute") {
+      expect(result.move.type).toBe("waste-to-foundation");
+    }
+  });
+
+  it("executes tableau move when one valid non-empty destination exists", () => {
+    // Waste: 5♥. Col 0: [6♠ face-up].
+    const state = mkState({
+      waste: [c("hearts", 5)],
+      tableau: [[c("spades", 6)], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "waste" });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute") {
+      expect(result.move.type).toBe("waste-to-tableau");
+    }
+  });
+
+  it("returns ambiguous when multiple non-empty destinations tie on run length", () => {
+    // Waste: 5♥. Col 0: [6♠ — run 1]. Col 1: [6♣ — run 1]. Both valid.
+    const state = mkState({
+      waste: [c("hearts", 5)],
+      tableau: [[c("spades", 6)], [c("clubs", 6)], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "waste" });
+    expect(result.kind).toBe("ambiguous");
+  });
+
+  it("executes to empty column for a king from waste", () => {
+    // Waste: K♠. All columns empty.
+    const state = mkState({
+      waste: [c("spades", 13)],
+      tableau: [[], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "waste" });
+    expect(result.kind).toBe("execute");
+    if (result.kind === "execute") {
+      expect(result.move.type).toBe("waste-to-tableau");
+    }
+  });
+
+  it("returns no-move when waste top card has nowhere to go", () => {
+    // Waste: 7♣. No valid tableau or foundation destination.
+    const state = mkState({
+      waste: [c("clubs", 7)],
+      tableau: [[], [], [], [], [], [], []],
+    });
+    const result = resolveAutoMove(state, { type: "waste" });
+    expect(result.kind).toBe("no-move");
   });
 });
