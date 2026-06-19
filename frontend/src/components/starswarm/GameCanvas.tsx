@@ -820,40 +820,39 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               <Text style={styles.gameOverScore}>{`${t("hud.score")} ${state.score}`}</Text>
             </View>
           )}
-
-          {/* Power-up indicator — bottom-left */}
-          {state.activePowerUp !== null && (
-            <View style={styles.powerUpIndicator} pointerEvents="none">
-              <Text
-                style={[
-                  styles.powerUpLabel,
-                  { color: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00" },
-                ]}
-              >
-                {state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING"}
-              </Text>
-              <View style={styles.powerUpBarWrap}>
-                <View
-                  style={[
-                    styles.powerUpBar,
-                    {
-                      width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
-                      backgroundColor:
-                        state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          )}
         </View>
 
-        {/* Lives — rendered outside hud to avoid stacking-context conflicts with phaseOverlay children */}
+        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
         <View style={styles.hudBottom} pointerEvents="none">
           {Array.from({ length: player.lives }, (_, i) => (
             <View key={i} style={styles.lifeIndicator} />
           ))}
         </View>
+
+        {/* Power-up indicator — outside hud for the same reason as lives */}
+        {state.activePowerUp !== null && (
+          <View style={styles.powerUpIndicator} pointerEvents="none">
+            <Text
+              style={[
+                styles.powerUpLabel,
+                { color: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00" },
+              ]}
+            >
+              {state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING"}
+            </Text>
+            <View style={styles.powerUpBarWrap}>
+              <View
+                style={[
+                  styles.powerUpBar,
+                  {
+                    width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
+                    backgroundColor: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        )}
       </View>
     );
   }
