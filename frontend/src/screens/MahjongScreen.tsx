@@ -60,6 +60,7 @@ import {
   elapsedMs,
   getAllFreePairs,
   getAnyFreePair,
+  hasFreePairs,
   selectTile,
   shuffleBoard,
   undoMove,
@@ -437,6 +438,47 @@ export default function MahjongScreen() {
       { scale: zoomScale.value },
     ],
   }));
+
+  // Derived display state for no-moves overlays — computed here (not inside
+  // GameCanvas) so the overlays render at viewport level and are always visible.
+  const noFreePairs = useMemo(
+    () => state !== null && !state.isComplete && !hasFreePairs(state.tiles),
+    [state]
+  );
+  const showShuffleCTA = noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+
+  const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
+  useEffect(() => {
+    if (!state?.isDeadlocked) {
+      setShowDeadlockOverlay(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowDeadlockOverlay(true), 500);
+    return () => clearTimeout(timer);
+  }, [state?.isDeadlocked]);
+
+  // Zoom to fit when no moves remain so the whole board is visible behind the overlay.
+  useEffect(() => {
+    if (!showShuffleCTA) return;
+    const target = minZoom.value;
+    if (reduceMotion) {
+      zoomScale.value = target;
+      baseScale.value = target;
+      translateX.value = 0;
+      baseTranslateX.value = 0;
+      translateY.value = 0;
+      baseTranslateY.value = 0;
+    } else {
+      const cfg = { duration: 350, easing: Easing.out(Easing.cubic) };
+      zoomScale.value = withTiming(target, cfg);
+      baseScale.value = target;
+      translateX.value = withTiming(0, cfg);
+      baseTranslateX.value = 0;
+      translateY.value = withTiming(0, cfg);
+      baseTranslateY.value = 0;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showShuffleCTA]);
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
@@ -1005,6 +1047,45 @@ export default function MahjongScreen() {
                 ))}
               </Animated.View>
             </GestureDetector>
+
+            {/* No-moves overlays — viewport-level siblings to the gesture layer so
+                they always fill the visible area regardless of board height. */}
+            {showShuffleCTA && (
+              <View
+                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+              >
+                <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
+                <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
+                <Pressable
+                  style={styles.overlayBtn}
+                  onPress={handleShuffle}
+                  accessibilityLabel={t("action.shuffleLabel")}
+                >
+                  <Text style={styles.overlayBtnText}>
+                    {t("overlay.shuffleButton")} ({state.shufflesLeft})
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {showDeadlockOverlay && (
+              <View
+                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+              >
+                <Text style={styles.overlayTitle}>{t("overlay.deadlocked")}</Text>
+                <Text style={styles.overlayDetail}>{t("overlay.deadlockedDetail")}</Text>
+                <Pressable
+                  style={styles.overlayBtn}
+                  onPress={startNewGame}
+                  accessibilityLabel={t("action.newGameLabel")}
+                >
+                  <Text style={styles.overlayBtnText}>{t("overlay.levelSelectButton")}</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
       )}
@@ -1410,5 +1491,37 @@ const styles = StyleSheet.create({
     color: "rgba(255,128,0,1)",
     fontSize: 10,
     fontWeight: "700",
+  },
+  noMovesOverlay: {
+    backgroundColor: "rgba(0,0,0,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  overlayTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  overlayDetail: {
+    color: "#cccccc",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  overlayBtn: {
+    backgroundColor: "#2a7a2a",
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  overlayBtnText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "bold",
+    textAlign: "center",
   },
 });

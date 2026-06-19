@@ -430,38 +430,6 @@ export default function GameCanvas({
         role="img"
       />
 
-      {/* Shuffle CTA overlay */}
-      {showShuffleCTA && (
-        <View style={[styles.overlay, styles.noMovesOverlay]}>
-          <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
-          <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onShufflePress}
-            accessibilityLabel={t("action.shuffleLabel")}
-          >
-            <Text style={styles.btnText}>
-              {t("overlay.shuffleButton")} ({state.shufflesLeft})
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Deadlock overlay — shown after shake animation completes */}
-      {showDeadlockOverlay && (
-        <View style={[styles.overlay, styles.noMovesOverlay]}>
-          <Text style={styles.overlayTitle}>{t("overlay.deadlocked")}</Text>
-          <Text style={styles.overlayDetail}>{t("overlay.deadlockedDetail")}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onNewGamePress}
-            accessibilityLabel={t("action.newGameLabel")}
-          >
-            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
-          </Pressable>
-        </View>
-      )}
-
       {/* Win overlay */}
       {state.isComplete && (
         <View style={[styles.overlay, styles.winOverlay]}>
@@ -493,9 +461,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
-  },
-  noMovesOverlay: {
-    backgroundColor: "rgba(0,0,0,0.72)",
   },
   winOverlay: {
     backgroundColor: "rgba(0,20,0,0.82)",
