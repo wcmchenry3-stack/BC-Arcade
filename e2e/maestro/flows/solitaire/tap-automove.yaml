@@ -16,13 +16,20 @@ appId: com.buffingchi.games
     id: "solitaire-stock-pile"
     timeout: 5000
 # Use the Hint button to highlight a movable card, then single-tap it.
-# This guarantees we tap a card with at least one valid move — the smart tap
-# path fires resolveAutoMove and either auto-executes (unambiguous) or
-# falls back to selection (ambiguous). Both outcomes are valid.
+# The smart tap path fires resolveAutoMove: unambiguous → auto-executes (move
+# counter increments); ambiguous → selection highlight. Either way the hint
+# source card is no longer highlighted after the tap.
 - tapOn:
     id: "solitaire-hint-button"
+- assertVisible:
+    id: "solitaire-hint-source"
+    timeout: 3000
 - takeScreenshot: solitaire-tap-automove-hint-highlighted
 # Tap the hint-highlighted card — single tap exercises smart auto-move.
 - tapOn:
     id: "solitaire-hint-source"
 - takeScreenshot: solitaire-tap-automove-after-tap
+# After the tap the hint highlight must be gone (card moved or selected clears
+# the hint state). solitaire-hint-source only exists while hint is active.
+- assertNotVisible:
+    id: "solitaire-hint-source"

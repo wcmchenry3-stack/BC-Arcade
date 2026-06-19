@@ -442,12 +442,14 @@ export default function SolitaireScreen() {
       }
 
       if (card.faceUp) {
-        const result = resolveAutoMove(state, { type: "tableau", col, index });
-        if (result.kind === "execute") {
-          tryMove(result.move);
-        } else {
-          setSelection({ kind: "tableau", col, index });
+        if (selection === null) {
+          const result = resolveAutoMove(state, { type: "tableau", col, index });
+          if (result.kind === "execute") {
+            tryMove(result.move);
+            return;
+          }
         }
+        setSelection({ kind: "tableau", col, index });
       }
     },
     [state, selection, autoCompleting, tryMove, triggerIllegal]

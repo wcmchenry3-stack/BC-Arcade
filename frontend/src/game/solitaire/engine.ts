@@ -811,16 +811,17 @@ export function resolveAutoMove(
     if (validateMove(state, foundMove)) return { kind: "execute", move: foundMove };
 
     // 2. Non-empty tableau — prefer longest resulting run
-    const nonEmpty: Array<{ move: Move; score: number }> = [];
+    const nonEmpty: Array<{ move: Move; destRunLength: number }> = [];
     for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
       const pile = state.tableau[toCol];
       if (!pile || pile.length === 0) continue;
       const m: Move = { type: "waste-to-tableau", toCol };
-      if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+      if (validateMove(state, m))
+        nonEmpty.push({ move: m, destRunLength: runLengthAt(state, toCol) });
     }
     if (nonEmpty.length > 0) {
-      const best = Math.max(...nonEmpty.map((s) => s.score));
-      const bestMoves = nonEmpty.filter((s) => s.score === best);
+      const best = Math.max(...nonEmpty.map((s) => s.destRunLength));
+      const bestMoves = nonEmpty.filter((s) => s.destRunLength === best);
       if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
       return { kind: "ambiguous" };
     }
@@ -848,16 +849,18 @@ export function resolveAutoMove(
   }
 
   // 2/3. Non-empty tableau — prefer longest resulting run (single scan; see JSDoc)
-  const nonEmpty: Array<{ move: Move; score: number }> = [];
+  const nonEmpty: Array<{ move: Move; destRunLength: number }> = [];
   for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+    if (toCol === col) continue;
     const dest = state.tableau[toCol];
     if (!dest || dest.length === 0) continue;
     const m: Move = { type: "tableau-to-tableau", fromCol: col, fromIndex: index, toCol };
-    if (validateMove(state, m)) nonEmpty.push({ move: m, score: runLengthAt(state, toCol) });
+    if (validateMove(state, m))
+      nonEmpty.push({ move: m, destRunLength: runLengthAt(state, toCol) });
   }
   if (nonEmpty.length > 0) {
-    const best = Math.max(...nonEmpty.map((s) => s.score));
-    const bestMoves = nonEmpty.filter((s) => s.score === best);
+    const best = Math.max(...nonEmpty.map((s) => s.destRunLength));
+    const bestMoves = nonEmpty.filter((s) => s.destRunLength === best);
     if (bestMoves.length === 1) return { kind: "execute", move: bestMoves[0]!.move };
     return { kind: "ambiguous" };
   }
