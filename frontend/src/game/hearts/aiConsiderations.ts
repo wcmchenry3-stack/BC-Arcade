@@ -226,7 +226,7 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
 
   // Q♠ outstanding but we don't hold it — leading K♠/A♠ risks having Q♠ discarded onto us.
   // Matches chooseLeadHard: avoid leading K♠/A♠ while Q♠ is still live.
-  if (ledSuit === null && (card.suit === "spades") && (card.rank === 13 || card.rank === 1)) {
+  if (ledSuit === null && card.suit === "spades" && (card.rank === 13 || card.rank === 1)) {
     return 0.25;
   }
 

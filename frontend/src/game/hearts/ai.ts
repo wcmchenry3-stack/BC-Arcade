@@ -71,7 +71,6 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
   return (playerIndex + offset) % 4 === 0;
 }
 
-
 // ---------------------------------------------------------------------------
 // Utility AI — pass selection (A7 #2031)
 // ---------------------------------------------------------------------------
@@ -94,9 +93,7 @@ export function selectCardsToPassUtility(
   playerIndex: number
 ): Card[] {
   // 2♣–5♣ are never eligible to pass (2♣ opens trick 1; 3♣–5♣ are safe early leads).
-  const eligible = hand.filter(
-    (c) => !(c.suit === "clubs" && c.rank >= 2 && c.rank <= 5)
-  );
+  const eligible = hand.filter((c) => !(c.suit === "clubs" && c.rank >= 2 && c.rank <= 5));
 
   // ── Noise gate ───────────────────────────────────────────────────────────
   // Checked before any mode override so noise fires regardless of persona or
@@ -363,7 +360,6 @@ export function detectPotentialMoon(state: HeartsState): number | null {
   return null;
 }
 
-
 /**
  * Choose a card to play.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
@@ -377,4 +373,3 @@ export function selectCardToPlay(
 ): Card {
   return selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty);
 }
-
