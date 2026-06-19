@@ -14,15 +14,15 @@
 import * as fs from "fs";
 import * as path from "path";
 
-const nodeModules = path.resolve(__dirname, "../../../node_modules");
-
-function readJson(filePath: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-}
+// node_modules lives in frontend/, one level above src/
+const nodeModules = path.resolve(__dirname, "../../node_modules");
 
 describe("React version compatibility", () => {
   it("react package version exactly matches the version react-native-renderer expects", () => {
-    const reactVersion = readJson(path.join(nodeModules, "react/package.json")).version as string;
+    const reactPkg = JSON.parse(
+      fs.readFileSync(path.join(nodeModules, "react/package.json"), "utf-8")
+    ) as { version: string };
+    const reactVersion = reactPkg.version;
 
     // react-native compiles a hardcoded version equality check into its renderer:
     //   "<expected>" !== isomorphicReactPackageVersion
@@ -32,12 +32,18 @@ describe("React version compatibility", () => {
       nodeModules,
       "react-native/Libraries/Renderer/implementations/ReactNativeRenderer-dev.js"
     );
-    expect(fs.existsSync(rendererPath)).toBe(true);
+    if (!fs.existsSync(rendererPath)) {
+      throw new Error(`Renderer not found at ${rendererPath} — was npm install run in frontend/?`);
+    }
 
     const rendererSource = fs.readFileSync(rendererPath, "utf-8");
     const match = rendererSource.match(/"(\d+\.\d+\.\d+)" !== isomorphicReactPackageVersion/);
-    expect(match).not.toBeNull();
-    const rendererExpectedVersion = match![1];
+    if (!match) {
+      throw new Error(
+        "Could not find version check in ReactNativeRenderer-dev.js — renderer format may have changed"
+      );
+    }
+    const rendererExpectedVersion = match[1];
 
     expect(reactVersion).toBe(rendererExpectedVersion);
   });
