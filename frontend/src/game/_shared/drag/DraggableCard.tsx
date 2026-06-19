@@ -67,10 +67,13 @@ export function DraggableCard({
 
   // minDistance(5) replaces activeOffsetX/Y([-12,12]) — 12 px was too coarse for
   // FreeCell's narrower cards, causing drags to feel unresponsive.
+  // hitSlop is applied to the gesture directly (not the wrapper View) — RNGH does
+  // not inherit hitSlop from parent views, so it must be on the gesture itself.
   const pan = Gesture.Pan()
     .minPointers(1)
     .minDistance(5)
     .enabled(draggable)
+    .hitSlop(hitSlop ?? {})
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
@@ -110,6 +113,7 @@ export function DraggableCard({
 
   const tap = Gesture.Tap()
     .maxDistance(8)
+    .hitSlop(hitSlop ?? {})
     .onEnd((_e, success) => {
       "worklet";
       if (success && onTap) runOnJS(onTap)();
@@ -122,7 +126,7 @@ export function DraggableCard({
   const beingDragged = dragState !== null && isCardInDragStack(dragState.source, dragSource);
 
   const dimmedStyle = useAnimatedStyle(() => ({
-    opacity: beingDragged ? 0.6 : 1,
+    opacity: beingDragged ? 0 : 1,
   }));
 
   // On web, hitSlop is not a native prop — expand the hit area with padding
@@ -157,7 +161,6 @@ export function DraggableCard({
       ref={viewRef}
       testID={testID}
       style={[style, webHitSlopStyle, dimmedStyle]}
-      hitSlop={Platform.OS !== "web" ? hitSlop : undefined}
     >
       <GestureDetector gesture={gesture}>{innerEl}</GestureDetector>
     </Animated.View>

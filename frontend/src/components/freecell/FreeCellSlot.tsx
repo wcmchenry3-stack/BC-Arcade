@@ -69,6 +69,7 @@ export default function FreeCellSlot({
 
     const draggable = (
       <DraggableCard
+        testID={`freecell-slot-${cellIndex}-card`}
         onTap={handlePress}
         dragCards={[
           {

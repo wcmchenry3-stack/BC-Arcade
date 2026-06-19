@@ -330,7 +330,6 @@ export default function FreeCellScreen() {
               <FreeCellBoard
                 state={state}
                 onMove={handleMove}
-                onSupermoveRejected={() => showToast(t("freecell:error.supermoveRejected"))}
               />
             </View>
 

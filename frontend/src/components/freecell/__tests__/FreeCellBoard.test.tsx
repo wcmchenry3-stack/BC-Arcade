@@ -186,114 +186,6 @@ describe("FreeCellBoard — selection", () => {
   });
 });
 
-// ── Auto-move (single-tap smart tap) ─────────────────────────────────────────
-
-describe("FreeCellBoard — smart single-tap auto-move", () => {
-  it("auto-moves to the sole valid non-empty tableau destination", async () => {
-    // 2♣ has only one valid dest: 3♥ in col 1 (3♦ absent in this state).
-    const oneDestState: FreeCellState = {
-      ...AMBIGUOUS_2C,
-      tableau: [
-        [{ suit: "clubs", rank: 2 }],
-        [{ suit: "hearts", rank: 3 }],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-      ],
-    };
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(oneDestState, onMove);
-    await fireEvent.press(getByLabelText("2 of Clubs"));
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-tableau",
-      fromCol: 0,
-      fromIndex: 0,
-      toCol: 1,
-    });
-  });
-
-  it("auto-moves a King to the first empty column", async () => {
-    const kingState: FreeCellState = {
-      _v: 1,
-      tableau: [[{ suit: "diamonds", rank: 13 }], [], [], [], [], [], [], []],
-      freeCells: [null, null, null, null],
-      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
-      undoStack: [],
-      isComplete: false,
-      moveCount: 0,
-    };
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(kingState, onMove);
-    await fireEvent.press(getByLabelText("K of Diamonds"));
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-tableau",
-      fromCol: 0,
-      fromIndex: 0,
-      toCol: 1,
-    });
-  });
-
-  it("auto-moves to free cell when no non-empty or empty-column destination exists", async () => {
-    // 5♥ cannot go to foundation, empty col (rank ≠ 13), or non-empty tableau;
-    // only free cell remains.
-    const state: FreeCellState = {
-      _v: 1,
-      tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
-      freeCells: [null, null, null, null],
-      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
-      undoStack: [],
-      isComplete: false,
-      moveCount: 0,
-    };
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(state, onMove);
-    await fireEvent.press(getByLabelText("5 of Hearts"));
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-freecell",
-      fromCol: 0,
-      toCell: 0,
-    });
-  });
-
-  it("auto-moves tableau card to foundation (highest priority)", async () => {
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(ACE_TABLEAU, onMove);
-    await fireEvent.press(getByLabelText("A of Diamonds"));
-    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 });
-  });
-
-  it("auto-moves freecell card to foundation (highest priority)", async () => {
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(ACE_FREECELL, onMove);
-    await fireEvent.press(getByLabelText("A of Spades"));
-    expect(onMove).toHaveBeenCalledWith({ type: "freecell-to-foundation", fromCell: 0 });
-  });
-
-  it("auto-moves freecell card to the best non-empty tableau destination", async () => {
-    // freeCells[0]=2♠ with only one valid tableau dest (3♥ col 0); no tie.
-    const state: FreeCellState = {
-      _v: 1,
-      tableau: [[{ suit: "hearts", rank: 3 }], [], [], [], [], [], [], []],
-      freeCells: [{ suit: "spades", rank: 2 }, null, null, null],
-      foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
-      undoStack: [],
-      isComplete: false,
-      moveCount: 0,
-    };
-    const onMove = jest.fn();
-    const { getByLabelText } = await renderBoard(state, onMove);
-    await fireEvent.press(getByLabelText("2 of Spades"));
-    expect(onMove).toHaveBeenCalledWith({
-      type: "freecell-to-tableau",
-      fromCell: 0,
-      toCol: 0,
-    });
-  });
-});
-
 // ── Two-tap valid moves (selection → destination) ────────────────────────────
 
 describe("FreeCellBoard — two-tap valid moves", () => {
@@ -397,19 +289,20 @@ describe("FreeCellBoard — foundation re-select (Story 9)", () => {
 // ── Double-tap → foundation (legacy path still reachable) ────────────────────
 
 describe("FreeCellBoard — double-tap to foundation", () => {
-  it("freecell single tap on an ace auto-moves to foundation (smart tap path)", async () => {
-    // A♠ has a unique foundation destination → resolveAutoMove executes immediately
-    // on the first tap; the double-tap code path is never reached.
+  it("freecell single tap selects; double-tap sends to foundation", async () => {
     const onMove = jest.fn();
     const { getByLabelText } = await renderBoard(ACE_FREECELL, onMove);
-    await fireEvent.press(getByLabelText("A of Spades"));
+    await fireEvent.press(getByLabelText("A of Spades")); // tap 1 → selects
+    expect(onMove).not.toHaveBeenCalled();
+    await fireEvent.press(getByLabelText("A of Spades (selected)")); // tap 2 → double-tap → foundation
     expect(onMove).toHaveBeenCalledWith({ type: "freecell-to-foundation", fromCell: 0 });
   });
 
   it("tableau double-tap within 300ms sends top card to foundation", async () => {
     const onMove = jest.fn();
     const { getByLabelText } = await renderBoard(ACE_TABLEAU, onMove);
-    await fireEvent.press(getByLabelText("A of Diamonds"));
+    await fireEvent.press(getByLabelText("A of Diamonds")); // tap 1 → selects
+    await fireEvent.press(getByLabelText("A of Diamonds (selected)")); // tap 2 → double-tap → foundation
     expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 });
   });
 });
