@@ -32,7 +32,14 @@ appId: com.buffingchi.games
     id: "solitaire-stock-pile"
     timeout: 3000
 - takeScreenshot: solitaire-drag
-# Second drag: attempt waste → tableau col 1 so we exercise multiple drop zones.
+# Draw a fresh card from stock so the waste pile is guaranteed non-empty
+# before the second drag, regardless of whether the first drag succeeded.
+- tapOn:
+    id: "solitaire-stock-pile"
+- assertVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+# Second drag: attempt waste → tableau col 1 to exercise a second drop zone.
 - swipe:
     from:
       id: "solitaire-waste-top"

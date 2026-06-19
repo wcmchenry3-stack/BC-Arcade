@@ -69,11 +69,9 @@ export function DraggableCard({
   // FreeCell's narrower cards, causing drags to feel unresponsive.
   // hitSlop is applied to the gesture directly (not the wrapper View) — RNGH does
   // not inherit hitSlop from parent views, so it must be on the gesture itself.
-  const pan = Gesture.Pan()
-    .minPointers(1)
-    .minDistance(5)
-    .enabled(draggable)
-    .hitSlop(hitSlop ?? {})
+  const pan = Gesture.Pan().minPointers(1).minDistance(5).enabled(draggable);
+  if (hitSlop) pan.hitSlop(hitSlop);
+  pan
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
@@ -111,13 +109,12 @@ export function DraggableCard({
       panActivated.value = false;
     });
 
-  const tap = Gesture.Tap()
-    .maxDistance(8)
-    .hitSlop(hitSlop ?? {})
-    .onEnd((_e, success) => {
-      "worklet";
-      if (success && onTap) runOnJS(onTap)();
-    });
+  const tap = Gesture.Tap().maxDistance(8);
+  if (hitSlop) tap.hitSlop(hitSlop);
+  tap.onEnd((_e, success) => {
+    "worklet";
+    if (success && onTap) runOnJS(onTap)();
+  });
 
   // Gesture.Exclusive keeps both gestures inside RNGH: pan wins on movement ≥ 5 px,
   // tap fires natively when pan fails — no cross-system handoff needed on iOS.
