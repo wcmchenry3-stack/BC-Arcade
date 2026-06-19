@@ -154,11 +154,7 @@ export function DraggableCard({
       ? React.cloneElement(child, { onPress: onTap })
       : child;
   return (
-    <Animated.View
-      ref={viewRef}
-      testID={testID}
-      style={[style, webHitSlopStyle, dimmedStyle]}
-    >
+    <Animated.View ref={viewRef} testID={testID} style={[style, webHitSlopStyle, dimmedStyle]}>
       <GestureDetector gesture={gesture}>{innerEl}</GestureDetector>
     </Animated.View>
   );
