@@ -238,7 +238,7 @@ export default function GameScreen({ navigation, route }: Props) {
       // Up to two re-rolls using hold strategy
       while (s.rolls_used < 3) {
         const holds = holdStrategy(s, diff);
-        if (holds.every(h => h)) break; // all dice held — go straight to scoring
+        if (holds.every((h) => h)) break; // all dice held — go straight to scoring
         // Show hold decision on current values so the player sees the AI's choice
         setAiGameState({ ...s, held: holds });
         await delay(800);
