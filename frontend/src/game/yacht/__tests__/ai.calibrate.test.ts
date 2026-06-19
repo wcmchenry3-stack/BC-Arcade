@@ -21,7 +21,6 @@ import type { AiDifficulty } from "../types";
 const RUN = !!process.env.YACHT_SIM_FULL;
 const N = process.env.YACHT_SIM_FULL ? parseInt(process.env.YACHT_SIM_FULL, 10) : 3000;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const itFull = (RUN ? it : it.skip) as jest.It;
 
 // Par value for each upper category (3 × face value); scoring below this is "below par"
@@ -152,16 +151,11 @@ function runBatch(
 // Tests
 // ---------------------------------------------------------------------------
 
-// Stored for the directional-ordering test; tests within a describe run in order.
-let hardVsEasyResult: BatchResult | undefined;
-let hardVsMediumResult: BatchResult | undefined;
-
 afterEach(() => setRng(Math.random));
 
 describe("Yacht calibration — utility-vs-utility difficulty bands", () => {
   itFull("Hard utility vs Easy utility — Hard wins 62–68%", () => {
     const r = runBatch("hard", "easy", N, 0);
-    hardVsEasyResult = r;
 
     // Win-rate band (unchanged)
     expect(r.winRate).toBeGreaterThanOrEqual(0.62);
@@ -182,7 +176,6 @@ describe("Yacht calibration — utility-vs-utility difficulty bands", () => {
 
   itFull("Hard utility vs Medium utility — Hard wins 47–53%", () => {
     const r = runBatch("hard", "medium", N, 10000);
-    hardVsMediumResult = r;
 
     // Win-rate band (unchanged)
     expect(r.winRate).toBeGreaterThanOrEqual(0.47);
@@ -202,26 +195,33 @@ describe("Yacht calibration — utility-vs-utility difficulty bands", () => {
     expect(r.aiUpperMean).toBeGreaterThanOrEqual(37); // Medium
   });
 
-  itFull("Below-par upper fill rate decreases Easy → Medium → Hard", () => {
-    // Uses results captured by the two preceding tests (which always run first
-    // within this describe block).
-    if (!hardVsEasyResult || !hardVsMediumResult) {
-      throw new Error("Prerequisite calibration batches must complete first");
+  itFull(
+    "Per-difficulty ordering: below-par fill rate, bonus rate, and upper mean decrease Easy → Medium → Hard",
+    () => {
+      // Self-play batches isolate each difficulty from adversarial-context effects.
+      // Seed offsets are non-overlapping with the matchup tests above.
+      const easy = runBatch("easy", "easy", N, 50000);
+      const medium = runBatch("medium", "medium", N, 60000);
+      const hard = runBatch("hard", "hard", N, 70000);
+
+      // Below-par upper fill rate ordering
+      expect(easy.belowParMean).toBeGreaterThan(medium.belowParMean);
+      expect(medium.belowParMean).toBeGreaterThan(hard.belowParMean);
+
+      // Bonus rate ordering and absolute bands
+      expect(hard.bonusRate).toBeGreaterThanOrEqual(0.65); // Hard ≥ 65%
+      expect(easy.bonusRate).toBeLessThanOrEqual(0.45); // Easy ≤ 45%
+      expect(hard.bonusRate).toBeGreaterThan(medium.bonusRate);
+      expect(medium.bonusRate).toBeGreaterThan(easy.bonusRate);
+
+      // Mean upper subtotal ordering
+      expect(hard.upperMean).toBeGreaterThan(medium.upperMean);
+      expect(medium.upperMean).toBeGreaterThan(easy.upperMean);
+
+      // Mean score floors
+      expect(hard.humanMean).toBeGreaterThanOrEqual(200);
+      expect(medium.humanMean).toBeGreaterThanOrEqual(165);
+      expect(easy.humanMean).toBeGreaterThanOrEqual(130);
     }
-
-    const easyBelowPar = hardVsEasyResult.aiBelowParMean;
-    const mediumBelowPar = hardVsMediumResult.aiBelowParMean;
-    const hardBelowPar = hardVsEasyResult.belowParMean;
-
-    // Below-par fill rate should decrease as difficulty increases
-    expect(easyBelowPar).toBeGreaterThan(mediumBelowPar);
-    expect(mediumBelowPar).toBeGreaterThan(hardBelowPar);
-
-    // Bonus rate ordering (cross-batch directional check)
-    const easyBonusRate = hardVsEasyResult.aiBonusRate;
-    const mediumBonusRate = hardVsMediumResult.aiBonusRate;
-    const hardBonusRate = hardVsEasyResult.bonusRate;
-    expect(hardBonusRate).toBeGreaterThan(mediumBonusRate);
-    expect(mediumBonusRate).toBeGreaterThan(easyBonusRate);
-  });
+  );
 });
