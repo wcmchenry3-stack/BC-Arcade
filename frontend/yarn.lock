@@ -1971,10 +1971,10 @@
     "@sentry/types" "7.120.4"
     "@sentry/utils" "7.120.4"
 
-"@sentry/expo-upload-sourcemaps@8.15.0":
-  version "8.15.0"
-  resolved "https://registry.yarnpkg.com/@sentry/expo-upload-sourcemaps/-/expo-upload-sourcemaps-8.15.0.tgz#7a92c8ca11c03b4c28578a85daef82a484f80a97"
-  integrity sha512-iFOm6RgI7l2QKPEJwLZU8ZfoE9Bai6AMNoOBmSlcIIDE4fwjbBGn+FACSpfMX2gXaTW2faYjQG6h21O1p+fcSg==
+"@sentry/expo-upload-sourcemaps@8.15.1":
+  version "8.15.1"
+  resolved "https://registry.yarnpkg.com/@sentry/expo-upload-sourcemaps/-/expo-upload-sourcemaps-8.15.1.tgz#63f3ecd2f4bacfa7e3f9cb35c100dc17f5d9e850"
+  integrity sha512-aMHsbBRdrtTaWDMDA13sqY17QPG3F0mKHsts5biuVIZHVE3BMzUT/ZF/3KAd4JWttAPJFQ9yJP9Caw7zN/mW6w==
   dependencies:
     "@sentry/cli" "3.5.1"
 
@@ -2006,16 +2006,16 @@
     "@sentry/types" "7.120.4"
     "@sentry/utils" "7.120.4"
 
-"@sentry/react-native@~8.15.0":
-  version "8.15.0"
-  resolved "https://registry.yarnpkg.com/@sentry/react-native/-/react-native-8.15.0.tgz#ba8494b9a0b0ff340b5d7ce3716eb325b9c4ce93"
-  integrity sha512-mj/Ob6ssY9nQ2m0z7AcoaaCm1BOvxlzVxyCUJgNLDRFdxtssSYwSvQCQsDp4FjfHHUwjuyFb2lgtv6TOjGhKfQ==
+"@sentry/react-native@~8.15.1":
+  version "8.15.1"
+  resolved "https://registry.yarnpkg.com/@sentry/react-native/-/react-native-8.15.1.tgz#acffc9e3bffe9445f567bb118c92e8ddfba252a2"
+  integrity sha512-kjEHsiv94zrID7KAdtmlAsHHBHi5O7Eg+xs9Ko/ylM+KEpID9w24MjqL75dJ94r3cynV6dxBLcc1hgBy61ZEAQ==
   dependencies:
     "@sentry/babel-plugin-component-annotate" "5.3.0"
     "@sentry/browser" "10.58.0"
     "@sentry/cli" "3.5.1"
     "@sentry/core" "10.58.0"
-    "@sentry/expo-upload-sourcemaps" "8.15.0"
+    "@sentry/expo-upload-sourcemaps" "8.15.1"
     "@sentry/react" "10.58.0"
 
 "@sentry/react@10.58.0":
