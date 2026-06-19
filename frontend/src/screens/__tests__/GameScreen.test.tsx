@@ -16,6 +16,8 @@ jest.mock("../../game/yacht/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn().mockResolvedValue(undefined),
   loadGame: jest.fn().mockResolvedValue(null),
+  loadLastMode: jest.fn().mockResolvedValue(null),
+  saveLastMode: jest.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------
@@ -536,7 +538,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   });
 
   it("New Game mid-game abandons the old session and starts a new one", async () => {
-    const { getByRole } = await renderScreen();
+    const { getByRole, queryByRole } = await renderScreen();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
@@ -551,6 +553,11 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+    // Mode selector now shows — pick Solo to start the new session.
+    await act(async () => {
+      const soloBtn = queryByRole("button", { name: /^solo$/i });
+      if (soloBtn) fireEvent.press(soloBtn);
+    });
     expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
   });
 

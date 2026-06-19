@@ -18,7 +18,7 @@ import {
   Category,
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
-import { saveGame, clearGame } from "../game/yacht/storage";
+import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -74,6 +74,7 @@ export default function GameScreen({ navigation, route }: Props) {
   const [difficultyChosen, setDifficultyChosen] = useState(
     !isFreshGame || route.params.aiDifficulty !== undefined
   );
+  const [pendingMode, setPendingMode] = useState<"solo" | "vs">("solo");
   const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
@@ -104,6 +105,20 @@ export default function GameScreen({ navigation, route }: Props) {
     isAiTurnRef.current = isAiTurn;
   }, [isAiTurn]);
 
+  // Seed the mode selector with whatever the user picked last.
+  useEffect(() => {
+    let cancelled = false;
+    loadLastMode().then((pref) => {
+      if (!cancelled && pref) {
+        setPendingMode(pref.mode);
+        setPendingDiff(pref.difficulty);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Game event instrumentation (#368 / #549).
   const {
     start: syncStart,
@@ -129,8 +144,12 @@ export default function GameScreen({ navigation, route }: Props) {
     };
   }
 
+  // When the mode modal is shown on first render we defer syncStart to the
+  // handler so the session only starts once the player has chosen a mode.
+  const syncOnMount = !isFreshGame || route.params.aiDifficulty !== undefined;
   useEffect(() => {
     if (gameStateRef.current.game_over) return;
+    if (!syncOnMount) return;
     syncStart();
     // Unmount abandon is handled by useGameSync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,20 +352,24 @@ export default function GameScreen({ navigation, route }: Props) {
     const outcome = prev.game_over ? "completed" : "abandoned";
     syncComplete({ finalScore: prev.total_score, outcome }, endedPayload(prev, outcome));
     await clearGame();
-    setPendingDiff(aiDifficultyRef.current ?? "medium");
-    setDifficultyChosen(false);
+    const pref = await loadLastMode();
+    setPendingMode(pref?.mode ?? "solo");
+    setPendingDiff(pref?.difficulty ?? "medium");
     setGameState(newGame());
-    setAiGameState(aiDifficultyRef.current ? newGame() : null);
+    setAiDifficulty(null);
+    setAiGameState(null);
     setIsAiTurn(false);
     setGameKey((k) => k + 1);
     setError(null);
-    syncStart();
+    setDifficultyChosen(false);
+    // syncStart is called in handleChooseSolo / handleChooseVs after the player
+    // confirms a mode, so the session only starts once mode is known.
     Sentry.addBreadcrumb({
       category: "yacht.game",
       message: "startNewGame: reset complete",
       level: "info",
     });
-  }, [syncComplete, syncStart]);
+  }, [syncComplete]);
 
   const handleNewGamePress = useCallback(() => {
     if (isInProgress(gameStateRef.current)) {
@@ -363,15 +386,17 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
-    setAiDifficulty(null);
-    setAiGameState(null);
+    void saveLastMode("solo", "medium");
     setDifficultyChosen(true);
+    syncStart();
   }
 
   function handleChooseVs() {
+    void saveLastMode("vs", pendingDiff);
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
     setDifficultyChosen(true);
+    syncStart();
   }
 
   // VS result computed when both games are complete.
@@ -566,12 +591,28 @@ export default function GameScreen({ navigation, route }: Props) {
 
               <Pressable
                 testID="yacht-mode-solo"
-                style={[styles.modeBtn, { borderColor: colors.border }]}
+                style={
+                  pendingMode === "solo"
+                    ? [
+                        styles.modeBtn,
+                        styles.modeBtnPrimary,
+                        { borderColor: colors.accent, backgroundColor: colors.accent },
+                      ]
+                    : [styles.modeBtn, { borderColor: colors.border }]
+                }
                 onPress={handleChooseSolo}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.solo")}
+                accessibilityState={{ selected: pendingMode === "solo" }}
               >
-                <Text style={[styles.modeBtnText, { color: colors.text }]}>{t("vsMode.solo")}</Text>
+                <Text
+                  style={[
+                    styles.modeBtnText,
+                    { color: pendingMode === "solo" ? colors.textOnAccent : colors.text },
+                  ]}
+                >
+                  {t("vsMode.solo")}
+                </Text>
               </Pressable>
 
               <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
@@ -583,16 +624,26 @@ export default function GameScreen({ navigation, route }: Props) {
               <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
 
               <Pressable
-                style={[
-                  styles.modeBtn,
-                  styles.modeBtnPrimary,
-                  { borderColor: colors.accent, backgroundColor: colors.accent },
-                ]}
+                style={
+                  pendingMode === "vs"
+                    ? [
+                        styles.modeBtn,
+                        styles.modeBtnPrimary,
+                        { borderColor: colors.accent, backgroundColor: colors.accent },
+                      ]
+                    : [styles.modeBtn, { borderColor: colors.border }]
+                }
                 onPress={handleChooseVs}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.vsComputer")}
+                accessibilityState={{ selected: pendingMode === "vs" }}
               >
-                <Text style={[styles.modeBtnText, { color: colors.textOnAccent }]}>
+                <Text
+                  style={[
+                    styles.modeBtnText,
+                    { color: pendingMode === "vs" ? colors.textOnAccent : colors.text },
+                  ]}
+                >
                   {t("vsMode.vsComputer")}
                 </Text>
               </Pressable>

@@ -21,6 +21,8 @@ jest.mock("../../game/yacht/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn().mockResolvedValue(undefined),
   loadGame: jest.fn().mockResolvedValue(null),
+  loadLastMode: jest.fn().mockResolvedValue(null),
+  saveLastMode: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../../game/_shared/gameEventClient", () => ({
