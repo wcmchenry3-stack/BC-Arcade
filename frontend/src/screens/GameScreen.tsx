@@ -107,12 +107,16 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Seed the mode selector with whatever the user picked last.
   useEffect(() => {
+    let cancelled = false;
     loadLastMode().then((pref) => {
-      if (pref) {
+      if (!cancelled && pref) {
         setPendingMode(pref.mode);
         setPendingDiff(pref.difficulty);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Game event instrumentation (#368 / #549).
@@ -382,7 +386,7 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
-    void saveLastMode("solo", pendingDiff);
+    void saveLastMode("solo", "medium");
     setDifficultyChosen(true);
     syncStart();
   }
@@ -589,14 +593,24 @@ export default function GameScreen({ navigation, route }: Props) {
                 testID="yacht-mode-solo"
                 style={
                   pendingMode === "solo"
-                    ? [styles.modeBtn, styles.modeBtnPrimary, { borderColor: colors.accent, backgroundColor: colors.accent }]
+                    ? [
+                        styles.modeBtn,
+                        styles.modeBtnPrimary,
+                        { borderColor: colors.accent, backgroundColor: colors.accent },
+                      ]
                     : [styles.modeBtn, { borderColor: colors.border }]
                 }
                 onPress={handleChooseSolo}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.solo")}
+                accessibilityState={{ selected: pendingMode === "solo" }}
               >
-                <Text style={[styles.modeBtnText, { color: pendingMode === "solo" ? colors.textOnAccent : colors.text }]}>
+                <Text
+                  style={[
+                    styles.modeBtnText,
+                    { color: pendingMode === "solo" ? colors.textOnAccent : colors.text },
+                  ]}
+                >
                   {t("vsMode.solo")}
                 </Text>
               </Pressable>
@@ -612,14 +626,24 @@ export default function GameScreen({ navigation, route }: Props) {
               <Pressable
                 style={
                   pendingMode === "vs"
-                    ? [styles.modeBtn, styles.modeBtnPrimary, { borderColor: colors.accent, backgroundColor: colors.accent }]
+                    ? [
+                        styles.modeBtn,
+                        styles.modeBtnPrimary,
+                        { borderColor: colors.accent, backgroundColor: colors.accent },
+                      ]
                     : [styles.modeBtn, { borderColor: colors.border }]
                 }
                 onPress={handleChooseVs}
                 accessibilityRole="button"
                 accessibilityLabel={t("vsMode.vsComputer")}
+                accessibilityState={{ selected: pendingMode === "vs" }}
               >
-                <Text style={[styles.modeBtnText, { color: pendingMode === "vs" ? colors.textOnAccent : colors.text }]}>
+                <Text
+                  style={[
+                    styles.modeBtnText,
+                    { color: pendingMode === "vs" ? colors.textOnAccent : colors.text },
+                  ]}
+                >
                   {t("vsMode.vsComputer")}
                 </Text>
               </Pressable>

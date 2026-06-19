@@ -81,7 +81,13 @@ export async function loadLastMode(): Promise<LastModePref | null> {
     const raw = await AsyncStorage.getItem(PREF_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as LastModePref;
-  } catch {
+  } catch (e) {
+    Sentry.addBreadcrumb({
+      category: "yacht.storage",
+      message: "loadLastMode: failed to read pref, using defaults",
+      level: "warning",
+      data: { error: String(e) },
+    });
     return null;
   }
 }
