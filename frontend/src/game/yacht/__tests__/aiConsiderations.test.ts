@@ -434,18 +434,27 @@ describe("rateUpperCategoryEfficiency", () => {
     // sixes penalty = 1×(1-0.333)=0.667 → eff=0.333
     // ones penalty  = (1/6)×(1-0.333)≈0.111 → eff≈0.889
     const sSixes = makeGame([6, 2, 3, 4, 5], 1);
-    const sOnes  = makeGame([1, 2, 3, 4, 5], 1);
+    const sOnes = makeGame([1, 2, 3, 4, 5], 1);
     const sixesEff = rateUpperCategoryEfficiency(buildYachtInfoSet(sSixes, 0), "sixes");
-    const onesEff  = rateUpperCategoryEfficiency(buildYachtInfoSet(sOnes, 0),  "ones");
+    const onesEff = rateUpperCategoryEfficiency(buildYachtInfoSet(sOnes, 0), "ones");
     expect(onesEff).toBeGreaterThan(sixesEff);
     expect(sixesEff).toBeCloseTo(1 / 3, 5);
     expect(onesEff).toBeCloseTo(1 - (1 / 6) * (2 / 3), 5);
   });
 
   it("rising efficiency: 1 six → 2 sixes → 3 sixes → 1.0", () => {
-    const eff1 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 1, 2, 3, 4], 1), 0), "sixes");
-    const eff2 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 6, 1, 2, 3], 1), 0), "sixes");
-    const eff3 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 6, 6, 1, 2], 1), 0), "sixes");
+    const eff1 = rateUpperCategoryEfficiency(
+      buildYachtInfoSet(makeGame([6, 1, 2, 3, 4], 1), 0),
+      "sixes"
+    );
+    const eff2 = rateUpperCategoryEfficiency(
+      buildYachtInfoSet(makeGame([6, 6, 1, 2, 3], 1), 0),
+      "sixes"
+    );
+    const eff3 = rateUpperCategoryEfficiency(
+      buildYachtInfoSet(makeGame([6, 6, 6, 1, 2], 1), 0),
+      "sixes"
+    );
     expect(eff2).toBeGreaterThan(eff1);
     expect(eff3).toBeGreaterThan(eff2);
     expect(eff3).toBe(1.0);
