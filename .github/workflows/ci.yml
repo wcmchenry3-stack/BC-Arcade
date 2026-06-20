@@ -141,7 +141,11 @@ jobs:
           #   @react-native-async-storage/async-storage: v3 is API-compatible for
           #   getItem/setItem/removeItem/getAllKeys/clear (all operations this project uses).
           #   The breaking change (removed multiGet/multiSet/multiRemove) does not affect us.
-          APPROVED_OVERRIDES="@sentry/react-native|@react-native-async-storage/async-storage"
+          #   @shopify/react-native-skia: Expo still pins 2.6.2, but 2.6.3–2.6.6 are all
+          #   bug fixes (iOS static framework headers, Android Paper stubs for SkiaWebGPUView,
+          #   Chrome m150 upgrade, Symbol.dispose JSI fix, removed postinstall script) with
+          #   no API-breaking changes.
+          APPROVED_OVERRIDES="@sentry/react-native|@react-native-async-storage/async-storage|@shopify/react-native-skia"
           npx expo install --check 2>&1 | tee /tmp/expo-check.log || true
           UNAPPROVED=$(grep -E "^\s+@" /tmp/expo-check.log | grep -Ev "$APPROVED_OVERRIDES" || true)
           if [ -n "$UNAPPROVED" ]; then

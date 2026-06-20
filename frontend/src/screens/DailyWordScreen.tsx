@@ -237,7 +237,8 @@ const tileStyles = StyleSheet.create({
   letter: {
     fontFamily: typography.heading,
     fontSize: 22,
-    fontWeight: "900",
+    fontWeight: "700",
+    textAlign: "center",
   },
 });
 

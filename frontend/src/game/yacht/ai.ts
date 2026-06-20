@@ -20,6 +20,7 @@ import {
   rateImmediateValue,
   rateChanceSafetyValve,
   rateAdversarialVariance,
+  rateUpperCategoryEfficiency,
   type YachtHoldAction,
 } from "./aiConsiderations";
 import {
@@ -110,7 +111,8 @@ export function scoreStrategy(
       rateScorecardSafety(infoSet, cat) *
       (weights.immediateValue * rateImmediateValue(infoSet, cat) +
         weights.chanceSafetyValve * rateChanceSafetyValve(infoSet, cat) +
-        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat));
+        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat) +
+        weights.upperCategoryEfficiency * rateUpperCategoryEfficiency(infoSet, cat));
     if (s > bestScore) {
       bestScore = s;
       bestCat = cat;

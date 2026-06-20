@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 
 import { SUITS } from "../../game/freecell/types";
-import { validateMove, resolveAutoMove } from "../../game/freecell/engine";
+import { validateMove } from "../../game/freecell/engine";
 import type { FreeCellState, Move, Suit } from "../../game/freecell/types";
 import FreeCellSlot from "./FreeCellSlot";
 import FoundationPile from "./FoundationPile";
@@ -34,10 +34,9 @@ type Selection =
 export interface FreeCellBoardProps {
   readonly state: FreeCellState;
   readonly onMove: (move: Move) => void;
-  readonly onSupermoveRejected?: () => void;
 }
 
-export default function FreeCellBoard({ state, onMove, onSupermoveRejected }: FreeCellBoardProps) {
+export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
   const { cardWidth } = useCardSize();
@@ -76,15 +75,7 @@ export default function FreeCellBoard({ state, onMove, onSupermoveRejected }: Fr
     }
 
     if (selection === null) {
-      const result = resolveAutoMove(state, { type: "tableau", col, index });
-      if (result.kind === "execute") {
-        tryMove(result.move);
-      } else if (result.kind === "supermove-rejected") {
-        triggerIllegal();
-        onSupermoveRejected?.();
-      } else {
-        setSelection({ kind: "tableau", col, index });
-      }
+      setSelection({ kind: "tableau", col, index });
       return;
     }
     if (selection.kind === "tableau" && selection.col === col && selection.index === index) {
@@ -135,12 +126,7 @@ export default function FreeCellBoard({ state, onMove, onSupermoveRejected }: Fr
 
     if (selection === null) {
       if (state.freeCells[cell] !== null) {
-        const result = resolveAutoMove(state, { type: "freecell", cell });
-        if (result.kind === "execute") {
-          tryMove(result.move);
-        } else {
-          setSelection({ kind: "freecell", cell });
-        }
+        setSelection({ kind: "freecell", cell });
       }
       return;
     }

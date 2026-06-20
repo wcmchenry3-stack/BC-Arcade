@@ -48,7 +48,11 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR } from "../theme/theme.constants";
+import {
+  MAHJONG_HINT_COLOR,
+  MAHJONG_NO_MOVES_OVERLAY_BG,
+  MAHJONG_OVERLAY_BTN_BG,
+} from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
@@ -57,9 +61,11 @@ import { useMahjongCamera } from "../game/mahjong/layout";
 import type { BoardCamera } from "../game/mahjong/layout";
 import {
   createGame,
+  DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
   getAllFreePairs,
   getAnyFreePair,
+  hasFreePairs,
   selectTile,
   shuffleBoard,
   undoMove,
@@ -437,6 +443,59 @@ export default function MahjongScreen() {
       { scale: zoomScale.value },
     ],
   }));
+
+  // Derived display state for no-moves overlays — computed here (not inside
+  // GameCanvas) so the overlays render at viewport level and are always visible.
+  const noFreePairs = useMemo(
+    () => state !== null && !state.isComplete && !hasFreePairs(state.tiles),
+    [state]
+  );
+  const showShuffleCTA = noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+
+  const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
+  useEffect(() => {
+    if (!state?.isDeadlocked) {
+      setShowDeadlockOverlay(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowDeadlockOverlay(true), DEADLOCK_OVERLAY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [state?.isDeadlocked]);
+
+  // Zoom to fit when no moves remain so the whole board is visible behind the overlay.
+  useEffect(() => {
+    if (!showShuffleCTA) return;
+    const target = minZoom.value;
+    if (reduceMotion) {
+      zoomScale.value = target;
+      baseScale.value = target;
+      translateX.value = 0;
+      baseTranslateX.value = 0;
+      translateY.value = 0;
+      baseTranslateY.value = 0;
+    } else {
+      const cfg = { duration: 350, easing: Easing.out(Easing.cubic) };
+      // baseScale is updated in the completion callback so a pinch gesture started
+      // during the 350 ms animation doesn't jump from an intermediate position.
+      zoomScale.value = withTiming(target, cfg, (finished) => {
+        "worklet";
+        if (finished) baseScale.value = target;
+      });
+      translateX.value = withTiming(0, cfg, (finished) => {
+        "worklet";
+        if (finished) baseTranslateX.value = 0;
+      });
+      translateY.value = withTiming(0, cfg, (finished) => {
+        "worklet";
+        if (finished) baseTranslateY.value = 0;
+      });
+    }
+    // Shared values (zoomScale, baseScale, etc.) are stable Reanimated refs whose
+    // object identity never changes — adding them to deps is a no-op that only
+    // suppresses future lint warnings. reduceMotion is excluded because accessibility
+    // settings don't change mid-game.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showShuffleCTA]);
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
@@ -990,7 +1049,6 @@ export default function MahjongScreen() {
                     hintIds={hintIds}
                     debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
-                    onShufflePress={handleShuffle}
                     onNewGamePress={startNewGame}
                   />
                 </Animated.View>
@@ -1005,6 +1063,45 @@ export default function MahjongScreen() {
                 ))}
               </Animated.View>
             </GestureDetector>
+
+            {/* No-moves overlays — viewport-level siblings to the gesture layer so
+                they always fill the visible area regardless of board height. */}
+            {showShuffleCTA && (
+              <View
+                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+              >
+                <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
+                <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
+                <Pressable
+                  style={styles.overlayBtn}
+                  onPress={handleShuffle}
+                  accessibilityLabel={t("action.shuffleLabel")}
+                >
+                  <Text style={styles.overlayBtnText}>
+                    {t("overlay.shuffleButton")} ({state!.shufflesLeft})
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {showDeadlockOverlay && (
+              <View
+                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+              >
+                <Text style={styles.overlayTitle}>{t("overlay.deadlocked")}</Text>
+                <Text style={styles.overlayDetail}>{t("overlay.deadlockedDetail")}</Text>
+                <Pressable
+                  style={styles.overlayBtn}
+                  onPress={startNewGame}
+                  accessibilityLabel={t("action.newGameLabel")}
+                >
+                  <Text style={styles.overlayBtnText}>{t("overlay.levelSelectButton")}</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
       )}
@@ -1410,5 +1507,37 @@ const styles = StyleSheet.create({
     color: "rgba(255,128,0,1)",
     fontSize: 10,
     fontWeight: "700",
+  },
+  noMovesOverlay: {
+    backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  overlayTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  overlayDetail: {
+    color: "#cccccc",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  overlayBtn: {
+    backgroundColor: MAHJONG_OVERLAY_BTN_BG,
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  overlayBtnText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "bold",
+    textAlign: "center",
   },
 });

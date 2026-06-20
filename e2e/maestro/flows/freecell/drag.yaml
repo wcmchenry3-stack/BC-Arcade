@@ -9,7 +9,7 @@ appId: com.buffingchi.games
 - assertVisible:
     id: "freecell-board"
     timeout: 8000
-# Confirm the drag source exists before swiping.
+# Confirm the top card of column 0 exists before swiping.
 - assertVisible:
     id: "freecell-col-0-top"
     timeout: 3000
@@ -22,14 +22,19 @@ appId: com.buffingchi.games
     to:
       id: "freecell-slot-0"
     duration: 600
-# Confirm the board is still functional (no crash) and the drag target is visible.
+# Assert the card is now IN the slot — not just that the slot is visible.
+# freecell-slot-0-card is the testID on the DraggableCard inside FreeCellSlot
+# when the slot is occupied. This fails if the swipe was silently skipped.
 - assertVisible:
-    id: "freecell-slot-0"
-    timeout: 2000
+    id: "freecell-slot-0-card"
+    timeout: 3000
 - takeScreenshot: freecell-drag
 # Near-miss snap radius test: drag from column 1 top to a position offset from
 # freecell slot 1, ~30% outside its bounds. The snap radius (default 0.35)
 # should accept the drop even though the finger lands outside the exact bounds.
+- assertVisible:
+    id: "freecell-col-1-top"
+    timeout: 3000
 - swipe:
     from:
       id: "freecell-col-1-top"
@@ -39,8 +44,8 @@ appId: com.buffingchi.games
     offsetEnd:
       x: 30
       y: 20
-# Confirm the board accepted the near-miss drop.
+# Assert the card landed in slot 1 despite the near-miss.
 - assertVisible:
-    id: "freecell-slot-1"
-    timeout: 2000
+    id: "freecell-slot-1-card"
+    timeout: 3000
 - takeScreenshot: freecell-drag-snap-radius

@@ -1,9 +1,8 @@
 /**
- * freecell-card-move.spec.ts — GH #1145, updated for smart single-tap (#2037)
+ * freecell-card-move.spec.ts — GH #1145, updated for tap-to-select (#2128)
  *
- * Single-tap smart auto-move: tapping a card with exactly one best destination
- * on the priority ladder (foundation > non-empty tableau > empty col > free cell)
- * executes the move immediately without a second tap.
+ * Tap-to-select: first tap selects a card, second tap on a valid destination
+ * executes the move. (Smart single-tap auto-move was reverted in #2128.)
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -11,10 +10,7 @@
 import { test, expect } from "@playwright/test";
 import { mockFreecellApi, injectFreecellState } from "./helpers/freecell";
 
-// One card (5♥) in tableau column 0; all free cells empty; no valid non-empty
-// tableau or empty-column destination (rank 5 ≠ 13).
-// Priority ladder: foundation (no), non-empty tableau (none), empty col (no —
-// rank 5), free cell (yes — first available) → auto-moves to free cell 1.
+// One card (5♥) in tableau column 0; all free cells empty.
 const CARD_MOVE_STATE = {
   _v: 1,
   tableau: [[{ suit: "hearts", rank: 5 }], [], [], [], [], [], [], []],
@@ -25,7 +21,7 @@ const CARD_MOVE_STATE = {
   moveCount: 0,
 };
 
-test("single tap on a tableau card auto-moves it via the priority ladder", async ({
+test("tap-to-select: two taps move a tableau card to a free cell", async ({
   page,
 }) => {
   await mockFreecellApi(page);
@@ -40,9 +36,9 @@ test("single tap on a tableau card auto-moves it via the priority ladder", async
     timeout: 5_000,
   });
 
-  // Single tap on 5♥ → auto-move to first free cell (no second tap needed).
+  // Tap 1: select 5♥. Tap 2: send to the first empty free cell.
   await page.getByLabel("5 of Hearts").click();
+  await page.getByLabel("Empty free cell 1").click();
 
-  // Move counter increments immediately — no second tap required.
   await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
 });

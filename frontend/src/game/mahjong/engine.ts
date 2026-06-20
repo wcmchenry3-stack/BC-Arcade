@@ -19,6 +19,8 @@ const SCORE_PER_PAIR = 10;
 const SCORE_COMPLETE_BONUS = 500;
 const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;
+/** Delay before the deadlock overlay appears — matches the board shake animation duration. */
+export const DEADLOCK_OVERLAY_DELAY_MS = 500;
 
 // ---------------------------------------------------------------------------
 // Seedable RNG — LCG matching Cascade / Blackjack / Twenty48 / Solitaire.
