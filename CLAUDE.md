@@ -2,10 +2,20 @@
 
 <!-- User-level standards: ~/.claude/CLAUDE.md and ~/.claude/standards/ -->
 
+## Platform Priority — Read This First
+
+**Primary targets: iOS (App Store) and Android (Play Store).** These are the only platforms that are actively maintained, tested, and monetized.
+
+**Web (Expo Web) is a low-priority secondary target.** It is not actively maintained, not monetized, and may be taken down. Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
+
+Release toolchain — Expo is used as the development framework only:
+- iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)
+- Android releases → **Gradle → Play Console** (never `eas build` / `eas submit`)
+
 ## Stack
 
 - **Backend:** Python 3.13, FastAPI, uvicorn, PostgreSQL (Alembic migrations)
-- **Frontend:** Expo TypeScript, runs in browser via Expo Web
+- **Frontend:** Expo TypeScript — primary targets are **iOS and Android**; Expo Web exists but is unmaintained
 - **Setup & runbook:** [`README.md`](README.md)
 - **Docs:** testing, iOS/Android CI, Render, branding — see [`docs/`](docs/)
 
@@ -21,7 +31,9 @@
 
 ## iOS & Android Builds
 
-- **iOS:** Xcode Cloud (App Store Connect). `frontend/ios/` is committed. See [`docs/IOS.md`](docs/IOS.md). Do **not** suggest `eas build` or treat `ios/` as ephemeral.
+These are the only release paths. Never suggest EAS or Expo Go for releases.
+
+- **iOS:** Xcode Cloud → App Store Connect. `frontend/ios/` is committed and must stay buildable. See [`docs/IOS.md`](docs/IOS.md). Do **not** suggest `eas build` or treat `ios/` as ephemeral.
 - **Android:** Gradle → Play Console. `frontend/android/` is committed. See [`docs/ANDROID-CI.md`](docs/ANDROID-CI.md) for modification/signing/CI rules. Do **not** suggest `eas build`/`eas submit`.
 - Before modifying `frontend/android/`: verify `cd frontend/android && ./gradlew assembleDebug` passes locally.
 - Never commit `upload-keystore.jks`, `debug.keystore`, or `local.properties` (gitignored).
