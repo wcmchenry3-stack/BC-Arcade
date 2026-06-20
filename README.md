@@ -69,6 +69,20 @@ npx expo start --web   # http://localhost:8081
 
 The frontend points at `http://localhost:8000` by default. Override with `EXPO_PUBLIC_API_URL` if the backend is elsewhere.
 
+### Terminal 2 — Frontend (iOS simulator)
+
+The app uses native modules (`@react-native-async-storage/async-storage`, gesture handler, etc.) that are not bundled in Expo Go. Use a development build instead of `npx expo start`:
+
+```bash
+cd frontend
+npm install                # first time or when package.json changes
+npm run ios                # builds native app + starts Metro (first run ~5 min)
+```
+
+Subsequent runs after the initial build: `npm run ios` again, or just `npx expo start` and open the installed dev client on the simulator.
+
+> **Note:** After changing native dependencies (e.g. adding a new package with native code), run `pod install` in `frontend/ios/` and rebuild with `npm run ios`.
+
 ## Testing
 
 ```bash
