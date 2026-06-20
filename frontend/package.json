@@ -70,6 +70,7 @@
     "expo": "^56.0.9",
     "expo-audio": "~56.0.12",
     "expo-blur": "~56.0.3",
+    "expo-dev-client": "~56.0.20",
     "expo-haptics": "~56.0.3",
     "expo-linear-gradient": "~56.0.4",
     "expo-localization": "~56.0.6",
