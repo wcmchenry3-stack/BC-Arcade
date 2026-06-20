@@ -1,11 +1,9 @@
 /**
- * solitaire-tableau-move.spec.ts — GH #1143, updated for smart single-tap (#2039)
+ * solitaire-tableau-move.spec.ts — GH #1143, updated for tap-to-select (#2128)
  *
  * Tableau-to-tableau move: inject a board with 7♥ on column 1 and
- * 8♠ on column 2. Smart tap auto-moves 7♥ onto 8♠ in one tap (single
- * unambiguous destination). The second click on 8♠ exercises the selection
- * path for a buried card (revealsCard=true, no valid non-empty dest) and
- * confirms it does not trigger a second move.
+ * 8♠ on column 2. Two taps: first selects 7♥, second on 8♠ executes move.
+ * (Smart single-tap auto-move was reverted in #2128.)
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -72,8 +70,9 @@ test("tableau-to-tableau: move 7♥ from column 1 onto 8♠ in column 2", async 
     timeout: 5_000,
   });
 
-  // Smart tap: 7♥ has a single valid destination (8♠ in col 2) → auto-move.
+  // Tap 1: select 7♥. Tap 2: place onto 8♠ in column 2.
   await page.getByLabel("7 of Hearts").click();
+  await page.getByLabel("8 of Spades").click();
 
   // Column 1 is now empty; column 2 gained one card (now 3).
   await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({

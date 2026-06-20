@@ -90,6 +90,48 @@ if [ -f "frontend/scripts/check-i18n-strings.js" ]; then
   fi
 fi
 
+# ── Native package bump warning ───────────────────────────────────────────────
+# Non-blocking: CI (detect-native-changes) is the enforcing gate. This gives
+# an early local signal before the PR goes up.
+if [ -f "frontend/package.json" ] && [ -d "frontend/node_modules" ]; then
+  NATIVE_WARN=$(node -e "
+    const { execSync } = require('child_process');
+    const fs = require('fs');
+    try {
+      const base = JSON.parse(execSync('git show origin/dev:frontend/package.json 2>/dev/null || git show HEAD~1:frontend/package.json').toString());
+      const curr = JSON.parse(fs.readFileSync('frontend/package.json', 'utf8'));
+      const before = { ...(base.dependencies || {}), ...(base.devDependencies || {}) };
+      const after = { ...(curr.dependencies || {}), ...(curr.devDependencies || {}) };
+      const bumped = Object.keys(after).filter(k => after[k] !== before[k]);
+      const native = bumped.filter(pkg => {
+        const dir = 'frontend/node_modules/' + pkg;
+        try {
+          const { execSync: ex } = require('child_process');
+          const podspec = ex('find ' + dir + ' -maxdepth 2 -name \"*.podspec\" 2>/dev/null', {encoding:'utf8'}).trim();
+          if (podspec) return true;
+          const android = ex('find ' + dir + '/android -maxdepth 4 \\( -name \"*.java\" -o -name \"*.kt\" -o -name \"*.cpp\" \\) 2>/dev/null', {encoding:'utf8'}).trim();
+          if (android) return true;
+        } catch {}
+        return false;
+      });
+      if (native.length) process.stdout.write(native.join(', '));
+    } catch {}
+  " 2>/dev/null || echo "")
+
+  if [ -n "$NATIVE_WARN" ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  [WARN] Native packages bumped: $NATIVE_WARN"
+    echo ""
+    echo "  Before merging, verify:"
+    echo "    • App loads in Expo Go without errors"
+    echo "    • ios-build-check / android-build-check pass in CI"
+    echo "    • Podfile.lock updated if iOS native package changed"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+  fi
+fi
+
 # ── Verdict ───────────────────────────────────────────────────────────────────
 if [ "$FAIL" -ne 0 ]; then
   print_blocked "push"

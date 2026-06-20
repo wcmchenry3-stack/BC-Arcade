@@ -800,6 +800,9 @@ function runLengthAt(state: SolitaireState, col: number): number {
  * Levels 2 and 3 share a single non-empty scan: "reveal" is a source-only property
  * (whether pile[index-1] is face-down), so every valid non-empty destination from a
  * given tap is either all level-2 or all level-3 — never mixed.
+ *
+ * @deprecated UI reverted to tap-to-select in #2128. Function kept for potential
+ * re-introduction; engine tests serve as specification. No UI callers.
  */
 export function resolveAutoMove(
   state: SolitaireState,

@@ -1353,7 +1353,7 @@ function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmState {
                 bulletsAbsorbed: activePowerUp.shieldAbsorbed,
               }
             : { event: "powerup_expired", type: activePowerUp.type };
-        // eslint-disable-next-line no-console
+
         console.log("[StarSwarm analytics]", evt);
       }
       activePowerUp = null;
@@ -1542,7 +1542,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     powerUps = powerUps.filter((_, i) => i !== collectedIdx);
 
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.log("[StarSwarm analytics]", {
         event: "powerup_collected",
         type: collected.type,

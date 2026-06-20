@@ -40,3 +40,11 @@
 - [ ] `ios-build-check` / `android-build-check` CI job passes
 - [ ] No hardcoded local paths in `.pbxproj` (`local-path-check` passes)
 - [ ] `pod install` run locally and `Podfile.lock` changes committed (if applicable)
+
+## Native dependency checklist _(if `package.json` bumps a native or JSI package)_
+
+- [ ] `detect-native-changes` job summary reviewed — native packages listed are expected
+- [ ] `ios-build-check` passes on this PR (auto-triggered when iOS native package detected)
+- [ ] `android-build-check` passes on this PR (auto-triggered when Android native package detected)
+- [ ] App loads in Expo Go without errors (required when `detect-native-changes` flags JSI packages)
+- [ ] `Podfile.lock` updated and committed (`podfile-lock-check` passes)

@@ -50,7 +50,6 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
 
 const AUTO_STEP_MS = 120;
-const TOAST_DURATION_MS = 2500;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
@@ -78,8 +77,6 @@ export default function FreeCellScreen() {
   const [showFoundation, setShowFoundation] = useState(false);
   const [showGameWin, setShowGameWin] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { play: playCardPlace } = useSound("freecell.cardPlace", FREECELL_SOUNDS, 0.4);
   const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 0.5);
@@ -226,19 +223,6 @@ export default function FreeCellScreen() {
     setState(applyHint(state));
   }, [state]);
 
-  useEffect(
-    () => () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    },
-    []
-  );
-
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), TOAST_DURATION_MS);
-  }, []);
-
   const handleNewGame = useCallback(() => {
     clearGame().catch(() => {});
     setState(dealGame());
@@ -327,11 +311,7 @@ export default function FreeCellScreen() {
               style={styles.boardWrap}
               accessibilityLabel={t("freecell:a11y.boardRegion")}
             >
-              <FreeCellBoard
-                state={state}
-                onMove={handleMove}
-                onSupermoveRejected={() => showToast(t("freecell:error.supermoveRejected"))}
-              />
+              <FreeCellBoard state={state} onMove={handleMove} />
             </View>
 
             {showNoMovesBanner && (
@@ -379,7 +359,6 @@ export default function FreeCellScreen() {
         onAnimationEnd={() => setShowFoundation(false)}
       />
       <FreeCellGameWinAnimation visible={showGameWin} onDismiss={() => setShowGameWin(false)} />
-      {toast !== null && <SupermoveToast message={toast} colors={colors} />}
     </GameShell>
   );
 }
@@ -541,28 +520,6 @@ function WinModal({
 }
 
 // ---------------------------------------------------------------------------
-// Supermove rejection toast
-// ---------------------------------------------------------------------------
-
-function SupermoveToast({
-  message,
-  colors,
-}: {
-  readonly message: string;
-  readonly colors: { text: string; background: string };
-}) {
-  return (
-    <View
-      style={[styles.supermoveToast, { backgroundColor: colors.text }]}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="assertive"
-    >
-      <Text style={[styles.supermoveToastText, { color: colors.background }]}>{message}</Text>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
@@ -707,19 +664,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 12,
-  },
-  supermoveToast: {
-    position: "absolute",
-    bottom: 80,
-    alignSelf: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 24,
-    maxWidth: 280,
-  },
-  supermoveToastText: {
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
   },
 });

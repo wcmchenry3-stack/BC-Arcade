@@ -41,6 +41,16 @@ const FACE_TO_UPPER_CAT: Readonly<Record<number, Category>> = {
   6: "sixes",
 };
 
+/** Reverse of FACE_TO_UPPER_CAT: upper category → die face value. */
+const UPPER_CAT_FACE: Readonly<Partial<Record<Category, number>>> = {
+  ones: 1,
+  twos: 2,
+  threes: 3,
+  fours: 4,
+  fives: 5,
+  sixes: 6,
+};
+
 /** Upper categories searched in descending value order to find a filled slot quickly. */
 const UPPER_ORDER: readonly Category[] = ["sixes", "fives", "fours", "threes", "twos", "ones"];
 
@@ -202,6 +212,39 @@ export function rateImmediateValue(infoSet: YachtInfoSet, category: YachtScoreAc
 export function rateChanceSafetyValve(infoSet: YachtInfoSet, category: YachtScoreAction): number {
   if (category !== "chance" || !infoSet.openCategories.has("chance")) return 1.0;
   return Math.max(0, (13 - infoSet.categoriesRemaining) / 12);
+}
+
+/**
+ * Rate how efficiently this scoring choice uses an upper category.
+ *
+ * Anchored to the "3 × face value" par threshold: 3 of a kind is par for every
+ * upper category, and the six par values sum exactly to 63 (the bonus threshold).
+ *
+ * Returns 1.0 for non-upper categories (no opportunity cost) and for any upper
+ * category scored at or above par.  Below par, applies a penalty that scales with
+ * both the shortfall and the category's ceiling:
+ *
+ *   penalty = (faceValue / 6) × (1 − score / par)
+ *   result  = clamp(1 − penalty, 0, 1)
+ *
+ * Sixes at 0 → 0.0 (maximum penalty).  Ones at 0 → ≈0.833 (low ceiling, low cost).
+ * This steers the AI to sacrifice low-ceiling slots (ones, twos) rather than burn
+ * high-ceiling slots (fives, sixes) for below-par scores.
+ */
+export function rateUpperCategoryEfficiency(
+  infoSet: YachtInfoSet,
+  category: YachtScoreAction
+): number {
+  const faceValue = UPPER_CAT_FACE[category];
+  if (faceValue === undefined) return 1.0;
+
+  const par = 3 * faceValue;
+  const actualScore = calculateScore(category, infoSet.dice);
+  if (actualScore >= par) return 1.0;
+
+  const ceilingFactor = faceValue / 6;
+  const ratio = actualScore / par;
+  return Math.max(0, 1 - ceilingFactor * (1 - ratio));
 }
 
 /**

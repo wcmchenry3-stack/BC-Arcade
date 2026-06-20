@@ -90,7 +90,10 @@ describe("GameCanvas (web)", () => {
     expect(JSON.stringify(tree!.toJSON())).toContain("overlay.youWon");
   });
 
-  it("shows the deadlock overlay after 500 ms when isDeadlocked", async () => {
+  it("does not render the deadlock overlay locally (delegate to MahjongScreen)", async () => {
+    // The overlay JSX lives in MahjongScreen so it covers the viewport, not the
+    // board-sized canvas view. GameCanvas still tracks the 500 ms delay internally
+    // (for gameActive), but must not render overlay text itself.
     jest.useFakeTimers();
     const state = makeState({ isDeadlocked: true, shufflesLeft: 0 });
     let tree: ReturnType<typeof create>;
@@ -105,17 +108,17 @@ describe("GameCanvas (web)", () => {
         />
       );
     });
-    // Overlay is intentionally delayed — not visible before the timer fires.
     expect(JSON.stringify(tree!.toJSON())).not.toContain("overlay.deadlocked");
     await act(() => {
       jest.advanceTimersByTime(500);
     });
-    expect(JSON.stringify(tree!.toJSON())).toContain("overlay.deadlocked");
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("overlay.deadlocked");
     jest.useRealTimers();
   });
 
-  it("shows the shuffle CTA when no free pairs remain and shuffles are available", async () => {
-    // tiles=[] means hasFreePairs([]) === false; isComplete=false, shufflesLeft>0 → shuffle CTA
+  it("does not render the shuffle CTA locally (delegate to MahjongScreen)", async () => {
+    // tiles=[] means hasFreePairs([]) === false; isComplete=false, shufflesLeft>0 → showShuffleCTA=true
+    // GameCanvas sets gameActive=false to block tile taps, but the overlay lives in MahjongScreen.
     const state = makeState({
       tiles: [],
       isComplete: false,
@@ -134,10 +137,9 @@ describe("GameCanvas (web)", () => {
         />
       );
     });
-    // Shuffle CTA shows the noMoves key + shuffle button
     const str = JSON.stringify(tree!.toJSON());
-    expect(str).toContain("overlay.noMoves");
-    expect(str).toContain("overlay.shuffleButton");
+    expect(str).not.toContain("overlay.noMoves");
+    expect(str).not.toContain("overlay.shuffleButton");
   });
 
   it("does not show any overlay during normal play", async () => {

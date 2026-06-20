@@ -186,7 +186,6 @@ export default function SortScreen() {
     });
     return () => sub.remove();
     // progressRef is a stable ref, so it doesn't belong in the dep array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, currentLevelId, gameState]);
 
   // Unlock next level and show win modal as soon as the puzzle is solved.

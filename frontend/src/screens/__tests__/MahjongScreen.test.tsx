@@ -13,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { MahjongScoreboardProvider } from "../../game/mahjong/MahjongScoreboardContext";
+import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
 
 // ---------------------------------------------------------------------------
@@ -110,7 +111,7 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
     registerHandler: jest.fn(),
   },
 }));
-// eslint-disable-next-line import/order
+
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
 // ---------------------------------------------------------------------------
@@ -442,6 +443,60 @@ describe("MahjongScreen — shuffle button", () => {
     const api = await mount();
     const btn = api.getByLabelText("action.shuffleLabel");
     expect(btn.props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No-moves overlays
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — no-moves overlays", () => {
+  /** tiles: [] means hasFreePairs([]) = false, triggering the no-moves path. */
+  function makeNoMovesState(overrides: Partial<MahjongState> = {}): MahjongState {
+    return makeWinState({
+      isComplete: false,
+      tiles: [],
+      shufflesLeft: 2,
+      pairsRemoved: 0,
+      score: 0,
+      ...overrides,
+    });
+  }
+
+  it("renders the shuffle CTA overlay when no free pairs remain and shuffles are available", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(makeNoMovesState({ shufflesLeft: 2 }))
+    );
+    const api = await mount();
+    expect(api.getByText("overlay.noMoves")).toBeTruthy();
+    expect(api.queryByText(/overlay\.shuffleButton/)).toBeTruthy();
+  });
+
+  it("does not render the deadlock overlay immediately on mount", async () => {
+    jest.useFakeTimers();
+    try {
+      await AsyncStorage.setItem(
+        "mahjong_game",
+        JSON.stringify(makeNoMovesState({ shufflesLeft: 0, isDeadlocked: true }))
+      );
+      const api = await mount();
+      expect(api.queryByText("overlay.deadlocked")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("renders the deadlock overlay after the delay elapses", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(makeNoMovesState({ shufflesLeft: 0, isDeadlocked: true }))
+    );
+    const api = await mount();
+    expect(api.queryByText("overlay.deadlocked")).toBeNull();
+    await waitFor(() => expect(api.getByText("overlay.deadlocked")).toBeTruthy(), {
+      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+    });
   });
 });
 

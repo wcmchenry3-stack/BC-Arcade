@@ -1,14 +1,13 @@
 /**
- * solitaire-card-move.spec.ts — GH #1246, updated for smart single-tap (#2039)
+ * solitaire-card-move.spec.ts — GH #1246, updated for tap-to-select (#2128)
  *
- * Covers the three solitaire card-move flows tested on Playwright/web:
- *   1. waste → tableau  (K♥ on empty board auto-moves in one tap)
- *   2. tableau → foundation  (A♠ auto-moves to foundation in one tap)
- *   3. multi-card run  (Q♣-J♥ run auto-moves onto K♦ in one tap on run base)
+ * Covers three solitaire card-move flows on Playwright/web:
+ *   1. waste → tableau  (select K♥, then tap empty col)
+ *   2. tableau → foundation  (select A♠, then tap foundation)
+ *   3. multi-card run  (select Q♣ run base, then tap K♦)
  *
- * Smart single-tap (#2039): an unambiguous first tap auto-executes the move
- * without a selection step. Boards with multiple equal-priority destinations
- * still use the select + second-tap flow (see solitaire-tableau-move.spec.ts).
+ * Tap-to-select (#2128): first tap selects a card, second tap on a valid
+ * destination executes the move. (Smart single-tap was reverted in #2128.)
  *
  * All backend calls are intercepted — no running backend required.
  *
@@ -40,7 +39,7 @@ function stockCards(excluded: string[]) {
 // Tap:    K♥ (waste) → empty col 0
 // Expect: col 0 now has 1 card, move counter = 1
 // ---------------------------------------------------------------------------
-test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({
+test("solitaire tap-to-select: waste → tableau (K♥ onto empty column)", async ({
   page,
 }) => {
   const STATE = {
@@ -74,9 +73,9 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({
     timeout: 3_000,
   });
 
-  // Smart tap: K♥ is a king with 7 empty columns → single unambiguous destination
-  // (first empty column). One tap auto-executes the move.
+  // Tap 1: select K♥ from waste. Tap 2: place onto the first empty tableau column.
   await page.getByLabel("K of Hearts").click();
+  await page.getByLabel("Empty tableau column 1").click();
 
   // Column 1 now has 1 card; move counter increments.
   await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({
@@ -91,7 +90,7 @@ test("solitaire drag: waste → tableau (K♥ onto empty column)", async ({
 // Tap:    A♠ (col 0) → empty Spades foundation  (select then tap)
 // Expect: spades foundation gains 1 card; col 0 becomes empty
 // ---------------------------------------------------------------------------
-test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async ({
+test("solitaire tap-to-select: tableau → foundation (A♠ to Spades foundation)", async ({
   page,
 }) => {
   const STATE = {
@@ -129,9 +128,9 @@ test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async
 
   await expect(page.getByLabel("A of Spades")).toBeVisible({ timeout: 5_000 });
 
-  // Smart tap: A♠ is the top card with an empty spades foundation → unambiguous
-  // foundation move. One tap auto-executes; no second tap to foundation needed.
+  // Tap 1: select A♠. Tap 2: place onto the Spades foundation.
   await page.getByLabel("A of Spades").click();
+  await page.getByLabel("Empty Spades foundation").click();
 
   // Col 0 is now empty; foundation updated.
   await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
@@ -146,7 +145,9 @@ test("solitaire drag: tableau → foundation (A♠ to Spades foundation)", async
 // Tap:    Q♣ at col 1 index 0 → K♦ in col 0 (moves Q♣+J♥ as a run)
 // Expect: col 0 has 3 cards; col 1 becomes empty
 // ---------------------------------------------------------------------------
-test("solitaire drag: multi-card run (Q♣-J♥ onto K♦)", async ({ page }) => {
+test("solitaire tap-to-select: multi-card run (Q♣-J♥ onto K♦)", async ({
+  page,
+}) => {
   const STATE = {
     _v: 1,
     drawMode: 1,
@@ -191,11 +192,11 @@ test("solitaire drag: multi-card run (Q♣-J♥ onto K♦)", async ({ page }) =>
     timeout: 3_000,
   });
 
-  // Smart tap: click the base of the run (Q♣ at index 0). Q♣ is buried under
-  // J♥ — its visible stripe is the top ~28px (FACE_UP_OFFSET); click within
-  // that stripe so J♥'s SVG rect doesn't intercept. K♦ in col 1 is the single
-  // valid non-empty destination → one tap auto-moves Q♣+J♥ as a run.
+  // Tap 1: select Q♣ (base of the run). Q♣ is buried under J♥ — click its
+  // visible stripe (~top 28px) so J♥'s SVG rect doesn't intercept.
+  // Tap 2: place the Q♣-J♥ run onto K♦ in col 0.
   await page.getByLabel("Q of Clubs").click({ position: { x: 26, y: 10 } });
+  await page.getByLabel("K of Diamonds").click();
 
   // Col 1 now has 3 cards (K♦, Q♣, J♥); col 2 is empty.
   await expect(page.getByLabel("Tableau column 1, 3 cards")).toBeVisible({

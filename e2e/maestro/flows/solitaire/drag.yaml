@@ -16,12 +16,37 @@ appId: com.buffingchi.games
     id: "solitaire-waste-top"
     timeout: 3000
 # Drag the waste top card toward tableau column 0.
-# The move may or may not be valid (deal is random); either outcome — card placed
-# or snap-back — exercises the full drag gesture path and drop-zone hit-test.
+# The move may or may not be valid (deal is random). We check two outcomes:
+#   - If valid: the waste pile top changes (waste-top disappears or shows next card)
+#   - If invalid: snap-back leaves waste-top visible
+# Either outcome exercises the full drag gesture path and drop-zone hit-test.
 - swipe:
     from:
       id: "solitaire-waste-top"
     to:
       id: "solitaire-tableau-0"
     duration: 600
+# The board must still be interactive after the drag regardless of outcome.
+# solitaire-stock-pile is always present as long as the board is functional.
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 3000
 - takeScreenshot: solitaire-drag
+# Draw a fresh card from stock so the waste pile is guaranteed non-empty
+# before the second drag, regardless of whether the first drag succeeded.
+- tapOn:
+    id: "solitaire-stock-pile"
+- assertVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+# Second drag: attempt waste → tableau col 1 to exercise a second drop zone.
+- swipe:
+    from:
+      id: "solitaire-waste-top"
+    to:
+      id: "solitaire-tableau-1"
+    duration: 600
+- assertVisible:
+    id: "solitaire-stock-pile"
+    timeout: 3000
+- takeScreenshot: solitaire-drag-col1

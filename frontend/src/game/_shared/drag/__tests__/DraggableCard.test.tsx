@@ -112,7 +112,7 @@ describe("DraggableCard", () => {
     await fireEvent.press(getByRole("button"));
   });
 
-  it("dims the card (opacity 0.6) while it is the active drag source", async () => {
+  it("hides the card (opacity 0) while it is the active drag source", async () => {
     const { getByLabelText, getByTestId } = await render(
       <DragProvider>
         <ThemeProvider>
@@ -126,7 +126,9 @@ describe("DraggableCard", () => {
 
     expect(getByTestId("card")).toHaveStyle({ opacity: 1 });
     await fireEvent.press(getByLabelText("trigger"));
-    expect(getByTestId("card")).toHaveStyle({ opacity: 0.6 });
+    // Source card must be invisible while dragged — the ghost overlay shows it.
+    // opacity 0.6 ("dim") was a regression that showed two copies of the card.
+    expect(getByTestId("card")).toHaveStyle({ opacity: 0 });
   });
 
   it("renders without crash when rnMeasure is mocked to return null", async () => {
