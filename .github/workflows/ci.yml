@@ -155,6 +155,111 @@ jobs:
             echo "All dependencies are compatible with the installed Expo SDK"
           fi
 
+  detect-native-changes:
+    name: Detect native package changes
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    outputs:
+      has_native_ios: ${{ steps.detect.outputs.has_native_ios }}
+      has_native_android: ${{ steps.detect.outputs.has_native_android }}
+      has_jsi: ${{ steps.detect.outputs.has_jsi }}
+      native_packages: ${{ steps.detect.outputs.native_packages }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Detect native package bumps
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ] || [ -z "$BASE_SHA" ]; then
+            echo "has_native_ios=false" >> "$GITHUB_OUTPUT"
+            echo "has_native_android=false" >> "$GITHUB_OUTPUT"
+            echo "has_jsi=false" >> "$GITHUB_OUTPUT"
+            echo "native_packages=" >> "$GITHUB_OUTPUT"
+            echo "No native package detection on non-PR events." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Find packages whose pinned version changed between base and HEAD.
+          # Detects both bumps and new additions.
+          BUMPED=$(node -e "
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            const base = JSON.parse(execSync('git show ' + process.env.BASE_SHA + ':frontend/package.json').toString());
+            const curr = JSON.parse(fs.readFileSync('frontend/package.json', 'utf8'));
+            const before = { ...(base.dependencies || {}), ...(base.devDependencies || {}) };
+            const after = { ...(curr.dependencies || {}), ...(curr.devDependencies || {}) };
+            console.log(Object.keys(after).filter(k => after[k] !== before[k]).join('\n'));
+          " 2>/dev/null || echo "")
+
+          IOS_PKGS=""
+          ANDROID_PKGS=""
+          JSI_PKGS=""
+
+          while IFS= read -r PKG; do
+            [ -z "$PKG" ] && continue
+            PKG_DIR="frontend/node_modules/$PKG"
+            [ ! -d "$PKG_DIR" ] && continue
+
+            # iOS native: presence of a .podspec signals CocoaPods integration
+            if find "$PKG_DIR" -maxdepth 2 -name "*.podspec" 2>/dev/null | grep -q .; then
+              IOS_PKGS="${IOS_PKGS:+$IOS_PKGS }$PKG"
+            fi
+
+            # Android native: android/ dir containing Java/Kotlin/C++ source
+            if [ -d "$PKG_DIR/android" ] && \
+               find "$PKG_DIR/android" -maxdepth 4 \
+                 \( -name "*.java" -o -name "*.kt" -o -name "*.cpp" \) 2>/dev/null | grep -q .; then
+              ANDROID_PKGS="${ANDROID_PKGS:+$ANDROID_PKGS }$PKG"
+            fi
+
+            # JSI: runtime binding installer patterns (Expo Go can't satisfy these)
+            SEARCH_FILES=$(find "$PKG_DIR" -maxdepth 4 \( -name "*.ts" -o -name "*.js" \) 2>/dev/null | head -200)
+            if [ -n "$SEARCH_FILES" ]; then
+              JSI_HIT=$(echo "$SEARCH_FILES" | \
+                xargs grep -lE "installUIRuntimeBindings|__jsi_version" 2>/dev/null | head -1)
+              if [ -n "$JSI_HIT" ]; then
+                JSI_PKGS="${JSI_PKGS:+$JSI_PKGS }$PKG"
+              fi
+            fi
+          done <<< "$BUMPED"
+
+          if [ -n "$IOS_PKGS" ]; then HAS_IOS=true; else HAS_IOS=false; fi
+          if [ -n "$ANDROID_PKGS" ]; then HAS_ANDROID=true; else HAS_ANDROID=false; fi
+          if [ -n "$JSI_PKGS" ]; then HAS_JSI=true; else HAS_JSI=false; fi
+          ALL_NATIVE=$(printf '%s\n' $IOS_PKGS $ANDROID_PKGS $JSI_PKGS | sort -u | tr '\n' ' ' | sed 's/ $//')
+
+          echo "has_native_ios=$HAS_IOS" >> "$GITHUB_OUTPUT"
+          echo "has_native_android=$HAS_ANDROID" >> "$GITHUB_OUTPUT"
+          echo "has_jsi=$HAS_JSI" >> "$GITHUB_OUTPUT"
+          echo "native_packages=$ALL_NATIVE" >> "$GITHUB_OUTPUT"
+
+          {
+            if [ -n "$ALL_NATIVE" ]; then
+              echo "### :warning: Native package changes detected"
+              echo ""
+              [ -n "$IOS_PKGS" ]     && echo "**iOS native:** \`$IOS_PKGS\`"
+              [ -n "$ANDROID_PKGS" ] && echo "**Android native:** \`$ANDROID_PKGS\`"
+              [ -n "$JSI_PKGS" ]     && echo "**JSI runtime:** \`$JSI_PKGS\` — verify app loads in Expo Go before merging"
+              echo ""
+              [ "$HAS_IOS" = "true" ]     && echo "> \`ios-build-check\` will run on this PR."
+              [ "$HAS_ANDROID" = "true" ] && echo "> \`android-build-check\` will run on this PR."
+            else
+              echo "No native package version changes detected."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   sentry-check:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-sentry-check.yml@main
@@ -495,13 +600,18 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "$COMMENT"
 
-  # === Tier 2: Expensive checks (need unit tests; skipped on feat→dev) =====
-  # iOS/Android build checks run only on PRs targeting main or pushes to main.
-  # Closes #423: skip on feat→dev PRs to save macOS minutes.
+  # === Tier 2: Expensive checks (need unit tests) =============================
+  # iOS/Android build checks run on PRs to main, pushes to main, AND any PR
+  # where detect-native-changes found a native/JSI package bump. Closes #423
+  # (skip on feat→dev when no native packages change) and #2141 (catch native
+  # regressions from Dependabot on dev PRs without a hardcoded package list).
 
   ios-build-check:
-    if: github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [test-python, test-frontend]
+    if: |
+      github.base_ref == 'main' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      needs.detect-native-changes.outputs.has_native_ios == 'true'
+    needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-ios-build-check.yml@main
     with:
       working-directory: frontend
@@ -510,12 +620,39 @@ jobs:
     secrets: inherit
 
   android-build-check:
-    if: github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [test-python, test-frontend]
+    if: |
+      github.base_ref == 'main' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      needs.detect-native-changes.outputs.has_native_android == 'true'
+    needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-android-build-check.yml@main
     with:
       working-directory: frontend
     secrets: inherit
+
+  podfile-lock-check:
+    name: Podfile.lock freshness
+    if: needs.detect-native-changes.outputs.has_native_ios == 'true'
+    needs: [detect-native-changes]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Verify Podfile.lock was updated alongside native iOS package bump
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          NATIVE_PKGS: ${{ needs.detect-native-changes.outputs.native_packages }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD)
+          if echo "$CHANGED" | grep -q "frontend/ios/Podfile.lock"; then
+            echo "Podfile.lock updated alongside native iOS package bump — OK"
+          else
+            echo "::error::Native iOS package(s) bumped ($NATIVE_PKGS) but frontend/ios/Podfile.lock was not updated."
+            echo "::error::Run: cd frontend/ios && pod install"
+            echo "::error::Then commit the updated Podfile.lock."
+            exit 1
+          fi
 
   # Android release smoke test — path-filtered, runs on PRs only.
   # The debug build check cannot catch release-only failures (Sentry upload,
