@@ -110,7 +110,7 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
     registerHandler: jest.fn(),
   },
 }));
-// eslint-disable-next-line import/order
+
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
 // ---------------------------------------------------------------------------

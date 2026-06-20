@@ -56,7 +56,7 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
   },
 }));
 // Import after mocks so the test file gets the jest.fn() flavour.
-// eslint-disable-next-line import/order
+
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
 function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): SudokuState {
