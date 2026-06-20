@@ -43,7 +43,12 @@ const FACE_TO_UPPER_CAT: Readonly<Record<number, Category>> = {
 
 /** Reverse of FACE_TO_UPPER_CAT: upper category → die face value. */
 const UPPER_CAT_FACE: Readonly<Partial<Record<Category, number>>> = {
-  ones: 1, twos: 2, threes: 3, fours: 4, fives: 5, sixes: 6,
+  ones: 1,
+  twos: 2,
+  threes: 3,
+  fours: 4,
+  fives: 5,
+  sixes: 6,
 };
 
 /** Upper categories searched in descending value order to find a filled slot quickly. */
@@ -210,18 +215,6 @@ export function rateChanceSafetyValve(infoSet: YachtInfoSet, category: YachtScor
 }
 
 /**
- * Rate this scoring action for adversarial variance appropriateness.
- *
- * Trailing (scoreDelta ≤ −20): high-variance categories score near 1.0 — take
- *   the gamble to close the gap.
- * Leading (scoreDelta ≥ +50): low-variance categories score near 1.0 — lock in
- *   points, protect the lead.
- * Neutral (delta ≈ 0): all categories return 0.5 (no directional preference).
- *
- * Between the thresholds, the score interpolates smoothly.  Category variance
- * levels are decomposed from the trailing/leading heuristics in `scoreHard`.
- */
-/**
  * Rate how efficiently this scoring choice uses an upper category.
  *
  * Anchored to the "3 × face value" par threshold: 3 of a kind is par for every
@@ -238,7 +231,10 @@ export function rateChanceSafetyValve(infoSet: YachtInfoSet, category: YachtScor
  * This steers the AI to sacrifice low-ceiling slots (ones, twos) rather than burn
  * high-ceiling slots (fives, sixes) for below-par scores.
  */
-export function rateUpperCategoryEfficiency(infoSet: YachtInfoSet, category: YachtScoreAction): number {
+export function rateUpperCategoryEfficiency(
+  infoSet: YachtInfoSet,
+  category: YachtScoreAction
+): number {
   const faceValue = UPPER_CAT_FACE[category];
   if (faceValue === undefined) return 1.0;
 
@@ -251,6 +247,18 @@ export function rateUpperCategoryEfficiency(infoSet: YachtInfoSet, category: Yac
   return Math.max(0, 1 - ceilingFactor * (1 - ratio));
 }
 
+/**
+ * Rate this scoring action for adversarial variance appropriateness.
+ *
+ * Trailing (scoreDelta ≤ −20): high-variance categories score near 1.0 — take
+ *   the gamble to close the gap.
+ * Leading (scoreDelta ≥ +50): low-variance categories score near 1.0 — lock in
+ *   points, protect the lead.
+ * Neutral (delta ≈ 0): all categories return 0.5 (no directional preference).
+ *
+ * Between the thresholds, the score interpolates smoothly.  Category variance
+ * levels are decomposed from the trailing/leading heuristics in `scoreHard`.
+ */
 export function rateAdversarialVariance(infoSet: YachtInfoSet, category: YachtScoreAction): number {
   const delta = infoSet.scoreDelta;
   const variance = CATEGORY_VARIANCE[category] ?? UPPER_CAT_VARIANCE;

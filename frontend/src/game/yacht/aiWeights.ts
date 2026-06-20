@@ -4,8 +4,8 @@
  * One `WeightMap` pair (hold + score) per difficulty level.  A higher weight
  * amplifies the corresponding consideration's influence on the weighted-sum
  * decision score.  Difficulty: Easy 13% / Medium 3% / Hard 0% cognitive noise.
- * Medium uses Hard's EV-optimal hold weights but greedy (non-adversarial) scoring.
- * Calibrated in #2028: Hard wins ~62% vs Easy, ~52% vs Medium (1,000-game batches).
+ * Recalibrated in #2129: Hard wins ~62–68% vs Easy, ~47–53% vs Medium
+ * (200-game baseline; see ai.baseline.test.ts).
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
@@ -14,7 +14,11 @@ import type { AiDifficulty } from "./types";
 // ─── Key types ────────────────────────────────────────────────────────────────
 
 export type HoldWeightKey = "upperBonusUrgency" | "evOfHold";
-export type ScoreWeightKey = "immediateValue" | "chanceSafetyValve" | "adversarialVariance" | "upperCategoryEfficiency";
+export type ScoreWeightKey =
+  | "immediateValue"
+  | "chanceSafetyValve"
+  | "adversarialVariance"
+  | "upperCategoryEfficiency";
 
 export type HoldWeights = WeightMap<HoldWeightKey>;
 export type ScoreWeights = WeightMap<ScoreWeightKey>;
@@ -27,8 +31,7 @@ export const EASY_HOLD_WEIGHTS: HoldWeights = {
   evOfHold: 0.5,
 };
 
-// Medium: EV-optimal hold (same as Hard), greedy score (no adversarial) — 3% noise
-// Calibrated: Hard wins 62% vs Easy, 52% vs Medium at 1 000-game batches (#2028).
+// Medium: balanced hold (equal urgency/EV split, unlike Hard's EV-dominant 0.3/0.7)
 export const MEDIUM_HOLD_WEIGHTS: HoldWeights = {
   upperBonusUrgency: 0.5,
   evOfHold: 0.5,
@@ -50,7 +53,9 @@ export const EASY_SCORE_WEIGHTS: ScoreWeights = {
   upperCategoryEfficiency: 0.3,
 };
 
-// Medium: greedy score (no adversarial); EV-optimal holds distinguish it from Easy
+// Medium: greedy score; upper-efficiency weight (5.0 > Hard's 3.0) is intentionally
+// high — it's the primary signal that separates Medium from Easy rather than
+// adversarialVariance, which Medium keeps low to avoid adversarial play.
 export const MEDIUM_SCORE_WEIGHTS: ScoreWeights = {
   immediateValue: 1.0,
   chanceSafetyValve: 0.4,
