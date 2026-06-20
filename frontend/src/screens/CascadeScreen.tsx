@@ -365,7 +365,6 @@ function CascadeGame() {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const buildSnapshot = useCallback((): SavedState => {
@@ -537,7 +536,7 @@ function CascadeGame() {
       engineRef.current = null;
       setPieces([]);
     };
-  }, [gameKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameKey]);
 
   const handleTap = useCallback(
     (x: number) => {

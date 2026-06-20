@@ -72,7 +72,7 @@ describe("httpClient — BASE_URL configuration", () => {
     g.__DEV__ = false;
     try {
       expect(() => loadClient()).toThrow(/resolves to localhost/);
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+
       const Sentry = require("@sentry/react-native");
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.stringContaining("resolves to localhost"),
@@ -91,7 +91,7 @@ describe("httpClient — BASE_URL configuration", () => {
     g.__DEV__ = false;
     try {
       expect(() => loadClient()).not.toThrow();
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+
       const Sentry = require("@sentry/react-native");
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     } finally {
@@ -108,7 +108,7 @@ describe("httpClient — BASE_URL configuration", () => {
       // Module-level throw happens inside createGameClient because BASE_URL
       // is resolved eagerly. Verify both the throw and the Sentry breadcrumb.
       expect(() => loadClient()).toThrow(/EXPO_PUBLIC_API_URL is not set/);
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+
       const Sentry = require("@sentry/react-native");
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.stringContaining("EXPO_PUBLIC_API_URL is not set"),
@@ -142,7 +142,7 @@ describe("httpClient — error handling", () => {
     jest.resetModules();
     global.fetch = mockFetch;
     mockFetch.mockReset();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     Sentry = require("@sentry/react-native");
     Sentry.captureException.mockClear();
     Sentry.captureMessage.mockClear();
@@ -227,7 +227,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     jest.resetModules();
     global.fetch = mockFetch;
     mockFetch.mockReset();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     Sentry = require("@sentry/react-native");
     Sentry.captureException.mockClear();
     Sentry.captureMessage.mockClear();
@@ -235,7 +235,6 @@ describe("httpClient — Sentry reporting (#513)", () => {
   });
 
   function makeRequest(opts: { sampleRate?: number; random?: () => number } = {}) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createGameClient } = require("../httpClient") as typeof import("../httpClient");
     return createGameClient({
       apiTag: "test",

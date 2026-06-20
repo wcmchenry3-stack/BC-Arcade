@@ -111,6 +111,7 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
     registerHandler: jest.fn(),
   },
 }));
+
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
 // ---------------------------------------------------------------------------

@@ -372,6 +372,7 @@ export default function GameCanvas({
     );
     if (__DEV__) {
       const elapsed = performance.now() - drawT0;
+
       if (elapsed > 2)
         console.warn(
           `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
