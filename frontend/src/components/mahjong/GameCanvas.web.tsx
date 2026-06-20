@@ -18,7 +18,9 @@ import {
   MAHJONG_GLOW_SHADOW,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_SHADOW,
+  MAHJONG_OVERLAY_BTN_BG,
   MAHJONG_TILE_FACE_SELECTED,
+  MAHJONG_WIN_OVERLAY_BG,
 } from "../../theme/theme.constants";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -224,7 +226,6 @@ interface Props {
   hintIds?: ReadonlySet<number>;
   debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
-  onShufflePress: () => void;
   onNewGamePress: () => void;
 }
 
@@ -236,7 +237,6 @@ export default function GameCanvas({
   hintIds = EMPTY_SET,
   debugShowFree = false,
   onTilePress,
-  onShufflePress,
   onNewGamePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
@@ -274,16 +274,6 @@ export default function GameCanvas({
   );
   const showShuffleCTA = noFreePairs && state.shufflesLeft > 0;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;
-
-  const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
-  useEffect(() => {
-    if (!state.isDeadlocked) {
-      setShowDeadlockOverlay(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowDeadlockOverlay(true), 500);
-    return () => clearTimeout(timer);
-  }, [state.isDeadlocked]);
 
   // Reset felt pattern on unmount so a remount regenerates it against the new context.
   useEffect(
@@ -382,7 +372,6 @@ export default function GameCanvas({
     );
     if (__DEV__) {
       const elapsed = performance.now() - drawT0;
-      // eslint-disable-next-line no-console
       if (elapsed > 2)
         console.warn(
           `[mahjong] slow drawBoard: ${elapsed.toFixed(1)}ms for ${state.tiles.length} tiles`
@@ -430,38 +419,6 @@ export default function GameCanvas({
         role="img"
       />
 
-      {/* Shuffle CTA overlay */}
-      {showShuffleCTA && (
-        <View style={[styles.overlay, styles.noMovesOverlay]}>
-          <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
-          <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onShufflePress}
-            accessibilityLabel={t("action.shuffleLabel")}
-          >
-            <Text style={styles.btnText}>
-              {t("overlay.shuffleButton")} ({state.shufflesLeft})
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Deadlock overlay — shown after shake animation completes */}
-      {showDeadlockOverlay && (
-        <View style={[styles.overlay, styles.noMovesOverlay]}>
-          <Text style={styles.overlayTitle}>{t("overlay.deadlocked")}</Text>
-          <Text style={styles.overlayDetail}>{t("overlay.deadlockedDetail")}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onNewGamePress}
-            accessibilityLabel={t("action.newGameLabel")}
-          >
-            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
-          </Pressable>
-        </View>
-      )}
-
       {/* Win overlay */}
       {state.isComplete && (
         <View style={[styles.overlay, styles.winOverlay]}>
@@ -494,11 +451,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
   },
-  noMovesOverlay: {
-    backgroundColor: "rgba(0,0,0,0.72)",
-  },
   winOverlay: {
-    backgroundColor: "rgba(0,20,0,0.82)",
+    backgroundColor: MAHJONG_WIN_OVERLAY_BG,
   },
   overlayTitle: {
     color: "#ffffff",
@@ -528,7 +482,7 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   btn: {
-    backgroundColor: "#2a7a2a",
+    backgroundColor: MAHJONG_OVERLAY_BTN_BG,
     paddingVertical: 10,
     paddingHorizontal: 28,
     borderRadius: 6,
