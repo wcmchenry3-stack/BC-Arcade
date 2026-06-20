@@ -14,7 +14,7 @@ import type { AiDifficulty } from "./types";
 // ─── Key types ────────────────────────────────────────────────────────────────
 
 export type HoldWeightKey = "upperBonusUrgency" | "evOfHold";
-export type ScoreWeightKey = "immediateValue" | "chanceSafetyValve" | "adversarialVariance";
+export type ScoreWeightKey = "immediateValue" | "chanceSafetyValve" | "adversarialVariance" | "upperCategoryEfficiency";
 
 export type HoldWeights = WeightMap<HoldWeightKey>;
 export type ScoreWeights = WeightMap<ScoreWeightKey>;
@@ -30,8 +30,8 @@ export const EASY_HOLD_WEIGHTS: HoldWeights = {
 // Medium: EV-optimal hold (same as Hard), greedy score (no adversarial) — 3% noise
 // Calibrated: Hard wins 62% vs Easy, 52% vs Medium at 1 000-game batches (#2028).
 export const MEDIUM_HOLD_WEIGHTS: HoldWeights = {
-  upperBonusUrgency: 0.3,
-  evOfHold: 0.7,
+  upperBonusUrgency: 0.5,
+  evOfHold: 0.5,
 };
 
 // Hard: EV-dominant — no noise; adds adversarial variance on top of Medium
@@ -47,6 +47,7 @@ export const EASY_SCORE_WEIGHTS: ScoreWeights = {
   immediateValue: 1.0,
   chanceSafetyValve: 0.2,
   adversarialVariance: 0.3,
+  upperCategoryEfficiency: 0.3,
 };
 
 // Medium: greedy score (no adversarial); EV-optimal holds distinguish it from Easy
@@ -54,6 +55,7 @@ export const MEDIUM_SCORE_WEIGHTS: ScoreWeights = {
   immediateValue: 1.0,
   chanceSafetyValve: 0.4,
   adversarialVariance: 0.3,
+  upperCategoryEfficiency: 5.0,
 };
 
 // Hard: immediate value + adversarial variance dominant
@@ -61,6 +63,7 @@ export const HARD_SCORE_WEIGHTS: ScoreWeights = {
   immediateValue: 1.0,
   chanceSafetyValve: 0.4,
   adversarialVariance: 0.8,
+  upperCategoryEfficiency: 3.0,
 };
 
 // ─── Cognitive noise rates ────────────────────────────────────────────────────

@@ -25,10 +25,16 @@ const UPPER_PAR: Record<string, number> = {
   ones: 3, twos: 6, threes: 9, fours: 12, fives: 15, sixes: 18,
 };
 
+const LOWER_CATS = [
+  "three_of_a_kind", "four_of_a_kind", "full_house",
+  "small_straight", "large_straight", "yacht", "chance",
+] as const;
+
 interface GameMetrics {
   score: number;
   bonusAchieved: boolean;
   upperSubtotal: number;
+  lowerSubtotal: number;
   belowParFills: number;
 }
 
@@ -64,10 +70,16 @@ function simulateGame(diff: AiDifficulty, opponentDiff: AiDifficulty, seed: numb
       const v = state.scores[cat];
       if (v !== null && v !== undefined && v < par) belowPar++;
     }
+    let lowerSubtotal = 0;
+    for (const cat of LOWER_CATS) {
+      const v = state.scores[cat];
+      if (v !== null && v !== undefined) lowerSubtotal += v;
+    }
     return {
       score: state.total_score,
       bonusAchieved: state.upper_bonus > 0,
       upperSubtotal: state.upper_subtotal,
+      lowerSubtotal,
       belowParFills: belowPar,
     };
   }
@@ -79,18 +91,20 @@ interface BatchMetrics {
   meanScore: number;
   bonusRate: number;
   upperMean: number;
+  lowerMean: number;
   belowParMean: number;
   winRateVsOpp?: number;
 }
 
 function runSelfPlay(diff: AiDifficulty, n: number, seedOffset: number): BatchMetrics {
-  let totalScore = 0, bonusCount = 0, upperTotal = 0, belowParTotal = 0;
+  let totalScore = 0, bonusCount = 0, upperTotal = 0, lowerTotal = 0, belowParTotal = 0;
 
   for (let i = 0; i < n; i++) {
     const g = simulateGame(diff, diff, seedOffset + i);
     totalScore += g.player.score;
     if (g.player.bonusAchieved) bonusCount++;
     upperTotal += g.player.upperSubtotal;
+    lowerTotal += g.player.lowerSubtotal;
     belowParTotal += g.player.belowParFills;
   }
 
@@ -98,6 +112,7 @@ function runSelfPlay(diff: AiDifficulty, n: number, seedOffset: number): BatchMe
     meanScore: totalScore / n,
     bonusRate: bonusCount / n,
     upperMean: upperTotal / n,
+    lowerMean: lowerTotal / n,
     belowParMean: belowParTotal / n,
   };
 }
@@ -108,7 +123,7 @@ function runMatchup(
   n: number,
   seedOffset: number
 ): BatchMetrics {
-  let playerWins = 0, totalScore = 0, bonusCount = 0, upperTotal = 0, belowParTotal = 0;
+  let playerWins = 0, totalScore = 0, bonusCount = 0, upperTotal = 0, lowerTotal = 0, belowParTotal = 0;
 
   for (let i = 0; i < n; i++) {
     const g = simulateGame(playerDiff, oppDiff, seedOffset + i);
@@ -116,6 +131,7 @@ function runMatchup(
     totalScore += g.player.score;
     if (g.player.bonusAchieved) bonusCount++;
     upperTotal += g.player.upperSubtotal;
+    lowerTotal += g.player.lowerSubtotal;
     belowParTotal += g.player.belowParFills;
   }
 
@@ -123,6 +139,7 @@ function runMatchup(
     meanScore: totalScore / n,
     bonusRate: bonusCount / n,
     upperMean: upperTotal / n,
+    lowerMean: lowerTotal / n,
     belowParMean: belowParTotal / n,
     winRateVsOpp: playerWins / n,
   };
@@ -150,9 +167,9 @@ describe("Yacht AI — baseline metrics (GH #2129)", () => {
 
       console.log("--- Self-play per difficulty ---");
       console.table({
-        Easy:   { meanScore: easy.meanScore.toFixed(1),   bonusRate: pct(easy.bonusRate),   upperMean: easy.upperMean.toFixed(1),   belowParMean: easy.belowParMean.toFixed(2) },
-        Medium: { meanScore: medium.meanScore.toFixed(1), bonusRate: pct(medium.bonusRate), upperMean: medium.upperMean.toFixed(1), belowParMean: medium.belowParMean.toFixed(2) },
-        Hard:   { meanScore: hard.meanScore.toFixed(1),   bonusRate: pct(hard.bonusRate),   upperMean: hard.upperMean.toFixed(1),   belowParMean: hard.belowParMean.toFixed(2) },
+        Easy:   { meanScore: easy.meanScore.toFixed(1),   bonusRate: pct(easy.bonusRate),   upperMean: easy.upperMean.toFixed(1),   lowerMean: easy.lowerMean.toFixed(1),   belowParMean: easy.belowParMean.toFixed(2) },
+        Medium: { meanScore: medium.meanScore.toFixed(1), bonusRate: pct(medium.bonusRate), upperMean: medium.upperMean.toFixed(1), lowerMean: medium.lowerMean.toFixed(1), belowParMean: medium.belowParMean.toFixed(2) },
+        Hard:   { meanScore: hard.meanScore.toFixed(1),   bonusRate: pct(hard.bonusRate),   upperMean: hard.upperMean.toFixed(1),   lowerMean: hard.lowerMean.toFixed(1),   belowParMean: hard.belowParMean.toFixed(2) },
       });
 
       console.log("\n--- Matchup win rates (Hard as player) ---");
@@ -164,9 +181,9 @@ describe("Yacht AI — baseline metrics (GH #2129)", () => {
       console.log("\n--- Raw numbers ---");
       console.log(JSON.stringify({
         n: N,
-        easy:   { meanScore: r(easy.meanScore),   bonusRate: r(easy.bonusRate),   upperMean: r(easy.upperMean),   belowParMean: r(easy.belowParMean) },
-        medium: { meanScore: r(medium.meanScore), bonusRate: r(medium.bonusRate), upperMean: r(medium.upperMean), belowParMean: r(medium.belowParMean) },
-        hard:   { meanScore: r(hard.meanScore),   bonusRate: r(hard.bonusRate),   upperMean: r(hard.upperMean),   belowParMean: r(hard.belowParMean) },
+        easy:   { meanScore: r(easy.meanScore),   bonusRate: r(easy.bonusRate),   upperMean: r(easy.upperMean),   lowerMean: r(easy.lowerMean),   belowParMean: r(easy.belowParMean) },
+        medium: { meanScore: r(medium.meanScore), bonusRate: r(medium.bonusRate), upperMean: r(medium.upperMean), lowerMean: r(medium.lowerMean), belowParMean: r(medium.belowParMean) },
+        hard:   { meanScore: r(hard.meanScore),   bonusRate: r(hard.bonusRate),   upperMean: r(hard.upperMean),   lowerMean: r(hard.lowerMean),   belowParMean: r(hard.belowParMean) },
         hardVsEasy:   { winRate: r(hardVsEasy.winRateVsOpp!) },
         hardVsMedium: { winRate: r(hardVsMedium.winRateVsOpp!) },
       }, null, 2));

@@ -16,6 +16,7 @@ import {
   rateScorecardSafety,
   rateChanceSafetyValve,
   rateAdversarialVariance,
+  rateUpperCategoryEfficiency,
 } from "../aiConsiderations";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -382,6 +383,90 @@ describe("rateChanceSafetyValve", () => {
     }
     for (let i = 1; i < results.length; i++) {
       expect(results[i]).toBeGreaterThanOrEqual(results[i - 1]!);
+    }
+  });
+});
+
+// ─── rateUpperCategoryEfficiency ─────────────────────────────────────────────
+
+describe("rateUpperCategoryEfficiency", () => {
+  it("returns 1.0 for non-upper categories", () => {
+    const cats = ["yacht", "large_straight", "full_house", "chance", "three_of_a_kind"] as const;
+    for (const cat of cats) {
+      expect(rateUpperCategoryEfficiency(freshInfo, cat)).toBe(1.0);
+    }
+  });
+
+  it("returns 1.0 when score equals par (3 × face value)", () => {
+    // 3 sixes → score=18, par=18 → efficiency=1.0
+    const s = makeGame([6, 6, 6, 1, 2], 1);
+    const info = buildYachtInfoSet(s, 0);
+    expect(rateUpperCategoryEfficiency(info, "sixes")).toBe(1.0);
+    // 3 ones → score=3, par=3 → efficiency=1.0
+    const s2 = makeGame([1, 1, 1, 4, 5], 1);
+    const info2 = buildYachtInfoSet(s2, 0);
+    expect(rateUpperCategoryEfficiency(info2, "ones")).toBe(1.0);
+  });
+
+  it("returns 1.0 when score exceeds par", () => {
+    // 5 sixes → score=30, par=18 → above par
+    const s = makeGame([6, 6, 6, 6, 6], 1);
+    const info = buildYachtInfoSet(s, 0);
+    expect(rateUpperCategoryEfficiency(info, "sixes")).toBe(1.0);
+  });
+
+  it("returns 0.0 for sixes with zero matching dice (max penalty)", () => {
+    // No sixes in dice → score=0, par=18, ceilingFactor=1.0, ratio=0 → 1-1×1=0
+    const s = makeGame([1, 2, 3, 4, 5], 1);
+    const info = buildYachtInfoSet(s, 0);
+    expect(rateUpperCategoryEfficiency(info, "sixes")).toBe(0.0);
+  });
+
+  it("returns ~0.833 for ones with zero matching dice (low ceiling, low penalty)", () => {
+    // No ones → score=0, par=3, ceilingFactor=1/6, ratio=0 → 1 - (1/6)×1 = 5/6
+    const s = makeGame([2, 3, 4, 5, 6], 1);
+    const info = buildYachtInfoSet(s, 0);
+    expect(rateUpperCategoryEfficiency(info, "ones")).toBeCloseTo(5 / 6, 5);
+  });
+
+  it("penalises sixes more than ones for the same fractional shortfall below par", () => {
+    // 1 six / par=18 (ratio=6/18=0.333) vs 1 one / par=3 (ratio=1/3=0.333) — same ratio
+    // sixes penalty = 1×(1-0.333)=0.667 → eff=0.333
+    // ones penalty  = (1/6)×(1-0.333)≈0.111 → eff≈0.889
+    const sSixes = makeGame([6, 2, 3, 4, 5], 1);
+    const sOnes  = makeGame([1, 2, 3, 4, 5], 1);
+    const sixesEff = rateUpperCategoryEfficiency(buildYachtInfoSet(sSixes, 0), "sixes");
+    const onesEff  = rateUpperCategoryEfficiency(buildYachtInfoSet(sOnes, 0),  "ones");
+    expect(onesEff).toBeGreaterThan(sixesEff);
+    expect(sixesEff).toBeCloseTo(1 / 3, 5);
+    expect(onesEff).toBeCloseTo(1 - (1 / 6) * (2 / 3), 5);
+  });
+
+  it("rising efficiency: 1 six → 2 sixes → 3 sixes → 1.0", () => {
+    const eff1 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 1, 2, 3, 4], 1), 0), "sixes");
+    const eff2 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 6, 1, 2, 3], 1), 0), "sixes");
+    const eff3 = rateUpperCategoryEfficiency(buildYachtInfoSet(makeGame([6, 6, 6, 1, 2], 1), 0), "sixes");
+    expect(eff2).toBeGreaterThan(eff1);
+    expect(eff3).toBeGreaterThan(eff2);
+    expect(eff3).toBe(1.0);
+  });
+
+  it("returns value in [0, 1] for all upper categories across a range of dice", () => {
+    const upperCats = ["ones", "twos", "threes", "fours", "fives", "sixes"] as const;
+    const diceOptions = [
+      [1, 1, 1, 1, 1],
+      [6, 6, 6, 6, 6],
+      [1, 2, 3, 4, 5],
+      [3, 3, 3, 4, 5],
+      [6, 1, 1, 1, 1],
+    ];
+    for (const dice of diceOptions) {
+      const info = buildYachtInfoSet(makeGame(dice, 1), 0);
+      for (const cat of upperCats) {
+        const v = rateUpperCategoryEfficiency(info, cat);
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
     }
   });
 });
