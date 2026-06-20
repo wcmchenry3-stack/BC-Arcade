@@ -1623,7 +1623,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-skia (2.6.6):
+  - react-native-skia (2.6.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2151,7 +2151,7 @@ PODS:
     - ReactNativeDependencies
     - RNWorklets
     - Yoga
-  - RNGestureHandler (3.0.2):
+  - RNGestureHandler (3.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2819,7 +2819,7 @@ SPEC CHECKSUMS:
   React-mutationobservernativemodule: a42d1626651ccd7d0dc02a56e69d4ec77c248893
   react-native-netinfo: 2f906d5d9a639090ed1c079135d6485a95f749f1
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
-  react-native-skia: 21b1bfc553a7e07cc2f1c9b975da842c97472f8f
+  react-native-skia: b319389e81797af11985805fcfad0714b8670cab
   React-NativeModulesApple: deba264b03bd79c6bd61014fa30e40321b5e443a
   React-networking: 35e6070b084f435429f85c5db40b4d5b38652fe9
   React-oscompat: 64a0c7ef5441855dc6e2a6afe8ba8f92aa05075e
@@ -2855,7 +2855,7 @@ SPEC CHECKSUMS:
   ReactCommon: 7dfc3250793bf36cf221096ff59e1179e13eef7f
   ReactNativeDependencies: 2ffa7da976bae7126e7d4b560961ae8a64ab2594
   RNAudioAPI: 73ed6c890e1f8cd8a7e3d760031e8fdf5c159940
-  RNGestureHandler: ea542e5ad254ac2d234024168a8b87d723cf9463
+  RNGestureHandler: 90538897756b5778b428cda70de0b79e276b723a
   RNReanimated: f735b1747a7a93bda7ca102c6d37a3cf54b6d5e8
   RNScreens: 991cc417cd396602a6cf59a42139e5a9d91462a9
   RNSentry: f7085cbaea907cd9caa6b5fe519ddab249ce9302
