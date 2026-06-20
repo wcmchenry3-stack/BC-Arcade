@@ -168,26 +168,40 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - uses: dorny/paths-filter@v4
+        id: pkg_filter
+        with:
+          filters: |
+            package_json:
+              - 'frontend/package.json'
+
       - uses: actions/setup-node@v6
+        if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
       - name: Install frontend dependencies
+        if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
         run: npm ci
         working-directory: frontend
+
       - name: Detect native package bumps
         id: detect
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          PKG_CHANGED: ${{ steps.pkg_filter.outputs.package_json }}
         run: |
-          if [ "$EVENT_NAME" != "pull_request" ] || [ -z "$BASE_SHA" ]; then
+          if [ "$EVENT_NAME" != "pull_request" ] || [ -z "$BASE_SHA" ] || [ "$PKG_CHANGED" != "true" ]; then
             echo "has_native_ios=false" >> "$GITHUB_OUTPUT"
             echo "has_native_android=false" >> "$GITHUB_OUTPUT"
             echo "has_jsi=false" >> "$GITHUB_OUTPUT"
             echo "native_packages=" >> "$GITHUB_OUTPUT"
-            echo "No native package detection on non-PR events." >> "$GITHUB_STEP_SUMMARY"
+            echo "No native package detection needed." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -259,6 +273,15 @@ jobs:
               echo "No native package version changes detected."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Safe defaults on detect failure
+        if: steps.detect.outcome == 'failure'
+        run: |
+          echo "has_native_ios=false" >> "$GITHUB_OUTPUT"
+          echo "has_native_android=false" >> "$GITHUB_OUTPUT"
+          echo "has_jsi=false" >> "$GITHUB_OUTPUT"
+          echo "native_packages=" >> "$GITHUB_OUTPUT"
+          echo "::warning::detect-native-changes failed — native build gates will not auto-trigger on dev PRs. main-branch conditions still apply." >> "$GITHUB_STEP_SUMMARY"
 
   sentry-check:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]

@@ -109,7 +109,7 @@ if [ -f "frontend/package.json" ] && [ -d "frontend/node_modules" ]; then
           const { execSync: ex } = require('child_process');
           const podspec = ex('find ' + dir + ' -maxdepth 2 -name \"*.podspec\" 2>/dev/null', {encoding:'utf8'}).trim();
           if (podspec) return true;
-          const android = ex('find ' + dir + '/android -maxdepth 4 -name \"*.java\" -o -name \"*.kt\" -o -name \"*.cpp\" 2>/dev/null', {encoding:'utf8'}).trim();
+          const android = ex('find ' + dir + '/android -maxdepth 4 \\( -name \"*.java\" -o -name \"*.kt\" -o -name \"*.cpp\" \\) 2>/dev/null', {encoding:'utf8'}).trim();
           if (android) return true;
         } catch {}
         return false;
