@@ -45,8 +45,7 @@ function decodeJwtPayload(rawToken: string): EntitlementJWTPayload {
 }
 
 export type ParseResult =
-  | { valid: true; payload: EntitlementJWTPayload; expired: boolean }
-  | { valid: false };
+  { valid: true; payload: EntitlementJWTPayload; expired: boolean } | { valid: false };
 
 export interface EntitlementContextValue {
   /** Returns false for premium games while isLoading is true. Gate on isLoading before trusting the result. */

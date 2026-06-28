@@ -6,13 +6,7 @@
  */
 
 export type Suit =
-  | "characters"
-  | "circles"
-  | "bamboos"
-  | "winds"
-  | "dragons"
-  | "flowers"
-  | "seasons";
+  "characters" | "circles" | "bamboos" | "winds" | "dragons" | "flowers" | "seasons";
 
 /** Rank 1–9 covers all suits; suits with fewer ranks (e.g. dragons 1–3) simply
  * never use the higher values. */
