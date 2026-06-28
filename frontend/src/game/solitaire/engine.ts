@@ -769,9 +769,7 @@ export function applyHint(state: SolitaireState): SolitaireState {
 // ---------------------------------------------------------------------------
 
 export type AutoMoveResult =
-  | { kind: "execute"; move: Move }
-  | { kind: "ambiguous" }
-  | { kind: "no-move" };
+  { kind: "execute"; move: Move } | { kind: "ambiguous" } | { kind: "no-move" };
 
 function runLengthAt(state: SolitaireState, col: number): number {
   const pile = state.tableau[col];
