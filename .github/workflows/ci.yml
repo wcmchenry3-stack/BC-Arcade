@@ -125,7 +125,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -180,7 +180,7 @@ jobs:
             package_json:
               - 'frontend/package.json'
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
         with:
           node-version: 22
@@ -457,7 +457,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -509,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -551,7 +551,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -715,7 +715,7 @@ jobs:
           distribution: zulu
           java-version: 17
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.changes.outputs.should_run == 'true'
         with:
           node-version: 22
@@ -771,7 +771,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
