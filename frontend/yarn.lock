@@ -7550,10 +7550,10 @@ react-is@^19.1.0, react-is@^19.2.3:
   resolved "https://registry.npmjs.org/react-is/-/react-is-19.2.7.tgz"
   integrity sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A==
 
-react-native-audio-api@0.12.2:
-  version "0.12.2"
-  resolved "https://registry.npmjs.org/react-native-audio-api/-/react-native-audio-api-0.12.2.tgz"
-  integrity sha512-OizgzmolTzCwgMlNv8eyRTh888up6mmS158O1+h9M8dHE4dTSZjjT0622zDJ+Z58trEyYHRcOJP9evBMTzm4UQ==
+react-native-audio-api@0.13.2:
+  version "0.13.2"
+  resolved "https://registry.yarnpkg.com/react-native-audio-api/-/react-native-audio-api-0.13.2.tgz#8d472b96f23aa8bc8aef0c0c1e1ef7c828ac2193"
+  integrity sha512-xwJyj43uB2vxqHoSWQgdWL6/XO3Six8Dh1HIikidZiz3njeLuBYGzzFvZ7kg4ruhu0vSJO4ubgJQZcKBMm781w==
   dependencies:
     semver "^7.7.3"
 
