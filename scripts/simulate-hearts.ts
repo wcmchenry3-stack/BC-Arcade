@@ -593,7 +593,7 @@ console.log(
 // avoid flagging the correct direction as a failure on ordinary sampling noise.
 const csDelta = cautiousVsSchemerWr - cautiousWr;
 console.log(
-  `  ${check(csDelta > -0.01)} Cautious vs Schemer: win rate rises (Δ${csDelta >= 0 ? "+" : ""}${(csDelta * 100).toFixed(1)}pp, expected ~1-3pp rise, ${sigLabel(zCS)})`,
+  `  ${check(csDelta > -0.01)} Cautious vs Schemer: win rate does not drop (Δ${csDelta >= 0 ? "+" : ""}${(csDelta * 100).toFixed(1)}pp, expected ~1-3pp rise, ${sigLabel(zCS)})`,
 );
 // Removed: "Cautious vs Daring drops further" check is structurally flawed.
 // Daring's high-variance failed moon attempts self-punish Daring, so Cautious
