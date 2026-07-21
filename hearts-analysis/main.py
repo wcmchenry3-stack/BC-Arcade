@@ -115,7 +115,7 @@ async def simulate(req: SimulateRequest) -> dict:
     safe_diffs = [d for d in req.difficulties if d in {"easy", "medium", "hard"}]
     cmd = [
         "npx", "tsx", "scripts/simulate-hearts.ts",
-        "--count", str(safe_count),
+        "--log-games", str(safe_count),
         "--difficulties", ",".join(safe_diffs),
     ]
     games_file = DATA_DIR / "games.json"
