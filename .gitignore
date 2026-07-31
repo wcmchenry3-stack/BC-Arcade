@@ -60,3 +60,6 @@ celestial_images/
 
 # AI simulation output (local calibration runs — not committed)
 .sim-out/
+
+# Playwright e2e output — transient CI artifact (see .github/workflows/ci.yml), not committed
+e2e/test-results/
