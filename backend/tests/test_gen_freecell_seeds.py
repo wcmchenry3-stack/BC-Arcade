@@ -21,10 +21,14 @@ import pytest
 _BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND / "scripts"))
 
-from gen_freecell_seeds import (  # noqa: E402
+from gen_freecell_seeds import (
     DECK_SIZE,
     EMPTY,
     TABLEAU_COLUMNS,
+    _card_rank,
+    _card_suit,
+    _is_safe_to_foundation,
+    _is_win,
     apply_safe_automoves,
     canonical_key,
     deal,
@@ -33,10 +37,6 @@ from gen_freecell_seeds import (  # noqa: E402
     is_solvable,
     lcg,
     solve,
-    _card_rank,
-    _card_suit,
-    _is_safe_to_foundation,
-    _is_win,
 )
 
 # ---------------------------------------------------------------------------
@@ -107,13 +107,13 @@ def test_fisher_yates_different_seeds_differ() -> None:
 
 
 def test_deal_tableau_column_count() -> None:
-    foundations, tableau, freecells = deal(7)
+    _, tableau, _ = deal(7)
     assert len(tableau) == TABLEAU_COLUMNS
 
 
 def test_deal_column_sizes() -> None:
     """Cols 0-3 get 7 cards; cols 4-7 get 6 cards."""
-    foundations, tableau, freecells = deal(7)
+    _, tableau, _ = deal(7)
     for col in range(4):
         assert len(tableau[col]) == 7, f"col {col} size"
     for col in range(4, 8):
@@ -121,19 +121,19 @@ def test_deal_column_sizes() -> None:
 
 
 def test_deal_all_52_cards_present() -> None:
-    foundations, tableau, freecells = deal(17)
+    _, tableau, _ = deal(17)
     all_cards = [cid for col in tableau for cid in col]
     assert len(all_cards) == DECK_SIZE
     assert len(set(all_cards)) == DECK_SIZE
 
 
 def test_deal_freecells_empty() -> None:
-    foundations, tableau, freecells = deal(7)
+    _, _, freecells = deal(7)
     assert freecells == (EMPTY, EMPTY, EMPTY, EMPTY)
 
 
 def test_deal_foundations_empty() -> None:
-    foundations, tableau, freecells = deal(7)
+    foundations, _, _ = deal(7)
     assert foundations == (0, 0, 0, 0)
 
 
@@ -217,7 +217,7 @@ def test_automove_sends_ace_to_foundation() -> None:
     ace_spades = 0  # suit=0, rank=1
     state = _make_state([ace_spades])
     result = apply_safe_automoves(state)
-    foundations, tableau, freecells = result
+    foundations, tableau, _ = result
     assert foundations[0] == 1
     assert tableau[0] == ()
 

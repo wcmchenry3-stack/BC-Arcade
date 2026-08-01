@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 from pydantic import ValidationError
@@ -289,8 +289,9 @@ def client() -> Iterator:
     from db.base import is_configured
 
     assert is_configured()
-    from main import app
     from fastapi.testclient import TestClient
+
+    from main import app
 
     with TestClient(app) as c:
         yield c
@@ -339,7 +340,8 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
 # _validate_client_timestamp unit tests (#659)
 # ---------------------------------------------------------------------------
 
-from datetime import timezone, timedelta
+from datetime import timedelta, timezone
+
 from games.service import _validate_client_timestamp
 
 
@@ -379,7 +381,7 @@ def test_validate_timestamp_naive_treated_as_utc():
     from datetime import datetime
 
     now = _now()
-    naive = datetime(now.year, now.month, now.day, now.hour)
+    naive = datetime(now.year, now.month, now.day, now.hour)  # noqa: DTZ001 — testing naive input
     result = _validate_client_timestamp(naive, now)
     # Naive within window should be accepted and returned with UTC tzinfo.
     assert result is not None
