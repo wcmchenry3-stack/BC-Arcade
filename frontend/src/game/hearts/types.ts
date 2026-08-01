@@ -7,8 +7,6 @@
 
 export type AiPersona = "cautious" | "schemer" | "daring";
 export type AiPreset = AiPersona | "mixed";
-/** @deprecated Use AiPersona */
-export type AiDifficulty = AiPersona;
 export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
 export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
 

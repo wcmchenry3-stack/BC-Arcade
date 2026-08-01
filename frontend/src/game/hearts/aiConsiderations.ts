@@ -172,8 +172,8 @@ export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (infoS
  * Score = how safe this card is with respect to self-taking Q♠ (13 pts).
  *
  * Decomposed from: qSpadeProtected direction thresholds (all three pass modes),
- * the "dump Q♠ on void discard" path in chooseFollow, the endgame Q♠ guard in
- * selectCardToPlayHard, and the lead guard (never lead K♠/A♠ while Q♠ is out).
+ * the "dump Q♠ on void discard" follow path, the endgame Q♠ guard in the
+ * legacy Hard AI, and the lead guard (never lead K♠/A♠ while Q♠ is out).
  *
  * 1.0: no Q♠ risk (Q♠ already gone, or this card cannot cause self-take).
  * 0.0: near-certain Q♠ self-take (e.g. leading Q♠ into an active spade suit).
@@ -240,8 +240,8 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
 /**
  * Score = how effectively this card blocks an opponent's moon attempt.
  *
- * Decomposed from: the moon-blocking dump sequences in selectCardToPlayMedium /
- * selectCardToPlayHard — dump highest safe point card on the moon-shooter's trick
+ * Decomposed from: the moon-blocking dump sequences in the legacy Medium/Hard
+ * AI — dump highest safe point card on the moon-shooter's trick
  * when following, prefer low leads that won't feed the shooter when leading.
  *
  * 1.0: optimal block (safe high-value point dump onto the shooter's winning trick).
@@ -296,7 +296,7 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card
 /**
  * Score = how well this card advances collecting all 26 points (moon run).
  *
- * Decomposed from: the earlyMoon / midMoon play sequences in selectCardToPlayHard
+ * Decomposed from: the earlyMoon / midMoon play sequences in the legacy Hard AI
  * — lead highest non-hearts for trick control, win every point trick, dump junk
  * when void, protect hearts/Q♠ from being discarded.
  *
