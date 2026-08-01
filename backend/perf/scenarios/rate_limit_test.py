@@ -48,4 +48,4 @@ class RateLimitTasks(SequentialTaskSet):
                 else:
                     resp.failure(f"Unexpected status {resp.status_code}")
         if not hit_429:
-            raise Exception("Expected 429 after exhausting rate limit but never received one")
+            raise AssertionError("Expected 429 after exhausting rate limit but never received one")

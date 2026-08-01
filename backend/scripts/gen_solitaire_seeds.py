@@ -43,9 +43,9 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 # ---------------------------------------------------------------------------
 # Deck + deal (mirrors frontend/src/game/solitaire/engine.ts exactly)
@@ -100,7 +100,7 @@ def fisher_yates(deck: list[Card], rng: Iterator[float]) -> list[Card]:
     return deck
 
 
-def deal(seed: int) -> "State":
+def deal(seed: int) -> State:
     rng = lcg(seed)
     deck = fisher_yates(fresh_deck(), rng)
     tableau: list[tuple[Card, ...]] = []
@@ -423,16 +423,14 @@ def generate(
     seed = start_seed
     while (len(draw1) < count_draw1 or len(draw3) < count_draw3) and attempts < max_attempts:
         attempts += 1
-        if len(draw1) < count_draw1:
-            if is_solvable(seed, 1, state_budget):
-                draw1.append(seed)
-                if verbose:
-                    print(f"  draw1 +{seed} ({len(draw1)}/{count_draw1})", file=sys.stderr)
-        if len(draw3) < count_draw3:
-            if is_solvable(seed, 3, state_budget):
-                draw3.append(seed)
-                if verbose:
-                    print(f"  draw3 +{seed} ({len(draw3)}/{count_draw3})", file=sys.stderr)
+        if len(draw1) < count_draw1 and is_solvable(seed, 1, state_budget):
+            draw1.append(seed)
+            if verbose:
+                print(f"  draw1 +{seed} ({len(draw1)}/{count_draw1})", file=sys.stderr)
+        if len(draw3) < count_draw3 and is_solvable(seed, 3, state_budget):
+            draw3.append(seed)
+            if verbose:
+                print(f"  draw3 +{seed} ({len(draw3)}/{count_draw3})", file=sys.stderr)
         seed += 1
     return draw1, draw3
 

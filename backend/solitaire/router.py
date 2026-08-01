@@ -108,4 +108,4 @@ def reset_leaderboard() -> None:
     autouse fixture in ``test_solitaire_api.py`` can call it symmetrically
     with the Cascade tests.
     """
-    return None
+    return

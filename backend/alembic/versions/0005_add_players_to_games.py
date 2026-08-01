@@ -9,16 +9,17 @@ Existing rows default to ``[]``; new rows are populated by the API from
 the creating session (single-element list today, extensible for multiplayer).
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
+from alembic import op
+
 revision: str = "0005_add_players_to_games"
-down_revision: Union[str, None] = "0004_add_pachisi_game_type"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0004_add_pachisi_game_type"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # JSONB on Postgres, JSON on SQLite (mirrors db/models.py _JSONB pattern).
 _JSONB_TYPE = sa.JSON().with_variant(JSONB(), "postgresql")
