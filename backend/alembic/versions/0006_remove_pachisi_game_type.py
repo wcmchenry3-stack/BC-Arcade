@@ -8,15 +8,16 @@ Pachisi is being removed (Path A of #550). This migration deletes the row
 from game_types so the DB stays in sync with the GameType enum in vocab.py.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0006_remove_pachisi_game_type"
-down_revision: Union[str, None] = "0005_add_players_to_games"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0005_add_players_to_games"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
