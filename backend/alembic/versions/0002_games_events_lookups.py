@@ -5,16 +5,17 @@ Revises: 0001_baseline
 Create Date: 2026-04-12
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
+from alembic import op
+
 revision: str = "0002_games_events_lookups"
-down_revision: Union[str, None] = "0001_baseline"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0001_baseline"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 _JSONB = sa.JSON().with_variant(JSONB(), "postgresql")

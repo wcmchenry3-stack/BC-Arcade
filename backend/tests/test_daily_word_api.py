@@ -18,8 +18,8 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
-from typing import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -120,8 +120,8 @@ def test_post_guess_correct_word_all_correct(client: TestClient) -> None:
 
 def test_duplicate_letter_coloring_only_first_colored_present(client: TestClient) -> None:
     """With answer 'abbey', guess 'blabs': only two b's match, third b is absent."""
-    from daily_word.puzzle import get_answer
     from daily_word import puzzle as puzzle_mod
+    from daily_word.puzzle import get_answer
 
     # patch to make today's answer "abbey"
 

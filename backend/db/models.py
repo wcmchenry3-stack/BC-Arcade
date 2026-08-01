@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
     JSON,
@@ -32,8 +31,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
-    false as sa_false,
     func,
+)
+from sqlalchemy import (
+    false as sa_false,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,7 +58,7 @@ class GameType(Base):
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
-    icon_emoji: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon_emoji: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
     is_premium: Mapped[bool] = mapped_column(nullable=False, server_default=sa_false())
@@ -66,10 +67,10 @@ class GameType(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    event_types: Mapped[list["EventType"]] = relationship(
+    event_types: Mapped[list[EventType]] = relationship(
         back_populates="game_type", cascade="all, delete-orphan"
     )
-    games: Mapped[list["Game"]] = relationship(back_populates="game_type")
+    games: Mapped[list[Game]] = relationship(back_populates="game_type")
 
 
 class EventType(Base):
@@ -82,16 +83,14 @@ class EventType(Base):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    deprecated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     game_type: Mapped[GameType] = relationship(back_populates="event_types")
-    events: Mapped[list["GameEvent"]] = relationship(back_populates="event_type")
+    events: Mapped[list[GameEvent]] = relationship(back_populates="event_type")
 
 
 class Game(Base):
@@ -117,24 +116,24 @@ class Game(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     game_type_id: Mapped[int] = mapped_column(
         SmallInteger, ForeignKey("game_types.id"), nullable=False
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    final_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    outcome: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    final_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     game_metadata: Mapped[dict] = mapped_column(
         "metadata", _JSONB, nullable=False, server_default="{}"
     )
     players: Mapped[list] = mapped_column(_JSONB, nullable=False, server_default="[]")
 
     game_type: Mapped[GameType] = relationship(back_populates="games")
-    events: Mapped[list["GameEvent"]] = relationship(
+    events: Mapped[list[GameEvent]] = relationship(
         back_populates="game",
         cascade="all, delete-orphan",
         order_by="GameEvent.event_index",
@@ -192,7 +191,7 @@ class BugLog(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
