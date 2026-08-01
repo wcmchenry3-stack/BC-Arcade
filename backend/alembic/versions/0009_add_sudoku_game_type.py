@@ -9,15 +9,16 @@ member stays in sync with the game_types lookup table. The per-game
 module lives in backend/sudoku/.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0009_add_sudoku_game_type"
-down_revision: Union[str, None] = "0008_add_hearts_game_type"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0008_add_hearts_game_type"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

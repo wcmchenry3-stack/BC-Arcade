@@ -39,7 +39,7 @@ class CreateGameRequest(BaseModel):
     started_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_game_metadata(self) -> "CreateGameRequest":
+    def validate_game_metadata(self) -> CreateGameRequest:
         """Validate metadata against the per-game model if one is registered.
 
         Unregistered game types (e.g. future games not yet in the registry)

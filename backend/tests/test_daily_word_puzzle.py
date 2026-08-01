@@ -5,7 +5,6 @@ from __future__ import annotations
 import unicodedata
 from datetime import datetime, timezone
 
-
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
 
 # ---------------------------------------------------------------------------
@@ -172,6 +171,7 @@ def test_valid_hi_corpus_size():
 def test_valid_hi_all_five_codepoints():
     """Every entry in valid_hi.txt must be exactly 5 NFC code points."""
     import unicodedata
+
     from daily_word.puzzle import _VALID_HI
 
     bad = [w for w in _VALID_HI if len(unicodedata.normalize("NFC", w)) != 5]

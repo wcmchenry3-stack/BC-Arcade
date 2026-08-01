@@ -11,16 +11,17 @@ Game IDs: 1=yacht 2=twenty48 3=blackjack 4=cascade 6=solitaire
           7=hearts 8=sudoku 9=mahjong 10=starswarm 11=freecell
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy import text
+
 from alembic import op
 
 revision: str = "0014_game_types_premium_cat"
-down_revision: Union[str, None] = "0013_add_freecell_game_type"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0013_add_freecell_game_type"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _PREMIUM_IDS = (1, 4, 7, 8, 10)  # yacht, cascade, hearts, sudoku, starswarm
 
