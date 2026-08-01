@@ -9,16 +9,16 @@ import random
 import pytest
 
 from sort.generate_levels import (
-    COLORS_10,
-    COLORS_11,
-    COLORS_12,
-    COLORS_13,
-    COLORS_14,
     COLORS_5,
     COLORS_6,
     COLORS_7,
     COLORS_8,
     COLORS_9,
+    COLORS_10,
+    COLORS_11,
+    COLORS_12,
+    COLORS_13,
+    COLORS_14,
     _build_level_fast,
     _is_likely_solvable,
     _is_trivial,

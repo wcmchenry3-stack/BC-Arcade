@@ -7,36 +7,35 @@ from dotenv import load_dotenv
 
 load_dotenv()  # loads backend/.env when running locally; no-op in production (Render injects vars)
 
+import sentry_sdk
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-
-from db.base import DATABASE_URL, get_engine, is_configured
-from entitlements.dependencies import EntitlementError
-from entitlements.service import is_dev_override_active
-from limiter import _real_ip, limiter
 from cascade.router import router as cascade_router
 from daily_word.router import router as daily_word_router
+from db.base import DATABASE_URL, get_engine, is_configured
+from entitlements.dependencies import EntitlementError
+from entitlements.router import router as entitlements_router
+from entitlements.service import is_dev_override_active
 from freecell.router import router as freecell_router
+from games.router import router as games_router
 from hearts.router import router as hearts_router
+from limiter import _real_ip, limiter
+from logs.router import router as logs_router
 from mahjong.router import router as mahjong_router
+from me.router import router as me_router
 from solitaire.router import router as solitaire_router
 from sort.router import router as sort_router
 from starswarm.router import router as starswarm_router
+from stats.router import router as stats_router
 from sudoku.router import router as sudoku_router
 from yacht.router import router as yacht_router
-from entitlements.router import router as entitlements_router
-from games.router import router as games_router
-from logs.router import router as logs_router
-from me.router import router as me_router
-from stats.router import router as stats_router
 
 # ---------------------------------------------------------------------------
 # Audit logger — emits JSON lines; Render's log aggregator handles timestamps
