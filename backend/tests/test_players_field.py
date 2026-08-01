@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 from pydantic import ValidationError
@@ -70,8 +70,9 @@ def client() -> Iterator:
     from db.base import is_configured
 
     assert is_configured()
-    from main import app
     from fastapi.testclient import TestClient
+
+    from main import app
 
     with TestClient(app) as c:
         yield c
