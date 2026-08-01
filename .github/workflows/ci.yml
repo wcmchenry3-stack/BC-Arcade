@@ -689,7 +689,11 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [test-python, test-frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 min gives headroom for a cold Gradle cache (~20 min); once the cache
+    # is warm, runs finish well under that. A job killed by this timeout is
+    # cancelled before its own post-job step runs, so the cache never saves —
+    # too tight a limit here is self-perpetuating.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
