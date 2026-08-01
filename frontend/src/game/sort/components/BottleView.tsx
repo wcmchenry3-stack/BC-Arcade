@@ -77,9 +77,6 @@ const COLORBLIND_SYMBOLS: Record<Color, string> = {
 
 export const DEFAULT_BOTTLE_WIDTH = 52;
 export const DEFAULT_BOTTLE_HEIGHT = 156;
-// Backward-compat names used by SortBoard and snapshot tests
-export const BOTTLE_WIDTH = DEFAULT_BOTTLE_WIDTH;
-export const BOTTLE_HEIGHT = DEFAULT_BOTTLE_HEIGHT;
 
 // Pour animation timing (ms) — used by reduce-motion fallback in SortScreen
 export const TILT_IN_MS = 250;

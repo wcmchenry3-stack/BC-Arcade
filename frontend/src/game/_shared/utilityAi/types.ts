@@ -52,16 +52,3 @@ export type Consideration<TInfoSet extends InformationSet, TAction> = (
  * @template TKey The string key naming each consideration dimension.
  */
 export type WeightMap<TKey extends string> = Readonly<Record<TKey, number>>;
-
-/**
- * A candidate action together with its final weighted-sum decision score.
- *
- * The score is computed by evaluating all relevant considerations for this
- * action and summing their outputs after applying personality weights. The
- * decision selector (pick-best, pick-top-K, sample, etc.) uses these scored
- * candidates to choose which action to execute.
- */
-export interface DecisionCandidate<TAction> {
-  readonly action: TAction;
-  readonly score: number;
-}

@@ -194,8 +194,8 @@ export function selectCardsToPassUtility(
  */
 /**
  * Returns true when `playerIndex` is in an active moon attempt this trick,
- * per the Daring earlyMoon/midMoon thresholds (exact thresholds from the
- * legacy selectCardToPlayHard). Exported so simulation/calibration tooling
+ * per the Daring earlyMoon/midMoon thresholds (exact thresholds carried over
+ * from the legacy Hard AI). Exported so simulation/calibration tooling
  * (scripts/simulate-hearts.ts, ai.calibrate.test.ts) can instrument real
  * trigger activations instead of re-implementing — and drifting from —
  * these thresholds (#2204).
@@ -218,7 +218,7 @@ export function detectMoonAttempt(
   const earlyMoon = heartsInHand >= 7 && myHasQ && heartsWon === 0 && hand.length >= 8;
   // midMoon: 6+ hearts total + Q♠ + we hold all points taken so far.
   // NOTE: fires trivially when totalPointsTaken === 0 — myPoints(0) === 0 always.
-  // This is intentional (matching selectCardToPlayHard): a player with 6+ hearts + Q♠
+  // This is intentional (matching the legacy Hard AI): a player with 6+ hearts + Q♠
   // should play moon-attempt mode from trick 1, even before earlyMoon's 7+ threshold.
   const midMoon = totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
   return earlyMoon || midMoon;
@@ -236,18 +236,18 @@ export function selectCardToPlayUtility(
 
   const infoSet = buildHeartsInfoSet(hand, trick, state, playerIndex);
 
-  // ── Moon-attempt detection (exact thresholds from selectCardToPlayHard) ──
+  // ── Moon-attempt detection (exact thresholds from the legacy Hard AI) ──
   const isMoonAttempt = detectMoonAttempt(hand, state, playerIndex, difficulty);
 
   // ── Endgame detection (Daring only) ──────────────────────────────────────
-  // Mirrors the inEndgame guard in selectCardToPlayHard (maxScore ≥ 65).
+  // Mirrors the inEndgame guard in the legacy Hard AI (maxScore ≥ 65).
   const inEndgame =
     difficulty === "daring" &&
     !isMoonAttempt &&
     Math.max(...state.cumulativeScores.map((s) => s ?? 0)) >= 65;
 
   // ── Adversarial targeting detection (Daring only) ─────────────────────────
-  // Mirrors selectCardToPlayHard: void in led suit + seat 0 winning the current
+  // Mirrors the legacy Hard AI: void in led suit + seat 0 winning the current
   // trick → use DARING_ADVERSARIAL weights to prefer dumping Q♠/hearts on the human.
   // Guard: playerIndex !== 0 (Hard is never seat 0 in real play; without this,
   // a simulation placing Hard at seat 0 would withhold Q♠ indefinitely).

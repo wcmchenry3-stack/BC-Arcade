@@ -435,8 +435,8 @@ export function peers(r1: number, c1: number, r2: number, c2: number, cfg: GridC
 }
 
 /** Return the coordinates of all cells that already hold `value` in the
- * same row, column, or box as (`row`, `col`). Used by the UI to
- * flash conflicts when the player places a colliding digit. */
+ * same row, column, or box as (`row`, `col`). Pure conflict-detection
+ * helper (exercised by the engine test suite). */
 export function getConflicts(
   grid: Grid,
   row: number,
