@@ -137,7 +137,7 @@ def main() -> None:
                 if is_devanagari_5cp(w):
                     candidates.add(w)
             print(f"  +{len(candidates) - before:,} new words (raw: {len(words):,})")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — one bad source shouldn't abort the run
             print(f"  WARN: {exc}", file=sys.stderr)
 
     result = sorted(candidates)

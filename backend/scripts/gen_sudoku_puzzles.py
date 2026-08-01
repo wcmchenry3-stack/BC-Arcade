@@ -88,7 +88,7 @@ def _pick_empty(grid: list[int], peers_list: list[frozenset[int]], size: int) ->
     for i in range(total):
         if grid[i] == 0:
             mask = _candidates(grid, i, peers_list, size)
-            cnt = bin(mask).count("1")
+            cnt = mask.bit_count()
             if cnt < best_count:
                 best_count = cnt
                 best_i = i

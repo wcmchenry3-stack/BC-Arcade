@@ -11,7 +11,7 @@ and callers can skip DB work. No module-level crash — the app still boots.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (

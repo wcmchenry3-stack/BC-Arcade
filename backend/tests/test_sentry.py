@@ -87,6 +87,7 @@ class TestSentryUnit:
             pytest.skip("ENVIRONMENT != test, debug route not registered")
 
         from httpx import ASGITransport, AsyncClient
+
         from main import app
 
         transport = ASGITransport(app=app, raise_app_exceptions=False)
@@ -103,8 +104,9 @@ class TestSentryUnit:
     )
     def test_health_endpoint_accessible(self):
         """Health endpoint should work regardless of Sentry state."""
-        from main import app
         from starlette.testclient import TestClient
+
+        from main import app
 
         client = TestClient(app)
         resp = client.get(
