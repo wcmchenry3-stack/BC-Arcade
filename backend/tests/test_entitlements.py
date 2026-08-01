@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Iterator
 from datetime import datetime, timezone
-from typing import Iterator
 
 import jwt
 import pytest
@@ -167,9 +167,8 @@ def test_startup_warning_logged_when_override_active(
     monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
     from main import app
 
-    with caplog.at_level(logging.WARNING, logger="audit"):
-        with TestClient(app):
-            pass
+    with caplog.at_level(logging.WARNING, logger="audit"), TestClient(app):
+        pass
     assert any("DEV ENTITLEMENT OVERRIDE ACTIVE" in r.message for r in caplog.records)
 
 
@@ -179,9 +178,8 @@ def test_no_startup_warning_when_override_inactive(
     monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
     from main import app
 
-    with caplog.at_level(logging.WARNING, logger="audit"):
-        with TestClient(app):
-            pass
+    with caplog.at_level(logging.WARNING, logger="audit"), TestClient(app):
+        pass
     assert not any("DEV ENTITLEMENT OVERRIDE ACTIVE" in r.message for r in caplog.records)
 
 
@@ -191,8 +189,9 @@ def test_no_startup_warning_when_override_inactive(
 
 
 def test_render_yaml_prod_does_not_set_dev_override() -> None:
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     render_yaml = Path(__file__).resolve().parent.parent.parent / "render.yaml"
     config = yaml.safe_load(render_yaml.read_text())
