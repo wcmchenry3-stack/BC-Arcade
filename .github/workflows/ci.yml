@@ -714,6 +714,8 @@ jobs:
         with:
           distribution: zulu
           java-version: 17
+          cache: gradle
+          cache-dependency-path: frontend/android/**/*.gradle*
 
       - uses: actions/setup-node@v7
         if: steps.changes.outputs.should_run == 'true'
