@@ -171,9 +171,10 @@ export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (infoS
 /**
  * Score = how safe this card is with respect to self-taking Q♠ (13 pts).
  *
- * Decomposed from: qSpadeProtected direction thresholds (all three pass modes),
- * the "dump Q♠ on void discard" follow path, the endgame Q♠ guard in the
- * legacy Hard AI, and the lead guard (never lead K♠/A♠ while Q♠ is out).
+ * Decomposed from: the legacy rule-based Q♠-protection thresholds across all
+ * three pass modes, the "dump Q♠ on void discard" follow path, the endgame
+ * Q♠ guard in the legacy Hard AI, and the lead guard (never lead K♠/A♠ while
+ * Q♠ is out).
  *
  * 1.0: no Q♠ risk (Q♠ already gone, or this card cannot cause self-take).
  * 0.0: near-certain Q♠ self-take (e.g. leading Q♠ into an active spade suit).
