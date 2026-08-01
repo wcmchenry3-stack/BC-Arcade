@@ -14,11 +14,11 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from db.base import Base
 import db.models  # noqa: F401 — ensure models are registered on Base.metadata
+from alembic import context
+from db.base import Base
 
 config = context.config
 

@@ -39,11 +39,10 @@ See docs/PERFORMANCE.md for full documentation.
 """
 
 from locust import HttpUser, between
-
 from scenarios.game_flow import GameFlowTasks
 from scenarios.leaderboard import LeaderboardTasks
-from scenarios.stateless_reads import StatelessReadTasks
 from scenarios.rate_limit_test import RateLimitTasks
+from scenarios.stateless_reads import StatelessReadTasks
 
 
 class YachtGameUser(HttpUser):

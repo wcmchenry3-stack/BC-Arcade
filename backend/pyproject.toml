@@ -21,3 +21,7 @@ line-length = 100
 ignore = [
     "E402",  # module-level import not at top — intentional in scripts that manipulate sys.path
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"perf/locustfile.py" = ["RUF012"]  # Locust requires `tasks` as a plain class attribute, not ClassVar
+"sudoku/router.py" = ["B008"]  # fastapi.Path/Query must be called in the parameter default — that's how FastAPI's DI discovers them
