@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterator
 from datetime import datetime, timezone
-from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient

@@ -125,4 +125,4 @@ async def get_leaderboard(request: Request) -> LeaderboardResponse:
 
 def reset_leaderboard() -> None:
     """Test helper — no-op. DB isolation is handled by conftest's _clean_db_tables fixture."""
-    return None
+    return

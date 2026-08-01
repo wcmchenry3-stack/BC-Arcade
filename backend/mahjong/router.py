@@ -99,4 +99,4 @@ async def get_scores(request: Request) -> LeaderboardResponse:
 
 def reset_leaderboard() -> None:
     """Test helper — no-op. DB isolation handled by conftest's ``clean_db_tables``."""
-    return None
+    return
