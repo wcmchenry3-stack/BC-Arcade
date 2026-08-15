@@ -75,10 +75,7 @@ function simulateGame(
       if (holds.every((h) => h)) break;
       oState = roll(oState, holds);
     }
-    oState = score(
-      oState,
-      scoreStrategy(oState, opponentDiff, pState.total_score, pState.round)
-    );
+    oState = score(oState, scoreStrategy(oState, opponentDiff, pState.total_score, pState.round));
   }
 
   function metrics(state: ReturnType<typeof newGame>): GameMetrics {
