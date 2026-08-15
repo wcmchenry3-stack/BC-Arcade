@@ -131,6 +131,17 @@ class TestSetPlayerName:
         )
         assert res.status_code == 404
 
+    def test_incomplete_game_returns_400(self):
+        """Setting the name before /games/:id/complete must 400, not 500.
+
+        Regression test for BC_GAMES-4V: game.completed_at is NULL until the
+        game is completed, and comparing a SQLAlchemy column to None with `<`
+        raises ArgumentError instead of evaluating.
+        """
+        gid = _create_game()
+        res = _set_name(gid, "TooEarly")
+        assert res.status_code == 400
+
     async def test_wrong_session_returns_403(self):
         """A game owned by session A must not be claimable by session B."""
         other_session = str(uuid.uuid4())

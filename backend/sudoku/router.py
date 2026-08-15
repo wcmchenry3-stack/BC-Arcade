@@ -98,6 +98,8 @@ async def set_player_name(
             raise HTTPException(status_code=404, detail="Game not found.")
         if game.session_id != sid:
             raise HTTPException(status_code=403, detail="Forbidden.")
+        if game.final_score is None:
+            raise HTTPException(status_code=400, detail="Game has no final score.")
 
         metadata = dict(game.game_metadata or {})
         metadata["player_name"] = body.player_name
