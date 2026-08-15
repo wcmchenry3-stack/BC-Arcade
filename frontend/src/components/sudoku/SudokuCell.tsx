@@ -44,6 +44,14 @@ export default function SudokuCell({
 
   const valueColor = cell.given ? colors.text : cell.isError ? colors.error : colors.accent;
 
+  // The selected cell's background is the accent color blended over the
+  // surface (`background` above), which in dark theme composites to a
+  // mid-tone teal close in luminance to `textMuted` — notes rendered in
+  // that color become nearly invisible (~1:1 contrast). `textOnAccent` is
+  // tuned for text sitting on the accent color and keeps notes legible
+  // (~7.5:1) when the cell is selected.
+  const noteColor = selected ? colors.textOnAccent : colors.textMuted;
+
   const label = t("cell.label", {
     row: row + 1,
     col: col + 1,
@@ -68,7 +76,7 @@ export default function SudokuCell({
           {noteDigits.map((d) => (
             <Text
               key={d}
-              style={[styles.note, { color: cell.notes.has(d) ? colors.textMuted : "transparent" }]}
+              style={[styles.note, { color: cell.notes.has(d) ? noteColor : "transparent" }]}
             >
               {d}
             </Text>

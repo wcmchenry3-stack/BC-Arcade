@@ -172,6 +172,105 @@ describe("SudokuCell", () => {
     ).toJSON();
     expect(tree).toMatchSnapshot();
   });
+
+  // Regression test for the notes-invisible-when-selected bug: the selected
+  // cell's background is the accent color blended over the surface, which in
+  // dark theme composites close in luminance to `textMuted` — notes rendered
+  // in that color become nearly invisible (~1:1 contrast, see issue #2298).
+  describe("note color contrast", () => {
+    const notes = new Set<NoteDigit>([2, 8]);
+
+    it("uses textOnAccent for notes in the selected cell", async () => {
+      const { getByText } = await wrap(
+        <SudokuCell
+          size={9}
+          cell={cell({ notes })}
+          row={0}
+          col={0}
+          selected={true}
+          highlighted={false}
+          peer={false}
+          onPress={() => {}}
+        />
+      );
+      expect(getByText("2").props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ color: "#0e0e13" })])
+      );
+    });
+
+    it("uses textMuted for notes in an unselected/peer cell", async () => {
+      const { getByText } = await wrap(
+        <SudokuCell
+          size={9}
+          cell={cell({ notes })}
+          row={0}
+          col={3}
+          selected={false}
+          highlighted={false}
+          peer={true}
+          onPress={() => {}}
+        />
+      );
+      expect(getByText("2").props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ color: "#a0a0ac" })])
+      );
+    });
+
+    // WCAG 2.2 contrast ratio (relative luminance per 1.4.3), computed against
+    // each cell background's *composited* color (accent alpha-blended over the
+    // surface) rather than the flat surface token — that composite is what was
+    // missed when `textMuted` was originally tuned, causing this bug.
+    function relativeLuminance(hex: string): number {
+      const n = parseInt(hex.slice(1), 16);
+      const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      const chan = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      };
+      const [rl, gl, bl] = [chan(r), chan(g), chan(b)];
+      return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+    }
+
+    function contrastRatio(hexA: string, hexB: string): number {
+      const [la, lb] = [relativeLuminance(hexA), relativeLuminance(hexB)];
+      const [lighter, darker] = la > lb ? [la, lb] : [lb, la];
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    // Alpha-blend `fgHex` (with a two-hex-digit alpha suffix, e.g. "AA") over
+    // `bgHex`, matching the `colors.accent + "<alpha>"` composition used for
+    // selected/highlighted/peer cell backgrounds in SudokuCell.
+    function compositeOver(fgHex: string, alphaHex: string, bgHex: string): string {
+      const alpha = parseInt(alphaHex, 16) / 255;
+      const [fn, bn] = [parseInt(fgHex.slice(1), 16), parseInt(bgHex.slice(1), 16)];
+      const mix = (shift: number) => {
+        const fc = (fn >> shift) & 255;
+        const bc = (bn >> shift) & 255;
+        return Math.round(alpha * fc + (1 - alpha) * bc);
+      };
+      const [r, g, b] = [mix(16), mix(8), mix(0)];
+      return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+    }
+
+    const DARK_ACCENT = "#8ff5ff";
+    const DARK_SURFACE = "#19191f";
+    const DARK_TEXT_MUTED = "#a0a0ac";
+    const DARK_TEXT_ON_ACCENT = "#0e0e13";
+
+    it("meets WCAG AA (4.5:1) for note text on the selected-cell background", () => {
+      const bg = compositeOver(DARK_ACCENT, "AA", DARK_SURFACE);
+      expect(contrastRatio(DARK_TEXT_ON_ACCENT, bg)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it("meets WCAG AA (4.5:1) for note text on the peer-cell background", () => {
+      const bg = compositeOver(DARK_ACCENT, "22", DARK_SURFACE);
+      expect(contrastRatio(DARK_TEXT_MUTED, bg)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it("meets WCAG AA (4.5:1) for note text on the plain (unselected, non-peer) background", () => {
+      expect(contrastRatio(DARK_TEXT_MUTED, DARK_SURFACE)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
