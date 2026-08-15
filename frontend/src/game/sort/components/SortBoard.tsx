@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -22,6 +22,7 @@ import BottleView, {
   FLASK_CAVITY,
   LIQUID_COLORS,
 } from "./BottleView";
+import { computeGridShape } from "./gridGeometry";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
@@ -96,9 +97,7 @@ export default function SortBoard({
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
-  // Single row for ≤4 bottles; 3 cols for 5–6; 4 cols for 7+
-  const numCols = numBottles <= 4 ? numBottles : numBottles <= 6 ? 3 : 4;
-  const numRows = Math.ceil(numBottles / numCols);
+  const { numCols, numRows } = computeGridShape(numBottles);
 
   // Scale bottles to fill available height without overflow
   const avH = availableHeight && availableHeight > 0 ? availableHeight : 480;
@@ -122,6 +121,29 @@ export default function SortBoard({
   // gridOffsetRef is populated before any bottle cell onLayout runs.
   const gridOffsetRef = useRef({ x: 0, y: 0 });
   const bottlePositionsRef = useRef<{ x: number; y: number }[]>([]);
+
+  // SortScreen also forces a fresh SortBoard instance on every level change
+  // (key={currentLevelId}), which alone gives the refs above a clean start.
+  // This effect is a second, independent layer of protection: it doesn't
+  // assume the caller remounts us, so SortBoard stays correct even if reused
+  // in place (SortScreen's handleNextLevel used to do exactly that — see
+  // #2297). A different bottle count means a different grid (numCols/numRows,
+  // and possibly a differently-centered last row), so cached positions from
+  // the previous level's layout no longer describe the new one.
+  //
+  // Uses useLayoutEffect (not useEffect) so the reset is committed
+  // synchronously, before React/React Native can deliver any onLayout event
+  // for the just-rendered grid — onLayout is bridged asynchronously from
+  // native, so a plain useEffect racing against it could clear positions
+  // *after* fresh onLayout data for the new grid had already landed, wiping
+  // out correct data instead of stale data. The srcPos/dstPos guard in the
+  // pour effect below then treats every bottle as "not yet positioned" until
+  // fresh onLayout events for the new grid land, instead of computing a
+  // pour's ghost/highlight/stream from stale coordinates.
+  useLayoutEffect(() => {
+    bottlePositionsRef.current = [];
+    gridOffsetRef.current = { x: 0, y: 0 };
+  }, [numBottles]);
 
   // Ghost shared values — always allocated (hooks can't be conditional)
   const ghostDy = useSharedValue(0);
@@ -312,11 +334,20 @@ export default function SortBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitsLanded]);
 
-  // Pour tilt direction — used for reduce-motion fallback only
+  // Pour tilt direction — used for reduce-motion fallback only. Mirrors the
+  // srcPos/dstPos guard in the ghost effect above: if either position isn't
+  // populated yet (e.g. a pour started before fresh onLayout events land for
+  // a just-reset grid), fall back to undefined (no tilt) rather than
+  // guessing — BottleView only tilts when pouringDirection is set, so a
+  // guessed default here would risk tilting the bottle the wrong way.
+  const srcXForDirection = bottlePositionsRef.current[pouringFrom ?? -1]?.x;
+  const dstXForDirection = bottlePositionsRef.current[pouringTo ?? -1]?.x;
   const pouringDirection: "left" | "right" | undefined =
-    pouringFrom !== null && pouringTo !== null
-      ? (bottlePositionsRef.current[pouringFrom]?.x ?? 0) <
-        (bottlePositionsRef.current[pouringTo]?.x ?? Infinity)
+    pouringFrom !== null &&
+    pouringTo !== null &&
+    srcXForDirection !== undefined &&
+    dstXForDirection !== undefined
+      ? srcXForDirection < dstXForDirection
         ? "right"
         : "left"
       : undefined;
@@ -360,6 +391,7 @@ export default function SortBoard({
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
       <View
+        testID="sort-grid"
         style={[styles.grid, { gap: BOTTLE_GAP }]}
         onLayout={(e) => {
           gridOffsetRef.current = {
@@ -371,6 +403,7 @@ export default function SortBoard({
         {state.bottles.map((bottle, idx) => (
           <View
             key={idx}
+            testID={`bottle-cell-${idx}`}
             style={[
               styles.bottleCell,
               { width: bottleW },
@@ -402,6 +435,7 @@ export default function SortBoard({
           ghost is only set when !reduceMotion, so the extra guard is omitted. */}
       {ghost !== null && (
         <View
+          testID="pour-ghost-overlay"
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
           accessibilityElementsHidden
