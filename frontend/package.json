@@ -78,7 +78,7 @@
     "expo-screen-orientation": "~56.0.5",
     "expo-status-bar": "~56.0.4",
     "i18next": "^26.3.6",
-    "i18next-resources-to-backend": "^1.2.1",
+    "i18next-resources-to-backend": "^1.2.3",
     "matter-js": "^0.20.0",
     "poly-decomp": "^0.3.0",
     "react": "19.2.3",
