@@ -39,7 +39,7 @@ def _guess_key(request: Request) -> str:
     try:
         data = json.loads(body_bytes)
         puzzle_id = str(data.get("puzzle_id", ""))
-    except Exception:
+    except Exception:  # noqa: BLE001 — best-effort; must never break the rate limiter
         puzzle_id = ""
     sid = request.headers.get("X-Session-ID", "").strip() or _real_ip(request)
     return f"{sid}:{puzzle_id}"
@@ -136,7 +136,7 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
 
     try:
         answer = get_answer(body.puzzle_id)
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
@@ -165,6 +165,6 @@ async def get_answer_route(
     """Return the answer for a puzzle — only called client-side after all guesses are exhausted."""
     try:
         answer = get_answer(puzzle_id)
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
     return {"answer": answer}

@@ -20,9 +20,6 @@ export const MAX_ANGULAR_VELOCITY = 0.3; // rad/step hard clamp
 export const PIECE_SLEEP_THRESHOLD = 0.08; // motion = speed² + angularSpeed²; applied to Matter.Sleeping._motionSleepThreshold
 export const PIECE_SLEEP_MIN_FRAMES = 10; // frames below threshold before sleeping; applied to body.sleepThreshold
 
-// Anti-jitter — informational; Matter.Resolver._restingThresh is not a public API in v0.20
-export const PIECE_RESTITUTION_THRESHOLD = 0.001;
-
 // CCD / spawn-overlap clamping — prevents explosive ejection on merge spawn
 export const MAX_SPAWN_VELOCITY = 3; // px per frame
 

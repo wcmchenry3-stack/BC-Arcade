@@ -22,7 +22,7 @@ import pytest
 _BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND / "scripts"))
 
-from gen_sudoku_puzzles import (  # noqa: E402
+from gen_sudoku_puzzles import (
     TIER_RANGES,
     TIER_RANGES_MINI,
     _make_peers,

@@ -6,7 +6,8 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from db.base import get_session_factory
 from db.models import GameEntitlement

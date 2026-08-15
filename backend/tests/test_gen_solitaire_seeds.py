@@ -21,12 +21,12 @@ import pytest
 _BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND / "scripts"))
 
-from gen_solitaire_seeds import (  # noqa: E402
-    Card,
+from gen_solitaire_seeds import (
     DECK_SIZE,
-    State,
-    TABLEAU_COLUMNS,
     SUITS,
+    TABLEAU_COLUMNS,
+    Card,
+    State,
     deal,
     fisher_yates,
     fresh_deck,

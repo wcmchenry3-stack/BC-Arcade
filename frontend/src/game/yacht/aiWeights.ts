@@ -15,10 +15,7 @@ import type { AiDifficulty } from "./types";
 
 export type HoldWeightKey = "upperBonusUrgency" | "evOfHold";
 export type ScoreWeightKey =
-  | "immediateValue"
-  | "chanceSafetyValve"
-  | "adversarialVariance"
-  | "upperCategoryEfficiency";
+  "immediateValue" | "chanceSafetyValve" | "adversarialVariance" | "upperCategoryEfficiency";
 
 export type HoldWeights = WeightMap<HoldWeightKey>;
 export type ScoreWeights = WeightMap<ScoreWeightKey>;

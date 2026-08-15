@@ -33,14 +33,14 @@ downgrade, so the downgrade is only safe on a DB that has not yet
 accepted any lifecycle-vocabulary rows.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 revision: str = "0003_relax_games_outcome_ck"
-down_revision: Union[str, None] = "0002_games_events_lookups"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0002_games_events_lookups"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 _NEW_CHECK = (

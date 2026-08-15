@@ -125,7 +125,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -136,18 +136,26 @@ jobs:
         run: |
           echo "Checking dependency compatibility with Expo SDK..."
           # Approved version overrides — packages intentionally ahead of Expo's compat matrix:
-          #   @sentry/react-native: Expo 56 matrix predates Sentry 8, but Sentry 8 declares
-          #   peerDependencies: { expo: ">=49.0.0" }, so it is compatible with Expo 56.
+          #   @sentry/react-native: Expo's matrix predates Sentry 8, but Sentry 8 declares
+          #   peerDependencies: { expo: ">=49.0.0" }, so it is compatible.
           #   @react-native-async-storage/async-storage: v3 is API-compatible for
           #   getItem/setItem/removeItem/getAllKeys/clear (all operations this project uses).
           #   The breaking change (removed multiGet/multiSet/multiRemove) does not affect us.
-          #   @shopify/react-native-skia: Expo still pins 2.6.2, but 2.6.3–2.6.6 are all
-          #   bug fixes (iOS static framework headers, Android Paper stubs for SkiaWebGPUView,
-          #   Chrome m150 upgrade, Symbol.dispose JSI fix, removed postinstall script) with
-          #   no API-breaking changes.
-          APPROVED_OVERRIDES="@sentry/react-native|@react-native-async-storage/async-storage|@shopify/react-native-skia"
+          #   @shopify/react-native-skia: bumped past Expo's pin for 2.10.0's explicit
+          #   react-native-worklets/react-native-reanimated peerDependencies (the combo this
+          #   project runs); patch releases since are bug fixes with no API breaks.
+          #   react / react-dom: patch-level ahead of Expo's exact pin, same 19.2.x line.
+          #   react-native-gesture-handler: major version ahead (3.x) of Expo's tested 2.x pin;
+          #   3.x declares a wildcard react-native peerDependency and was already adopted on
+          #   dev prior to the SDK 57 bump.
+          #   react-native-reanimated / react-native-worklets: must move together and land
+          #   slightly ahead of Expo's exact pin — reanimated 4.5.3 is the first stable release
+          #   whose peerDependencies (react-native-worklets: 0.10.x - 0.11.x) support pairing
+          #   with react-native 0.86.2; verified via npm peerDependency metadata.
+          #   react-native-screens / react-native-svg: patch-level ahead, no functional change.
+          APPROVED_OVERRIDES="^\s+@sentry/react-native@|^\s+@react-native-async-storage/async-storage@|^\s+@shopify/react-native-skia@|^\s+react@|^\s+react-dom@|^\s+react-native-gesture-handler@|^\s+react-native-reanimated@|^\s+react-native-screens@|^\s+react-native-svg@|^\s+react-native-worklets@"
           npx expo install --check 2>&1 | tee /tmp/expo-check.log || true
-          UNAPPROVED=$(grep -E "^\s+@" /tmp/expo-check.log | grep -Ev "$APPROVED_OVERRIDES" || true)
+          UNAPPROVED=$(grep -E "^\s+\S+@\S+ - expected version:" /tmp/expo-check.log | grep -Ev "$APPROVED_OVERRIDES" || true)
           if [ -n "$UNAPPROVED" ]; then
             echo ""
             echo "::error::Expo dependency compatibility check failed. Run 'npx expo install --fix' locally to resolve."
@@ -180,7 +188,7 @@ jobs:
             package_json:
               - 'frontend/package.json'
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
         with:
           node-version: 22
@@ -330,6 +338,13 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-frontend.yml@main
     with:
       working-directory: frontend
+      # audit-level set to critical because two upstream-blocked high-severity advisories
+      # cannot be fixed without a breaking Expo downgrade:
+      #   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting an Expo 56 patch)
+      #   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same)
+      # Both affect the metro bundler only — not the production app runtime.
+      # Revert to audit-level: high once Expo ships a metro update with a patched image-size.
+      audit-level: critical
     secrets: inherit
 
   detect-e2e-scope:
@@ -457,7 +472,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -509,7 +524,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -551,7 +566,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -689,7 +704,11 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: [test-python, test-frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 min gives headroom for a cold Gradle cache (~20 min); once the cache
+    # is warm, runs finish well under that. A job killed by this timeout is
+    # cancelled before its own post-job step runs, so the cache never saves —
+    # too tight a limit here is self-perpetuating.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -714,8 +733,10 @@ jobs:
         with:
           distribution: zulu
           java-version: 17
+          cache: gradle
+          cache-dependency-path: frontend/android/**/*.gradle*
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.changes.outputs.should_run == 'true'
         with:
           node-version: 22
@@ -771,7 +792,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

@@ -134,4 +134,83 @@ describe("SortBoard", () => {
     );
     expect(getAllByLabelText(/^Bottle \d/)).toHaveLength(8);
   });
+
+  it(
+    "discards cached layout positions when the bottle count changes without " +
+      "unmounting, instead of pouring against stale coordinates (regression #2297)",
+    async () => {
+      // Issue #2297: SortScreen's "Next Level" flow (handleNextLevel) reuses the
+      // same SortBoard instance across a level change rather than unmounting it.
+      // bottlePositionsRef/gridOffsetRef are plain refs populated only by async
+      // onLayout — if a level change alters the grid shape (bottle count, so a
+      // different numCols/numRows or re-centered last row) and a pour is started
+      // before fresh onLayout events land for the new grid, the pour used to be
+      // computed from the *previous* level's coordinates: a highlight ring/stream
+      // that visually straddles the wrong bottle(s) instead of framing the real
+      // destination. The fix resets both refs whenever bottle count changes, so a
+      // pour attempted before fresh layout data arrives is suppressed rather than
+      // rendered in the wrong place.
+      const onBottleTap = jest.fn();
+      // Level A: 5 bottles → 3-col × 2-row grid (matches numCols formula in SortBoard).
+      const levelA = mkState([["red"], ["blue"], ["green"], ["yellow"], ["orange"]]);
+
+      const { getByTestId, queryByTestId, rerender } = await render(
+        withTheme(<SortBoard state={levelA} onBottleTap={onBottleTap} />)
+      );
+
+      // Simulate real onLayout events landing for level A's 3×2 grid.
+      await fireEvent(getByTestId("sort-grid"), "layout", {
+        nativeEvent: { layout: { x: 8, y: 40, width: 300, height: 300 } },
+      });
+      const levelAPositions = [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 200, y: 0 },
+        { x: 0, y: 150 },
+        { x: 100, y: 150 },
+      ];
+      for (const [idx, pos] of levelAPositions.entries()) {
+        await fireEvent(getByTestId(`bottle-cell-${idx}`), "layout", {
+          nativeEvent: { layout: { ...pos, width: 90, height: 140 } },
+        });
+      }
+
+      // Advance to a level with a different grid shape WITHOUT unmounting — this
+      // mirrors handleNextLevel/handleSelectLevel, which just swap `state`.
+      // Level B: 4 bottles → single-row grid (Level 2's shape from the bug report).
+      const levelB = mkState([["red"], ["blue"], ["green"], ["yellow"]]);
+      await rerender(withTheme(<SortBoard state={levelB} onBottleTap={onBottleTap} />));
+
+      // A pour is attempted immediately on the new level, before its own onLayout
+      // events have landed.
+      await rerender(
+        withTheme(
+          <SortBoard state={levelB} onBottleTap={onBottleTap} pouringFrom={0} pouringTo={1} />
+        )
+      );
+
+      // Fixed behavior: nothing renders from level A's stale positions — the pour
+      // stays suppressed until real layout data for level B actually arrives,
+      // rather than drawing a highlight/stream in the wrong place. The overlay
+      // is accessibility-hidden (decorative), so queries must opt in to see it.
+      expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
+
+      // Once level B's real layout lands, a pour renders normally again — this
+      // guards against the fix over-suppressing the feature entirely.
+      await fireEvent(getByTestId("sort-grid"), "layout", {
+        nativeEvent: { layout: { x: 8, y: 40, width: 400, height: 150 } },
+      });
+      for (let idx = 0; idx < 4; idx++) {
+        await fireEvent(getByTestId(`bottle-cell-${idx}`), "layout", {
+          nativeEvent: { layout: { x: idx * 100, y: 0, width: 90, height: 140 } },
+        });
+      }
+      await rerender(
+        withTheme(
+          <SortBoard state={levelB} onBottleTap={onBottleTap} pouringFrom={0} pouringTo={2} />
+        )
+      );
+      expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
+    }
+  );
 });

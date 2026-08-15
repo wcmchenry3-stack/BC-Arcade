@@ -1,6 +1,0 @@
-module Pods_GamingApp {
-  umbrella header "Pods-GamingApp-umbrella.h"
-
-  export *
-  module * { export * }
-}

@@ -1,1 +1,0 @@
-../../../../../node_modules/@shopify/react-native-skia/cpp/jsi2/EnumMapper.h

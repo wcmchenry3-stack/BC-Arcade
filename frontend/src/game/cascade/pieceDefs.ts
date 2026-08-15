@@ -1,8 +1,7 @@
 export type Vec2 = { x: number; y: number };
 
 export type ShapeDef =
-  | { kind: "circle"; radius: number }
-  | { kind: "convex"; vertices: Vec2[]; boundingRadius: number };
+  { kind: "circle"; radius: number } | { kind: "convex"; vertices: Vec2[]; boundingRadius: number };
 
 export interface PieceDef {
   tier: number;
