@@ -7,9 +7,14 @@
 export interface GridShape {
   readonly numCols: number;
   readonly numRows: number;
-  /** Bottle count in the last (possibly partial) row — relevant because
-   * `styles.grid` centers each wrapped row independently (flexWrap + centered
-   * justifyContent), so a differently-sized last row shifts x-positions. */
+  /** Bottle count in the last (possibly partial) row. Not currently read by
+   * SortBoard — the reset effect there keys directly off bottle count, not
+   * off this shape — but a differently-sized last row does shift x-positions
+   * (`styles.grid` centers each wrapped row independently via flexWrap +
+   * centered justifyContent), so it's tracked here and exercised by
+   * gridGeometry.test.ts to guarantee every bottle-count change produces a
+   * genuinely distinct grid shape (see the #2297 regression test below) —
+   * available for any future consumer that needs per-row centering info. */
   readonly lastRowCount: number;
 }
 

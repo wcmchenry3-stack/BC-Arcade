@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -122,16 +129,25 @@ export default function SortBoard({
   const gridOffsetRef = useRef({ x: 0, y: 0 });
   const bottlePositionsRef = useRef<{ x: number; y: number }[]>([]);
 
-  // Advancing to a new level (SortScreen's handleNextLevel) reuses this same
-  // SortBoard instance rather than unmounting it, so the refs above are NOT
-  // reset by React. A different bottle count means a different grid (numCols/
-  // numRows, and possibly a differently-centered last row — see #2297), so
-  // cached positions from the previous level's layout no longer describe the
-  // new one. Clear them here whenever the count changes; the srcPos/dstPos
-  // guard in the pour effect below then treats every bottle as "not yet
-  // positioned" until fresh onLayout events for the new grid land, instead of
-  // computing a pour's ghost/highlight/stream from stale coordinates.
-  useEffect(() => {
+  // SortScreen also forces a fresh SortBoard instance on every level change
+  // (key={currentLevelId}), which alone gives the refs above a clean start.
+  // This effect is a second, independent layer of protection: it doesn't
+  // assume the caller remounts us, so SortBoard stays correct even if reused
+  // in place (SortScreen's handleNextLevel used to do exactly that — see
+  // #2297). A different bottle count means a different grid (numCols/numRows,
+  // and possibly a differently-centered last row), so cached positions from
+  // the previous level's layout no longer describe the new one.
+  //
+  // Uses useLayoutEffect (not useEffect) so the reset is committed
+  // synchronously, before React/React Native can deliver any onLayout event
+  // for the just-rendered grid — onLayout is bridged asynchronously from
+  // native, so a plain useEffect racing against it could clear positions
+  // *after* fresh onLayout data for the new grid had already landed, wiping
+  // out correct data instead of stale data. The srcPos/dstPos guard in the
+  // pour effect below then treats every bottle as "not yet positioned" until
+  // fresh onLayout events for the new grid land, instead of computing a
+  // pour's ghost/highlight/stream from stale coordinates.
+  useLayoutEffect(() => {
     bottlePositionsRef.current = [];
     gridOffsetRef.current = { x: 0, y: 0 };
   }, [numBottles]);
@@ -210,18 +226,6 @@ export default function SortBoard({
     const srcPos = bottlePositionsRef.current[pouringFrom];
     const dstPos = bottlePositionsRef.current[pouringTo];
     if (!srcPos || !dstPos) return;
-
-    // Defense in depth against #2297-style regressions: the reset effect above
-    // should guarantee bottlePositionsRef always matches the current grid, but
-    // if that invariant is ever broken again (e.g. a future caching change),
-    // a length mismatch here is the tell — surface it loudly in dev instead of
-    // silently rendering a pour ghost/highlight/stream from stale coordinates.
-    if (__DEV__ && bottlePositionsRef.current.length !== numBottles) {
-      console.warn(
-        `[SortBoard] bottlePositionsRef length (${bottlePositionsRef.current.length}) ` +
-          `doesn't match numBottles (${numBottles}) — pour animation may use stale layout positions.`
-      );
-    }
 
     const sourceBottle = stateRef.current.bottles[pouringFrom];
     const dstBottle = stateRef.current.bottles[pouringTo];
@@ -337,11 +341,20 @@ export default function SortBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitsLanded]);
 
-  // Pour tilt direction — used for reduce-motion fallback only
+  // Pour tilt direction — used for reduce-motion fallback only. Mirrors the
+  // srcPos/dstPos guard in the ghost effect above: if either position isn't
+  // populated yet (e.g. a pour started before fresh onLayout events land for
+  // a just-reset grid), fall back to undefined (no tilt) rather than
+  // guessing — BottleView only tilts when pouringDirection is set, so a
+  // guessed default here would risk tilting the bottle the wrong way.
+  const srcXForDirection = bottlePositionsRef.current[pouringFrom ?? -1]?.x;
+  const dstXForDirection = bottlePositionsRef.current[pouringTo ?? -1]?.x;
   const pouringDirection: "left" | "right" | undefined =
-    pouringFrom !== null && pouringTo !== null
-      ? (bottlePositionsRef.current[pouringFrom]?.x ?? 0) <
-        (bottlePositionsRef.current[pouringTo]?.x ?? Infinity)
+    pouringFrom !== null &&
+    pouringTo !== null &&
+    srcXForDirection !== undefined &&
+    dstXForDirection !== undefined
+      ? srcXForDirection < dstXForDirection
         ? "right"
         : "left"
       : undefined;
