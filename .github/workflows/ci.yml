@@ -330,6 +330,13 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-frontend.yml@main
     with:
       working-directory: frontend
+      # audit-level set to critical because two upstream-blocked high-severity advisories
+      # cannot be fixed without a breaking Expo downgrade:
+      #   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting an Expo 56 patch)
+      #   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same)
+      # Both affect the metro bundler only — not the production app runtime.
+      # Revert to audit-level: high once Expo ships a metro update with a patched image-size.
+      audit-level: critical
     secrets: inherit
 
   detect-e2e-scope:
