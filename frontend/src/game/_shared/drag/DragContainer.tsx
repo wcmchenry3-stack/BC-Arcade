@@ -33,7 +33,15 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
   );
 
   return (
-    <Animated.View ref={containerRef} style={style} onLayout={onLayout}>
+    // collapsable={false} is required: without an explicit style prop (e.g. FreeCell's
+    // <DragContainer> — see #2154), a plain View with no distinguishing layout props is
+    // eligible for native view-flattening/collapsing. A flattened view is not present in
+    // the native tree, so Reanimated's measure(containerRef) returns null both here and in
+    // DraggableCard's pan.onStart re-sync — containerOffsetX/Y silently stay at their initial
+    // 0,0 and every ghost-card position (and therefore every drop) is computed against the
+    // wrong origin. Solitaire's DragContainer happened to dodge this because it's always
+    // passed a non-empty style (flex: 1), which incidentally also opts it out of flattening.
+    <Animated.View ref={containerRef} style={style} onLayout={onLayout} collapsable={false}>
       {children}
       <DragOverlay />
     </Animated.View>
