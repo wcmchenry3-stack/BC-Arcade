@@ -7,12 +7,25 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     groups:
+      # Narrow groups first — Dependabot assigns a dependency to the first
+      # group it matches, so these keep their identity instead of being
+      # swallowed by the catch-all below.
       expo:
         patterns: ["expo*", "@expo/*"]
       react-navigation:
         patterns: ["@react-navigation/*"]
       react-ecosystem:
         patterns: ["react", "react-dom", "react-test-renderer", "@types/react", "react-native"]
+      # CVE fixes get their own PR so they are never held up behind a routine batch.
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      # Everything else minor/patch arrives as one PR per week instead of ~10.
+      # Majors are deliberately excluded and still come individually.
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Backend (pip)
   - package-ecosystem: "pip"
@@ -20,6 +33,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -27,3 +48,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
