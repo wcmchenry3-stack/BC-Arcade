@@ -16,7 +16,7 @@ import {
   getMultisets,
   multisetCount,
 } from "../probTables";
-import { evForHold } from "../aiHelpers";
+import { evForHold, maxImmediateScore } from "../aiHelpers";
 import { computeDerived, newGame } from "../engine";
 import type { GameState } from "../types";
 
@@ -262,5 +262,45 @@ describe("probTables — edge cases", () => {
     const state = makeGame([1, 2, 3, 4, 5], 1);
     const ev = evForHold1Roll([], 5, state.scores);
     expect(ev).toBeGreaterThan(0);
+  });
+});
+
+// ─── Joker-aware maxImmediateScore (GH #2242) ─────────────────────────────────
+
+describe("maxImmediateScore — Joker turn", () => {
+  it("Priority 1: mandatory upper category is the only legal move, even when a lower category would score higher", () => {
+    // Yacht filled; a second five-of-a-kind (fours) rolled, and the
+    // corresponding upper category ("fours") is still open. Per Joker
+    // priority rules, "fours" is the ONLY legal move here — large_straight's
+    // Joker-fixed 40 (or full_house's 25) must NOT be considered, even
+    // though both exceed fours' plain value of 20.
+    const scores = withScores(makeGame([4, 4, 4, 4, 4], 2), { yacht: 50 }).scores;
+    const curUpperSubtotal = 0;
+    expect(maxImmediateScore([4, 4, 4, 4, 4], scores, curUpperSubtotal)).toBe(20);
+  });
+
+  it("Priority 2: prices open lower categories at their Joker-fixed values once the mandatory upper is filled", () => {
+    // Yacht AND fours both filled; large_straight/full_house/small_straight
+    // are now legally scoreable and must be Joker-priced (40/25/30), not the
+    // 0 a non-Joker-aware scorer would give five-of-a-kind fours.
+    const scores = withScores(makeGame([4, 4, 4, 4, 4], 2), { yacht: 50, fours: 20 }).scores;
+    const curUpperSubtotal = 20;
+    // Best among open lower cats: large_straight=40 beats full_house=25,
+    // small_straight=30, and three_of_a_kind/four_of_a_kind/chance=20 each.
+    expect(maxImmediateScore([4, 4, 4, 4, 4], scores, curUpperSubtotal)).toBe(40);
+  });
+
+  it("non-Joker combos within the same enumeration are unaffected", () => {
+    // Yacht filled, but THIS combo isn't a five-of-a-kind — must be priced
+    // via the plain scorer regardless of the scorecard's Joker eligibility.
+    const scores = withScores(makeGame([1, 2, 3, 4, 5], 2), { yacht: 50 }).scores;
+    // large_straight=40 (natural), full_house=0 (not a natural full house).
+    expect(maxImmediateScore([1, 2, 3, 4, 5], scores, 0)).toBe(40);
+  });
+
+  it("regression: unaffected when yacht is not yet filled", () => {
+    const scores = makeGame([4, 4, 4, 4, 4], 2).scores; // fresh scorecard, nothing filled
+    // Yacht itself is the best legal move here (50), not a lower-category guess.
+    expect(maxImmediateScore([4, 4, 4, 4, 4], scores, 0)).toBe(50);
   });
 });

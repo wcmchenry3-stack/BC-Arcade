@@ -18,7 +18,7 @@
  */
 
 import type { YachtInfoSet } from "./aiInfoSet";
-import { calculateScore, type Category } from "./engine";
+import { calculateScore, calculateJokerScore, type Category } from "./engine";
 import type { GameState } from "./types";
 import { evForHold1Roll, evForHold2Roll } from "./probTables";
 
@@ -149,6 +149,13 @@ export function rateUpperBonusUrgency(infoSet: YachtInfoSet, holdMask: YachtHold
  * - rollsRemaining ≤ 1 → exact 1-roll EV
  * - rollsRemaining ≥ 2 → hold-fixed 2-roll approximation (monotone: 2-roll ≥ 1-roll)
  *
+ * Joker-aware (GH #2242) via `maxImmediateScore` itself, which derives the
+ * Joker condition per candidate dice combo from `scores.yacht` rather than
+ * from a single current-turn snapshot — most enumerated reroll outcomes
+ * aren't five-of-a-kind, so a per-turn flag would be wrong for nearly all of
+ * them. `buildEVScores` preserves whether "yacht" is filled (via a non-null
+ * placeholder value), which is all `maxImmediateScore` needs.
+ *
  * Normalised by MAX_TURN_EV (50 pts); clamped to 1.0 for the rare case where
  * bonus credit pushes the EV above 50.
  */
@@ -188,12 +195,19 @@ const MAX_CAT_SCORE = 50;
  * weighted sums at delta=0, collapsing selection to the first category in
  * iteration order.
  *
+ * On a Joker turn (`infoSet.jokerActive`), prices the category using
+ * `calculateJokerScore` instead — the same Joker-aware value the engine
+ * awards when `score()` is actually called — so Full House / Small Straight /
+ * Large Straight are valued at their fixed 25/30/40 rather than 0.
+ *
  * Returns `calculateScore(category, dice) / 50`, clamped to [0, 1].
  * A zero here (no matching dice) still permits selection when no better
  * option exists; the gate is `rateScorecardSafety`, not this signal.
  */
 export function rateImmediateValue(infoSet: YachtInfoSet, category: YachtScoreAction): number {
-  const raw = calculateScore(category, infoSet.dice);
+  const raw = infoSet.jokerActive
+    ? calculateJokerScore(category, infoSet.dice)
+    : calculateScore(category, infoSet.dice);
   return Math.min(1.0, raw / MAX_CAT_SCORE);
 }
 

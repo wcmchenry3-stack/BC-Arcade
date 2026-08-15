@@ -52,7 +52,10 @@ const UPPER_BONUS_THRESHOLD = 63;
 const UPPER_BONUS_VALUE = 35;
 const YACHT_BONUS_VALUE = 100;
 
-const FACE_TO_UPPER: Record<number, Category> = {
+/** Die face → its corresponding upper-section category. Used to enforce the
+ * Joker rule's mandatory-upper priority (see `score()` and
+ * `jokerPossibleScores()` below, and `maxImmediateScore` in aiHelpers.ts). */
+export const FACE_TO_UPPER: Record<number, Category> = {
   1: "ones",
   2: "twos",
   3: "threes",
@@ -172,7 +175,7 @@ export function calculateScore(category: Category, dice: readonly number[]): num
   }
 }
 
-function calculateJokerScore(category: Category, dice: readonly number[]): number {
+export function calculateJokerScore(category: Category, dice: readonly number[]): number {
   if (UPPER_CATEGORIES.has(category)) return calculateScore(category, dice);
   switch (category) {
     case "three_of_a_kind":
@@ -185,6 +188,12 @@ function calculateJokerScore(category: Category, dice: readonly number[]): numbe
       return 30;
     case "large_straight":
       return 40;
+    case "yacht":
+      // Never legally reachable via score()/possibleScores() — the Joker rule
+      // only applies once "yacht" is already filled — but this function is
+      // public, so price it explicitly (flat 50, matching calculateScore's
+      // yacht case) rather than silently falling through to the 0 default.
+      return 50;
     case "chance":
       return sumDice(dice);
     default:
@@ -260,11 +269,12 @@ function withDerived(base: {
 // Yacht / Joker helpers
 // ---------------------------------------------------------------------------
 
-function isYacht(dice: readonly number[]): boolean {
+/** True when `dice` is a five-of-a-kind (excluding the all-zero pre-roll state). */
+export function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-function jokerActive(state: GameState): boolean {
+export function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 
