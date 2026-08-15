@@ -19,11 +19,11 @@ fi
 FAIL=0
 
 # ── npm audit ────────────────────────────────────────────────────────────────
-# Upstream-blocked advisories (unfixable without downgrading Expo or @lhci/cli):
-#   GHSA-jmr9-qjv8-65gv – extract-zip symlink traversal (lodged in lighthouse@12 via @lhci/cli)
+# Upstream-blocked advisories (unfixable without a breaking Expo downgrade):
 #   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting Expo fix)
 #   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same as above)
-NPM_AUDIT_BLOCKED="GHSA-jmr9-qjv8-65gv GHSA-w3rx-r6r6-pgpr GHSA-5p2g-fcmc-qvqq"
+# Remove these entries once Expo ships a metro update with a patched image-size.
+NPM_AUDIT_BLOCKED="GHSA-w3rx-r6r6-pgpr GHSA-5p2g-fcmc-qvqq"
 if [ -f "frontend/package.json" ]; then
   NPM_JSON=$(cd frontend && npm audit --json 2>/dev/null || true)
   ACTIONABLE=$(echo "$NPM_JSON" | python3 -c "

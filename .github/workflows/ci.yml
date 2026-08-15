@@ -331,11 +331,11 @@ jobs:
     with:
       working-directory: frontend
       # audit-level set to critical because two upstream-blocked high-severity advisories
-      # cannot be fixed without a breaking Expo or @lhci/cli downgrade:
-      #   GHSA-jmr9-qjv8-65gv – extract-zip symlink traversal (lodged in lighthouse@12 via @lhci/cli@0.15.1, the latest)
+      # cannot be fixed without a breaking Expo downgrade:
       #   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting an Expo 56 patch)
       #   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same)
-      # All three affect dev tooling only (CI perf runner, bundler) — not the production app runtime.
+      # Both affect the metro bundler only — not the production app runtime.
+      # Revert to audit-level: high once Expo ships a metro update with a patched image-size.
       audit-level: critical
     secrets: inherit
 
