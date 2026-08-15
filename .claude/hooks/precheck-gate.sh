@@ -19,12 +19,33 @@ fi
 FAIL=0
 
 # ── npm audit ────────────────────────────────────────────────────────────────
+# Upstream-blocked advisories (unfixable without downgrading Expo or @lhci/cli):
+#   GHSA-jmr9-qjv8-65gv – extract-zip symlink traversal (lodged in lighthouse@12 via @lhci/cli)
+#   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting Expo fix)
+#   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same as above)
+NPM_AUDIT_BLOCKED="GHSA-jmr9-qjv8-65gv GHSA-w3rx-r6r6-pgpr GHSA-5p2g-fcmc-qvqq"
 if [ -f "frontend/package.json" ]; then
-  if NPM_OUT=$(cd frontend && npm audit --audit-level=high 2>&1); then
+  NPM_JSON=$(cd frontend && npm audit --json 2>/dev/null || true)
+  ACTIONABLE=$(echo "$NPM_JSON" | python3 -c "
+import json, sys
+blocked = {'GHSA-jmr9-qjv8-65gv', 'GHSA-w3rx-r6r6-pgpr', 'GHSA-5p2g-fcmc-qvqq'}
+try:
+    data = json.load(sys.stdin)
+    count = 0
+    for info in data.get('vulnerabilities', {}).values():
+        if info.get('severity') in ('high', 'critical'):
+            sources = [x for x in info.get('via', []) if isinstance(x, dict)]
+            if sources and not any(b in str(x.get('url', '')) for b in blocked for x in sources):
+                count += 1
+    print(count)
+except Exception:
+    print(1)
+" 2>/dev/null || echo "1")
+  if [ "${ACTIONABLE:-1}" -eq 0 ]; then
     print_ok "npm audit"
   else
     FAIL=1
-    SUMMARY=$(echo "$NPM_OUT" | grep -m1 'vulnerabilit\|found' || echo "high or critical severity vulnerability found")
+    SUMMARY=$(echo "$NPM_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d.get('metadata',{}).get('vulnerabilities',{}).get('total',0)} vulnerabilities found\")" 2>/dev/null || echo "high or critical severity vulnerability found")
     print_fail "npm audit" \
       "$SUMMARY" \
       "cd frontend && npm audit fix"
