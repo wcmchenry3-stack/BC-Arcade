@@ -648,13 +648,35 @@ describe("rateAdversarialVariance", () => {
       expect(rateAdversarialVariance(info, "yacht")).toBeCloseTo(0.45, 5);
     });
 
-    it("no projection is applied before the opponent has completed a single turn", () => {
+    it("falls back to raw myScore when NEITHER side has completed a turn yet", () => {
       const s = { ...makeGame([1, 2, 3, 4, 5], 1), round: 1 };
-      const info = buildYachtInfoSet(s, 0, 2); // opponentRound=2 > round=1, but 0 turns completed
-      // myTurnsCompleted = round - 1 = 0 -> falls back to raw myScore, no projection.
+      const info = buildYachtInfoSet(s, 0, 2); // opponentRound=2 > round=1, but opponentScore=0 too
+      // Nothing to average on either side -> raw myScore (0), same as the
+      // no-projection case. Delta is 0 either way, so this is harmless.
       expect(rateAdversarialVariance(info, "chance")).toBe(
         rateAdversarialVariance(buildYachtInfoSet(s, 0, 1), "chance")
       );
+    });
+
+    // Round 1: I have no turn history to average from (myTurnsCompleted=0),
+    // but the opponent has already played round 1 (they're one round ahead).
+    // Falling back to my raw score of 0 here would read as maximally
+    // trailing on the very first turn of every game — reproducing the exact
+    // stale-snapshot bug this function exists to fix. Borrowing the
+    // opponent's own demonstrated per-turn average avoids that.
+    it("round 1: borrows the opponent's average when I have no turn history of my own", () => {
+      const me = { ...makeGame([1, 2, 3, 4, 5], 1), round: 1 };
+      const opponentScore = 25; // opponent's round-1 turn
+      const infoRaw = buildYachtInfoSet(me, opponentScore); // default: no projection
+      const infoProjected = buildYachtInfoSet(me, opponentScore, 2); // opponent 1 round ahead
+
+      // Un-projected: delta = 0 - 25 = -25, past TRAIL_THRESHOLD(-20) -> maximal gambling.
+      expect(rateAdversarialVariance(infoRaw, "yacht")).toBe(1.0);
+
+      // Projected: my estimate becomes 0 + (opponent's own 25/1 average) = 25,
+      // delta = 0 -> neutral, not a false "trailing" signal from a single
+      // round-1 data point.
+      expect(rateAdversarialVariance(infoProjected, "yacht")).toBeCloseTo(0.5, 5);
     });
   });
 });

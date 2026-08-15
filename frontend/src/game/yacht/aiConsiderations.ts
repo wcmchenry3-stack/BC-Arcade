@@ -267,19 +267,35 @@ export function rateUpperCategoryEfficiency(
  * Fix: when `infoSet.opponentRound > infoSet.round` (opponent already played
  * this round), project my own pending turn using my demonstrated average
  * score per completed turn, so both movers compare scores from the same
- * "this round complete" checkpoint instead of a stale pre-turn snapshot. No
- * projection is possible before I've completed a single turn (round 1), so
- * my raw score is used as-is there.
+ * "this round complete" checkpoint instead of a stale pre-turn snapshot.
+ *
+ * Round 1 has no turn history of my own to average — falling back to the
+ * raw (zero) score there would reproduce the exact bug this function exists
+ * to fix, just confined to the AI's very first turn of every game. Instead,
+ * borrow the opponent's own demonstrated average (they've necessarily played
+ * at least once, since this branch only runs when they're ahead in round
+ * count) as the best available estimate of what an average turn is worth
+ * here. Only when NEITHER side has a turn to average from (both scores are
+ * still 0) does this fall back to my raw score, which is harmless — the
+ * resulting delta is 0 either way.
  */
 function projectedMyScore(infoSet: YachtInfoSet): number {
   const opponentAlreadyPlayedThisRound = infoSet.opponentRound > infoSet.round;
   if (!opponentAlreadyPlayedThisRound) return infoSet.myScore;
 
   const myTurnsCompleted = infoSet.round - 1;
-  if (myTurnsCompleted <= 0) return infoSet.myScore;
+  if (myTurnsCompleted > 0) {
+    const avgPerTurn = infoSet.myScore / myTurnsCompleted;
+    return infoSet.myScore + avgPerTurn;
+  }
 
-  const avgPerTurn = infoSet.myScore / myTurnsCompleted;
-  return infoSet.myScore + avgPerTurn;
+  const opponentTurnsCompleted = infoSet.opponentRound - 1;
+  if (opponentTurnsCompleted > 0) {
+    const avgPerTurn = infoSet.opponentScore / opponentTurnsCompleted;
+    return infoSet.myScore + avgPerTurn;
+  }
+
+  return infoSet.myScore;
 }
 
 /**

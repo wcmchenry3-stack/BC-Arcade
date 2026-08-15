@@ -66,7 +66,19 @@ export interface YachtInfoSet extends InformationSet {
   readonly myScore: number;
   /** Opponent's current total score. */
   readonly opponentScore: number;
-  /** myScore − opponentScore (positive = leading). */
+  /**
+   * myScore − opponentScore (positive = leading).
+   *
+   * A literal, order-dependent snapshot: if `opponentRound > round` (the
+   * opponent has already played the round I'm about to complete), this
+   * compares my pre-this-round score against their post-this-round score —
+   * making me look ~1 turn's worth of points more "behind" than I really
+   * am. `rateAdversarialVariance` (aiConsiderations.ts) does NOT use this
+   * field directly for that reason; it derives an order-independent delta
+   * via its own `projectedMyScore` helper instead. Any new consideration
+   * that needs a turn-order-fair comparison should do the same rather than
+   * reading `scoreDelta` — see GH #2200.
+   */
   readonly scoreDelta: number;
 
   // ── Round info ───────────────────────────────────────────────────────────
