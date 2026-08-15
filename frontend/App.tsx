@@ -143,7 +143,6 @@ function makePremiumScreen<P extends object>(
         navigation.navigate("Home");
       }
       wasEntitledRef.current = entitled;
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- slug is a factory constant, stable for the component's lifetime
     }, [canPlay, isLoading, navigation]);
 
     if (isLoading) return <ActivityIndicator style={{ flex: 1 }} />;
