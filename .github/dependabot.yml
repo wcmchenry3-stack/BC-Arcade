@@ -59,6 +59,14 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+      # @react-native/* packages (e.g. jest-preset) are versioned in lockstep
+      # with react-native itself — #2316 bumped jest-preset to 0.87.0 while
+      # react-native stayed pinned at 0.86.2 and broke jest's module
+      # resolution for every test suite. Move it only alongside react-native.
+      - dependency-name: "@react-native/*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   # Backend (pip)
   - package-ecosystem: "pip"
