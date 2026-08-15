@@ -1,1 +1,0 @@
-../../../../../build/generated/ios/ReactCodegen/rnscreens/rnscreens.h

@@ -1,6 +1,0 @@
-module ExpoModulesJSI {
-  umbrella header "ExpoModulesJSI-umbrella.h"
-
-  export *
-  module * { export * }
-}
