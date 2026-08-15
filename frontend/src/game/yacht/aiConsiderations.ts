@@ -149,6 +149,13 @@ export function rateUpperBonusUrgency(infoSet: YachtInfoSet, holdMask: YachtHold
  * - rollsRemaining ≤ 1 → exact 1-roll EV
  * - rollsRemaining ≥ 2 → hold-fixed 2-roll approximation (monotone: 2-roll ≥ 1-roll)
  *
+ * Joker-aware (GH #2242) via `maxImmediateScore` itself, which derives the
+ * Joker condition per candidate dice combo from `scores.yacht` rather than
+ * from a single current-turn snapshot — most enumerated reroll outcomes
+ * aren't five-of-a-kind, so a per-turn flag would be wrong for nearly all of
+ * them. `buildEVScores` preserves whether "yacht" is filled (via a non-null
+ * placeholder value), which is all `maxImmediateScore` needs.
+ *
  * Normalised by MAX_TURN_EV (50 pts); clamped to 1.0 for the rare case where
  * bonus credit pushes the EV above 50.
  */

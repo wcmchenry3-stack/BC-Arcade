@@ -6,7 +6,14 @@
  */
 
 import { GameState } from "./types";
-import { CATEGORIES, UPPER_CATEGORIES, calculateScore } from "./engine";
+import {
+  CATEGORIES,
+  UPPER_CATEGORIES,
+  FACE_TO_UPPER,
+  calculateScore,
+  calculateJokerScore,
+  isYacht,
+} from "./engine";
 
 function upperSubtotal(scores: GameState["scores"]): number {
   let s = 0;
@@ -26,25 +33,56 @@ const UPPER_BONUS_VALUE = 35;
  * Upper-section scores that would push the running subtotal from below 63
  * to ≥ 63 receive a +35 bonus credit.  The `curUpperSubtotal < 63` guard
  * prevents crediting the bonus a second time when it is already earned.
+ *
+ * Joker-aware (GH #2242): `dice` may be any candidate combo (this function is
+ * called once per possible reroll outcome, not just the actual current
+ * dice), so the Joker check — "is *this* combo a five-of-a-kind, with yacht
+ * already filled on the scorecard" — is derived fresh per call from `dice`
+ * and `scores` rather than taken as a caller-supplied flag; a single
+ * snapshot flag would be wrong for the vast majority of hypothetical combos
+ * enumerated by evForHold1Roll / evForHold2Roll, which aren't five-of-a-kind.
+ *
+ * On a Joker combo, mirrors engine.ts's `jokerPossibleScores()` priority
+ * order: if the dice's corresponding upper category is still open, that
+ * category is the ONLY legal move (Priority 1) — returned directly, without
+ * comparing against lower categories that aren't actually scoreable yet.
+ * Otherwise, open lower categories are priced via `calculateJokerScore`
+ * (Full House / Small Straight / Large Straight at their fixed 25/30/40).
  */
 export function maxImmediateScore(
   dice: readonly number[],
   scores: GameState["scores"],
   curUpperSubtotal: number
 ): number {
+  const yachtFilled = scores.yacht !== null && scores.yacht !== undefined;
+  const jokerTurn = yachtFilled && isYacht(dice);
+
+  const bonusCredit = (cat: (typeof CATEGORIES)[number], s: number): number =>
+    UPPER_CATEGORIES.has(cat) &&
+    s > 0 &&
+    curUpperSubtotal < UPPER_BONUS_THRESHOLD &&
+    curUpperSubtotal + s >= UPPER_BONUS_THRESHOLD
+      ? UPPER_BONUS_VALUE
+      : 0;
+
+  if (jokerTurn) {
+    const face = dice[0];
+    const upperCat = face !== undefined ? FACE_TO_UPPER[face] : undefined;
+    if (upperCat !== undefined && (scores[upperCat] === null || scores[upperCat] === undefined)) {
+      // Priority 1: the corresponding upper category is mandatory and the
+      // only legal move — same value with or without Joker awareness.
+      const s = calculateScore(upperCat, dice);
+      return s + bonusCredit(upperCat, s);
+    }
+  }
+
   let best = 0;
   for (const cat of CATEGORIES) {
     const v = scores[cat];
     if (v !== null && v !== undefined) continue;
-    const s = calculateScore(cat, dice);
-    const bonusCredit =
-      UPPER_CATEGORIES.has(cat) &&
-      s > 0 &&
-      curUpperSubtotal < UPPER_BONUS_THRESHOLD &&
-      curUpperSubtotal + s >= UPPER_BONUS_THRESHOLD
-        ? UPPER_BONUS_VALUE
-        : 0;
-    if (s + bonusCredit > best) best = s + bonusCredit;
+    const s = jokerTurn ? calculateJokerScore(cat, dice) : calculateScore(cat, dice);
+    const credit = bonusCredit(cat, s);
+    if (s + credit > best) best = s + credit;
   }
   return best;
 }

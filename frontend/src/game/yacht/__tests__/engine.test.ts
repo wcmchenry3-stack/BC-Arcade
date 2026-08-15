@@ -11,6 +11,7 @@ import {
   toggleHold,
   possibleScores,
   calculateScore,
+  calculateJokerScore,
   computeDerived,
   isInProgress,
   setRng,
@@ -108,6 +109,47 @@ describe("calculateScore — yacht + chance", () => {
   it("yacht miss", () => expect(calculateScore("yacht", [4, 4, 4, 4, 3])).toBe(0));
   it("chance sums", () => expect(calculateScore("chance", [1, 2, 3, 4, 5])).toBe(15));
   it("chance max", () => expect(calculateScore("chance", [6, 6, 6, 6, 6])).toBe(30));
+});
+
+// GH #2242: calculateJokerScore is public (used directly by the AI's
+// valuation logic), so its fixed-value contract is worth pinning on its own,
+// independent of score()'s Joker-priority enforcement tested below.
+describe("calculateJokerScore", () => {
+  // Five-of-a-kind never forms a natural full house / straight, so these
+  // fixed values only differ from calculateScore's 0 on a Joker turn.
+  const fiveOfAKind = [2, 2, 2, 2, 2];
+
+  it("upper categories delegate to calculateScore (Joker rule doesn't change upper scoring)", () => {
+    expect(calculateJokerScore("twos", fiveOfAKind)).toBe(calculateScore("twos", fiveOfAKind));
+    expect(calculateJokerScore("sixes", [6, 6, 6, 6, 6])).toBe(
+      calculateScore("sixes", [6, 6, 6, 6, 6])
+    );
+  });
+
+  it("full_house scores the fixed 25", () => {
+    expect(calculateJokerScore("full_house", fiveOfAKind)).toBe(25);
+  });
+
+  it("small_straight scores the fixed 30", () => {
+    expect(calculateJokerScore("small_straight", fiveOfAKind)).toBe(30);
+  });
+
+  it("large_straight scores the fixed 40", () => {
+    expect(calculateJokerScore("large_straight", fiveOfAKind)).toBe(40);
+  });
+
+  it("three_of_a_kind and four_of_a_kind score the dice sum", () => {
+    expect(calculateJokerScore("three_of_a_kind", fiveOfAKind)).toBe(10);
+    expect(calculateJokerScore("four_of_a_kind", fiveOfAKind)).toBe(10);
+  });
+
+  it("chance scores the dice sum", () => {
+    expect(calculateJokerScore("chance", fiveOfAKind)).toBe(10);
+  });
+
+  it("yacht scores the flat 50 (not currently reachable via score(), but priced defensively)", () => {
+    expect(calculateJokerScore("yacht", fiveOfAKind)).toBe(50);
+  });
 });
 
 // --- Roll logic ------------------------------------------------------------
