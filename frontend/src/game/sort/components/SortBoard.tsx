@@ -22,6 +22,7 @@ import BottleView, {
   FLASK_CAVITY,
   LIQUID_COLORS,
 } from "./BottleView";
+import { computeGridShape } from "./gridGeometry";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
@@ -96,9 +97,7 @@ export default function SortBoard({
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
-  // Single row for ≤4 bottles; 3 cols for 5–6; 4 cols for 7+
-  const numCols = numBottles <= 4 ? numBottles : numBottles <= 6 ? 3 : 4;
-  const numRows = Math.ceil(numBottles / numCols);
+  const { numCols, numRows } = computeGridShape(numBottles);
 
   // Scale bottles to fill available height without overflow
   const avH = availableHeight && availableHeight > 0 ? availableHeight : 480;
@@ -122,6 +121,20 @@ export default function SortBoard({
   // gridOffsetRef is populated before any bottle cell onLayout runs.
   const gridOffsetRef = useRef({ x: 0, y: 0 });
   const bottlePositionsRef = useRef<{ x: number; y: number }[]>([]);
+
+  // Advancing to a new level (SortScreen's handleNextLevel) reuses this same
+  // SortBoard instance rather than unmounting it, so the refs above are NOT
+  // reset by React. A different bottle count means a different grid (numCols/
+  // numRows, and possibly a differently-centered last row — see #2297), so
+  // cached positions from the previous level's layout no longer describe the
+  // new one. Clear them here whenever the count changes; the srcPos/dstPos
+  // guard in the pour effect below then treats every bottle as "not yet
+  // positioned" until fresh onLayout events for the new grid land, instead of
+  // computing a pour's ghost/highlight/stream from stale coordinates.
+  useEffect(() => {
+    bottlePositionsRef.current = [];
+    gridOffsetRef.current = { x: 0, y: 0 };
+  }, [numBottles]);
 
   // Ghost shared values — always allocated (hooks can't be conditional)
   const ghostDy = useSharedValue(0);
@@ -197,6 +210,18 @@ export default function SortBoard({
     const srcPos = bottlePositionsRef.current[pouringFrom];
     const dstPos = bottlePositionsRef.current[pouringTo];
     if (!srcPos || !dstPos) return;
+
+    // Defense in depth against #2297-style regressions: the reset effect above
+    // should guarantee bottlePositionsRef always matches the current grid, but
+    // if that invariant is ever broken again (e.g. a future caching change),
+    // a length mismatch here is the tell — surface it loudly in dev instead of
+    // silently rendering a pour ghost/highlight/stream from stale coordinates.
+    if (__DEV__ && bottlePositionsRef.current.length !== numBottles) {
+      console.warn(
+        `[SortBoard] bottlePositionsRef length (${bottlePositionsRef.current.length}) ` +
+          `doesn't match numBottles (${numBottles}) — pour animation may use stale layout positions.`
+      );
+    }
 
     const sourceBottle = stateRef.current.bottles[pouringFrom];
     const dstBottle = stateRef.current.bottles[pouringTo];
@@ -360,6 +385,7 @@ export default function SortBoard({
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
       <View
+        testID="sort-grid"
         style={[styles.grid, { gap: BOTTLE_GAP }]}
         onLayout={(e) => {
           gridOffsetRef.current = {
@@ -371,6 +397,7 @@ export default function SortBoard({
         {state.bottles.map((bottle, idx) => (
           <View
             key={idx}
+            testID={`bottle-cell-${idx}`}
             style={[
               styles.bottleCell,
               { width: bottleW },
@@ -402,6 +429,7 @@ export default function SortBoard({
           ghost is only set when !reduceMotion, so the extra guard is omitted. */}
       {ghost !== null && (
         <View
+          testID="pour-ghost-overlay"
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
           accessibilityElementsHidden

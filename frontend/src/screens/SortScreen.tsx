@@ -728,6 +728,14 @@ export default function SortScreen() {
       >
         {gameState && (
           <SortBoard
+            // Force a fresh SortBoard instance (and thus fresh layout-position
+            // refs) on every level change. handleNextLevel advances levels
+            // without unmounting SortBoard, so without this key a pour made
+            // before the new grid's onLayout events land could compute its
+            // ghost/highlight/stream from the previous level's stale bottle
+            // positions — see #2297. Defense in depth alongside the ref-reset
+            // effect inside SortBoard itself.
+            key={currentLevelId}
             state={gameState}
             colorblindMode={colorblindMode}
             onBottleTap={handleBottleTap}

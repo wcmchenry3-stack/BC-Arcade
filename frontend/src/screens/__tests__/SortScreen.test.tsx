@@ -410,3 +410,90 @@ describe("SortScreen — offline levels cache (#1887)", () => {
     expect(storage.loadLevelsCache).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: level advance to a different grid shape (issue #2297)
+//
+// The bug: handleNextLevel (via handleSelectLevel) swaps `gameState` in place
+// rather than unmounting the play view — SortBoard survives a level change.
+// SortBoard's own layout-position cache is now reset whenever the bottle
+// count changes (see SortBoard.test.tsx for the direct repro of the stale
+// highlight/stream), and SortScreen additionally keys <SortBoard> on
+// currentLevelId as defense in depth. This test drives the actual
+// win → submit score → "Next Level" flow end-to-end across a level pair with
+// different bottle counts (and therefore a different grid shape) and confirms
+// the new level renders correctly rather than inheriting anything from the
+// previous one.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — level advance to a different grid shape (regression #2297)", () => {
+  it("renders the new level's own bottles after Next Level, not the previous level's", async () => {
+    const levels = [
+      // 2 bottles, single row — solves in exactly one pour (bottle 2 → bottle 1).
+      { id: 1, bottles: [["red", "red", "red"], ["red"]] },
+      // 5 bottles — a different grid shape (3-col/2-row instead of 2-col/1-row).
+      { id: 2, bottles: [["red"], ["blue"], ["green"], ["yellow"], []] },
+    ];
+    sortApi.getLevels.mockResolvedValue({ levels });
+
+    const { findByLabelText, findByText, findByPlaceholderText, getAllByLabelText } =
+      await renderScreen();
+
+    const levelCard = await findByLabelText("Level 1");
+    await act(async () => {
+      await fireEvent.press(levelCard);
+    });
+
+    // Solve level 1 in one move: select bottle 2 (["red"]), pour into bottle 1
+    // (["red","red","red"]) — both bottles end up solved (full-red / empty).
+    const bottle2 = await findByLabelText(/^Bottle 2,/);
+    await act(async () => {
+      await fireEvent.press(bottle2);
+    });
+    const bottle1 = await findByLabelText(/^Bottle 1,/);
+    await act(async () => {
+      await fireEvent.press(bottle1);
+    });
+
+    // Land the win state synchronously (mirrors the #1567 regression test —
+    // Reanimated's jest mock doesn't invoke animation callbacks).
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+
+    // Submit a score so the "Next Level" button appears.
+    const nameInput = await findByPlaceholderText("Your name");
+    await act(async () => {
+      await fireEvent.changeText(nameInput, "Tester");
+    });
+    const submitBtn = await findByLabelText("Submit Score");
+    await act(async () => {
+      await fireEvent.press(submitBtn);
+    });
+
+    const nextLevelBtn = await findByLabelText("Next Level");
+    await act(async () => {
+      await fireEvent.press(nextLevelBtn);
+    });
+
+    // Level 2's HUD and its own 5-bottle grid should now be showing — not a
+    // leftover render of level 1's 2-bottle grid.
+    expect(await findByText("Level 2")).toBeTruthy();
+    expect(getAllByLabelText(/^Bottle \d/)).toHaveLength(5);
+    expect(await findByLabelText(/^Bottle 1, 1 of/)).toBeTruthy(); // ["red"]
+    expect(await findByLabelText("Bottle 5, empty")).toBeTruthy(); // []
+
+    // A pour immediately on the new level should behave normally, not crash
+    // or reference the previous level's now out-of-range bottle indices.
+    const newBottle1 = await findByLabelText(/^Bottle 1, 1 of/);
+    await act(async () => {
+      await fireEvent.press(newBottle1);
+    });
+    const newBottle5 = await findByLabelText("Bottle 5, empty");
+    await act(async () => {
+      await fireEvent.press(newBottle5);
+    });
+    expect(await findByLabelText("Undo")).toBeTruthy();
+  });
+});
