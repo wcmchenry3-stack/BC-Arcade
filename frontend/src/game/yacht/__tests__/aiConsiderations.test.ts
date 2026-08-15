@@ -17,6 +17,7 @@ import {
   rateChanceSafetyValve,
   rateAdversarialVariance,
   rateUpperCategoryEfficiency,
+  rateImmediateValue,
 } from "../aiConsiderations";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -678,5 +679,42 @@ describe("rateAdversarialVariance", () => {
       // round-1 data point.
       expect(rateAdversarialVariance(infoProjected, "yacht")).toBeCloseTo(0.5, 5);
     });
+  });
+});
+
+// ─── rateImmediateValue ──────────────────────────────────────────────────────
+
+describe("rateImmediateValue", () => {
+  it("non-Joker turn: prices via the plain scorer (regression guard)", () => {
+    // [1,2,3,4,5]: large_straight = 40 -> 40/50; full_house = 0 (not a full-house shape).
+    const state = makeGame([1, 2, 3, 4, 5], 3);
+    const info = buildYachtInfoSet(state, 0);
+    expect(info.jokerActive).toBe(false);
+    expect(rateImmediateValue(info, "large_straight")).toBeCloseTo(40 / 50);
+    expect(rateImmediateValue(info, "full_house")).toBe(0);
+  });
+
+  it("Joker turn: prices Full House at its fixed 25 even though the dice aren't a natural full house", () => {
+    // Yacht already filled; rolling a second five-of-a-kind triggers the Joker rule.
+    const state = withScores(makeGame([4, 4, 4, 4, 4], 3), { yacht: 50 });
+    const info = buildYachtInfoSet(state, 0);
+    expect(info.jokerActive).toBe(true);
+    expect(rateImmediateValue(info, "full_house")).toBeCloseTo(25 / 50);
+  });
+
+  it("Joker turn: prices Small Straight and Large Straight at their fixed 30/40", () => {
+    const state = withScores(makeGame([2, 2, 2, 2, 2], 3), { yacht: 50 });
+    const info = buildYachtInfoSet(state, 0);
+    expect(info.jokerActive).toBe(true);
+    expect(rateImmediateValue(info, "small_straight")).toBeCloseTo(30 / 50);
+    expect(rateImmediateValue(info, "large_straight")).toBeCloseTo(40 / 50);
+  });
+
+  it("Joker turn: upper categories are unaffected (Joker rule doesn't change upper scoring)", () => {
+    const state = withScores(makeGame([3, 3, 3, 3, 3], 3), { yacht: 50 });
+    const info = buildYachtInfoSet(state, 0);
+    expect(info.jokerActive).toBe(true);
+    // threes: 5 dice x 3 = 15, same with or without the Joker path.
+    expect(rateImmediateValue(info, "threes")).toBeCloseTo(15 / 50);
   });
 });

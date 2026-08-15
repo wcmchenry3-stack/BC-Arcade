@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="body" cx="37%" cy="30%" r="68%" fx="37%" fy="30%">
+      <stop offset="0%"   stop-color="#fef9c3"/>
+      <stop offset="35%"  stop-color="#fbbf24"/>
+      <stop offset="75%"  stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="rgba(0,0,0,0)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.32)"/>
+    </radialGradient>
+    <radialGradient id="s1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.90)"/>
+      <stop offset="60%"  stop-color="rgba(255,255,255,0.30)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <radialGradient id="s2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.70)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+    <clipPath id="clip"><circle cx="256" cy="256" r="210"/></clipPath>
+  </defs>
+
+  <!-- corona spikes behind sphere -->
+  <g fill="#fbbf24">
+    <polygon points="256,10 244,64 268,64"/>
+    <polygon points="381,31 348,76 368,90"/>
+    <polygon points="481,131 437,148 443,170"/>
+    <polygon points="502,256 448,244 448,268"/>
+    <polygon points="481,381 443,342 437,364"/>
+    <polygon points="381,481 368,422 348,436"/>
+    <polygon points="256,502 268,448 244,448"/>
+    <polygon points="131,481 164,436 144,422"/>
+    <polygon points="31,381 75,364 69,342"/>
+    <polygon points="10,256 64,268 64,244"/>
+    <polygon points="31,131 69,170 75,148"/>
+    <polygon points="131,31 144,90 164,76"/>
+  </g>
+  <!-- outer glow ring -->
+  <circle cx="256" cy="256" r="225" fill="rgba(251,191,36,0.22)"/>
+
+  <circle cx="256" cy="256" r="210" fill="url(#body)"/>
+  <circle cx="256" cy="256" r="210" fill="url(#rim)"/>
+
+  <ellipse cx="183" cy="168" rx="66" ry="46" transform="rotate(-28 183 168)" fill="url(#s1)"/>
+  <ellipse cx="160" cy="192" rx="22" ry="14" transform="rotate(-28 160 192)" fill="url(#s2)" opacity="0.65"/>
+
+  <circle cx="210" cy="286" r="22" fill="#78350f"/>
+  <circle cx="217" cy="278" r="8" fill="white"/>
+  <circle cx="302" cy="286" r="22" fill="#78350f"/>
+  <circle cx="309" cy="278" r="8" fill="white"/>
+  <path d="M 220 322 Q 256 352 292 322" stroke="#78350f" stroke-width="9" fill="none" stroke-linecap="round"/>
+</svg>

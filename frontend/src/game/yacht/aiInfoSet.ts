@@ -12,7 +12,7 @@
 
 import type { InformationSet } from "../_shared/utilityAi/types";
 import type { GameState } from "./types";
-import { CATEGORIES, UPPER_CATEGORIES, Category } from "./engine";
+import { CATEGORIES, UPPER_CATEGORIES, Category, jokerActive as isJokerActive } from "./engine";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -96,6 +96,16 @@ export interface YachtInfoSet extends InformationSet {
    * `rateAdversarialVariance` in aiConsiderations.ts and GH #2200.
    */
   readonly opponentRound: number;
+
+  // ── Joker rule ───────────────────────────────────────────────────────────
+  /**
+   * True on a "Joker" turn: a second-or-later Yacht (five-of-a-kind) rolled
+   * after the Yacht category is already filled. On a Joker turn, Full House,
+   * Small Straight, and Large Straight score their fixed values (25/30/40)
+   * regardless of the dice, per Joker scoring rules — see `calculateJokerScore`
+   * in engine.ts.
+   */
+  readonly jokerActive: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -186,6 +196,7 @@ export function buildYachtInfoSet(
     scoreDelta,
     round: state.round,
     opponentRound,
+    jokerActive: isJokerActive(state),
   };
 
   return Object.freeze(infoSet);

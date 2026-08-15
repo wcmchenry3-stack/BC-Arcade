@@ -17,6 +17,6 @@
   },
   "design-tokens": {
     "detect": ":\\s*#[0-9a-fA-F]{3,8}|rgba?\\s*\\(|hsla?\\s*\\(|font-size:\\s*[0-9]+px|font-family:\\s*[\"']|tabindex=[\"'][1-9]",
-    "skip": "node_modules/|(^|/)dist/|(^|/)build/|(^|/)\\.cache/|(^|/)coverage/|(^|/)public/|(^|/)hearts-analysis/static/|(^|/)tokens/|\\.min\\.(css|js)|\\.stories\\.[jt]sx?|\\.test\\.[jt]sx?|\\.spec\\.[jt]sx?|__snapshots__|\\.svg$|\\.mdx?$|\\.tokens\\.json$|tailwind\\.config\\.|theme\\.[^./]+\\.[jt]sx?$|(^|/)theme/"
+    "skip": "node_modules/|(^|/)dist/|(^|/)build/|(^|/)\\.cache/|(^|/)coverage/|(^|/)public/|(^|/)hearts-analysis/static/|(^|/)tokens/|\\.min\\.(css|js)|\\.stories\\.[jt]sx?|\\.test\\.[jt]sx?|\\.spec\\.[jt]sx?|__snapshots__|\\.svg$|\\.mdx?$|\\.tokens\\.json$|tailwind\\.config\\.|theme\\.[^./]+\\.[jt]sx?$|(^|/)theme/|\\.py$|(^|/)scripts/"
   }
 }
