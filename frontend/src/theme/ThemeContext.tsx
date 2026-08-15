@@ -17,6 +17,8 @@ export interface Colors {
   textMuted: string;
   textFilled: string;
   textOnAccent: string;
+  /** Error-state text sitting on the accent color (e.g. a wrong Sudoku digit in a selected cell). */
+  errorOnAccent: string;
   accent: string;
   accentBright: string;
   secondary: string;
@@ -79,7 +81,7 @@ const TOKENS = {
   white: "#ffffff",
 } as const;
 
-const dark: Colors = {
+export const dark: Colors = {
   background: TOKENS.darkBg,
   surface: TOKENS.darkSurface,
   surfacePeer: TOKENS.darkSurfacePeer,
@@ -91,6 +93,8 @@ const dark: Colors = {
   textMuted: "#a0a0ac",
   textFilled: "#4a4a56",
   textOnAccent: "#0e0e13",
+  // WCAG AA: 4.79:1 on the selected-cell background (accent "AA" over surface)
+  errorOnAccent: "#631b18",
   accent: TOKENS.accentDark,
   accentBright: TOKENS.accentBrightDark,
   secondary: TOKENS.secondaryDark,
@@ -116,7 +120,7 @@ const dark: Colors = {
   fruitBackground: TOKENS.darkBg,
 };
 
-const light: Colors = {
+export const light: Colors = {
   background: TOKENS.lightBg,
   surface: TOKENS.lightSurface,
   surfacePeer: TOKENS.lightSurfacePeer,
@@ -127,6 +131,8 @@ const light: Colors = {
   textMuted: "#6b5e4a",
   textFilled: "#b5a684",
   textOnAccent: "#0e0e13", // dark text on teal accent (readable on cream variant)
+  // WCAG AA: 7.11:1 on the selected-cell background (accent "AA" over surface)
+  errorOnAccent: "#631b18",
   accent: TOKENS.accentLight,
   accentBright: TOKENS.accentBrightLight,
   secondary: TOKENS.secondaryLight,
