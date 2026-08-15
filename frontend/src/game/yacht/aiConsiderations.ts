@@ -18,7 +18,7 @@
  */
 
 import type { YachtInfoSet } from "./aiInfoSet";
-import { calculateScore, type Category } from "./engine";
+import { calculateScore, calculateJokerScore, type Category } from "./engine";
 import type { GameState } from "./types";
 import { evForHold1Roll, evForHold2Roll } from "./probTables";
 
@@ -188,12 +188,19 @@ const MAX_CAT_SCORE = 50;
  * weighted sums at delta=0, collapsing selection to the first category in
  * iteration order.
  *
+ * On a Joker turn (`infoSet.jokerActive`), prices the category using
+ * `calculateJokerScore` instead — the same Joker-aware value the engine
+ * awards when `score()` is actually called — so Full House / Small Straight /
+ * Large Straight are valued at their fixed 25/30/40 rather than 0.
+ *
  * Returns `calculateScore(category, dice) / 50`, clamped to [0, 1].
  * A zero here (no matching dice) still permits selection when no better
  * option exists; the gate is `rateScorecardSafety`, not this signal.
  */
 export function rateImmediateValue(infoSet: YachtInfoSet, category: YachtScoreAction): number {
-  const raw = calculateScore(category, infoSet.dice);
+  const raw = infoSet.jokerActive
+    ? calculateJokerScore(category, infoSet.dice)
+    : calculateScore(category, infoSet.dice);
   return Math.min(1.0, raw / MAX_CAT_SCORE);
 }
 

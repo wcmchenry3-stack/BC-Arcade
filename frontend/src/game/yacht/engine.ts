@@ -172,7 +172,7 @@ export function calculateScore(category: Category, dice: readonly number[]): num
   }
 }
 
-function calculateJokerScore(category: Category, dice: readonly number[]): number {
+export function calculateJokerScore(category: Category, dice: readonly number[]): number {
   if (UPPER_CATEGORIES.has(category)) return calculateScore(category, dice);
   switch (category) {
     case "three_of_a_kind":
@@ -264,7 +264,7 @@ function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-function jokerActive(state: GameState): boolean {
+export function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 
