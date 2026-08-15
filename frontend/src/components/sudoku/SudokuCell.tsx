@@ -42,14 +42,23 @@ export default function SudokuCell({
         ? colors.accent + "22"
         : colors.surface;
 
-  const valueColor = cell.given ? colors.text : cell.isError ? colors.error : colors.accent;
-
   // The selected cell's background is the accent color blended over the
-  // surface (`background` above), which in dark theme composites to a
-  // mid-tone teal close in luminance to `textMuted` — notes rendered in
-  // that color become nearly invisible (~1:1 contrast). `textOnAccent` is
-  // tuned for text sitting on the accent color and keeps notes legible
-  // (~7.5:1) when the cell is selected.
+  // surface (`background` above), which composites to a mid-tone teal close
+  // in luminance to `textMuted` (dark theme) and to `accent` itself (both
+  // themes) — notes and values rendered in those colors become nearly
+  // invisible (as low as ~1:1 contrast). `textOnAccent`/`errorOnAccent` are
+  // tuned for text sitting on the accent color and stay legible (>4.5:1) when
+  // the cell is selected.
+  const valueColor = selected
+    ? cell.isError
+      ? colors.errorOnAccent
+      : colors.textOnAccent
+    : cell.given
+      ? colors.text
+      : cell.isError
+        ? colors.error
+        : colors.accent;
+
   const noteColor = selected ? colors.textOnAccent : colors.textMuted;
 
   const label = t("cell.label", {

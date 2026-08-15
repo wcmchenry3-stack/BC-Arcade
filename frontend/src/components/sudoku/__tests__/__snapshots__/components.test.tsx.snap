@@ -1408,7 +1408,7 @@ exports[`SudokuCell matches snapshot — selected error cell 1`] = `
           "lineHeight": 18,
         },
         {
-          "color": "#ff716c",
+          "color": "#631b18",
           "fontWeight": "600",
         },
       ]
@@ -4050,7 +4050,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
                 "lineHeight": 18,
               },
               {
-                "color": "#8ff5ff",
+                "color": "#0e0e13",
                 "fontWeight": "600",
               },
             ]
