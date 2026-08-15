@@ -48,7 +48,7 @@ pydantic==2.13.4
 # version depends on pydantic_core 2.48.0 yet (pydantic 2.13.4 pins exactly
 # 2.46.4), so bumping this alone makes pip's resolver fail. Bump pydantic and
 # pydantic_core together once a compatible pydantic release ships.
-pydantic_core==2.46.4
+pydantic_core==2.48.0
 Pygments==2.20.0
 PyJWT==2.13.0
 pyparsing==3.3.2
