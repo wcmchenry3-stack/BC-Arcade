@@ -593,6 +593,93 @@ describe("rateAdversarialVariance", () => {
       }
     }
   });
+
+  // GH #2200: comparing myScore against a raw opponentScore snapshot is
+  // order-dependent — whoever moves SECOND in a round compares their own
+  // pre-this-round score against an opponent score that already includes the
+  // opponent's this-round turn, making the second mover look ~1 turn's worth
+  // of points more "behind" than they really are. Fixed by projecting my own
+  // pending turn (via my demonstrated average score per turn) whenever
+  // `opponentRound > round` (opponent has already played this round).
+  describe("order independence (GH #2200)", () => {
+    // Round 8: 7 categories filled, upper bonus earned -> total_score = 119.
+    const filledSevenTurns = {
+      ones: 3,
+      twos: 6,
+      threes: 9,
+      fours: 12,
+      fives: 15,
+      sixes: 18,
+      three_of_a_kind: 21,
+    };
+    const meAtRound8 = { ...withScores(makeGame([1, 2, 3, 4, 5], 1), filledSevenTurns), round: 8 };
+
+    it("second mover: projects my pending turn when the opponent already played this round", () => {
+      // Opponent has already banked their round-8 turn (~20 pts) and is now ahead.
+      const opponentAfterRound8 = meAtRound8.total_score + 20;
+
+      // No opponentRound passed -> defaults to round (fair/no-projection case).
+      const infoNoProjection = buildYachtInfoSet(meAtRound8, opponentAfterRound8);
+      // Opponent is one round ahead of me -> projection applies.
+      const infoWithProjection = buildYachtInfoSet(
+        meAtRound8,
+        opponentAfterRound8,
+        meAtRound8.round + 1
+      );
+
+      // Un-projected, the raw 20-pt deficit lands exactly at TRAIL_THRESHOLD,
+      // reading as maximally "trailing" — high-variance categories rated at 1.0.
+      expect(rateAdversarialVariance(infoNoProjection, "yacht")).toBe(1.0);
+
+      // Projected, my own pending-turn estimate closes most of that gap,
+      // pulling the rating back toward neutral instead of maximal gambling.
+      const projected = rateAdversarialVariance(infoWithProjection, "yacht");
+      expect(projected).toBeLessThan(1.0);
+      expect(projected).toBeGreaterThan(0.4);
+    });
+
+    it("first mover: does NOT project when the opponent has not yet played this round", () => {
+      // Opponent hasn't played round 8 yet either — a genuinely fair, apples-to-
+      // apples comparison. opponentRound === round (the default) -> no projection.
+      const opponentPending = meAtRound8.total_score - 5;
+      const info = buildYachtInfoSet(meAtRound8, opponentPending, meAtRound8.round);
+
+      // delta = +5 (0 < delta < LEAD_THRESHOLD=50): NEUTRAL + (5/50)*(1-variance-NEUTRAL).
+      // For yacht (variance=1.0): 0.5 + 0.1*(1.0 - 1.0 - 0.5) = 0.45.
+      expect(rateAdversarialVariance(info, "yacht")).toBeCloseTo(0.45, 5);
+    });
+
+    it("falls back to raw myScore when NEITHER side has completed a turn yet", () => {
+      const s = { ...makeGame([1, 2, 3, 4, 5], 1), round: 1 };
+      const info = buildYachtInfoSet(s, 0, 2); // opponentRound=2 > round=1, but opponentScore=0 too
+      // Nothing to average on either side -> raw myScore (0), same as the
+      // no-projection case. Delta is 0 either way, so this is harmless.
+      expect(rateAdversarialVariance(info, "chance")).toBe(
+        rateAdversarialVariance(buildYachtInfoSet(s, 0, 1), "chance")
+      );
+    });
+
+    // Round 1: I have no turn history to average from (myTurnsCompleted=0),
+    // but the opponent has already played round 1 (they're one round ahead).
+    // Falling back to my raw score of 0 here would read as maximally
+    // trailing on the very first turn of every game — reproducing the exact
+    // stale-snapshot bug this function exists to fix. Borrowing the
+    // opponent's own demonstrated per-turn average avoids that.
+    it("round 1: borrows the opponent's average when I have no turn history of my own", () => {
+      const me = { ...makeGame([1, 2, 3, 4, 5], 1), round: 1 };
+      const opponentScore = 25; // opponent's round-1 turn
+      const infoRaw = buildYachtInfoSet(me, opponentScore); // default: no projection
+      const infoProjected = buildYachtInfoSet(me, opponentScore, 2); // opponent 1 round ahead
+
+      // Un-projected: delta = 0 - 25 = -25, past TRAIL_THRESHOLD(-20) -> maximal gambling.
+      expect(rateAdversarialVariance(infoRaw, "yacht")).toBe(1.0);
+
+      // Projected: my estimate becomes 0 + (opponent's own 25/1 average) = 25,
+      // delta = 0 -> neutral, not a false "trailing" signal from a single
+      // round-1 data point.
+      expect(rateAdversarialVariance(infoProjected, "yacht")).toBeCloseTo(0.5, 5);
+    });
+  });
 });
 
 // ─── rateImmediateValue ──────────────────────────────────────────────────────

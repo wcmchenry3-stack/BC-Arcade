@@ -99,6 +99,23 @@ describe("buildYachtInfoSet — mid-game state", () => {
   });
 });
 
+// ─── opponentRound (GH #2200) ──────────────────────────────────────────────────
+
+describe("buildYachtInfoSet — opponentRound", () => {
+  it("defaults to state.round when omitted (fair / no-projection case)", () => {
+    const state = { ...makeGame([1, 2, 3, 4, 5], 1), round: 5 };
+    const infoSet = buildYachtInfoSet(state, 100);
+    expect(infoSet.opponentRound).toBe(5);
+    expect(infoSet.opponentRound).toBe(infoSet.round);
+  });
+
+  it("threads an explicit opponentRound through unchanged", () => {
+    const state = { ...makeGame([1, 2, 3, 4, 5], 1), round: 5 };
+    const infoSet = buildYachtInfoSet(state, 100, 6);
+    expect(infoSet.opponentRound).toBe(6);
+  });
+});
+
 // ─── Bonus earned ────────────────────────────────────────────────────────────
 
 describe("buildYachtInfoSet — bonus already earned", () => {

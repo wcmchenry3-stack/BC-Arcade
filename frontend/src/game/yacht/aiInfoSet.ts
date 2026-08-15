@@ -66,12 +66,36 @@ export interface YachtInfoSet extends InformationSet {
   readonly myScore: number;
   /** Opponent's current total score. */
   readonly opponentScore: number;
-  /** myScore − opponentScore (positive = leading). */
+  /**
+   * myScore − opponentScore (positive = leading).
+   *
+   * A literal, order-dependent snapshot: if `opponentRound > round` (the
+   * opponent has already played the round I'm about to complete), this
+   * compares my pre-this-round score against their post-this-round score —
+   * making me look ~1 turn's worth of points more "behind" than I really
+   * am. `rateAdversarialVariance` (aiConsiderations.ts) does NOT use this
+   * field directly for that reason; it derives an order-independent delta
+   * via its own `projectedMyScore` helper instead. Any new consideration
+   * that needs a turn-order-fair comparison should do the same rather than
+   * reading `scoreDelta` — see GH #2200.
+   */
   readonly scoreDelta: number;
 
   // ── Round info ───────────────────────────────────────────────────────────
   /** Current round number (1–13). */
   readonly round: number;
+  /**
+   * The opponent's round number at the moment this info set was built.
+   *
+   * `opponentRound <= round` means the opponent has NOT yet taken their turn
+   * for the round I'm about to complete (I'm moving first this round — a
+   * fair, apples-to-apples comparison); `opponentRound > round` means they
+   * HAVE already played this round (I'm moving second — my own score is
+   * stale by one turn relative to theirs). Used by adversarial-variance
+   * scoring to project rather than compare against a stale snapshot — see
+   * `rateAdversarialVariance` in aiConsiderations.ts and GH #2200.
+   */
+  readonly opponentRound: number;
 
   // ── Joker rule ───────────────────────────────────────────────────────────
   /**
@@ -106,9 +130,18 @@ const UPPER_FACE_MAX: Readonly<Partial<Record<Category, number>>> = {
  *
  * @param state        The current GameState (from engine.ts).
  * @param opponentScore The opponent's running total (0 when unknown / single-player).
+ * @param opponentRound The opponent's current round number. Defaults to
+ *   `state.round` (i.e. "the opponent has NOT played this round yet") so
+ *   callers that don't track opponent turn order get the pre-#2200 behavior
+ *   — the raw, unprojected score comparison — rather than an unintended
+ *   projection.
  * @returns A frozen, read-only decision snapshot.
  */
-export function buildYachtInfoSet(state: GameState, opponentScore: number): YachtInfoSet {
+export function buildYachtInfoSet(
+  state: GameState,
+  opponentScore: number,
+  opponentRound: number = state.round
+): YachtInfoSet {
   // ── Category sets ─────────────────────────────────────────────────────
   const open = new Set<Category>();
   const filled = new Set<Category>();
@@ -162,6 +195,7 @@ export function buildYachtInfoSet(state: GameState, opponentScore: number): Yach
     opponentScore,
     scoreDelta,
     round: state.round,
+    opponentRound,
     jokerActive: isJokerActive(state),
   };
 

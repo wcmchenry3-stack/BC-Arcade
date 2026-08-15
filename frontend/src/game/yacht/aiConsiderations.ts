@@ -262,19 +262,74 @@ export function rateUpperCategoryEfficiency(
 }
 
 /**
+ * Project my own score forward by one turn when the opponent has already
+ * played the round I'm about to complete.
+ *
+ * `infoSet.scoreDelta` (myScore − opponentScore) is a literal, order-dependent
+ * snapshot. Whoever moves SECOND in a round compares their own pre-this-round
+ * score against an opponent score that already includes the opponent's
+ * this-round turn — an apples-to-oranges comparison that makes the second
+ * mover look artificially behind by roughly one turn's worth of points, round
+ * after round. Whoever moves FIRST compares two genuinely pre-this-round
+ * scores — already fair. Feeding the second mover's inflated deficit into a
+ * symmetric trailing/leading formula pushed it to gamble on high-variance
+ * plays far more than warranted — a systematically weaker Hard AI, since
+ * production always seats the AI as the second mover (human moves first).
+ * Measured as a ~15-17pp Hard-vs-Hard win-rate swing purely from turn order
+ * (GH #2200).
+ *
+ * Fix: when `infoSet.opponentRound > infoSet.round` (opponent already played
+ * this round), project my own pending turn using my demonstrated average
+ * score per completed turn, so both movers compare scores from the same
+ * "this round complete" checkpoint instead of a stale pre-turn snapshot.
+ *
+ * Round 1 has no turn history of my own to average — falling back to the
+ * raw (zero) score there would reproduce the exact bug this function exists
+ * to fix, just confined to the AI's very first turn of every game. Instead,
+ * borrow the opponent's own demonstrated average (they've necessarily played
+ * at least once, since this branch only runs when they're ahead in round
+ * count) as the best available estimate of what an average turn is worth
+ * here. Only when NEITHER side has a turn to average from (both scores are
+ * still 0) does this fall back to my raw score, which is harmless — the
+ * resulting delta is 0 either way.
+ */
+function projectedMyScore(infoSet: YachtInfoSet): number {
+  const opponentAlreadyPlayedThisRound = infoSet.opponentRound > infoSet.round;
+  if (!opponentAlreadyPlayedThisRound) return infoSet.myScore;
+
+  const myTurnsCompleted = infoSet.round - 1;
+  if (myTurnsCompleted > 0) {
+    const avgPerTurn = infoSet.myScore / myTurnsCompleted;
+    return infoSet.myScore + avgPerTurn;
+  }
+
+  const opponentTurnsCompleted = infoSet.opponentRound - 1;
+  if (opponentTurnsCompleted > 0) {
+    const avgPerTurn = infoSet.opponentScore / opponentTurnsCompleted;
+    return infoSet.myScore + avgPerTurn;
+  }
+
+  return infoSet.myScore;
+}
+
+/**
  * Rate this scoring action for adversarial variance appropriateness.
  *
- * Trailing (scoreDelta ≤ −20): high-variance categories score near 1.0 — take
+ * Trailing (delta ≤ −20): high-variance categories score near 1.0 — take
  *   the gamble to close the gap.
- * Leading (scoreDelta ≥ +50): low-variance categories score near 1.0 — lock in
+ * Leading (delta ≥ +50): low-variance categories score near 1.0 — lock in
  *   points, protect the lead.
  * Neutral (delta ≈ 0): all categories return 0.5 (no directional preference).
  *
  * Between the thresholds, the score interpolates smoothly.  Category variance
  * levels are decomposed from the trailing/leading heuristics in `scoreHard`.
+ *
+ * `delta` is my *projected* score (see `projectedMyScore`) minus the
+ * opponent's raw score, not the raw `infoSet.scoreDelta` — this keeps the
+ * adversarial signal order-independent (GH #2200).
  */
 export function rateAdversarialVariance(infoSet: YachtInfoSet, category: YachtScoreAction): number {
-  const delta = infoSet.scoreDelta;
+  const delta = projectedMyScore(infoSet) - infoSet.opponentScore;
   const variance = CATEGORY_VARIANCE[category] ?? UPPER_CAT_VARIANCE;
 
   if (delta <= TRAIL_THRESHOLD) return variance;
