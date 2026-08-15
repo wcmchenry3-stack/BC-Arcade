@@ -815,18 +815,14 @@ function CascadeGame() {
 
                 {PIECE_DEFS.map((def) => {
                   const r =
-                    def.shape.kind === "circle"
-                      ? def.shape.radius
-                      : def.shape.boundingRadius;
+                    def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
                   return (
                     <View key={def.tier} style={styles.devTierRow}>
                       <View style={[styles.devSwatch, { backgroundColor: def.color }]} />
                       <Text style={[styles.devTierLabel, { color: colors.text }]}>
                         {def.tier} · {def.label}
                       </Text>
-                      <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>
-                        r={r}
-                      </Text>
+                      <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>r={r}</Text>
                       <Pressable
                         style={styles.devSpawnBtn}
                         onPress={() => {
