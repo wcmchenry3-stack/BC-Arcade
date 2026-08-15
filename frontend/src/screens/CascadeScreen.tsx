@@ -217,13 +217,33 @@ function PieceRenderer({
           }
           const pos = frozenPositions.current.get(piece.id) ?? piece;
 
+          // KNOWN ISSUE: `piece.tier` indexes PIECE_DEFS (pieceDefs.ts, 10 physics
+          // tiers: Cherry/Strawberry/Grape/Orange/Apple/Pear/Peach/Pineapple/Melon/
+          // Watermelon) but `images`/`fruitDefs` index FruitSet.fruits (fruitSets.ts,
+          // 11 art tiers: Cherry/Blueberry/Lemon/Grape/Orange/Apple/Peach/Coconut/
+          // Dragonfruit/Pineapple/Watermelon). Only tiers 0 and 6 happen to name-match
+          // by coincidence; every other tier renders the wrong fruit/planet (e.g. the
+          // max physics tier "Watermelon" renders the Pineapple sprite — the real
+          // Watermelon art sits at fruitSets tier 10, unreachable since MAX_TIER=9).
+          // This is pre-existing — the same `activeFruitSet.fruits[tier]` indexing is
+          // already used for scoring/next-piece-preview elsewhere in this file — not
+          // introduced here. Fixing it needs a product decision (new art for
+          // Strawberry/Pear/Melon, or renumbering PIECE_DEFS to match fruitSets'
+          // 11-tier progression, which also touches scoring/difficulty/save-compat)
+          // rather than a mechanical reindex, so it's left as-is pending that call.
           const sprite = images[piece.tier];
           if (sprite) {
             // Baked sprites carry padding beyond the visible fruit — bakedClipR
-            // converts the physics radius into the full canvas half-size (see
+            // converts a radius into the full canvas half-size (see
             // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
-            const clipR = fruitDefs[piece.tier]?.bakedClipR ?? 1;
-            const half = r * clipR;
+            //
+            // bakedClipR was produced by scripts/bake_sprites.py against
+            // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
+            // physics radius (`r` above) — the two scales diverge up to ~31% by the
+            // top tier. Use the radius bakedClipR was actually calibrated against.
+            const fruitDef = fruitDefs[piece.tier];
+            const clipR = fruitDef?.bakedClipR ?? 1;
+            const half = (fruitDef?.radius ?? r) * clipR;
             return (
               <SkiaImage
                 key={piece.id}
