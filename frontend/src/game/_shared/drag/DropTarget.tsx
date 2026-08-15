@@ -80,10 +80,19 @@ export function DropTarget({
 
   // "33" hex suffix = 0x33/0xFF ≈ 20% opacity tint over the accent color.
   return (
+    // collapsable={false} is required: without a caller-supplied baseline `style` (e.g.
+    // empty FreeCell/Solitaire piles, which only apply highlightStyle/dimStyle during an
+    // active drag — see #2154), this View has no distinguishing layout props and is eligible
+    // for native view-flattening/collapsing. A flattened view is not present in the native
+    // tree, so viewRef.current?.measureInWindow() in refreshBounds/handleLayout never fires
+    // with real dimensions, updateDropZoneLayout is never called for this zone's id, and
+    // DragContext's endDrag always treats the drop target as missing bounds and rejects the
+    // drop.
     <View
       ref={viewRef}
       testID={testID}
       onLayout={handleLayout}
+      collapsable={false}
       style={[
         style,
         isDragActive && isLegal && { backgroundColor: colors.accent + "33" },
