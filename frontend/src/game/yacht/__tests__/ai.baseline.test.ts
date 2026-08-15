@@ -66,7 +66,7 @@ function simulateGame(
       if (holds.every((h) => h)) break;
       pState = roll(pState, holds);
     }
-    pState = score(pState, scoreStrategy(pState, diff, oState.total_score));
+    pState = score(pState, scoreStrategy(pState, diff, oState.total_score, oState.round));
 
     // Opponent turn
     oState = roll(oState, [false, false, false, false, false]);
@@ -75,7 +75,10 @@ function simulateGame(
       if (holds.every((h) => h)) break;
       oState = roll(oState, holds);
     }
-    oState = score(oState, scoreStrategy(oState, opponentDiff, pState.total_score));
+    oState = score(
+      oState,
+      scoreStrategy(oState, opponentDiff, pState.total_score, pState.round)
+    );
   }
 
   function metrics(state: ReturnType<typeof newGame>): GameMetrics {

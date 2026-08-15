@@ -261,7 +261,12 @@ export default function GameScreen({ navigation, route }: Props) {
       // Beat before the AI locks in its category
       await delay(1000);
       if (aiTurnCancelledRef.current) return;
-      const cat = scoreStrategy(s, diff, gameStateRef.current.total_score);
+      const cat = scoreStrategy(
+        s,
+        diff,
+        gameStateRef.current.total_score,
+        gameStateRef.current.round
+      );
       s = engineScore(s, cat);
       setAiGameState(s);
       setIsAiTurn(false);

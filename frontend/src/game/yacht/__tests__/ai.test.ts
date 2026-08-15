@@ -210,6 +210,14 @@ describe("scoreStrategy — Hard adversarial variance", () => {
     });
     expect(scoreStrategy(state, "hard", 0)).toBe("sixes");
   });
+
+  // GH #2200: accepts an optional opponentRound so callers with real turn-order
+  // info (production, simulators) can avoid comparing against a stale snapshot.
+  it("accepts an optional opponentRound without throwing, for both mover positions", () => {
+    const state = withScores({ ...makeGame([6, 6, 6, 6, 1], 3), round: 8 }, { yacht: 50 });
+    expect(() => scoreStrategy(state, "hard", 139, 9)).not.toThrow(); // opponent already played
+    expect(() => scoreStrategy(state, "hard", 139, 8)).not.toThrow(); // opponent pending
+  });
 });
 
 // ---------------------------------------------------------------------------
