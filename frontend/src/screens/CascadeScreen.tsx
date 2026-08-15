@@ -10,7 +10,14 @@ import {
   LayoutChangeEvent,
   Pressable,
 } from "react-native";
-import Svg, { Circle, Line as SvgLine } from "react-native-svg";
+import {
+  Canvas,
+  Circle,
+  Group,
+  Image as SkiaImage,
+  Line as SkiaLine,
+} from "@shopify/react-native-skia";
+import type { SkImage } from "@shopify/react-native-skia";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -35,8 +42,8 @@ import {
 import { GameShell } from "../components/shared/GameShell";
 import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
-import type { FruitTier } from "../theme/fruitSets";
-import { useFruitImages } from "../theme/useFruitImages";
+import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
+import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
 import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine2";
 import {
@@ -169,10 +176,16 @@ function PieceRenderer({
   pieces,
   scale,
   overflowLineColor,
+  fruitDefs,
+  images,
 }: {
   pieces: PieceSnapshot[];
   scale: number;
   overflowLineColor: string;
+  /** Active fruit set's definitions, indexed by tier — supplies bakedClipR for sprite sizing. */
+  fruitDefs: FruitDefinition[];
+  /** Decoded sprites for the active fruit set, indexed by tier. null = not yet loaded. */
+  images: (SkImage | null)[];
 }) {
   // Freeze the rendered position of sleeping pieces to prevent sub-pixel physics
   // drift from causing visible jitter on settled pieces.
@@ -187,40 +200,78 @@ function PieceRenderer({
   }, [pieces]);
 
   return (
-    <Svg
-      width={WORLD_WIDTH * scale}
-      height={WORLD_HEIGHT * scale}
-      viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
+    <Canvas
+      style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
       accessibilityRole="image"
       accessibilityLabel="Cascade game board"
     >
-      {/* Overflow danger line */}
-      <SvgLine
-        x1={WALL_THICKNESS}
-        y1={OVERFLOW_LINE_Y}
-        x2={WORLD_WIDTH - WALL_THICKNESS}
-        y2={OVERFLOW_LINE_Y}
-        stroke={overflowLineColor}
-        strokeOpacity={0.35}
-        strokeWidth={1}
-      />
-      {pieces.map((piece) => {
-        const def = PIECE_DEFS[piece.tier];
-        if (!def) return null;
-        const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+      <Group transform={[{ scale }]}>
+        {/* Overflow danger line */}
+        <SkiaLine
+          p1={{ x: WALL_THICKNESS, y: OVERFLOW_LINE_Y }}
+          p2={{ x: WORLD_WIDTH - WALL_THICKNESS, y: OVERFLOW_LINE_Y }}
+          color={overflowLineColor}
+          opacity={0.35}
+          strokeWidth={1}
+        />
+        {pieces.map((piece) => {
+          const def = PIECE_DEFS[piece.tier];
+          if (!def) return null;
+          const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
 
-        if (piece.isSleeping) {
-          if (!frozenPositions.current.has(piece.id)) {
-            frozenPositions.current.set(piece.id, { x: piece.x, y: piece.y });
+          if (piece.isSleeping) {
+            if (!frozenPositions.current.has(piece.id)) {
+              frozenPositions.current.set(piece.id, { x: piece.x, y: piece.y });
+            }
+          } else {
+            frozenPositions.current.delete(piece.id);
           }
-        } else {
-          frozenPositions.current.delete(piece.id);
-        }
-        const pos = frozenPositions.current.get(piece.id) ?? piece;
+          const pos = frozenPositions.current.get(piece.id) ?? piece;
 
-        return <Circle key={piece.id} cx={pos.x} cy={pos.y} r={r} fill={def.color} />;
-      })}
-    </Svg>
+          // KNOWN ISSUE: `piece.tier` indexes PIECE_DEFS (pieceDefs.ts, 10 physics
+          // tiers: Cherry/Strawberry/Grape/Orange/Apple/Pear/Peach/Pineapple/Melon/
+          // Watermelon) but `images`/`fruitDefs` index FruitSet.fruits (fruitSets.ts,
+          // 11 art tiers: Cherry/Blueberry/Lemon/Grape/Orange/Apple/Peach/Coconut/
+          // Dragonfruit/Pineapple/Watermelon). Only tiers 0 and 6 happen to name-match
+          // by coincidence; every other tier renders the wrong fruit/planet (e.g. the
+          // max physics tier "Watermelon" renders the Pineapple sprite — the real
+          // Watermelon art sits at fruitSets tier 10, unreachable since MAX_TIER=9).
+          // This is pre-existing — the same `activeFruitSet.fruits[tier]` indexing is
+          // already used for scoring/next-piece-preview elsewhere in this file — not
+          // introduced here. Fixing it needs a product decision (new art for
+          // Strawberry/Pear/Melon, or renumbering PIECE_DEFS to match fruitSets'
+          // 11-tier progression, which also touches scoring/difficulty/save-compat)
+          // rather than a mechanical reindex, so it's left as-is pending that call.
+          const sprite = images[piece.tier];
+          if (sprite) {
+            // Baked sprites carry padding beyond the visible fruit — bakedClipR
+            // converts a radius into the full canvas half-size (see
+            // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
+            //
+            // bakedClipR was produced by scripts/bake_sprites.py against
+            // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
+            // physics radius (`r` above) — the two scales diverge up to ~31% by the
+            // top tier. Use the radius bakedClipR was actually calibrated against.
+            const fruitDef = fruitDefs[piece.tier];
+            const clipR = fruitDef?.bakedClipR ?? 1;
+            const half = (fruitDef?.radius ?? r) * clipR;
+            return (
+              <SkiaImage
+                key={piece.id}
+                image={sprite}
+                x={pos.x - half}
+                y={pos.y - half}
+                width={half * 2}
+                height={half * 2}
+                fit="contain"
+              />
+            );
+          }
+
+          return <Circle key={piece.id} cx={pos.x} cy={pos.y} r={r} color={def.color} />;
+        })}
+      </Group>
+    </Canvas>
   );
 }
 
@@ -757,7 +808,13 @@ function CascadeGame() {
                   }}
                   style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
                 >
-                  <PieceRenderer pieces={pieces} scale={scale} overflowLineColor={colors.error} />
+                  <PieceRenderer
+                    pieces={pieces}
+                    scale={scale}
+                    overflowLineColor={colors.error}
+                    fruitDefs={activeFruitSet.fruits}
+                    images={getImagesForSet(fruitImages, activeFruitSet.id)}
+                  />
                 </Pressable>
               )}
             </View>

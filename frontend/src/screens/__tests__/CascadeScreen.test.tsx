@@ -32,24 +32,19 @@ jest.mock("../../components/cascade/ThemeSelector", () => "ThemeSelector");
 // Skia requires a native module — mock the whole package in Jest.
 // useImage returns a non-null stub so useFruitImages resolves immediately
 // and useAssetsReady returns true, allowing CascadeGame to render.
-jest.mock("@shopify/react-native-skia", () => ({
-  useImage: jest.fn().mockReturnValue({ width: 1, height: 1 }),
-}));
-
-// react-native-svg: stub SVG components so they render as no-ops in JSDOM
-jest.mock("react-native-svg", () => {
+// Canvas/Group/Image/Circle/Line are stubbed as no-ops for PieceRenderer.
+jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { View } = require("react-native");
-  const SvgMock = ({ children }: { children?: React.ReactNode }) =>
-    React.createElement(View, {}, children);
-  const Noop = () => null;
   return {
-    __esModule: true,
-    default: SvgMock,
-    Circle: Noop,
-    Line: Noop,
+    useImage: jest.fn().mockReturnValue({ width: 1, height: 1 }),
+    Canvas: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, {}, children),
+    Group: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, {}, children),
+    Image: () => null,
+    Circle: () => null,
+    Line: () => null,
   };
 });
 
