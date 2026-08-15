@@ -17,6 +17,13 @@ import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import { saveStats } from "../../game/solitaire/storage";
 import { solitaireApi } from "../../game/solitaire/api";
 
+// SolitaireScreen's first render pulls in the heaviest module graph in the
+// suite (skia cascade, reanimated, sound, gesture handling); on a
+// contended CI runner that first `render()` can exceed Jest's 5000ms
+// default, independent of any actual behavioral slowness. Give this file
+// more headroom rather than papering over it with retries.
+jest.setTimeout(15000);
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
