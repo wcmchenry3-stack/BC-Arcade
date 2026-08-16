@@ -82,6 +82,14 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # pydantic_core is pinned exactly to what the installed pydantic version
+      # requires (see the comment in backend/requirements.txt). pydantic pins
+      # pydantic_core to an exact version, so bumping pydantic_core alone
+      # always breaks pip's resolver — see #2323, closed for this reason.
+      # Bump pydantic and pydantic_core together manually once a compatible
+      # pydantic release ships, then remove this ignore rule.
+      - dependency-name: "pydantic_core"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
