@@ -184,12 +184,14 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
           fromIndex: source.fromIndex,
           toCol,
         });
+        setSelection(null);
         return true;
       }
       if (source.type === "freecell") {
         if (!validateMove(state, { type: "freecell-to-tableau", fromCell: source.cell, toCol }))
           return false;
         onMove({ type: "freecell-to-tableau", fromCell: source.cell, toCol });
+        setSelection(null);
         return true;
       }
       return false;
@@ -204,12 +206,14 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
         if (!validateMove(state, { type: "tableau-to-foundation", fromCol: source.col }))
           return false;
         onMove({ type: "tableau-to-foundation", fromCol: source.col });
+        setSelection(null);
         return true;
       }
       if (source.type === "freecell") {
         if (!validateMove(state, { type: "freecell-to-foundation", fromCell: source.cell }))
           return false;
         onMove({ type: "freecell-to-foundation", fromCell: source.cell });
+        setSelection(null);
         return true;
       }
       return false;
@@ -223,6 +227,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       if (!validateMove(state, { type: "tableau-to-freecell", fromCol: source.col, toCell }))
         return false;
       onMove({ type: "tableau-to-freecell", fromCol: source.col, toCell });
+      setSelection(null);
       return true;
     },
     [state, onMove]
