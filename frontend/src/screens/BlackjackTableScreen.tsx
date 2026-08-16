@@ -61,7 +61,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const tabBarHeight = useSafeBottomTabBarHeight();
-  const availableHeight = height - insets.top - insets.bottom - APP_HEADER_HEIGHT - tabBarHeight;
+  // tabBarHeight (useSafeBottomTabBarHeight/useBottomTabBarHeight) already
+  // includes insets.bottom, so it must not be subtracted again here.
+  const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
   const isCompact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
   const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats } =
     useBlackjackGame();
