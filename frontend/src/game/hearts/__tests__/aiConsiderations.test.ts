@@ -386,6 +386,20 @@ describe("rateQueenSpadesRisk", () => {
       expect(rateQueenSpadesRisk(info, c("spades", 13))).toBe(0.45);
     });
 
+    it("a passed cover card that's since been played no longer counts as cover", () => {
+      // We passed Q♠ and K♠ to the same recipient, but K♠ has since appeared in
+      // a completed trick (seenKeys) — the recipient no longer holds it, so
+      // leading A♠ should score as the uncovered case (0.15), not covered (0.45).
+      const hand = [c("spades", 1)]; // leading A♠
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("spades", 12), c("spades", 13)], [], [], []],
+        wonCards: [[], [c("spades", 13)], [], []], // K♠ already taken
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.15);
+    });
+
     it("does not apply when the pass memory doesn't include Q♠", () => {
       // We passed cards away, but Q♠ wasn't one of them — no certain-holder knowledge.
       const hand = [c("spades", 1)];

@@ -147,7 +147,7 @@ export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
   // bonus down to only the genuinely-unknown share of `higher` so a void
   // elsewhere in the table doesn't wrongly discount a threat we already know is real.
   const knownHigher = countKnownHigherAmongPassed(card, card.suit, seenKeys, passedCards);
-  const unknownFractionOfHigher = higher > 0 ? Math.max(0, higher - knownHigher) / higher : 1;
+  const unknownFractionOfHigher = Math.max(0, higher - knownHigher) / higher; // higher > 0: guarded above
 
   return Math.min(1.0, basePWin + voidFraction * unknownFractionOfHigher * (1.0 - basePWin));
 }
@@ -273,8 +273,13 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
     const passedQueen = passedToPlayerIndex !== null && passedCards.some(isQueenOfSpades);
     if (passedQueen) {
       const otherCoverRank = card.rank === 13 ? 1 : 13; // leading K♠ → A♠ is the cover, and vice versa
+      // Only counts as cover if it's still unplayed — a passed cover card the
+      // recipient has since discarded no longer protects them from a forced reveal.
       const recipientHasCover = passedCards.some(
-        (pc) => pc.suit === "spades" && pc.rank === otherCoverRank
+        (pc) =>
+          pc.suit === "spades" &&
+          pc.rank === otherCoverRank &&
+          !seenKeys.has(`${pc.suit}:${pc.rank}`)
       );
       return recipientHasCover ? 0.45 : 0.15;
     }
