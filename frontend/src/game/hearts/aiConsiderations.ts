@@ -60,6 +60,30 @@ function countHigherOutstanding(
   return count;
 }
 
+/**
+ * Among `higher` (a count already restricted to unseen, higher-ranked cards in
+ * `suit`), how many are cards we *know* we passed away this hand (#2237)?
+ * These are certain, specific-opponent threats — not "could be anywhere" —
+ * so computePWin's void-fraction heuristic (built for genuine uncertainty)
+ * should not dilute them.
+ */
+function countKnownHigherAmongPassed(
+  card: Card,
+  suit: Suit,
+  seenKeys: ReadonlySet<string>,
+  passedCards: readonly Card[]
+): number {
+  const cardRank = aceHigh(card.rank);
+  let count = 0;
+  for (const pc of passedCards) {
+    if (pc.suit !== suit) continue;
+    if (aceHigh(pc.rank) <= cardRank) continue;
+    if (seenKeys.has(`${pc.suit}:${pc.rank}`)) continue; // already played
+    count++;
+  }
+  return count;
+}
+
 /** Highest ace-high rank currently winning the trick in `ledSuit`. */
 function currentTrickWinRank(trick: HeartsInfoSet["currentTrick"], ledSuit: Suit): number {
   let best = 0;
@@ -87,7 +111,7 @@ function currentTrickWinRank(trick: HeartsInfoSet["currentTrick"], ledSuit: Suit
  * cannot possibly win (wrong suit when following, or already beaten).
  */
 export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
-  const { seenKeys, hand, currentTrick, ledSuit, voidLedger } = infoSet;
+  const { seenKeys, hand, currentTrick, ledSuit, voidLedger, passedCards } = infoSet;
 
   if (ledSuit !== null) {
     if (card.suit !== ledSuit) return 0; // off-suit never wins
@@ -115,7 +139,17 @@ export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
     (p) => p !== infoSet.playerIndex && voidLedger[p]?.[card.suit]
   ).length;
   const voidFraction = knownVoidCount / 3; // at most 3 opponents
-  return Math.min(1.0, basePWin + voidFraction * (1.0 - basePWin));
+
+  // Pass-memory refinement (#2237): the void-fraction bonus above models
+  // "could be anywhere among 3 opponents" uncertainty. Higher-ranked outstanding
+  // cards we know we passed away this hand aren't uncertain — they're a specific,
+  // certain threat from whichever opponent received our pass. Scale the void
+  // bonus down to only the genuinely-unknown share of `higher` so a void
+  // elsewhere in the table doesn't wrongly discount a threat we already know is real.
+  const knownHigher = countKnownHigherAmongPassed(card, card.suit, seenKeys, passedCards);
+  const unknownFractionOfHigher = higher > 0 ? Math.max(0, higher - knownHigher) / higher : 1;
+
+  return Math.min(1.0, basePWin + voidFraction * unknownFractionOfHigher * (1.0 - basePWin));
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +214,7 @@ export const rateSuitVoidingUtility: Consideration<HeartsInfoSet, Card> = (infoS
  * 0.0: near-certain Q♠ self-take (e.g. leading Q♠ into an active spade suit).
  */
 export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
-  const { hand, seenKeys, currentTrick, ledSuit } = infoSet;
+  const { hand, seenKeys, currentTrick, ledSuit, passedCards, passedToPlayerIndex } = infoSet;
 
   // Q♠ is "gone" only when it has been collected into a completed trick (wonCards),
   // not when it is merely in the current (still-active) trick.
@@ -228,6 +262,22 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
   // Q♠ outstanding but we don't hold it — leading K♠/A♠ risks having Q♠ discarded onto us.
   // Matches chooseLeadHard: avoid leading K♠/A♠ while Q♠ is still live.
   if (ledSuit === null && card.suit === "spades" && (card.rank === 13 || card.rank === 1)) {
+    // Pass-memory refinement (#2237): if we passed Q♠ away, we know exactly who
+    // holds it (until it's played), rather than treating it as "outstanding,
+    // unknown location". That alone doesn't change the odds of a forced reveal —
+    // but if we *also* passed the other cover card (K♠/A♠) to that same
+    // opponent in the same pass, we know for certain they're holding a second
+    // spade and aren't forced to reveal Q♠ the moment we lead its partner.
+    // Without that corroborating cover, a known-but-uncovered holder is a more
+    // concrete threat than the fully unknown-location baseline.
+    const passedQueen = passedToPlayerIndex !== null && passedCards.some(isQueenOfSpades);
+    if (passedQueen) {
+      const otherCoverRank = card.rank === 13 ? 1 : 13; // leading K♠ → A♠ is the cover, and vice versa
+      const recipientHasCover = passedCards.some(
+        (pc) => pc.suit === "spades" && pc.rank === otherCoverRank
+      );
+      return recipientHasCover ? 0.45 : 0.15;
+    }
     return 0.25;
   }
 
