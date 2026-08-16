@@ -1051,6 +1051,59 @@ describe("Bonus lives", () => {
     expect(s.player.lives).toBeGreaterThan(0);
   });
 
+  // #1078/#2334: the GameOver branch of tickCollisions used to unconditionally clear
+  // playerBullets, so a same-tick bonus-life rescue permanently dropped in-flight bullets
+  // even though the player survives. tickCollisions now preserves them for tickBonusLives
+  // to finalize (clear) only if the rescue doesn't happen.
+  it("preserves in-flight player bullets when a bonus-life rescue reverts GameOver in the same tick", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
+    s = advanceMs(s, 8000);
+    s = { ...s, score: 29_999, player: { ...s.player, lives: 1, invincibleTimer: 0 } };
+    const enemy = s.enemies.find((e) => e.isAlive);
+    if (!enemy) throw new Error("no alive enemy");
+    const killBullet: Bullet = {
+      id: 77781,
+      x: enemy.x,
+      y: enemy.y,
+      vx: 0,
+      vy: 0,
+      owner: "player",
+      width: enemy.width,
+      height: enemy.height,
+      damage: 10,
+    };
+    // Unrelated bullet, far from any enemy — should never be hit-consumed.
+    const survivorBullet: Bullet = {
+      id: 77782,
+      x: 20,
+      y: 20,
+      vx: 0,
+      vy: 0,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    const enemyBullet: Bullet = {
+      id: 77783,
+      x: s.player.x,
+      y: s.player.y,
+      vx: 0,
+      vy: 0,
+      owner: "enemy",
+      width: 8,
+      height: 8,
+      damage: 1,
+    };
+    s = tick(
+      { ...s, playerBullets: [killBullet, survivorBullet], enemyBullets: [enemyBullet] },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).not.toBe("GameOver");
+    expect(s.playerBullets.some((b) => b.id === survivorBullet.id)).toBe(true);
+  });
+
   // #1078: slow-mo timer and invincibility
   it("sets bonusLifeSlowMoTimer and invincibleTimer after bonus life award", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
@@ -1745,6 +1798,28 @@ describe("Player bullet cap (#2334)", () => {
     s = tick(s, 16, FIRE_INPUT);
 
     expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+
+  // #2334: buddy-ship bullets are player-owned but were pushed with no cap check, so a
+  // spread burst (5-7 bullets) could push playerBullets past MAX_PLAYER_BULLETS.
+  it("buddy ship spread burst does not push playerBullets past MAX_PLAYER_BULLETS", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    s = applyPowerUp(s, "buddy");
+    expect(s.buddyShips.length).toBe(1);
+
+    s = {
+      ...s,
+      player: { ...s.player, invincibleTimer: 999_999 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS - 3),
+    };
+
+    // Advance until the buddy ship's fire point (pathT >= BUDDY_FIRE_AT_T).
+    for (let i = 0; i < 400 && s.playerBullets.length <= MAX_PLAYER_BULLETS - 3; i++) {
+      s = tick(s, 16, NO_INPUT);
+    }
+
+    expect(s.playerBullets.length).toBeLessThanOrEqual(MAX_PLAYER_BULLETS);
   });
 });
 

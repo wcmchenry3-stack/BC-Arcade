@@ -430,6 +430,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const blink =
       player.invincibleTimer > 0 &&
       Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
+    // Shared visibility guard for the player ship and its overlays (shield aura, lightning
+    // tint) — hoisted so the GameOver/blink rule only has to be updated in one place.
+    const showPlayerShip = !blink && showShip;
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -559,8 +562,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             })}
 
             {/* Player — hidden once off-screen during WinTransition, or once GameOver freezes the frame */}
-            {!blink &&
-              showShip &&
+            {showPlayerShip &&
               (images.playerShip ? (
                 <SkiaImage
                   image={images.playerShip}
@@ -581,7 +583,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ))}
 
             {/* #1033 Shield aura — glowing ring when shield is active */}
-            {!blink && showShip && state.activePowerUp?.type === "shield" && (
+            {showPlayerShip && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
                 cy={playerDisplayY}
@@ -590,7 +592,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 style="fill"
               />
             )}
-            {!blink && showShip && state.activePowerUp?.type === "shield" && (
+            {showPlayerShip && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
                 cy={playerDisplayY}
@@ -602,7 +604,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             )}
 
             {/* Lightning super-state electric tint on player ship */}
-            {!blink && showShip && state.activePowerUp?.type === "lightning" && (
+            {showPlayerShip && state.activePowerUp?.type === "lightning" && (
               <Rect
                 x={player.x - player.width / 2}
                 y={playerDisplayY - player.height / 2}
