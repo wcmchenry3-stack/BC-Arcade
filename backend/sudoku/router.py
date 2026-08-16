@@ -8,15 +8,18 @@ query treats those as "classic" so the classic leaderboard stays populated.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import desc, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
 from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
+from games.ranking import compute_rank, ensure_scored
 from limiter import limiter, session_key
 from session import get_session_id
 from vocab import GameType as GameTypeEnum
@@ -24,6 +27,8 @@ from vocab import GameType as GameTypeEnum
 from .models import Difficulty, LeaderboardResponse, ScoreEntry, SetPlayerNameRequest, Variant
 
 router = APIRouter(dependencies=[Depends(require_entitlement("sudoku"))])
+
+logger = logging.getLogger(__name__)
 
 LEADERBOARD_LIMIT = 10
 
@@ -98,43 +103,39 @@ async def set_player_name(
             raise HTTPException(status_code=404, detail="Game not found.")
         if game.session_id != sid:
             raise HTTPException(status_code=403, detail="Forbidden.")
-        if game.final_score is None:
-            raise HTTPException(status_code=400, detail="Game has no final score.")
+        ensure_scored(game)
 
         metadata = dict(game.game_metadata or {})
         metadata["player_name"] = body.player_name
         game.game_metadata = metadata
-        await db.commit()
+        try:
+            await db.commit()
+        except SQLAlchemyError as exc:
+            logger.error("sudoku score commit failed for game %s: %s", game_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to save player name.")
 
         # Rank within (difficulty, variant) partition.
         difficulty = metadata.get("difficulty")
         variant = metadata.get("variant") or "classic"
-        score_val = game.final_score or 0
         variant_col = Game.game_metadata["variant"].as_string()
         if variant == "classic":
             variant_filter = or_(variant_col == "classic", variant_col.is_(None))
         else:
             variant_filter = variant_col == variant
 
-        count = (
-            await db.execute(
-                select(func.count()).where(
-                    Game.game_type_id == gt_id,
-                    Game.final_score.is_not(None),
-                    Game.game_metadata["difficulty"].as_string() == difficulty,
-                    variant_filter,
-                    or_(
-                        Game.final_score > score_val,
-                        and_(
-                            Game.final_score == score_val,
-                            Game.completed_at < game.completed_at,
-                        ),
-                    ),
-                )
-            )
-        ).scalar()
+        rank = await compute_rank(
+            db,
+            game_type_id=gt_id,
+            score_val=game.final_score or 0,
+            completed_at=game.completed_at,
+            game_id=game_id,
+            game_label="sudoku",
+            extra_filters=(
+                Game.game_metadata["difficulty"].as_string() == difficulty,
+                variant_filter,
+            ),
+        )
 
-    rank = int(count or 0) + 1
     return ScoreEntry(
         player_name=body.player_name,
         score=int(game.final_score or 0),
