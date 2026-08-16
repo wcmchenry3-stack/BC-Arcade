@@ -5,5 +5,5 @@ pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 coverage>=7.15.4
 locust==2.46.3
-hypothesis==6.165.4
+hypothesis==6.165.5
 pip-audit==2.10.1
