@@ -643,6 +643,7 @@ function autoCompleteStep(state: SolitaireState): SolitaireState {
     const cardBelow = src[fromIndex - 1];
     if (
       cardBelow === undefined ||
+      !cardBelow.faceUp ||
       !canStackOnFoundation(cardBelow, state.foundations[cardBelow.suit])
     ) {
       continue;
