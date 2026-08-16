@@ -26,6 +26,7 @@ import {
   BOSS_BULLET_VY,
   BULLET_E_VY,
   PLAYER_W,
+  MAX_PLAYER_BULLETS,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -1686,6 +1687,119 @@ describe("Power-up engine (#980)", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("FreeFireZone");
     expect(s.powerUps.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2334 — Player bullet cap & GameOver freeze cleanup
+//
+// Reported: sustained Lightning fire against a full wave-5 formation got
+// laggy/froze, and the frame captured at the moment of death showed a bullet
+// still sitting next to the player's ship (looked like it was firing instead
+// of exploding).
+// ---------------------------------------------------------------------------
+
+describe("Player bullet cap (#2334)", () => {
+  function fillerPlayerBullets(count: number): Bullet[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: 20000 + i,
+      x: 50 + i, // spread out, mid-screen — all comfortably on-screen
+      y: 300,
+      vx: 0,
+      vy: -0.56, // upward, matches the player bullet speed
+      owner: "player" as const,
+      width: 5,
+      height: 14,
+      damage: 1,
+    }));
+  }
+
+  it("no new player bullet fired once MAX_PLAYER_BULLETS is reached", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    expect(s.phase).toBe("Playing");
+
+    s = {
+      ...s,
+      activePowerUp: { remainingMs: 3000, type: "lightning" as const, shieldAbsorbed: 0 },
+      player: { ...s.player, shootCooldown: 0 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS),
+    };
+
+    s = tick(s, 16, FIRE_INPUT);
+
+    // Cap held even under Lightning's fast cooldown — no 21st bullet added.
+    expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+
+  it("fires normally once bullet count drops back below the cap", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+
+    s = {
+      ...s,
+      player: { ...s.player, shootCooldown: 0 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS - 1),
+    };
+
+    s = tick(s, 16, FIRE_INPUT);
+
+    expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+});
+
+describe("GameOver freeze cleanup (#2334)", () => {
+  it("clears in-flight player bullets the instant lives reach 0", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+
+    // Drain to the last life and give the player some live bullets on screen,
+    // mirroring the reported scenario (Lightning fire in progress at death).
+    s = {
+      ...s,
+      player: { ...s.player, lives: 1, invincibleTimer: 0 },
+      playerBullets: [
+        {
+          id: 1,
+          x: s.player.x,
+          y: s.player.y - 20,
+          vx: 0,
+          vy: -0.56,
+          owner: "player",
+          width: 5,
+          height: 14,
+          damage: 1,
+        },
+        {
+          id: 2,
+          x: s.player.x,
+          y: s.player.y - 60,
+          vx: 0,
+          vy: -0.56,
+          owner: "player",
+          width: 5,
+          height: 14,
+          damage: 1,
+        },
+      ],
+    };
+
+    const bullet = {
+      id: 99999,
+      x: s.player.x,
+      y: s.player.y - 2,
+      vx: 0,
+      vy: 0.5,
+      owner: "enemy" as const,
+      width: 5,
+      height: 10,
+      damage: 1,
+    };
+    s = { ...s, enemyBullets: [bullet] };
+    s = tick(s, 16, NO_INPUT);
+
+    expect(s.phase).toBe("GameOver");
+    expect(s.playerBullets).toHaveLength(0);
   });
 });
 

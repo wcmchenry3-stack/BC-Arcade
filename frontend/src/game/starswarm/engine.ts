@@ -31,6 +31,13 @@ const BULLET_P_W = 5;
 const BULLET_P_H = 14;
 const BULLET_P_VY = -0.56; // px/ms upward
 
+// #2334: hard cap on simultaneous player bullets. Lightning's 4x fire rate combined with
+// piercing bullets (never consumed on enemy hit — only removed off-screen, see tickBullets)
+// has no other bound; this guards against runaway growth feeding the O(enemies × bullets)
+// collision scan in tickCollisions. Set comfortably above the ~15-bullet ceiling normal
+// sustained Lightning fire reaches on its own, so ordinary play is unaffected.
+export const MAX_PLAYER_BULLETS = 20;
+
 export const BULLET_C_W = 12; // super-state bullet — wider
 const BULLET_C_H = 22;
 
@@ -777,7 +784,12 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
 
   const isSuper = state.activePowerUp?.type === "lightning";
 
-  if (shootCooldown === 0 && input.fire && !state.playerFireDisabled) {
+  if (
+    shootCooldown === 0 &&
+    input.fire &&
+    !state.playerFireDisabled &&
+    state.playerBullets.length < MAX_PLAYER_BULLETS
+  ) {
     const bullet: Bullet = {
       id: nextId(),
       x: newX,
@@ -1672,7 +1684,11 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           return {
             ...state,
             enemies: finalEnemies,
-            playerBullets,
+            // #2334: tick() short-circuits on GameOver (see the phase guard near the top
+            // of this file), freezing whatever frame is current — including any player
+            // bullets mid-flight. Clear them so the frozen frame doesn't render a stray
+            // bolt next to the destroyed ship (looked like it was "still firing").
+            playerBullets: [],
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,
             score,
