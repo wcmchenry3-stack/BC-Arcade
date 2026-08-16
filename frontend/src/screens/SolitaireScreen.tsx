@@ -600,7 +600,10 @@ export default function SolitaireScreen() {
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
   const hintDisabled =
     state === null || state.isComplete || autoCompleting || hintMoves.length === 0;
-  const showAutoComplete = state !== null && !state.isComplete && canAutoComplete(state);
+  const showAutoComplete = useMemo(
+    () => state !== null && !state.isComplete && canAutoComplete(state),
+    [state]
+  );
   const cardSize = useResponsiveCardSize(
     CARD_WIDTH,
     CARD_HEIGHT,
