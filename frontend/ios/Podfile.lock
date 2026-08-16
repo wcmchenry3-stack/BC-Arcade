@@ -1731,7 +1731,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context (5.7.0):
+  - react-native-safe-area-context (5.9.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1743,8 +1743,8 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
-    - react-native-safe-area-context/common (= 5.7.0)
-    - react-native-safe-area-context/fabric (= 5.7.0)
+    - react-native-safe-area-context/common (= 5.9.0)
+    - react-native-safe-area-context/fabric (= 5.9.0)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1755,7 +1755,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/common (5.7.0):
+  - react-native-safe-area-context/common (5.9.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1777,7 +1777,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/fabric (5.7.0):
+  - react-native-safe-area-context/fabric (5.9.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2508,7 +2508,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNSentry (8.20.0):
+  - RNSentry (8.22.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -3016,7 +3016,7 @@ SPEC CHECKSUMS:
   ExpoScreenOrientation: 17fd81b2bdb7615b4b540335673aaf98a358281f
   EXUpdatesInterface: 92d2aa5194b6fb93ca8ab749db75665cb28b2e60
   FBLazyVector: 3c3be9a019176b5699455f7f66c5444b78a411c6
-  hermes-engine: fda4bca57c59a51720982e7559411baab33d2791
+  hermes-engine: e6895f7ebff4db3defccb67607eb686a0cf723ee
   RCTDeprecation: bccb6545c26db881ecddfd83a3f9ea82aba1605f
   RCTRequired: b2f74764d596fc0051f00fee94b49bf41a6f7f5a
   RCTSwiftUI: c6d6a31b849b9dfa64c33b55dc91ac15dd55774c
@@ -3055,7 +3055,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: f413ee411341fb3c34d20e85e9f6f524921fab15
   React-mutationobservernativemodule: 58f6d2adf7d98e72b241608dfa2ddce414d2a4e7
   react-native-netinfo: 2f906d5d9a639090ed1c079135d6485a95f749f1
-  react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
+  react-native-safe-area-context: 30934ff38025480021a6956a3eb8799f18ff835a
   react-native-skia: 2566a91725e6ab842eaa5e226b026760b1eca020
   React-NativeModulesApple: 167e532fb9bae30f3c66636b8ee0092bab263667
   React-networking: 89f6b69755a3176f30e56ba1ba8e214b1518ecfb
@@ -3096,7 +3096,7 @@ SPEC CHECKSUMS:
   RNGestureHandler: a426f18ab9021991fe2cbc8bf1677b740e20e70c
   RNReanimated: 5aa9e73d0f8d3c40d5c9bec396d6a61098db31f0
   RNScreens: de068bbd7d91b820fedac25c597d4b14830de74b
-  RNSentry: 808f6aa49316d4034ab02982716124cd9ac02d00
+  RNSentry: abd1c7d1a88175179f5a0367c132e84e06a69b45
   RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
   RNWorklets: 0000755d812f23d0fc703319e2b1f65d9204c954
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b

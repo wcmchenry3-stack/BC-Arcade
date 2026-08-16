@@ -71,7 +71,10 @@ function simulateOne(humanDiff: AiDifficulty, aiDiff: AiDifficulty, seed: number
       if (holds.every((h) => h)) break;
       humanState = roll(humanState, holds);
     }
-    humanState = score(humanState, scoreStrategy(humanState, humanDiff, aiState.total_score));
+    humanState = score(
+      humanState,
+      scoreStrategy(humanState, humanDiff, aiState.total_score, aiState.round)
+    );
 
     aiState = roll(aiState, [false, false, false, false, false]);
     while (aiState.rolls_used < 3) {
@@ -79,7 +82,10 @@ function simulateOne(humanDiff: AiDifficulty, aiDiff: AiDifficulty, seed: number
       if (holds.every((h) => h)) break;
       aiState = roll(aiState, holds);
     }
-    aiState = score(aiState, scoreStrategy(aiState, aiDiff, humanState.total_score));
+    aiState = score(
+      aiState,
+      scoreStrategy(aiState, aiDiff, humanState.total_score, humanState.round)
+    );
   }
 
   const humanScore = humanState.total_score;

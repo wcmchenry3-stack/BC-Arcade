@@ -52,8 +52,12 @@ function playGame(
   let humanState = newGame();
   let aiState = newGame();
 
-  // Human goes first each round so Hard AI can see the updated human score
-  // when making adversarial high-variance play decisions.
+  // Human goes first each round, matching production (GameScreen.tsx). Each
+  // scoreStrategy call passes the opponent's round alongside their score so
+  // rateAdversarialVariance can tell a "moving first" turn (opponent hasn't
+  // played this round yet — fair) from a "moving second" one (opponent's
+  // score already includes their this-round turn) instead of always
+  // comparing against a stale snapshot (GH #2200).
   for (let _round = 0; _round < 13; _round++) {
     humanState = roll(humanState, [false, false, false, false, false]);
     while (humanState.rolls_used < 3) {
@@ -61,7 +65,7 @@ function playGame(
     }
     humanState = score(
       humanState,
-      scoreStrategy(humanState, humanDiff, aiState.total_score),
+      scoreStrategy(humanState, humanDiff, aiState.total_score, aiState.round),
     );
 
     aiState = roll(aiState, [false, false, false, false, false]);
@@ -70,7 +74,7 @@ function playGame(
     }
     aiState = score(
       aiState,
-      scoreStrategy(aiState, aiDiff, humanState.total_score),
+      scoreStrategy(aiState, aiDiff, humanState.total_score, humanState.round),
     );
   }
 

@@ -88,14 +88,19 @@ export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolea
  * priority rules automatically, preventing illegal category selections.
  * `opponentScore` is the human player's current total, used by Hard for
  * adversarial awareness (high-variance plays when trailing, conservative when
- * leading).
+ * leading). `opponentRound` is the opponent's current round number — pass it
+ * whenever it's known so adversarial scoring can tell a "moving first this
+ * round" turn from a "moving second" one instead of always comparing against
+ * a stale snapshot (GH #2200); omit it only for solo play / callers with no
+ * opponent turn-order tracking.
  */
 export function scoreStrategy(
   state: GameState,
   difficulty: AiDifficulty,
-  opponentScore = 0
+  opponentScore = 0,
+  opponentRound?: number
 ): Category {
-  const infoSet = buildYachtInfoSet(state, opponentScore);
+  const infoSet = buildYachtInfoSet(state, opponentScore, opponentRound);
   const legalCats = Object.keys(possibleScores(state)) as Category[];
   const weights =
     difficulty === "easy"

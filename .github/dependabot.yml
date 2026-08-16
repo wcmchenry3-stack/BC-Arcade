@@ -7,12 +7,66 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     groups:
+      # Narrow groups first — Dependabot assigns a dependency to the first
+      # group it matches, so these keep their identity instead of being
+      # swallowed by the catch-all below.
       expo:
         patterns: ["expo*", "@expo/*"]
       react-navigation:
         patterns: ["@react-navigation/*"]
       react-ecosystem:
         patterns: ["react", "react-dom", "react-test-renderer", "@types/react", "react-native"]
+      # CVE fixes get their own PR so they are never held up behind a routine batch.
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      # Everything else minor/patch arrives as one PR per week instead of ~10.
+      # Majors are deliberately excluded and still come individually.
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Expo SDK and React Native upgrades need native module compatibility
+      # testing and coordinated migration across the whole family, so they are
+      # done deliberately on a dedicated branch with `npx expo install --fix`
+      # rather than arriving as individual PRs.
+      #
+      # BookshelfAI learned this the harder way: it ignored only "expo", so the
+      # other expo-* packages kept opening separate major PRs and fragmented the
+      # SDK 56 -> 57 upgrade across four of them.
+      - dependency-name: "expo*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "@expo/*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "babel-preset-expo"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "jest-expo"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "eslint-config-expo"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "react-native"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      # @react-native/* packages (e.g. jest-preset) are versioned in lockstep
+      # with react-native itself — #2316 bumped jest-preset to 0.87.0 while
+      # react-native stayed pinned at 0.86.2 and broke jest's module
+      # resolution for every test suite. Move it only alongside react-native.
+      - dependency-name: "@react-native/*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   # Backend (pip)
   - package-ecosystem: "pip"
@@ -20,6 +74,22 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # pydantic_core is pinned exactly to what the installed pydantic version
+      # requires (see the comment in backend/requirements.txt). pydantic pins
+      # pydantic_core to an exact version, so bumping pydantic_core alone
+      # always breaks pip's resolver — see #2323, closed for this reason.
+      # Bump pydantic and pydantic_core together manually once a compatible
+      # pydantic release ships, then remove this ignore rule.
+      - dependency-name: "pydantic_core"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -27,3 +97,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

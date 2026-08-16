@@ -316,7 +316,13 @@ def process_directory(
     """
     result: dict[str, dict] = {}
 
-    for png_path in sorted(png_dir.glob("*.png")):
+    # Prefer .png over .webp when both exist (PNG is lossless → cleaner hull edges).
+    stem_map: dict[str, Path] = {}
+    for ext in ("*.webp", "*.png"):
+        for p in png_dir.glob(ext):
+            stem_map[p.stem] = p
+    assets = [stem_map[k] for k in sorted(stem_map)]
+    for png_path in assets:
         pixels, width, height = _load_rgba(png_path)
         data = extract_hull(pixels, width, height)
         key = png_path.stem  # filename without extension
@@ -358,8 +364,8 @@ def main() -> None:
             print(f"Path not found: {target}", file=sys.stderr)
             sys.exit(1)
         if target.is_file():
-            if target.suffix.lower() != ".png":
-                print(f"Expected a PNG file, got: {target}", file=sys.stderr)
+            if target.suffix.lower() not in {".png", ".webp"}:
+                print(f"Expected a PNG or WebP file, got: {target}", file=sys.stderr)
                 sys.exit(1)
             process_single_file(target)
         else:

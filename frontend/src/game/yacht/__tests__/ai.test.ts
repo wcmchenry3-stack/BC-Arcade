@@ -210,6 +210,14 @@ describe("scoreStrategy — Hard adversarial variance", () => {
     });
     expect(scoreStrategy(state, "hard", 0)).toBe("sixes");
   });
+
+  // GH #2200: accepts an optional opponentRound so callers with real turn-order
+  // info (production, simulators) can avoid comparing against a stale snapshot.
+  it("accepts an optional opponentRound without throwing, for both mover positions", () => {
+    const state = withScores({ ...makeGame([6, 6, 6, 6, 1], 3), round: 8 }, { yacht: 50 });
+    expect(() => scoreStrategy(state, "hard", 139, 9)).not.toThrow(); // opponent already played
+    expect(() => scoreStrategy(state, "hard", 139, 8)).not.toThrow(); // opponent pending
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -239,4 +247,22 @@ describe("scoreStrategy — Joker rule compliance", () => {
     const cat = scoreStrategy(state, "hard", 0);
     expect(cat).not.toBe("full_house");
   });
+
+  // GH #2242: rateImmediateValue used the non-Joker scorer, which returns 0 for
+  // Full House / Small Straight / Large Straight on Joker turns (they aren't a
+  // natural full-house/straight shape). That made the AI undervalue the boxes
+  // that are actually worth the most on a Joker turn and steer toward a lower
+  // real-value category instead. Fixture: five 2s, yacht + twos filled, so the
+  // legal set (Priority 2) is full_house(25)/small_straight(30)/large_straight(40)
+  // vs. three_of_a_kind/four_of_a_kind/chance(10 each, via sumDice). Correct
+  // Joker-aware valuation must prefer large_straight (40) over the 10-point
+  // categories that the pre-fix code would have rated equal-or-higher.
+  it.each(["easy", "medium", "hard"] as const)(
+    "%s Joker: prefers the 25/40 fixed Full House / Large Straight value over a lower-value legal cat",
+    (difficulty) => {
+      const state = withScores(makeGame([2, 2, 2, 2, 2], 3), { yacht: 50, twos: 10 });
+      const cat = scoreStrategy(state, difficulty, 0);
+      expect(cat).toBe("large_straight");
+    }
+  );
 });
