@@ -26,6 +26,7 @@ import {
   BOSS_BULLET_VY,
   BULLET_E_VY,
   PLAYER_W,
+  MAX_PLAYER_BULLETS,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -1050,6 +1051,59 @@ describe("Bonus lives", () => {
     expect(s.player.lives).toBeGreaterThan(0);
   });
 
+  // #1078/#2334: the GameOver branch of tickCollisions used to unconditionally clear
+  // playerBullets, so a same-tick bonus-life rescue permanently dropped in-flight bullets
+  // even though the player survives. tickCollisions now preserves them for tickBonusLives
+  // to finalize (clear) only if the rescue doesn't happen.
+  it("preserves in-flight player bullets when a bonus-life rescue reverts GameOver in the same tick", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
+    s = advanceMs(s, 8000);
+    s = { ...s, score: 29_999, player: { ...s.player, lives: 1, invincibleTimer: 0 } };
+    const enemy = s.enemies.find((e) => e.isAlive);
+    if (!enemy) throw new Error("no alive enemy");
+    const killBullet: Bullet = {
+      id: 77781,
+      x: enemy.x,
+      y: enemy.y,
+      vx: 0,
+      vy: 0,
+      owner: "player",
+      width: enemy.width,
+      height: enemy.height,
+      damage: 10,
+    };
+    // Unrelated bullet, far from any enemy — should never be hit-consumed.
+    const survivorBullet: Bullet = {
+      id: 77782,
+      x: 20,
+      y: 20,
+      vx: 0,
+      vy: 0,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+    };
+    const enemyBullet: Bullet = {
+      id: 77783,
+      x: s.player.x,
+      y: s.player.y,
+      vx: 0,
+      vy: 0,
+      owner: "enemy",
+      width: 8,
+      height: 8,
+      damage: 1,
+    };
+    s = tick(
+      { ...s, playerBullets: [killBullet, survivorBullet], enemyBullets: [enemyBullet] },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).not.toBe("GameOver");
+    expect(s.playerBullets.some((b) => b.id === survivorBullet.id)).toBe(true);
+  });
+
   // #1078: slow-mo timer and invincibility
   it("sets bonusLifeSlowMoTimer and invincibleTimer after bonus life award", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
@@ -1686,6 +1740,141 @@ describe("Power-up engine (#980)", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("FreeFireZone");
     expect(s.powerUps.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2334 — Player bullet cap & GameOver freeze cleanup
+//
+// Reported: sustained Lightning fire against a full wave-5 formation got
+// laggy/froze, and the frame captured at the moment of death showed a bullet
+// still sitting next to the player's ship (looked like it was firing instead
+// of exploding).
+// ---------------------------------------------------------------------------
+
+describe("Player bullet cap (#2334)", () => {
+  function fillerPlayerBullets(count: number): Bullet[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: 20000 + i,
+      x: 50 + i, // spread out, mid-screen — all comfortably on-screen
+      y: 300,
+      vx: 0,
+      vy: -0.56, // upward, matches the player bullet speed
+      owner: "player" as const,
+      width: 5,
+      height: 14,
+      damage: 1,
+    }));
+  }
+
+  it("no new player bullet fired once MAX_PLAYER_BULLETS is reached", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    expect(s.phase).toBe("Playing");
+
+    s = {
+      ...s,
+      activePowerUp: { remainingMs: 3000, type: "lightning" as const, shieldAbsorbed: 0 },
+      player: { ...s.player, shootCooldown: 0 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS),
+    };
+
+    s = tick(s, 16, FIRE_INPUT);
+
+    // Cap held even under Lightning's fast cooldown — no 21st bullet added.
+    expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+
+  it("fires normally once bullet count drops back below the cap", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+
+    s = {
+      ...s,
+      player: { ...s.player, shootCooldown: 0 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS - 1),
+    };
+
+    s = tick(s, 16, FIRE_INPUT);
+
+    expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+
+  // #2334: buddy-ship bullets are player-owned but were pushed with no cap check, so a
+  // spread burst (5-7 bullets) could push playerBullets past MAX_PLAYER_BULLETS.
+  it("buddy ship spread burst does not push playerBullets past MAX_PLAYER_BULLETS", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+    s = applyPowerUp(s, "buddy");
+    expect(s.buddyShips.length).toBe(1);
+
+    s = {
+      ...s,
+      player: { ...s.player, invincibleTimer: 999_999 },
+      playerBullets: fillerPlayerBullets(MAX_PLAYER_BULLETS - 3),
+    };
+
+    // Advance until the buddy ship's fire point (pathT >= BUDDY_FIRE_AT_T).
+    for (let i = 0; i < 400 && s.playerBullets.length <= MAX_PLAYER_BULLETS - 3; i++) {
+      s = tick(s, 16, NO_INPUT);
+    }
+
+    expect(s.playerBullets.length).toBeLessThanOrEqual(MAX_PLAYER_BULLETS);
+  });
+});
+
+describe("GameOver freeze cleanup (#2334)", () => {
+  it("clears in-flight player bullets the instant lives reach 0", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    s = advanceMs(s, 8000);
+
+    // Drain to the last life and give the player some live bullets on screen,
+    // mirroring the reported scenario (Lightning fire in progress at death).
+    s = {
+      ...s,
+      player: { ...s.player, lives: 1, invincibleTimer: 0 },
+      playerBullets: [
+        {
+          id: 1,
+          x: s.player.x,
+          y: s.player.y - 20,
+          vx: 0,
+          vy: -0.56,
+          owner: "player",
+          width: 5,
+          height: 14,
+          damage: 1,
+        },
+        {
+          id: 2,
+          x: s.player.x,
+          y: s.player.y - 60,
+          vx: 0,
+          vy: -0.56,
+          owner: "player",
+          width: 5,
+          height: 14,
+          damage: 1,
+        },
+      ],
+    };
+
+    const bullet = {
+      id: 99999,
+      x: s.player.x,
+      y: s.player.y - 2,
+      vx: 0,
+      vy: 0.5,
+      owner: "enemy" as const,
+      width: 5,
+      height: 10,
+      damage: 1,
+    };
+    s = { ...s, enemyBullets: [bullet] };
+    s = tick(s, 16, NO_INPUT);
+
+    expect(s.phase).toBe("GameOver");
+    expect(s.playerBullets).toHaveLength(0);
   });
 });
 

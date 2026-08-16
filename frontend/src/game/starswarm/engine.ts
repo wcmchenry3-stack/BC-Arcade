@@ -31,6 +31,18 @@ const BULLET_P_W = 5;
 const BULLET_P_H = 14;
 const BULLET_P_VY = -0.56; // px/ms upward
 
+// #2334: hard cap on simultaneous player bullets. Lightning's 4x fire rate combined with
+// piercing bullets (never consumed on enemy hit — only removed off-screen, see tickBullets)
+// has no other bound; this guards against runaway growth feeding the O(enemies × bullets)
+// collision scan in tickCollisions. Set comfortably above the ~15-bullet ceiling normal
+// sustained Lightning fire reaches on its own, so ordinary play is unaffected.
+//
+// Deliberately flat (not wave/difficulty-scaled like bulletCap() below): bulletCap() bounds
+// enemy bullet *density* as a gameplay-difficulty knob that should get harder with wave/
+// paramScale. This cap instead bounds a technical worst-case (fire-rate × piercing bullets
+// never despawning on hit) that doesn't grow with wave, so it stays a plain constant.
+export const MAX_PLAYER_BULLETS = 20;
+
 export const BULLET_C_W = 12; // super-state bullet — wider
 const BULLET_C_H = 22;
 
@@ -741,7 +753,14 @@ function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmS
   const livesEarnable = Math.floor(next.score / threshold);
   const livesToAward = Math.max(0, livesEarnable - next.bonusLivesAwarded);
 
-  if (livesToAward === 0 || next.player.lives >= MAX_LIVES) return next;
+  if (livesToAward === 0 || next.player.lives >= MAX_LIVES) {
+    // #2334: no bonus life to revive the player this tick — GameOver sticks. tickCollisions
+    // preserved in-flight playerBullets in case of a same-tick revival (see its comment); since
+    // there isn't one, finalize the clear here so the frozen GameOver frame doesn't render a
+    // stray bolt next to the destroyed ship.
+    if (next.phase === "GameOver") return { ...next, playerBullets: [] };
+    return next;
+  }
 
   const awarded = Math.min(livesToAward, MAX_LIVES - next.player.lives);
   const newLives = next.player.lives + awarded;
@@ -777,7 +796,12 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
 
   const isSuper = state.activePowerUp?.type === "lightning";
 
-  if (shootCooldown === 0 && input.fire && !state.playerFireDisabled) {
+  if (
+    shootCooldown === 0 &&
+    input.fire &&
+    !state.playerFireDisabled &&
+    state.playerBullets.length < MAX_PLAYER_BULLETS
+  ) {
     const bullet: Bullet = {
       id: nextId(),
       x: newX,
@@ -1398,6 +1422,9 @@ function tickBuddyShips(state: StarSwarmState, dtMs: number): StarSwarmState {
       const baseAngle = Math.atan2(baseDirY, baseDirX);
       const spreadHalf = Math.PI / 6; // ±30° total fan
       for (let i = 0; i < bulletCount; i++) {
+        // #2334: buddy-ship bullets are player-owned — respect the same hard cap tickPlayer
+        // enforces, so a burst can't push playerBullets past it during heavy Lightning fire.
+        if (newPlayerBullets.length >= MAX_PLAYER_BULLETS) break;
         const angle =
           bulletCount === 1
             ? baseAngle
@@ -1672,6 +1699,14 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           return {
             ...state,
             enemies: finalEnemies,
+            // #2334: tick() short-circuits on GameOver (see the phase guard near the top
+            // of this file), freezing whatever frame is current — including any player
+            // bullets mid-flight. Normally we'd clear them here so the frozen frame doesn't
+            // render a stray bolt next to the destroyed ship, but tickBonusLives (#1078) can
+            // still revive this same tick if a bonus-life threshold was also just crossed —
+            // clearing unconditionally would permanently drop those bullets on a rescue. Keep
+            // the (already collision-filtered) survivors here; tickBonusLives finalizes the
+            // clear only if the GameOver sticks.
             playerBullets,
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,

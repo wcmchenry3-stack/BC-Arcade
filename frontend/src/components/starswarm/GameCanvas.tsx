@@ -418,6 +418,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const playerDisplayY =
       state.phase === "WinTransition" ? player.y - state.playerYOffset : player.y;
     const shipVisible = playerDisplayY + player.height > 0;
+    // #2334: tick() freezes the instant phase becomes GameOver, so the ship would
+    // otherwise render frozen mid-frame (looking like it's still flying/firing) instead
+    // of appearing destroyed. Hide it once the death explosion has taken over.
+    const showShip = shipVisible && state.phase !== "GameOver";
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, state.score);
@@ -426,6 +430,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const blink =
       player.invincibleTimer > 0 &&
       Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
+    // Shared visibility guard for the player ship and its overlays (shield aura, lightning
+    // tint) — hoisted so the GameOver/blink rule only has to be updated in one place.
+    const showPlayerShip = !blink && showShip;
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -554,9 +561,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               );
             })}
 
-            {/* Player — hidden once off-screen during WinTransition */}
-            {!blink &&
-              shipVisible &&
+            {/* Player — hidden once off-screen during WinTransition, or once GameOver freezes the frame */}
+            {showPlayerShip &&
               (images.playerShip ? (
                 <SkiaImage
                   image={images.playerShip}
@@ -577,7 +583,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ))}
 
             {/* #1033 Shield aura — glowing ring when shield is active */}
-            {!blink && shipVisible && state.activePowerUp?.type === "shield" && (
+            {showPlayerShip && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
                 cy={playerDisplayY}
@@ -586,7 +592,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 style="fill"
               />
             )}
-            {!blink && shipVisible && state.activePowerUp?.type === "shield" && (
+            {showPlayerShip && state.activePowerUp?.type === "shield" && (
               <Circle
                 cx={player.x}
                 cy={playerDisplayY}
@@ -598,7 +604,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             )}
 
             {/* Lightning super-state electric tint on player ship */}
-            {!blink && shipVisible && state.activePowerUp?.type === "lightning" && (
+            {showPlayerShip && state.activePowerUp?.type === "lightning" && (
               <Rect
                 x={player.x - player.width / 2}
                 y={playerDisplayY - player.height / 2}

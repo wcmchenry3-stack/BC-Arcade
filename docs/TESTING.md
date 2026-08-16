@@ -198,6 +198,25 @@ Verifies the dark sting sound and card animation fire exactly once when the Quee
 3. Confirm play is **not blocked** — the animation runs in parallel with normal game flow.
 4. **Reduced-motion fallback:** Enable Reduce Motion in device accessibility settings, trigger a Q♠ trick. Confirm only a red flash (~0.8 s) occurs, no zoom or shake.
 
+### Star Swarm: ship hidden on Game Over freeze frame (#2334)
+
+Verifies the player ship (and any shield/lightning overlay) disappears the instant the
+game freezes on death, instead of the frozen frame looking like the ship is still flying
+and firing. `engine.ts` clears `playerBullets` on the GameOver transition (unit-tested);
+this repro covers the render-only half in `GameCanvas.tsx`, which this repo does not unit
+test (see "What's Tested" note above — no React/canvas coverage).
+
+1. Start a Star Swarm run and take the last hit while enemy bullets or diving enemies are
+   still on screen (any wave). Bonus: collect Lightning first so bullets are in flight at
+   the moment of death, matching the original report.
+2. The instant "GAME OVER" appears:
+   - Confirm the player ship sprite is **not** visible anywhere on the frozen frame.
+   - Confirm no stray player bullet is rendered floating near where the ship was.
+   - Confirm the shield ring / lightning tint overlay (if a power-up was active) also
+     disappears along with the ship.
+   - The rest of the frame (enemies, enemy bullets, starfield) still freezes as expected —
+     only the player's own ship/bullets should be gone.
+
 ---
 
 ## E2E Test Conventions
