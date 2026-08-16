@@ -7,6 +7,7 @@
  */
 
 import { getValidPlays, getRng } from "./engine";
+import { passOffset } from "./types";
 import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import {
@@ -66,8 +67,8 @@ function currentTrickWinner(trick: readonly TrickCard[]): number {
 
 /** Returns true when playerIndex's pass lands on seat 0 for the given direction. */
 function passingToSeat0(playerIndex: number, direction: PassDirection): boolean {
-  if (direction === "none") return false;
-  const offset = direction === "left" ? 1 : direction === "right" ? 3 : 2;
+  const offset = passOffset(direction);
+  if (offset === null) return false; // "none": no exchange occurs
   return (playerIndex + offset) % 4 === 0;
 }
 

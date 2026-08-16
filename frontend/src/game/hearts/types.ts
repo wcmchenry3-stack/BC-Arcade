@@ -49,6 +49,20 @@ export interface TrickCard {
 /** Pass direction cycles per hand: Left → Right → Across → Keep, repeat. */
 export type PassDirection = "left" | "right" | "across" | "none";
 
+/**
+ * Seat offset a pass direction sends cards to, e.g. offset 1 means
+ * `(playerIndex + 1) % 4` receives that player's pass. Returns null for
+ * "none" (no exchange occurs that hand). Single source of truth shared by
+ * the pass-execution logic (engine.ts) and the pass-memory info-set builder
+ * (aiInfoSet.ts) so they can't drift (#2237).
+ */
+export function passOffset(direction: PassDirection): number | null {
+  if (direction === "left") return 1;
+  if (direction === "right") return 3;
+  if (direction === "across") return 2;
+  return null;
+}
+
 export type HeartsPhase =
   | "dealing" // between hands — UI shows hand scores before next deal
   | "passing" // players select 3 cards to pass
@@ -112,4 +126,13 @@ export interface HeartsState {
    * Optional so legacy serialized states (no `events` field) deserialize cleanly.
    */
   readonly events?: readonly GameEvent[];
+  /**
+   * Pass-phase memory (#2237): cards each player passed away / received this hand,
+   * indexed by player. Populated by commitPass; reset to empty arrays each new hand
+   * (including "none"-direction hands, where they simply stay empty).
+   * Optional so legacy persisted states (no field) deserialize cleanly — the info-set
+   * builder treats a missing entry as "no pass memory available" (empty arrays).
+   */
+  readonly passedAwayByPlayer?: readonly (readonly Card[])[];
+  readonly receivedByPlayer?: readonly (readonly Card[])[];
 }
