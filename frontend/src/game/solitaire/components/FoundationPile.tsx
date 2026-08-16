@@ -16,6 +16,7 @@ import { useCardSize } from "../../_shared/CardSizeContext";
 import type { CanonicalSuit } from "../../_shared/decks/types";
 import { rankLabel } from "../../_shared/decks/cardId";
 import SelectableCard from "../../_shared/SelectableCard";
+import { DraggableCard } from "../../_shared/drag/DraggableCard";
 import { DropTarget } from "../../_shared/drag/DropTarget";
 import type { DropHandler } from "../../_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
@@ -71,16 +72,31 @@ export default function FoundationPile({
           : t("card.faceUp", { rank: rl, suit: suitName });
         return (
           <View style={hintDestination || hintSource ? hintStyle : undefined}>
-            <SelectableCard
-              suit={top.suit as CanonicalSuit}
-              rank={top.rank}
-              width={cardWidth}
-              height={cardHeight}
-              selected={selected}
-              shakeX={shakeX}
-              onPress={onPress ? () => onPress(suit) : undefined}
+            <DraggableCard
+              testID={`solitaire-foundation-${suit}-card`}
+              onTap={onPress ? () => onPress(suit) : undefined}
               accessibilityLabel={cardLabel}
-            />
+              dragCards={[
+                {
+                  suit: top.suit as CanonicalSuit,
+                  rank: top.rank,
+                  faceDown: false,
+                  width: cardWidth,
+                  height: cardHeight,
+                },
+              ]}
+              dragSource={{ game: "solitaire", type: "foundation", suit }}
+            >
+              <SelectableCard
+                suit={top.suit as CanonicalSuit}
+                rank={top.rank}
+                width={cardWidth}
+                height={cardHeight}
+                selected={selected}
+                shakeX={shakeX}
+                accessibilityLabel={cardLabel}
+              />
+            </DraggableCard>
           </View>
         );
       }

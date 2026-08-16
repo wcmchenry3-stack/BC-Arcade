@@ -8,6 +8,7 @@ import SelectableCard from "../../game/_shared/SelectableCard";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import type { Card, Suit } from "../../game/freecell/types";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
@@ -57,17 +58,32 @@ export default function FoundationPile({
           ? t("card.selected", { rank: rl, suit: suitName })
           : t("card.label", { rank: rl, suit: suitName });
         return (
-          <SelectableCard
-            suit={top.suit as CanonicalSuit}
-            rank={top.rank}
-            width={cardWidth}
-            height={cardHeight}
-            selected={selected}
-            shakeX={shakeX}
-            hintHighlighted={hintDestination}
-            onPress={onPress ? () => onPress(suit) : undefined}
+          <DraggableCard
+            testID={`freecell-foundation-${suit}-card`}
+            onTap={onPress ? () => onPress(suit) : undefined}
             accessibilityLabel={label}
-          />
+            dragCards={[
+              {
+                suit: top.suit as CanonicalSuit,
+                rank: top.rank,
+                faceDown: false,
+                width: cardWidth,
+                height: cardHeight,
+              },
+            ]}
+            dragSource={{ game: "freecell", type: "foundation", suit }}
+          >
+            <SelectableCard
+              suit={top.suit as CanonicalSuit}
+              rank={top.rank}
+              width={cardWidth}
+              height={cardHeight}
+              selected={selected}
+              shakeX={shakeX}
+              hintHighlighted={hintDestination}
+              accessibilityLabel={label}
+            />
+          </DraggableCard>
         );
       }
     }
