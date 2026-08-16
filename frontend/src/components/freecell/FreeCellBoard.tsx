@@ -194,6 +194,19 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
         setSelection(null);
         return true;
       }
+      if (source.type === "foundation") {
+        if (
+          !validateMove(state, {
+            type: "foundation-to-tableau",
+            fromSuit: source.suit as Suit,
+            toCol,
+          })
+        )
+          return false;
+        onMove({ type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol });
+        setSelection(null);
+        return true;
+      }
       return false;
     },
     [state, onMove]
@@ -250,6 +263,8 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
           };
         } else if (source.type === "freecell") {
           move = { type: "freecell-to-tableau", fromCell: source.cell, toCol: col };
+        } else if (source.type === "foundation") {
+          move = { type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol: col };
         }
         if (move && validateMove(state, move)) ids.push(`freecell-tableau-${col}`);
       }

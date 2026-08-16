@@ -22,7 +22,8 @@ export type DragSource =
   | { game: "solitaire"; type: "waste" }
   | { game: "solitaire"; type: "foundation"; suit: string }
   | { game: "freecell"; type: "tableau"; col: number; fromIndex: number }
-  | { game: "freecell"; type: "freecell"; cell: number };
+  | { game: "freecell"; type: "freecell"; cell: number }
+  | { game: "freecell"; type: "foundation"; suit: string };
 
 export interface DragState {
   cards: DragCard[];
