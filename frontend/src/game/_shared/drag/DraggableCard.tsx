@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { Platform } from "react-native";
-import type { Insets } from "react-native";
+import type { AccessibilityActionEvent, Insets } from "react-native";
 import Animated, {
   useAnimatedRef,
   measure as rnMeasure,
@@ -14,12 +14,20 @@ import type { DragCard, DragSource } from "./DragContext";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
 
+// Stable reference — re-creating this array every render would otherwise
+// force a fresh accessibilityActions prop identity on every re-render.
+const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
+
 export interface DraggableCardProps {
   children: React.ReactNode;
   style?: object;
   testID?: string;
   /** Tap fallback — same behavior as the old onPress. */
   onTap?: () => void;
+  /** Screen-reader label for this card. Required (together with `onTap`) to
+   *  expose this as an accessible, activatable element — see the
+   *  accessibility note below. */
+  accessibilityLabel?: string;
   /** The card(s) that will be dragged. For a tableau run, pass all cards
    *  from fromIndex to end of pile. */
   dragCards: DragCard[];
@@ -37,6 +45,7 @@ export function DraggableCard({
   style,
   testID,
   onTap,
+  accessibilityLabel,
   dragCards,
   dragSource,
   draggable = true,
@@ -153,8 +162,39 @@ export function DraggableCard({
     onTap && process.env.NODE_ENV === "test"
       ? React.cloneElement(child, { onPress: onTap })
       : child;
+
+  // Accessibility: the child is a plain View (no onPress in production — see above),
+  // so it's invisible to VoiceOver/TalkBack on its own. `onAccessibilityTap` (iOS) and
+  // `accessibilityActions`/`onAccessibilityAction` (both platforms) let a screen-reader
+  // "activate" gesture call `onTap` directly, independent of RNGH's gesture recognizers
+  // entirely — no possibility of the same competing-recognizer conflict noted above.
+  // Requires accessibilityLabel too: marking a View `accessible` collapses its subtree
+  // into one announced element, and without an explicit label there's nothing reliable
+  // for that element to announce (the label lives on an inner, now-hidden descendant).
+  // Excluded in test mode: the child-clone above already gives that same "button" role
+  // to the inner element for RTL's getByRole/fireEvent.press — adding it here too would
+  // make every accessibility-labeled card resolve to two ambiguous "button" matches.
+  const isAccessible =
+    onTap !== undefined && accessibilityLabel !== undefined && process.env.NODE_ENV !== "test";
+  const handleAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName === "activate") onTap?.();
+    },
+    [onTap]
+  );
+
   return (
-    <Animated.View ref={viewRef} testID={testID} style={[style, webHitSlopStyle, dimmedStyle]}>
+    <Animated.View
+      ref={viewRef}
+      testID={testID}
+      style={[style, webHitSlopStyle, dimmedStyle]}
+      accessible={isAccessible}
+      accessibilityRole={isAccessible ? "button" : undefined}
+      accessibilityLabel={isAccessible ? accessibilityLabel : undefined}
+      onAccessibilityTap={isAccessible ? onTap : undefined}
+      accessibilityActions={isAccessible ? ACTIVATE_ACCESSIBILITY_ACTION : undefined}
+      onAccessibilityAction={isAccessible ? handleAccessibilityAction : undefined}
+    >
       <GestureDetector gesture={gesture}>{innerEl}</GestureDetector>
     </Animated.View>
   );

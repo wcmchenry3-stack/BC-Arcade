@@ -166,4 +166,72 @@ describe("DraggableCard", () => {
     );
     expect(getByTestId("card")).toBeTruthy();
   });
+
+  // The accessibility wiring below is gated off under NODE_ENV === "test" (see
+  // DraggableCard.tsx) so it doesn't create a duplicate "button" role alongside the
+  // test-only onPress clone used by the tests above. Force NODE_ENV to exercise the
+  // real, production accessibility path directly instead.
+  describe("accessibility (production path)", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+    });
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it("exposes accessible button semantics when both onTap and accessibilityLabel are set", async () => {
+      const onTap = jest.fn();
+      const { getByTestId } = await render(
+        wrap(
+          <DraggableCard
+            testID="card"
+            onTap={onTap}
+            accessibilityLabel="2 of Spades"
+            dragCards={dragCards}
+            dragSource={dragSource}
+          >
+            <Text>2♠</Text>
+          </DraggableCard>
+        )
+      );
+
+      const card = getByTestId("card");
+      expect(card.props.accessible).toBe(true);
+      expect(card.props.accessibilityRole).toBe("button");
+      expect(card.props.accessibilityLabel).toBe("2 of Spades");
+
+      // iOS VoiceOver "activate" gesture.
+      card.props.onAccessibilityTap();
+      expect(onTap).toHaveBeenCalledTimes(1);
+
+      // Cross-platform accessibility action (TalkBack + VoiceOver).
+      card.props.onAccessibilityAction({ nativeEvent: { actionName: "activate" } });
+      expect(onTap).toHaveBeenCalledTimes(2);
+
+      // An unrelated action name must not trigger onTap.
+      card.props.onAccessibilityAction({ nativeEvent: { actionName: "magicTap" } });
+      expect(onTap).toHaveBeenCalledTimes(2);
+    });
+
+    it("stays non-accessible when accessibilityLabel is omitted, even with onTap set", async () => {
+      const onTap = jest.fn();
+      const { getByTestId } = await render(
+        wrap(
+          <DraggableCard testID="card" onTap={onTap} dragCards={dragCards} dragSource={dragSource}>
+            <Text>2♠</Text>
+          </DraggableCard>
+        )
+      );
+
+      const card = getByTestId("card");
+      expect(card.props.accessible).toBe(false);
+      expect(card.props.accessibilityRole).toBeUndefined();
+      expect(card.props.onAccessibilityTap).toBeUndefined();
+      expect(card.props.accessibilityActions).toBeUndefined();
+      expect(card.props.onAccessibilityAction).toBeUndefined();
+    });
+  });
 });

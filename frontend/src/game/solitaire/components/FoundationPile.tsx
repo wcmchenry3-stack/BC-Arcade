@@ -75,6 +75,7 @@ export default function FoundationPile({
             <DraggableCard
               testID={`solitaire-foundation-${suit}-card`}
               onTap={onPress ? () => onPress(suit) : undefined}
+              accessibilityLabel={cardLabel}
               dragCards={[
                 {
                   suit: top.suit as CanonicalSuit,

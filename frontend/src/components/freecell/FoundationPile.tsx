@@ -61,6 +61,7 @@ export default function FoundationPile({
           <DraggableCard
             testID={`freecell-foundation-${suit}-card`}
             onTap={onPress ? () => onPress(suit) : undefined}
+            accessibilityLabel={label}
             dragCards={[
               {
                 suit: top.suit as CanonicalSuit,
