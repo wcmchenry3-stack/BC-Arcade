@@ -1,0 +1,144 @@
+name: Detect Maestro scope
+
+# Reusable workflow: maps changed paths to the set of Maestro flow directories
+# (e2e/maestro/flows/<dir>/) that need to run. Mirrors the `detect-e2e-scope`
+# job in ci.yml (same full-suite-vs-selective decision), but keyed to Maestro's
+# directory-per-game layout instead of Playwright's project list — several
+# games have Maestro coverage but no Playwright project (daily-word, sort,
+# home, offline), so this can't just reuse detect-e2e-scope's output.
+#
+# Called by mobile-smoke-android.yml and mobile-smoke-ios.yml. Left as its own
+# job/file rather than folding into ci.yml so a mistake here can't destabilize
+# the Playwright gate.
+
+on:
+  workflow_call:
+    outputs:
+      projects:
+        description: Space-separated Maestro flow directory names to run (empty = nothing Maestro-relevant changed).
+        value: ${{ jobs.detect.outputs.projects }}
+      label:
+        description: Human-readable summary for job summaries/logs.
+        value: ${{ jobs.detect.outputs.label }}
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect Maestro scope
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.scope.outputs.projects }}
+      label: ${{ steps.scope.outputs.label }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            yacht:
+              - 'frontend/src/screens/GameScreen*'
+              - 'frontend/src/components/Die*'
+              - 'frontend/src/components/DiceRow*'
+              - 'frontend/src/components/Scorecard*'
+              - 'frontend/src/components/ScoreRow*'
+              - 'frontend/src/game/yacht/**'
+              - 'backend/yacht/**'
+            blackjack:
+              - 'frontend/src/screens/Blackjack*Screen*'
+              - 'frontend/src/components/blackjack/**'
+              - 'frontend/src/game/blackjack/**'
+              - 'backend/blackjack/**'
+            twenty48:
+              - 'frontend/src/screens/Twenty48Screen*'
+              - 'frontend/src/components/twenty48/**'
+              - 'frontend/src/game/twenty48/**'
+            cascade:
+              - 'frontend/src/screens/CascadeScreen*'
+              - 'frontend/src/components/cascade/**'
+              - 'frontend/src/game/cascade/**'
+              - 'backend/cascade/**'
+            mahjong:
+              - 'frontend/src/screens/Mahjong*Screen*'
+              - 'frontend/src/components/mahjong/**'
+              - 'frontend/src/game/mahjong/**'
+              - 'backend/mahjong/**'
+            freecell:
+              - 'frontend/src/screens/FreeCellScreen*'
+              - 'frontend/src/components/freecell/**'
+              - 'frontend/src/game/freecell/**'
+              - 'backend/freecell/**'
+            starswarm:
+              - 'frontend/src/screens/StarSwarmScreen*'
+              - 'frontend/src/components/starswarm/**'
+              - 'frontend/src/game/starswarm/**'
+              - 'backend/starswarm/**'
+            hearts:
+              - 'frontend/src/screens/HeartsScreen*'
+              - 'frontend/src/components/hearts/**'
+              - 'frontend/src/game/hearts/**'
+              - 'backend/hearts/**'
+            solitaire:
+              - 'frontend/src/screens/SolitaireScreen*'
+              - 'frontend/src/game/solitaire/**'
+              - 'backend/solitaire/**'
+            sudoku:
+              - 'frontend/src/screens/SudokuScreen*'
+              - 'frontend/src/components/sudoku/**'
+              - 'frontend/src/game/sudoku/**'
+              - 'backend/sudoku/**'
+            # Key is daily_word (underscore), not daily-word, because GitHub
+            # Actions expressions treat a bare `-` in dot-notation property
+            # access as subtraction — `steps.filter.outputs.daily-word` would
+            # not parse as a single identifier. The flow directory itself is
+            # still `daily-word` (hyphen); mapped below.
+            daily_word:
+              - 'frontend/src/screens/DailyWordScreen*'
+              - 'frontend/src/game/daily_word/**'
+              - 'backend/daily_word/**'
+            sort:
+              - 'frontend/src/screens/SortScreen*'
+              - 'frontend/src/game/sort/**'
+              - 'backend/sort/**'
+            shared:
+              - 'frontend/App.tsx'
+              - 'frontend/app.json'
+              - 'frontend/src/theme/**'
+              - 'frontend/src/game/_shared/**'
+              - 'frontend/src/components/OfflineBanner*'
+              - 'frontend/src/components/LanguageSwitcher*'
+              - 'backend/main.py'
+              - 'e2e/maestro/**'
+              - '.github/workflows/**'
+
+      - id: scope
+        run: |
+          # Push events, PRs targeting main, or a shared/infra path change
+          # always run the full suite — same rule as ci.yml's detect-e2e-scope.
+          if [[ "${{ github.event_name }}" == "push" ]] || \
+             [[ "${{ github.base_ref }}" == "main" ]] || \
+             [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
+            echo "projects=blackjack cascade daily-word freecell hearts home mahjong solitaire sort starswarm sudoku twenty48 yacht offline" >> "$GITHUB_OUTPUT"
+            echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
+          else
+            # home is cheap and catches nav regressions, so always include it.
+            # offline is excluded from selective runs (Android-only, already
+            # excluded from the iOS job entirely) — full suite only.
+            projects="home"
+            [[ "${{ steps.filter.outputs.yacht }}"      == "true" ]] && projects="$projects yacht"
+            [[ "${{ steps.filter.outputs.blackjack }}"  == "true" ]] && projects="$projects blackjack"
+            [[ "${{ steps.filter.outputs.twenty48 }}"   == "true" ]] && projects="$projects twenty48"
+            [[ "${{ steps.filter.outputs.cascade }}"    == "true" ]] && projects="$projects cascade"
+            [[ "${{ steps.filter.outputs.mahjong }}"    == "true" ]] && projects="$projects mahjong"
+            [[ "${{ steps.filter.outputs.freecell }}"   == "true" ]] && projects="$projects freecell"
+            [[ "${{ steps.filter.outputs.starswarm }}"  == "true" ]] && projects="$projects starswarm"
+            [[ "${{ steps.filter.outputs.hearts }}"     == "true" ]] && projects="$projects hearts"
+            [[ "${{ steps.filter.outputs.solitaire }}"  == "true" ]] && projects="$projects solitaire"
+            [[ "${{ steps.filter.outputs.sudoku }}"     == "true" ]] && projects="$projects sudoku"
+            [[ "${{ steps.filter.outputs.daily_word }}" == "true" ]] && projects="$projects daily-word"
+            [[ "${{ steps.filter.outputs.sort }}"       == "true" ]] && projects="$projects sort"
+            echo "projects=$projects" >> "$GITHUB_OUTPUT"
+            echo "label=selective: $projects" >> "$GITHUB_OUTPUT"
+          fi

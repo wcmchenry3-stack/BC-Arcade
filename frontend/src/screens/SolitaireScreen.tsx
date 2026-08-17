@@ -63,6 +63,7 @@ import { DragProvider } from "../game/_shared/drag/DragContext";
 import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
+import { areTestHooksEnabled } from "../game/_shared/testHooks";
 import {
   clearGame,
   loadGame,
@@ -171,6 +172,12 @@ export default function SolitaireScreen() {
 
   // #597 — mount load. Restores a saved game silently; on a clean slot the
   // pre-game draw-mode modal is shown so the player picks their mode.
+  //
+  // E2E test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the modal on a clean
+  // slot and deal draw-1 immediately — Maestro drives native gestures and
+  // has no way to open a locale-dependent modal by text, and every other
+  // game's Maestro flow expects to land straight on the board. Production
+  // behavior (real users, modal shown) is unchanged.
   useEffect(() => {
     let alive = true;
     Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
@@ -180,6 +187,8 @@ export default function SolitaireScreen() {
         setState(saved);
         // Suppress re-counting a win when resuming an already-won game.
         if (saved.isComplete) winRecordedRef.current = true;
+      } else if (areTestHooksEnabled()) {
+        setState(dealGame(1));
       }
       setStats(savedStats);
       setLoading(false);

@@ -3,17 +3,24 @@ name: Mobile Smoke — iOS
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [dev, main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-smoke-ios
-  cancel-in-progress: false
+  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  detect-maestro-scope:
+    uses: ./.github/workflows/detect-maestro-scope.yml
+
   maestro-ios:
     name: Maestro iOS smoke
+    needs: detect-maestro-scope
+    if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -62,6 +69,7 @@ jobs:
             -quiet
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Boot iOS 18 simulator and install app
         run: |
@@ -74,10 +82,16 @@ jobs:
 
       - name: Run Maestro flows on iOS Simulator
         run: |
+          FLOWS=""
+          for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do
+            # offline/ requires toggleAirplaneMode (Android-only) — never runs on iOS.
+            [ "$d" = "offline" ] && continue
+            FLOWS="$FLOWS $(find "e2e/maestro/flows/$d" -name "*.yaml" 2>/dev/null)"
+          done
           maestro test \
             --device "$SIM_UDID" \
             --output ./maestro-results \
-            $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*" ! -path "*/offline/*")
+            $FLOWS
 
       - name: Write job summary
         if: always()
@@ -99,7 +113,7 @@ jobs:
           except ET.ParseError as exc:
               rows.append(f'| _(parse error: {exc})_ | — |\n')
           with open(out, 'a') as f:
-              f.write('## Maestro iOS Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.write('## Maestro iOS Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
               f.writelines(rows)
 
       - name: Upload Maestro results

@@ -1,5 +1,19 @@
 appId: com.buffingchi.games
 ---
+# Deterministic drag-and-drop regression coverage (see #2346).
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the draw-mode modal and always
+# deal draw-1 mode with the seed bank's first entry (seed 2) — see
+# `isTestBuild()`/`pickSeed()` in frontend/src/game/solitaire/engine.ts. That
+# makes every card in this flow known ahead of time, so — unlike a random
+# deal — each drag below asserts one exact outcome instead of accepting
+# "valid or invalid, either is fine".
+#
+# Fixed deal (seed 2, draw-1) tableau tops, computed via `dealGame(1)`:
+#   col0: 7♦   col1: 10♦  col2: 3♥   col3: 8♠
+#   col4: K♣   col5: 2♦   col6: 7♠
+# Stock draw order (1st draw .. 24th): K♠ J♥ 10♠ J♦ 9♦ 6♠ J♣ 9♥ Q♣ 4♦ 4♣ 5♠
+#   10♥ 5♦ 5♥ 4♥ A♠ Q♠ 8♦ A♥ 3♣ 8♥ A♣ 9♣
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -9,37 +23,33 @@ appId: com.buffingchi.games
 - assertVisible:
     id: "solitaire-stock-pile"
     timeout: 8000
-# Draw one card from stock so the waste pile is non-empty.
-- tapOn:
-    id: "solitaire-stock-pile"
-- assertVisible:
-    id: "solitaire-waste-top"
-    timeout: 3000
-# Drag the waste top card toward tableau column 0.
-# The move may or may not be valid (deal is random). We check two outcomes:
-#   - If valid: the waste pile top changes (waste-top disappears or shows next card)
-#   - If invalid: snap-back leaves waste-top visible
-# Either outcome exercises the full drag gesture path and drop-zone hit-test.
+
+# --- tableau-to-tableau -------------------------------------------------
+# col0 (7♦, red) onto col3 (8♠, black) is the deal's only valid tableau pair
+# at kickoff — opposite color, descending rank. Empties col0 (drop target
+# for the King moves below) and grows col3 to 5 cards.
 - swipe:
     from:
-      id: "solitaire-waste-top"
+      id: "solitaire-tableau-0-card-0"
     to:
-      id: "solitaire-tableau-0"
+      id: "solitaire-tableau-3"
     duration: 600
-# The board must still be interactive after the drag regardless of outcome.
-# solitaire-stock-pile is always present as long as the board is functional.
 - assertVisible:
-    id: "solitaire-stock-pile"
+    text: "Tableau column 4, 5 cards"
     timeout: 3000
-- takeScreenshot: solitaire-drag
-# Draw a fresh card from stock so the waste pile is guaranteed non-empty
-# before the second drag, regardless of whether the first drag succeeded.
+- assertVisible:
+    text: "Empty tableau column 1"
+    timeout: 3000
+- takeScreenshot: solitaire-drag-tableau-to-tableau
+
+# --- waste-to-tableau: deliberately invalid, assert snap-back ----------
+# 1st stock draw is always K♠. A King can't stack on col1's 10♦ (wrong rank
+# entirely) — the drag must snap back and leave col1 untouched.
 - tapOn:
     id: "solitaire-stock-pile"
 - assertVisible:
     id: "solitaire-waste-top"
     timeout: 3000
-# Second drag: attempt waste → tableau col 1 to exercise a second drop zone.
 - swipe:
     from:
       id: "solitaire-waste-top"
@@ -47,6 +57,56 @@ appId: com.buffingchi.games
       id: "solitaire-tableau-1"
     duration: 600
 - assertVisible:
+    text: "Tableau column 2, 2 cards"
+    timeout: 3000
+- assertVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+- takeScreenshot: solitaire-drag-invalid-snapback
+
+# --- waste-to-tableau: valid (Kings can only land on an empty column) --
+# Same K♠ still on the waste (the invalid drag above didn't consume it).
+# col0 is empty after the tableau-to-tableau move, so this drop is valid.
+- swipe:
+    from:
+      id: "solitaire-waste-top"
+    to:
+      id: "solitaire-tableau-0"
+    duration: 600
+- assertVisible:
+    text: "Tableau column 1, 1 cards"
+    timeout: 3000
+# Waste is now empty — solitaire-waste-top only exists while waste is
+# non-empty, so its disappearance is a strong, engine-verified success
+# signal (not just "some card is still showing").
+- assertNotVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+- takeScreenshot: solitaire-drag-valid-to-empty-column
+
+# --- waste-to-foundation -------------------------------------------------
+# Draw through the rest of the stock — the 17th draw overall (16 more from
+# here) is always A♠, the first foundation-eligible card in this deal.
+- repeat:
+    times: 16
+    commands:
+      - tapOn:
+          id: "solitaire-stock-pile"
+- assertVisible:
+    id: "solitaire-waste-top"
+    timeout: 3000
+- swipe:
+    from:
+      id: "solitaire-waste-top"
+    to:
+      id: "solitaire-foundation-spades"
+    duration: 600
+- assertVisible:
+    id: "solitaire-foundation-spades-card"
+    timeout: 3000
+- takeScreenshot: solitaire-drag-waste-to-foundation
+
+# Board must still be interactive after the full sequence.
+- assertVisible:
     id: "solitaire-stock-pile"
     timeout: 3000
-- takeScreenshot: solitaire-drag-col1

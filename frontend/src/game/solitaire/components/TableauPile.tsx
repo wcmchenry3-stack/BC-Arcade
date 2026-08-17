@@ -143,7 +143,15 @@ export default function TableauPile({
     return (
       <DraggableCard
         key={cardIndex}
-        testID={isHintSource ? "solitaire-hint-source" : `draggable-card-${cardIndex}`}
+        // Column-scoped: a bare `draggable-card-${cardIndex}` collides across
+        // all 7 columns (every column has a card at index 0), so Maestro
+        // couldn't reliably pick a drag *source* by testID (only drop
+        // targets, via TableauPile's per-column `dropId`). See #2346.
+        testID={
+          isHintSource
+            ? "solitaire-hint-source"
+            : `solitaire-tableau-${colIndex}-card-${cardIndex}`
+        }
         style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }, isHintSource && hintStyle]}
         onTap={handlePress}
         dragCards={dragCards}

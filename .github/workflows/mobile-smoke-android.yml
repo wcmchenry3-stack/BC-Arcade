@@ -3,17 +3,24 @@ name: Mobile Smoke — Android
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [dev, main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-smoke-android
-  cancel-in-progress: false
+  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  detect-maestro-scope:
+    uses: ./.github/workflows/detect-maestro-scope.yml
+
   maestro-android:
     name: Maestro Android smoke
+    needs: detect-maestro-scope
+    if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -61,6 +68,7 @@ jobs:
         working-directory: frontend
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Run Maestro flows on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -71,11 +79,15 @@ jobs:
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
+          # NOTE: reactivecircus/android-emulator-runner does not execute this
+          # `script:` block as one cohesive multi-line shell script — each line
+          # runs as its own `sh -c` invocation. A `\` line continuation here
+          # silently breaks (the trailing backslash becomes a literal argument
+          # to the next command instead of continuing onto the following
+          # line) — keep every command on a single physical line. See #2347.
           script: |
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test \
-              --output ./maestro-results \
-              $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*")
+            maestro test --output ./maestro-results $(for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do find "e2e/maestro/flows/$d" -name "*.yaml" 2>/dev/null; done)
 
       - name: Write job summary
         if: always()
@@ -97,7 +109,7 @@ jobs:
           except ET.ParseError as exc:
               rows.append(f'| _(parse error: {exc})_ | — |\n')
           with open(out, 'a') as f:
-              f.write('## Maestro Android Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.write('## Maestro Android Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
               f.writelines(rows)
 
       - name: Upload Maestro results
