@@ -170,32 +170,49 @@ export default function SolitaireScreen() {
     });
   }, [state, moves, stats, setScoreboardSnapshot]);
 
+  const deal = useCallback((drawMode: DrawMode) => {
+    setState(dealGame(drawMode));
+    setSelection(null);
+    setMoves(0);
+    setStats((prev) => {
+      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
+      saveStats(updated);
+      return updated;
+    });
+  }, []);
+
   // #597 — mount load. Restores a saved game silently; on a clean slot the
   // pre-game draw-mode modal is shown so the player picks their mode.
   //
-  // E2E test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the modal on a clean
-  // slot and deal draw-1 immediately — Maestro drives native gestures and
-  // has no way to open a locale-dependent modal by text, and every other
-  // game's Maestro flow expects to land straight on the board. Production
-  // behavior (real users, modal shown) is unchanged.
+  // Native E2E test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the modal on a
+  // clean slot and deal draw-1 immediately — Maestro drives native gestures
+  // and has no way to open a locale-dependent modal by text, and every
+  // other game's Maestro flow expects to land straight on the board.
+  // Web stays on the normal modal path even in a test build: Playwright's
+  // web E2E suite also builds with EXPO_PUBLIC_TEST_HOOKS=1 and its specs
+  // click through "Draw 1"/"Draw 3" themselves (solitaire-smoke.spec.ts and
+  // friends), so skipping the modal there would break them. Production
+  // behavior (real users, modal shown) is unchanged either way.
   useEffect(() => {
     let alive = true;
     Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
       if (!alive) return;
       hasLoadedRef.current = true;
+      setStats(savedStats);
       if (saved !== null) {
         setState(saved);
         // Suppress re-counting a win when resuming an already-won game.
         if (saved.isComplete) winRecordedRef.current = true;
-      } else if (areTestHooksEnabled()) {
-        setState(dealGame(1));
+      } else if (areTestHooksEnabled() && Platform.OS !== "web") {
+        deal(1);
       }
-      setStats(savedStats);
       setLoading(false);
     });
     return () => {
       alive = false;
     };
+    // Mount-only by design; `deal` is a stable useCallback ([] deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // #597 — persist on every state change once the mount load has resolved.
@@ -294,17 +311,6 @@ export default function SolitaireScreen() {
     },
     [syncGetGameId, syncStart, syncMarkStarted]
   );
-
-  const deal = useCallback((drawMode: DrawMode) => {
-    setState(dealGame(drawMode));
-    setSelection(null);
-    setMoves(0);
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated);
-      return updated;
-    });
-  }, []);
 
   const tryMove = useCallback(
     (move: Move): boolean => {

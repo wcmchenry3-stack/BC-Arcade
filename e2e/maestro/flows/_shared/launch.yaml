@@ -1,6 +1,14 @@
 appId: com.buffingchi.games
 ---
-- launchApp
+# clearState: true — every flow starts from a clean install. Without it,
+# state (and Solitaire/FreeCell's saved game) persists across flows in the
+# same `maestro test` batch, since Maestro reuses one app install for the
+# whole run. Several flows depend on a truly clean slot to be deterministic
+# (e.g. solitaire/freecell drag.yaml's fixed-seed assertions only hold for
+# the deal that happens once per install) — order-dependent flakiness from a
+# warm state is worse than the extra launch cost. See #2346.
+- launchApp:
+    clearState: true
 - assertVisible:
     text: "BC Arcade"
     timeout: 15000

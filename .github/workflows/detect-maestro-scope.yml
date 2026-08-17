@@ -109,9 +109,29 @@ jobs:
               - 'frontend/src/game/_shared/**'
               - 'frontend/src/components/OfflineBanner*'
               - 'frontend/src/components/LanguageSwitcher*'
+              # Several flows assert exact translated accessibility strings
+              # (e.g. solitaire/freecell drag.yaml's "Tableau column N, M
+              # cards"). A locale-only PR matches no per-game filter above,
+              # so without this it'd run only `home` and any drag.yaml
+              # breakage from a copy change would surface later on `main`.
+              - 'frontend/src/i18n/**'
               - 'backend/main.py'
               - 'e2e/maestro/**'
               - '.github/workflows/**'
+
+      # Fails loudly if e2e/maestro/flows/ has a directory (other than
+      # _shared) that isn't in the full-suite list below, or vice versa —
+      # otherwise a newly added game's flows would silently never run on
+      # either platform until someone remembers to update both this list
+      # and its matching paths-filter category above.
+      - name: Guard against stale full-suite list
+        run: |
+          actual=$(ls e2e/maestro/flows | grep -v '^_shared$' | sort | tr '\n' ' ' | xargs)
+          expected=$(echo "blackjack cascade daily-word freecell hearts home mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching paths-filter category when a game's Maestro flows are added or removed."
+            exit 1
+          fi
 
       - id: scope
         run: |
@@ -123,10 +143,15 @@ jobs:
             echo "projects=blackjack cascade daily-word freecell hearts home mahjong solitaire sort starswarm sudoku twenty48 yacht offline" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
-            # home is cheap and catches nav regressions, so always include it.
+            # Build from matched game filters only — NOT seeded with "home",
+            # so a PR touching nothing Maestro-relevant (backend-only,
+            # docs-only) resolves to a genuinely empty string. That empty
+            # string is what lets mobile-smoke-{android,ios}.yml's
+            # `if: needs.detect-maestro-scope.outputs.projects != ''` skip
+            # the job entirely — no emulator/simulator boot for those PRs.
             # offline is excluded from selective runs (Android-only, already
             # excluded from the iOS job entirely) — full suite only.
-            projects="home"
+            projects=""
             [[ "${{ steps.filter.outputs.yacht }}"      == "true" ]] && projects="$projects yacht"
             [[ "${{ steps.filter.outputs.blackjack }}"  == "true" ]] && projects="$projects blackjack"
             [[ "${{ steps.filter.outputs.twenty48 }}"   == "true" ]] && projects="$projects twenty48"
@@ -139,6 +164,14 @@ jobs:
             [[ "${{ steps.filter.outputs.sudoku }}"     == "true" ]] && projects="$projects sudoku"
             [[ "${{ steps.filter.outputs.daily_word }}" == "true" ]] && projects="$projects daily-word"
             [[ "${{ steps.filter.outputs.sort }}"       == "true" ]] && projects="$projects sort"
-            echo "projects=$projects" >> "$GITHUB_OUTPUT"
-            echo "label=selective: $projects" >> "$GITHUB_OUTPUT"
+            # home is cheap and catches nav regressions — include it, but
+            # only once at least one real game matched (a docs/backend-only
+            # PR must still resolve to nothing).
+            if [[ -n "$projects" ]]; then
+              projects="home$projects"
+              echo "label=selective:$projects" >> "$GITHUB_OUTPUT"
+            else
+              echo "label=nothing Maestro-relevant changed" >> "$GITHUB_OUTPUT"
+            fi
+            echo "projects=$(xargs <<< "$projects")" >> "$GITHUB_OUTPUT"
           fi

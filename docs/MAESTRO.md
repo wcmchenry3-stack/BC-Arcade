@@ -20,7 +20,7 @@ brew install maestro
 
 Verify: `maestro --version`
 
-You also need a running device or simulator/emulator before executing any flow. Start your app on it first, then run the commands below.
+You also need a running device or simulator/emulator before executing any flow. **Build and start the app with `EXPO_PUBLIC_TEST_HOOKS=1` set** — e.g. `EXPO_PUBLIC_TEST_HOOKS=1 npx expo run:ios` / `run:android` from `frontend/`. Without it, Solitaire/FreeCell deal random boards (drag.yaml's fixed-deal assertions will fail) and Solitaire shows the draw-mode picker modal that no flow taps through (see [`e2e/maestro/README.md`](../e2e/maestro/README.md#pre-game-selectors)).
 
 ## Running flows
 

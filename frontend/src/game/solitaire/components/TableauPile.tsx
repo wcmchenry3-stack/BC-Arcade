@@ -148,9 +148,7 @@ export default function TableauPile({
         // couldn't reliably pick a drag *source* by testID (only drop
         // targets, via TableauPile's per-column `dropId`). See #2346.
         testID={
-          isHintSource
-            ? "solitaire-hint-source"
-            : `solitaire-tableau-${colIndex}-card-${cardIndex}`
+          isHintSource ? "solitaire-hint-source" : `solitaire-tableau-${colIndex}-card-${cardIndex}`
         }
         style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }, isHintSource && hintStyle]}
         onTap={handlePress}
