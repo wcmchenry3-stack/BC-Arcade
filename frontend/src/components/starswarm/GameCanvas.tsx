@@ -91,8 +91,8 @@ interface RenderState {
   game: StarSwarmState;
   sf: StarfieldState;
   countdownDigit: number | null;
-  /** True when the active countdown follows a WinTransition (shows wave banner). */
-  winTransitionCountdown: boolean;
+  /** True when the active countdown follows a wave clear (shows the "— WAVE N —" banner). */
+  waveBannerCountdown: boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -146,14 +146,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in renderState must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
-    // True when the active countdown follows a WinTransition (shows wave banner + 5 beats).
+    // True when the active countdown follows a wave clear (shows the "— WAVE N —" banner).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
-    const winTransitionCountdownRef = useRef(false);
+    const waveBannerCountdownRef = useRef(false);
     const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
     const prevPhaseRef = useRef(gameRef.current.phase);
+    // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
+    // detect) — the wave counter bumping is the signal that a clear just happened.
+    const prevWaveRef = useRef(gameRef.current.wave);
     const isPausedRef = useRef(isPaused);
     const onGameOverRef = useRef(onGameOver);
     const onScoreChangeRef = useRef(onScoreChange);
@@ -210,7 +213,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       game: gameRef.current,
       sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
-      winTransitionCountdown: false,
+      waveBannerCountdown: false,
     });
 
     useImperativeHandle(
@@ -253,15 +256,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevScoreRef.current = 0;
       prevLivesRef.current = gameRef.current.player.lives;
       prevPhaseRef.current = gameRef.current.phase;
+      prevWaveRef.current = gameRef.current.wave;
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
       pendingFreeFireZoneRef.current = false;
-      winTransitionCountdownRef.current = false;
+      waveBannerCountdownRef.current = false;
       setRenderState({
         game: gameRef.current,
         sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
-        winTransitionCountdown: false,
+        waveBannerCountdown: false,
       });
     }, [resetTick, width, height]);
 
@@ -350,8 +354,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
-              // WinTransition replaces WaveClear for all normal/free-fire clears
-              if (applied.phase === "WinTransition" && prevPhaseRef.current !== "WinTransition") {
+              // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
+              // the wave counter bumps in the same tick the last enemy dies. Detect that bump
+              // directly instead of watching for a phase transition.
+              const waveJustCleared = applied.wave > prevWaveRef.current;
+              prevWaveRef.current = applied.wave;
+              if (waveJustCleared) {
                 onWaveClearRef.current?.();
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
@@ -359,23 +367,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onWaveClearRef.current?.();
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
-              // Start countdown when WaveClear or WinTransition ends.
-              // Evaluated before phase callbacks so onFreeFireZone fires after countdown expires.
+              // Start the pre-wave countdown when the legacy WaveClear phase ends, or
+              // immediately on a fresh clear that lands on SwoopIn — a clear that chains
+              // straight into another FreeFireZone wave skips the countdown, same as before.
               // prevPhaseRef.current is updated below — after this check.
               const fromWaveClear =
                 prevPhaseRef.current === "WaveClear" &&
                 applied.phase !== "WaveClear" &&
                 applied.phase !== "GameOver";
-              const fromWinTransition =
-                prevPhaseRef.current === "WinTransition" && applied.phase === "SwoopIn";
-              const startingCountdown = fromWaveClear || fromWinTransition;
+              const startingCountdown =
+                (waveJustCleared || fromWaveClear) && applied.phase === "SwoopIn";
               if (startingCountdown) {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
-                winTransitionCountdownRef.current = fromWinTransition;
-                if (fromWinTransition) {
-                  // Sync input to where AI parked the ship
-                  inputRef.current.playerX = applied.player.x;
-                }
+                waveBannerCountdownRef.current = waveJustCleared;
               }
               if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
                 if (fromWaveClear) {
@@ -404,7 +408,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           game: gameRef.current,
           sf: sfRef.current,
           countdownDigit,
-          winTransitionCountdown: winTransitionCountdownRef.current,
+          waveBannerCountdown: waveBannerCountdownRef.current,
         });
         id = requestAnimationFrame(loop);
       }
@@ -413,10 +417,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit, winTransitionCountdown } = renderState;
+    const { game: state, sf, countdownDigit, waveBannerCountdown } = renderState;
     const { player } = state;
-    const playerDisplayY =
-      state.phase === "WinTransition" ? player.y - state.playerYOffset : player.y;
+    const playerDisplayY = player.y;
     const shipVisible = playerDisplayY + player.height > 0;
     // #2334: tick() freezes the instant phase becomes GameOver, so the ship would
     // otherwise render frozen mid-frame (looking like it's still flying/firing) instead
@@ -561,7 +564,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               );
             })}
 
-            {/* Player — hidden once off-screen during WinTransition, or once GameOver freezes the frame */}
+            {/* Player — hidden once GameOver freezes the frame */}
             {showPlayerShip &&
               (images.playerShip ? (
                 <SkiaImage
@@ -766,21 +769,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
           {countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              {winTransitionCountdown && (
+              {waveBannerCountdown && (
                 <Text style={styles.waveIncomingText}>{`— ${t("hud.wave")} ${state.wave} —`}</Text>
               )}
               <Text style={styles.countdownText}>{countdownDigit}</Text>
             </View>
           )}
 
-          {state.phase === "WinTransition" && (
+          {/* #2352: purely cosmetic wave-clear acknowledgment — gameplay behind it never
+              pauses. Fades out over its last 300ms instead of blocking on a freeze. */}
+          {state.missionCompleteTimer > 0 && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               <Text
                 style={[
                   styles.overlayTitle,
-                  {
-                    opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 200) / 400)),
-                  },
+                  { opacity: Math.min(1, state.missionCompleteTimer / 300) },
                 ]}
               >
                 {t("phase.missionComplete")}
@@ -789,9 +792,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 <Text
                   style={[
                     styles.perfectBanner,
-                    {
-                      opacity: Math.min(1, Math.max(0, (state.winTransitionElapsed - 400) / 400)),
-                    },
+                    { opacity: Math.min(1, state.missionCompleteTimer / 300) },
                   ]}
                 >
                   {t("phase.perfect")}
