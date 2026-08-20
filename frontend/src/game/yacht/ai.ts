@@ -12,7 +12,7 @@
 
 import { AiDifficulty, GameState } from "./types";
 import { Category, possibleScores, getRng } from "./engine";
-import { buildYachtInfoSet } from "./aiInfoSet";
+import { buildYachtInfoSet, type YachtInfoSet } from "./aiInfoSet";
 import {
   rateUpperBonusUrgency,
   rateEVOfHold,
@@ -31,6 +31,7 @@ import {
   MEDIUM_SCORE_WEIGHTS,
   HARD_SCORE_WEIGHTS,
   NOISE_RATE,
+  type HoldWeights,
 } from "./aiWeights";
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -40,6 +41,30 @@ function maskToBools(mask: number): boolean[] {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Pure, noise-free hold selection: the hold mask with the highest weighted-sum
+ * score under `weights`. Extracted out of `holdStrategy` so the regret
+ * simulator (#2244) can compute a diagnostic "what would this weight map
+ * choose with cognitive noise disabled" decision using the exact same scoring
+ * logic the live AI uses, rather than a reimplementation that could quietly
+ * drift from it.
+ */
+export function bestHoldMask(infoSet: YachtInfoSet, weights: HoldWeights): boolean[] {
+  let bestMask = 0;
+  let bestScore = -Infinity;
+  for (let mask = 0; mask < 32; mask++) {
+    const holdMask: YachtHoldAction = maskToBools(mask);
+    const s =
+      weights.upperBonusUrgency * rateUpperBonusUrgency(infoSet, holdMask) +
+      weights.evOfHold * rateEVOfHold(infoSet, holdMask);
+    if (s > bestScore) {
+      bestScore = s;
+      bestMask = mask;
+    }
+  }
+  return maskToBools(bestMask);
+}
 
 /**
  * Returns which dice the AI should hold before its next roll.
@@ -56,18 +81,7 @@ export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolea
         ? MEDIUM_HOLD_WEIGHTS
         : HARD_HOLD_WEIGHTS;
 
-  let bestMask = 0;
-  let bestScore = -Infinity;
-  for (let mask = 0; mask < 32; mask++) {
-    const holdMask: YachtHoldAction = maskToBools(mask);
-    const s =
-      weights.upperBonusUrgency * rateUpperBonusUrgency(infoSet, holdMask) +
-      weights.evOfHold * rateEVOfHold(infoSet, holdMask);
-    if (s > bestScore) {
-      bestScore = s;
-      bestMask = mask;
-    }
-  }
+  const best = bestHoldMask(infoSet, weights);
 
   const noiseRate = NOISE_RATE[difficulty];
   if (noiseRate > 0) {
@@ -77,7 +91,7 @@ export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolea
     }
   }
 
-  return maskToBools(bestMask);
+  return best;
 }
 
 /**

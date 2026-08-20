@@ -119,6 +119,87 @@ frontend/src/
 - Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.
 - Only pure logic modules are tested (no React components, no canvas).
 
+### Yacht AI regret metric — EV-loss vs the optimal oracle (#2244)
+
+Win rate says who won; it says nothing about *how well* either side played — a
+bot can win a dice game on luck while playing badly, or lose while playing
+perfectly. The regret metric grades individual decisions instead: for each
+hold or category choice the AI makes, "EV-loss" is `optimalEV - chosenEV`,
+computed against the exact ground-truth oracle (`frontend/src/game/yacht/oracle/`,
+[`docs/YACHT_ORACLE.md`](YACHT_ORACLE.md)) — the Yacht analogue of chess's
+average centipawn loss. Implementation: `oracle/regret.ts` (per-decision
+EV-loss + blunder banding) and `oracle/regretAggregate.ts` (summaries,
+worst-decision tail, and a Welch's-t-test significance check), unit-tested in
+`oracle/__tests__/regret.test.ts`, `regretAggregate.test.ts`, and (against the
+real committed table) `regretOracle.test.ts`.
+
+**Blunder bands** (`DEFAULT_EV_LOSS_BANDS`, adjustable — pass a custom
+`EvLossBands` to any of `regret.ts`'s functions):
+
+| Band       | EV-loss           |
+| ---------- | ------------------ |
+| `optimal`  | `<= 0` (exact — chosen and optimal EV come from the same computed array) |
+| `minor`    | `0 < loss < 1`      |
+| `mistake`  | `1 <= loss <= 5`    |
+| `blunder`  | `> 5`               |
+
+**Run it** — wired into `ai.calibrate.test.ts`, gated behind the same
+`YACHT_SIM_FULL` env var as the win-rate calibration tests:
+
+```bash
+YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --silent=false
+```
+
+Each decision requires an **awaited** oracle query — mean ~2.5ms for hold EVs
+in isolation on dev hardware (`docs/YACHT_ORACLE.md` §7), but end-to-end
+through this test file (oracle query + simulation overhead) that measures at
+**~20-26ms/decision** across two real runs: 19.75ms/decision at N=30 (6,941
+decisions, 137s), 25.59ms/decision at N=150 (34,628 decisions, 886s). At that
+rate, full `YACHT_SIM_FULL` coverage (e.g. N=3000) would take on the order of
+an hour for the hold-EV path alone, so the regret tests sample
+`min(YACHT_SIM_FULL, 50)` games per difficulty by default (`REGRET_SAMPLE_CAP`
+in the test file — already enough for the Easy-vs-Hard significance assertion
+below at N=30, per the measurement above); override independently with
+`YACHT_REGRET_SIM=<N>` for full or custom coverage. This is the documented
+sampling fallback called for by #2244's acceptance criteria — full
+non-sampled 3,000-game coverage was measured and found impractical for
+routine runs, not assumed.
+
+**Timeout caveat if you raise `YACHT_REGRET_SIM`**: the test's own
+`it()` timeout (1,800,000ms) is not a reliable backstop for a large run. Once
+the oracle table is loaded (one-time per process), every `await` in the hot
+loop resolves an already-settled promise — a microtask, not a macrotask — so
+a long chain of them can starve Node's timer queue (where Jest's timeout
+callback lives) for the batch's entire real duration. Observed directly: a
+600,000ms-timeout run that took 886s of real wall-clock time ran to
+completion (failing on an assertion, not a timeout) rather than being
+aborted at the 600s mark. Budget wall-clock time from the measured
+ms/decision rate above, not from the configured timeout.
+
+The gate asserts:
+
+- Mean EV-loss orders Easy > Medium > Hard, with Easy-vs-Hard significant at
+  the run's sample size (the largest, most reliable gap — combines both
+  tiers' noise-rate *and* weight differences). Medium sits directionally
+  between the two, but per `aiWeights.ts`'s own calibration target (Hard wins
+  only ~47–53% vs Medium), Medium-vs-Hard is not asserted significant — that
+  gap being small or noisy is itself a real epic finding (#2246), not a test
+  bug.
+- A noise-disabled diagnostic (`bestHoldMask`, bypassing `holdStrategy`'s
+  cognitive-noise injection) confirms Easy's and Medium's hold decisions are
+  *identical* under the same seed — `EASY_HOLD_WEIGHTS` and
+  `MEDIUM_HOLD_WEIGHTS` are equal-valued today, so with noise removed there's
+  nothing left to separate them. This demonstrates the metric measures
+  decision *structure*, not just how often noise fires.
+
+Console output (only shown with `--silent=false` or on failure) reports a
+per-difficulty table (mean EV-loss, hold/category split, blunders per 1,000
+decisions), a band histogram, and the worst 5 decisions across all three
+difficulties by EV-loss — e.g. an AI scoring a second Yacht roll into "fours"
+instead of "yacht" (missing the +100 joker bonus) shows up as a ~90-point
+blunder, which is exactly the kind of catastrophic single-decision failure
+aggregate win-rate can't surface.
+
 ---
 
 ## Manual repros
