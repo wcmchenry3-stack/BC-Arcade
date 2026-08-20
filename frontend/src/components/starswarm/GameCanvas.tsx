@@ -20,6 +20,7 @@ import {
   POWERUP_DURATION,
   difficultyLabel,
   difficultyMultiplier,
+  MISSION_COMPLETE_FADE_MS,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -288,8 +289,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const prev = gameRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
           if (countdownMsRef.current !== null) {
-            // Pre-wave countdown: freeze engine, tick the timer only
+            // Pre-wave countdown: freeze engine, tick the timer only. #2352: the cosmetic
+            // missionCompleteTimer still needs to decay in real time here — tick() (which
+            // normally decrements it) never runs while the countdown is active, so without
+            // this it would stay pinned at full opacity for the whole countdown instead of
+            // fading out on its own schedule.
             countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
+            if (gameRef.current.missionCompleteTimer > 0) {
+              gameRef.current = {
+                ...gameRef.current,
+                missionCompleteTimer: Math.max(0, gameRef.current.missionCompleteTimer - dtMs),
+              };
+            }
             if (countdownMsRef.current === 0) {
               countdownMsRef.current = null;
               if (pendingFreeFireZoneRef.current) {
@@ -777,29 +788,36 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           )}
 
           {/* #2352: purely cosmetic wave-clear acknowledgment — gameplay behind it never
-              pauses. Fades out over its last 300ms instead of blocking on a freeze. */}
-          {state.missionCompleteTimer > 0 && (
-            <View style={styles.phaseOverlay} pointerEvents="none">
-              <Text
-                style={[
-                  styles.overlayTitle,
-                  { opacity: Math.min(1, state.missionCompleteTimer / 300) },
-                ]}
-              >
-                {t("phase.missionComplete")}
-              </Text>
-              {state.freeFirePerfect && (
+              pauses. Fades out over its last MISSION_COMPLETE_FADE_MS instead of blocking on
+              a freeze. Suppressed during GameOver (would ghost under the game-over overlay)
+              and FreeFireZone (would garble with that phase's own banner text) — both are
+              real phases this timer can still be counting down through. */}
+          {state.missionCompleteTimer > 0 &&
+            state.phase !== "GameOver" &&
+            state.phase !== "FreeFireZone" && (
+              <View style={styles.phaseOverlay} pointerEvents="none">
                 <Text
                   style={[
-                    styles.perfectBanner,
-                    { opacity: Math.min(1, state.missionCompleteTimer / 300) },
+                    styles.overlayTitle,
+                    { opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS) },
                   ]}
                 >
-                  {t("phase.perfect")}
+                  {t("phase.missionComplete")}
                 </Text>
-              )}
-            </View>
-          )}
+                {state.freeFirePerfect && (
+                  <Text
+                    style={[
+                      styles.perfectBanner,
+                      {
+                        opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS),
+                      },
+                    ]}
+                  >
+                    {t("phase.perfect")}
+                  </Text>
+                )}
+              </View>
+            )}
 
           {state.phase === "WaveClear" && countdownDigit === null && (
             <View style={styles.phaseOverlay}>

@@ -542,6 +542,22 @@ describe("#2352 non-blocking wave clear", () => {
     s = tick(s, 100, NO_INPUT); // a single normal frame of wave 2
     expect(s.enemies[0]?.y).not.toBe(startY); // SwoopIn is actively animating, not frozen
   });
+
+  // tick() is a no-op once GameOver (see "GameOver terminal state" above), so a
+  // missionCompleteTimer that's still counting down at the moment of death is frozen at
+  // whatever value it had, not zero. GameCanvas/.web.tsx render the banner conditionally on
+  // `phase !== "GameOver"` rather than relying on the timer itself decaying to 0 here.
+  it("missionCompleteTimer freezes once GameOver — renderers suppress the banner instead", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.missionCompleteTimer).toBeGreaterThan(0);
+    s = { ...s, phase: "GameOver" };
+    const frozenAt = s.missionCompleteTimer;
+    s = advanceMs(s, 5000);
+    expect(s.missionCompleteTimer).toBe(frozenAt);
+  });
 });
 
 // ---------------------------------------------------------------------------

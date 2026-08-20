@@ -88,6 +88,9 @@ const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 // the wave advances the instant the last enemy dies. This just times the purely-cosmetic
 // "MISSION COMPLETE" / "PERFECT" banner fade so it doesn't block or slow anything down.
 export const MISSION_COMPLETE_BANNER_MS = 1200;
+// ms the banner takes to fade out at the end of its life — shared by both renderers so
+// native/web can't drift out of sync with each other or with MISSION_COMPLETE_BANNER_MS.
+export const MISSION_COMPLETE_FADE_MS = 300;
 const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed

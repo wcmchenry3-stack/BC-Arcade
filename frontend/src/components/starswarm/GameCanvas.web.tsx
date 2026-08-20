@@ -12,6 +12,7 @@ import {
   BULLET_C_W,
   difficultyLabel,
   difficultyMultiplier,
+  MISSION_COMPLETE_FADE_MS,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -727,9 +728,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
 
       // #2352: purely cosmetic wave-clear acknowledgment — gameplay behind it never
-      // pauses. Fades out over its last 300ms instead of blocking on a freeze.
-      if (state.missionCompleteTimer > 0) {
-        const bannerAlpha = Math.min(1, state.missionCompleteTimer / 300);
+      // pauses. Fades out over its last MISSION_COMPLETE_FADE_MS instead of blocking on a
+      // freeze. Suppressed during GameOver (would ghost under the game-over overlay) and
+      // FreeFireZone (would garble with that phase's own banner text) — both are real
+      // phases this timer can still be counting down through.
+      if (
+        state.missionCompleteTimer > 0 &&
+        state.phase !== "GameOver" &&
+        state.phase !== "FreeFireZone"
+      ) {
+        const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
           ctx.font = "bold 26px 'Courier New', monospace";
@@ -835,8 +843,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const prev = stateRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
           if (countdownMsRef.current !== null) {
-            // Pre-wave countdown: freeze the engine, just tick the timer
+            // Pre-wave countdown: freeze the engine, just tick the timer. #2352: the cosmetic
+            // missionCompleteTimer still needs to decay in real time here — tick() (which
+            // normally decrements it) never runs while the countdown is active, so without
+            // this it would stay pinned at full opacity for the whole countdown instead of
+            // fading out on its own schedule.
             countdownMsRef.current = Math.max(0, countdownMsRef.current - dtMs);
+            if (stateRef.current.missionCompleteTimer > 0) {
+              stateRef.current = {
+                ...stateRef.current,
+                missionCompleteTimer: Math.max(0, stateRef.current.missionCompleteTimer - dtMs),
+              };
+            }
             if (countdownMsRef.current === 0) countdownMsRef.current = null;
           } else {
             try {
