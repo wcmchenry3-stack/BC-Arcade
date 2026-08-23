@@ -480,13 +480,27 @@ describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
 });
 
 /**
- * Diagnostic-only: plays self-play games logging ONLY the raw hold EV-loss
+ * Diagnostic-only: plays one self-play game logging ONLY the raw hold EV-loss
  * value for each hold decision, selected via `bestHoldMask` (no cognitive
  * noise) under a fixed `holdWeights` map. Category decisions use "hard"
  * scoring (0% noise, per NOISE_RATE) so only the hold weight map varies
  * between calls — isolating "does noise explain the gap" from any
- * category-side variation.
+ * category-side variation. Two-layer game/batch split mirrors
+ * `playRegretGame`/`playRegretBatch` above so a future change to the
+ * per-game round structure only needs to be made in one shape, not two.
  */
+async function playDiagnosticGame(holdWeights: HoldWeights, seed: number): Promise<number[]> {
+  setRng(createSeededRng(seed));
+  const losses: number[] = [];
+  let p0 = newGame();
+  let p1 = newGame();
+  for (let round = 1; round <= 13; round++) {
+    p0 = await playDiagnosticTurn(p0, holdWeights, p1.total_score, p1.round, losses);
+    p1 = await playDiagnosticTurn(p1, holdWeights, p0.total_score, p0.round, losses);
+  }
+  return losses;
+}
+
 async function playHoldOnlyDiagnostic(
   holdWeights: HoldWeights,
   seed: number,
@@ -494,13 +508,7 @@ async function playHoldOnlyDiagnostic(
 ): Promise<number[]> {
   const losses: number[] = [];
   for (let i = 0; i < n; i++) {
-    setRng(createSeededRng(seed + i));
-    let p0 = newGame();
-    let p1 = newGame();
-    for (let round = 1; round <= 13; round++) {
-      p0 = await playDiagnosticTurn(p0, holdWeights, p1.total_score, p1.round, losses);
-      p1 = await playDiagnosticTurn(p1, holdWeights, p0.total_score, p0.round, losses);
-    }
+    losses.push(...(await playDiagnosticGame(holdWeights, seed + i)));
   }
   return losses;
 }
