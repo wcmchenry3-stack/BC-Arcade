@@ -22,6 +22,7 @@
 
 import type { Category } from "../engine";
 import type { GameState } from "../types";
+import { keyOf } from "./multisetIndex";
 import { optimalCategoryEVs, optimalHoldEVs, type HoldEV } from "./oracle";
 
 // ---------------------------------------------------------------------------
@@ -107,10 +108,6 @@ export function keptValuesFromHold(
   return kept.sort((a, b) => a - b);
 }
 
-function holdKey(values: readonly number[]): string {
-  return values.join(",");
-}
-
 /**
  * Pure core: EV-loss of `chosenHold` against a precomputed set of hold EVs
  * (from `optimalHoldEVs`, or a hand-built fixture in tests).
@@ -118,7 +115,9 @@ function holdKey(values: readonly number[]): string {
  * `holdEVs` entries are keyed by kept dice *values*, not positions — matching
  * `multisetIndex.ts`'s dedup-by-sub-multiset convention (holding "either" of
  * two equal dice is the same decision), so `chosenHold`'s position mask is
- * converted to the same value-multiset representation before matching.
+ * converted to the same value-multiset representation before matching, using
+ * `multisetIndex.ts`'s own `keyOf` so this stays in sync with the canonical
+ * dice-multiset key format if it ever changes.
  */
 export function holdEvLoss(
   holdEVs: readonly HoldEV[],
@@ -127,13 +126,13 @@ export function holdEvLoss(
   bands: EvLossBands = DEFAULT_EV_LOSS_BANDS
 ): HoldEvLossResult {
   const chosenValues = keptValuesFromHold(dice, chosenHold);
-  const chosenKey = holdKey(chosenValues);
+  const chosenKey = keyOf(chosenValues);
 
   let chosenEV: number | undefined;
   let optimalEV = -Infinity;
   let optimalHold: readonly number[] = [];
   for (const option of holdEVs) {
-    if (holdKey(option.hold) === chosenKey) chosenEV = option.ev;
+    if (keyOf(option.hold) === chosenKey) chosenEV = option.ev;
     if (option.ev > optimalEV) {
       optimalEV = option.ev;
       optimalHold = option.hold;

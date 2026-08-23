@@ -32,6 +32,7 @@ import {
   HARD_SCORE_WEIGHTS,
   NOISE_RATE,
   type HoldWeights,
+  type ScoreWeights,
 } from "./aiWeights";
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -64,6 +65,36 @@ export function bestHoldMask(infoSet: YachtInfoSet, weights: HoldWeights): boole
     }
   }
   return maskToBools(bestMask);
+}
+
+/**
+ * Pure, noise-free category selection: the legal category with the highest
+ * weighted-sum score under `weights`. Extracted out of `scoreStrategy` at the
+ * same generalization depth as `bestHoldMask` above, so a future noise-free
+ * category decision (e.g. a regret diagnostic mirroring
+ * `playHoldOnlyDiagnostic`'s hold-only one) has a `bestCategory`-equivalent
+ * to call instead of needing its own reimplementation.
+ */
+export function bestCategory(
+  infoSet: YachtInfoSet,
+  legalCats: readonly Category[],
+  weights: ScoreWeights
+): Category {
+  let bestCat = legalCats[0]!;
+  let bestScore = -Infinity;
+  for (const cat of legalCats) {
+    const s =
+      rateScorecardSafety(infoSet, cat) *
+      (weights.immediateValue * rateImmediateValue(infoSet, cat) +
+        weights.chanceSafetyValve * rateChanceSafetyValve(infoSet, cat) +
+        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat) +
+        weights.upperCategoryEfficiency * rateUpperCategoryEfficiency(infoSet, cat));
+    if (s > bestScore) {
+      bestScore = s;
+      bestCat = cat;
+    }
+  }
+  return bestCat;
 }
 
 /**
@@ -123,20 +154,7 @@ export function scoreStrategy(
         ? MEDIUM_SCORE_WEIGHTS
         : HARD_SCORE_WEIGHTS;
 
-  let bestCat = legalCats[0]!;
-  let bestScore = -Infinity;
-  for (const cat of legalCats) {
-    const s =
-      rateScorecardSafety(infoSet, cat) *
-      (weights.immediateValue * rateImmediateValue(infoSet, cat) +
-        weights.chanceSafetyValve * rateChanceSafetyValve(infoSet, cat) +
-        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat) +
-        weights.upperCategoryEfficiency * rateUpperCategoryEfficiency(infoSet, cat));
-    if (s > bestScore) {
-      bestScore = s;
-      bestCat = cat;
-    }
-  }
+  const bestCat = bestCategory(infoSet, legalCats, weights);
 
   const noiseRate = NOISE_RATE[difficulty];
   if (noiseRate > 0) {
