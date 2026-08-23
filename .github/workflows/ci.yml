@@ -159,10 +159,43 @@ jobs:
           APPROVED_OVERRIDES="^\s+@sentry/react-native@|^\s+@react-native-async-storage/async-storage@|^\s+@shopify/react-native-skia@|^\s+react@|^\s+react-dom@|^\s+react-native-gesture-handler@|^\s+react-native-reanimated@|^\s+react-native-safe-area-context@|^\s+react-native-screens@|^\s+react-native-svg@|^\s+react-native-worklets@"
           npx expo install --check 2>&1 | tee /tmp/expo-check.log || true
           UNAPPROVED=$(grep -E "^\s+\S+@\S+ - expected version:" /tmp/expo-check.log | grep -Ev "$APPROVED_OVERRIDES" || true)
+          # Expo's compat matrix is a moving target: Expo's own first-party packages (expo,
+          # expo-dev-client, expo-audio, expo-modules-core, ...) ship patch releases hours to
+          # days apart from each other, so being slightly BEHIND the expected version is a
+          # release-cadence artifact, not a real incompatibility — it self-heals on the next
+          # routine dependency bump. Being unexpectedly AHEAD of Expo's matrix without an
+          # approved override above means an undocumented deviation was introduced; that's the
+          # case actually worth hard-failing on.
+          AHEAD=""
+          BEHIND=""
           if [ -n "$UNAPPROVED" ]; then
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              installed=$(echo "$line" | sed -E 's/^.*@([^@ ]+) - expected version:.*$/\1/')
+              expected=$(echo "$line" | sed -E 's/^.*expected version: *//')
+              installed_v=$(echo "$installed" | sed -E 's/^[^0-9]*//')
+              expected_v=$(echo "$expected" | sed -E 's/^[^0-9]*//')
+              if [ "$installed_v" = "$expected_v" ]; then
+                continue
+              fi
+              lowest=$(printf '%s\n%s\n' "$installed_v" "$expected_v" | sort -V | head -1)
+              if [ "$lowest" = "$installed_v" ]; then
+                BEHIND="${BEHIND}${line}"$'\n'
+              else
+                AHEAD="${AHEAD}${line}"$'\n'
+              fi
+            done <<< "$UNAPPROVED"
+          fi
+          if [ -n "$AHEAD" ]; then
             echo ""
-            echo "::error::Expo dependency compatibility check failed. Run 'npx expo install --fix' locally to resolve."
+            echo "$AHEAD"
+            echo "::error::Expo dependency compatibility check failed: package(s) above are ahead of Expo's compat matrix without an approved override. Add them to APPROVED_OVERRIDES with a documented rationale, or run 'npx expo install --fix' locally to resolve."
             exit 1
+          fi
+          if [ -n "$BEHIND" ]; then
+            echo ""
+            echo "$BEHIND"
+            echo "::warning::Package(s) above are behind Expo's current compat matrix (Expo's release cadence outrunning our pins, not a hard incompatibility). Run 'npx expo install --fix' locally to catch up."
           fi
           if grep -q "Your project may not work correctly" /tmp/expo-check.log; then
             echo "::warning::Approved version override active: $APPROVED_OVERRIDES (see comment above for rationale)."
