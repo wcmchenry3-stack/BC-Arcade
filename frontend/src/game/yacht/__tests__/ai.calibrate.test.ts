@@ -432,10 +432,11 @@ describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
       const mediumVsHard = meanDiffSignificant(evLosses(medium), evLosses(hard));
       const easyVsHard = meanDiffSignificant(evLosses(easy), evLosses(hard));
       console.log(
-        `\nSignificance (Welch's t, |t|>1.96): Easy-vs-Medium t=${easyVsMedium.tStat.toFixed(2)} ` +
-          `(${easyVsMedium.significant}), Medium-vs-Hard t=${mediumVsHard.tStat.toFixed(2)} ` +
+        `\nSignificance (Welch's t): Easy-vs-Medium t=${easyVsMedium.tStat.toFixed(2)} ` +
+          `crit=${easyVsMedium.tCritical.toFixed(2)} (${easyVsMedium.significant}), ` +
+          `Medium-vs-Hard t=${mediumVsHard.tStat.toFixed(2)} crit=${mediumVsHard.tCritical.toFixed(2)} ` +
           `(${mediumVsHard.significant}), Easy-vs-Hard t=${easyVsHard.tStat.toFixed(2)} ` +
-          `(${easyVsHard.significant})`
+          `crit=${easyVsHard.tCritical.toFixed(2)} (${easyVsHard.significant})`
       );
       expect(easyVsHard.significant).toBe(true);
 

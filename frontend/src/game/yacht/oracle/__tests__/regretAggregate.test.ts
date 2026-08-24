@@ -204,4 +204,19 @@ describe("meanDiffSignificant", () => {
     const t = meanDiffSignificant(a, b);
     expect(t.significant).toBe(false);
   });
+
+  it("reports not significant when a group has fewer than 2 samples, however large the gap", () => {
+    // A single-point sample has no defined variance — treating it as 0 (rather
+    // than unreliable/unknown) would otherwise let one noisy data point look
+    // "significant" against the most lenient (large-df) critical value.
+    const a = [10];
+    const b = [1, 2, 3, 1, 2];
+    const t = meanDiffSignificant(a, b);
+    expect(t.significant).toBe(false);
+    expect(t.tStat).toBe(0);
+
+    // Same, empty-array case.
+    expect(meanDiffSignificant([], b).significant).toBe(false);
+    expect(meanDiffSignificant(a, []).significant).toBe(false);
+  });
 });

@@ -128,7 +128,9 @@ export interface MeanDiffTest {
   /** meanA - meanB. */
   readonly meanDiff: number;
   readonly tStat: number;
-  /** True when |tStat| exceeds the 95%-confidence Welch–Satterthwaite threshold. */
+  /** The two-tailed 95%-confidence critical value `|tStat|` was compared against. */
+  readonly tCritical: number;
+  /** True when |tStat| exceeds `tCritical`. */
   readonly significant: boolean;
 }
 
@@ -193,16 +195,19 @@ function studentTCritical95(df: number): number {
  * `YACHT_REGRET_SIM` override (tens to ~100 decisions per difficulty) sits
  * at low enough df that the normal approximation is measurably too lenient.
  *
- * Empty inputs degrade gracefully (0 means, not-significant) rather than
- * propagating NaN/Infinity from a 0/0 variance-over-n division.
+ * Empty or single-sample inputs degrade gracefully (0 tStat, not-significant)
+ * rather than propagating NaN/Infinity from a 0/0 variance-over-n division —
+ * or, worse, silently treating a single sample's undefined variance as zero
+ * and reporting a false-positive significant result against the most lenient
+ * (large-df) critical value.
  */
 export function meanDiffSignificant(a: readonly number[], b: readonly number[]): MeanDiffTest {
   const meanA = mean(a);
   const meanB = mean(b);
   const meanDiff = meanA - meanB;
 
-  if (a.length === 0 || b.length === 0) {
-    return { meanA, meanB, meanDiff, tStat: 0, significant: false };
+  if (a.length < 2 || b.length < 2) {
+    return { meanA, meanB, meanDiff, tStat: 0, tCritical: Z_95, significant: false };
   }
 
   const varA = sampleVariance(a, meanA);
@@ -216,6 +221,7 @@ export function meanDiffSignificant(a: readonly number[], b: readonly number[]):
     meanB,
     meanDiff,
     tStat,
+    tCritical,
     significant: Math.abs(tStat) > tCritical,
   };
 }
