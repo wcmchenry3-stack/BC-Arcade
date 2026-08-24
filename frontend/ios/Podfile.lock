@@ -21,12 +21,12 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - EXConstants (57.0.11):
+  - EXConstants (57.0.13):
     - ExpoModulesCore
   - EXJSONUtils (57.0.1)
   - EXManifests (57.0.1):
     - ExpoModulesCore
-  - Expo (57.0.13):
+  - Expo (57.0.15):
     - ExpoModulesCore
     - ExpoModulesJSI
     - hermes-engine
@@ -52,15 +52,15 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - expo-dev-client (57.0.12):
+  - expo-dev-client (57.0.14):
     - EXManifests
     - expo-dev-launcher
     - expo-dev-menu
     - expo-dev-menu-interface
     - EXUpdatesInterface
-  - expo-dev-launcher (57.0.12):
+  - expo-dev-launcher (57.0.14):
     - EXManifests
-    - expo-dev-launcher/Main (= 57.0.12)
+    - expo-dev-launcher/Main (= 57.0.14)
     - expo-dev-menu
     - expo-dev-menu-interface
     - ExpoModulesCore
@@ -89,7 +89,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - expo-dev-launcher/Main (57.0.12):
+  - expo-dev-launcher/Main (57.0.14):
     - EXManifests
     - expo-dev-launcher/Unsafe
     - expo-dev-menu
@@ -120,7 +120,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - expo-dev-launcher/Unsafe (57.0.12):
+  - expo-dev-launcher/Unsafe (57.0.14):
     - EXManifests
     - expo-dev-menu
     - expo-dev-menu-interface
@@ -150,8 +150,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - expo-dev-menu (57.0.12):
-    - expo-dev-menu/Main (= 57.0.12)
+  - expo-dev-menu (57.0.14):
+    - expo-dev-menu/Main (= 57.0.14)
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -174,7 +174,7 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - expo-dev-menu-interface (57.0.0)
-  - expo-dev-menu/Main (57.0.12):
+  - expo-dev-menu/Main (57.0.14):
     - EXManifests
     - expo-dev-menu-interface
     - ExpoModulesCore
@@ -200,15 +200,15 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (57.0.11):
+  - ExpoAsset (57.0.13):
     - ExpoModulesCore
-  - ExpoAudio (57.0.3):
+  - ExpoAudio (57.0.4):
     - ExpoModulesCore
   - ExpoBlur (57.0.2):
     - ExpoModulesCore
   - ExpoDomWebView (57.0.1):
     - ExpoModulesCore
-  - ExpoFileSystem (57.0.4):
+  - ExpoFileSystem (57.0.5):
     - ExpoModulesCore
   - ExpoFont (57.0.1):
     - ExpoModulesCore
@@ -220,9 +220,9 @@ PODS:
     - ExpoModulesCore
   - ExpoLocalization (57.0.1):
     - ExpoModulesCore
-  - ExpoLogBox (57.0.2):
+  - ExpoLogBox (57.0.3):
     - React-Core
-  - ExpoModulesCore (57.0.11):
+  - ExpoModulesCore (57.0.12):
     - ExpoModulesJSI
     - hermes-engine
     - RCTRequired
@@ -246,13 +246,13 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoModulesJSI (57.0.4):
+  - ExpoModulesJSI (57.0.5):
     - React-Core
     - ReactCommon
-  - ExpoModulesWorklets (57.0.11):
+  - ExpoModulesWorklets (57.0.12):
     - ExpoModulesCore
     - ExpoModulesJSI
-  - ExpoModulesWorkletsAdapter (57.0.11):
+  - ExpoModulesWorkletsAdapter (57.0.12):
     - ExpoModulesCore
     - ExpoModulesJSI
     - ExpoModulesWorklets
@@ -1731,7 +1731,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context (5.9.0):
+  - react-native-safe-area-context (5.9.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1743,8 +1743,8 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
-    - react-native-safe-area-context/common (= 5.9.0)
-    - react-native-safe-area-context/fabric (= 5.9.0)
+    - react-native-safe-area-context/common (= 5.9.1)
+    - react-native-safe-area-context/fabric (= 5.9.1)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1755,7 +1755,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/common (5.9.0):
+  - react-native-safe-area-context/common (5.9.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1777,7 +1777,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/fabric (5.9.0):
+  - react-native-safe-area-context/fabric (5.9.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2221,7 +2221,7 @@ PODS:
     - React-utils (= 0.86.2)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.2)
-  - RNAudioAPI (0.13.2):
+  - RNAudioAPI (0.13.3):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2242,10 +2242,10 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNAudioAPI/audioapi (= 0.13.2)
+    - RNAudioAPI/audioapi (= 0.13.3)
     - RNWorklets
     - Yoga
-  - RNAudioAPI/audioapi (0.13.2):
+  - RNAudioAPI/audioapi (0.13.3):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2266,35 +2266,12 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNAudioAPI/audioapi/audioapi_dsp (= 0.13.2)
-    - RNAudioAPI/audioapi/ios (= 0.13.2)
-    - RNAudioAPI/audioapi/miniaudio_impl (= 0.13.2)
+    - RNAudioAPI/audioapi/audioapi_dsp (= 0.13.3)
+    - RNAudioAPI/audioapi/ios (= 0.13.3)
+    - RNAudioAPI/audioapi/miniaudio_impl (= 0.13.3)
     - RNWorklets
     - Yoga
-  - RNAudioAPI/audioapi/audioapi_dsp (0.13.2):
-    - hermes-engine
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-Core-prebuilt
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - RNWorklets
-    - Yoga
-  - RNAudioAPI/audioapi/ios (0.13.2):
+  - RNAudioAPI/audioapi/audioapi_dsp (0.13.3):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2317,7 +2294,7 @@ PODS:
     - ReactNativeDependencies
     - RNWorklets
     - Yoga
-  - RNAudioAPI/audioapi/miniaudio_impl (0.13.2):
+  - RNAudioAPI/audioapi/ios (0.13.3):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2340,7 +2317,7 @@ PODS:
     - ReactNativeDependencies
     - RNWorklets
     - Yoga
-  - RNGestureHandler (3.1.0):
+  - RNAudioAPI/audioapi/miniaudio_impl (0.13.3):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2361,6 +2338,30 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
+    - RNWorklets
+    - Yoga
+  - RNGestureHandler (3.2.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - RNWorklets (>= 0.8.0)
     - Yoga
   - RNReanimated (4.5.3):
     - hermes-engine
@@ -2508,7 +2509,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNSentry (8.22.0):
+  - RNSentry (8.23.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2990,29 +2991,29 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AsyncStorage: 163ab23f6aa37a58b7f2379d0b4ee7ac84d6655c
-  EXConstants: 13cc6ad9324d81223386074a523d4e16aed32cd2
+  EXConstants: 1b9bb962f72de86540a5314f4bec2eb3fdeff515
   EXJSONUtils: 7a1683cfa2cbe6d11fca97097d51a496755b0287
   EXManifests: f9888c0bf5aaa6ddb7e3d4b224d6d54ac4ca84a4
-  Expo: 092ab1f66de3246b5ffd87d85da9a78648013170
-  expo-dev-client: 012303b9bc82af5161707a6673457918208e1337
-  expo-dev-launcher: 7262c0045c0fac046a2ffff9c0127986f0f64c51
-  expo-dev-menu: 5788381267fbff3de6ce89bdffe2ea827d209666
+  Expo: 429d926f6dd4edcaab10ff1bac5e5bc63321c700
+  expo-dev-client: 8a0f7761ad38dcf24055495be1be6ed4d7ce19f5
+  expo-dev-launcher: 293208f8c277a8ccd10bfa5f676cf6b939f238d1
+  expo-dev-menu: b41853fe77c76379f51c4f7ca0635c6b8b7d0a97
   expo-dev-menu-interface: 7a59e803916fbfd1b96c75ff91ea8dddac7e722f
-  ExpoAsset: e046c820a585f46969182c2aa03c3a822dd55b6b
-  ExpoAudio: b69f36525132edba8d87a715b3a20c678ef78b30
+  ExpoAsset: 2b03d46bfa5827ac7b11e22f812cf99995f2ed4b
+  ExpoAudio: bd075db379c5a70b7f9a7b5b541d5c67f59b5dca
   ExpoBlur: 69e67b4fbfed6f7325377af2aefa8aa4f00cd2af
   ExpoDomWebView: beaec034e51bd028428b98bb1f2633ab79c6d095
-  ExpoFileSystem: b3fb2457e75eddc87dcadcd4cd0e237d12f79de7
+  ExpoFileSystem: 0e74ed1536e1643f4a352d84ed55d311d795828d
   ExpoFont: 59e1faf66ba9bcd232ae1e2ce58d202a48b6f65e
   ExpoHaptics: 4503d2da51ff7109712ccdfe0e4939f66818183e
   ExpoKeepAwake: c26f14275017370cc8a4b7b43a0e23361f2053a5
   ExpoLinearGradient: 903b3f5fe566c666ff78b2599add51d094483613
   ExpoLocalization: 659243b03b3a3e9589793cee2f728a899e181329
-  ExpoLogBox: 6bb73c341aca22e699bd4da6cc61afc844e1a648
-  ExpoModulesCore: 0cf777decbf916b989b3648c7da5cb4d58085bf4
-  ExpoModulesJSI: b20fefa4cdd9097e7e6b715466d1900b8c5d4711
-  ExpoModulesWorklets: eaf2898a6621e3c9a09c0479c1a4cb5f1b368d53
-  ExpoModulesWorkletsAdapter: b4765c3a7ea7f23bcddde04f981ff4b6d01c25d1
+  ExpoLogBox: 2c4225a62f1cfb943e6b2df4fa4fe2d136e06fb6
+  ExpoModulesCore: 1e094f20237ec1e79d3687d9666c102a31895e62
+  ExpoModulesJSI: ea64813990c7650f3a2d469f176a54c3c7b2c66a
+  ExpoModulesWorklets: 539791c19ac17aaa37632c7fa396ec17d91b3ad6
+  ExpoModulesWorkletsAdapter: 970a0961ae66725e0adef3756ac12f0ba4122b57
   ExpoScreenOrientation: 17fd81b2bdb7615b4b540335673aaf98a358281f
   EXUpdatesInterface: 92d2aa5194b6fb93ca8ab749db75665cb28b2e60
   FBLazyVector: 3c3be9a019176b5699455f7f66c5444b78a411c6
@@ -3055,7 +3056,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: f413ee411341fb3c34d20e85e9f6f524921fab15
   React-mutationobservernativemodule: 58f6d2adf7d98e72b241608dfa2ddce414d2a4e7
   react-native-netinfo: 2f906d5d9a639090ed1c079135d6485a95f749f1
-  react-native-safe-area-context: 30934ff38025480021a6956a3eb8799f18ff835a
+  react-native-safe-area-context: 8368d1052ccc8fe8725adfb6a83498c8bdb48250
   react-native-skia: 2566a91725e6ab842eaa5e226b026760b1eca020
   React-NativeModulesApple: 167e532fb9bae30f3c66636b8ee0092bab263667
   React-networking: 89f6b69755a3176f30e56ba1ba8e214b1518ecfb
@@ -3092,11 +3093,11 @@ SPEC CHECKSUMS:
   ReactCodegen: 3bbb7de19774794a7428ef623a7b777106cf3737
   ReactCommon: 9002f006f571256348994183f7d4387aa7cf84e8
   ReactNativeDependencies: 2bd6854ade79bf1b60586d1ab7813a389df1b6bf
-  RNAudioAPI: b856a41a561ff7f7bab26e38fc801ba7ebb28156
-  RNGestureHandler: a426f18ab9021991fe2cbc8bf1677b740e20e70c
+  RNAudioAPI: b6cc03de975d58aa09463c5f06e78290b28fb4a5
+  RNGestureHandler: af5f7e95d350ef38c0997b5627970769c2a7f354
   RNReanimated: 5aa9e73d0f8d3c40d5c9bec396d6a61098db31f0
   RNScreens: de068bbd7d91b820fedac25c597d4b14830de74b
-  RNSentry: abd1c7d1a88175179f5a0367c132e84e06a69b45
+  RNSentry: 67a738ecdc2ddb58371f8ecfa3d6c87a5b87f5db
   RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
   RNWorklets: 0000755d812f23d0fc703319e2b1f65d9204c954
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b

@@ -41,6 +41,9 @@ frontend/android/app/upload-keystore.jks
 # Claude Code local overrides (personal, not shared)
 .claude/settings.local.json
 
+# precheck-gate.sh cache (local, machine-specific pass/fail state)
+.claude/hooks/.cache/
+
 # Git worktrees created by Claude Code review agents
 .worktrees/
 
