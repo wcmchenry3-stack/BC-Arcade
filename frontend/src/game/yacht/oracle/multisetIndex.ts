@@ -35,7 +35,13 @@ export interface IndexedMultisets {
   readonly indexOf: ReadonlyMap<string, number>;
 }
 
-function keyOf(values: readonly number[]): string {
+/**
+ * Canonical string key for a sorted dice-values array. Exported so other
+ * modules that need to match against the same dice-multiset representation
+ * (e.g. `regret.ts`'s hold-EV lookup) share this single definition instead of
+ * risking a silently-drifting duplicate.
+ */
+export function keyOf(values: readonly number[]): string {
   return values.join(",");
 }
 
