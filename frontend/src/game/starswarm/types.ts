@@ -29,7 +29,6 @@ export type GamePhase =
   | "Playing" // normal combat
   | "FreeFireZone" // non-hostile bonus wave
   | "WaveClear" // brief pause before next wave (legacy / backward-compat)
-  | "WinTransition" // cinematic win sequence: freeze → AI autopilot → fly off
   | "GameOver";
 
 export interface Vec2 {
@@ -216,15 +215,12 @@ export interface StarSwarmState {
   readonly playerFireDisabled: boolean;
   /** Dev: enemy bullets are never pushed to the bullet list. */
   readonly enemyFireDisabled: boolean;
-  // --- WinTransition fields (meaningful only while phase === "WinTransition") ---
-  /** Sub-stage of the win-transition sequence. */
-  readonly winTransitionStage: "freeze" | "autopilot";
-  /** ms elapsed since WinTransition phase started. */
-  readonly winTransitionElapsed: number;
-  /** px the player ship has moved upward from its resting row; 0 normally. */
-  readonly playerYOffset: number;
-  /** Upward velocity px/ms for the ship during autopilot; 0 normally. */
-  readonly playerVY: number;
+  /**
+   * ms remaining to show the non-blocking "MISSION COMPLETE" / "PERFECT" wave-clear banner.
+   * Purely cosmetic — gameplay is never paused for this (#2352); set on wave clear, counts
+   * down like any other cosmetic timer (compare `bombFlashTimer`).
+   */
+  readonly missionCompleteTimer: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */

@@ -27,6 +27,7 @@ import {
   BULLET_E_VY,
   PLAYER_W,
   MAX_PLAYER_BULLETS,
+  MISSION_COMPLETE_BANNER_MS,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -137,83 +138,33 @@ describe("player boundary clamping", () => {
     expect(s.player.x).toBe(CANVAS_W - hw);
   });
 
-  // Regression: after the cinematic WinTransition the engine's player.x must be
-  // within valid bounds, and using that position as subsequent input must be a
-  // no-op (no spurious jump). Controls.tsx relies on this contract when it syncs
-  // playerXRef after WinTransition to prevent the "stuck at right edge" bug.
-  it("player.x stays within valid bounds through a complete WinTransition", () => {
+  // Regression: #2352 removed the WinTransition cinematic (hard freeze + AI autopilot) —
+  // the wave now advances in the same tick the last enemy dies, and the ship keeps
+  // whatever position the player last drove it to (nothing repositions it).
+  it("player.x stays within valid bounds immediately after a wave clear", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     // Drive ship to right edge for the duration of the wave
     const rightEdgeInput: StarSwarmInput = { playerX: CANVAS_W - hw, fire: false };
     s = advanceMs(s, 8000, rightEdgeInput);
-    // Kill remaining enemies to trigger WinTransition
+    // Kill remaining enemies to trigger the wave clear
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, rightEdgeInput);
-    expect(s.phase).toBe("WinTransition");
-    // Advance through the full cinematic; autopilot moves the ship
-    s = advanceMs(s, 3000, rightEdgeInput);
     expect(s.wave).toBe(2);
     expect(s.phase).toBe("SwoopIn");
     expect(s.player.x).toBeGreaterThanOrEqual(hw);
     expect(s.player.x).toBeLessThanOrEqual(CANVAS_W - hw);
   });
 
-  it("first tick of new wave with engine-parked X does not move the ship", () => {
+  it("using the engine's own player.x as input is a no-op right after a wave clear", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     s = advanceMs(s, 8000);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
-    s = advanceMs(s, 3000);
     expect(s.wave).toBe(2);
     // Using the engine's own player.x as the input must be a no-op
     const parkedX = s.player.x;
     s = tick(s, 16, { playerX: parkedX, fire: false });
     expect(s.player.x).toBe(parkedX);
-  });
-
-  // Regression: autopilot must move the ship when a bullet threatens during
-  // WinTransition — this is the desync that made playerXRef stale in Controls.tsx.
-  // Bullet at y=150 gives the AI time to dodge before the wave increments.
-  // Loop tick-by-tick (not advanceMs) so we capture parked X before wave-2
-  // re-clamps it via NO_INPUT.
-  it("autopilot moves ship laterally when an enemy bullet threatens during WinTransition", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-
-    // Bullet 50 px to the ship's left → AI dodges right, shifting player.x.
-    const threatBullet: Bullet = {
-      id: 99998,
-      x: s.player.x - 50,
-      y: 150,
-      vx: 0,
-      vy: BULLET_E_VY,
-      owner: "enemy",
-      width: 5,
-      height: 14,
-      damage: 1,
-    };
-    s = { ...s, enemyBullets: [threatBullet] };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
-    const xBeforeCinematic = s.player.x;
-
-    // Tick one frame at a time and capture player.x the instant wave increments.
-    // Using advanceMs would overwrite the parked position (tickPlayer re-clamps to 180).
-    let parkedX: number | null = null;
-    for (let i = 0; i < 300; i++) {
-      const prevWave = s.wave;
-      s = tick(s, 16, NO_INPUT);
-      if (s.wave !== prevWave) {
-        parkedX = s.player.x;
-        break;
-      }
-    }
-
-    expect(parkedX).not.toBeNull();
-    expect(parkedX!).not.toBeCloseTo(xBeforeCinematic, 0);
-    expect(parkedX!).toBeGreaterThanOrEqual(hw);
-    expect(parkedX!).toBeLessThanOrEqual(CANVAS_W - hw);
   });
 });
 
@@ -526,16 +477,11 @@ describe("Scoring", () => {
 // ---------------------------------------------------------------------------
 
 describe("Wave progression", () => {
-  it("advances to next wave after WinTransition", () => {
+  it("advances to next wave in the same tick the last enemy dies", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    // Kill all enemies to trigger WinTransition
     s = advanceMs(s, 8000);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
-
-    // Advance through pause
-    s = advanceMs(s, 3000);
     expect(s.wave).toBe(2);
   });
 
@@ -558,6 +504,59 @@ describe("Wave progression", () => {
     s = tick(s, 16, NO_INPUT);
     s = advanceMs(s, 3000);
     expect(s.score).toBeGreaterThanOrEqual(1234);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2352 — wave clear no longer freezes gameplay or hands off to an AI autopilot;
+// a short cosmetic banner timer marks the moment instead.
+// ---------------------------------------------------------------------------
+
+describe("#2352 non-blocking wave clear", () => {
+  it("sets missionCompleteTimer to the full banner duration on wave clear", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    expect(s.missionCompleteTimer).toBe(0); // not showing mid-wave
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.missionCompleteTimer).toBe(MISSION_COMPLETE_BANNER_MS);
+  });
+
+  it("missionCompleteTimer counts down and clears on its own — never gates ticking", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.missionCompleteTimer).toBeGreaterThan(0);
+    s = advanceMs(s, MISSION_COMPLETE_BANNER_MS + 500);
+    expect(s.missionCompleteTimer).toBe(0);
+  });
+
+  it("the new wave's enemies keep moving immediately — nothing freezes for a clear", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT); // clears wave 1 and builds wave 2 in the same tick
+    expect(s.wave).toBe(2);
+    const startY = s.enemies[0]?.y ?? 0;
+    s = tick(s, 100, NO_INPUT); // a single normal frame of wave 2
+    expect(s.enemies[0]?.y).not.toBe(startY); // SwoopIn is actively animating, not frozen
+  });
+
+  // tick() is a no-op once GameOver (see "GameOver terminal state" above), so a
+  // missionCompleteTimer that's still counting down at the moment of death is frozen at
+  // whatever value it had, not zero. GameCanvas/.web.tsx render the banner conditionally on
+  // `phase !== "GameOver"` rather than relying on the timer itself decaying to 0 here.
+  it("missionCompleteTimer freezes once GameOver — renderers suppress the banner instead", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.missionCompleteTimer).toBeGreaterThan(0);
+    s = { ...s, phase: "GameOver" };
+    const frozenAt = s.missionCompleteTimer;
+    s = advanceMs(s, 5000);
+    expect(s.missionCompleteTimer).toBe(frozenAt);
   });
 });
 
@@ -599,11 +598,11 @@ describe("FreeFireZone", () => {
     expect(s.freeFireHits).toBe(1);
   });
 
-  it("transitions to WinTransition when all challenge enemies exit", () => {
+  it("advances to the next wave when all challenge enemies exit", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
   });
 });
 
@@ -858,7 +857,7 @@ describe("GameOver terminal state", () => {
 // ---------------------------------------------------------------------------
 
 describe("FreeFireZone off-screen cleanup", () => {
-  it("transitions to WinTransition after enemies exit without being shot", () => {
+  it("advances to the next wave after enemies exit without being shot", () => {
     // Wave 3 starts as FreeFireZone; enemies follow a path to canvasH + 80
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
     expect(s.phase).toBe("FreeFireZone");
@@ -867,7 +866,7 @@ describe("FreeFireZone off-screen cleanup", () => {
     // It exits the canvas after 39*400 + 5000 = 20600 ms.
     // Advance past that with no firing so enemies scroll off instead of being shot.
     s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
   });
 
   it("transitions immediately if player shoots all enemies early", () => {
@@ -877,7 +876,7 @@ describe("FreeFireZone off-screen cleanup", () => {
     // Force all enemies dead to simulate shooting them all
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false })) };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
   });
 });
 
@@ -2560,9 +2559,9 @@ describe("#1037 Difficulty tiers", () => {
     base = tick(wipeAll(base), 16, NO_INPUT);
     hard = tick(wipeAll(hard), 16, NO_INPUT);
 
-    // Both should be in WinTransition and hard score should be ≥ 4× base score
-    expect(base.phase).toBe("WinTransition");
-    expect(hard.phase).toBe("WinTransition");
+    // Both should have advanced to wave 2, and hard score should be ≥ 4× base score
+    expect(base.wave).toBe(2);
+    expect(hard.wave).toBe(2);
     expect(hard.score).toBeGreaterThanOrEqual(base.score * 4);
   });
 });
@@ -2597,7 +2596,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
     expect(s.freeFirePerfect).toBe(false);
   });
 
-  it("freeFirePerfect is true on WinTransition when all 40 enemies were hit", () => {
+  it("freeFirePerfect is true after wave clear when all 40 enemies were hit", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // Force all 40 hits and kill every enemy in one tick
     s = {
@@ -2606,15 +2605,15 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
     expect(s.freeFirePerfect).toBe(true);
   });
 
-  it("freeFirePerfect is false on WinTransition when enemies scroll off without being shot", () => {
+  it("freeFirePerfect is false after wave clear when enemies scroll off without being shot", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
     s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
     expect(s.freeFirePerfect).toBe(false);
   });
 
@@ -2622,7 +2621,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
     // Zero-hit path: enemies scroll off — wave-clear bonus is 0 (conditional on hits, #1463)
     let noPerfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
     noPerfect = advanceMs(noPerfect, 22000, NO_INPUT);
-    expect(noPerfect.phase).toBe("WinTransition");
+    expect(noPerfect.wave).toBe(4);
     expect(noPerfect.score).toBe(0); // zero kills → zero wave-clear bonus
 
     // Full-hit path: all 40 hit + perfect → waveClear(1500) + hits(2000) + perfect(10000) = 13500
@@ -2633,7 +2632,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: perfect.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     perfect = tick(perfect, 16, NO_INPUT);
-    expect(perfect.phase).toBe("WinTransition");
+    expect(perfect.wave).toBe(4);
 
     // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
     expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
@@ -2648,7 +2647,7 @@ describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.phase).toBe("WinTransition");
+    expect(s.wave).toBe(4);
     // waveClear(750) + hits(20×50=1000) + no perfect bonus = 1750
     expect(s.score).toBe(750 + 20 * 50);
   });
