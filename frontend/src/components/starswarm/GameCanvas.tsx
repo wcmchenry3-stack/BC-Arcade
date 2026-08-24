@@ -21,6 +21,8 @@ import {
   difficultyLabel,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
+  decayMissionCompleteTimer,
+  showMissionCompleteBanner,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -150,7 +152,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // True when the active countdown follows a wave clear (shows the "— WAVE N —" banner).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const waveBannerCountdownRef = useRef(false);
-    const pendingFreeFireZoneRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
@@ -260,7 +261,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevWaveRef.current = gameRef.current.wave;
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
-      pendingFreeFireZoneRef.current = false;
       waveBannerCountdownRef.current = false;
       setRenderState({
         game: gameRef.current,
@@ -298,16 +298,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             if (gameRef.current.missionCompleteTimer > 0) {
               gameRef.current = {
                 ...gameRef.current,
-                missionCompleteTimer: Math.max(0, gameRef.current.missionCompleteTimer - dtMs),
+                missionCompleteTimer: decayMissionCompleteTimer(
+                  gameRef.current.missionCompleteTimer,
+                  dtMs
+                ),
               };
             }
-            if (countdownMsRef.current === 0) {
-              countdownMsRef.current = null;
-              if (pendingFreeFireZoneRef.current) {
-                pendingFreeFireZoneRef.current = false;
-                onFreeFireZoneRef.current?.();
-              }
-            }
+            if (countdownMsRef.current === 0) countdownMsRef.current = null;
           } else {
             try {
               const prevCooldown = prev.player.shootCooldown;
@@ -374,30 +371,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onWaveClearRef.current?.();
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
-              if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
-                onWaveClearRef.current?.();
-                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
-              }
-              // Start the pre-wave countdown when the legacy WaveClear phase ends, or
-              // immediately on a fresh clear that lands on SwoopIn — a clear that chains
-              // straight into another FreeFireZone wave skips the countdown, same as before.
-              // prevPhaseRef.current is updated below — after this check.
-              const fromWaveClear =
-                prevPhaseRef.current === "WaveClear" &&
-                applied.phase !== "WaveClear" &&
-                applied.phase !== "GameOver";
-              const startingCountdown =
-                (waveJustCleared || fromWaveClear) && applied.phase === "SwoopIn";
-              if (startingCountdown) {
+              // A fresh clear that lands on SwoopIn starts the pre-wave countdown immediately —
+              // a clear that chains straight into another FreeFireZone wave skips it.
+              if (waveJustCleared && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
-                waveBannerCountdownRef.current = waveJustCleared;
+                waveBannerCountdownRef.current = true;
               }
               if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
-                if (fromWaveClear) {
-                  pendingFreeFireZoneRef.current = true;
-                } else {
-                  onFreeFireZoneRef.current?.();
-                }
+                onFreeFireZoneRef.current?.();
               }
               prevPhaseRef.current = applied.phase;
               if (applied.phase === "GameOver") {
@@ -789,41 +770,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
           {/* #2352: purely cosmetic wave-clear acknowledgment — gameplay behind it never
               pauses. Fades out over its last MISSION_COMPLETE_FADE_MS instead of blocking on
-              a freeze. Suppressed during GameOver (would ghost under the game-over overlay)
-              and FreeFireZone (would garble with that phase's own banner text) — both are
-              real phases this timer can still be counting down through. */}
-          {state.missionCompleteTimer > 0 &&
-            state.phase !== "GameOver" &&
-            state.phase !== "FreeFireZone" && (
-              <View style={styles.phaseOverlay} pointerEvents="none">
+              a freeze. See showMissionCompleteBanner() for the full suppression rationale —
+              also skipped while the pre-wave countdown overlay (above) is showing, since both
+              render full-screen and centered and would otherwise garble together. */}
+          {showMissionCompleteBanner(state, countdownDigit !== null) && (
+            <View style={styles.phaseOverlay} pointerEvents="none">
+              <Text
+                style={[
+                  styles.overlayTitle,
+                  { opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS) },
+                ]}
+              >
+                {t("phase.missionComplete")}
+              </Text>
+              {state.freeFirePerfect && (
                 <Text
                   style={[
-                    styles.overlayTitle,
+                    styles.perfectBanner,
                     { opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS) },
                   ]}
                 >
-                  {t("phase.missionComplete")}
+                  {t("phase.perfect")}
                 </Text>
-                {state.freeFirePerfect && (
-                  <Text
-                    style={[
-                      styles.perfectBanner,
-                      {
-                        opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS),
-                      },
-                    ]}
-                  >
-                    {t("phase.perfect")}
-                  </Text>
-                )}
-              </View>
-            )}
-
-          {state.phase === "WaveClear" && countdownDigit === null && (
-            <View style={styles.phaseOverlay}>
-              <Text style={styles.overlayTitle}>{t("phase.waveClear")}</Text>
-              {state.freeFirePerfect && (
-                <Text style={styles.perfectBanner}>{t("phase.perfect")}</Text>
               )}
             </View>
           )}

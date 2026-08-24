@@ -13,6 +13,8 @@ import {
   difficultyLabel,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
+  decayMissionCompleteTimer,
+  showMissionCompleteBanner,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -713,30 +715,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      if (state.phase === "WaveClear") {
-        ctx.font = "bold 22px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.fillText(t("phase.waveClear"), width / 2, height / 2);
-        if (state.freeFirePerfect) {
-          ctx.font = "bold 18px 'Courier New', monospace";
-          ctx.fillStyle = "#ffdd00";
-          ctx.shadowColor = "#ff8800";
-          ctx.shadowBlur = 8;
-          ctx.fillText(t("phase.perfect"), width / 2, height / 2 + 30);
-          ctx.shadowBlur = 0;
-        }
-      }
-
       // #2352: purely cosmetic wave-clear acknowledgment — gameplay behind it never
       // pauses. Fades out over its last MISSION_COMPLETE_FADE_MS instead of blocking on a
-      // freeze. Suppressed during GameOver (would ghost under the game-over overlay) and
-      // FreeFireZone (would garble with that phase's own banner text) — both are real
-      // phases this timer can still be counting down through.
-      if (
-        state.missionCompleteTimer > 0 &&
-        state.phase !== "GameOver" &&
-        state.phase !== "FreeFireZone"
-      ) {
+      // freeze. See showMissionCompleteBanner() for the full suppression rationale — also
+      // skipped while the pre-wave countdown overlay (below) is showing, since both render
+      // full-screen and centered and would otherwise garble together.
+      if (showMissionCompleteBanner(state, countdownDigit !== null)) {
         const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
@@ -852,7 +836,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             if (stateRef.current.missionCompleteTimer > 0) {
               stateRef.current = {
                 ...stateRef.current,
-                missionCompleteTimer: Math.max(0, stateRef.current.missionCompleteTimer - dtMs),
+                missionCompleteTimer: decayMissionCompleteTimer(
+                  stateRef.current.missionCompleteTimer,
+                  dtMs
+                ),
               };
             }
             if (countdownMsRef.current === 0) countdownMsRef.current = null;
@@ -903,10 +890,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const waveJustCleared = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
               if (waveJustCleared) {
-                onWaveClearRef.current?.();
-                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
-              }
-              if (applied.phase === "WaveClear" && prevPhaseRef.current !== "WaveClear") {
                 onWaveClearRef.current?.();
                 if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }

@@ -91,6 +91,34 @@ export const MISSION_COMPLETE_BANNER_MS = 1200;
 // ms the banner takes to fade out at the end of its life — shared by both renderers so
 // native/web can't drift out of sync with each other or with MISSION_COMPLETE_BANNER_MS.
 export const MISSION_COMPLETE_FADE_MS = 300;
+
+/** Decay `missionCompleteTimer` by real elapsed time. Used by `tick()` below, and directly
+ * by both renderers' RAF loops during the pre-wave countdown freeze — tick() (the only other
+ * place this timer is touched) is skipped entirely while that freeze is active, so without
+ * this the banner would stay pinned at full opacity instead of fading on its own schedule.
+ * Kept as one shared function so native/web can't drift out of sync with each other. */
+export function decayMissionCompleteTimer(timer: number, dtMs: number): number {
+  return Math.max(0, timer - dtMs);
+}
+
+/** Whether the cosmetic "MISSION COMPLETE" / "PERFECT" banner should render this frame.
+ * Suppressed during GameOver (would ghost under the game-over overlay) and FreeFireZone
+ * (would garble with that phase's own banner text) — both are real phases this timer can
+ * still be counting down through. Also suppressed while the pre-wave countdown overlay is
+ * showing (the countdown starts in the same tick as a normal wave clear, and both overlays
+ * render full-screen and centered) — countdownActive is passed in since the countdown lives
+ * in the renderer's ref state, not the engine state. */
+export function showMissionCompleteBanner(
+  state: StarSwarmState,
+  countdownActive: boolean
+): boolean {
+  return (
+    state.missionCompleteTimer > 0 &&
+    state.phase !== "GameOver" &&
+    state.phase !== "FreeFireZone" &&
+    !countdownActive
+  );
+}
 const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
@@ -712,18 +740,12 @@ function buildWaveState(
 export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput): StarSwarmState {
   if (state.phase === "GameOver") return state;
 
-  if (state.phase === "WaveClear") {
-    const timer = state.phaseTimer - dtMs;
-    if (timer <= 0) return startNextWave(state);
-    return { ...state, phaseTimer: timer };
-  }
-
   // #1078: decrement slow-mo timer with real time; scale all gameplay by BONUS_LIFE_SLOW_MO_SCALE
   const slowMoActive = state.bonusLifeSlowMoTimer > 0;
   const bonusLifeSlowMoTimer = Math.max(0, state.bonusLifeSlowMoTimer - dtMs);
   const scaledDt = slowMoActive ? dtMs * BONUS_LIFE_SLOW_MO_SCALE : dtMs;
   // #2352: purely cosmetic — never gates or slows gameplay, just counts down real time.
-  const missionCompleteTimer = Math.max(0, state.missionCompleteTimer - dtMs);
+  const missionCompleteTimer = decayMissionCompleteTimer(state.missionCompleteTimer, dtMs);
 
   let s: StarSwarmState = { ...state, bonusLifeSlowMoTimer, missionCompleteTimer };
   s = tickPlayer(s, scaledDt, input);
@@ -1803,12 +1825,12 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
       const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.freeFireHits === FREE_FIRE_ENEMY_COUNT;
       const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
+      // Note: invincibleTimer and bombFlashTimer don't need resetting here —
+      // startNextWave() → buildWaveState() unconditionally resets both on every wave.
       const next = startNextWave({
         ...state,
         score:
           state.score + waveClearBonus + Math.round(state.freeFireHits * 50 * sm) + perfectBonus,
-        player: { ...state.player, invincibleTimer: 0 },
-        bombFlashTimer: 0,
       });
       return {
         ...next,
@@ -1824,11 +1846,11 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     if (liveEnemies.length === 0) {
       const sm = difficultyMultiplier(state.difficulty);
       const waveClearBonus = Math.round(state.wave * WAVE_CLEAR_BONUS_BASE * sm);
+      // Note: invincibleTimer and bombFlashTimer don't need resetting here —
+      // startNextWave() → buildWaveState() unconditionally resets both on every wave.
       const next = startNextWave({
         ...state,
         score: state.score + waveClearBonus,
-        player: { ...state.player, invincibleTimer: 0 },
-        bombFlashTimer: 0,
       });
       return { ...next, missionCompleteTimer: MISSION_COMPLETE_BANNER_MS };
     }
