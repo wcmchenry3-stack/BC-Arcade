@@ -123,8 +123,14 @@ jobs:
       # _shared) that isn't in the full-suite list below, or vice versa —
       # otherwise a newly added game's flows would silently never run on
       # either platform until someone remembers to update both this list
-      # and its matching paths-filter category above.
+      # and its matching paths-filter category above. The validated list
+      # is also exported as this step's `full_suite` output and is the
+      # ONLY place the full-suite project set is spelled out — the `scope`
+      # step below reads it back instead of hardcoding its own copy, so a
+      # PR that updates this list (making the guard pass) can't silently
+      # leave a second, drifted copy for push/main runs to use.
       - name: Guard against stale full-suite list
+        id: guard
         run: |
           actual=$(ls e2e/maestro/flows | grep -v '^_shared$' | sort | tr '\n' ' ' | xargs)
           expected=$(echo "blackjack cascade daily-word freecell hearts home mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
@@ -132,6 +138,7 @@ jobs:
             echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching paths-filter category when a game's Maestro flows are added or removed."
             exit 1
           fi
+          echo "full_suite=$expected" >> "$GITHUB_OUTPUT"
 
       - id: scope
         run: |
@@ -140,7 +147,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
              [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
-            echo "projects=blackjack cascade daily-word freecell hearts home mahjong solitaire sort starswarm sudoku twenty48 yacht offline" >> "$GITHUB_OUTPUT"
+            echo "projects=${{ steps.guard.outputs.full_suite }}" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
             # Build from matched game filters only — NOT seeded with "home",
