@@ -87,6 +87,24 @@ To navigate to a game, use `navigate-to.yaml`:
 
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
+## Timeouts
+
+`timeout:` is **not** a valid field on `assertVisible`, `assertNotVisible`, or
+`tapOn` — confirmed against Maestro's source (`YamlElementSelector.kt`) at the
+pinned CLI version; the strict Jackson deserializer rejects it outright
+("Unrecognized field \"timeout\"" — see #2350). To wait longer than the
+default ~7s find-timeout, use `extendedWaitUntil` instead:
+
+```yaml
+- extendedWaitUntil:
+    visible:
+      id: "some-id"
+    timeout: 10000
+```
+
+`optional: true` on `tapOn` (for a pre-game button that may not appear) is a
+valid selector field on its own — just don't pair it with `timeout`.
+
 ## Pre-game selectors
 
 Several games show a selector before the game starts. Each smoke flow handles this automatically:

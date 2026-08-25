@@ -7,8 +7,7 @@ appId: com.buffingchi.games
       gameSlug: "sudoku"
       screenLabel: "Sudoku"
 # PreGame only shows when no puzzle is in progress; skip if resuming a saved puzzle.
-# `timeout` isn't a valid tapOn/selector field (see #2350) — `optional: true`
-# alone is enough; Maestro's default ~7s find-timeout still applies.
+# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
 - tapOn:
     id: "sudoku-pregame-start"
     optional: true

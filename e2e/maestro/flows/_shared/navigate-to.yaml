@@ -1,3 +1,5 @@
+appId: com.buffingchi.games
+---
 # Subflow: tap a game tile and assert the game screen loads.
 # Caller must set: ${gameSlug}    (testID suffix, e.g. "yacht")
 #                  ${screenLabel} (text visible on the game screen)

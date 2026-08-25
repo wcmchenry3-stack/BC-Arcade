@@ -7,8 +7,7 @@ appId: com.buffingchi.games
       gameSlug: "hearts"
       screenLabel: "Hearts"
 # Difficulty picker appears only on first launch; skip if a saved game exists.
-# `timeout` isn't a valid tapOn/selector field (see #2350) — `optional: true`
-# alone is enough; Maestro's default ~7s find-timeout still applies.
+# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
 - tapOn:
     id: "hearts-start-game"
     optional: true
