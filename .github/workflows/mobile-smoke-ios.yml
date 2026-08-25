@@ -59,6 +59,25 @@ jobs:
         run: pod install --repo-update
         working-directory: frontend/ios
 
+      - name: Force JS bundle embedding for CI Debug build
+        # ios/GamingApp.xcodeproj's "Bundle React Native code and images"
+        # build phase sets SKIP_BUNDLING=1 unconditionally for any Debug
+        # configuration build (see the phase's shellScript in
+        # project.pbxproj) — normal for local Simulator debug builds, which
+        # connect to a live Metro server instead. But because this project
+        # depends on expo-dev-client, an unbundled Debug build with no
+        # reachable Metro server just boots into the dev-client's
+        # "Development Build" launcher screen and never reaches the real
+        # app. See #2368 (same root cause, fixed for Android via
+        # -Pandroid.bundleDebugForCI in build.gradle).
+        #
+        # `.xcode.env.local` is sourced a second time by that build phase
+        # AFTER it sets SKIP_BUNDLING=1 (its own comments document this as
+        # the intended override point) and is gitignored
+        # (frontend/ios/.gitignore) — this file only ever exists in CI, so
+        # local Xcode/Simulator debug builds are unaffected.
+        run: echo 'unset SKIP_BUNDLING' >> frontend/ios/.xcode.env.local
+
       - name: Build app for iOS Simulator
         run: |
           xcodebuild \

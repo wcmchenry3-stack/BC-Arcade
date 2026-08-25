@@ -80,13 +80,23 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Build debug APK
-        # Restrict native (CMake/NDK) compilation to the single ABI the CI
-        # emulator actually runs (x86_64, set below) instead of all 4
-        # configured in gradle.properties for release builds. This is a
-        # one-off `-P` override on the CLI, so it doesn't touch
-        # gradle.properties or affect the Play Store release build. See
-        # #2363 — this cut ~69% of native build time (~14 min) on this step.
-        run: cd android && ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64
+        # -PreactNativeArchitectures=x86_64: restrict native (CMake/NDK)
+        # compilation to the single ABI the CI emulator actually runs
+        # instead of all 4 configured in gradle.properties for release
+        # builds. See #2363 — cut ~69% of native build time (~14 min).
+        #
+        # -Pandroid.bundleDebugForCI=true: embed the JS bundle into the
+        # debug APK like a release build would. Without it, this project's
+        # expo-dev-client dependency makes the `debug` variant skip JS
+        # bundling entirely (expecting a live Metro server instead), so the
+        # installed APK just boots into the dev-client's "Development
+        # Build" launcher screen and never reaches the real app — every
+        # Maestro flow's very first assertion failed this way. See #2368.
+        # Both are one-off `-P` CLI overrides — neither touches
+        # gradle.properties/build.gradle's actual defaults, so local
+        # `npx expo run:android` and the Play Store release build are
+        # unaffected.
+        run: cd android && ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64 -Pandroid.bundleDebugForCI=true
         working-directory: frontend
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
