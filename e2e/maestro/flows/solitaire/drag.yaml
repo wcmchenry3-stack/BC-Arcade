@@ -20,8 +20,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "solitaire"
       screenLabel: "Solitaire"
-- assertVisible:
-    id: "solitaire-stock-pile"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
     timeout: 8000
 
 # --- tableau-to-tableau -------------------------------------------------
@@ -34,11 +35,13 @@ appId: com.buffingchi.games
     to:
       id: "solitaire-tableau-3"
     duration: 600
-- assertVisible:
-    text: "Tableau column 4, 5 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 4, 5 cards"
     timeout: 3000
-- assertVisible:
-    text: "Empty tableau column 1"
+- extendedWaitUntil:
+    visible:
+      text: "Empty tableau column 1"
     timeout: 3000
 - takeScreenshot: solitaire-drag-tableau-to-tableau
 
@@ -47,8 +50,9 @@ appId: com.buffingchi.games
 # entirely) — the drag must snap back and leave col1 untouched.
 - tapOn:
     id: "solitaire-stock-pile"
-- assertVisible:
-    id: "solitaire-waste-top"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-waste-top"
     timeout: 3000
 - swipe:
     from:
@@ -56,11 +60,13 @@ appId: com.buffingchi.games
     to:
       id: "solitaire-tableau-1"
     duration: 600
-- assertVisible:
-    text: "Tableau column 2, 2 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 2, 2 cards"
     timeout: 3000
-- assertVisible:
-    id: "solitaire-waste-top"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-waste-top"
     timeout: 3000
 - takeScreenshot: solitaire-drag-invalid-snapback
 
@@ -73,14 +79,16 @@ appId: com.buffingchi.games
     to:
       id: "solitaire-tableau-0"
     duration: 600
-- assertVisible:
-    text: "Tableau column 1, 1 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 1, 1 cards"
     timeout: 3000
 # Waste is now empty — solitaire-waste-top only exists while waste is
 # non-empty, so its disappearance is a strong, engine-verified success
 # signal (not just "some card is still showing").
-- assertNotVisible:
-    id: "solitaire-waste-top"
+- extendedWaitUntil:
+    notVisible:
+      id: "solitaire-waste-top"
     timeout: 3000
 - takeScreenshot: solitaire-drag-valid-to-empty-column
 
@@ -92,8 +100,9 @@ appId: com.buffingchi.games
     commands:
       - tapOn:
           id: "solitaire-stock-pile"
-- assertVisible:
-    id: "solitaire-waste-top"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-waste-top"
     timeout: 3000
 - swipe:
     from:
@@ -101,12 +110,14 @@ appId: com.buffingchi.games
     to:
       id: "solitaire-foundation-spades"
     duration: 600
-- assertVisible:
-    id: "solitaire-foundation-spades-card"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-foundation-spades-card"
     timeout: 3000
 - takeScreenshot: solitaire-drag-waste-to-foundation
 
 # Board must still be interactive after the full sequence.
-- assertVisible:
-    id: "solitaire-stock-pile"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
     timeout: 3000

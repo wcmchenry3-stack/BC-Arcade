@@ -9,9 +9,11 @@ appId: com.buffingchi.games
 # warm state is worse than the extra launch cost. See #2346.
 - launchApp:
     clearState: true
-- assertVisible:
-    text: "BC Arcade"
+- extendedWaitUntil:
+    visible:
+      text: "BC Arcade"
     timeout: 15000
-- assertVisible:
-    text: "Choose a game"
+- extendedWaitUntil:
+    visible:
+      text: "Choose a game"
     timeout: 5000

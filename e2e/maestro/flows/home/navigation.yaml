@@ -8,7 +8,8 @@ appId: com.buffingchi.games
       screenLabel: "Yacht"
 - tapOn:
     id: "nav-back"
-- assertVisible:
-    text: "BC Arcade"
+- extendedWaitUntil:
+    visible:
+      text: "BC Arcade"
     timeout: 8000
 - takeScreenshot: navigation-home-return

@@ -7,12 +7,13 @@ appId: com.buffingchi.games
       gameSlug: "hearts"
       screenLabel: "Hearts"
 # Difficulty picker only shows when no game is saved; skip if one is in progress.
+# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
 - tapOn:
     id: "hearts-start-game"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "hearts-player-hand-area"
+- extendedWaitUntil:
+    visible:
+      id: "hearts-player-hand-area"
     timeout: 10000
 - tapOn:
     id: "hearts-player-hand-area"

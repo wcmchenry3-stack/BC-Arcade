@@ -7,12 +7,13 @@ appId: com.buffingchi.games
       gameSlug: "sort"
       screenLabel: "Sort Puzzle"
 # Level select only shows when no saved game is in progress; skip if resuming.
+# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
 - tapOn:
     id: "sort-level-1"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "sort-board"
+- extendedWaitUntil:
+    visible:
+      id: "sort-board"
     timeout: 8000
 - tapOn:
     id: "sort-board"
