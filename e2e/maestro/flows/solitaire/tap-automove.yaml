@@ -9,12 +9,6 @@ appId: com.buffingchi.games
 - assertVisible:
     id: "solitaire-stock-pile"
     timeout: 8000
-# Start a Draw 1 game.
-- tapOn:
-    text: "Draw 1"
-- assertVisible:
-    id: "solitaire-stock-pile"
-    timeout: 5000
 # Use the Hint button to highlight a movable card, then single-tap it.
 # The smart tap path fires resolveAutoMove: unambiguous → auto-executes (move
 # counter increments); ambiguous → selection highlight. Either way the hint

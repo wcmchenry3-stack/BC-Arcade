@@ -139,7 +139,16 @@ export default function FoundationPile({
 
   if (hasDrop) {
     return (
-      <DropTarget id={dropId!} onDrop={onDrop!} highlightStyle={highlightStyle} dimStyle={dimStyle}>
+      // testID mirrors TableauPile/FreeCellSlot's convention (dropId doubles
+      // as the Maestro-queryable id) — without it, an empty foundation pile
+      // has no element Maestro can target as a drag destination. See #2346.
+      <DropTarget
+        id={dropId!}
+        testID={dropId}
+        onDrop={onDrop!}
+        highlightStyle={highlightStyle}
+        dimStyle={dimStyle}
+      >
         {inner}
       </DropTarget>
     );

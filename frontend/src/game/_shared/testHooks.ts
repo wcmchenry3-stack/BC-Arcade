@@ -36,6 +36,7 @@ import { logConfig, resetLogConfig, LogConfig, Priority } from "./eventQueueConf
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
+import { areTestHooksEnabled } from "./envFlags";
 
 interface SeedEventSpec {
   /** Number of rows to seed. */
@@ -155,9 +156,7 @@ function buildSeedBugLogs(spec: SeedBugLogSpec): BugLogRow[] {
   return rows;
 }
 
-export function areTestHooksEnabled(): boolean {
-  return process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
-}
+export { areTestHooksEnabled };
 
 /**
  * Install logstore test hooks on `globalThis`. Idempotent.

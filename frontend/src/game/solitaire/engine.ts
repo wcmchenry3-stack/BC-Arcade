@@ -13,6 +13,11 @@
  */
 
 import seedsJson from "./seeds.json";
+// True only in E2E test builds (Playwright web + Maestro native, both build
+// with EXPO_PUBLIC_TEST_HOOKS=1). Imported from the dependency-free
+// `envFlags` leaf, not `_shared/testHooks.ts`, so this pure engine doesn't
+// pull in that module's AsyncStorage/HTTP/timer-touching imports.
+import { areTestHooksEnabled } from "../_shared/envFlags";
 import type {
   Card,
   DrawMode,
@@ -78,6 +83,19 @@ interface SeedBank {
 
 const SEED_BANK: SeedBank = seedsJson as SeedBank;
 
+// Index into each draw-mode's seed bank used for every deal in a test
+// build. The bank's first entry works fine here (no special property
+// needed — e2e/maestro/flows/solitaire/drag.yaml's sequence reaches every
+// scenario it needs via a handful of draws/moves against this deal).
+const E2E_SEED_INDEX = 0;
+
+/**
+ * In a test build, every deal picks a fixed bank entry instead of a random
+ * one, so E2E flows always see the same board and can assert exact outcomes
+ * instead of "either result is fine". Layout for these seeds (computed once
+ * via this module's own shuffle) is documented in
+ * e2e/maestro/flows/solitaire/drag.yaml.
+ */
 function pickSeed(drawMode: DrawMode): number {
   const bank = drawMode === 1 ? SEED_BANK.draw1 : SEED_BANK.draw3;
   if (bank.length === 0) {
@@ -86,7 +104,7 @@ function pickSeed(drawMode: DrawMode): number {
         `Run: python backend/scripts/gen_solitaire_seeds.py`
     );
   }
-  const idx = Math.floor(_rng() * bank.length);
+  const idx = areTestHooksEnabled() ? E2E_SEED_INDEX : Math.floor(_rng() * bank.length);
   const seed = bank[idx];
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");

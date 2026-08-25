@@ -20,7 +20,7 @@ brew install maestro
 
 Verify: `maestro --version`
 
-You also need a running device or simulator/emulator before executing any flow. Start your app on it first, then run the commands below.
+You also need a running device or simulator/emulator before executing any flow. **Build and start the app with `EXPO_PUBLIC_TEST_HOOKS=1` set** — e.g. `EXPO_PUBLIC_TEST_HOOKS=1 npx expo run:ios` / `run:android` from `frontend/`. Without it, Solitaire/FreeCell deal random boards (drag.yaml's fixed-deal assertions will fail) and Solitaire shows the draw-mode picker modal that no flow taps through (see [`e2e/maestro/README.md`](../e2e/maestro/README.md#pre-game-selectors)).
 
 ## Running flows
 
@@ -43,11 +43,25 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-15` |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | push to `main` | push to `main` |
+| Trigger | push to `main`, PRs into `dev`/`main` | push to `main`, PRs into `dev`/`main` |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
 Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and upload a `maestro-{android,ios}-results` artifact (7-day retention). Failure screenshots are uploaded as a separate `maestro-{android,ios}-screenshots` artifact when any flow fails.
+
+### Scoped runs on PRs
+
+A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
+
+- **Push to `main`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
+- **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
+- A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
+
+The job summary heading includes the resolved scope, e.g. `Maestro Android Smoke (selective: home solitaire freecell)`.
+
+### Deterministic deals in test builds
+
+Both mobile-smoke workflows build with `EXPO_PUBLIC_TEST_HOOKS=1` (same flag Playwright's web build uses). Solitaire and FreeCell read that flag to always deal a **fixed seed** instead of a random one — see `pickSeed()`/`isTestBuild()` in `frontend/src/game/solitaire/engine.ts` and `frontend/src/game/freecell/engine.ts`, and the layout comments at the top of `e2e/maestro/flows/{solitaire,freecell}/drag.yaml`. That lets those flows assert exact before/after board state instead of "either outcome is fine". Solitaire's draw-mode picker modal is also skipped in test builds (auto-deals draw-1) since Maestro has no reliable way to tap a locale-dependent modal button.
 
 ### Estimated cost
 

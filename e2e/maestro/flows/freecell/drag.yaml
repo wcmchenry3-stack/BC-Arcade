@@ -1,5 +1,19 @@
 appId: com.buffingchi.games
 ---
+# Deterministic drag-and-drop regression coverage (see #2346).
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) always deal seed 44 from the winnable
+# seed bank — see `isTestBuild()`/`pickSeed()` in
+# frontend/src/game/freecell/engine.ts. Seed 44 (not the bank's first entry)
+# was picked specifically because it deals a natural 2-card supermove at
+# kickoff (col3's last two cards form a valid run onto col1) — scanned via
+# `dealGame(seed)` + `validateMove()` across the seed bank; most seeds don't
+# have one without extra setup moves. Every card below is therefore known
+# ahead of time, so each drag asserts one exact outcome.
+#
+# Fixed deal (seed 44) relevant columns, computed via `dealGame(44)`:
+#   col0 top: K♠ (7 cards)      col1 top: 8♠ (7 cards)
+#   col3 top: 6♣, then 7♥ (7 cards)   col7 top: A♥ (6 cards)
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -9,29 +23,69 @@ appId: com.buffingchi.games
 - assertVisible:
     id: "freecell-board"
     timeout: 8000
-# Confirm the top card of column 0 exists before swiping.
+
+# --- tableau-to-foundation -----------------------------------------------
+# col7's top card is already an Ace at deal time (foundations start empty,
+# so any Ace is always a valid foundation move) — independent of every other
+# step below, so it's safe to run first.
+- assertVisible:
+    id: "freecell-col-7-top"
+    timeout: 3000
+- swipe:
+    from:
+      id: "freecell-col-7-top"
+    to:
+      id: "freecell-foundation-hearts"
+    duration: 600
+- assertVisible:
+    id: "freecell-foundation-hearts-card"
+    timeout: 3000
+- takeScreenshot: freecell-drag-tableau-to-foundation
+
+# --- tableau-to-freecell (existing coverage) ------------------------------
+# At game start all 4 freecell slots are always empty and every column has
+# cards, so this move is always valid — a reliable probe of the drag gesture
+# path.
 - assertVisible:
     id: "freecell-col-0-top"
     timeout: 3000
-# Drag the top card of column 0 to freecell slot 0.
-# At game start all 4 freecell slots are always empty and every column has cards,
-# so this move is always valid — a reliable probe of the drag gesture path.
 - swipe:
     from:
       id: "freecell-col-0-top"
     to:
       id: "freecell-slot-0"
     duration: 600
-# Assert the card is now IN the slot — not just that the slot is visible.
-# freecell-slot-0-card is the testID on the DraggableCard inside FreeCellSlot
-# when the slot is occupied. This fails if the swipe was silently skipped.
 - assertVisible:
     id: "freecell-slot-0-card"
     timeout: 3000
 - takeScreenshot: freecell-drag
-# Near-miss snap radius test: drag from column 1 top to a position offset from
-# freecell slot 1, ~30% outside its bounds. The snap radius (default 0.35)
-# should accept the drop even though the finger lands outside the exact bounds.
+
+# --- tableau-to-tableau supermove (2-card run) ----------------------------
+# col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
+# descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
+# dragging from the run's first card (index 5) carries both cards together.
+- assertVisible:
+    id: "freecell-col-3-card-5"
+    timeout: 3000
+- swipe:
+    from:
+      id: "freecell-col-3-card-5"
+    to:
+      id: "freecell-tableau-1"
+    duration: 600
+- assertVisible:
+    text: "Tableau column 2, 9 cards"
+    timeout: 3000
+- assertVisible:
+    text: "Tableau column 4, 5 cards"
+    timeout: 3000
+- takeScreenshot: freecell-drag-supermove
+
+# --- near-miss snap radius test (existing coverage) -----------------------
+# col1's top is now 6♣ (the supermove's top card). Drag from column 1 top to
+# a position offset from freecell slot 1, ~30% outside its bounds. The snap
+# radius (default 0.35) should accept the drop even though the finger lands
+# outside the exact bounds.
 - assertVisible:
     id: "freecell-col-1-top"
     timeout: 3000
@@ -44,8 +98,30 @@ appId: com.buffingchi.games
     offsetEnd:
       x: 30
       y: 20
-# Assert the card landed in slot 1 despite the near-miss.
 - assertVisible:
     id: "freecell-slot-1-card"
     timeout: 3000
 - takeScreenshot: freecell-drag-snap-radius
+
+# --- freecell-to-tableau ---------------------------------------------------
+# The 6♣ just parked in slot 1 can go right back onto col1, which now shows
+# 7♥ on top (exposed once the supermove's 6♣ was pulled off in the previous
+# step) — opposite color, descending rank.
+- swipe:
+    from:
+      id: "freecell-slot-1-card"
+    to:
+      id: "freecell-tableau-1"
+    duration: 600
+- assertVisible:
+    text: "Tableau column 2, 9 cards"
+    timeout: 3000
+- assertNotVisible:
+    id: "freecell-slot-1-card"
+    timeout: 3000
+- takeScreenshot: freecell-drag-freecell-to-tableau
+
+# Board must still be interactive after the full sequence.
+- assertVisible:
+    id: "freecell-board"
+    timeout: 3000

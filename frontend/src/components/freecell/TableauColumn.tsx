@@ -72,6 +72,7 @@ export default function TableauColumn({
       return (
         <DropTarget
           id={dropId!}
+          testID={dropId}
           onDrop={onDrop!}
           highlightStyle={highlightStyle}
           dimStyle={dimStyle}
@@ -146,6 +147,7 @@ export default function TableauColumn({
     return (
       <DropTarget
         id={dropId!}
+        testID={dropId}
         onDrop={onDrop!}
         style={containerStyle}
         highlightStyle={highlightStyle}

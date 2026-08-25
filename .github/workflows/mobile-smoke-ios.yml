@@ -1,5 +1,11 @@
 name: Mobile Smoke — iOS
 
+# NOT triggered on pull_request (unlike mobile-smoke-android.yml): this leg
+# has failed on every run since inception (#2347, Xcode/Swift toolchain
+# mismatch on the macos-15 runner — unrelated to app code). Attaching a
+# permanently-red check to every PR into dev would collide with the
+# all-checks-green merge rule. Re-add `pull_request` here once #2347 is
+# fixed.
 on:
   push:
     branches: [main]
@@ -12,8 +18,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect-maestro-scope:
+    uses: ./.github/workflows/detect-maestro-scope.yml
+
   maestro-ios:
     name: Maestro iOS smoke
+    needs: detect-maestro-scope
+    if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -62,6 +73,7 @@ jobs:
             -quiet
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Boot iOS 18 simulator and install app
         run: |
@@ -74,32 +86,45 @@ jobs:
 
       - name: Run Maestro flows on iOS Simulator
         run: |
-          maestro test \
-            --device "$SIM_UDID" \
-            --output ./maestro-results \
-            $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*" ! -path "*/offline/*")
+          # One `maestro test` invocation per flow directory, not one call
+          # covering every directory's files at once: Maestro CLI 1.39.13
+          # fails to parse the suite when handed many flow files in a single
+          # invocation ("Unrecognized field \"timeout\"" on
+          # YamlElementSelector — see #2350). `|| FAIL=1` keeps one
+          # directory's failure from stopping the rest; `exit $FAIL`
+          # afterward still fails the step if anything did.
+          FAIL=0
+          for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do
+            # offline/ requires toggleAirplaneMode (Android-only) — never runs on iOS.
+            [ "$d" = "offline" ] && continue
+            maestro test --device "$SIM_UDID" --output "maestro-results/$d" "e2e/maestro/flows/$d/" || FAIL=1
+          done
+          exit $FAIL
 
       - name: Write job summary
         if: always()
         shell: python3 {0}
         run: |
-          import xml.etree.ElementTree as ET, os
-          report = 'maestro-results/report.xml'
+          import xml.etree.ElementTree as ET, os, glob
           out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
           rows = []
-          try:
-              root = ET.parse(report).getroot()
-              suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
-              for s in suites:
-                  name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
-                  failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
-                  rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
-          except FileNotFoundError:
-              rows.append('| _(no report — test runner may have crashed)_ | — |\n')
-          except ET.ParseError as exc:
-              rows.append(f'| _(parse error: {exc})_ | — |\n')
+          # One report.xml per flow directory now (see the run step's
+          # per-directory invocation note above / #2350).
+          reports = sorted(glob.glob('maestro-results/*/report.xml'))
+          if not reports:
+              rows.append('| _(no reports — test runner may have crashed before any directory ran)_ | — |\n')
+          for report in reports:
+              try:
+                  root = ET.parse(report).getroot()
+                  suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+                  for s in suites:
+                      name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
+                      failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
+                      rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+              except ET.ParseError as exc:
+                  rows.append(f'| _(parse error in {report}: {exc})_ | — |\n')
           with open(out, 'a') as f:
-              f.write('## Maestro iOS Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.write('## Maestro iOS Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
               f.writelines(rows)
 
       - name: Upload Maestro results
@@ -120,6 +145,6 @@ jobs:
           name: maestro-ios-screenshots
           path: |
             screenshots/
-            maestro-results/screenshots/
+            maestro-results/*/screenshots/
           if-no-files-found: ignore
           retention-days: 7

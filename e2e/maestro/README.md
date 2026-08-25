@@ -100,6 +100,13 @@ Several games show a selector before the game starts. Each smoke flow handles th
 | Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |
 | StarSwarm | Difficulty picker | taps `starswarm-start-game` |
 
+Solitaire also shows a pre-game modal (draw-1/draw-3 picker) on a clean save
+slot, but no flow taps through it — instead, `EXPO_PUBLIC_TEST_HOOKS=1` (set
+for every Maestro build) makes `SolitaireScreen` skip the modal and auto-deal
+draw-1 on a clean slot, since Maestro has no reliable way to tap a
+locale-dependent modal button by text. See `docs/MAESTRO.md` for the fixed
+deterministic deals this same flag enables in Solitaire/FreeCell.
+
 ## Offline flow
 
 `offline/smoke.yaml` uses `toggleAirplaneMode` (Android only). On iOS, put the device in Airplane Mode before running the flow. The flow navigates to Solitaire — a client-side game — taps the stock pile, and asserts the game responds without a network connection.
