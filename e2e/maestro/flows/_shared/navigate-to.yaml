@@ -3,6 +3,7 @@
 #                  ${screenLabel} (text visible on the game screen)
 - tapOn:
     id: "game-tile-${gameSlug}"
-- assertVisible:
-    text: "${screenLabel}"
+- extendedWaitUntil:
+    visible:
+      text: "${screenLabel}"
     timeout: 10000

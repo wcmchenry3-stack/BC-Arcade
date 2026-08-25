@@ -7,17 +7,20 @@ appId: com.buffingchi.games
       gameSlug: "yacht"
       screenLabel: "Yacht"
 # Mode picker only shows for fresh games; skip if a saved game is already in play.
+# `timeout` isn't a valid tapOn/selector field (see #2350) — `optional: true`
+# alone is enough; Maestro's default ~7s find-timeout still applies.
 - tapOn:
     id: "yacht-mode-solo"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "yacht-roll-button"
+- extendedWaitUntil:
+    visible:
+      id: "yacht-roll-button"
     timeout: 8000
 - tapOn:
     id: "yacht-roll-button"
 # "Tap dice to hold" only appears after the first roll — proves the roll fired.
-- assertVisible:
-    text: "Tap dice to hold"
+- extendedWaitUntil:
+    visible:
+      text: "Tap dice to hold"
     timeout: 5000
 - takeScreenshot: yacht-smoke

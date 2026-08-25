@@ -7,12 +7,14 @@ appId: com.buffingchi.games
       gameSlug: "mahjong"
       screenLabel: "Mahjong Solitaire"
 # Layout select only shows when no saved game is in progress; skip if resuming.
+# `timeout` isn't a valid tapOn/selector field (see #2350) — `optional: true`
+# alone is enough; Maestro's default ~7s find-timeout still applies.
 - tapOn:
     id: "mahjong-layout-turtle"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "mahjong-board-viewport"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-board-viewport"
     timeout: 15000
 - tapOn:
     id: "mahjong-hint-button"

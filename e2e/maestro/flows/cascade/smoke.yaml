@@ -6,8 +6,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "cascade"
       screenLabel: "Cascade"
-- assertVisible:
-    id: "cascade-game-area"
+- extendedWaitUntil:
+    visible:
+      id: "cascade-game-area"
     timeout: 8000
 - tapOn:
     id: "cascade-game-area"

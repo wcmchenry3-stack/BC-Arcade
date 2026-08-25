@@ -6,8 +6,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "blackjack"
       screenLabel: "Blackjack"
-- assertVisible:
-    id: "blackjack-chip-1"
+- extendedWaitUntil:
+    visible:
+      id: "blackjack-chip-1"
     timeout: 8000
 - tapOn:
     id: "blackjack-chip-1"
@@ -15,7 +16,8 @@ appId: com.buffingchi.games
     id: "blackjack-deal-button"
 - tapOn:
     id: "blackjack-deal-button"
-- assertVisible:
-    id: "blackjack-table-area"
+- extendedWaitUntil:
+    visible:
+      id: "blackjack-table-area"
     timeout: 10000
 - takeScreenshot: blackjack-smoke

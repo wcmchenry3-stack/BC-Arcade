@@ -20,16 +20,18 @@ appId: com.buffingchi.games
     env:
       gameSlug: "freecell"
       screenLabel: "FreeCell"
-- assertVisible:
-    id: "freecell-board"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-board"
     timeout: 8000
 
 # --- tableau-to-foundation -----------------------------------------------
 # col7's top card is already an Ace at deal time (foundations start empty,
 # so any Ace is always a valid foundation move) — independent of every other
 # step below, so it's safe to run first.
-- assertVisible:
-    id: "freecell-col-7-top"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-7-top"
     timeout: 3000
 - swipe:
     from:
@@ -37,8 +39,9 @@ appId: com.buffingchi.games
     to:
       id: "freecell-foundation-hearts"
     duration: 600
-- assertVisible:
-    id: "freecell-foundation-hearts-card"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-foundation-hearts-card"
     timeout: 3000
 - takeScreenshot: freecell-drag-tableau-to-foundation
 
@@ -46,8 +49,9 @@ appId: com.buffingchi.games
 # At game start all 4 freecell slots are always empty and every column has
 # cards, so this move is always valid — a reliable probe of the drag gesture
 # path.
-- assertVisible:
-    id: "freecell-col-0-top"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-0-top"
     timeout: 3000
 - swipe:
     from:
@@ -55,8 +59,9 @@ appId: com.buffingchi.games
     to:
       id: "freecell-slot-0"
     duration: 600
-- assertVisible:
-    id: "freecell-slot-0-card"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-slot-0-card"
     timeout: 3000
 - takeScreenshot: freecell-drag
 
@@ -64,8 +69,9 @@ appId: com.buffingchi.games
 # col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
 # descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
 # dragging from the run's first card (index 5) carries both cards together.
-- assertVisible:
-    id: "freecell-col-3-card-5"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-3-card-5"
     timeout: 3000
 - swipe:
     from:
@@ -73,11 +79,13 @@ appId: com.buffingchi.games
     to:
       id: "freecell-tableau-1"
     duration: 600
-- assertVisible:
-    text: "Tableau column 2, 9 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 2, 9 cards"
     timeout: 3000
-- assertVisible:
-    text: "Tableau column 4, 5 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 4, 5 cards"
     timeout: 3000
 - takeScreenshot: freecell-drag-supermove
 
@@ -86,8 +94,9 @@ appId: com.buffingchi.games
 # a position offset from freecell slot 1, ~30% outside its bounds. The snap
 # radius (default 0.35) should accept the drop even though the finger lands
 # outside the exact bounds.
-- assertVisible:
-    id: "freecell-col-1-top"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-1-top"
     timeout: 3000
 - swipe:
     from:
@@ -98,8 +107,9 @@ appId: com.buffingchi.games
     offsetEnd:
       x: 30
       y: 20
-- assertVisible:
-    id: "freecell-slot-1-card"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-slot-1-card"
     timeout: 3000
 - takeScreenshot: freecell-drag-snap-radius
 
@@ -113,15 +123,18 @@ appId: com.buffingchi.games
     to:
       id: "freecell-tableau-1"
     duration: 600
-- assertVisible:
-    text: "Tableau column 2, 9 cards"
+- extendedWaitUntil:
+    visible:
+      text: "Tableau column 2, 9 cards"
     timeout: 3000
-- assertNotVisible:
-    id: "freecell-slot-1-card"
+- extendedWaitUntil:
+    notVisible:
+      id: "freecell-slot-1-card"
     timeout: 3000
 - takeScreenshot: freecell-drag-freecell-to-tableau
 
 # Board must still be interactive after the full sequence.
-- assertVisible:
-    id: "freecell-board"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-board"
     timeout: 3000

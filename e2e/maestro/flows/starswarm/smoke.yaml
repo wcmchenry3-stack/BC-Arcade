@@ -7,12 +7,14 @@ appId: com.buffingchi.games
       gameSlug: "starswarm"
       screenLabel: "Star Swarm"
 # Difficulty picker only shows when no saved session exists; skip if restoring a pause.
+# `timeout` isn't a valid tapOn/selector field (see #2350) — `optional: true`
+# alone is enough; Maestro's default ~7s find-timeout still applies.
 - tapOn:
     id: "starswarm-start-game"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "starswarm-canvas-outer"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-canvas-outer"
     timeout: 8000
 - tapOn:
     id: "starswarm-canvas-outer"

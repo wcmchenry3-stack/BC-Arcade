@@ -109,12 +109,18 @@ jobs:
           # line) — keep every command on a single physical line. See #2347.
           #
           # One `maestro test` invocation per flow directory, not one call
-          # covering every directory's files at once: Maestro CLI 1.39.13
-          # fails to parse the suite when handed many flow files in a single
-          # invocation ("Unrecognized field \"timeout\"" on
-          # YamlElementSelector — see #2350). `|| FAIL=1` keeps one
-          # directory's failure from stopping the rest; `exit $FAIL`
-          # afterward still fails the step if anything did.
+          # covering every directory's files at once, so one directory's
+          # failure can't abort the rest of the suite (`|| FAIL=1` below;
+          # `exit $FAIL` afterward still fails the step if anything did).
+          #
+          # NOTE: this per-directory split does NOT fix — and was never the
+          # cause of — the "Unrecognized field \"timeout\"" parse error on
+          # YamlElementSelector (#2350). That was a real schema mismatch:
+          # `timeout` was never a valid field on assertVisible/
+          # assertNotVisible/tapOn in any Maestro version, regardless of how
+          # many files are passed to one invocation — confirmed against
+          # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
+          # fix was rewriting flows to use `extendedWaitUntil` instead.
           script: |
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
             FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do maestro test --output "maestro-results/$d" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
