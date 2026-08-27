@@ -27,6 +27,15 @@
       See "Debug builds skip JS bundling" in docs/ANDROID-CI.md and #2368.
     -->
     <meta-data android:name="EXDevClientEmbeddedBundle" android:value="true"/>
+    <!--
+      Suppresses expo-dev-menu's one-time "This is the developer menu" intro
+      popup (DevMenuPreferences.isOnboardingFinishedDefault, default false)
+      that otherwise covers the home screen on every fresh install — Maestro
+      clears app state before each flow (_shared/launch.yaml), so without
+      this every CI run would hit it. Harmless outside CI: it's real
+      onboarding copy a developer only ever needs to see once anyway.
+    -->
+    <meta-data android:name="EXDevMenuIsOnboardingFinished" android:value="true"/>
     <service android:name="com.swmansion.audioapi.system.CentralizedForegroundService" android:stopWithTask="true" android:foregroundServiceType="mediaPlayback"/>
     <service android:name="expo.modules.audio.service.AudioControlsService" android:exported="false" android:foregroundServiceType="mediaPlayback">
       <intent-filter>

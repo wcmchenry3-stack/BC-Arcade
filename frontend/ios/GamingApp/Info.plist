@@ -45,6 +45,16 @@
 	-->
 	<key>EXDevClientEmbeddedBundle</key>
 	<true/>
+	<!--
+	  Suppresses expo-dev-menu's one-time "This is the developer menu" intro
+	  popup (default false) that otherwise covers the home screen on every
+	  fresh install — Maestro clears app state before each flow
+	  (_shared/launch.yaml), so without this every CI run would hit it.
+	  Harmless outside CI: it's real onboarding copy a developer only ever
+	  needs to see once anyway.
+	-->
+	<key>EXDevMenuIsOnboardingFinished</key>
+	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>

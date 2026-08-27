@@ -105,6 +105,13 @@ and the Play Store/App Store release paths untouched:
   non-CI run) right after the launcher screen appears, before proceeding to the
   real app's "Choose a game" home screen.
 
+One more thing to know: `EXDevMenuIsOnboardingFinished` is also declared `true` in
+both native configs (default `false`). Without it, expo-dev-menu's one-time
+"This is the developer menu" popup covers the real home screen on every fresh
+install — since Maestro clears app state before each flow, every CI run would
+otherwise hit it fresh. Harmless outside CI (a developer only sees that popup
+once anyway).
+
 ## JS bundle validation (GitHub Actions)
 
 The `android-bundle-check` CI job runs `npx expo export:embed --platform android`
