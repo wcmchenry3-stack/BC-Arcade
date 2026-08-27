@@ -105,12 +105,25 @@ and the Play Store/App Store release paths untouched:
   non-CI run) right after the launcher screen appears, before proceeding to the
   real app's "Choose a game" home screen.
 
-One more thing to know: `EXDevMenuIsOnboardingFinished` is also declared `true` in
-both native configs (default `false`). Without it, expo-dev-menu's one-time
-"This is the developer menu" popup covers the real home screen on every fresh
-install — since Maestro clears app state before each flow, every CI run would
-otherwise hit it fresh. Harmless outside CI (a developer only sees that popup
-once anyway).
+Two more expo-dev-menu flags are needed on top of the above, both discovered by
+running actual Maestro CI and reading the failure screenshots — each one
+covers the real home screen with a different first-run overlay, so both native
+configs declare them statically (default is the opposite in both cases):
+
+- `EXDevMenuIsOnboardingFinished` — `true` (default `false`). Without it,
+  expo-dev-menu's one-time "This is the developer menu" intro popup covers the
+  home screen on every fresh install. Harmless outside CI: a developer only
+  sees that popup once anyway.
+- `EXDevMenuShowsAtLaunch` — `false` (default `true`). Independent of the
+  onboarding flag above: `DevMenuFragment`'s `shouldShowAtLaunch` auto-opens
+  the dev-menu bottom sheet "once its delegate is set and the bridge is
+  loaded" — i.e. on every fresh JS bundle load, not just the first ever. Harmless
+  outside CI: motion/touch/key-command gestures still open the menu manually,
+  this only suppresses the automatic pop-up.
+
+Since Maestro clears app state before each flow (`_shared/launch.yaml`), every
+CI run hits both of these fresh — a real fresh install only hits them once (or
+never again once each is manually dismissed/toggled).
 
 ## JS bundle validation (GitHub Actions)
 

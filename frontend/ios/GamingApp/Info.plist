@@ -55,6 +55,17 @@
 	-->
 	<key>EXDevMenuIsOnboardingFinished</key>
 	<true/>
+	<!--
+	  DevMenuPreferences.swift's showsAtLaunchDefault defaults to true:
+	  expo-dev-menu auto-opens its bottom sheet over the app on every fresh JS
+	  bundle load, independent of EXDevMenuIsOnboardingFinished above. Since
+	  Maestro clears app state before each flow, every CI run hit this fresh,
+	  covering the real home screen and failing the "Choose a game" assertion.
+	  Harmless outside CI: motion/touch/key-command gestures still open the
+	  menu manually, this only suppresses the automatic pop-up. See #2368.
+	-->
+	<key>EXDevMenuShowsAtLaunch</key>
+	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
