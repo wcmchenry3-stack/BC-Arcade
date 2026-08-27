@@ -17,6 +17,16 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <!--
+      expo-dev-launcher's launcher screen (compiled into every debug build,
+      unconditionally) only offers its "Load embedded bundle" button when
+      this flag is true AND an index.android.bundle asset actually exists —
+      see DevLauncherController.hasEmbeddedBundle(). Safe to always declare:
+      it's a no-op unless a build also embeds the bundle, which only CI
+      smoke builds do (-Pandroid.bundleDebugForCI=true, mobile-smoke-android.yml).
+      See "Debug builds skip JS bundling" in docs/ANDROID-CI.md and #2368.
+    -->
+    <meta-data android:name="EXDevClientEmbeddedBundle" android:value="true"/>
     <service android:name="com.swmansion.audioapi.system.CentralizedForegroundService" android:stopWithTask="true" android:foregroundServiceType="mediaPlayback"/>
     <service android:name="expo.modules.audio.service.AudioControlsService" android:exported="false" android:foregroundServiceType="mediaPlayback">
       <intent-filter>

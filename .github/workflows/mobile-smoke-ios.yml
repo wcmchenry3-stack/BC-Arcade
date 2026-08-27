@@ -60,22 +60,18 @@ jobs:
         working-directory: frontend/ios
 
       - name: Force JS bundle embedding for CI Debug build
-        # ios/GamingApp.xcodeproj's "Bundle React Native code and images"
-        # build phase sets SKIP_BUNDLING=1 unconditionally for any Debug
-        # configuration build (see the phase's shellScript in
-        # project.pbxproj) — normal for local Simulator debug builds, which
-        # connect to a live Metro server instead. But because this project
-        # depends on expo-dev-client, an unbundled Debug build with no
-        # reachable Metro server just boots into the dev-client's
-        # "Development Build" launcher screen and never reaches the real
-        # app. See #2368 (same root cause, fixed for Android via
-        # -Pandroid.bundleDebugForCI in build.gradle).
-        #
-        # `.xcode.env.local` is sourced a second time by that build phase
-        # AFTER it sets SKIP_BUNDLING=1 (its own comments document this as
-        # the intended override point) and is gitignored
-        # (frontend/ios/.gitignore) — this file only ever exists in CI, so
-        # local Xcode/Simulator debug builds are unaffected.
+        # CI-only override so a Debug Simulator build doesn't need a live
+        # Metro server. expo-dev-client's launcher screen (compiled into
+        # every Debug build) still shows first regardless — this only makes
+        # it possible for _shared/launch.yaml's "Load embedded bundle" tap to
+        # actually reach the real app instead of dead-ending with no Metro
+        # server and no embedded bundle either. See "Debug builds skip JS
+        # bundling" in docs/ANDROID-CI.md and #2368 for the full explanation
+        # (root cause, why `.xcode.env.local` is the right override point,
+        # and why this is CI-only). The next step's bundle-embedding check is
+        # the safety net in case a future project.pbxproj edit ever breaks
+        # this override — this workflow doesn't run on pull_request yet
+        # (blocked by #2347), so it wouldn't otherwise get routine exercise.
         run: echo 'unset SKIP_BUNDLING' >> frontend/ios/.xcode.env.local
 
       - name: Build app for iOS Simulator
@@ -93,6 +89,21 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
+
+      - name: Verify JS bundle was embedded
+        # Asserts the "Force JS bundle embedding" override above actually
+        # took effect, independent of whether the Maestro flows below pass —
+        # a missing bundle here means _shared/launch.yaml's "Load embedded
+        # bundle" tap has nothing to load and every flow fails on its next
+        # assertion for a reason unrelated to the flow itself. See "Debug
+        # builds skip JS bundling" in docs/ANDROID-CI.md.
+        run: |
+          BUNDLE="DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app/main.jsbundle"
+          if [ ! -f "$BUNDLE" ]; then
+            echo "::error::$BUNDLE was not embedded — the SKIP_BUNDLING override in the previous step did not take effect (see docs/ANDROID-CI.md). The app would boot straight to the expo-dev-client launcher instead of the real app."
+            exit 1
+          fi
+          echo "JS bundle embedded: $BUNDLE ($(stat -f%z "$BUNDLE") bytes)"
 
       - name: Boot iOS 18 simulator and install app
         run: |

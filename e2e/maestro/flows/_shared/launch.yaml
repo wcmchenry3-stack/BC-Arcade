@@ -13,6 +13,16 @@ appId: com.buffingchi.games
     visible:
       text: "BC Arcade"
     timeout: 15000
+# expo-dev-launcher's launcher screen is compiled into every debug build and
+# always shows first on a fresh install — embedding the JS bundle (CI-only,
+# see docs/ANDROID-CI.md) does not skip it, it only makes this "Load
+# embedded bundle" button appear so the real app can be reached without a
+# Metro server. `optional: true` makes this a no-op outside CI (e.g. a local
+# `npx expo run:android`/Xcode debug build with no embedded bundle, where the
+# button never appears and the app never leaves this screen). See #2368.
+- tapOn:
+    text: "Load embedded bundle"
+    optional: true
 - extendedWaitUntil:
     visible:
       text: "Choose a game"

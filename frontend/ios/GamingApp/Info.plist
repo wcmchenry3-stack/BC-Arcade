@@ -33,6 +33,18 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!--
+	  expo-dev-launcher's launcher screen (linked into every Debug
+	  configuration build) only offers its "Load embedded bundle" button
+	  when this flag is true AND main.jsbundle actually exists in the app
+	  bundle — see EXDevLauncherController's loadLocalBundleOnSuccess:.
+	  Safe to always declare: it's a no-op unless a build also embeds the
+	  bundle, which only CI smoke builds do (mobile-smoke-ios.yml's
+	  SKIP_BUNDLING override). See "Debug builds skip JS bundling" in
+	  docs/ANDROID-CI.md and #2368.
+	-->
+	<key>EXDevClientEmbeddedBundle</key>
+	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>

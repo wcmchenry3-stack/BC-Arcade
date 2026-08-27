@@ -34,16 +34,11 @@ react {
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
     //
-    //   CI-only override: the `debug` variant normally skips JS bundling
-    //   (that's the whole point of `debuggableVariants` defaulting to
-    //   ["debug"]), which is correct for local `npx expo run:android` — it
-    //   connects to a live Metro server instead. But because this project
-    //   depends on expo-dev-client, a `debug` APK with no embedded bundle and
-    //   no reachable Metro server just boots into the dev-client's
-    //   "Development Build" launcher screen and sits there forever. CI builds
-    //   for Maestro smoke testing (mobile-smoke-android.yml) need a
-    //   self-contained APK, so pass -Pandroid.bundleDebugForCI=true there to
-    //   embed the bundle like a release build would. See #2368.
+    //   CI-only override for Maestro smoke builds (mobile-smoke-android.yml):
+    //   pass -Pandroid.bundleDebugForCI=true to embed the JS bundle in the
+    //   debug APK like a release build would, instead of expecting a live
+    //   Metro server. See "Debug builds skip JS bundling" in
+    //   docs/ANDROID-CI.md and #2368 for why this is needed.
     if ((findProperty('android.bundleDebugForCI') ?: false).toBoolean()) {
         debuggableVariants = []
     }
