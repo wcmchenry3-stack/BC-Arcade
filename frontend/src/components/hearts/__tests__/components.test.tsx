@@ -192,7 +192,7 @@ describe("TrickArea", () => {
     expect(getByText("3")).toBeTruthy();
   });
 
-  it("never sets the invalid accessibilityRole \"img\" on a trick slot (#2372)", async () => {
+  it('never sets the invalid accessibilityRole "img" on a trick slot (#2372)', async () => {
     const trick: TrickCard[] = [
       { card: c("spades", 10), playerIndex: 0 },
       { card: c("hearts", 3), playerIndex: 1 },
