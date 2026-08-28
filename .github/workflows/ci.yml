@@ -772,7 +772,7 @@ jobs:
             echo "::notice::No Android-relevant file changes — skipping release smoke test"
           fi
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         if: steps.changes.outputs.should_run == 'true'
         with:
           distribution: zulu
