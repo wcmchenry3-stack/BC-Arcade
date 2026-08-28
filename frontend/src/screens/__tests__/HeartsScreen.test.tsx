@@ -1,12 +1,12 @@
 import React from "react";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import HeartsScreen from "../HeartsScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, setRng } from "../../game/hearts/engine";
 import * as engine from "../../game/hearts/engine";
 import { loadGame } from "../../game/hearts/storage";
-import type { HeartsState } from "../../game/hearts/types";
+import type { Card, HeartsState, Suit } from "../../game/hearts/types";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -310,5 +310,90 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
     // tricksPlayedInHand reaches 13 → applyHandScoring → phase "dealing"
     // → "Hand Complete" modal rendered.
     await waitFor(() => expect(getByText("Hand Complete")).toBeTruthy());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CI investigation (#2372 follow-up): e2e/maestro/flows/hearts/ai-hand.yaml
+// stalled waiting for "Your hand, 12 cards" after only the trick-1 leader's
+// card appeared — the loop never advanced to the next AI's turn. This test
+// reproduces the flow's exact interaction (tap a hand card immediately, before
+// it's the human's turn — Maestro does this because PlayerHand's tapped card
+// is a plain testID, not gated on turn state) against a real deal where an AI
+// leads trick 1, to determine whether runAiTurns itself ever stalls or
+// whether the flow was just racing a slow-but-eventually-fine AI loop.
+// ---------------------------------------------------------------------------
+describe("HeartsScreen — AI turn loop when an AI leads trick 1 (#2372 CI investigation)", () => {
+  // Deals a full, valid 52-card deck round-robin across 4 hands, then swaps
+  // whichever hand holds 2♣ into seat 2 (North) — the seat whose lead
+  // requires 2 more AI turns (North → East) before the human's turn, matching
+  // the CI screenshot (only North's 2♣ was ever visible in the trick).
+  function makeTrick1AiLeadState(): HeartsState {
+    const suits: Suit[] = ["clubs", "diamonds", "spades", "hearts"];
+    const deck: Card[] = suits.flatMap((suit) =>
+      Array.from({ length: 13 }, (_, i) => ({ suit, rank: (i + 1) as Card["rank"] }))
+    );
+    const hands: [Card[], Card[], Card[], Card[]] = [[], [], [], []];
+    deck.forEach((card, i) => hands[i % 4]!.push(card));
+    const holderIdx = hands.findIndex((h) => h.some((c) => c.suit === "clubs" && c.rank === 2));
+    if (holderIdx !== 2) {
+      const tmp = hands[2]!;
+      hands[2] = hands[holderIdx]!;
+      hands[holderIdx] = tmp;
+    }
+    return {
+      _v: 3,
+      aiDifficulty: "schemer", // matches HeartsScreen's default selectedDifficulty
+      phase: "playing",
+      handNumber: 1,
+      passDirection: "left",
+      cumulativeScores: [0, 0, 0, 0],
+      handScores: [0, 0, 0, 0],
+      scoreHistory: [],
+      passSelections: [[], [], [], []],
+      passingComplete: true,
+      heartsBroken: false,
+      isComplete: false,
+      winnerIndex: null,
+      events: [],
+      tricksPlayedInHand: 0,
+      currentLeaderIndex: 2,
+      currentPlayerIndex: 2, // North (seat 2) leads trick 1 with 2♣
+      currentTrick: [],
+      playerHands: hands,
+      wonCards: [[], [], [], []],
+    };
+  }
+
+  beforeEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(makeTrick1AiLeadState());
+  });
+
+  afterEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("North then East auto-play, reaching the human's turn, even after an early (ignored) tap", async () => {
+    const { getByLabelText, getByTestId } = await renderScreen();
+    await waitFor(() => expect(loadGame).toHaveBeenCalled());
+
+    // Mirror the Maestro flow: tap hand-card slot 4 before it's the human's
+    // turn. Every card is `disabled` (validCards === [] since
+    // currentPlayerIndex !== HUMAN), so RN's Pressable never calls onPress —
+    // a true no-op, not just a JS-level early-return in handleCardPress.
+    const cardSlot = getByTestId("hearts-hand-card-4");
+    const pressable = within(cardSlot).getByRole("button");
+    await act(async () => {
+      fireEvent.press(pressable);
+    });
+
+    // Advance well past North's delay(400) + East's delay(400) + re-renders.
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    // If runAiTurns completed both AI turns, it's now the human's turn and
+    // their hand is still 13 cards (they haven't played yet this trick).
+    await waitFor(() => expect(getByLabelText("Your hand, 13 cards")).toBeTruthy());
   });
 });
