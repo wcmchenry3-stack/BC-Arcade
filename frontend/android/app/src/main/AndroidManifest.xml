@@ -17,6 +17,37 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <!--
+      expo-dev-launcher's launcher screen (compiled into every debug build,
+      unconditionally) only offers its "Load embedded bundle" button when
+      this flag is true AND an index.android.bundle asset actually exists —
+      see DevLauncherController.hasEmbeddedBundle(). Safe to always declare:
+      it's a no-op unless a build also embeds the bundle, which only CI
+      smoke builds do (-Pandroid.bundleDebugForCI=true, mobile-smoke-android.yml).
+      See "Debug builds skip JS bundling" in docs/ANDROID-CI.md and #2368.
+    -->
+    <meta-data android:name="EXDevClientEmbeddedBundle" android:value="true"/>
+    <!--
+      Suppresses expo-dev-menu's one-time "This is the developer menu" intro
+      popup (DevMenuPreferences.isOnboardingFinishedDefault, default false)
+      that otherwise covers the home screen on every fresh install — Maestro
+      clears app state before each flow (_shared/launch.yaml), so without
+      this every CI run would hit it. Harmless outside CI: it's real
+      onboarding copy a developer only ever needs to see once anyway.
+    -->
+    <meta-data android:name="EXDevMenuIsOnboardingFinished" android:value="true"/>
+    <!--
+      DevMenuPreferences.showsAtLaunchDefault defaults to true: expo-dev-menu
+      auto-opens its bottom sheet over the app on every fresh JS bundle load
+      ("once its delegate is set and the bridge is loaded" — DevMenuFragment's
+      shouldShowAtLaunch), independent of EXDevMenuIsOnboardingFinished above.
+      Since Maestro clears app state before each flow, every CI run hit this
+      fresh, covering the real home screen and failing the "Choose a game"
+      assertion. Harmless outside CI: motion/touch/key-command gestures still
+      open the menu manually, this only suppresses the automatic pop-up.
+      See #2368.
+    -->
+    <meta-data android:name="EXDevMenuShowsAtLaunch" android:value="false"/>
     <service android:name="com.swmansion.audioapi.system.CentralizedForegroundService" android:stopWithTask="true" android:foregroundServiceType="mediaPlayback"/>
     <service android:name="expo.modules.audio.service.AudioControlsService" android:exported="false" android:foregroundServiceType="mediaPlayback">
       <intent-filter>

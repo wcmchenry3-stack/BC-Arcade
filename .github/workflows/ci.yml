@@ -609,6 +609,14 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Cache Metro bundler transforms
+        # Shared with mobile-smoke-android.yml and android-release-smoke below —
+        # see the cache step there for why.
+        uses: actions/cache@v6
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: metro-${{ runner.os }}-
       - name: Create Android JS bundle
         run: |
           mkdir -p dist
@@ -795,6 +803,16 @@ jobs:
             -storepass android \
             -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Cache Metro bundler transforms
+        # Shared with android-bundle-check above and mobile-smoke-android.yml —
+        # see the cache step in android-bundle-check for why.
+        if: steps.changes.outputs.should_run == 'true'
+        uses: actions/cache@v6
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: metro-${{ runner.os }}-
 
       - name: Release build smoke test (arm64-v8a only)
         if: steps.changes.outputs.should_run == 'true'

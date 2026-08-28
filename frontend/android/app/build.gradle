@@ -33,6 +33,15 @@ react {
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
+    //
+    //   CI-only override for Maestro smoke builds (mobile-smoke-android.yml):
+    //   pass -Pandroid.bundleDebugForCI=true to embed the JS bundle in the
+    //   debug APK like a release build would, instead of expecting a live
+    //   Metro server. See "Debug builds skip JS bundling" in
+    //   docs/ANDROID-CI.md and #2368 for why this is needed.
+    if ((findProperty('android.bundleDebugForCI') ?: false).toBoolean()) {
+        debuggableVariants = []
+    }
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
