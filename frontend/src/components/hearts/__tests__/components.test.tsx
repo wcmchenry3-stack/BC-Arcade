@@ -21,6 +21,25 @@ function c(suit: Card["suit"], rank: Card["rank"]): Card {
   return { suit, rank };
 }
 
+// Regression guard for #2372: "img" is not a valid RN accessibilityRole (the
+// correct value is "image") and trips a fatal Fabric prop-validation crash on
+// Android — walk the whole rendered tree rather than trusting a single prop
+// read, since a future edit could reintroduce the typo on a different node.
+function collectAccessibilityRoles(node: unknown, out: unknown[] = []): unknown[] {
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectAccessibilityRoles(child, out));
+    return out;
+  }
+  if (node && typeof node === "object") {
+    const el = node as { props?: Record<string, unknown>; children?: unknown };
+    if (el.props?.accessibilityRole !== undefined) {
+      out.push(el.props.accessibilityRole);
+    }
+    if (el.children) collectAccessibilityRoles(el.children, out);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // PlayingCard
 // ---------------------------------------------------------------------------
@@ -171,6 +190,17 @@ describe("TrickArea", () => {
     );
     expect(getByText("10")).toBeTruthy();
     expect(getByText("3")).toBeTruthy();
+  });
+
+  it("never sets the invalid accessibilityRole \"img\" on a trick slot (#2372)", async () => {
+    const trick: TrickCard[] = [
+      { card: c("spades", 10), playerIndex: 0 },
+      { card: c("hearts", 3), playerIndex: 1 },
+    ];
+    const { toJSON } = await wrap(<TrickArea trick={trick} playerIndex={0} />);
+    const roles = collectAccessibilityRoles(toJSON());
+    expect(roles).not.toContain("img");
+    expect(roles).toContain("image");
   });
 
   describe("animation", () => {
@@ -387,6 +417,13 @@ describe("OpponentCapturedPile", () => {
     const { getByLabelText } = await wrap(<OpponentCapturedPile cards={cards} seatLabel="Right" />);
     expect(getByLabelText(/Right.*2.*14/)).toBeTruthy();
   });
+
+  it('never sets the invalid accessibilityRole "img" on its container (#2372)', async () => {
+    const { toJSON } = await wrap(<OpponentCapturedPile cards={[]} seatLabel="Left" />);
+    const roles = collectAccessibilityRoles(toJSON());
+    expect(roles).not.toContain("img");
+    expect(roles).toContain("image");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -442,5 +479,12 @@ describe("SelfCapturedPile", () => {
     const ranksInOrder = rankEls.map((el) => el.props.children as string);
     // sortHand order: spades before hearts → Q♠, ♥3, ♥J
     expect(ranksInOrder).toEqual(["Q", "3", "J"]);
+  });
+
+  it('never sets the invalid accessibilityRole "img" on its container (#2372)', async () => {
+    const { toJSON } = await wrap(<SelfCapturedPile cards={[]} />);
+    const roles = collectAccessibilityRoles(toJSON());
+    expect(roles).not.toContain("img");
+    expect(roles).toContain("image");
   });
 });
