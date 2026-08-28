@@ -23,7 +23,15 @@ appId: com.buffingchi.games
 - tapOn:
     text: "Load embedded bundle"
     optional: true
+# "Choose a game" (common:app.subtitle) was removed from HomeScreen's rendered
+# UI back in #356 — AppHeader only ever shows the title ("BC Arcade"), never a
+# subtitle — but this assertion was never updated to match, since every flow
+# has been stuck on the dev-client launcher (see above) until just now, so it
+# never actually ran against the real app to catch the mismatch. `game-tile-
+# yacht` is the testID convention _shared/navigate-to.yaml already uses to
+# confirm a game tile — and therefore the real home screen grid, not just the
+# "BC Arcade" header text the launcher screen shows too — has rendered.
 - extendedWaitUntil:
     visible:
-      text: "Choose a game"
+      id: "game-tile-yacht"
     timeout: 5000
