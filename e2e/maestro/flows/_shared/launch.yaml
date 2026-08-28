@@ -9,6 +9,19 @@ appId: com.buffingchi.games
 # warm state is worse than the extra launch cost. See #2346.
 - launchApp:
     clearState: true
+# CI's emulator (pixel_6 profile, software-rendered `-gpu
+# swiftshader_indirect`, see mobile-smoke-android.yml) occasionally ANRs
+# Android's own home-screen launcher under the resource contention of a
+# cold app install+launch right after clearState above — a system dialog,
+# unrelated to our app, that becomes Maestro's foreground window and hides
+# every assertion below it (even "BC Arcade"). Tapping "Wait" (never "Close
+# app" — that's Android's launcher, not ours) is a no-op when it never
+# appears; `while` re-checks in case it reappears more than once.
+- repeat:
+    while:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
 - extendedWaitUntil:
     visible:
       text: "BC Arcade"
