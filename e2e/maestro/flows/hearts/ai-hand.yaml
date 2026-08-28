@@ -15,9 +15,17 @@ appId: com.buffingchi.games
 # PlayerHand sorts cards ♣♦♠♥ ascending rank.  Tapping positions 0, 4, and 8
 # reliably lands on 3 different suits, so 3 distinct cards are selected
 # regardless of the random deal.  Any 3 cards are valid to pass in Hearts.
+#
+# Maestro's `text` matches the ENTIRE node text (Java regex `.matches()`, not
+# a substring search) — PassBanner.tsx's prompt is one Text node reading
+# "Choose 3 cards to Pass left" (pass.instructions + pass.direction.left from
+# en/hearts.json), never just "Pass left" alone, so the pattern needs the
+# leading `.*`. Confirmed via CI: this crashed on every Hearts mount before
+# #2372's accessibilityRole fix, so this literal-text mismatch was never
+# exercised until that crash was fixed.
 - extendedWaitUntil:
     visible:
-      text: "Pass left"
+      text: ".*Pass left"
     timeout: 8000
 - tapOn:
     id: "hearts-hand-card-0"
@@ -29,10 +37,12 @@ appId: com.buffingchi.games
 - tapOn:
     text: "Confirm"
 # ── Entering the trick phase ────────────────────────────────────────────────────
-# "Pass left" disappears once the engine processes all 4 passes.
+# "Choose 3 cards to Pass left" disappears once the engine processes all 4
+# passes. Same `.*` requirement as above — otherwise this "not visible" check
+# is vacuously true (a literal "Pass left" was never present to begin with).
 - extendedWaitUntil:
     notVisible:
-      text: "Pass left"
+      text: ".*Pass left"
     timeout: 10000
 # ── Trick 1 ─────────────────────────────────────────────────────────────────────
 # The seat that holds 2♣ leads first.  If an AI leads, the AI turn loop drives
