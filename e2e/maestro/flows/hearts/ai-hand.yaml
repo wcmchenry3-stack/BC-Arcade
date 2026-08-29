@@ -53,58 +53,49 @@ appId: com.buffingchi.games
 # even calls onPress, never mind reaching HeartsScreen's own
 # currentPlayerIndex===HUMAN guard in handleCardPress.
 #
-# A single blind tap (this flow's previous version) assumed the AI loop always
-# finishes within Maestro's own step-execution latency — true on a fast
-# device, but CI confirmed otherwise (this flow stalled here waiting for "Your
-# hand, 12 cards" after only the leader's card appeared). A targeted Jest repro
-# with fake timers (HeartsScreen.test.tsx's "#2372 CI investigation" describe
-# block) confirmed the AI loop itself completes correctly every time — this
-# was a flow-timing assumption, not an engine bug. `repeat: { while: ... }`
-# retries the tap until the human's hand count actually changes, tolerating
-# however many AI turns (0–3) run first regardless of CI emulator speed.
+# A single blind tap (an earlier version of this flow) assumed the AI loop
+# always finishes within Maestro's own step-execution latency — true on a
+# fast device, but CI confirmed otherwise (this flow stalled here waiting for
+# "Your hand, 12 cards" after only the leader's card appeared). A targeted
+# Jest repro with fake timers (HeartsScreen.test.tsx's "#2372 CI
+# investigation" describe block) confirmed the AI loop itself completes
+# correctly every time — this was a flow-timing assumption, not an engine
+# bug. `repeat: { while: ... }` retries the tap until the human's hand count
+# actually changes, tolerating however many AI turns (0–3) run first
+# regardless of CI emulator speed.
 #
-# A single fixed card position (this flow's previous version tapped position 4
-# only, assuming the ♣♦♠♥ sort order always puts a legal card there) further
+# A single fixed card position (a later version tapped position 4 only,
+# assuming the ♣♦♠♥ sort order always puts a legal card there) further
 # assumed *some* index is always playable regardless of the deal — false:
 # `getValidPlays` restricts taps to whichever suit was led (or any card once
-# hearts break / on a void), and CI caught a deal where the human held a
-# single club sorted to position 0 while North led clubs, leaving every other
-# position permanently disabled all trick (run 33135950239). Rather than
-# reimplement `getValidPlays` Maestro-side, each retry pass now sweeps every
-# hand-card position in ascending order: a tap on a disabled card is a
-# confirmed no-op (see above), so at most one tap per pass ever actually
-# lands — whichever position holds the legal card — and the rest are inert.
+# hearts break / on a void, or — trick 1 specifically — no points allowed
+# even on a void), and CI caught a deal where the human held a single club
+# sorted to position 0 while North led clubs, leaving every other position
+# permanently disabled all trick (run 33135950239).
+#
+# Sweeping every position with 12–13 separate `tapOn` commands per retry pass
+# (a still-later version) was also tried and is also wrong: each `tapOn` on a
+# disabled card is a no-op but still pays Maestro's own no-change retry cost
+# before moving to the next command, so a full sweep can easily out-last the
+# AI's turn — CI still timed out, now stuck re-running an ever-slower sweep
+# instead of a single fast tap (run 33226744377). The actual fix is Maestro's
+# `enabled` state selector (available since CLI 1.23.0, well under our
+# 1.39.13 pin): combined with `idRegex` and `index: 0`, one `tapOn` finds
+# whichever hand-card position is currently enabled — there's ever at most
+# one candidate set per turn, and `index: 0` picks the lowest position in it.
+# `optional: true` is required here because during an AI's turn *nothing*
+# matches (every card disabled) — without it, that no-match would be a hard
+# flow failure instead of just an empty, harmless pass.
 - repeat:
     while:
       visible:
         text: "Your hand, 13 cards"
     commands:
       - tapOn:
-          id: "hearts-hand-card-0"
-      - tapOn:
-          id: "hearts-hand-card-1"
-      - tapOn:
-          id: "hearts-hand-card-2"
-      - tapOn:
-          id: "hearts-hand-card-3"
-      - tapOn:
-          id: "hearts-hand-card-4"
-      - tapOn:
-          id: "hearts-hand-card-5"
-      - tapOn:
-          id: "hearts-hand-card-6"
-      - tapOn:
-          id: "hearts-hand-card-7"
-      - tapOn:
-          id: "hearts-hand-card-8"
-      - tapOn:
-          id: "hearts-hand-card-9"
-      - tapOn:
-          id: "hearts-hand-card-10"
-      - tapOn:
-          id: "hearts-hand-card-11"
-      - tapOn:
-          id: "hearts-hand-card-12"
+          idRegex: "hearts-hand-card-.*"
+          enabled: true
+          index: 0
+          optional: true
 # After the human plays and the AI loop completes all remaining seats, every
 # player's hand shrinks by 1.  "Your hand, 12 cards" confirms trick 1 finished
 # and the AI loop ran 3 turns without crashing.
@@ -113,72 +104,37 @@ appId: com.buffingchi.games
       text: "Your hand, 12 cards"
     timeout: 15000
 # ── Trick 2 ─────────────────────────────────────────────────────────────────────
-# Same retry-and-sweep rationale as trick 1 — whoever won trick 1 leads trick
-# 2, which may again be an AI requiring 1–3 auto-played turns before the
-# human's turn, and the legal card may be at any hand position. One fewer
-# position than trick 1 since the hand is down to 12 cards.
+# Same rationale as trick 1 — whoever won trick 1 leads trick 2, which may
+# again be an AI requiring 1–3 auto-played turns before the human's turn, and
+# the legal card may be at any hand position (no first-trick point
+# restriction from here on, so more of the hand may be enabled at once —
+# `index: 0` still picks a single, valid card deterministically).
 - repeat:
     while:
       visible:
         text: "Your hand, 12 cards"
     commands:
       - tapOn:
-          id: "hearts-hand-card-0"
-      - tapOn:
-          id: "hearts-hand-card-1"
-      - tapOn:
-          id: "hearts-hand-card-2"
-      - tapOn:
-          id: "hearts-hand-card-3"
-      - tapOn:
-          id: "hearts-hand-card-4"
-      - tapOn:
-          id: "hearts-hand-card-5"
-      - tapOn:
-          id: "hearts-hand-card-6"
-      - tapOn:
-          id: "hearts-hand-card-7"
-      - tapOn:
-          id: "hearts-hand-card-8"
-      - tapOn:
-          id: "hearts-hand-card-9"
-      - tapOn:
-          id: "hearts-hand-card-10"
-      - tapOn:
-          id: "hearts-hand-card-11"
+          idRegex: "hearts-hand-card-.*"
+          enabled: true
+          index: 0
+          optional: true
 - extendedWaitUntil:
     visible:
       text: "Your hand, 11 cards"
     timeout: 15000
 # ── Trick 3 ─────────────────────────────────────────────────────────────────────
-# Same retry-and-sweep rationale as trick 1, down to 11 cards.
+# Same rationale as trick 1.
 - repeat:
     while:
       visible:
         text: "Your hand, 11 cards"
     commands:
       - tapOn:
-          id: "hearts-hand-card-0"
-      - tapOn:
-          id: "hearts-hand-card-1"
-      - tapOn:
-          id: "hearts-hand-card-2"
-      - tapOn:
-          id: "hearts-hand-card-3"
-      - tapOn:
-          id: "hearts-hand-card-4"
-      - tapOn:
-          id: "hearts-hand-card-5"
-      - tapOn:
-          id: "hearts-hand-card-6"
-      - tapOn:
-          id: "hearts-hand-card-7"
-      - tapOn:
-          id: "hearts-hand-card-8"
-      - tapOn:
-          id: "hearts-hand-card-9"
-      - tapOn:
-          id: "hearts-hand-card-10"
+          idRegex: "hearts-hand-card-.*"
+          enabled: true
+          index: 0
+          optional: true
 - extendedWaitUntil:
     visible:
       text: "Your hand, 10 cards"
