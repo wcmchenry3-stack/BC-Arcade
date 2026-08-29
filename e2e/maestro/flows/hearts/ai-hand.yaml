@@ -80,19 +80,23 @@ appId: com.buffingchi.games
 # AI's turn — CI still timed out, now stuck re-running an ever-slower sweep
 # instead of a single fast tap (run 33226744377). The actual fix is Maestro's
 # `enabled` state selector (available since CLI 1.23.0, well under our
-# 1.39.13 pin): combined with `idRegex` and `index: 0`, one `tapOn` finds
-# whichever hand-card position is currently enabled — there's ever at most
-# one candidate set per turn, and `index: 0` picks the lowest position in it.
-# `optional: true` is required here because during an AI's turn *nothing*
-# matches (every card disabled) — without it, that no-match would be a hard
-# flow failure instead of just an empty, harmless pass.
+# 1.39.13 pin): combined with `id` (itself regex-matched, same as
+# navigate-to.yaml's `id: "game-tile-${gameSlug}"`) and `index: 0`, one
+# `tapOn` finds whichever hand-card position is currently enabled — there's
+# ever at most one candidate set per turn, and `index: 0` picks the lowest
+# position in it. `optional: true` is required here because during an AI's
+# turn *nothing* matches (every card disabled) — without it, that no-match
+# would be a hard flow failure instead of just an empty, harmless pass.
+# (`idRegex` — this flow's first attempt at this selector — is not a
+# recognized YAML field at our pinned CLI version and fails to parse at all;
+# run 33228252817. `id` is the correct field; it's regex-matched already.)
 - repeat:
     while:
       visible:
         text: "Your hand, 13 cards"
     commands:
       - tapOn:
-          idRegex: "hearts-hand-card-.*"
+          id: "hearts-hand-card-.*"
           enabled: true
           index: 0
           optional: true
@@ -115,7 +119,7 @@ appId: com.buffingchi.games
         text: "Your hand, 12 cards"
     commands:
       - tapOn:
-          idRegex: "hearts-hand-card-.*"
+          id: "hearts-hand-card-.*"
           enabled: true
           index: 0
           optional: true
@@ -131,7 +135,7 @@ appId: com.buffingchi.games
         text: "Your hand, 11 cards"
     commands:
       - tapOn:
-          idRegex: "hearts-hand-card-.*"
+          id: "hearts-hand-card-.*"
           enabled: true
           index: 0
           optional: true
