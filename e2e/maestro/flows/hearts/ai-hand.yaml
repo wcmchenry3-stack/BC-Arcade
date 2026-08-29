@@ -62,16 +62,49 @@ appId: com.buffingchi.games
 # was a flow-timing assumption, not an engine bug. `repeat: { while: ... }`
 # retries the tap until the human's hand count actually changes, tolerating
 # however many AI turns (0–3) run first regardless of CI emulator speed.
-# Card position 4 (mid-range): the ♣♦♠♥ sort order places position 4 in the
-# diamond or low-spade range in most balanced deals — not 2♣ (forced first lead)
-# and not a heart (blocked until broken), so it is a reliable default tap target.
+#
+# A single fixed card position (this flow's previous version tapped position 4
+# only, assuming the ♣♦♠♥ sort order always puts a legal card there) further
+# assumed *some* index is always playable regardless of the deal — false:
+# `getValidPlays` restricts taps to whichever suit was led (or any card once
+# hearts break / on a void), and CI caught a deal where the human held a
+# single club sorted to position 0 while North led clubs, leaving every other
+# position permanently disabled all trick (run 33135950239). Rather than
+# reimplement `getValidPlays` Maestro-side, each retry pass now sweeps every
+# hand-card position in ascending order: a tap on a disabled card is a
+# confirmed no-op (see above), so at most one tap per pass ever actually
+# lands — whichever position holds the legal card — and the rest are inert.
 - repeat:
     while:
       visible:
         text: "Your hand, 13 cards"
     commands:
       - tapOn:
+          id: "hearts-hand-card-0"
+      - tapOn:
+          id: "hearts-hand-card-1"
+      - tapOn:
+          id: "hearts-hand-card-2"
+      - tapOn:
+          id: "hearts-hand-card-3"
+      - tapOn:
           id: "hearts-hand-card-4"
+      - tapOn:
+          id: "hearts-hand-card-5"
+      - tapOn:
+          id: "hearts-hand-card-6"
+      - tapOn:
+          id: "hearts-hand-card-7"
+      - tapOn:
+          id: "hearts-hand-card-8"
+      - tapOn:
+          id: "hearts-hand-card-9"
+      - tapOn:
+          id: "hearts-hand-card-10"
+      - tapOn:
+          id: "hearts-hand-card-11"
+      - tapOn:
+          id: "hearts-hand-card-12"
 # After the human plays and the AI loop completes all remaining seats, every
 # player's hand shrinks by 1.  "Your hand, 12 cards" confirms trick 1 finished
 # and the AI loop ran 3 turns without crashing.
@@ -80,27 +113,72 @@ appId: com.buffingchi.games
       text: "Your hand, 12 cards"
     timeout: 15000
 # ── Trick 2 ─────────────────────────────────────────────────────────────────────
-# Same retry rationale as trick 1 — whoever won trick 1 leads trick 2, which
-# may again be an AI requiring 1–3 auto-played turns before the human's turn.
+# Same retry-and-sweep rationale as trick 1 — whoever won trick 1 leads trick
+# 2, which may again be an AI requiring 1–3 auto-played turns before the
+# human's turn, and the legal card may be at any hand position. One fewer
+# position than trick 1 since the hand is down to 12 cards.
 - repeat:
     while:
       visible:
         text: "Your hand, 12 cards"
     commands:
       - tapOn:
+          id: "hearts-hand-card-0"
+      - tapOn:
+          id: "hearts-hand-card-1"
+      - tapOn:
+          id: "hearts-hand-card-2"
+      - tapOn:
+          id: "hearts-hand-card-3"
+      - tapOn:
           id: "hearts-hand-card-4"
+      - tapOn:
+          id: "hearts-hand-card-5"
+      - tapOn:
+          id: "hearts-hand-card-6"
+      - tapOn:
+          id: "hearts-hand-card-7"
+      - tapOn:
+          id: "hearts-hand-card-8"
+      - tapOn:
+          id: "hearts-hand-card-9"
+      - tapOn:
+          id: "hearts-hand-card-10"
+      - tapOn:
+          id: "hearts-hand-card-11"
 - extendedWaitUntil:
     visible:
       text: "Your hand, 11 cards"
     timeout: 15000
 # ── Trick 3 ─────────────────────────────────────────────────────────────────────
+# Same retry-and-sweep rationale as trick 1, down to 11 cards.
 - repeat:
     while:
       visible:
         text: "Your hand, 11 cards"
     commands:
       - tapOn:
+          id: "hearts-hand-card-0"
+      - tapOn:
+          id: "hearts-hand-card-1"
+      - tapOn:
+          id: "hearts-hand-card-2"
+      - tapOn:
+          id: "hearts-hand-card-3"
+      - tapOn:
           id: "hearts-hand-card-4"
+      - tapOn:
+          id: "hearts-hand-card-5"
+      - tapOn:
+          id: "hearts-hand-card-6"
+      - tapOn:
+          id: "hearts-hand-card-7"
+      - tapOn:
+          id: "hearts-hand-card-8"
+      - tapOn:
+          id: "hearts-hand-card-9"
+      - tapOn:
+          id: "hearts-hand-card-10"
 - extendedWaitUntil:
     visible:
       text: "Your hand, 10 cards"
