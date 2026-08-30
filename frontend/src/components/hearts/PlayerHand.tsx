@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import PlayingCard from "./PlayingCard";
@@ -85,6 +85,19 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
       accessibilityLabel={t("hand.player", { count })}
       accessibilityRole="none"
     >
+      {/* Non-touchable Views default to accessible=false on Android, so the
+          wrapper's own accessibilityLabel above is never exposed to the
+          native accessibility tree (confirmed: CI's hearts/ai-hand.yaml
+          could never find "Your hand, N cards", at any timeout, on run
+          33286208569). Marking the wrapper itself accessible={true} would
+          fix that but merges all descendants into one node, hiding each
+          card's individual Pressable from screen readers *and* from
+          Maestro's per-card `id` taps this same flow depends on — so a
+          real, separately-exposed Text carries the label instead, mirroring
+          TrickArea.tsx's identical srOnly pattern for the same conflict
+          (a labeled region whose children must stay independently
+          accessible). */}
+      <Text style={styles.srOnly}>{t("hand.player", { count })}</Text>
       <View
         style={[styles.container, { width: containerWidth, height: CARD_HEIGHT + LIFT_AMOUNT }]}
       >
@@ -120,5 +133,12 @@ const styles = StyleSheet.create({
   cardSlot: {
     position: "absolute",
     top: LIFT_AMOUNT,
+  },
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    opacity: 0,
   },
 });
