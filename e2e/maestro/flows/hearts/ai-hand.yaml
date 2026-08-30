@@ -44,6 +44,23 @@ appId: com.buffingchi.games
     notVisible:
       text: ".*Pass left"
     timeout: 10000
+# `repeat: while:` (below) checks its condition exactly once with no settle
+# wait, unlike extendedWaitUntil — confirmed via the run's commands-*.json,
+# which reported the repeat as SKIPPED (0 iterations) rather than merely
+# slow. Tricks 2 and 3 get this settling for free because their repeat
+# blocks are entered right after the *previous* trick's own
+# extendedWaitUntil already confirmed the hand's new count is visible; trick
+# 1 has no such predecessor — only the negative "Pass left gone" assertion
+# above, which races PlayerHand's post-pass re-render (back to 13 cards
+# before trick 1's lead even plays). CI caught the loss: the repeat was
+# skipped, the human's card was never tapped, and the hand sat at 13 cards
+# with 8♣/K♣ legally enabled for the rest of the flow's timeout (run
+# 33229384311). This explicit wait removes the race the same way the
+# trick 2/3 boundaries already get implicitly.
+- extendedWaitUntil:
+    visible:
+      text: "Your hand, 13 cards"
+    timeout: 5000
 # ── Trick 1 ─────────────────────────────────────────────────────────────────────
 # The seat that holds 2♣ leads first. If an AI leads, the AI turn loop drives
 # seats 1–3 automatically before the human's turn — but PlayerHand.tsx disables
