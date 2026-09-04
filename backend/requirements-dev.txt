@@ -3,7 +3,7 @@ black==26.5.1
 ruff==0.16.4
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
-coverage>=7.15.4
+coverage>=7.16.0
 locust==2.46.4
 hypothesis==6.165.10
 pip-audit==2.10.1
