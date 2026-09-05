@@ -79,8 +79,17 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
     <View
       style={styles.oppContainer}
       accessibilityLabel={t("captured.opponentLabel", { label: seatLabel, count, points })}
-      accessibilityRole="img"
+      accessibilityRole="image"
     >
+      {/* Plain Views default to accessible=false on Android, so the
+          accessibilityLabel above is never exposed to the native
+          accessibility tree on its own (same defect #2372's crash fix
+          left in place — see PlayerHand.tsx). A real, separately-exposed
+          Text carries the label instead, matching TrickArea.tsx's srOnly
+          pattern. */}
+      <Text style={styles.srOnly}>
+        {t("captured.opponentLabel", { label: seatLabel, count, points })}
+      </Text>
       <View style={[styles.oppFan, { width: fanWidth, height: OPP_CARD_H }]}>
         {Array.from({ length: visible }).map((_, i) => (
           <LinearGradient
@@ -125,8 +134,10 @@ export function SelfCapturedPile({ cards }: SelfProps) {
     <View
       style={[styles.selfRow, { borderColor: colors.border }]}
       accessibilityLabel={t("captured.selfLabel", { count, points })}
-      accessibilityRole="img"
+      accessibilityRole="image"
     >
+      {/* See the identical srOnly comment in OpponentCapturedPile above. */}
+      <Text style={styles.srOnly}>{t("captured.selfLabel", { count, points })}</Text>
       <Text style={[styles.selfLabel, { color: colors.textMuted }]}>{t("captured.taken")}</Text>
       <View style={styles.selfCards}>
         {count === 0 ? (
@@ -195,6 +206,13 @@ const styles = StyleSheet.create({
     height: OPP_CARD_H,
     borderRadius: 4,
     borderWidth: 1,
+  },
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    opacity: 0,
   },
   // ── Self ───────────────────────────────────────────────────────────────────
   selfRow: {
