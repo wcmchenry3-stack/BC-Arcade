@@ -12,6 +12,7 @@
  */
 
 import * as Sentry from "@sentry/react-native";
+import { CodedError } from "expo-modules-core";
 import { Platform } from "react-native";
 import { getOrCreateSessionId } from "./session";
 
@@ -23,6 +24,17 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+/**
+ * True for network-layer failures: `fetch` throws `TypeError` for these on
+ * web (offline, DNS, CORS, "Failed to fetch"), but on Android the same class
+ * of failure (e.g. DNS resolution failing while offline) surfaces through
+ * Expo's native fetch layer as a `CodedError` instead — see #2380. Both are
+ * recoverable connectivity failures, not bugs in our request-building code.
+ */
+function isNetworkError(e: unknown): e is TypeError | CodedError {
+  return e instanceof TypeError || e instanceof CodedError;
 }
 
 /**
@@ -169,13 +181,13 @@ export function createGameClient(options: HttpClientOptions) {
         // callers can inspect `.status` and decide how to react.
         throw e;
       }
-      if (e instanceof TypeError) {
-        // `fetch` throws TypeError for network-layer failures (offline,
-        // DNS, CORS, "Failed to fetch"). These are recoverable and
-        // distinct from a programming error — surface as a warning
-        // message, not a captured exception with a stack. The synthetic
-        // stack here would otherwise group every offline user under a
-        // single misleading issue.
+      if (isNetworkError(e)) {
+        // Network-layer failures (offline, DNS, CORS, "Failed to fetch" —
+        // or Android's CodedError-wrapped equivalent, see #2380) are
+        // recoverable and distinct from a programming error — surface as
+        // a warning message, not a captured exception with a stack. The
+        // synthetic stack here would otherwise group every offline user
+        // under a single misleading issue.
         //
         // In dev mode, network failures against localhost are expected
         // (backend not running) — skip Sentry to avoid flooding the

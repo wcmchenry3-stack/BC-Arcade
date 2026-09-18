@@ -222,6 +222,11 @@ describe("httpClient — Sentry reporting (#513)", () => {
   const mockFetch = jest.fn();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let Sentry: any;
+  // Fetched fresh via require() after jest.resetModules() below, so this is
+  // the *same* module instance httpClient.ts itself sees — a CodedError
+  // built from a stale, pre-reset import would fail `instanceof` against
+  // httpClient's freshly-required class.
+  let CodedError: typeof import("expo-modules-core").CodedError;
 
   beforeEach(() => {
     jest.resetModules();
@@ -232,6 +237,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     Sentry.captureException.mockClear();
     Sentry.captureMessage.mockClear();
     Sentry.addBreadcrumb.mockClear();
+    CodedError = require("expo-modules-core").CodedError;
   });
 
   function makeRequest(opts: { sampleRate?: number; random?: () => number } = {}) {
@@ -343,6 +349,73 @@ describe("httpClient — Sentry reporting (#513)", () => {
       delete process.env.EXPO_PUBLIC_TEST_HOOKS;
       delete process.env.EXPO_PUBLIC_API_URL;
     }
+  });
+
+  it("network failure (TypeError) is classified as network, not unexpected, outside dev mode", async () => {
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    try {
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toThrow("Failed to fetch");
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining("network failure"),
+        expect.objectContaining({
+          level: "warning",
+          tags: expect.objectContaining({ errorType: "network" }),
+        })
+      );
+    } finally {
+      g.__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
+  });
+
+  it("Android offline failure surfacing as an Expo CodedError is classified as network, not unexpected (#2380)", async () => {
+    // On Android, a DNS/connectivity failure (device offline) doesn't throw
+    // a TypeError like web `fetch` does — Expo's native fetch layer wraps it
+    // in a CodedError instead, e.g. exactly this shape from the Sentry event
+    // that prompted #2380.
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    try {
+      mockFetch.mockRejectedValueOnce(
+        new CodedError(
+          "ERR_NETWORK",
+          'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com"'
+        )
+      );
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toBeInstanceOf(CodedError);
+      // Must NOT be reported as an unexpected exception — that's the bug
+      // this test guards against.
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining("network failure"),
+        expect.objectContaining({
+          level: "warning",
+          tags: expect.objectContaining({ errorType: "network" }),
+        })
+      );
+    } finally {
+      g.__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
+  });
+
+  it("Android offline CodedError skips captureMessage in dev mode, same as TypeError (#571)", async () => {
+    mockFetch.mockRejectedValueOnce(new CodedError("ERR_NETWORK", "fetch failed"));
+    const request = makeRequest();
+    await expect(request("/x")).rejects.toBeInstanceOf(CodedError);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
   it("genuine unexpected JS error (non-Api, non-Type) is captured as an exception with stack", async () => {
