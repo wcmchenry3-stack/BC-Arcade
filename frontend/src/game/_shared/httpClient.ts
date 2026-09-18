@@ -32,6 +32,11 @@ export class ApiError extends Error {
  * of failure (e.g. DNS resolution failing while offline) surfaces through
  * Expo's native fetch layer as a `CodedError` instead — see #2380. Both are
  * recoverable connectivity failures, not bugs in our request-building code.
+ *
+ * Matching on the `CodedError` class alone is only safe because `fetch` is
+ * the sole Expo native module called inside `request`'s try block (session
+ * IDs come from AsyncStorage, which doesn't throw `CodedError`). Revisit if
+ * another Expo module call is ever added there.
  */
 function isNetworkError(e: unknown): e is TypeError | CodedError {
   return e instanceof TypeError || e instanceof CodedError;
