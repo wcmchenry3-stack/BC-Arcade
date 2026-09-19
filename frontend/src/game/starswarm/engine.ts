@@ -1300,6 +1300,11 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   }
 
   const newEnemyBullets: Bullet[] = [...state.enemyBullets];
+  // Harmless bullets carried over from a cleared wave (see Bullet.harmless) don't count
+  // against bulletCap() — otherwise up to a full cap's worth of leftovers would suppress
+  // the new wave's real fire until they drift off-screen.
+  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless).length;
+  const enemyBulletCap = bulletCap(state.wave, _ps);
   let enemies = state.enemies.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
     const result = tickSingleEnemy(
@@ -1326,12 +1331,9 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (e.isAlive && e.hitFlashTimer > 0) {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
-    if (
-      result.bullet &&
-      newEnemyBullets.length < bulletCap(state.wave, _ps) &&
-      !state.enemyFireDisabled
-    ) {
+    if (result.bullet && liveEnemyBulletCount < enemyBulletCap && !state.enemyFireDisabled) {
       newEnemyBullets.push(result.bullet);
+      liveEnemyBulletCount++;
     }
     return e;
   });
@@ -1666,9 +1668,11 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     const hitByBullet = bulletHits.length > 0;
 
     if (hitByBullet && shieldActive) {
-      // Shield absorbs the bullets — no damage
+      // Shield absorbs the bullets — no damage. Harmless bullets aren't absorbed (they were
+      // never counted in bulletHits), so they fly on through instead of popping mid-screen.
       currentEnemyBullets = currentEnemyBullets.filter(
         (b) =>
+          b.harmless ||
           !collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
       );
       activePowerUp = {
@@ -1713,6 +1717,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         const enemyBulletsAfterHit = hitByBullet
           ? currentEnemyBullets.filter(
               (b) =>
+                b.harmless ||
                 !collideCircleAABB(
                   player.x,
                   player.y,

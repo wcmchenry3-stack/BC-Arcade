@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { createAudioPlayer, AudioPlayer } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
 
+// Upper bound on how long one seekTo()→play() chain may hold the in-flight guard below. A
+// native seek whose completion handler never fires (iOS AVPlayer item not ready yet, audio
+// session interruption) leaves its promise pending forever; without a bound that one stuck
+// chain would mute this sound for the rest of the screen's lifetime.
+export const PENDING_PLAY_TIMEOUT_MS = 1000;
+
 export function useSound(
   key: string,
   registry: Record<string, number>,
@@ -16,8 +22,9 @@ export function useSound(
   // which is enough JS-thread/bridge pressure to visibly stutter the RAF game loop driving
   // this same thread. One in-flight chain at a time; a call that arrives while one is
   // already pending is dropped rather than queued — inaudible at this rate, and far cheaper
-  // than a growing backlog of bridge calls.
-  const pendingRef = useRef(false);
+  // than a growing backlog of bridge calls. Holds the start time of the in-flight chain (null
+  // when idle) so a chain that never settles stops blocking after PENDING_PLAY_TIMEOUT_MS.
+  const pendingSinceRef = useRef<number | null>(null);
 
   // Keep ref in sync so the stable `play` callback sees the latest muted value.
   useEffect(() => {
@@ -33,6 +40,8 @@ export function useSound(
     return () => {
       player.remove();
       playerRef.current = null;
+      // A chain still pending against the removed player must not block the next one.
+      pendingSinceRef.current = null;
     };
     // volume intentionally excluded — sync effect below handles live updates without recreating the player
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,20 +58,25 @@ export function useSound(
     if (mutedRef.current) return;
     const player = playerRef.current;
     if (!player) return;
-    if (pendingRef.current) return;
-    pendingRef.current = true;
+    const startedAt = Date.now();
+    const pendingSince = pendingSinceRef.current;
+    if (pendingSince !== null && startedAt - pendingSince < PENDING_PLAY_TIMEOUT_MS) return;
+    pendingSinceRef.current = startedAt;
+    // Only the chain that currently holds the guard may release it — a timed-out chain that
+    // settles late must not clear the guard out from under its replacement.
+    const release = () => {
+      if (pendingSinceRef.current === startedAt) pendingSinceRef.current = null;
+    };
     try {
       // Await the seek before playing — on web seekTo is async and calling play() while
       // the element is still seeking causes an AbortError that silently drops the sound.
       Promise.resolve(player.seekTo(0))
         .then(() => Promise.resolve(player.play()))
         .catch(() => {})
-        .finally(() => {
-          pendingRef.current = false;
-        });
+        .finally(release);
     } catch {
       // expo-audio may throw on web if audio context is suspended; fail silently.
-      pendingRef.current = false;
+      release();
     }
   }, []);
 

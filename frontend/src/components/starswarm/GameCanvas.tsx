@@ -24,7 +24,7 @@ import {
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import { useStarSwarmImages } from "../../game/starswarm/assets";
@@ -450,7 +450,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               />
             ))}
 
-            {/* Enemy bullets */}
+            {/* Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless)
+                are dimmed so the player can tell they no longer need dodging. */}
             {state.enemyBullets.map((b) => (
               <Rect
                 key={b.id}
@@ -459,6 +460,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 width={b.width}
                 height={b.height}
                 color="#ff4422"
+                opacity={b.harmless ? HARMLESS_BULLET_OPACITY : 1}
               />
             ))}
 

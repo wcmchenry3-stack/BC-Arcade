@@ -709,6 +709,55 @@ describe("#2409 bullets survive wave clear", () => {
     expect(s.score).toBeGreaterThan(scoreBefore);
   });
 
+  it("carried-over harmless bullets do not count against the new wave's bulletCap", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    expect(s.phase).toBe("Playing");
+
+    // A full cap's worth of harmless leftovers, parked mid-screen so they stay alive this tick.
+    const leftovers = Array.from({ length: bulletCap(1) }, (_, i) =>
+      makeEnemyBullet({ id: 90000 + i, x: 50 + i * 20, y: 200, harmless: true })
+    );
+    const targetIdx = s.enemies.findIndex((e) => e.phase === "Formation" && e.tier !== "Boss");
+    expect(targetIdx).not.toBe(-1);
+    s = {
+      ...s,
+      enemyBullets: leftovers,
+      enemies: s.enemies.map((e, i) => (i === targetIdx ? { ...e, shootTimer: 0 } : e)),
+    };
+
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemyBullets.filter((b) => !b.harmless).length).toBeGreaterThan(0);
+  });
+
+  it("the shield does not absorb (despawn) a harmless bullet overlapping the player", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = applyPowerUp(s, "shield");
+    s = { ...s, enemyFireDisabled: true, player: { ...s.player, invincibleTimer: 0 } };
+    const lethal = makeEnemyBullet({ id: 90001, x: s.player.x, y: s.player.y });
+    const harmless = makeEnemyBullet({ id: 90002, x: s.player.x, y: s.player.y, harmless: true });
+    const absorbedBefore = s.activePowerUp!.shieldAbsorbed;
+    s = { ...s, enemyBullets: [lethal, harmless] };
+
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemyBullets.map((b) => b.id)).toEqual([harmless.id]);
+    expect(s.activePowerUp!.shieldAbsorbed).toBe(absorbedBefore + 1);
+  });
+
+  it("a lethal hit does not despawn a harmless bullet overlapping the player", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemyFireDisabled: true, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
+    const lethal = makeEnemyBullet({ id: 90001, x: s.player.x, y: s.player.y });
+    const harmless = makeEnemyBullet({ id: 90002, x: s.player.x, y: s.player.y, harmless: true });
+    s = { ...s, enemyBullets: [lethal, harmless] };
+
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(2);
+    expect(s.enemyBullets.map((b) => b.id)).toEqual([harmless.id]);
+  });
+
   it("first wave of a fresh game starts with no leftover bullets", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     expect(s.playerBullets).toHaveLength(0);
