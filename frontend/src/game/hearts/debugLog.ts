@@ -1,4 +1,5 @@
 import { rankLabel } from "../_shared/decks/cardId";
+import { passOffset as enginePassOffset } from "./types";
 import type { Card, PassDirection, TrickCard } from "./types";
 
 const SUIT_EMOJI: Record<string, string> = {
@@ -43,11 +44,13 @@ export function passDirectionLabel(dir: PassDirection): string {
   return map[dir];
 }
 
+/**
+ * Debug-log-friendly variant of types.ts's passOffset: same direction→seat
+ * mapping (single source of truth), but returns 0 (not null) for "none" since
+ * every caller here already displays behind a `passDirection !== "none"` guard.
+ */
 export function passOffset(dir: PassDirection): number {
-  if (dir === "left") return 1;
-  if (dir === "right") return 3;
-  if (dir === "across") return 2;
-  return 0;
+  return enginePassOffset(dir) ?? 0;
 }
 
 export function formatSessionAsMarkdown(

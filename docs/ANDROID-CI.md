@@ -43,6 +43,88 @@ for security.
 | `frontend/android/gradle/wrapper/gradle-wrapper.properties` | Gradle distribution version (currently 8.13)            |
 | `frontend/android/sentry.properties`                        | Sentry CLI config (uses env vars for org/project/token) |
 
+## Debug builds skip JS bundling (expo-dev-client) — CI override
+
+**Canonical explanation — Android's `build.gradle`, iOS's `mobile-smoke-ios.yml`, and
+Android's `mobile-smoke-android.yml` all link back to this section instead of
+repeating it.**
+
+Both platforms' `debug`/Debug configurations skip embedding the JS bundle by
+default, expecting a live Metro server instead:
+
+- **Android**: `react { }`'s `debuggableVariants` defaults to `["debug"]` — listed
+  variants skip bundling.
+- **iOS**: the "Bundle React Native code and images" build phase in
+  `GamingApp.xcodeproj/project.pbxproj` sets `SKIP_BUNDLING=1` unconditionally for
+  any Debug configuration build.
+
+That's correct for local `npx expo run:android` / Xcode Simulator debug builds —
+they connect to Metro. But this project depends on **expo-dev-client**, so a
+Maestro CI debug build with no embedded bundle and no reachable Metro server just
+boots into the dev-client's "Development Build" launcher screen and never reaches
+the real app (#2368).
+
+**Embedding the bundle alone does not fix this.** expo-dev-launcher's launcher
+screen is compiled into every debug build unconditionally (Android's
+`android/src/debug` source set; iOS links it into every Debug configuration
+target) and always shows first on a fresh install — there is no cold-start path
+that skips it, embedded bundle or not. What embedding the bundle *does* unlock is
+a "Load embedded bundle" button on that screen
+(`DevLauncherController.hasEmbeddedBundle()` / iOS's
+`loadLocalBundleOnSuccess:`), which only appears when **both**:
+
+1. A platform-native flag says embedding is enabled
+   (`EXDevClientEmbeddedBundle` — `true` in `AndroidManifest.xml`'s
+   `<application>` meta-data, or the same key in iOS's `Info.plist`), **and**
+2. The bundle asset actually exists in the build (`index.android.bundle` /
+   `main.jsbundle`).
+
+The full fix is three pieces, all CI-only overrides that leave local dev builds
+and the Play Store/App Store release paths untouched:
+
+- **Android**: `mobile-smoke-android.yml` passes `-Pandroid.bundleDebugForCI=true`
+  to `./gradlew assembleDebug`, read by a conditional block in `app/build.gradle`'s
+  `react { }` config (mirrors the existing `enableBundleCompression` property
+  pattern in the same file) that clears `debuggableVariants` so the debug variant
+  bundles like a release build would.
+- **iOS**: `mobile-smoke-ios.yml` writes `unset SKIP_BUNDLING` to
+  `frontend/ios/.xcode.env.local` before the build step. That file is gitignored
+  (`frontend/ios/.gitignore`) and is sourced a *second* time by the build phase
+  **after** it sets `SKIP_BUNDLING=1` — the phase's own script comments document
+  this as the intended local-override point — so it only ever affects CI, never a
+  developer's local Xcode/Simulator build. A "Verify JS bundle was embedded" step
+  right after the build fails loudly if this override ever silently breaks (e.g. a
+  future edit to the build phase script), since `mobile-smoke-ios.yml` doesn't run
+  on `pull_request` yet (blocked by #2347) and so wouldn't otherwise get routine
+  exercise.
+- **Both platforms**: `EXDevClientEmbeddedBundle` is statically declared `true` in
+  `AndroidManifest.xml` / `Info.plist`. It's a no-op without an embedded bundle
+  asset (condition 2 above), so this is safe outside CI too.
+- **Maestro**: `e2e/maestro/flows/_shared/launch.yaml` taps "Load embedded bundle"
+  (`optional: true`, so it's a no-op when the button isn't present — i.e. any
+  non-CI run) right after the launcher screen appears, before proceeding to the
+  real app's "Choose a game" home screen.
+
+Two more expo-dev-menu flags are needed on top of the above, both discovered by
+running actual Maestro CI and reading the failure screenshots — each one
+covers the real home screen with a different first-run overlay, so both native
+configs declare them statically (default is the opposite in both cases):
+
+- `EXDevMenuIsOnboardingFinished` — `true` (default `false`). Without it,
+  expo-dev-menu's one-time "This is the developer menu" intro popup covers the
+  home screen on every fresh install. Harmless outside CI: a developer only
+  sees that popup once anyway.
+- `EXDevMenuShowsAtLaunch` — `false` (default `true`). Independent of the
+  onboarding flag above: `DevMenuFragment`'s `shouldShowAtLaunch` auto-opens
+  the dev-menu bottom sheet "once its delegate is set and the bridge is
+  loaded" — i.e. on every fresh JS bundle load, not just the first ever. Harmless
+  outside CI: motion/touch/key-command gestures still open the menu manually,
+  this only suppresses the automatic pop-up.
+
+Since Maestro clears app state before each flow (`_shared/launch.yaml`), every
+CI run hits both of these fresh — a real fresh install only hits them once (or
+never again once each is manually dismissed/toggled).
+
 ## JS bundle validation (GitHub Actions)
 
 The `android-bundle-check` CI job runs `npx expo export:embed --platform android`

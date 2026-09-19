@@ -8,29 +8,32 @@ appId: com.buffingchi.games
       screenLabel: "Yacht"
 # Start a VS Computer game (default difficulty — fastest AI turns).
 # The mode picker is optional; skip if a saved VS game is already in progress.
+# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
 - tapOn:
     text: "VS Computer"
     optional: true
-    timeout: 3000
-- assertVisible:
-    id: "yacht-roll-button"
+- extendedWaitUntil:
+    visible:
+      id: "yacht-roll-button"
     timeout: 8000
 # Roll once so the scorecard rows become selectable.
 - tapOn:
     id: "yacht-roll-button"
-- assertVisible:
-    text: "Tap dice to hold"
+- extendedWaitUntil:
+    visible:
+      text: "Tap dice to hold"
     timeout: 5000
 # Score Ones (always visible in the default upper tab; may score 0 but is always legal).
 # This triggers setIsAiTurn(true) and the AI autonomous turn loop begins.
 - tapOn:
     id: "score-row-ones"
-    timeout: 3000
 # Assert the AI's autonomous turn is running, then that it completes.
-- assertVisible:
-    text: "Computer's Turn"
+- extendedWaitUntil:
+    visible:
+      text: "Computer's Turn"
     timeout: 10000
-- assertVisible:
-    text: "Your Turn"
+- extendedWaitUntil:
+    visible:
+      text: "Your Turn"
     timeout: 15000
 - takeScreenshot: yacht-ai-turn

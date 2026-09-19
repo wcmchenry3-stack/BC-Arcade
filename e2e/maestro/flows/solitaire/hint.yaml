@@ -6,8 +6,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "solitaire"
       screenLabel: "Solitaire"
-- assertVisible:
-    id: "solitaire-hint-button"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-hint-button"
     timeout: 8000
 - tapOn:
     id: "solitaire-hint-button"

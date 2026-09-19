@@ -87,6 +87,24 @@ To navigate to a game, use `navigate-to.yaml`:
 
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
+## Timeouts
+
+`timeout:` is **not** a valid field on `assertVisible`, `assertNotVisible`, or
+`tapOn` — confirmed against Maestro's source (`YamlElementSelector.kt`) at the
+pinned CLI version; the strict Jackson deserializer rejects it outright
+("Unrecognized field \"timeout\"" — see #2350). To wait longer than the
+default ~7s find-timeout, use `extendedWaitUntil` instead:
+
+```yaml
+- extendedWaitUntil:
+    visible:
+      id: "some-id"
+    timeout: 10000
+```
+
+`optional: true` on `tapOn` (for a pre-game button that may not appear) is a
+valid selector field on its own — just don't pair it with `timeout`.
+
 ## Pre-game selectors
 
 Several games show a selector before the game starts. Each smoke flow handles this automatically:
@@ -99,6 +117,13 @@ Several games show a selector before the game starts. Each smoke flow handles th
 | Mahjong | Layout select | taps `mahjong-layout-turtle` |
 | Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |
 | StarSwarm | Difficulty picker | taps `starswarm-start-game` |
+
+Solitaire also shows a pre-game modal (draw-1/draw-3 picker) on a clean save
+slot, but no flow taps through it — instead, `EXPO_PUBLIC_TEST_HOOKS=1` (set
+for every Maestro build) makes `SolitaireScreen` skip the modal and auto-deal
+draw-1 on a clean slot, since Maestro has no reliable way to tap a
+locale-dependent modal button by text. See `docs/MAESTRO.md` for the fixed
+deterministic deals this same flag enables in Solitaire/FreeCell.
 
 ## Offline flow
 

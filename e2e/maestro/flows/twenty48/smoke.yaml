@@ -6,8 +6,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "twenty48"
       screenLabel: "2048"
-- assertVisible:
-    id: "twenty48-board"
+- extendedWaitUntil:
+    visible:
+      id: "twenty48-board"
     timeout: 8000
 - swipe:
     direction: RIGHT

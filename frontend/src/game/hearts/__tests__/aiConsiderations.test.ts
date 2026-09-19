@@ -146,6 +146,57 @@ describe("computePWin — certain-to-win invariant", () => {
 });
 
 // ---------------------------------------------------------------------------
+// computePWin — pass-memory refinement (#2237)
+// ---------------------------------------------------------------------------
+
+describe("computePWin — pass-memory refinement (#2237)", () => {
+  it("known-owner outstanding cards are not diluted by an unrelated opponent's void", () => {
+    // Leading 9♦. T♦/J♦/Q♦ are already collected (seen), leaving K♦ and A♦ as the
+    // only two outstanding higher diamonds (maxHigher=5). We passed K♦ to player 1
+    // — a certain, specific-opponent threat. Players 2 and 3 are void in diamonds,
+    // which is irrelevant to K♦'s known location.
+    const hand = [c("diamonds", 9)];
+    const baseState = mkState({
+      wonCards: [[c("diamonds", 10), c("diamonds", 11), c("diamonds", 12)], [], [], []],
+      knownVoids: [[], [], ["diamonds"], ["diamonds"]],
+    });
+    const infoWithPassMemory = buildHeartsInfoSet(
+      hand,
+      [],
+      { ...baseState, passedAwayByPlayer: [[c("diamonds", 13)], [], [], []] },
+      0
+    );
+    const infoWithoutPassMemory = buildHeartsInfoSet(hand, [], baseState, 0);
+
+    const pWith = computePWin(c("diamonds", 9), infoWithPassMemory);
+    const pWithout = computePWin(c("diamonds", 9), infoWithoutPassMemory);
+
+    // Exact expected value: basePWin = 1 - 2/5 = 0.6; unknownFraction = 1/2
+    // (only A♦ is unknown-location); voidFraction = 2/3 (players 2,3 void).
+    // pWith = 0.6 + 2/3 * 1/2 * 0.4 ≈ 0.7333.
+    expect(pWith).toBeCloseTo(0.7333, 3);
+    // Without pass memory, the full void bonus applies to both outstanding cards:
+    // pWithout = 0.6 + 2/3 * 0.4 ≈ 0.8667.
+    expect(pWithout).toBeCloseTo(0.8667, 3);
+    expect(pWith).toBeLessThan(pWithout);
+  });
+
+  it("is unaffected when nothing was passed this hand (regression safety)", () => {
+    // Same as the pre-existing void-ledger-bonus case — passedCards defaults to
+    // empty, so unknownFractionOfHigher is 1 and the formula reduces to the
+    // original behavior exactly.
+    const hand = [c("diamonds", 9)];
+    const info = buildHeartsInfoSet(
+      hand,
+      [],
+      mkState({ knownVoids: [[], ["diamonds"], ["diamonds"], ["diamonds"]] }),
+      0
+    );
+    expect(computePWin(c("diamonds", 9), info)).toBe(1.0); // all 3 opponents void → certain win
+  });
+});
+
+// ---------------------------------------------------------------------------
 // rateMinimizeImmediatePoints
 // ---------------------------------------------------------------------------
 
@@ -293,6 +344,72 @@ describe("rateQueenSpadesRisk", () => {
     const hand = [c("spades", 12), c("spades", 6)];
     const info = mkInfo(hand, []);
     expect(rateQueenSpadesRisk(info, c("spades", 6))).toBe(0.5);
+  });
+
+  it("leading A♠/K♠ while Q♠ is outstanding (not held, not passed): flat 0.25 baseline", () => {
+    const info = mkInfo([c("spades", 1)], []); // A♠ in hand, Q♠ unaccounted for
+    expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.25);
+  });
+
+  describe("pass-memory refinement (#2237)", () => {
+    it("known Q♠ holder without a passed cover card: worse than the unknown-location baseline", () => {
+      // We passed only Q♠ (left, offset 1 → recipient is player 1). No corroborating
+      // K♠/A♠ passed alongside it, so we don't know if the recipient has cover.
+      const hand = [c("spades", 1)]; // leading A♠
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("spades", 12)], [], [], []],
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.15);
+    });
+
+    it("known Q♠ holder WITH a passed cover card: safer than the unknown-location baseline", () => {
+      // We passed Q♠ and K♠ to the same recipient — they have cover, so leading A♠
+      // (the other top spade) is less likely to force them to reveal Q♠.
+      const hand = [c("spades", 1)]; // leading A♠
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("spades", 12), c("spades", 13)], [], [], []],
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.45);
+    });
+
+    it("cover-card check is symmetric: leading K♠ checks for a passed A♠", () => {
+      const hand = [c("spades", 13)]; // leading K♠
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("spades", 12), c("spades", 1)], [], [], []],
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 13))).toBe(0.45);
+    });
+
+    it("a passed cover card that's since been played no longer counts as cover", () => {
+      // We passed Q♠ and K♠ to the same recipient, but K♠ has since appeared in
+      // a completed trick (seenKeys) — the recipient no longer holds it, so
+      // leading A♠ should score as the uncovered case (0.15), not covered (0.45).
+      const hand = [c("spades", 1)]; // leading A♠
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("spades", 12), c("spades", 13)], [], [], []],
+        wonCards: [[], [c("spades", 13)], [], []], // K♠ already taken
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.15);
+    });
+
+    it("does not apply when the pass memory doesn't include Q♠", () => {
+      // We passed cards away, but Q♠ wasn't one of them — no certain-holder knowledge.
+      const hand = [c("spades", 1)];
+      const state = mkState({
+        passDirection: "left",
+        passedAwayByPlayer: [[c("hearts", 5), c("clubs", 9), c("diamonds", 3)], [], [], []],
+      });
+      const info = buildHeartsInfoSet(hand, [], state, 0);
+      expect(rateQueenSpadesRisk(info, c("spades", 1))).toBe(0.25);
+    });
   });
 });
 

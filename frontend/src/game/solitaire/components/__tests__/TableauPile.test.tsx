@@ -97,16 +97,16 @@ describe("TableauPile — hitSlop on buried cards (#1248)", () => {
   it("renders buried and top-card elements with expected testIDs", async () => {
     const pile = [card("spades", 5, false), card("hearts", 6), card("clubs", 5)];
     const { getByTestId } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
-    expect(getByTestId("draggable-card-0")).toBeTruthy();
-    expect(getByTestId("draggable-card-1")).toBeTruthy();
-    expect(getByTestId("draggable-card-2")).toBeTruthy();
+    expect(getByTestId("solitaire-tableau-0-card-0")).toBeTruthy();
+    expect(getByTestId("solitaire-tableau-0-card-1")).toBeTruthy();
+    expect(getByTestId("solitaire-tableau-0-card-2")).toBeTruthy();
   });
 
   it("renders a 2-card pile with a face-down buried card without throwing", async () => {
     // face-down strip = FACE_DOWN_OFFSET (20) → hitSlop bottom clamped to 20.
     const pile = [card("spades", 5, false), card("hearts", 6)];
     const { getByTestId } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
-    expect(getByTestId("draggable-card-0")).toBeTruthy();
-    expect(getByTestId("draggable-card-1")).toBeTruthy();
+    expect(getByTestId("solitaire-tableau-0-card-0")).toBeTruthy();
+    expect(getByTestId("solitaire-tableau-0-card-1")).toBeTruthy();
   });
 });

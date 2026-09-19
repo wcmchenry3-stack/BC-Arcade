@@ -10,6 +10,7 @@
 
 import type { InformationSet } from "../_shared/utilityAi/types";
 import type { Card, HeartsState, PassDirection, Suit, TrickCard } from "./types";
+import { passOffset } from "./types";
 
 // ---------------------------------------------------------------------------
 // Hearts-specific information set type
@@ -76,6 +77,27 @@ export interface HeartsInfoSet extends InformationSet {
 
   /** True when this is the first trick of the hand (tricksPlayedInHand === 0). */
   readonly isFirstTrick: boolean;
+
+  /**
+   * Cards this player passed away at the start of the hand (#2237). Certain
+   * knowledge: these cards are not in this player's hand and, until observed
+   * in seenKeys, are held by `passedToPlayerIndex`. Empty on "none"-direction
+   * hands or during the pass phase itself.
+   */
+  readonly passedCards: readonly Card[];
+
+  /** Seat that received this player's pass, or null if no pass occurred this hand. */
+  readonly passedToPlayerIndex: number | null;
+
+  /**
+   * Cards this player received in the pass (#2237). Already reflected in `hand`;
+   * exposed separately as a signal of the sender's discard choices (e.g. for
+   * moon-tell inference — see #2159). Empty on "none"-direction hands.
+   */
+  readonly receivedCards: readonly Card[];
+
+  /** Seat that sent this player's received cards, or null if no pass occurred this hand. */
+  readonly receivedFromPlayerIndex: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +131,10 @@ export function buildHeartsPassInfoSet(
     passDirection: direction,
     heartsBroken: false,
     isFirstTrick: false,
+    passedCards: [],
+    passedToPlayerIndex: null,
+    receivedCards: [],
+    receivedFromPlayerIndex: null,
   };
 }
 
@@ -199,6 +225,22 @@ export function buildHeartsInfoSet(
   // ------------------------------------------------------------------
   const tricksRemaining = 13 - state.tricksPlayedInHand;
 
+  // ------------------------------------------------------------------
+  // Pass-phase memory (#2237): what this player passed away / received, and
+  // to/from whom. Derived from state.passedAwayByPlayer/receivedByPlayer
+  // (populated by commitPass) plus the direction → offset mapping shared
+  // with the engine. Guarded on non-empty card lists so a "none"-direction
+  // hand or a not-yet-committed pass phase reports null seats, not a
+  // misleading recipient with nothing actually passed.
+  // ------------------------------------------------------------------
+  const passedCards: readonly Card[] = state.passedAwayByPlayer?.[playerIndex] ?? [];
+  const receivedCards: readonly Card[] = state.receivedByPlayer?.[playerIndex] ?? [];
+  const offset = passOffset(state.passDirection);
+  const passedToPlayerIndex =
+    passedCards.length > 0 && offset !== null ? (playerIndex + offset) % 4 : null;
+  const receivedFromPlayerIndex =
+    receivedCards.length > 0 && offset !== null ? (playerIndex - offset + 4) % 4 : null;
+
   return Object.freeze({
     kind: "hearts" as const,
     playerIndex,
@@ -213,5 +255,9 @@ export function buildHeartsInfoSet(
     passDirection: state.passDirection,
     heartsBroken: state.heartsBroken,
     isFirstTrick: state.tricksPlayedInHand === 0,
+    passedCards,
+    passedToPlayerIndex,
+    receivedCards,
+    receivedFromPlayerIndex,
   });
 }

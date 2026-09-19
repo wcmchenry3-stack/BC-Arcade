@@ -143,6 +143,12 @@ describe("dealGame", () => {
   it("uses storage schema v3", () => {
     expect(dealGame()._v).toBe(3);
   });
+
+  it("initialises pass memory empty (#2237)", () => {
+    const state = dealGame();
+    expect(state.passedAwayByPlayer).toEqual([[], [], [], []]);
+    expect(state.receivedByPlayer).toEqual([[], [], [], []]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -229,6 +235,39 @@ describe("commitPass — left", () => {
     // p3's cards went to p0
     p3Cards.forEach((card) => expect(next.playerHands[0]).toContainEqual(card));
   });
+
+  it("records pass memory (#2237): passedAwayByPlayer and receivedByPlayer match the exchange", () => {
+    const p0Cards = [c("spades", 1), c("spades", 2), c("spades", 3)];
+    const p1Cards = [c("hearts", 1), c("hearts", 2), c("hearts", 3)];
+    const p2Cards = [c("diamonds", 1), c("diamonds", 2), c("diamonds", 3)];
+    const p3Cards = [c("clubs", 4), c("clubs", 5), c("clubs", 6)];
+
+    const hands = [
+      [...p0Cards, c("clubs", 2), c("clubs", 7), c("clubs", 8), c("clubs", 9), c("clubs", 10)],
+      [
+        ...p1Cards,
+        c("clubs", 11),
+        c("clubs", 12),
+        c("clubs", 13),
+        c("diamonds", 4),
+        c("diamonds", 5),
+      ],
+      [...p2Cards, c("hearts", 4), c("hearts", 5), c("hearts", 6), c("hearts", 7), c("hearts", 8)],
+      [...p3Cards, c("spades", 4), c("spades", 5), c("spades", 6), c("spades", 7), c("spades", 8)],
+    ] as Card[][];
+
+    const state = mkState({
+      phase: "passing",
+      passDirection: "left",
+      playerHands: hands,
+      passSelections: [p0Cards, p1Cards, p2Cards, p3Cards],
+    });
+
+    const next = commitPass(state);
+    expect(next.passedAwayByPlayer).toEqual([p0Cards, p1Cards, p2Cards, p3Cards]);
+    // Left: p0→p1, p1→p2, p2→p3, p3→p0
+    expect(next.receivedByPlayer).toEqual([p3Cards, p0Cards, p1Cards, p2Cards]);
+  });
 });
 
 describe("commitPass — right", () => {
@@ -302,6 +341,25 @@ describe("commitPass — none", () => {
   it("throws if selection is missing on a non-none hand", () => {
     const state = mkState({ passDirection: "left", passSelections: [[], [], [], []] });
     expect(() => commitPass(state)).toThrow();
+  });
+
+  it("leaves pass memory untouched on a 'none'-direction hand (#2237)", () => {
+    const hands = [
+      [c("clubs", 3), c("clubs", 4), c("clubs", 5)],
+      [c("clubs", 2), c("clubs", 6), c("clubs", 7)],
+      [c("clubs", 8), c("clubs", 9), c("clubs", 10)],
+      [c("clubs", 11), c("clubs", 12), c("clubs", 13)],
+    ] as Card[][];
+    const state = mkState({
+      passDirection: "none",
+      playerHands: hands,
+      passSelections: [[], [], [], []],
+      passedAwayByPlayer: [[], [], [], []],
+      receivedByPlayer: [[], [], [], []],
+    });
+    const next = commitPass(state);
+    expect(next.passedAwayByPlayer).toEqual([[], [], [], []]);
+    expect(next.receivedByPlayer).toEqual([[], [], [], []]);
   });
 });
 
@@ -1220,6 +1278,17 @@ describe("dealNextHand", () => {
     const state = mkState({ phase: "dealing", handNumber: 2, scoreHistory: history });
     const next = dealNextHand(state);
     expect(next.scoreHistory).toEqual(history);
+  });
+
+  it("resets pass memory from the prior hand (#2237)", () => {
+    const state = mkState({
+      phase: "dealing",
+      passedAwayByPlayer: [[c("hearts", 1)], [], [], []],
+      receivedByPlayer: [[], [], [c("spades", 12)], []],
+    });
+    const next = dealNextHand(state);
+    expect(next.passedAwayByPlayer).toEqual([[], [], [], []]);
+    expect(next.receivedByPlayer).toEqual([[], [], [], []]);
   });
 });
 

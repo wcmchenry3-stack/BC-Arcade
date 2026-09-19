@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
 # precheck-gate.sh — PreToolUse: tier-2 gate on `git push` or `gh pr create`
 # Checks: npm audit, pip-audit, backend tests, frontend tests, i18n
+#
+# The four expensive checks (npm audit, pip-audit, backend tests, frontend
+# tests) are cached — see lib/cache.sh — and skip entirely when their inputs
+# are unchanged since the last pass. Frontend tests additionally scope to
+# --changedSince=origin/dev on a cache miss, so a real run only exercises
+# tests Jest's dependency graph says could be affected.
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/output.sh
 source "$HOOK_DIR/lib/output.sh"
+# shellcheck source=lib/cache.sh
+source "$HOOK_DIR/lib/cache.sh"
+
+# Checks are skipped only when their inputs are byte-identical to the last
+# PASS, and only for this long — long enough to make repeated pushes with no
+# relevant changes fast, short enough that an unchanged lockfile still gets a
+# fresh audit periodically (new CVEs get disclosed against old versions).
+CACHE_TTL=86400
 
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
@@ -25,8 +39,12 @@ FAIL=0
 # Remove these entries once Expo ships a metro update with a patched image-size.
 NPM_AUDIT_BLOCKED="GHSA-w3rx-r6r6-pgpr GHSA-5p2g-fcmc-qvqq"
 if [ -f "frontend/package.json" ]; then
-  NPM_JSON=$(cd frontend && npm audit --json 2>/dev/null || true)
-  ACTIONABLE=$(echo "$NPM_JSON" | python3 -c "
+  NPM_AUDIT_HASH=$(hash_tree frontend/package-lock.json)
+  if cache_hit "npm-audit" "$NPM_AUDIT_HASH" "$CACHE_TTL"; then
+    print_ok "npm audit (cached — package-lock.json unchanged)"
+  else
+    NPM_JSON=$(cd frontend && npm audit --json 2>/dev/null || true)
+    ACTIONABLE=$(echo "$NPM_JSON" | python3 -c "
 import json, sys
 blocked = {'GHSA-jmr9-qjv8-65gv', 'GHSA-w3rx-r6r6-pgpr', 'GHSA-5p2g-fcmc-qvqq'}
 try:
@@ -41,60 +59,87 @@ try:
 except Exception:
     print(1)
 " 2>/dev/null || echo "1")
-  if [ "${ACTIONABLE:-1}" -eq 0 ]; then
-    print_ok "npm audit"
-  else
-    FAIL=1
-    SUMMARY=$(echo "$NPM_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d.get('metadata',{}).get('vulnerabilities',{}).get('total',0)} vulnerabilities found\")" 2>/dev/null || echo "high or critical severity vulnerability found")
-    print_fail "npm audit" \
-      "$SUMMARY" \
-      "cd frontend && npm audit fix"
+    if [ "${ACTIONABLE:-1}" -eq 0 ]; then
+      print_ok "npm audit"
+      cache_store "npm-audit" "$NPM_AUDIT_HASH"
+    else
+      FAIL=1
+      SUMMARY=$(echo "$NPM_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d.get('metadata',{}).get('vulnerabilities',{}).get('total',0)} vulnerabilities found\")" 2>/dev/null || echo "high or critical severity vulnerability found")
+      print_fail "npm audit" \
+        "$SUMMARY" \
+        "cd frontend && npm audit fix"
+    fi
   fi
 fi
 
 # ── pip-audit ────────────────────────────────────────────────────────────────
 VENV="backend/.venv/bin/activate"
 if [ -f "$VENV" ]; then
-  # shellcheck disable=SC1090
-  source "$VENV"
-  if PIP_OUT=$(pip-audit 2>&1); then
-    print_ok "pip-audit"
+  PIP_AUDIT_HASH=$(hash_tree backend/requirements.txt backend/requirements-dev.txt backend/pyproject.toml)
+  if cache_hit "pip-audit" "$PIP_AUDIT_HASH" "$CACHE_TTL"; then
+    print_ok "pip-audit (cached — dependency files unchanged)"
   else
-    FAIL=1
-    CVE=$(echo "$PIP_OUT" | grep -m1 'CVE\|PYSEC\|vuln' || echo "known CVE in Python dependency")
-    print_fail "pip-audit" \
-      "$CVE" \
-      "cd backend && source .venv/bin/activate && pip-audit --fix"
+    # shellcheck disable=SC1090
+    source "$VENV"
+    if PIP_OUT=$(pip-audit 2>&1); then
+      print_ok "pip-audit"
+      cache_store "pip-audit" "$PIP_AUDIT_HASH"
+    else
+      FAIL=1
+      CVE=$(echo "$PIP_OUT" | grep -m1 'CVE\|PYSEC\|vuln' || echo "known CVE in Python dependency")
+      print_fail "pip-audit" \
+        "$CVE" \
+        "cd backend && source .venv/bin/activate && pip-audit --fix"
+    fi
+    deactivate 2>/dev/null || true
   fi
-  deactivate 2>/dev/null || true
 fi
 
 # ── Backend tests ─────────────────────────────────────────────────────────────
 if [ -d "backend/tests" ] && [ -f "$VENV" ]; then
-  # shellcheck disable=SC1090
-  source "$VENV"
-  if TEST_OUT=$(cd backend && python -m pytest tests/ -x -q 2>&1); then
-    print_ok "Backend tests"
+  BACKEND_HASH=$(hash_tree backend)
+  if cache_hit "backend-tests" "$BACKEND_HASH" "$CACHE_TTL"; then
+    print_ok "Backend tests (cached — backend/ unchanged since last pass)"
   else
-    FAIL=1
-    FAILING=$(echo "$TEST_OUT" | grep -m1 '^FAILED\|^ERROR' || echo "see test output above")
-    print_fail "Backend tests" \
-      "$FAILING" \
-      "cd backend && source .venv/bin/activate && python -m pytest tests/ -v"
+    # shellcheck disable=SC1090
+    source "$VENV"
+    if TEST_OUT=$(cd backend && python -m pytest tests/ -x -q 2>&1); then
+      print_ok "Backend tests"
+      cache_store "backend-tests" "$BACKEND_HASH"
+    else
+      FAIL=1
+      FAILING=$(echo "$TEST_OUT" | grep -m1 '^FAILED\|^ERROR' || echo "see test output above")
+      print_fail "Backend tests" \
+        "$FAILING" \
+        "cd backend && source .venv/bin/activate && python -m pytest tests/ -v"
+    fi
+    deactivate 2>/dev/null || true
   fi
-  deactivate 2>/dev/null || true
 fi
 
 # ── Frontend tests ────────────────────────────────────────────────────────────
 if [ -f "frontend/package.json" ]; then
-  if FE_OUT=$(cd frontend && npm test -- --watchAll=false --passWithNoTests 2>&1); then
-    print_ok "Frontend tests"
+  FRONTEND_HASH=$(hash_tree frontend/src frontend/package.json)
+  if cache_hit "frontend-tests" "$FRONTEND_HASH" "$CACHE_TTL"; then
+    print_ok "Frontend tests (cached — frontend/src unchanged since last pass)"
   else
-    FAIL=1
-    FAILING=$(echo "$FE_OUT" | grep -m1 '^FAIL \|● ' || echo "see test output above")
-    print_fail "Frontend tests" \
-      "$FAILING" \
-      "cd frontend && npm test -- --watchAll=false"
+    # Only run tests Jest's dependency graph says could be affected by what
+    # changed vs dev — falls back to the full suite if dev isn't resolvable
+    # locally, so this never silently under-checks.
+    JEST_SCOPE=()
+    if git rev-parse --verify origin/dev >/dev/null 2>&1; then
+      JEST_SCOPE=(--changedSince=origin/dev)
+    fi
+    if FE_OUT=$(cd frontend && npm test -- --watchAll=false --passWithNoTests "${JEST_SCOPE[@]}" 2>&1); then
+      print_ok "Frontend tests"
+      cache_store "frontend-tests" "$FRONTEND_HASH"
+    else
+      FAIL=1
+      FAILING=$(echo "$FE_OUT" | grep -m1 '^FAIL \|● ' || echo "see test output above")
+      print_fail "Frontend tests" \
+        "$FAILING" \
+        "cd frontend && npm test -- --watchAll=false"
+    fi
   fi
 fi
 

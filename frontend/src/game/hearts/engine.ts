@@ -7,7 +7,7 @@
  */
 
 import type { AiPreset, Card, HeartsState, PassDirection, Rank, Suit, TrickCard } from "./types";
-import { RANKS, SUITS } from "./types";
+import { passOffset, RANKS, SUITS } from "./types";
 
 // ---------------------------------------------------------------------------
 // Seedable RNG — tests can pin shuffles via setRng(createSeededRng(seed)).
@@ -117,6 +117,8 @@ export function dealGame(difficulty: AiPreset = "schemer"): HeartsState {
     isComplete: false,
     winnerIndex: null,
     knownVoids: [[], [], [], []],
+    passedAwayByPlayer: [[], [], [], []],
+    receivedByPlayer: [[], [], [], []],
   };
 }
 
@@ -146,6 +148,8 @@ export function dealNextHand(state: HeartsState): HeartsState {
     tricksPlayedInHand: 0,
     events: [],
     knownVoids: [[], [], [], []],
+    passedAwayByPlayer: [[], [], [], []],
+    receivedByPlayer: [[], [], [], []],
   };
 }
 
@@ -188,7 +192,7 @@ export function commitPass(state: HeartsState): HeartsState {
     }
   }
 
-  const offset = state.passDirection === "left" ? 1 : state.passDirection === "right" ? 3 : 2; // across
+  const offset = passOffset(state.passDirection)!; // non-null: "none" returned above
 
   const newHands: Card[][] = state.playerHands.map((h) => [...h]);
 
@@ -198,11 +202,16 @@ export function commitPass(state: HeartsState): HeartsState {
     newHands[i] = (newHands[i] ?? []).filter((c) => !sel.some((s) => cardEquals(c, s)));
   }
 
-  // Add passed cards to each recipient
+  // Add passed cards to each recipient, and remember who sent/received what (#2237)
+  // so the AI's information set can carry certain pass-phase knowledge into play.
+  const passedAwayByPlayer: Card[][] = [[], [], [], []];
+  const receivedByPlayer: Card[][] = [[], [], [], []];
   for (let from = 0; from < 4; from++) {
     const to = (from + offset) % 4;
     const sel = state.passSelections[from] ?? [];
     newHands[to] = [...(newHands[to] ?? []), ...sel];
+    passedAwayByPlayer[from] = [...sel];
+    receivedByPlayer[to] = [...sel];
   }
 
   const leaderIndex = find2ClubsHolder(newHands);
@@ -215,6 +224,8 @@ export function commitPass(state: HeartsState): HeartsState {
     passingComplete: true,
     currentLeaderIndex: leaderIndex,
     currentPlayerIndex: leaderIndex,
+    passedAwayByPlayer,
+    receivedByPlayer,
   };
 }
 

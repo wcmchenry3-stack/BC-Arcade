@@ -523,6 +523,112 @@ describe("buildHeartsInfoSet — void ledger resets between hands", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Pass-memory (#2237): passedCards / receivedCards + who sent/received them
+// ---------------------------------------------------------------------------
+
+describe("buildHeartsInfoSet — pass memory", () => {
+  it("passedCards reflects state.passedAwayByPlayer for this player", () => {
+    const passed = [c("hearts", 1), c("spades", 12), c("clubs", 6)];
+    const state = mkState({
+      passedAwayByPlayer: [passed, [], [], []],
+      receivedByPlayer: [[], [], [], []],
+    });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.passedCards).toStrictEqual(passed);
+  });
+
+  it("receivedCards reflects state.receivedByPlayer for this player", () => {
+    const received = [c("diamonds", 4), c("clubs", 9), c("hearts", 2)];
+    const state = mkState({
+      passedAwayByPlayer: [[], [], [], []],
+      receivedByPlayer: [received, [], [], []],
+    });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.receivedCards).toStrictEqual(received);
+  });
+
+  it("passedToPlayerIndex is derived from passDirection when a pass occurred", () => {
+    const passed = [c("hearts", 1), c("spades", 12), c("clubs", 6)];
+    const state = mkState({
+      passDirection: "left", // offset 1
+      passedAwayByPlayer: [passed, [], [], []],
+      receivedByPlayer: [[], [], [], []],
+    });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.passedToPlayerIndex).toBe(1);
+  });
+
+  it("receivedFromPlayerIndex is derived from passDirection when a pass occurred", () => {
+    const received = [c("diamonds", 4), c("clubs", 9), c("hearts", 2)];
+    const state = mkState({
+      passDirection: "right", // offset 3: sender is (playerIndex - 3 + 4) % 4
+      passedAwayByPlayer: [[], [], [], []],
+      receivedByPlayer: [received, [], [], []],
+    });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    // playerIndex 0, offset 3 → sender = (0 - 3 + 4) % 4 = 1
+    expect(info.receivedFromPlayerIndex).toBe(1);
+  });
+
+  it("passedToPlayerIndex/receivedFromPlayerIndex are null when no pass occurred (empty arrays)", () => {
+    const state = mkState({
+      passDirection: "left",
+      passedAwayByPlayer: [[], [], [], []],
+      receivedByPlayer: [[], [], [], []],
+    });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.passedToPlayerIndex).toBeNull();
+    expect(info.receivedFromPlayerIndex).toBeNull();
+    expect(info.passedCards).toEqual([]);
+    expect(info.receivedCards).toEqual([]);
+  });
+
+  it("passedToPlayerIndex/receivedFromPlayerIndex are null on a 'none'-direction hand", () => {
+    const state = mkState({ passDirection: "none" });
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.passedToPlayerIndex).toBeNull();
+    expect(info.receivedFromPlayerIndex).toBeNull();
+  });
+
+  it("is empty/null when passedAwayByPlayer/receivedByPlayer are absent (legacy state)", () => {
+    const { passedAwayByPlayer: _p, receivedByPlayer: _r, ...rest } = mkState();
+    const state: HeartsState = rest as HeartsState;
+    const info = buildHeartsInfoSet([], [], state, 0);
+    expect(info.passedCards).toEqual([]);
+    expect(info.receivedCards).toEqual([]);
+    expect(info.passedToPlayerIndex).toBeNull();
+    expect(info.receivedFromPlayerIndex).toBeNull();
+  });
+
+  it("end-to-end via engine.commitPass: passedCards/receivedCards match the actual exchange", () => {
+    setRng(createSeededRng(7));
+    let state = dealGame();
+    expect(state.phase).toBe("passing");
+
+    // Select 3 cards for every player and commit.
+    const { selectPassCard, commitPass } = jest.requireActual("../engine");
+    for (let p = 0; p < 4; p++) {
+      const hand = state.playerHands[p]!;
+      for (let i = 0; i < 3; i++) {
+        state = selectPassCard(state, p, hand[i]!);
+      }
+    }
+    const preCommitSelections = state.passSelections.map((s) => [...s]);
+    state = commitPass(state);
+
+    for (let p = 0; p < 4; p++) {
+      const info = buildHeartsInfoSet(state.playerHands[p]!, [], state, p);
+      expect(info.passedCards).toStrictEqual(preCommitSelections[p]);
+      expect(info.passedToPlayerIndex).not.toBeNull();
+      // Every passed card should now be present in the recipient's hand.
+      for (const card of info.passedCards) {
+        expect(state.playerHands[info.passedToPlayerIndex!]).toContainEqual(card);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scripted trick sequence — ledger and seenKeys evolution
 // ---------------------------------------------------------------------------
 

@@ -13,6 +13,11 @@
  */
 
 import seedsJson from "./seeds.json";
+// True only in E2E test builds (Playwright web + Maestro native, both build
+// with EXPO_PUBLIC_TEST_HOOKS=1). Imported from the dependency-free
+// `envFlags` leaf, not `_shared/testHooks.ts`, so this pure engine doesn't
+// pull in that module's AsyncStorage/HTTP/timer-touching imports.
+import { areTestHooksEnabled } from "../_shared/envFlags";
 import type {
   Card,
   DrawMode,
@@ -78,6 +83,19 @@ interface SeedBank {
 
 const SEED_BANK: SeedBank = seedsJson as SeedBank;
 
+// Index into each draw-mode's seed bank used for every deal in a test
+// build. The bank's first entry works fine here (no special property
+// needed — e2e/maestro/flows/solitaire/drag.yaml's sequence reaches every
+// scenario it needs via a handful of draws/moves against this deal).
+const E2E_SEED_INDEX = 0;
+
+/**
+ * In a test build, every deal picks a fixed bank entry instead of a random
+ * one, so E2E flows always see the same board and can assert exact outcomes
+ * instead of "either result is fine". Layout for these seeds (computed once
+ * via this module's own shuffle) is documented in
+ * e2e/maestro/flows/solitaire/drag.yaml.
+ */
 function pickSeed(drawMode: DrawMode): number {
   const bank = drawMode === 1 ? SEED_BANK.draw1 : SEED_BANK.draw3;
   if (bank.length === 0) {
@@ -86,7 +104,7 @@ function pickSeed(drawMode: DrawMode): number {
         `Run: python backend/scripts/gen_solitaire_seeds.py`
     );
   }
-  const idx = Math.floor(_rng() * bank.length);
+  const idx = areTestHooksEnabled() ? E2E_SEED_INDEX : Math.floor(_rng() * bank.length);
   const seed = bank[idx];
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");
@@ -591,34 +609,34 @@ export function undo(state: SolitaireState): SolitaireState {
 // Auto-complete
 // ---------------------------------------------------------------------------
 
-/** True iff every tableau card is face-up. When this holds the remaining
- * deal is trivially winnable — the UI can offer a one-click finish. */
-export function canAutoComplete(state: SolitaireState): boolean {
-  if (state.isComplete) return false;
-  for (const col of state.tableau) {
-    for (const card of col) {
-      if (!card.faceUp) return false;
-    }
-  }
-  return true;
-}
-
 /**
  * Perform a single auto-complete step and return the resulting state.
- * Order: drain stock → waste, then waste → foundation, then tableau →
- * foundation (lowest-column-first). Returns `state` unchanged if no
- * step applies (i.e., the game is already complete or cannot finish).
+ * Order: waste → foundation, then drain stock → waste, then tableau →
+ * foundation (lowest-column-first), then — only when none of those apply —
+ * a single-card tableau → tableau relocate that unblocks a foundation-ready
+ * card underneath (#2199, the "5 sitting under a 10" case). Returns `state`
+ * unchanged if no step applies.
+ *
+ * The relocate step is deliberately narrow: it only fires when the card
+ * directly beneath the one being moved can go straight to a foundation, and
+ * it only ever lands on another column's existing top card — never an empty
+ * one. That's provable, not speculative ("this move definitely frees a
+ * foundation play", not "this might help a King later"), so it can never
+ * waste a move burying a card some other chain needs, and it guarantees
+ * every step strictly progresses — which is what lets `canAutoComplete`
+ * simulate this function to a fixed point without risking an infinite loop.
+ * Deeper blocks (2+ cards stacked on the needed card) are out of scope; the
+ * gate will honestly report `false` for those rather than promise a finish
+ * this step can't deliver.
  */
-export function autoComplete(state: SolitaireState): SolitaireState {
-  if (state.isComplete) return state;
-
+function autoCompleteStep(state: SolitaireState): SolitaireState {
   // 1) Waste → foundation.
   const wasteTop = topOf(state.waste);
   if (wasteTop !== undefined && canStackOnFoundation(wasteTop, state.foundations[wasteTop.suit])) {
     return applyMove(state, { type: "waste-to-foundation" });
   }
 
-  // 2) Stock → waste (drains 1 at a time so the loop makes progress).
+  // 2) Stock → waste (drains 1 batch at a time so the loop makes progress).
   if (state.stock.length > 0) {
     return drawFromStock(state);
   }
@@ -634,7 +652,70 @@ export function autoComplete(state: SolitaireState): SolitaireState {
     }
   }
 
+  // 4) Single-card tableau → tableau relocate, but only when it provably
+  // exposes a foundation-ready card underneath.
+  for (let fromCol = 0; fromCol < TABLEAU_COLUMNS; fromCol++) {
+    const src = state.tableau[fromCol];
+    if (src === undefined || src.length < 2) continue; // need a card underneath to unblock
+    const fromIndex = src.length - 1;
+    const cardBelow = src[fromIndex - 1];
+    if (
+      cardBelow === undefined ||
+      !cardBelow.faceUp ||
+      !canStackOnFoundation(cardBelow, state.foundations[cardBelow.suit])
+    ) {
+      continue;
+    }
+    for (let toCol = 0; toCol < TABLEAU_COLUMNS; toCol++) {
+      if (toCol === fromCol) continue;
+      const dst = state.tableau[toCol];
+      if (dst === undefined || dst.length === 0) continue; // never spend an empty column here
+      const m: Move = { type: "tableau-to-tableau", fromCol, fromIndex, toCol };
+      if (!validateMove(state, m)) continue;
+      return applyMove(state, m);
+    }
+  }
+
   return state;
+}
+
+/**
+ * True iff, starting from `state`, repeatedly calling `autoComplete` would
+ * actually drive the game to completion — not just whether the tableau is
+ * face-up. Runs the same step logic as `autoComplete` on a throwaway copy
+ * until it gets stuck or wins, so the gate can never promise a finish the
+ * stepper can't deliver (#2199).
+ */
+export function canAutoComplete(state: SolitaireState): boolean {
+  if (state.isComplete) return false;
+  for (const col of state.tableau) {
+    for (const card of col) {
+      if (!card.faceUp) return false;
+    }
+  }
+
+  // Generous bound: every step either sends a card to a foundation (≤52),
+  // drains a stock batch (≤ stock.length), or relocates a card that's
+  // immediately followed by a foundation play. 4×DECK_SIZE comfortably
+  // covers all of those with room to spare.
+  let sim = state;
+  for (let i = 0; i < DECK_SIZE * 4; i++) {
+    if (sim.isComplete) return true;
+    const next = autoCompleteStep(sim);
+    if (next === sim) return false;
+    sim = next;
+  }
+  return sim.isComplete;
+}
+
+/**
+ * Perform a single auto-complete step and return the resulting state.
+ * Returns `state` unchanged if no step applies (i.e., the game is already
+ * complete or cannot make further unattended progress).
+ */
+export function autoComplete(state: SolitaireState): SolitaireState {
+  if (state.isComplete) return state;
+  return autoCompleteStep(state);
 }
 
 // ---------------------------------------------------------------------------

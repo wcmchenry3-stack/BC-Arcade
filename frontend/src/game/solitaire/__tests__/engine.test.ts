@@ -612,6 +612,13 @@ describe("game events", () => {
 // Auto-complete
 // ---------------------------------------------------------------------------
 
+// Foundation pile of ranks 1..upTo for one suit — lets tests park most of
+// the deck in foundations and only hand-place the few cards under test.
+function foundationRun(suit: Suit, upTo: number): Card[] {
+  const ranks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+  return ranks.filter((r) => r <= upTo).map((r) => c(suit, r));
+}
+
 describe("canAutoComplete", () => {
   it("is false when any tableau card is face-down", () => {
     const state = mkState({
@@ -620,15 +627,91 @@ describe("canAutoComplete", () => {
     expect(canAutoComplete(state)).toBe(false);
   });
 
-  it("is true when every tableau card is face-up", () => {
+  // Regression for #2199: the old check was "every tableau card is
+  // face-up" full stop, which is necessary but not sufficient — it doesn't
+  // mean the stepper can actually reach 52. This 2-card fragment is
+  // face-up but the ace it needs (A♥) doesn't exist anywhere in the state,
+  // so it can never complete. The old naive check would have said `true`
+  // here and then silently stalled mid-run.
+  it("is false when face-up but the remaining deal cannot reach 52", () => {
     const state = mkState({
       tableau: [[c("hearts", 2), c("spades", 1)], [], [], [], [], [], []],
     });
-    expect(canAutoComplete(state)).toBe(true);
+    expect(canAutoComplete(state)).toBe(false);
   });
 
   it("is false once the game is complete", () => {
     expect(canAutoComplete(mkState({ isComplete: true }))).toBe(false);
+  });
+
+  it("is true when every remaining card is directly playable to foundation, no rearrangement needed", () => {
+    const state = mkState({
+      foundations: {
+        spades: foundationRun("spades", 9),
+        hearts: foundationRun("hearts", 13),
+        diamonds: foundationRun("diamonds", 13),
+        clubs: foundationRun("clubs", 13),
+      },
+      tableau: [
+        [c("spades", 10)],
+        [c("spades", 11)],
+        [c("spades", 12)],
+        [c("spades", 13)],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(canAutoComplete(state)).toBe(true);
+  });
+
+  it("is true when a single obvious relocate unblocks the rest (#2199 — 'the 10 sitting on the 5')", () => {
+    // Spades sit at 9; 10♠ is buried under a lone Q♥ that has nowhere to
+    // go except onto the dummy K♣ parked in col1. Once Q♥ relocates,
+    // 10♠→J♠→Q♠→K♠ all cascade straight to foundation.
+    const state = mkState({
+      foundations: {
+        spades: foundationRun("spades", 9),
+        hearts: foundationRun("hearts", 13),
+        diamonds: foundationRun("diamonds", 13),
+        clubs: foundationRun("clubs", 13),
+      },
+      tableau: [
+        [c("spades", 10), c("hearts", 12)], // 10♠ blocked by a parked Q♥
+        [c("clubs", 13)], // dummy landing spot for the Q♥
+        [c("spades", 11)],
+        [c("spades", 12)],
+        [c("spades", 13)],
+        [],
+        [],
+      ],
+    });
+    expect(canAutoComplete(state)).toBe(true);
+  });
+
+  it("is false when a card is buried two levels deep (beyond the single-relocate scope)", () => {
+    // 10♠ is needed next but sits under two cards (Q♥ then J♣), and no
+    // single relocate exposes a foundation-ready card — this is out of
+    // scope for the greedy single-level unblock, so the gate must stay
+    // honest and report false rather than promise a finish it can't reach.
+    const state = mkState({
+      foundations: {
+        spades: foundationRun("spades", 9),
+        hearts: foundationRun("hearts", 13),
+        diamonds: foundationRun("diamonds", 13),
+        clubs: foundationRun("clubs", 13),
+      },
+      tableau: [
+        [c("spades", 10), c("hearts", 12), c("clubs", 11)],
+        [c("diamonds", 12)], // legal landing spot for the J♣ on top
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(canAutoComplete(state)).toBe(false);
   });
 });
 
@@ -673,6 +756,36 @@ describe("autoComplete", () => {
 
   it("is a no-op when the game is already complete", () => {
     const state = mkState({ isComplete: true });
+    expect(autoComplete(state)).toBe(state);
+  });
+
+  // #2199 — the "5 under a 10" case: no direct foundation move exists, but
+  // relocating the blocker one column over is an obvious, single, safe move.
+  it("relocates a blocking top card onto a legal destination when no foundation move exists", () => {
+    const state = mkState({
+      foundations: { spades: foundationRun("spades", 9), hearts: [], diamonds: [], clubs: [] },
+      tableau: [
+        [c("spades", 10), c("hearts", 12)], // 10♠ blocked by Q♥
+        [c("clubs", 13)], // Q♥'s only legal destination
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const next = autoComplete(state);
+    expect(next.tableau[0]).toEqual([c("spades", 10)]);
+    expect(next.tableau[1]).toEqual([c("clubs", 13), c("hearts", 12)]);
+  });
+
+  it("does not relocate a top card when doing so wouldn't provably help", () => {
+    // 9♣ could legally sit on 10♥, but the card it would expose (8♦) can't
+    // go to foundation yet (diamonds foundation is empty) — the relocate
+    // step only acts on a provable foundation payoff, so it declines.
+    const state = mkState({
+      tableau: [[c("diamonds", 8), c("clubs", 9)], [c("hearts", 10)], [], [], [], [], []],
+    });
     expect(autoComplete(state)).toBe(state);
   });
 });

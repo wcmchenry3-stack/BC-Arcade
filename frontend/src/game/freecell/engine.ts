@@ -12,6 +12,11 @@
  */
 
 import seedsJson from "./seeds.json";
+// True only in E2E test builds (Playwright web + Maestro native, both build
+// with EXPO_PUBLIC_TEST_HOOKS=1). Imported from the dependency-free
+// `envFlags` leaf, not `_shared/testHooks.ts`, so this pure engine doesn't
+// pull in that module's AsyncStorage/HTTP/timer-touching imports.
+import { areTestHooksEnabled } from "../_shared/envFlags";
 import type {
   Card,
   Foundations,
@@ -87,6 +92,20 @@ interface SeedBank {
 
 const SEED_BANK: SeedBank = seedsJson as SeedBank;
 
+// Index into the seed bank used for every deal in a test build — not the
+// bank's first entry. This one (seed 44) deals a natural 2-card supermove
+// at kickoff, which e2e/maestro/flows/freecell/drag.yaml exercises; most
+// seeds don't have one without extra setup moves. Found by scanning the
+// bank with dealGame(seed) + validateMove().
+const E2E_SEED_INDEX = 19;
+
+/**
+ * In a test build, every deal picks a fixed bank entry instead of a random
+ * one, so E2E flows always see the same board and can assert exact outcomes
+ * instead of "either result is fine". Layout for this seed (computed once
+ * via this module's own shuffle) is documented in
+ * e2e/maestro/flows/freecell/drag.yaml.
+ */
 function pickSeed(): number {
   const { seeds } = SEED_BANK;
   if (seeds.length === 0) {
@@ -94,7 +113,7 @@ function pickSeed(): number {
       "FreeCell seed bank is empty. Run: python backend/scripts/gen_freecell_seeds.py"
     );
   }
-  const idx = Math.floor(_rng() * seeds.length);
+  const idx = areTestHooksEnabled() ? E2E_SEED_INDEX : Math.floor(_rng() * seeds.length);
   const seed = seeds[idx];
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");

@@ -33,6 +33,39 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!--
+	  expo-dev-launcher's launcher screen (linked into every Debug
+	  configuration build) only offers its "Load embedded bundle" button
+	  when this flag is true AND main.jsbundle actually exists in the app
+	  bundle — see EXDevLauncherController's loadLocalBundleOnSuccess:.
+	  Safe to always declare: it's a no-op unless a build also embeds the
+	  bundle, which only CI smoke builds do (mobile-smoke-ios.yml's
+	  SKIP_BUNDLING override). See "Debug builds skip JS bundling" in
+	  docs/ANDROID-CI.md and #2368.
+	-->
+	<key>EXDevClientEmbeddedBundle</key>
+	<true/>
+	<!--
+	  Suppresses expo-dev-menu's one-time "This is the developer menu" intro
+	  popup (default false) that otherwise covers the home screen on every
+	  fresh install — Maestro clears app state before each flow
+	  (_shared/launch.yaml), so without this every CI run would hit it.
+	  Harmless outside CI: it's real onboarding copy a developer only ever
+	  needs to see once anyway.
+	-->
+	<key>EXDevMenuIsOnboardingFinished</key>
+	<true/>
+	<!--
+	  DevMenuPreferences.swift's showsAtLaunchDefault defaults to true:
+	  expo-dev-menu auto-opens its bottom sheet over the app on every fresh JS
+	  bundle load, independent of EXDevMenuIsOnboardingFinished above. Since
+	  Maestro clears app state before each flow, every CI run hit this fresh,
+	  covering the real home screen and failing the "Choose a game" assertion.
+	  Harmless outside CI: motion/touch/key-command gestures still open the
+	  menu manually, this only suppresses the automatic pop-up. See #2368.
+	-->
+	<key>EXDevMenuShowsAtLaunch</key>
+	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>

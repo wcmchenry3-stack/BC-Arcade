@@ -1,29 +1,61 @@
 name: Mobile Smoke — Android
 
+# NOT triggered on pull_request (same as mobile-smoke-ios.yml): the Maestro
+# job has failed or been cancelled on every run where it actually executed —
+# the only "green" runs in this workflow's history are ones where
+# detect-maestro-scope resolved to nothing and the job was skipped. Known
+# blockers are a cold-launch ANR on the CI emulator plus _shared/launch.yaml's
+# unbounded "Wait"-dismiss loop burning the whole job timeout. Attaching a
+# permanently-red check to every PR into dev collides with the
+# all-checks-green merge rule. Run it on demand via workflow_dispatch (always
+# the full suite — see detect-maestro-scope.yml). Re-add `pull_request`
+# (branches: [dev, main]) once #2400 is fixed.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-smoke-android
-  cancel-in-progress: false
+  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  detect-maestro-scope:
+    uses: ./.github/workflows/detect-maestro-scope.yml
+
   maestro-android:
     name: Maestro Android smoke
+    needs: detect-maestro-scope
+    if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 17
-          cache: gradle
+          # Gradle caching is handled by gradle/actions/setup-gradle below —
+          # actions/setup-java's built-in `cache: gradle` silently failed to
+          # save on every run here (Post step produced no cache-save log
+          # output at all — see #2363), leaving every build cold.
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          # This repo's default branch is `dev`, but this workflow never
+          # runs a job directly on `dev` (only `pull_request` against
+          # dev/main, and `push` to `main`) — setup-gradle's default of
+          # "write only from the default branch" would mean the cache is
+          # never populated. All PRs are same-repo (branch off `dev`, never
+          # forked — see CLAUDE.md's git workflow), and GitHub's cache
+          # service already sandboxes fork-PR runs from writing to the base
+          # repo's cache regardless of this setting, so read-write on every
+          # branch is safe here.
+          cache-read-only: false
 
       - uses: actions/setup-node@v7
         with:
@@ -56,11 +88,38 @@ jobs:
             -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Cache Metro bundler transforms
+        # Metro's default FileStore cache lives at $TMPDIR/metro-cache (see
+        # metro-config's defaults) — /tmp on ubuntu-latest. android-bundle-check
+        # and android-release-smoke (ci.yml) each also invoke the JS bundler
+        # independently; sharing this cache across those jobs' runs on the same
+        # branch avoids re-transforming unchanged sources from scratch in each.
+        uses: actions/cache@v6
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: metro-${{ runner.os }}-
+
       - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug --no-daemon
+        # -PreactNativeArchitectures=x86_64: restrict native (CMake/NDK)
+        # compilation to the single ABI the CI emulator actually runs
+        # instead of all 4 configured in gradle.properties for release
+        # builds. See #2363 — cut ~69% of native build time (~14 min).
+        #
+        # -Pandroid.bundleDebugForCI=true: embed the JS bundle like a release
+        # build would, instead of expecting a live Metro server — combined
+        # with AndroidManifest.xml's EXDevClientEmbeddedBundle flag, this
+        # lets _shared/launch.yaml's "Load embedded bundle" tap reach the
+        # real app. See "Debug builds skip JS bundling" in
+        # docs/ANDROID-CI.md and #2368. Both are one-off `-P` CLI overrides —
+        # neither touches gradle.properties/build.gradle's actual defaults,
+        # so local `npx expo run:android` and the Play Store release build
+        # are unaffected.
+        run: cd android && ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64 -Pandroid.bundleDebugForCI=true
         working-directory: frontend
         env:
           EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Run Maestro flows on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -71,33 +130,54 @@ jobs:
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
+          # NOTE: reactivecircus/android-emulator-runner does not execute this
+          # `script:` block as one cohesive multi-line shell script — each line
+          # runs as its own `sh -c` invocation. A `\` line continuation here
+          # silently breaks (the trailing backslash becomes a literal argument
+          # to the next command instead of continuing onto the following
+          # line) — keep every command on a single physical line. See #2347.
+          #
+          # One `maestro test` invocation per flow directory, not one call
+          # covering every directory's files at once, so one directory's
+          # failure can't abort the rest of the suite (`|| FAIL=1` below;
+          # `exit $FAIL` afterward still fails the step if anything did).
+          #
+          # NOTE: this per-directory split does NOT fix — and was never the
+          # cause of — the "Unrecognized field \"timeout\"" parse error on
+          # YamlElementSelector (#2350). That was a real schema mismatch:
+          # `timeout` was never a valid field on assertVisible/
+          # assertNotVisible/tapOn in any Maestro version, regardless of how
+          # many files are passed to one invocation — confirmed against
+          # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
+          # fix was rewriting flows to use `extendedWaitUntil` instead.
           script: |
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test \
-              --output ./maestro-results \
-              $(find e2e/maestro/flows -name "*.yaml" ! -path "*/_shared/*")
+            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do maestro test --output "maestro-results/$d" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
 
       - name: Write job summary
         if: always()
         shell: python3 {0}
         run: |
-          import xml.etree.ElementTree as ET, os
-          report = 'maestro-results/report.xml'
+          import xml.etree.ElementTree as ET, os, glob
           out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
           rows = []
-          try:
-              root = ET.parse(report).getroot()
-              suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
-              for s in suites:
-                  name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
-                  failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
-                  rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
-          except FileNotFoundError:
-              rows.append('| _(no report — test runner may have crashed)_ | — |\n')
-          except ET.ParseError as exc:
-              rows.append(f'| _(parse error: {exc})_ | — |\n')
+          # One report.xml per flow directory now (see the run step's
+          # per-directory invocation note above / #2350).
+          reports = sorted(glob.glob('maestro-results/*/report.xml'))
+          if not reports:
+              rows.append('| _(no reports — test runner may have crashed before any directory ran)_ | — |\n')
+          for report in reports:
+              try:
+                  root = ET.parse(report).getroot()
+                  suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+                  for s in suites:
+                      name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
+                      failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
+                      rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+              except ET.ParseError as exc:
+                  rows.append(f'| _(parse error in {report}: {exc})_ | — |\n')
           with open(out, 'a') as f:
-              f.write('## Maestro Android Smoke\n\n| Flow | Result |\n|---|---|\n')
+              f.write('## Maestro Android Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
               f.writelines(rows)
 
       - name: Upload Maestro results
@@ -118,6 +198,6 @@ jobs:
           name: maestro-android-screenshots
           path: |
             screenshots/
-            maestro-results/screenshots/
+            maestro-results/*/screenshots/
           if-no-files-found: ignore
           retention-days: 7

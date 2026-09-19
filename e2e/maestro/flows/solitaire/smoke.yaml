@@ -6,8 +6,9 @@ appId: com.buffingchi.games
     env:
       gameSlug: "solitaire"
       screenLabel: "Solitaire"
-- assertVisible:
-    id: "solitaire-stock-pile"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
     timeout: 8000
 - tapOn:
     id: "solitaire-stock-pile"
