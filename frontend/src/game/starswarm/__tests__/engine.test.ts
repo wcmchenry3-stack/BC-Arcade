@@ -561,6 +561,162 @@ describe("#2352 non-blocking wave clear", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #2409 — in-flight bullets survive a wave clear instead of vanishing, and a
+// leftover enemy bullet can't unfairly kill the player after the wave they
+// were fired in has already cleared.
+// ---------------------------------------------------------------------------
+
+describe("#2409 bullets survive wave clear", () => {
+  function makeEnemyBullet(overrides: Partial<Bullet> = {}): Bullet {
+    return {
+      id: 88888,
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: BULLET_E_VY,
+      owner: "enemy",
+      width: 5,
+      height: 14,
+      damage: 1,
+      ...overrides,
+    };
+  }
+
+  function makePlayerBullet(overrides: Partial<Bullet> = {}): Bullet {
+    return {
+      id: 77777,
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: -0.6,
+      owner: "player",
+      width: 3,
+      height: 10,
+      damage: 1,
+      ...overrides,
+    };
+  }
+
+  it("an in-flight enemy bullet is not wiped by a wave clear", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    const bullet = makeEnemyBullet({ x: CANVAS_W / 2, y: 50 });
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      enemyBullets: [bullet],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(2);
+    expect(s.enemyBullets).toHaveLength(1);
+    expect(s.enemyBullets[0]!.id).toBe(bullet.id);
+  });
+
+  it("an in-flight player bullet is not wiped by a wave clear", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    const bullet = makePlayerBullet({ x: CANVAS_W / 2, y: 200 });
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      playerBullets: [bullet],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(2);
+    expect(s.playerBullets).toHaveLength(1);
+    expect(s.playerBullets[0]!.id).toBe(bullet.id);
+  });
+
+  it("a carried-over enemy bullet keeps moving and despawns off-screen normally", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    const bullet = makeEnemyBullet({ x: CANVAS_W / 2, y: CANVAS_H - 5 });
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      enemyBullets: [bullet],
+    };
+    s = tick(s, 16, NO_INPUT); // wave clears, bullet carries over
+    expect(s.enemyBullets).toHaveLength(1);
+    s = tick(s, 100, NO_INPUT); // bullet travels past the bottom edge
+    expect(s.enemyBullets).toHaveLength(0);
+  });
+
+  it("a leftover enemy bullet on a collision course cannot hit the player after the wave clears", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
+    // Above the player, heading straight down — on a collision course but not overlapping yet,
+    // so the wave-clear tick itself carries it over rather than resolving a same-tick hit.
+    const bullet = makeEnemyBullet({ x: s.player.x, y: s.player.y - 100 });
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      enemyBullets: [bullet],
+    };
+    s = tick(s, 16, NO_INPUT); // wave clears — bullet is carried over and marked harmless
+    expect(s.wave).toBe(2);
+    expect(s.enemyBullets[0]?.harmless).toBe(true);
+
+    // Advance until the bullet reaches (and passes through) the player's position.
+    s = advanceMs(s, 400, NO_INPUT);
+    expect(s.player.lives).toBe(3);
+    expect(s.phase).not.toBe("GameOver");
+  });
+
+  it("a freshly-fired enemy bullet in the new wave can still hit the player normally", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT); // wave clears, no leftover bullets this time
+    expect(s.wave).toBe(2);
+
+    s = { ...s, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
+    const bullet = makeEnemyBullet({ x: s.player.x, y: s.player.y }); // not harmless
+    s = { ...s, enemyBullets: [bullet] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(2);
+  });
+
+  it("a carried-over player bullet can still score a hit on a new-wave enemy", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT); // wave 2 begins, SwoopIn
+    expect(s.wave).toBe(2);
+    // Let wave 2's enemies finish swooping into formation (on-screen) before parking a bullet
+    // on one — freshly-spawned enemies start off-screen mid-Bezier-path. Enemy fire is
+    // disabled for this stretch; it's irrelevant to what's being tested and would otherwise
+    // risk an unrelated GameOver under NO_INPUT before the assertions below even run.
+    s = { ...s, enemyFireDisabled: true };
+    s = advanceMs(s, 8000, NO_INPUT);
+    expect(s.phase).toBe("Playing");
+    s = { ...s, enemyFireDisabled: false, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
+    const target = s.enemies.find((e) => e.isAlive)!;
+    // Bullet is sized generously (dodge-proof) and damage is high enough to one-shot any
+    // tier regardless of which enemy ends up at index 0 (Bosses have the most HP, at 4).
+    const bullet = makePlayerBullet({
+      x: target.x,
+      y: target.y,
+      vy: 0,
+      width: 200,
+      height: 200,
+      damage: 999,
+    });
+    const scoreBefore = s.score;
+    s = { ...s, playerBullets: [bullet] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.score).toBeGreaterThan(scoreBefore);
+  });
+
+  it("first wave of a fresh game starts with no leftover bullets", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
+    expect(s.playerBullets).toHaveLength(0);
+    expect(s.enemyBullets).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Free Fire Zone
 // ---------------------------------------------------------------------------
 
