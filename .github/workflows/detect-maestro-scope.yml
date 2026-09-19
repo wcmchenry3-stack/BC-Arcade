@@ -36,6 +36,10 @@ jobs:
 
       - uses: dorny/paths-filter@v4
         id: filter
+        # workflow_dispatch has no before/after pair to diff and always runs
+        # the full suite anyway (see the `scope` step) — skip the filter
+        # rather than depend on how it resolves a base for that event.
+        if: github.event_name != 'workflow_dispatch'
         with:
           filters: |
             yacht:
@@ -142,9 +146,11 @@ jobs:
 
       - id: scope
         run: |
-          # Push events, PRs targeting main, or a shared/infra path change
-          # always run the full suite — same rule as ci.yml's detect-e2e-scope.
+          # Push events, manual dispatches, PRs targeting main, or a
+          # shared/infra path change always run the full suite — same rule as
+          # ci.yml's detect-e2e-scope.
           if [[ "${{ github.event_name }}" == "push" ]] || \
+             [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
              [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
             echo "projects=${{ steps.guard.outputs.full_suite }}" >> "$GITHUB_OUTPUT"

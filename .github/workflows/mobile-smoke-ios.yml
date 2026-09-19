@@ -1,6 +1,7 @@
 name: Mobile Smoke — iOS
 
-# NOT triggered on pull_request (unlike mobile-smoke-android.yml): this leg
+# NOT triggered on pull_request (mobile-smoke-android.yml now follows the same
+# rule, for its own reasons — see its header): this leg
 # has failed on every run since inception (#2347, Xcode/Swift toolchain
 # mismatch on the macos-15 runner — unrelated to app code). Attaching a
 # permanently-red check to every PR into dev would collide with the

@@ -43,7 +43,7 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-15` |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | push to `main`, PRs into `dev`/`main` | push to `main`, PRs into `dev`/`main` |
+| Trigger | push to `main`, manual `workflow_dispatch` (full suite) — **not** PRs, see #2400 | push to `main` — **not** PRs, see #2347 |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -51,9 +51,11 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 ### Scoped runs on PRs
 
+> **Currently dormant.** Neither mobile-smoke workflow has a `pull_request` trigger right now (iOS: #2347; Android: #2400 — the job never passed when it actually executed), so only the full-suite rule below is live. The selective rules are kept in `detect-maestro-scope.yml` and take effect again as soon as `pull_request` is re-added.
+
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 
-- **Push to `main`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
+- **Push to `main`**, a **manual `workflow_dispatch`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
 - **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
 - A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
 
