@@ -22,15 +22,15 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 - ⚠️ No prod environment: backend runs at dev-games-api.buffingchi.com only (#505).
 - CI: `ci.yml` green on dev; iOS mobile smoke red since June (#2347) — deferred, manual TestFlight verification instead.
 - ⚠️ **Correction (2026-09-18): Android Maestro smoke was never actually green.** Every "success" in `mobile-smoke-android.yml`'s history (including Sep 11) is the Maestro job being *skipped* because `detect-maestro-scope` found nothing relevant; every run where it really executed (~30, June → Aug 30, across `main` + 5 branches) failed or was cancelled — cold-launch ANR on the CI emulator plus an unbounded "Wait"-dismiss loop in `_shared/launch.yaml`. **Maestro is descoped from the launch on both platforms**: Android leg taken off `pull_request` (on-demand `workflow_dispatch` only), restoration tracked in #2400. Verification below relies on Jest + manual checks on real release builds instead.
-- Open PRs: #2374 (Hearts a11y crash fix, draft), #2332 (release-please 1.1.0 — **hold until the Oct 6 version decision**), Dependabot (handled on the Mac).
+- Open PRs (end of Sep 18): #2332 (release-please 1.1.0 — **hold until the Oct 6 version decision**). #2374 and all Dependabot PRs merged; dev is at expo 57.0.23 / RN 0.86.3 / reanimated 4.5.5 / gesture-handler 3.3.0 / screens 4.28.0 / skia 2.11.2 / sentry-rn 8.26.0.
 
 ### Launch-gating issues (must close before submission)
 
 | # | Issue | Notes |
 |---|---|---|
-| 1917 | Locked games blocker | Resolved via hide-premium (new implementation issue to file) |
+| 1917 | Locked games blocker | Resolved via hide-premium — implementation issue #2390 |
 | 1918/2277 | Keystore rotation + secret removal | PC + Play Console; do early |
-| 1914 | 4.2 cohesion | XP + daily challenge (new implementation issues to file) |
+| 1914 | 4.2 cohesion | XP (#2391) + daily challenge (#2392) |
 | 828 | Privacy Policy + ToS hosted at stable URLs | buffingchi.com/privacy, /terms |
 | 1922 | Privacy/ToS links in Settings | Small; i18n'd link text |
 | 505 | Prod Render environment | games-api.buffingchi.com; pin to main |
@@ -40,9 +40,9 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 | 830 | TestFlight internal track | Mac |
 | 832 | Play testing tracks | PC |
 | 836 | ATT/IDFA audit doc | Likely "no ATT needed" — document it |
-| 2328 | iOS MessageQueue runtime error | Local-dev simulator startup failure — blocks Mac dev loop; fix early |
-| 2380 | Android offline errors spamming Sentry | Small fix in `frontend/src/game/_shared/httpClient.ts` (root cause already diagnosed in issue: broaden TypeError-only network classification to cover CodedError) |
-| 2372/2374 | Hearts Android crash | PR already in flight — merge (game hidden but code ships) |
+| ~~2328~~ | iOS MessageQueue runtime error | ✅ Sep 18 — did not reproduce on a clean Metro cache + fresh native build (stale dev-client binary after the SDK 57/RN 0.86 bumps); recovery recipe in `docs/IOS.md` (#2404) |
+| ~~2380~~ | Android offline errors spamming Sentry | ✅ Sep 18 — #2402 (CodedError classified as network in `httpClient.ts`) |
+| ~~2372/2374~~ | Hearts Android crash | ✅ Sep 18 — #2374 merged (game hidden but code ships) |
 | — | iOS version string mismatch (1.0.0 vs 1.0.9) | Fix with release version bump |
 | 851 | Sentry envs/prod DSN/release tag | Needed so prod crashes are visible at launch |
 | 857 | Versioning + forced-upgrade kill-switch | Descope to: pick launch version + document; kill-switch post-launch |
@@ -91,8 +91,8 @@ Both machines available daily. Mac = Xcode Cloud/TestFlight/iOS sim/ASC; PC = Gr
 ### Week 1 — clear the decks + hide premium (Sep 18–24)
 | Day | PC | Mac |
 |---|---|---|
-| **Thu 18** | Merge PR #2374 (Hearts crash) + 3 Dependabot PRs; decide release-please #2332. File implementation issues via `plan-issues` agent (haiku): hide-premium, XP, daily challenge, launch-checklist umbrella. Verify Play Console app record + testing-track history (confirm no 14-day cold start). | Verify Xcode Cloud still builds current dev; fix #2328 (MessageQueue sim startup — dev-loop blocker). Verify ASC app record + agreements current. |
-| **Fri 19** | **#1918/#2277 keystore**: rotate keystore password (`keytool -storepasswd`), move passwords out of tracked `gradle.properties` into untracked local file + GitHub Actions secrets, verify `./gradlew assembleDebug` + release signing. | Fix iOS version string (Info.plist 1.0.0 → match app.json); fix #2380 (httpClient CodedError classification, sonnet subagent). |
+| **Thu 18** ✅ | Done: #2374 merged; #2401 Maestro descope merged; #2380 fixed early (#2402); #2332 decided (hold to Oct 6); implementation issues filed (#2390 hide-premium, #2391 XP, #2392 daily challenge — no separate umbrella, epic #1916 + the gating table above serve that role). Still open: Play Console record + testing-track history check. | Done: Dependabot cleared (#2396 expo 57.0.23, #2395 12-pkg group — each needed a `pod install` Podfile.lock commit pushed onto the Dependabot branch); #2328 closed (#2404). Still open: Xcode Cloud build of current dev + ASC record/agreements check. |
+| **Fri 19** | **#1918/#2277 keystore**: rotate keystore password (`keytool -storepasswd`), move passwords out of tracked `gradle.properties` into untracked local file + GitHub Actions secrets, verify `./gradlew assembleDebug` + release signing. Carry-over: Play Console record check. | Fix iOS version string (Info.plist 1.0.0 → match app.json). Carry-over: Xcode Cloud + ASC checks. (#2380 already landed Sep 18.) |
 | **Sat 20** | Implement hide-premium (A): `gameVisibility.ts`, HomeScreen filter, App.tsx routes + Ranks tab. | Verify on iOS simulator; check 3-tab layout + 6-tile grid. |
 | **Sun 21** | Finish A: Jest updates (`gameVisibility.test.ts`, HomeScreen hidden-games block), docs. Open PR, review, merge. | Start XP (B) backend: `progression.py` + tests. |
 | **Mon 22** | XP: schemas/router wiring + backend tests green. | **Cut TestFlight internal build #1** (hide-premium in): confirm premium tiles absent in a real release build. |
