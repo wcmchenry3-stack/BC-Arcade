@@ -16,7 +16,7 @@ import {
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
@@ -464,11 +464,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
       ctx.globalAlpha = 1;
 
-      // Enemy bullets
+      // Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless) are
+      // dimmed so the player can tell they no longer need dodging.
       ctx.fillStyle = C.bulletEnemy;
       for (const b of state.enemyBullets) {
+        ctx.globalAlpha = b.harmless ? HARMLESS_BULLET_OPACITY : 1;
         ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
       }
+      ctx.globalAlpha = 1;
 
       // Player bullets — charge bullets (wider) use bulletCharge sprite / cyan fallback
       for (const b of state.playerBullets) {

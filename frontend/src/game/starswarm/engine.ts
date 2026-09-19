@@ -669,7 +669,13 @@ function buildWaveState(
   player: Player,
   score: number,
   bonusLivesAwarded = 0,
-  difficulty: DifficultyTier = "LieutenantJG"
+  difficulty: DifficultyTier = "LieutenantJG",
+  // #2352 follow-up: bullets already in flight when a wave clears carry into the next wave
+  // instead of vanishing (a real missile doesn't disappear because the ship that fired it
+  // did). Empty by default for a fresh game start (initStarSwarm) — only startNextWave()
+  // passes real carried-over bullets.
+  playerBullets: readonly Bullet[] = [],
+  enemyBullets: readonly Bullet[] = []
 ): StarSwarmState {
   let enemies: Enemy[];
   let phase: StarSwarmState["phase"];
@@ -702,8 +708,8 @@ function buildWaveState(
     score,
     player: wavePlayer,
     enemies,
-    playerBullets: [],
-    enemyBullets: [],
+    playerBullets,
+    enemyBullets,
     explosions: [],
     powerUps,
     buddyShips: [],
@@ -1294,6 +1300,11 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   }
 
   const newEnemyBullets: Bullet[] = [...state.enemyBullets];
+  // Harmless bullets carried over from a cleared wave (see Bullet.harmless) don't count
+  // against bulletCap() — otherwise up to a full cap's worth of leftovers would suppress
+  // the new wave's real fire until they drift off-screen.
+  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless).length;
+  const enemyBulletCap = bulletCap(state.wave, _ps);
   let enemies = state.enemies.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
     const result = tickSingleEnemy(
@@ -1320,12 +1331,9 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (e.isAlive && e.hitFlashTimer > 0) {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
-    if (
-      result.bullet &&
-      newEnemyBullets.length < bulletCap(state.wave, _ps) &&
-      !state.enemyFireDisabled
-    ) {
+    if (result.bullet && liveEnemyBulletCount < enemyBulletCap && !state.enemyFireDisabled) {
       newEnemyBullets.push(result.bullet);
+      liveEnemyBulletCount++;
     }
     return e;
   });
@@ -1649,15 +1657,22 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   let currentEnemyBullets: typeof state.enemyBullets = bombActivated ? [] : state.enemyBullets;
 
   if (player.invincibleTimer <= 0) {
-    const bulletHits = currentEnemyBullets.filter((b) =>
-      collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
+    // Harmless (carried-over from a cleared wave, see Bullet.harmless) bullets keep flying
+    // and rendering but can never register a hit — they're excluded here rather than filtered
+    // out of currentEnemyBullets entirely so they still despawn normally via tickBullets.
+    const bulletHits = currentEnemyBullets.filter(
+      (b) =>
+        !b.harmless &&
+        collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
     );
     const hitByBullet = bulletHits.length > 0;
 
     if (hitByBullet && shieldActive) {
-      // Shield absorbs the bullets — no damage
+      // Shield absorbs the bullets — no damage. Harmless bullets aren't absorbed (they were
+      // never counted in bulletHits), so they fly on through instead of popping mid-screen.
       currentEnemyBullets = currentEnemyBullets.filter(
         (b) =>
+          b.harmless ||
           !collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
       );
       activePowerUp = {
@@ -1702,6 +1717,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         const enemyBulletsAfterHit = hitByBullet
           ? currentEnemyBullets.filter(
               (b) =>
+                b.harmless ||
                 !collideCircleAABB(
                   player.x,
                   player.y,
@@ -1869,7 +1885,13 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     state.player,
     state.score,
     state.bonusLivesAwarded,
-    state.difficulty
+    state.difficulty,
+    // In-flight bullets survive the wave boundary instead of vanishing. Enemy bullets are
+    // marked harmless (see Bullet.harmless): the ship the player was flying already won this
+    // wave, so a shot fired at it a moment before the last enemy died can't retroactively
+    // kill them — it just keeps flying across the screen like a normal spent shot.
+    state.playerBullets,
+    state.enemyBullets.map((b) => (b.harmless ? b : { ...b, harmless: true }))
   );
 }
 
