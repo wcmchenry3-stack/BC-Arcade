@@ -1,10 +1,19 @@
 name: Mobile Smoke — Android
 
+# NOT triggered on pull_request (same as mobile-smoke-ios.yml): the Maestro
+# job has failed or been cancelled on every run where it actually executed —
+# the only "green" runs in this workflow's history are ones where
+# detect-maestro-scope resolved to nothing and the job was skipped. Known
+# blockers are a cold-launch ANR on the CI emulator plus _shared/launch.yaml's
+# unbounded "Wait"-dismiss loop burning the whole job timeout. Attaching a
+# permanently-red check to every PR into dev collides with the
+# all-checks-green merge rule. Run it on demand via workflow_dispatch (always
+# the full suite — see detect-maestro-scope.yml). Re-add `pull_request`
+# (branches: [dev, main]) once #2400 is fixed.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [dev, main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 17
