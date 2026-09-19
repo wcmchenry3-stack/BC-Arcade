@@ -79,3 +79,58 @@ describe("useSound — registered key", () => {
     expect(mockRemove).toHaveBeenCalledTimes(1);
   });
 });
+
+// #2410: Star Swarm's Lightning power-up calls play() up to ~14x/sec (SUPER_SHOOT_COOLDOWN).
+// Each call used to spawn its own seekTo()→play() promise chain against the single shared
+// player with no coordination, so a burst of rapid calls could stack up overlapping pending
+// chains — extra native-bridge round trips competing with the same JS thread driving the
+// game's RAF loop, visible as stutter specifically while Lightning is active.
+describe("useSound — overlapping play() calls (#2410)", () => {
+  it("drops a play() call that arrives while a previous seekTo/play chain is still pending", async () => {
+    let resolveSeek: () => void = () => {};
+    mockSeekTo.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSeek = resolve;
+        })
+    );
+
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+
+    await act(() => {
+      result.current.play(); // starts a chain; seekTo's promise hasn't resolved yet
+    });
+    expect(mockSeekTo).toHaveBeenCalledTimes(1);
+
+    await act(() => {
+      result.current.play(); // arrives mid-chain — dropped, not queued
+    });
+    expect(mockSeekTo).toHaveBeenCalledTimes(1);
+    expect(mockPlay).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSeek();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("a play() call after the previous chain has settled is not dropped", async () => {
+    mockSeekTo.mockReset(); // undo the pending-promise implementation from the test above
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+
+    await act(async () => {
+      result.current.play();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockSeekTo).toHaveBeenCalledTimes(1);
+
+    await act(() => {
+      result.current.play();
+    });
+    expect(mockSeekTo).toHaveBeenCalledTimes(2);
+    expect(mockPlay).toHaveBeenCalledTimes(2);
+  });
+});
