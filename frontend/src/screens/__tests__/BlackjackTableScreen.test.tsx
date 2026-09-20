@@ -504,7 +504,12 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     // #2450 — backend BlackjackResult fields. The losing hand is not a win, and
     // final_chips must be the post-hand balance (0), not the stale pre-hand one.
     expect(summary.result).toEqual(
-      expect.objectContaining({ hands_won: 0, starting_chips: 1000, final_chips: 0 })
+      expect.objectContaining({
+        hands_won: 0,
+        hands_played: 1,
+        starting_chips: 1000,
+        final_chips: 0,
+      })
     );
   });
 
@@ -530,6 +535,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     expect(summary?.outcome).toBe("abandoned");
     expect(summary?.result).toEqual({
       hands_won: 1,
+      hands_played: 1,
       starting_chips: expect.any(Number),
       final_chips: 100,
     });

@@ -72,6 +72,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     syncSetProgressSnapshot(() => ({
       result: {
         hands_won: handsWonRef.current,
+        hands_played: totalHandsRef.current,
         starting_chips: engineRef.current?.startingChips ?? null,
         final_chips: engineRef.current?.chips ?? null,
       },
@@ -128,6 +129,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           outcome,
           // #2450 — backend BlackjackResult fields.
           hands_won: handsWonRef.current,
+          hands_played: totalHandsRef.current,
           starting_chips: engine?.startingChips ?? null,
           final_chips: finalChips ?? engine?.chips ?? null,
         }
