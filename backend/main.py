@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -48,13 +49,28 @@ _audit_log = logging.getLogger("audit")
 # Sentry — no-op when SENTRY_DSN is unset (local dev)
 # ---------------------------------------------------------------------------
 
+
+def _sentry_options(dsn: str) -> dict:
+    """Build the sentry_sdk.init kwargs.
+
+    `environment` comes from ENVIRONMENT (set per service in render.yaml) and
+    defaults to "development" — sentry-sdk's own default is "production", which
+    tagged every dev-API event as production (#851). `release` is the deployed
+    commit, which Render injects as RENDER_GIT_COMMIT.
+    """
+    return {
+        "dsn": dsn,
+        "integrations": [StarletteIntegration(), FastApiIntegration()],
+        "traces_sample_rate": 0.1,
+        "environment": os.environ.get("ENVIRONMENT", "development"),
+        "release": os.environ.get("RENDER_GIT_COMMIT"),
+        "send_default_pii": False,
+    }
+
+
 _sentry_dsn = os.environ.get("SENTRY_DSN")
 if _sentry_dsn:
-    sentry_sdk.init(
-        dsn=_sentry_dsn,
-        integrations=[StarletteIntegration(), FastApiIntegration()],
-        traces_sample_rate=0.1,
-    )
+    sentry_sdk.init(**_sentry_options(_sentry_dsn))
 
 # ---------------------------------------------------------------------------
 # App
@@ -227,6 +243,26 @@ async def _dev_entitlement_override_warning() -> None:
         )
 
 
+DB_PING_TIMEOUT_SECONDS = 5.0
+
+
+async def _ping_db() -> None:
+    """Round-trip `SELECT 1`. Raises on any connectivity failure.
+
+    Bounded: a pooler that accepts the TCP connection and then stalls would
+    otherwise hold the request for asyncpg's ~60 s connect timeout (or
+    SQLAlchemy's 30 s pool timeout when the pool is exhausted), so the uptime
+    monitor would see its own timeout instead of a 503 and polls would pile up.
+    """
+    from sqlalchemy import text
+
+    async def _select_one() -> None:
+        async with get_engine().connect() as conn:
+            await conn.execute(text("SELECT 1"))
+
+    await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
+
+
 @app.on_event("startup")
 async def _db_health_check() -> None:
     """Log DB reachability on boot. Non-fatal if DATABASE_URL is unset."""
@@ -234,10 +270,7 @@ async def _db_health_check() -> None:
         _audit_log.info(json.dumps({"event": "db_unconfigured"}))
         return
     try:
-        from sqlalchemy import text
-
-        async with get_engine().connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        await _ping_db()
         host = DATABASE_URL.split("@")[-1] if DATABASE_URL else ""
         _audit_log.info(json.dumps({"event": "db_connected", "url": host}))
     except Exception as exc:  # noqa: BLE001
@@ -248,6 +281,27 @@ async def _db_health_check() -> None:
 @limiter.limit("120/minute")
 def health(request: Request) -> dict:
     return {"status": "ok"}
+
+
+@app.get("/health/db")
+@limiter.limit("30/minute")
+async def health_db(request: Request) -> JSONResponse:
+    """DB round-trip for the uptime monitor.
+
+    `/health` never touches the database, so Render's health check alone would
+    let the Supabase free-plan project idle into a pause (#2432). The error
+    detail goes to the audit log only — never into the response body.
+    """
+    if not is_configured():
+        return JSONResponse(status_code=503, content={"status": "unconfigured"})
+    try:
+        await _ping_db()
+    except Exception as exc:  # noqa: BLE001
+        # asyncio.TimeoutError stringifies to "" — log the type so a stall is legible.
+        detail = str(exc) or type(exc).__name__
+        _audit_log.error(json.dumps({"event": "db_health_failed", "error": detail}))
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return JSONResponse(content={"status": "ok"})
 
 
 # ---------------------------------------------------------------------------
