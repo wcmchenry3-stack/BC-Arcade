@@ -72,6 +72,15 @@ describe("BottomTabBar", () => {
     expect(screen.getByText("Settings")).toBeTruthy();
   });
 
+  it("paints the app background behind its rounded corners", async () => {
+    // Otherwise the native window colour shows through the corner cut-outs
+    // (white corners on the dark theme).
+    const { getByTestId } = await render(<BottomTabBar {...buildProps()} />);
+    const backing = StyleSheet.flatten(getByTestId("tab-bar-backing").props.style);
+    expect(backing.backgroundColor).toBeTruthy();
+    expect(backing.backgroundColor).not.toBe("transparent");
+  });
+
   it("renders a container with accessibilityRole tablist", async () => {
     const { getByRole } = await render(<BottomTabBar {...buildProps()} />);
     expect(getByRole("tablist")).toBeTruthy();
