@@ -56,7 +56,7 @@ import {
   saveTodayMeta,
   loadTodayMeta,
 } from "../game/daily_word/storage";
-import { ApiError } from "../game/_shared/httpClient";
+import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
 import type { DevLogEntry } from "../game/daily_word/devLog";
 
@@ -728,10 +728,10 @@ export default function DailyWordScreen() {
               saveTodayMeta(dateKey, meta).catch(() => {});
               return meta;
             })
-            // Only serve cached meta on network failures (TypeError). HTTP errors
+            // Only serve cached meta on network failures (isNetworkError). HTTP errors
             // such as 401 mean the server is actively denying access — falling
             // back to cache would bypass that.
-            .catch((e) => (e instanceof TypeError ? loadTodayMeta(dateKey) : null)),
+            .catch((e) => (isNetworkError(e) ? loadTodayMeta(dateKey) : null)),
           loadState(),
         ]);
 

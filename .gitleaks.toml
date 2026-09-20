@@ -1,3 +1,21 @@
+# Without [extend] useDefault, a custom config REPLACES gitleaks' built-in rules.
+# This file previously held only an allowlist, which left the secret scan with
+# zero rules — it could not flag anything (#1918, #2277).
+[extend]
+  useDefault = true
+
+# The default generic-api-key rule only captures [\w.=-] runs, so a password
+# containing other symbols slips past it. Catch any literal value assigned to
+# the Android upload-keystore password properties, whatever its shape.
+[[rules]]
+  id = "android-upload-keystore-password"
+  description = "Android upload keystore password assigned in a tracked file"
+  regex = '''UPLOAD_(?:STORE|KEY)_PASSWORD[ \t]*=[ \t]*(\S+)'''
+  keywords = ["upload_store_password", "upload_key_password"]
+  # The public debug-keystore password (CI's -P flags) and doc placeholders.
+  [[rules.allowlists]]
+    regexes = ['''^(?:android|\.\.\.)$''']
+
 [allowlist]
   description = "False-positive suppressions"
   # frontend/src/game/blackjack/storage.ts: RUNS_KEY constant name triggered
@@ -6,4 +24,14 @@
   # misleading future readers.
   commits = [
     "6c996d98bb38a8971a308fd6a56397fef55dbebb",
+  ]
+  # CocoaPods spec checksums (40-hex SHA-1s next to names like "RNAudioAPI")
+  # read as generic-api-key hits; the lockfile never holds credentials.
+  paths = [
+    '''frontend/ios/Podfile\.lock$''',
+  ]
+  # AsyncStorage namespaces assigned to *_KEY constants ("yacht_pref_v1",
+  # "blackjack_runs_v1"): lowercase snake_case ending in a _vN version suffix.
+  regexes = [
+    '''^[a-z0-9]+(?:_[a-z0-9]+)*_v\d+$''',
   ]
