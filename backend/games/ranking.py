@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import ColumnElement, and_, func, or_, select
