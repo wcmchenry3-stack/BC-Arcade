@@ -6,7 +6,7 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
-from blackjack.models import BlackjackMetadata
+from blackjack.models import BlackjackMetadata, BlackjackResult
 from vocab import GameType
 
 
@@ -21,6 +21,7 @@ class BlackjackModule:
 
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
+    result_model = BlackjackResult
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

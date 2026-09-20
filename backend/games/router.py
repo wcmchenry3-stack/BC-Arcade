@@ -251,6 +251,7 @@ async def complete_game(
                 outcome=body.outcome,
                 duration_ms=body.duration_ms,
                 completed_at=body.completed_at,
+                result=body.result,
             )
         except service.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail)
