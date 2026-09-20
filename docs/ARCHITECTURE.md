@@ -260,8 +260,6 @@ nothing premium should be free anywhere. That is the production site
 (`bc-arcade-frontend`, built against the production API). The `dev`-branch
 staging site (`bc-arcade-frontend-dev`) is built against the pre-launch API, so
 like TestFlight it shows all 12 until launch.
-the premium games too** (owner decision, 2026-09-19). Web is unmonetized, and
-nothing premium should be free anywhere.
 
 A leaked `EXPO_PUBLIC_TEST_HOOKS=1` would unhide everything. Android release
 builds refuse to run when the flag is set (`docs/ANDROID-CI.md`, "Release bundle
@@ -270,3 +268,38 @@ Xcode Cloud rewrites `.env` on every build (it does not check the workflow's own
 environment variables — never add the flag there). `frontend/metro.config.js`
 keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
 test-hooks build can never be reused by a store build on any platform.
+
+## 11. Database topology and environments
+
+Three tiers, and no tier ever points at another's data:
+
+| Tier       | API                                | Database                                                  | Sentry environment |
+| ---------- | ---------------------------------- | --------------------------------------------------------- | ------------------ |
+| Production | Render `bc-arcade-api` (`main`)    | **Supabase** Postgres, via the session pooler (port 5432) | `production`       |
+| Dev        | Render `bc-arcade-api-dev` (`dev`) | Render Postgres `bc-arcade-db`                            | `development`      |
+| Local + CI | uvicorn / pytest                   | SQLite (`tests/conftest.py` creates it)                   | `development`      |
+
+- **Schema has one source: Alembic.** Both Render APIs run `alembic upgrade head`
+  on every boot, so a merged migration applies itself on the next deploy. Supabase
+  is used as plain Postgres — no Supabase CLI migrations, no branching, no
+  PostgREST. Its **Data API is switched off**: Alembic's `public` tables carry no
+  RLS, so the Data API would expose every table to anyone holding the anon key.
+  (The Supabase MCP server is unaffected — it uses the Management API.)
+- **Production started empty.** Nothing is ever copied from dev: no test scores,
+  no dev-override entitlements.
+- **The environment follows the wiring, not a switch.** The backend reads
+  `ENVIRONMENT` (set per service in `render.yaml`; unset means `development`).
+  The app derives it from the API URL it was compiled against
+  (`frontend/src/utils/sentryConfig.ts`) — the same rule as game visibility
+  (§10.7) — so pointing a build at the production API flips visibility,
+  entitlements and the Sentry environment together.
+- **Keep-alive.** `GET /health` never touches the database; `GET /health/db` does
+  a `SELECT 1`. An external uptime monitor polls it so the database connection is
+  exercised continuously and a pooler outage is visible.
+- **Guards:** `test_render_yaml_prod_database_is_not_a_render_db` and
+  `test_render_yaml_prod_does_not_set_dev_override`
+  (`backend/tests/test_entitlements.py`) keep the blueprint from wiring prod to
+  dev data or to the entitlement override.
+
+Operational detail — env vars, first deploy, connection rules — is in
+[`RENDER.md`](RENDER.md).

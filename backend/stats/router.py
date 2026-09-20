@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 
 from db.base import get_session_factory
 from games import service as games_service
+from games.progression import compute_progression
 from games.schemas import GameTypeStatsResponse, StatsResponse
 from limiter import limiter, session_key
 from session import get_session_id
@@ -23,6 +24,7 @@ async def get_my_stats(request: Request) -> StatsResponse:
     factory = get_session_factory()
     async with factory() as db:
         summary = await games_service.get_stats_for_session(db, session_id=sid)
+    progression = compute_progression(summary)
     return StatsResponse(
         total_games=summary.total_games,
         by_game={
@@ -41,4 +43,8 @@ async def get_my_stats(request: Request) -> StatsResponse:
             for name, s in summary.by_game.items()
         },
         favorite_game=summary.favorite_game,
+        arcade_xp=progression.arcade_xp,
+        arcade_level=progression.arcade_level,
+        xp_into_level=progression.xp_into_level,
+        xp_for_next_level=progression.xp_for_next_level,
     )

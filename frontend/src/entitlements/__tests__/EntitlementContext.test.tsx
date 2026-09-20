@@ -346,6 +346,35 @@ describe("EntitlementProvider", () => {
       );
     });
 
+    it("foreground refresh treats Expo's native FetchError shape as a network failure (#2428)", async () => {
+      const Sentry = jest.requireMock("@sentry/react-native");
+
+      mockRequest.mockResolvedValueOnce({
+        token: makeToken(makePayload(["cascade"])),
+        expires_at: "2099-01-01T00:00:00Z",
+      });
+      await renderProvider();
+      expect(ctx.canPlay("cascade")).toBe(true);
+      Sentry.addBreadcrumb.mockClear();
+
+      // What devices really throw: a plain Error, "fetch failed: …" (BC_GAMES-4Y).
+      mockRequest.mockRejectedValue(
+        new Error(
+          "fetch failed: UnexpectedException: A server with the specified hostname could not be found."
+        )
+      );
+      const listener = getAppStateListener();
+      await act(async () => {
+        listener("active");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+
+      expect(ctx.canPlay("cascade")).toBe(true);
+      expect(Sentry.addBreadcrumb).not.toHaveBeenCalledWith(
+        expect.objectContaining({ category: "entitlements", message: "token refresh failed" })
+      );
+    });
+
     it("all-games dev-override cache is denied once the 7-day grace period expires", async () => {
       const expiredPayload = makePayload(ALL_PREMIUM, -3_600_000); // token itself expired
       await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(expiredPayload));

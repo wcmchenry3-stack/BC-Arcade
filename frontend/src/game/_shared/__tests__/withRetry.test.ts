@@ -49,6 +49,24 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
+  it("retries on Expo's native FetchError shape — what devices really throw (#2428)", async () => {
+    // Expo's native fetch rethrows offline / DNS failures as a plain Error
+    // subclass with a "fetch failed: …" message (BC_GAMES-4Y), not the bare
+    // CodedError above — see isNetworkError in httpClient.ts.
+    const fn = jest
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          "fetch failed: UnexpectedException: A server with the specified hostname could not be found."
+        )
+      )
+      .mockResolvedValueOnce("ok");
+
+    const result = await withRetry(fn, { maxRetries: 3, baseDelayMs: 0 });
+    expect(result).toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
   it("throws immediately on non-TypeError errors without retrying", async () => {
     const apiErr = new Error("ApiError: 404");
     const fn = jest.fn().mockRejectedValue(apiErr);

@@ -27,19 +27,33 @@ export class ApiError extends Error {
 }
 
 /**
- * True for network-layer failures: `fetch` throws `TypeError` for these on
- * web (offline, DNS, CORS, "Failed to fetch"), but on Android the same class
- * of failure (e.g. DNS resolution failing while offline) surfaces through
- * Expo's native fetch layer as a `CodedError` instead — see #2380. Both are
- * recoverable connectivity failures, not bugs in our request-building code.
+ * True for network-layer failures — recoverable connectivity problems
+ * (offline, DNS, CORS), not bugs in our request-building code:
  *
- * Matching on the `CodedError` class alone is only safe because `fetch` is
- * the sole Expo native module called inside `request`'s try block (session
- * IDs come from AsyncStorage, which doesn't throw `CodedError`). Revisit if
- * another Expo module call is ever added there.
+ * - Web: `fetch` throws `TypeError` ("Failed to fetch").
+ * - iOS / Android: Expo's native `fetch` catches the native module's
+ *   `CodedError` and rethrows it as `FetchError extends Error` with the
+ *   message `fetch failed: <native message>` (expo/src/winter/fetch) — so
+ *   what reaches us is neither a `TypeError` nor a `CodedError` (#2428; the
+ *   #2380 fix matched `CodedError` and never fired on a device). Matched by
+ *   message prefix rather than class: `FetchError` is not part of Expo's
+ *   public API, and a deep import of it would break on an SDK reshuffle.
+ * - A bare `CodedError` stays matched in case a native failure ever escapes
+ *   unwrapped. That arm is only safe because `fetch` is the sole Expo native
+ *   module called inside `request`'s try block (session IDs come from
+ *   AsyncStorage, which doesn't throw `CodedError`). Revisit if another Expo
+ *   module call is ever added there.
+ *
+ * `FetchError` also covers aborts ("fetch failed: The operation was
+ * aborted."). Nothing passes an `AbortSignal` today; exclude that message
+ * here if a caller ever needs aborts kept distinct.
  */
-export function isNetworkError(e: unknown): e is TypeError | CodedError {
-  return e instanceof TypeError || e instanceof CodedError;
+export function isNetworkError(e: unknown): e is Error {
+  return (
+    e instanceof TypeError ||
+    e instanceof CodedError ||
+    (e instanceof Error && e.message.startsWith("fetch failed"))
+  );
 }
 
 /**
@@ -188,7 +202,7 @@ export function createGameClient(options: HttpClientOptions) {
       }
       if (isNetworkError(e)) {
         // Network-layer failures (offline, DNS, CORS, "Failed to fetch" —
-        // or Android's CodedError-wrapped equivalent, see #2380) are
+        // or Expo's native "fetch failed: …" equivalent, see #2428) are
         // recoverable and distinct from a programming error — surface as
         // a warning message, not a captured exception with a stack. The
         // synthetic stack here would otherwise group every offline user

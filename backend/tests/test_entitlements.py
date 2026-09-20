@@ -200,6 +200,41 @@ def test_render_yaml_prod_does_not_set_dev_override() -> None:
     assert "ENTITLEMENT_DEV_OVERRIDE" not in env_keys
 
 
+def test_render_yaml_prod_database_is_not_a_render_db() -> None:
+    """Prod data lives in Supabase. The only Render database in the blueprint is
+    the dev one, so a `fromDatabase` on any `main` service would wire prod to dev
+    data — which is what render.yaml said until Sep 2026 (#2432)."""
+    from pathlib import Path
+
+    import yaml
+
+    render_yaml = Path(__file__).resolve().parent.parent.parent / "render.yaml"
+    config = yaml.safe_load(render_yaml.read_text())
+    prod_services = [s for s in config["services"] if s.get("branch") == "main"]
+    assert prod_services, "expected at least one service tracking main"
+    for service in prod_services:
+        for env in service.get("envVars", []):
+            assert "fromDatabase" not in env, f"{service['name']}: {env['key']} uses fromDatabase"
+
+    prod_api = next(s for s in config["services"] if s["name"] == "bc-arcade-api")
+    database_url = next(e for e in prod_api["envVars"] if e["key"] == "DATABASE_URL")
+    assert database_url == {"key": "DATABASE_URL", "sync": False}
+
+
+def test_render_yaml_apis_declare_their_sentry_environment() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    render_yaml = Path(__file__).resolve().parent.parent.parent / "render.yaml"
+    config = yaml.safe_load(render_yaml.read_text())
+    expected = {"bc-arcade-api": "production", "bc-arcade-api-dev": "development"}
+    for name, environment in expected.items():
+        service = next(s for s in config["services"] if s["name"] == name)
+        env = {e["key"]: e.get("value") for e in service["envVars"]}
+        assert env.get("ENVIRONMENT") == environment
+
+
 # ---------------------------------------------------------------------------
 # CORS — web platform requests must receive Access-Control-Allow-Origin (#1739)
 #
