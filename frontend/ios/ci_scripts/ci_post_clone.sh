@@ -44,6 +44,27 @@ DOTENV
 echo "=== .env written (.env.production removed) ==="
 cat .env
 
+# Store-build guard (#2390). EXPO_PUBLIC_TEST_HOOKS=1 is inlined into the JS
+# bundle and unhides the premium games that store builds must not show
+# (frontend/src/entitlements/gameVisibility.ts). The .env above never sets it,
+# but Expo CLI also reads the process environment and any other tracked .env*
+# file, so refuse to build if it has leaked in from an Xcode Cloud workflow
+# variable or a committed dotenv. Mirrors the Android release bundle guard.
+if [ "${EXPO_PUBLIC_TEST_HOOKS:-}" = "1" ]; then
+  echo "error: EXPO_PUBLIC_TEST_HOOKS=1 is set in the Xcode Cloud environment — remove the workflow environment variable." >&2
+  exit 1
+fi
+# The dotenv files Expo CLI loads for a production bundle (.env.example is not
+# one). Checked one at a time: grep exits 2 when any listed file is missing,
+# even if another one matched.
+for dotenv in .env .env.local .env.production .env.production.local; do
+  if [ -f "$dotenv" ] && grep -q -E "^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_TEST_HOOKS[[:space:]]*=[[:space:]]*[\"']?1" "$dotenv"; then
+    echo "error: EXPO_PUBLIC_TEST_HOOKS=1 is set in frontend/$dotenv — store builds must not enable test hooks." >&2
+    exit 1
+  fi
+done
+echo "=== test-hooks guard passed ==="
+
 # -------------------------------------------------------
 # 4. Install JavaScript dependencies (npm ci for lockfile integrity)
 # -------------------------------------------------------

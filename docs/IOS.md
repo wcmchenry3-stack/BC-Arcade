@@ -37,6 +37,10 @@ iOS builds run via **Xcode Cloud** (App Store Connect), not GitHub Actions.
 GitHub Actions `ci.yml` does not include an iOS build step.
 The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner — not EAS.
 
+### Store-build guard (test hooks)
+
+`EXPO_PUBLIC_TEST_HOOKS=1` is inlined into the JS bundle and unhides the premium games that store builds must not show (`frontend/src/entitlements/gameVisibility.ts`, #2390). `frontend/ios/ci_scripts/ci_post_clone.sh` therefore fails the Xcode Cloud build when the flag is `1` in the workflow's environment variables or in any dotenv file Expo loads for a production bundle (`.env`, `.env.local`, `.env.production`, `.env.production.local`). A healthy build logs `=== test-hooks guard passed ===` in the post-clone step. If it fails, remove the variable from the Xcode Cloud workflow (App Store Connect → Xcode Cloud → workflow → Environment) or from the named file — do not weaken the check. Android has the equivalent guard in `frontend/android/app/build.gradle` (see [`ANDROID-CI.md`](ANDROID-CI.md)).
+
 ## Local simulator troubleshooting
 
 **`[runtime not ready]: ReferenceError: Property 'MessageQueue' doesn't exist` on launch** (#2328) — the dev-client binary on the simulator was compiled against a different react-native/Hermes than the JS Metro is serving. It shows up after a native dependency bump (react-native, hermes-engine, Expo SDK, any Pod). Rebuild the native app and clear Metro's cache — a JS reload is not enough:
