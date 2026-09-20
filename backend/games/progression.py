@@ -2,8 +2,8 @@
 
 No DB access, no FastAPI imports, no I/O, no environment reads: this module
 only transforms a ``StatsSummary`` (see ``games.service.get_stats_for_session``)
-into an XP/level result. Wiring it into ``StatsResponse``/``get_my_stats`` is a
-separate task.
+into an XP/level result. ``stats.router.get_my_stats`` calls it and returns the
+four fields on ``StatsResponse`` (``GET /stats/me``).
 
 XP rule: BASE_XP_PER_GAME for every completed game played, plus
 VARIETY_BONUS_PER_GAME_TYPE for each distinct game type with at least one

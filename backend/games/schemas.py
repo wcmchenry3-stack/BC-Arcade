@@ -118,6 +118,12 @@ class StatsResponse(BaseModel):
     total_games: int
     by_game: dict[str, GameTypeStatsResponse]
     favorite_game: str | None
+    # Arcade XP + player level (#2391) — derived by games.progression from the
+    # same summary; see that module for the max-level convention.
+    arcade_xp: int
+    arcade_level: int
+    xp_into_level: int
+    xp_for_next_level: int
 
 
 class GameRowResponse(BaseModel):
