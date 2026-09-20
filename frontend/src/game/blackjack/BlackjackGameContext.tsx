@@ -54,9 +54,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("blackjack");
   const sessionStartedAtRef = useRef<number>(0);
   const totalHandsRef = useRef(0);
+  // Hands won this session ("win" or "blackjack" — same rule as reduceHandResolved).
+  const handsWonRef = useRef(0);
   const lowestChipsRef = useRef(0);
   const biggestWinRef = useRef(0);
   const engineRef = useRef<EngineState | null>(null);
@@ -64,10 +67,22 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     engineRef.current = engine;
   }, [engine]);
 
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: {
+        hands_won: handsWonRef.current,
+        starting_chips: engineRef.current?.startingChips ?? null,
+        final_chips: engineRef.current?.chips ?? null,
+      },
+    }));
+  }, [syncSetProgressSnapshot]);
+
   const startSession = useCallback(
     async (startingChips: number, resuming = false, tableId?: string) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
+      handsWonRef.current = 0;
       lowestChipsRef.current = startingChips;
       biggestWinRef.current = 0;
       setSessionStats(initialSessionStats(startingChips));
@@ -100,20 +115,26 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   );
 
   const endSession = useCallback(
-    async (outcome: "completed" | "abandoned") => {
+    // `finalChips` overrides engineRef for the chips-exhausted path, which runs
+    // inside emitTransitionEvents before engineRef catches up to `next`.
+    async (outcome: "completed" | "abandoned", finalChips?: number) => {
       const durationMs = Date.now() - sessionStartedAtRef.current;
+      const engine = engineRef.current;
       syncComplete(
         { outcome, durationMs },
         {
           total_hands: totalHandsRef.current,
           duration_ms: durationMs,
           outcome,
+          // #2450 — backend BlackjackResult fields.
+          hands_won: handsWonRef.current,
+          starting_chips: engine?.startingChips ?? null,
+          final_chips: finalChips ?? engine?.chips ?? null,
         }
       );
       // Persist a run record when the player actually played hands. Awaited so
       // that the subsequent startSession call (in handlePlayAgain) sees the
       // newly saved run when it loads run history for aggregate metadata.
-      const engine = engineRef.current;
       if (engine && totalHandsRef.current > 0) {
         await saveRun({
           table: "beginner",
@@ -216,6 +237,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       const nextHasNoSplit = next.player_hands.length === 0;
       if (prevHadNoSplit && nextHasNoSplit && prev.outcome === null && next.outcome !== null) {
         totalHandsRef.current += 1;
+        if (next.outcome === "win" || next.outcome === "blackjack") handsWonRef.current += 1;
         if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
         if (next.payout > biggestWinRef.current) biggestWinRef.current = next.payout;
         syncEnqueue({
@@ -244,6 +266,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const nOut = next.hand_outcomes[i] ?? null;
         if (pOut === null && nOut !== null) {
           totalHandsRef.current += 1;
+          if (nOut === "win") handsWonRef.current += 1;
           if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
           const splitPayout = next.hand_payouts[i] ?? 0;
           if (splitPayout > biggestWinRef.current) biggestWinRef.current = splitPayout;
@@ -275,7 +298,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // next startSession (from handlePlayAgain) may see this run's saveRun
       // slightly late, off by one, self-corrects on the following session.
       if (next.chips === 0 && next.phase === "result") {
-        void endSession("completed");
+        void endSession("completed", next.chips);
       }
     },
     [endSession, syncEnqueue, syncMarkStarted]

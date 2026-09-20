@@ -518,7 +518,16 @@ export default function MahjongScreen() {
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("mahjong");
+
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      finalScore: stateRef.current?.score ?? 0,
+      result: { won: false, pairs: stateRef.current?.pairsRemoved ?? 0 },
+    }));
+  }, [syncSetProgressSnapshot]);
 
   const { setSnapshot: setScoreboardSnapshot } = useMahjongScoreboard();
 
@@ -687,7 +696,7 @@ export default function MahjongScreen() {
     if (state.isComplete && !prevCompleteRef.current) {
       syncComplete(
         { finalScore: state.score, outcome: "completed", durationMs: state.accumulatedMs },
-        { final_score: state.score, outcome: "completed", pairs: state.pairsRemoved }
+        { final_score: state.score, outcome: "completed", won: true, pairs: state.pairsRemoved }
       );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
@@ -743,7 +752,7 @@ export default function MahjongScreen() {
       if (s?.isComplete) return;
       syncComplete(
         { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
-        { outcome: "abandoned" }
+        { outcome: "abandoned", won: false, pairs: s?.pairsRemoved ?? 0 }
       );
     });
     return unsub;
@@ -820,7 +829,7 @@ export default function MahjongScreen() {
     if (syncGetGameId()) {
       syncComplete(
         { outcome: "abandoned", finalScore: 0, durationMs: 0 },
-        { outcome: "abandoned" }
+        { outcome: "abandoned", won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }
       );
     }
     winRecordedRef.current = false;

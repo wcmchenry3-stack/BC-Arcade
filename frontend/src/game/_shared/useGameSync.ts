@@ -27,6 +27,12 @@
  * The unmount cleanup automatically abandons any open session, so callers
  * only need to call complete() for game-over paths; abandoned paths are
  * handled for free.
+ *
+ * Abandon data (#2450): an abandoned session would otherwise carry nothing but
+ * `{ outcome: "abandoned" }`. A game registers `setProgressSnapshot(getter)` so
+ * the hook's own abandon paths (unmount, restart) can attach the score and the
+ * per-game result block at that moment. Games that never register a getter keep
+ * the old behaviour and send no result.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -34,6 +40,13 @@ import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
 import type { BugLevel } from "./eventQueueConfig";
+
+/** What a game knows about its in-progress session when it is abandoned. */
+export interface ProgressSnapshot {
+  finalScore?: number;
+  /** Per-game result block — must satisfy the backend `result_model`, if any. */
+  result?: Record<string, unknown>;
+}
 
 export interface UseGameSyncReturn {
   /** Start a new instrumented session. Call once after the game state is ready. */
@@ -65,12 +78,20 @@ export interface UseGameSyncReturn {
   ) => void;
   /** Return the current game ID, or null if no session is open. */
   getGameId: () => string | null;
+  /**
+   * Register a getter the hook calls when it abandons the session itself
+   * (unmount or `restart()`), so the abandon carries the score and result
+   * block instead of only `{ outcome: "abandoned" }`. The getter must read
+   * from refs (it runs during unmount, after state is gone) and must not throw.
+   */
+  setProgressSnapshot: (getSnapshot: () => ProgressSnapshot) => void;
 }
 
 export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const gameIdRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const startedRef = useRef(false);
+  const snapshotRef = useRef<() => ProgressSnapshot>(() => ({}));
   // Keep gameType in a ref so restart() always uses the current value even if
   // the consumer passes a runtime-derived type (shouldn't change, but safe).
   const gameTypeRef = useRef(gameType);
@@ -78,20 +99,35 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     gameTypeRef.current = gameType;
   }, [gameType]);
 
+  // Abandon the open session, attaching the game's progress snapshot if it
+  // registered one. A throwing getter degrades to a bare abandon.
+  const abandon = useCallback((gid: string) => {
+    let snapshot: ProgressSnapshot = {};
+    try {
+      snapshot = snapshotRef.current() ?? {};
+    } catch {
+      // Isolation: a broken getter must not lose the abandon.
+    }
+    const summary: CompleteSummary = { outcome: "abandoned" };
+    if (snapshot.finalScore !== undefined) summary.finalScore = snapshot.finalScore;
+    if (snapshot.result) summary.result = snapshot.result;
+    try {
+      gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
+    } catch {
+      // Isolation.
+    }
+  }, []);
+
   // Abandon any open session on unmount, but only if the player actually started.
   useEffect(() => {
     return () => {
       const gid = gameIdRef.current;
       if (gid && startedRef.current && !completedRef.current) {
-        try {
-          gameEventClient.completeGame(gid, { outcome: "abandoned" }, { outcome: "abandoned" });
-        } catch {
-          // Isolation: never let cleanup throw.
-        }
+        abandon(gid);
         gameIdRef.current = null;
       }
     };
-  }, []);
+  }, [abandon]);
 
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {
@@ -123,8 +159,14 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const complete = useCallback((summary: CompleteSummary, payload?: Record<string, unknown>) => {
     const gid = gameIdRef.current;
     if (!gid || completedRef.current) return;
+    // The per-game payload doubles as the PATCH `result` block (#2450) unless
+    // the caller supplied an explicit summary.result.
+    const withResult: CompleteSummary =
+      summary.result === undefined && payload && Object.keys(payload).length > 0
+        ? { ...summary, result: payload }
+        : summary;
     try {
-      gameEventClient.completeGame(gid, summary, payload ?? {});
+      gameEventClient.completeGame(gid, withResult, payload ?? {});
     } catch {
       // Isolation.
     }
@@ -137,11 +179,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       // Close the current session if still open.
       const gid = gameIdRef.current;
       if (gid && !completedRef.current) {
-        try {
-          gameEventClient.completeGame(gid, { outcome: "abandoned" }, { outcome: "abandoned" });
-        } catch {
-          // Isolation.
-        }
+        abandon(gid);
       }
       // Open a fresh session.
       gameIdRef.current = gameEventClient.startGame(
@@ -152,7 +190,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = false;
       startedRef.current = false;
     },
-    []
+    [abandon]
   );
 
   const reportBug = useCallback(
@@ -168,5 +206,18 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   const getGameId = useCallback(() => gameIdRef.current, []);
 
-  return { start, markStarted, enqueue, complete, restart, reportBug, getGameId };
+  const setProgressSnapshot = useCallback((getSnapshot: () => ProgressSnapshot) => {
+    snapshotRef.current = getSnapshot;
+  }, []);
+
+  return {
+    start,
+    markStarted,
+    enqueue,
+    complete,
+    restart,
+    reportBug,
+    getGameId,
+    setProgressSnapshot,
+  };
 }

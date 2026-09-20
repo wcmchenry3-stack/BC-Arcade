@@ -82,6 +82,7 @@ export default function Twenty48Screen({ navigation }: Props) {
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("twenty48");
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
@@ -89,6 +90,22 @@ export default function Twenty48Screen({ navigation }: Props) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      if (!s) return {};
+      return {
+        finalScore: s.score,
+        result: {
+          highest_tile: highestTile(s.board),
+          move_count: moveCountRef.current,
+          duration_ms: computeDurationMs(s),
+        },
+      };
+    });
+  }, [syncSetProgressSnapshot]);
 
   const endedPayload = useCallback(
     (s: Twenty48State, outcome: "completed" | "abandoned" | "kept_playing") => ({

@@ -132,7 +132,19 @@ export default function SudokuScreen() {
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("sudoku");
+
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      return {
+        finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
+        result: { won: false, errors: s?.errorCount ?? 0 },
+      };
+    });
+  }, [syncSetProgressSnapshot]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
 
@@ -247,6 +259,7 @@ export default function SudokuScreen() {
           {
             final_score: score,
             outcome: "completed",
+            won: true,
             difficulty: state.difficulty,
             variant: state.variant,
             errors: state.errorCount,
@@ -303,6 +316,7 @@ export default function SudokuScreen() {
         },
         {
           outcome: "abandoned",
+          won: false,
           difficulty: s?.difficulty,
           variant: s?.variant,
           errors: s?.errorCount ?? 0,
