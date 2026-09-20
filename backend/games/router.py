@@ -33,6 +33,10 @@ from .schemas import (
 
 router = APIRouter()
 
+# Public, IP-keyed (unauthenticated). A constant so the rate-limit test derives
+# its request count from the configured limit instead of duplicating it.
+CATALOG_RATE_LIMIT = "60/minute"
+
 
 def _to_state(game) -> GameStateResponse:
     return GameStateResponse(
@@ -66,7 +70,7 @@ def _gt_to_out(gt) -> GameTypeOut:
 
 
 @router.get("/catalog", response_model=CatalogResponse)
-@limiter.limit("60/minute")
+@limiter.limit(CATALOG_RATE_LIMIT)
 async def get_catalog(request: Request) -> JSONResponse:
     factory = get_session_factory()
     async with factory() as db:
