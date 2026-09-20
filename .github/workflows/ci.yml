@@ -827,10 +827,11 @@ jobs:
             --no-daemon
         # No SENTRY_AUTH_TOKEN: sentry.gradle skips source-map upload when the
         # token is absent, so the smoke test validates the build chain only.
-        # Signing is overridden to use the generated debug.keystore so the
-        # production upload-keystore.jks (gitignored) is not required in CI.
-        # gradle.properties sets UPLOAD_STORE_FILE=../upload-keystore.jks which
-        # would fail; these -P flags take precedence over gradle.properties.
+        # Signing is pinned to the generated debug.keystore so the production
+        # upload keystore is never required in CI. The real UPLOAD_* values live
+        # only in the release machine's user-level ~/.gradle/gradle.properties
+        # (see docs/ANDROID-CI.md); the explicit -P flags keep this step
+        # independent of any gradle.properties defaults.
 
   # --- Phase 9: Sentry CLI auth validation (Linux, fast) --------------------
   # Catches expired or misconfigured Sentry auth tokens before they break
