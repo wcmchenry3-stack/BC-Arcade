@@ -143,7 +143,7 @@ Both machines available daily. Mac = Xcode Cloud/TestFlight/iOS sim/ASC; PC = Gr
 
 ## Verification
 
-- Hide-premium: release-mode build (no `EXPO_PUBLIC_TEST_HOOKS`) shows exactly 6 tiles, 3 tabs, no locked screens reachable — checked by hand on both the TestFlight and Play internal builds; `gameVisibility.test.ts` green.
+- Hide-premium: a release-mode build (no `EXPO_PUBLIC_TEST_HOOKS`) compiled against the **production** API shows exactly 6 tiles, 3 tabs, no locked screens reachable — checked by hand on the Wed 30 build #2 and on the RC, both platforms. Pre-launch-API builds (Mon 21 TestFlight #1, Wed 23 Play internal) show all 12 by design (decision 1, #2417). `gameVisibility.test.ts` + `premiumRoutes.test.ts` green.
 - XP/challenge: backend tests green (`python -m pytest tests/ -v`, 80% floor holds); play a game → XP rises on Profile; complete a challenge goal → checkmark on Home; offline completion syncs and retroactively satisfies goal.
 - Keystore: fresh clone contains no secrets (`git grep -i password frontend/android`); `:app:signingReport` SHA-1 matches Play Console's upload certificate; release build signs from the user-level `~/.gradle/gradle.properties` (no keystore or password inside any checkout); ZAP scan on prod API returns zero high-severity.
 - Store readiness: every row of the launch-gating table above closed or explicitly waived before Oct 8 freeze; crash-free > 99% on both test tracks before submission (#821 success metric).
