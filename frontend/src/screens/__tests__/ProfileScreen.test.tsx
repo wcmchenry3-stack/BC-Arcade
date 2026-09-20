@@ -63,6 +63,11 @@ const SAMPLE_STATS: StatsResponse = {
     },
   },
   favorite_game: "yacht",
+  // 7 games × 10 + 3 game types × 50 = 220 XP → level 2 (from 100), 30 short of level 3 (250).
+  arcade_xp: 220,
+  arcade_level: 2,
+  xp_into_level: 120,
+  xp_for_next_level: 30,
 };
 
 const SAMPLE_GAMES: GameHistoryResponse = {
@@ -176,7 +181,15 @@ describe("ProfileScreen", () => {
 
   it("shows an empty state when the recent games list is empty", async () => {
     mockGetMyGames.mockResolvedValue({ items: [], next_cursor: null });
-    mockGetMyStats.mockResolvedValue({ total_games: 0, by_game: {}, favorite_game: null });
+    mockGetMyStats.mockResolvedValue({
+      total_games: 0,
+      by_game: {},
+      favorite_game: null,
+      arcade_xp: 0,
+      arcade_level: 1,
+      xp_into_level: 0,
+      xp_for_next_level: 100,
+    });
     await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Play a game to see it here")).toBeTruthy();
@@ -210,6 +223,27 @@ describe("ProfileScreen", () => {
     expect(screen.queryByText("Games Played")).toBeNull();
     expect(screen.getAllByText("Yacht").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Retry")).toBeNull();
+  });
+
+  it("renders the Arcade level header from /stats/me (#2391)", async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Level 2")).toBeTruthy();
+    });
+    expect(screen.getByText("220 XP")).toBeTruthy();
+    expect(screen.getByText("30 XP to level 3")).toBeTruthy();
+    // 120 of the 150 XP between level 2 and level 3.
+    expect(screen.getByRole("progressbar").props.accessibilityValue.now).toBe(80);
+  });
+
+  it("omits the level header when only stats fails (#2391)", async () => {
+    mockGetMyStats.mockRejectedValue(new Error("500 server error"));
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Recent Games")).toBeTruthy();
+    });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/^Level \d+$/)).toBeNull();
   });
 
   it("shows bento tiles and inline games error when only games fails", async () => {

@@ -25,6 +25,12 @@ export interface StatsResponse {
   total_games: number;
   by_game: Record<string, GameTypeStats>;
   favorite_game: string | null;
+  // Arcade XP + player level (#2391) — derived server-side in games/progression.py.
+  // At max level xp_for_next_level is 0 and xp_into_level keeps accruing.
+  arcade_xp: number;
+  arcade_level: number;
+  xp_into_level: number;
+  xp_for_next_level: number;
 }
 
 export interface GameRow {
