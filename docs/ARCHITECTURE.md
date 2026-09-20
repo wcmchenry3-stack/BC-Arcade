@@ -224,20 +224,42 @@ locked screen — until IAP lands (epic #822). `isGameVisible(slug)` filters:
 - Profile — bento tiles are re-derived from visible games and hidden-game rows
   are dropped from Recent Games, so earlier plays by a tester cannot resurface.
 
-`SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1"`, so dev builds and
-e2e test builds keep all 12 games; a store build shows 6 tiles and 3 tabs. It is a
-compiled constant on purpose:
+`SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1" || isPreLaunchApiBuild()`,
+so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
+build shows 6 tiles and 3 tabs.
+
+**Pre-launch builds (owner decision, 2026-09-19).** Until launch, internal
+TestFlight / Play test builds keep every game visible and free. A build is
+"pre-launch" only when it was compiled against the pre-launch API,
+`https://dev-games-api.buffingchi.com` (`isPreLaunchApiBuild()` in
+`game/_shared/envFlags.ts`) — the one backend that runs with
+`ENTITLEMENT_DEV_OVERRIDE` (§10.4) and so grants every premium game to every
+session. Anything else — the production URL, an unknown host, no URL — is a store
+build (fails closed). There is deliberately **no flag to flip back before
+launch**: pointing the release config at the production API hides the games and
+ends the free entitlements in the same step. `gameVisibility.test.ts` reads the
+real config to keep that true: the tracked `.env.production` must yield a store
+build, and the URL `ci_post_clone.sh` writes must be exactly the pre-launch or the
+production API.
+
+It is a compiled constant on purpose:
 
 - **Not a new env var** — `frontend/ios/ci_scripts/ci_post_clone.sh` deletes
   `.env.production` and rewrites `.env` on every Xcode Cloud build, so a new
   `EXPO_PUBLIC_*` flag would silently vanish and could ship premium games to
-  App Review.
+  App Review. (`EXPO_PUBLIC_API_URL` is exempt: it is one of the two vars that
+  script itself writes.)
 - **Not server-driven** — the binary App Review approves must be the binary users
-  get (guideline 2.3.1).
+  get (guideline 2.3.1). The API URL is inlined at build time, so this still holds.
 
 Store screenshots must therefore come from a release build without test hooks.
 
 The gate is the build flavour, not the platform: the **Render web build hides
+the premium games too** (owner decision, 2026-09-20). Web is unmonetized, and
+nothing premium should be free anywhere. That is the production site
+(`bc-arcade-frontend`, built against the production API). The `dev`-branch
+staging site (`bc-arcade-frontend-dev`) is built against the pre-launch API, so
+like TestFlight it shows all 12 until launch.
 the premium games too** (owner decision, 2026-09-19). Web is unmonetized, and
 nothing premium should be free anywhere.
 

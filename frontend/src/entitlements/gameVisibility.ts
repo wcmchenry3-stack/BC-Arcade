@@ -13,11 +13,23 @@
  *    get (guideline 2.3.1); a flag that unhides content post-review is itself
  *    a rejection pattern.
  *
+ * Until launch, internal TestFlight / Play test builds keep all twelve games,
+ * free (owner decision, 2026-09-19). That is keyed off the API the build was
+ * compiled against rather than a flag somebody has to remember to flip back:
+ * a build pointed at the pre-launch API — whose backend grants every premium
+ * game to every session — shows everything; a build pointed at anything else
+ * is a store build. Pointing the release config at the production API
+ * (release plan, Sep 29) therefore hides the games and ends the free
+ * entitlements in the same step. `EXPO_PUBLIC_API_URL` is safe from both
+ * objections above: it is one of the two vars `ci_post_clone.sh` itself
+ * writes, and it is inlined at build time, so the reviewed binary is the
+ * shipped binary.
+ *
  * Visibility is separate from entitlement: `PREMIUM_GAMES` / `canPlay` in
  * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden
- * game is shown (dev and test builds).
+ * game is shown (dev, test and pre-launch builds).
  */
-import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
   "yacht",
@@ -29,10 +41,11 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Dev builds and e2e test builds (`EXPO_PUBLIC_TEST_HOOKS=1`, already set by
- * the Maestro/Playwright build jobs) keep every game; store builds do not.
+ * Dev builds, e2e test builds (`EXPO_PUBLIC_TEST_HOOKS=1`, already set by the
+ * Maestro/Playwright build jobs) and pre-launch-API builds keep every game;
+ * store builds do not.
  */
-export const SHOW_HIDDEN_GAMES: boolean = __DEV__ || areTestHooksEnabled();
+export const SHOW_HIDDEN_GAMES: boolean = __DEV__ || areTestHooksEnabled() || isPreLaunchApiBuild();
 
 let forcedStoreBuild = false;
 
