@@ -97,7 +97,6 @@ export default function Twenty48Screen({ navigation }: Props) {
       const s = stateRef.current;
       if (!s) return {};
       return {
-        finalScore: s.score,
         result: {
           highest_tile: highestTile(s.board),
           move_count: moveCountRef.current,

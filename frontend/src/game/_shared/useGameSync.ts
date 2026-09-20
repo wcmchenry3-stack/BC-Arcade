@@ -30,8 +30,8 @@
  *
  * Abandon data (#2450): an abandoned session would otherwise carry nothing but
  * `{ outcome: "abandoned" }`. A game registers `setProgressSnapshot(getter)` so
- * the hook's own abandon paths (unmount, restart) can attach the score and the
- * per-game result block at that moment. Games that never register a getter keep
+ * the hook's own abandon paths (unmount, restart) can attach the per-game
+ * result block at that moment. Games that never register a getter keep
  * the old behaviour and send no result.
  */
 
@@ -41,9 +41,14 @@ import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
 import type { BugLevel } from "./eventQueueConfig";
 
-/** What a game knows about its in-progress session when it is abandoned. */
+/**
+ * What a game knows about its in-progress session when it is abandoned.
+ *
+ * Deliberately has no score: every backend leaderboard and /stats aggregate
+ * keys on `final_score IS NOT NULL` and ignores `outcome`, so an abandon that
+ * carried a score would rank a half-finished game.
+ */
 export interface ProgressSnapshot {
-  finalScore?: number;
   /** Per-game result block — must satisfy the backend `result_model`, if any. */
   result?: Record<string, unknown>;
 }
@@ -80,9 +85,10 @@ export interface UseGameSyncReturn {
   getGameId: () => string | null;
   /**
    * Register a getter the hook calls when it abandons the session itself
-   * (unmount or `restart()`), so the abandon carries the score and result
-   * block instead of only `{ outcome: "abandoned" }`. The getter must read
-   * from refs (it runs during unmount, after state is gone) and must not throw.
+   * (unmount or `restart()`), so the abandon carries the result block instead
+   * of only `{ outcome: "abandoned" }`. The getter must read from refs (it runs
+   * during unmount, after state is gone), must not throw, and — because
+   * `restart()` calls it — must be called before the game resets its own refs.
    */
   setProgressSnapshot: (getSnapshot: () => ProgressSnapshot) => void;
 }
@@ -109,7 +115,6 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       // Isolation: a broken getter must not lose the abandon.
     }
     const summary: CompleteSummary = { outcome: "abandoned" };
-    if (snapshot.finalScore !== undefined) summary.finalScore = snapshot.finalScore;
     if (snapshot.result) summary.result = snapshot.result;
     try {
       gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });

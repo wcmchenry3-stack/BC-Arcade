@@ -137,13 +137,9 @@ export default function SudokuScreen() {
 
   // #2450 — what the hook attaches if it abandons the session itself (unmount).
   useEffect(() => {
-    syncSetProgressSnapshot(() => {
-      const s = stateRef.current;
-      return {
-        finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
-        result: { won: false, errors: s?.errorCount ?? 0 },
-      };
-    });
+    syncSetProgressSnapshot(() => ({
+      result: { won: false, errors: stateRef.current?.errorCount ?? 0 },
+    }));
   }, [syncSetProgressSnapshot]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();

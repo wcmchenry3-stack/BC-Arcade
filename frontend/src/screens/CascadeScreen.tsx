@@ -351,7 +351,6 @@ function CascadeGame() {
   // #2450 — what the hook attaches if it abandons the session itself (unmount).
   useEffect(() => {
     syncSetProgressSnapshot(() => ({
-      finalScore: scoreRef.current,
       result: {
         total_drops: dropCountRef.current,
         total_merges: mergeCountRef.current,

@@ -145,10 +145,7 @@ export default function SolitaireScreen() {
 
   // #2450 — what the hook attaches if it abandons the session itself (unmount).
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      finalScore: stateRef.current?.score ?? 0,
-      result: { won: false, moves: movesRef.current },
-    }));
+    syncSetProgressSnapshot(() => ({ result: { won: false, moves: movesRef.current } }));
   }, [syncSetProgressSnapshot]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();

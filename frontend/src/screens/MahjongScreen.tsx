@@ -524,7 +524,6 @@ export default function MahjongScreen() {
   // #2450 — what the hook attaches if it abandons the session itself (unmount).
   useEffect(() => {
     syncSetProgressSnapshot(() => ({
-      finalScore: stateRef.current?.score ?? 0,
       result: { won: false, pairs: stateRef.current?.pairsRemoved ?? 0 },
     }));
   }, [syncSetProgressSnapshot]);

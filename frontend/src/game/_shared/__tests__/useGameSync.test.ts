@@ -173,20 +173,17 @@ describe("useGameSync", () => {
   // progress snapshot (#2450) — abandon paths carry score + result block
   // ---------------------------------------------------------------------------
 
-  it("unmount abandon merges the registered snapshot into summary and event", async () => {
+  it("unmount abandon merges the registered snapshot's result into summary and event", async () => {
     const { result, unmount } = await renderHook(() => useGameSync("solitaire"));
     await act(() => {
       result.current.start();
       result.current.markStarted();
-      result.current.setProgressSnapshot(() => ({
-        finalScore: 40,
-        result: { won: false, moves: 12 },
-      }));
+      result.current.setProgressSnapshot(() => ({ result: { won: false, moves: 12 } }));
     });
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "test-game-id",
-      { outcome: "abandoned", finalScore: 40, result: { won: false, moves: 12 } },
+      { outcome: "abandoned", result: { won: false, moves: 12 } },
       { won: false, moves: 12, outcome: "abandoned" }
     );
   });
@@ -213,19 +210,28 @@ describe("useGameSync", () => {
     const { result } = await renderHook(() => useGameSync("mahjong"));
     await act(() => {
       result.current.start();
-      result.current.setProgressSnapshot(() => ({
-        finalScore: 7,
-        result: { won: false, pairs: 5 },
-      }));
+      result.current.setProgressSnapshot(() => ({ result: { won: false, pairs: 5 } }));
     });
     await act(() => {
       result.current.restart();
     });
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "session-1",
-      { outcome: "abandoned", finalScore: 7, result: { won: false, pairs: 5 } },
+      { outcome: "abandoned", result: { won: false, pairs: 5 } },
       { won: false, pairs: 5, outcome: "abandoned" }
     );
+  });
+
+  it("an abandon never carries a score, so it cannot rank on a leaderboard", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({ result: { total_drops: 9 } }));
+    });
+    await unmount();
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary).not.toHaveProperty("finalScore");
   });
 
   it("a throwing snapshot getter degrades to a bare abandon", async () => {
