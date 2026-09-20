@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, waitFor, fireEvent, act } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import ProfileScreen from "../ProfileScreen";
+import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse, GameHistoryResponse } from "../../api/types";
 
 jest.mock("../../game/_shared/NetworkContext", () => ({
@@ -250,5 +251,61 @@ describe("ProfileScreen", () => {
       expect(mockGetMyStats).toHaveBeenCalledTimes(1);
     });
     expect(mockGetMyGames).toHaveBeenCalledWith(20);
+  });
+});
+
+describe("ProfileScreen — store build hides premium-game history (#2390)", () => {
+  beforeEach(() => {
+    __forceStoreBuildForTests(true);
+  });
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+  });
+
+  it("derives the bento tiles from visible games only", async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Games Played")).toBeTruthy();
+    });
+    // 2 twenty48 + 2 blackjack; the 3 Yacht games are not counted.
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.queryByText("7")).toBeNull();
+    // Game types tried = 2, not 3.
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.queryByText("3")).toBeNull();
+    // Top score is still 2048's.
+    expect(screen.getAllByText("15,240").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("never names a hidden game, even when the server says it is the favourite", async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Favorite Game")).toBeTruthy();
+    });
+    expect(screen.queryByText("Yacht")).toBeNull();
+    expect(screen.queryByText("280")).toBeNull();
+    // Falls back to the most-played visible game (first of the tied pair).
+    expect(screen.getAllByText("2048").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("drops hidden-game rows from the recent games list", async () => {
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Recent Games")).toBeTruthy();
+    });
+    expect(screen.getByText("Blackjack")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Yacht/)).toBeNull();
+  });
+
+  it("shows the empty state when every recent game is hidden", async () => {
+    mockGetMyGames.mockResolvedValue({
+      items: SAMPLE_GAMES.items.filter((g) => g.game_type === "yacht"),
+      next_cursor: null,
+    });
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Recent Games")).toBeTruthy();
+    });
+    expect(screen.queryByLabelText(/^Yacht/)).toBeNull();
   });
 });

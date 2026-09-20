@@ -60,6 +60,17 @@ react {
     //   A list of extra flags to pass to the 'bundle' commands.
     //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
     // extraPackagerArgs = []
+    //
+    //   Local bundles always start from a cold Metro cache (#2390). Expo inlines
+    //   EXPO_PUBLIC_* values at transform time and Metro's cache key ignores
+    //   them, so a release bundle built after an EXPO_PUBLIC_TEST_HOOKS=1 build
+    //   on the same machine reuses the stale transform and ships with test hooks
+    //   on — and the hidden premium games visible (reproduced 2026-09-19). Locally
+    //   only release variants bundle, and those are the artifacts uploaded to
+    //   Play; CI artifacts are never shipped, so CI keeps its restored cache.
+    if (!System.getenv("CI")) {
+        extraPackagerArgs = ["--reset-cache"]
+    }
 
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
@@ -146,6 +157,39 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// Release bundle guard (#2390). v1.0 hides the premium games in store builds
+// via a compiled constant that is true when EXPO_PUBLIC_TEST_HOOKS=1
+// (frontend/src/entitlements/gameVisibility.ts). Expo inlines that flag into the
+// JS bundle, so a value left over from an e2e/Maestro session — exported in the
+// shell or sitting in a frontend/.env* file — would silently ship the hidden
+// games to Play. Refuse to create the release bundle instead. Debug builds
+// (including Maestro CI's -Pandroid.bundleDebugForCI=true) are unaffected.
+def findLeakedTestHooksFlag = { ->
+    if (System.getenv("EXPO_PUBLIC_TEST_HOOKS") == "1") {
+        return "the EXPO_PUBLIC_TEST_HOOKS environment variable"
+    }
+    // The dotenv files Expo CLI loads for a production bundle.
+    for (name in [".env", ".env.local", ".env.production", ".env.production.local"]) {
+        def envFile = new File(projectRoot, name)
+        if (envFile.isFile() && envFile.readLines().any { it ==~ /^\s*(export\s+)?EXPO_PUBLIC_TEST_HOOKS\s*=\s*["']?1["']?\s*(#.*)?$/ }) {
+            return "frontend/${name}"
+        }
+    }
+    return null
+}
+tasks.configureEach { task ->
+    if (task.name == "createBundleReleaseJsAndAssets") {
+        task.doFirst {
+            def source = findLeakedTestHooksFlag()
+            if (source != null) {
+                throw new GradleException(
+                    "EXPO_PUBLIC_TEST_HOOKS=1 is set via ${source}. A release bundle built with it " +
+                    "shows the hidden premium games (#2390). Unset it and rebuild.")
+            }
+        }
     }
 }
 

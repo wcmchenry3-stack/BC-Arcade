@@ -5,6 +5,9 @@ import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
+import i18n from "i18next";
+import mahjongEn from "../../i18n/locales/en/mahjong.json";
 
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
@@ -111,6 +114,56 @@ describe("HomeScreen — game cards", () => {
     expect(getByLabelText("Play Daily Word")).toBeTruthy();
     // Pachisi is disabled — should not appear
     expect(queryByLabelText("Play Pachisi")).toBeNull();
+  });
+
+  describe("store build — premium games hidden (#2390)", () => {
+    beforeAll(() => {
+      // jest.setup.ts's i18n fixtures omit the mahjong namespace (other suites
+      // assert on its raw keys), so load it here to match the card by label.
+      i18n.addResourceBundle("en", "mahjong", mahjongEn, true, true);
+    });
+    afterAll(() => {
+      i18n.removeResourceBundle("en", "mahjong");
+    });
+    beforeEach(() => {
+      // Real isGameVisible, answering as a store build (Jest itself is a dev build).
+      __forceStoreBuildForTests(true);
+    });
+    afterEach(() => {
+      __forceStoreBuildForTests(false);
+    });
+
+    it("renders exactly the six free games", async () => {
+      const { getByLabelText, getAllByRole } = await renderScreen();
+      expect(getByLabelText("Play Blackjack")).toBeTruthy();
+      expect(getByLabelText("Play 2048")).toBeTruthy();
+      expect(getByLabelText("Play Solitaire")).toBeTruthy();
+      expect(getByLabelText("Play FreeCell")).toBeTruthy();
+      expect(getByLabelText("Play Mahjong Solitaire")).toBeTruthy();
+      expect(getByLabelText("Play Daily Word")).toBeTruthy();
+      expect(
+        getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
+      ).toHaveLength(6);
+    });
+
+    it("renders none of the six premium games — not even as locked cards", async () => {
+      // Unentitled is the realistic store-build state: a locked card would
+      // still be a rendered card.
+      mockCanPlay.mockReturnValue(false);
+      const { queryByLabelText, queryByText } = await renderScreen();
+      for (const title of ["Yacht", "Cascade", "Hearts", "Sudoku", "Star Swarm", "Sort Puzzle"]) {
+        expect(queryByLabelText(`Play ${title}`)).toBeNull();
+        expect(queryByText(title)).toBeNull();
+      }
+    });
+
+    it("never prefetches a hidden game's chunk, even for an entitled session", async () => {
+      await renderScreen();
+      await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
+      const predicate = mockPrefetch.mock.calls[0][0] as (slug: string) => boolean;
+      expect(predicate("yacht")).toBe(false);
+      expect(predicate("starswarm")).toBe(false);
+    });
   });
 
   it("navigates to DailyWord when Daily Word card pressed", async () => {

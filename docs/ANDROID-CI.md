@@ -53,6 +53,40 @@ Gradle builds — no prebuild step happens in CI.
 Keystores and `local.properties` are gitignored; passwords belong only in the
 user-level file above (#1918, #2277).
 
+## Release bundle guard
+
+`EXPO_PUBLIC_TEST_HOOKS=1` enables the e2e test hooks **and** unhides the six
+premium games that v1.0 store builds hide (`docs/ARCHITECTURE.md` §10.7). Expo
+inlines the flag into the JS bundle, so `app/build.gradle` protects the Play
+artifact in two ways:
+
+- **`createBundleReleaseJsAndAssets` refuses to run** when the flag is `1` in the
+  environment or in `frontend/.env`, `.env.local`, `.env.production` or
+  `.env.production.local`. The error names the source. Debug builds — including
+  Maestro CI's `-Pandroid.bundleDebugForCI=true` — are not affected.
+- **Local bundles pass `--reset-cache`.** Metro's transform cache key ignores
+  `EXPO_PUBLIC_*` values: a release bundle built after a test-hooks build on the
+  same machine otherwise reuses the stale transform and ships with the hooks on
+  (reproduced 2026-09-19). Skipped when `CI` is set, since CI artifacts are never
+  uploaded and the jobs rely on their restored Metro cache.
+
+## Windows build prerequisites
+
+Two machine-level fixes are needed before Gradle can build this app on Windows:
+
+- **Long paths.** `react-native-audio-api` compiles sources from outside its
+  `android/` folder, so CMake object paths exceed 260 characters from almost any
+  checkout location, and the build dies with `ninja: error: mkdir(...): No such
+  file or directory`. Enable `LongPathsEnabled` in the registry **and** replace
+  the SDK's bundled ninja 1.10 (`Android/Sdk/cmake/3.22.1/bin/ninja.exe`, not
+  long-path aware) with ninja ≥ 1.12 from the official releases. A `subst` drive
+  does not help — Gradle resolves it back to the real path.
+- **TLS-intercepting antivirus.** If HTTPS scanning re-signs traffic with a root
+  the JDK does not trust, every download fails and Gradle reports it as
+  `Plugin [id: '…foojay-resolver-convention'] was not found`. Add
+  `systemProp.javax.net.ssl.trustStoreType=Windows-ROOT` to the user-level
+  `~/.gradle/gradle.properties` so the JVM uses the Windows certificate store.
+
 ## Key Gradle files
 
 | File                                                        | Purpose                                                 |

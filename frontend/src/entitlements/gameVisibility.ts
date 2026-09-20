@@ -47,6 +47,19 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
  */
 export const SHOW_HIDDEN_GAMES: boolean = __DEV__ || areTestHooksEnabled() || isPreLaunchApiBuild();
 
+let forcedStoreBuild = false;
+
+/**
+ * Test seam: makes `isGameVisible` answer as a store build would, so suites can
+ * exercise the real predicate under Jest's `__DEV__ === true`. Hide-only by
+ * design — there is no way to force hidden games *visible*, so this can never
+ * weaken a store build.
+ */
+export function __forceStoreBuildForTests(on: boolean): void {
+  forcedStoreBuild = on;
+}
+
 export function isGameVisible(slug: string): boolean {
-  return SHOW_HIDDEN_GAMES || !HIDDEN_GAMES.has(slug);
+  const showHidden = SHOW_HIDDEN_GAMES && !forcedStoreBuild;
+  return showHidden || !HIDDEN_GAMES.has(slug);
 }
