@@ -418,18 +418,17 @@ describe("httpClient — Sentry reporting (#513)", () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
-  // #2428: what production actually throws. Expo's native `fetch` rethrows
-  // every native failure as `FetchError extends Error` ("fetch failed: …") —
-  // never the bare CodedError the #2380 cases above use. Built from Expo's own
-  // class so an SDK bump that changes the shape fails here, not in Sentry.
-  // Messages are the verbatim BC_GAMES-4W (Android) / BC_GAMES-4Y (iOS) titles.
   describe("network-failure throttle (#2430)", () => {
-    const WINDOW = 10 * 60 * 1000; // NETWORK_FAILURE_REPORT_INTERVAL_MS
+    let WINDOW: number; // NETWORK_FAILURE_REPORT_INTERVAL_MS
+    let MAX_TRACKED: number; // NETWORK_FAILURE_MAX_TRACKED
     let now: number;
     let dateSpy: jest.SpyInstance;
     let originalDev: boolean | undefined;
 
     beforeEach(() => {
+      const throttle = require("../httpClient") as typeof import("../httpClient");
+      WINDOW = throttle.NETWORK_FAILURE_REPORT_INTERVAL_MS;
+      MAX_TRACKED = throttle.NETWORK_FAILURE_MAX_TRACKED;
       now = 1_700_000_000_000;
       dateSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
       // The report path only runs outside dev and test-hook builds.
@@ -450,12 +449,6 @@ describe("httpClient — Sentry reporting (#513)", () => {
       await expect(request(path, { method })).rejects.toThrow("Failed to fetch");
     }
 
-    const networkBreadcrumbs = () =>
-      Sentry.addBreadcrumb.mock.calls.filter(
-        ([b]: [{ category: string; message: string }]) =>
-          b.category === "api.error" && b.message.endsWith("network failure")
-      );
-
     it("repeated failures of one endpoint inside the window produce one event", async () => {
       const request = makeRequest();
       for (let i = 0; i < 5; i++) {
@@ -463,8 +456,11 @@ describe("httpClient — Sentry reporting (#513)", () => {
         now += 1_000;
       }
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
-      // The breadcrumb trail is not throttled — every failure is recorded.
-      expect(networkBreadcrumbs()).toHaveLength(5);
+      // The trail is not throttled: every attempt still leaves its api.request breadcrumb.
+      const attempts = Sentry.addBreadcrumb.mock.calls.filter(
+        ([b]: [{ category: string }]) => b.category === "api.request"
+      );
+      expect(attempts).toHaveLength(5);
     });
 
     it("a different endpoint, or the same path with another method, still reports", async () => {
@@ -472,6 +468,36 @@ describe("httpClient — Sentry reporting (#513)", () => {
       await fail(request, "/entitlements");
       await fail(request, "/starswarm/leaderboard");
       await fail(request, "/entitlements", "POST");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it("failures for different record ids of one endpoint share a key (a queue flush is one event)", async () => {
+      const request = makeRequest();
+      const uuid = (n: number) => `0b8f1c2e-4d5a-4e6f-8a9b-${String(n).padStart(12, "0")}`;
+      for (let i = 0; i < 25; i++) {
+        await fail(request, `/games/${uuid(i)}/complete`, "PATCH");
+      }
+      for (let i = 0; i < 25; i++) {
+        await fail(request, `/games/${i}/events`, "POST"); // numeric ids too
+      }
+      // one event per endpoint shape — not one per id
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+      expect(Sentry.captureMessage.mock.calls[0][1].extra.suppressedSinceLastReport).toBe(0);
+    });
+
+    it("query strings do not create new keys", async () => {
+      const request = makeRequest();
+      await fail(request, "/games/me?limit=20&offset=0");
+      await fail(request, "/games/me?limit=20&offset=20");
+      await fail(request, "/games/me");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("ids collapse only where a whole segment is an id", async () => {
+      const request = makeRequest();
+      await fail(request, "/games/me");
+      await fail(request, "/games/catalog");
+      await fail(request, "/daily-word/today");
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
     });
 
@@ -521,18 +547,23 @@ describe("httpClient — Sentry reporting (#513)", () => {
     it("remembers a bounded number of endpoints, evicting the stalest", async () => {
       const request = makeRequest();
       await fail(request, "/first");
-      for (let i = 0; i < 100; i++) {
-        await fail(request, `/games/${i}/complete`); // ids make the key space unbounded
+      for (let i = 0; i < MAX_TRACKED; i++) {
+        await fail(request, `/route-${i}`); // ids collapse, so vary a non-id segment
       }
       Sentry.captureMessage.mockClear();
       await fail(request, "/first"); // evicted — reports again despite being inside the window
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
       Sentry.captureMessage.mockClear();
-      await fail(request, "/games/99/complete"); // recent — still remembered
+      await fail(request, `/route-${MAX_TRACKED - 1}`); // recent — still remembered
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
   });
 
+  // #2428: what production actually throws. Expo's native `fetch` rethrows
+  // every native failure as `FetchError extends Error` ("fetch failed: …") —
+  // never the bare CodedError the #2380 cases above use. Built from Expo's own
+  // class so an SDK bump that changes the shape fails here, not in Sentry.
+  // Messages are the verbatim BC_GAMES-4W (Android) / BC_GAMES-4Y (iOS) titles.
   describe("Expo native FetchError (#2428)", () => {
     const { FetchError } = require("expo/src/winter/fetch/FetchErrors") as {
       FetchError: { createFromError(error: Error): Error };

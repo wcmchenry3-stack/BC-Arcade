@@ -133,30 +133,49 @@ function resolveBaseUrl(): string {
  * the signal ("this endpoint is unreachable from this install") without
  * letting one client burn the quota. Per app session: the state is in memory,
  * so a fresh launch reports again.
+ *
+ * The count of swallowed failures rides on the *next* report for that
+ * endpoint. A streak that ends without the endpoint failing again after the
+ * window is never tallied, and neither is one cut short by the app closing —
+ * so the count is a floor on how bad it was, not a total.
  */
 export const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
-/** Bound the map: paths can embed ids, so the key space is not finite. */
-const NETWORK_FAILURE_MAX_TRACKED = 100;
+/** Bound the map: keys are normalised, but paths are still not a closed set. */
+export const NETWORK_FAILURE_MAX_TRACKED = 100;
+
+// A path segment that is a record id: all digits, or a UUID (game ids are UUIDs).
+const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/**
+ * Throttle key for one failing endpoint: the query string is dropped and id
+ * segments collapse to `:id`, so `PATCH /games/<uuid-1>/complete` and
+ * `PATCH /games/<uuid-2>/complete` are one endpoint. A raw-path key would give
+ * a queue flush of N games N keys, defeating the throttle exactly when many
+ * requests fail together. (The reported message keeps the real path.)
+ */
+export function networkFailureKey(apiTag: string, method: string, path: string): string {
+  const route = (path.split(/[?#]/, 1)[0] ?? "")
+    .split("/")
+    .map((segment) => (ID_SEGMENT.test(segment) ? ":id" : segment))
+    .join("/");
+  return `${apiTag} ${method} ${route}`;
+}
 
 const networkFailureReports = new Map<string, { at: number; suppressed: number }>();
 
 /**
- * Decide whether this failure should reach Sentry. `key` is the report message
- * itself, so throttling matches Sentry's own grouping — a different endpoint
- * (or method) always reports. Returns how many were swallowed since the last
- * report so the next event can say so.
+ * Decide whether this failure should reach Sentry. Returns `null` to stay
+ * quiet, or — when it should report — how many failures were swallowed since
+ * the last report, so the event can say so.
  */
-function claimNetworkFailureReport(
-  key: string,
-  now: number
-): { report: boolean; suppressed: number } {
+function claimNetworkFailureReport(key: string, now: number): number | null {
   const previous = networkFailureReports.get(key);
   const age = previous ? now - previous.at : Infinity;
   // A clock that moved backwards (age < 0) reports again rather than
   // suppressing until the wall clock catches up.
   if (previous && age >= 0 && age < NETWORK_FAILURE_REPORT_INTERVAL_MS) {
     previous.suppressed += 1;
-    return { report: false, suppressed: 0 };
+    return null;
   }
   // Delete + set keeps Map insertion order == report recency, so the first
   // key is always the stalest one to evict.
@@ -166,7 +185,7 @@ function claimNetworkFailureReport(
     if (oldest !== undefined) networkFailureReports.delete(oldest);
   }
   networkFailureReports.set(key, { at: now, suppressed: 0 });
-  return { report: true, suppressed: previous?.suppressed ?? 0 };
+  return previous?.suppressed ?? 0;
 }
 
 export interface HttpClientOptions {
@@ -257,27 +276,25 @@ export function createGameClient(options: HttpClientOptions) {
         // (backend not running) — skip Sentry to avoid flooding the
         // dashboard with dev noise (#571).
         //
-        // Every failure leaves a breadcrumb (cheap, and gives any later
-        // event its context); only the first per endpoint per window becomes
-        // a Sentry event (#2430).
-        Sentry.addBreadcrumb({
-          category: "api.error",
-          level: "warning",
-          message: `${method} ${path} → network failure`,
-          data: { url, platform: Platform.OS, api: apiTag, originalMessage: e.message },
-        });
+        // Only the first failure per endpoint per window becomes a Sentry
+        // event (#2430); every attempt is still recorded by the `api.request`
+        // breadcrumb above. `isNetworkError` also matches a bare `TypeError`
+        // thrown by request-building code (inherited behaviour), so a
+        // repeating bug of that kind is throttled like any network failure.
         if (!__DEV__ && !isTestBuild) {
-          const message = `API ${apiTag} network failure: ${method} ${path}`;
-          const claim = claimNetworkFailureReport(message, Date.now());
-          if (claim.report) {
-            Sentry.captureMessage(message, {
+          const suppressed = claimNetworkFailureReport(
+            networkFailureKey(apiTag, method, path),
+            Date.now()
+          );
+          if (suppressed !== null) {
+            Sentry.captureMessage(`API ${apiTag} network failure: ${method} ${path}`, {
               level: "warning",
               tags: { api: apiTag, errorType: "network" },
               extra: {
                 url,
                 platform: Platform.OS,
                 originalMessage: e.message,
-                suppressedSinceLastReport: claim.suppressed,
+                suppressedSinceLastReport: suppressed,
               },
             });
           }
