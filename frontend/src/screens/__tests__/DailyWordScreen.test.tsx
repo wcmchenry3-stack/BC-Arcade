@@ -316,6 +316,29 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });
 
+  it("serves cached meta on Expo's native FetchError shape — what devices really throw (#2428)", async () => {
+    jest.useFakeTimers();
+    // Plain Error with a "fetch failed: …" message: neither TypeError nor
+    // CodedError. Verbatim BC_GAMES-4W message.
+    dailyWordApi.getToday.mockRejectedValue(
+      new Error(
+        'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname'
+      )
+    );
+    storage.loadTodayMeta.mockResolvedValue(TODAY_META);
+
+    const { findByTestId, queryByText } = await renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+    // Retried like any other network failure before falling back to cache.
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
+  });
+
   it("shows error when API fails and cache is cold", async () => {
     jest.useFakeTimers();
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));

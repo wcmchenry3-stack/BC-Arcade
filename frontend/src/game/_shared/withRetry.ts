@@ -3,9 +3,10 @@ import { isNetworkError } from "./httpClient";
 /**
  * Retries an async function up to `maxRetries` times when it throws a
  * network-layer failure as classified by `isNetworkError` — `TypeError` from
- * `fetch` (offline, DNS, CORS, "Failed to fetch") or, on Android, the Expo
- * `CodedError` the native fetch layer raises for the same conditions (#2403).
- * All other error types are re-thrown immediately without any retry.
+ * `fetch` on web (offline, DNS, CORS, "Failed to fetch") or, on iOS / Android,
+ * the "fetch failed: …" error Expo's native fetch raises for the same
+ * conditions (#2403, #2428). All other error types are re-thrown immediately
+ * without any retry.
  *
  * The check is intentionally broad — any TypeError/CodedError triggers a
  * retry, not just those from `fetch`. All current call sites are thin API wrappers, so
