@@ -64,6 +64,12 @@ function statsAtLevel(level: number): StatsResponse {
   };
 }
 
+// The pill uploads queued games before asking for the level.
+const mockFlush = jest.fn();
+jest.mock("../../game/_shared/syncWorker", () => ({
+  syncWorker: { flush: () => mockFlush() },
+}));
+
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../../game/_shared/NetworkContext", () => ({
@@ -129,6 +135,7 @@ beforeEach(() => {
   mockCanPlay.mockReturnValue(true);
   mockGetMyStats.mockResolvedValue(statsAtLevel(1));
   mockNetwork.isOnline = true;
+  mockFlush.mockResolvedValue({});
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
@@ -298,6 +305,28 @@ describe("HomeScreen — Arcade level pill (#2391)", () => {
     expect(await findByText("Lv 2")).toBeTruthy();
   });
 
+  it("uploads queued games before asking for the level, so a just-finished game counts", async () => {
+    const order: string[] = [];
+    mockFlush.mockImplementation(async () => {
+      order.push("flush");
+      return {};
+    });
+    mockGetMyStats.mockImplementation(async () => {
+      order.push("stats");
+      return statsAtLevel(2);
+    });
+    const { findByText } = await renderScreen();
+    expect(await findByText("Lv 2")).toBeTruthy();
+    expect(order).toEqual(["flush", "stats"]);
+  });
+
+  it("still shows the pill when the upload fails", async () => {
+    mockFlush.mockRejectedValue(new Error("flush blew up"));
+    mockGetMyStats.mockResolvedValue(statsAtLevel(5));
+    const { findByText } = await renderScreen();
+    expect(await findByText("Lv 5")).toBeTruthy();
+  });
+
   it("does not call /stats/me while the device is known to be offline", async () => {
     mockNetwork.isOnline = false;
     const { getByLabelText, queryByText } = await renderScreen();
@@ -308,6 +337,7 @@ describe("HomeScreen — Arcade level pill (#2391)", () => {
       focusCalls[focusCalls.length - 1][1]();
     });
     expect(mockGetMyStats).not.toHaveBeenCalled();
+    expect(mockFlush).not.toHaveBeenCalled();
     expect(queryByText(/^Lv /)).toBeNull();
   });
 

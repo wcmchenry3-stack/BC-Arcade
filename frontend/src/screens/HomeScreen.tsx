@@ -28,6 +28,7 @@ import { isGameVisible } from "../entitlements/gameVisibility";
 import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
 import { useNetwork } from "../game/_shared/NetworkContext";
+import { syncWorker } from "../game/_shared/syncWorker";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -100,7 +101,13 @@ export default function HomeScreen() {
   const refreshArcadeLevel = useCallback(() => {
     if (!isOnline || levelFetchInFlight.current) return;
     levelFetchInFlight.current = true;
-    withRetry(() => statsApi.getMyStats())
+    // A just-finished game is still in the local queue — SyncWorker only uploads
+    // every 30 s — so push it first or /stats/me answers with the old level. A
+    // failed flush must not cost us the pill.
+    syncWorker
+      .flush()
+      .catch(() => {})
+      .then(() => withRetry(() => statsApi.getMyStats()))
       .then((stats) => {
         if (mounted.current) setArcadeLevel(stats.arcade_level);
       })

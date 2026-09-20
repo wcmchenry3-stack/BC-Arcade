@@ -189,8 +189,9 @@ export default function ProfileScreen() {
     <View>
       {/* Server XP as-is, unlike the bento's visible-games re-derivation (#2390): a store
           build talks to the production database, where the hidden games were never played,
-          and every other build shows all twelve games (#2417). */}
-      {stats && (
+          and every other build shows all twelve games (#2417). The null check covers an
+          API that predates the XP fields (a rolled-back or lagging deploy). */}
+      {stats?.arcade_level != null && (
         <LevelProgress
           level={stats.arcade_level}
           totalXp={stats.arcade_xp}

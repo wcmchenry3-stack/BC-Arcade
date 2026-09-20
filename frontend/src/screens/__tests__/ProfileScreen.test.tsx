@@ -236,6 +236,20 @@ describe("ProfileScreen", () => {
     expect(screen.getByRole("progressbar").props.accessibilityValue.now).toBe(80);
   });
 
+  it("renders without the level header when the API predates the XP fields (#2391)", async () => {
+    const legacy = {
+      total_games: SAMPLE_STATS.total_games,
+      by_game: SAMPLE_STATS.by_game,
+      favorite_game: SAMPLE_STATS.favorite_game,
+    };
+    mockGetMyStats.mockResolvedValue(legacy as StatsResponse);
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Games Played")).toBeTruthy();
+    });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
   it("omits the level header when only stats fails (#2391)", async () => {
     mockGetMyStats.mockRejectedValue(new Error("500 server error"));
     await renderScreen();
