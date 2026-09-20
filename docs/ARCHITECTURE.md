@@ -76,8 +76,11 @@ What we log:
 `result` dict alongside `final_score` / `outcome` / `duration_ms`. Each game
 module may declare a `result_model` (a Pydantic model, separate from the
 creation-time `metadata_model`, which forbids extra keys); the validated result
-is merged into `games.metadata` without touching creation-time fields, and an
-invalid result returns 400 without completing the game. Modules with
+is merged into `games.metadata` — creation-time keys always win on a collision,
+because leaderboards read `player_name` / `raw_score` from there — and an
+invalid or oversized (> 8 KB) result returns 400 without completing the game
+and is reported to Sentry (game type, failing field paths, error types — no
+session id or values), because the app's sync worker dead-letters a 400. Modules with
 `result_model = None` accept any dict. Result models ignore unknown keys so a
 newer app build never fails completion against an older backend. `won` inside
 the result is the win signal — `games.outcome` stays lifecycle-only
