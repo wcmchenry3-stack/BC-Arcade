@@ -28,8 +28,9 @@ export interface GridShape {
  * makes that reset key both correct and sufficient).
  */
 export function computeGridShape(numBottles: number): GridShape {
+  if (numBottles <= 0) return { numCols: 0, numRows: 0, rowCounts: [] };
   const maxColsCap = numBottles <= 4 ? numBottles : numBottles <= 6 ? 3 : 4;
-  const numRows = Math.max(1, Math.ceil(numBottles / maxColsCap));
+  const numRows = Math.ceil(numBottles / maxColsCap);
   const base = Math.floor(numBottles / numRows);
   const remainder = numBottles % numRows;
   const rowCounts = Array.from({ length: numRows }, (_, i) => base + (i < remainder ? 1 : 0));

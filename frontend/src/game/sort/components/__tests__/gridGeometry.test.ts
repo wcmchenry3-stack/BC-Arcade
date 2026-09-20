@@ -13,6 +13,10 @@ describe("computeGridShape", () => {
     expect(computeGridShape(9)).toEqual({ numCols: 3, numRows: 3, rowCounts: [3, 3, 3] });
   });
 
+  it("returns an empty shape for zero bottles instead of NaN/-Infinity", () => {
+    expect(computeGridShape(0)).toEqual({ numCols: 0, numRows: 0, rowCounts: [] });
+  });
+
   it("is a pure function of bottle count — same input always yields the same shape", () => {
     for (let n = 1; n <= 30; n++) {
       expect(computeGridShape(n)).toEqual(computeGridShape(n));

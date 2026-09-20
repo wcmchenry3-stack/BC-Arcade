@@ -27,6 +27,30 @@ import { computeGridShape } from "./gridGeometry";
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
 const BOTTLE_GAP = 12;
+
+interface Offset {
+  x: number;
+  y: number;
+}
+/** A bottle cell's layout, relative to its row (which is relative to the grid). */
+interface CellLayout extends Offset {
+  row: number;
+}
+
+/**
+ * Position of a bottle within the board: grid + row + cell offsets. Undefined
+ * until both the cell's and its row's onLayout have landed, so a pour is
+ * suppressed rather than drawn from a partial (row-less) position.
+ */
+function resolveBottlePos(
+  grid: Offset,
+  rowOffsets: readonly Offset[],
+  cell: CellLayout | undefined
+): Offset | undefined {
+  const row = cell ? rowOffsets[cell.row] : undefined;
+  if (!cell || !row) return undefined;
+  return { x: grid.x + row.x + cell.x, y: grid.y + row.y + cell.y };
+}
 const ASPECT_RATIO = DEFAULT_BOTTLE_WIDTH / DEFAULT_BOTTLE_HEIGHT; // ≈ 0.333
 
 export interface SortBoardProps {
@@ -97,7 +121,7 @@ export default function SortBoard({
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
-  const { numCols, numRows, rowCounts } = computeGridShape(numBottles);
+  const { numCols, numRows, rowCounts } = useMemo(() => computeGridShape(numBottles), [numBottles]);
   // Row descriptors (start index into state.bottles + bottle count), derived
   // from rowCounts — used to slice bottles into explicit row groups below
   // (see #2426: relying on flexWrap to infer row breaks from a computed
@@ -130,19 +154,24 @@ export default function SortBoard({
   }, []);
 
   // Position tracking — updated by onLayout, never triggers re-render.
-  // React Native fires onLayout top-down (parent before children), so
-  // gridOffsetRef is populated before any bottle cell onLayout runs.
-  const gridOffsetRef = useRef({ x: 0, y: 0 });
-  const bottlePositionsRef = useRef<{ x: number; y: number }[]>([]);
+  // RN reports each layout x/y relative to its immediate parent, so a bottle's
+  // position within the board is grid + row + cell. The three are stored
+  // separately and summed at read time (bottlePos), which keeps the result
+  // independent of the order onLayout events happen to arrive in.
+  const gridOffsetRef = useRef<Offset>({ x: 0, y: 0 });
+  const rowOffsetsRef = useRef<Offset[]>([]);
+  const cellLayoutsRef = useRef<CellLayout[]>([]);
+  const bottlePos = (idx: number) =>
+    resolveBottlePos(gridOffsetRef.current, rowOffsetsRef.current, cellLayoutsRef.current[idx]);
 
   // SortScreen also forces a fresh SortBoard instance on every level change
   // (key={currentLevelId}), which alone gives the refs above a clean start.
   // This effect is a second, independent layer of protection: it doesn't
   // assume the caller remounts us, so SortBoard stays correct even if reused
   // in place (SortScreen's handleNextLevel used to do exactly that — see
-  // #2297). A different bottle count means a different grid (numCols/numRows,
-  // and possibly a differently-centered last row), so cached positions from
-  // the previous level's layout no longer describe the new one.
+  // #2297). A different bottle count means a different grid (numCols, numRows
+  // and rowCounts), so cached positions from the previous level's layout no
+  // longer describe the new one.
   //
   // Uses useLayoutEffect (not useEffect) so the reset is committed
   // synchronously, before React/React Native can deliver any onLayout event
@@ -154,7 +183,8 @@ export default function SortBoard({
   // fresh onLayout events for the new grid land, instead of computing a
   // pour's ghost/highlight/stream from stale coordinates.
   useLayoutEffect(() => {
-    bottlePositionsRef.current = [];
+    cellLayoutsRef.current = [];
+    rowOffsetsRef.current = [];
     gridOffsetRef.current = { x: 0, y: 0 };
   }, [numBottles]);
 
@@ -229,8 +259,8 @@ export default function SortBoard({
       return;
     }
 
-    const srcPos = bottlePositionsRef.current[pouringFrom];
-    const dstPos = bottlePositionsRef.current[pouringTo];
+    const srcPos = bottlePos(pouringFrom);
+    const dstPos = bottlePos(pouringTo);
     if (!srcPos || !dstPos) return;
 
     const sourceBottle = stateRef.current.bottles[pouringFrom];
@@ -353,8 +383,8 @@ export default function SortBoard({
   // a just-reset grid), fall back to undefined (no tilt) rather than
   // guessing — BottleView only tilts when pouringDirection is set, so a
   // guessed default here would risk tilting the bottle the wrong way.
-  const srcXForDirection = bottlePositionsRef.current[pouringFrom ?? -1]?.x;
-  const dstXForDirection = bottlePositionsRef.current[pouringTo ?? -1]?.x;
+  const srcXForDirection = bottlePos(pouringFrom ?? -1)?.x;
+  const dstXForDirection = bottlePos(pouringTo ?? -1)?.x;
   const pouringDirection: "left" | "right" | undefined =
     pouringFrom !== null &&
     pouringTo !== null &&
@@ -413,46 +443,55 @@ export default function SortBoard({
           };
         }}
       >
-        {rows.map(({ start, count }, rowIdx) => {
-          return (
-            <View key={rowIdx} style={[styles.gridRow, { gap: BOTTLE_GAP }]}>
-              {state.bottles.slice(start, start + count).map((bottle, localIdx) => {
-                const idx = start + localIdx;
-                return (
-                  <View
-                    key={idx}
-                    testID={`bottle-cell-${idx}`}
-                    style={[
-                      styles.bottleCell,
-                      { width: bottleW },
-                      idx === pouringFrom && ghost !== null ? styles.bottleHidden : null,
-                    ]}
-                    onLayout={(e) => {
-                      bottlePositionsRef.current[idx] = {
-                        x: gridOffsetRef.current.x + e.nativeEvent.layout.x,
-                        y: gridOffsetRef.current.y + e.nativeEvent.layout.y,
-                      };
-                    }}
-                  >
-                    <BottleView
-                      bottle={bottle}
-                      index={idx}
-                      selected={state.selectedBottleIndex === idx}
-                      pouring={reduceMotion ? idx === pouringFrom : false}
-                      pouringDirection={
-                        reduceMotion && idx === pouringFrom ? pouringDirection : undefined
-                      }
-                      colorblindMode={colorblindMode}
-                      bottleWidth={bottleW}
-                      bottleHeight={bottleH}
-                      onTap={handlers[idx]}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          );
-        })}
+        {rows.map(({ start, count }, rowIdx) => (
+          <View
+            key={rowIdx}
+            testID={`sort-row-${rowIdx}`}
+            style={[styles.gridRow, { gap: BOTTLE_GAP }]}
+            onLayout={(e) => {
+              rowOffsetsRef.current[rowIdx] = {
+                x: e.nativeEvent.layout.x,
+                y: e.nativeEvent.layout.y,
+              };
+            }}
+          >
+            {state.bottles.slice(start, start + count).map((bottle, localIdx) => {
+              const idx = start + localIdx;
+              return (
+                <View
+                  key={idx}
+                  testID={`bottle-cell-${idx}`}
+                  style={[
+                    styles.bottleCell,
+                    { width: bottleW },
+                    idx === pouringFrom && ghost !== null ? styles.bottleHidden : null,
+                  ]}
+                  onLayout={(e) => {
+                    cellLayoutsRef.current[idx] = {
+                      row: rowIdx,
+                      x: e.nativeEvent.layout.x,
+                      y: e.nativeEvent.layout.y,
+                    };
+                  }}
+                >
+                  <BottleView
+                    bottle={bottle}
+                    index={idx}
+                    selected={state.selectedBottleIndex === idx}
+                    pouring={reduceMotion ? idx === pouringFrom : false}
+                    pouringDirection={
+                      reduceMotion && idx === pouringFrom ? pouringDirection : undefined
+                    }
+                    colorblindMode={colorblindMode}
+                    bottleWidth={bottleW}
+                    bottleHeight={bottleH}
+                    onTap={handlers[idx]}
+                  />
+                </View>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       {/* Ghost bottle overlay — floats above grid during pour animation.
@@ -468,6 +507,7 @@ export default function SortBoard({
           {/* Destination highlight ring — glows in pour color */}
           {streamColor !== "transparent" && (
             <View
+              testID="pour-dst-ring"
               style={[
                 styles.dstRing,
                 {
