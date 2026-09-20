@@ -1,28 +1,49 @@
 name: Deploy
 
+# Production deploys: CI first, then a Render deploy + ZAP scan per service.
+# The prod services have autoDeploy off (render.yaml) — this workflow is the
+# only thing that deploys them, so a red `main` never reaches production.
+#
+# Service IDs are repository *variables*, not secrets: they are not sensitive,
+# and the `secrets` context is not available in a reusable-workflow call's
+# `with:` (using it there is what made this file invalid). Set them once the
+# prod services exist (Settings → Secrets and variables → Actions → Variables):
+#   RENDER_PROD_API_SERVICE_ID       srv-… of bc-arcade-api
+#   RENDER_PROD_FRONTEND_SERVICE_ID  srv-… of bc-arcade-frontend
+# Until a variable is set its deploy job is skipped, so promoting `dev` → `main`
+# before the prod services exist does not produce a failed run.
+
 on:
   push:
     branches: [main]
 
 jobs:
   ci:
-    uses: wcmchenry3-stack/gaming_app/.github/workflows/ci.yml@main
+    uses: ./.github/workflows/ci.yml
+    # ci.yml's android-bundle-check requests pull-requests: write; a called
+    # workflow cannot exceed what its caller grants, and the repo's default
+    # token is read-only, so grant it here or the whole call is rejected.
+    permissions:
+      contents: read
+      pull-requests: write
     secrets: inherit
 
   deploy-api:
     needs: ci
+    if: ${{ vars.RENDER_PROD_API_SERVICE_ID != '' }}
     uses: wcmchenry3-stack/.github/.github/workflows/called-deploy-render.yml@main
     with:
       service-name: "bc-arcade-api"
-      service-id: ${{ secrets.RENDER_PROD_API_SERVICE_ID }}
+      service-id: ${{ vars.RENDER_PROD_API_SERVICE_ID }}
       zap-target-url: "https://games-api.buffingchi.com"
     secrets: inherit
 
   deploy-frontend:
     needs: ci
+    if: ${{ vars.RENDER_PROD_FRONTEND_SERVICE_ID != '' }}
     uses: wcmchenry3-stack/.github/.github/workflows/called-deploy-render.yml@main
     with:
       service-name: "bc-arcade-frontend"
-      service-id: ${{ secrets.RENDER_PROD_FRONTEND_SERVICE_ID }}
+      service-id: ${{ vars.RENDER_PROD_FRONTEND_SERVICE_ID }}
       zap-target-url: "https://games.buffingchi.com"
     secrets: inherit

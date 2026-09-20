@@ -120,9 +120,19 @@ hung request. It is rate limited to 30/minute per IP.
 
 ## Deploys
 
-- Push to `dev` → both dev services auto-deploy. Push to `main` → both prod
-  services auto-deploy. Production therefore changes only through a `dev` → `main`
-  promotion PR.
+- Push to `dev` → both dev services auto-deploy. Production changes only through a
+  `dev` → `main` promotion PR.
+- **Prod services have Render's auto-deploy off.** A push to `main` runs
+  `.github/workflows/deploy.yml`: the full CI workflow first, then — only if it is
+  green — a Render deploy and an OWASP ZAP baseline scan per service. A red `main`
+  therefore never reaches production. Render's own auto-deploy would ship the
+  commit before CI finished and skip the scan; `test_deploy_workflow.py` pins
+  `autoDeploy: false` in `render.yaml`.
+- The workflow finds the services through two **repository variables** (not
+  secrets — service IDs are not sensitive): `RENDER_PROD_API_SERVICE_ID` and
+  `RENDER_PROD_FRONTEND_SERVICE_ID`. A deploy job is skipped while its variable is
+  unset, so promoting `dev` → `main` before the prod services exist is not a red
+  run. `RENDER_API_KEY` (a secret) is already set.
 - The first production deploy needs `main` to contain everything the release
   depends on — promote before creating the prod services.
 
@@ -132,7 +142,8 @@ hung request. It is rate limited to 30/minute per IP.
 2. Supabase project hardened (settings above) and schema built with
    `alembic upgrade head`; `game_types` has 12 rows.
 3. Create `bc-arcade-api` and `bc-arcade-frontend` from `render.yaml`'s values
-   (Oregon, branch `main`).
+   (Oregon, branch `main`, **auto-deploy off**), then record each `srv-…` ID as
+   the repository variable named under "Deploys" above.
 4. Owner pastes every dashboard secret from the table above. Confirm
    `ENTITLEMENT_DEV_OVERRIDE` is absent.
 5. Cloudflare CNAMEs for `games-api` and `games`; add the custom domains in Render.

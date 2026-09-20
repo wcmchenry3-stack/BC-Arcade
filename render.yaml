@@ -21,7 +21,7 @@ services:
     runtime: python
     branch: main
     rootDir: backend
-    autoDeploy: true
+    autoDeploy: false # deployed by .github/workflows/deploy.yml after CI, then ZAP-scanned
     buildCommand: pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --limit-max-requests 10000
     healthCheckPath: /health
@@ -57,7 +57,7 @@ services:
     runtime: static
     branch: main
     rootDir: frontend
-    autoDeploy: true
+    autoDeploy: false # deployed by .github/workflows/deploy.yml after CI, then ZAP-scanned
     buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
