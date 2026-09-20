@@ -204,3 +204,47 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
+5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
+   `gameVisibility.ts` and its route to `PREMIUM_ROUTES` in `premiumRoutes.ts`
+   (plus the unguarded screen in `App.tsx`'s `PREMIUM_SCREEN_BASES`). The
+   `gameVisibility` / `premiumRoutes` tests fail if any of these sets drift.
+
+### 10.7 Game visibility in store builds (v1.0)
+
+Entitlement answers "locked or playable?". **Visibility** answers "does this game
+exist in this build at all?" and lives separately in
+`frontend/src/entitlements/gameVisibility.ts`.
+
+v1.0 ships with the six premium games hidden entirely — no tile, no route, no
+locked screen — until IAP lands (epic #822). `isGameVisible(slug)` filters:
+
+- the Home grid and chunk prefetch (`HomeScreen.tsx`);
+- route and tab registration — `App.tsx` registers premium screens from the
+  `premiumRoutes.ts` registry, which also owns the Star Swarm-only **Ranks** tab;
+- Profile — bento tiles are re-derived from visible games and hidden-game rows
+  are dropped from Recent Games, so earlier plays by a tester cannot resurface.
+
+`SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1"`, so dev builds and
+e2e test builds keep all 12 games; a store build shows 6 tiles and 3 tabs. It is a
+compiled constant on purpose:
+
+- **Not a new env var** — `frontend/ios/ci_scripts/ci_post_clone.sh` deletes
+  `.env.production` and rewrites `.env` on every Xcode Cloud build, so a new
+  `EXPO_PUBLIC_*` flag would silently vanish and could ship premium games to
+  App Review.
+- **Not server-driven** — the binary App Review approves must be the binary users
+  get (guideline 2.3.1).
+
+Store screenshots must therefore come from a release build without test hooks.
+
+The gate is the build flavour, not the platform: the **Render web build hides
+the premium games too** (owner decision, 2026-09-19). Web is unmonetized, and
+nothing premium should be free anywhere.
+
+A leaked `EXPO_PUBLIC_TEST_HOOKS=1` would unhide everything. Android release
+builds refuse to run when the flag is set (`docs/ANDROID-CI.md`, "Release bundle
+guard"), `scripts/check-build-env.js` rejects it for the Render web build, and
+Xcode Cloud rewrites `.env` on every build (it does not check the workflow's own
+environment variables — never add the flag there). `frontend/metro.config.js`
+keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
+test-hooks build can never be reused by a store build on any platform.

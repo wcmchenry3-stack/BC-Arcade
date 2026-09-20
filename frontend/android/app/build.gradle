@@ -149,6 +149,46 @@ android {
     }
 }
 
+// Release bundle guard (#2390). v1.0 hides the premium games in store builds
+// via a compiled constant that is true when EXPO_PUBLIC_TEST_HOOKS=1
+// (frontend/src/entitlements/gameVisibility.ts). Expo inlines that flag into the
+// JS bundle, so a value left over from an e2e/Maestro session — exported in the
+// shell or sitting in a frontend/.env* file — would silently ship the hidden
+// games to Play. Refuse to create the release bundle instead. Debug builds
+// (including Maestro CI's -Pandroid.bundleDebugForCI=true) are unaffected.
+def findLeakedTestHooksFlag = { ->
+    if (System.getenv("EXPO_PUBLIC_TEST_HOOKS") == "1") {
+        return "the EXPO_PUBLIC_TEST_HOOKS environment variable"
+    }
+    // The dotenv files Expo CLI loads for a production bundle.
+    for (name in [".env", ".env.local", ".env.production", ".env.production.local"]) {
+        def envFile = new File(projectRoot, name)
+        if (envFile.isFile() && envFile.readLines().any { it ==~ /^\s*(export\s+)?EXPO_PUBLIC_TEST_HOOKS\s*=\s*["']?1["']?\s*(#.*)?$/ }) {
+            return "frontend/${name}"
+        }
+    }
+    return null
+}
+// Checked once the task graph is known rather than inside one bundle task, so it
+// still fires if the React Native plugin renames that task, a flavor is added,
+// or the bundle is UP-TO-DATE: any release-variant work in :app trips it.
+gradle.taskGraph.whenReady { graph ->
+    def buildsRelease = graph.allTasks.any { it.project == project && it.name =~ /Release/ }
+    if (buildsRelease) {
+        def source = findLeakedTestHooksFlag()
+        if (source != null) {
+            throw new GradleException(
+                "EXPO_PUBLIC_TEST_HOOKS=1 is set via ${source}. A release bundle built with it " +
+                "shows the hidden premium games (#2390). Unset it and rebuild.")
+        }
+    }
+}
+// The flag changes the bundle's contents, so it is a task input: flipping it
+// can never leave a previously built bundle UP-TO-DATE.
+tasks.matching { it.name ==~ /createBundle.*JsAndAssets/ }.configureEach { task ->
+    task.inputs.property("expoPublicTestHooks", System.getenv("EXPO_PUBLIC_TEST_HOOKS") ?: "")
+}
+
 // Apply static values from `gradle.properties` to the `android.packagingOptions`
 // Accepts values in comma delimited lists, example:
 // android.packagingOptions.pickFirsts=/LICENSE,**/picasa.ini

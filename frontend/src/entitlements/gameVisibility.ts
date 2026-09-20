@@ -1,0 +1,52 @@
+/**
+ * Which games exist at all in this build (#2390).
+ *
+ * v1.0 ships to the stores with the six premium games hidden entirely — not
+ * locked, not free. They come back when IAP lands (epic #822).
+ *
+ * This is deliberately a compiled constant and NOT:
+ *  - a new `EXPO_PUBLIC_*` env var — `ios/ci_scripts/ci_post_clone.sh` deletes
+ *    `.env.production` and force-writes a two-line `.env` on every Xcode Cloud
+ *    build, so a new var would silently vanish and could ship the premium
+ *    games to App Review by accident;
+ *  - server-driven — the binary App Review approves must be the binary users
+ *    get (guideline 2.3.1); a flag that unhides content post-review is itself
+ *    a rejection pattern.
+ *
+ * Visibility is separate from entitlement: `PREMIUM_GAMES` / `canPlay` in
+ * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden
+ * game is shown (dev and test builds).
+ */
+import { areTestHooksEnabled } from "../game/_shared/envFlags";
+
+export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
+  "yacht",
+  "cascade",
+  "hearts",
+  "sudoku",
+  "starswarm",
+  "sort",
+]);
+
+/**
+ * Dev builds and e2e test builds (`EXPO_PUBLIC_TEST_HOOKS=1`, already set by
+ * the Maestro/Playwright build jobs) keep every game; store builds do not.
+ */
+export const SHOW_HIDDEN_GAMES: boolean = __DEV__ || areTestHooksEnabled();
+
+let forcedStoreBuild = false;
+
+/**
+ * Test seam: makes `isGameVisible` answer as a store build would, so suites can
+ * exercise the real predicate under Jest's `__DEV__ === true`. Hide-only by
+ * design — there is no way to force hidden games *visible*, so this can never
+ * weaken a store build.
+ */
+export function __forceStoreBuildForTests(on: boolean): void {
+  forcedStoreBuild = on;
+}
+
+export function isGameVisible(slug: string): boolean {
+  const showHidden = SHOW_HIDDEN_GAMES && !forcedStoreBuild;
+  return showHidden || !HIDDEN_GAMES.has(slug);
+}

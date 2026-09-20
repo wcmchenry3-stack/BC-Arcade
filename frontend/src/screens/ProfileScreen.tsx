@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTheme } from "../theme/ThemeContext";
@@ -20,6 +21,8 @@ import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
 import OfflineBanner from "../components/OfflineBanner";
+import { isGameVisible } from "../entitlements/gameVisibility";
+import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
 
@@ -29,15 +32,37 @@ interface StatsCardData {
   sublabel?: string;
 }
 
-/** Derives the 2×2 bento tiles from the /stats/me response. */
-function deriveBentoTiles(stats: StatsResponse, t: (k: string) => string): StatsCardData[] {
-  const typesTried = Object.values(stats.by_game).filter((s) => s.played > 0).length;
+/**
+ * Derives the 2×2 bento tiles from the /stats/me response.
+ *
+ * Only games that exist in this build count (#2390): a store build hides the
+ * premium games entirely, so a tester's earlier Yacht or Star Swarm plays must
+ * not resurface here as a favourite, a top score, or in the totals. The
+ * server's `total_games` / `favorite_game` aggregate over every game, so both
+ * are re-derived from the visible `by_game` entries.
+ */
+function deriveBentoTiles(stats: StatsResponse, t: TFunction): StatsCardData[] {
+  const visible = Object.entries(stats.by_game).filter(([game]) => isGameVisible(game));
+  const totalGames = visible.reduce((sum, [, s]) => sum + s.played, 0);
+  const typesTried = visible.filter(([, s]) => s.played > 0).length;
+
+  let favoriteGame: string | null =
+    stats.favorite_game && isGameVisible(stats.favorite_game) ? stats.favorite_game : null;
+  if (!favoriteGame) {
+    let mostPlayed = 0;
+    for (const [game, s] of visible) {
+      if (s.played > mostPlayed) {
+        mostPlayed = s.played;
+        favoriteGame = game;
+      }
+    }
+  }
 
   // Best single score across all completed games (ignores blackjack's null
   // `best` since it uses best_chips — fall back to best_chips when present).
   let topScore: number | null = null;
   let topScoreGame: string | null = null;
-  for (const [game, s] of Object.entries(stats.by_game)) {
+  for (const [game, s] of visible) {
     const candidate = s.best ?? s.best_chips ?? null;
     if (candidate != null && (topScore == null || candidate > topScore)) {
       topScore = candidate;
@@ -48,39 +73,22 @@ function deriveBentoTiles(stats: StatsResponse, t: (k: string) => string): Stats
   return [
     {
       label: t("stats.totalGames"),
-      value: stats.total_games.toLocaleString(),
+      value: totalGames.toLocaleString(),
     },
     {
       label: t("stats.favorite"),
-      value: stats.favorite_game ? formatGameType(stats.favorite_game) : t("stats.favoriteEmpty"),
+      value: favoriteGame ? gameTitle(t, favoriteGame) : t("stats.favoriteEmpty"),
     },
     {
       label: t("stats.topScore"),
       value: topScore != null ? topScore.toLocaleString() : t("stats.topScoreEmpty"),
-      sublabel: topScoreGame ? formatGameType(topScoreGame) : undefined,
+      sublabel: topScoreGame ? gameTitle(t, topScoreGame) : undefined,
     },
     {
       label: t("stats.gamesTried"),
       value: String(typesTried),
     },
   ];
-}
-
-function formatGameType(raw: string): string {
-  switch (raw) {
-    case "twenty48":
-      return "2048";
-    case "blackjack":
-      return "Blackjack";
-    case "yacht":
-      return "Yacht";
-    case "cascade":
-      return "Cascade";
-    case "starswarm":
-      return "Star Swarm";
-    default:
-      return raw;
-  }
 }
 
 function outcomeGlyph(outcome: string | null): string {
@@ -99,7 +107,7 @@ function outcomeGlyph(outcome: string | null): string {
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation("profile");
+  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -145,6 +153,12 @@ export default function ProfileScreen() {
     setRefreshing(false);
   }, [load]);
 
+  // Rows for games hidden in this build would link to a game that does not exist here.
+  const visibleGames = useMemo(
+    () => (games ?? []).filter((g) => isGameVisible(g.game_type)),
+    [games]
+  );
+
   const bentoTiles = useMemo(() => (stats ? deriveBentoTiles(stats, t) : null), [stats, t]);
 
   const renderItem = useCallback(
@@ -153,14 +167,12 @@ export default function ProfileScreen() {
         onPress={() => navigation.navigate("GameDetail", { gameId: item.id })}
         style={[styles.row, { borderBottomColor: colors.border }]}
         accessibilityRole="button"
-        accessibilityLabel={`${formatGameType(item.game_type)} ${item.final_score ?? ""}`}
+        accessibilityLabel={`${gameTitle(t, item.game_type)} ${item.final_score ?? ""}`}
       >
         <Text style={[styles.rowDate, { color: colors.textMuted }]}>
           {formatDate(item.completed_at ?? item.started_at)}
         </Text>
-        <Text style={[styles.rowGame, { color: colors.text }]}>
-          {formatGameType(item.game_type)}
-        </Text>
+        <Text style={[styles.rowGame, { color: colors.text }]}>{gameTitle(t, item.game_type)}</Text>
         <Text style={[styles.rowScore, { color: colors.text }]}>
           {item.final_score != null ? item.final_score.toLocaleString() : "—"}
         </Text>
@@ -169,7 +181,7 @@ export default function ProfileScreen() {
         </Text>
       </Pressable>
     ),
-    [colors, navigation]
+    [colors, navigation, t]
   );
 
   const listHeader = (
@@ -226,7 +238,7 @@ export default function ProfileScreen() {
   } else {
     body = (
       <FlatList
-        data={games ?? []}
+        data={visibleGames}
         keyExtractor={(g) => g.id}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}

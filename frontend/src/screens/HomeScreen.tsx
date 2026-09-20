@@ -24,6 +24,7 @@ import OfflineBanner from "../components/OfflineBanner";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
 import { useEntitlements } from "../entitlements/EntitlementContext";
+import { isGameVisible } from "../entitlements/gameVisibility";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -75,7 +76,11 @@ export default function HomeScreen() {
   // canPlay is stable until entitlements change, so re-running on change
   // ensures premium chunks are prefetched as soon as a session is entitled.
   useEffect(() => {
-    const id = setTimeout(() => prefetchLobbyGameScreens(canPlay), 0);
+    // Hidden games have no route to land on, so never warm their chunks (#2390).
+    const id = setTimeout(
+      () => prefetchLobbyGameScreens((slug) => isGameVisible(slug) && canPlay(slug)),
+      0
+    );
     return () => clearTimeout(id);
   }, [canPlay]);
 
@@ -92,7 +97,7 @@ export default function HomeScreen() {
     }
   }
 
-  const games: GameCard[] = [
+  const allGames: GameCard[] = [
     {
       key: "yacht",
       slug: "yacht",
@@ -192,6 +197,8 @@ export default function HomeScreen() {
       action: () => navigation.navigate("DailyWord"),
     },
   ];
+  // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
+  const games = allGames.filter((game) => isGameVisible(game.slug));
 
   const playLabels: Record<string, string> = {
     [t("yacht:game.title")]: t("yacht:game.playLabel"),

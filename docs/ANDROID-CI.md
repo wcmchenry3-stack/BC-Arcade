@@ -53,6 +53,43 @@ Gradle builds — no prebuild step happens in CI.
 Keystores and `local.properties` are gitignored; passwords belong only in the
 user-level file above (#1918, #2277).
 
+## Release bundle guard
+
+`EXPO_PUBLIC_TEST_HOOKS=1` enables the e2e test hooks **and** unhides the six
+premium games that v1.0 store builds hide (`docs/ARCHITECTURE.md` §10.7). Expo
+inlines the flag into the JS bundle, so the Play artifact is protected twice:
+
+- **Gradle refuses release work when the flag is set.** `app/build.gradle` checks
+  the task graph: if it contains any `:app` release-variant task and the flag is
+  `1` in the environment or in `frontend/.env`, `.env.local`, `.env.production`
+  or `.env.production.local`, the build fails and names the source. The flag is
+  also a declared input of the bundle task, so flipping it never leaves an old
+  bundle UP-TO-DATE. Debug builds — including Maestro CI's
+  `-Pandroid.bundleDebugForCI=true` — are not affected.
+- **Metro's cache is keyed on `EXPO_PUBLIC_*` values** (`frontend/metro.config.js`).
+  Metro's transform cache otherwise ignores them: a release bundle built right
+  after a test-hooks build on the same machine reused the stale transform and
+  shipped with the hooks on (reproduced 2026-09-19). Folding the values into
+  `cacheVersion` re-transforms only when one changes, and covers iOS, web and CI
+  as well as local Gradle builds.
+
+## Windows build prerequisites
+
+Two machine-level fixes are needed before Gradle can build this app on Windows:
+
+- **Long paths.** `react-native-audio-api` compiles sources from outside its
+  `android/` folder, so CMake object paths exceed 260 characters from almost any
+  checkout location, and the build dies with `ninja: error: mkdir(...): No such
+  file or directory`. Enable `LongPathsEnabled` in the registry **and** replace
+  the SDK's bundled ninja 1.10 (`Android/Sdk/cmake/3.22.1/bin/ninja.exe`, not
+  long-path aware) with ninja ≥ 1.12 from the official releases. A `subst` drive
+  does not help — Gradle resolves it back to the real path.
+- **TLS-intercepting antivirus.** If HTTPS scanning re-signs traffic with a root
+  the JDK does not trust, every download fails and Gradle reports it as
+  `Plugin [id: '…foojay-resolver-convention'] was not found`. Add
+  `systemProp.javax.net.ssl.trustStoreType=Windows-ROOT` to the user-level
+  `~/.gradle/gradle.properties` so the JVM uses the Windows certificate store.
+
 ## Key Gradle files
 
 | File                                                        | Purpose                                                 |
