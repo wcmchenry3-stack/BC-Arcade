@@ -65,6 +65,13 @@ function statsAtLevel(level: number): StatsResponse {
   };
 }
 
+// The daily-challenge card at the top of Home fetches on mount; it has its own suite.
+jest.mock("../../game/daily_challenge/api", () => ({
+  dailyChallengeApi: {
+    getDailyChallenge: jest.fn().mockResolvedValue({ challengeId: "c1", goals: [] }),
+  },
+}));
+
 // The pill uploads queued games before asking for the level.
 const mockFlush = jest.fn();
 jest.mock("../../game/_shared/syncWorker", () => ({
