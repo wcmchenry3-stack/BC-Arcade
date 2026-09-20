@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Modal, Switch } from "react-native";
+import { View, Text, Pressable, StyleSheet, Modal, Switch, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -15,6 +15,7 @@ import { scoreQueue } from "../game/_shared/scoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
@@ -69,6 +70,12 @@ export default function SettingsScreen() {
       setDeleteErrorVisible(true);
       setTimeout(() => setDeleteErrorVisible(false), 3000);
     }
+  };
+
+  const openLegalUrl = (url: string) => {
+    Linking.openURL(url).catch((e) => {
+      Sentry.captureException(e, { tags: { subsystem: "settings", op: "openLegalUrl" } });
+    });
   };
 
   return (
@@ -216,6 +223,31 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.legalRow}>
+        <Pressable
+          onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}
+          style={styles.legalLink}
+          testID="privacy-policy-link"
+          accessibilityRole="link"
+          accessibilityLabel={t("legal.privacyPolicy")}
+        >
+          <Text style={[styles.legalLinkText, { color: colors.text }]}>
+            {t("legal.privacyPolicy")}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => openLegalUrl(TERMS_OF_SERVICE_URL)}
+          style={styles.legalLink}
+          testID="terms-of-service-link"
+          accessibilityRole="link"
+          accessibilityLabel={t("legal.termsOfService")}
+        >
+          <Text style={[styles.legalLinkText, { color: colors.text }]}>
+            {t("legal.termsOfService")}
+          </Text>
+        </Pressable>
+      </View>
+
       <Modal
         visible={confirmVisible}
         transparent
@@ -335,6 +367,16 @@ const styles = StyleSheet.create({
   description: { fontSize: 13, marginTop: 4 },
   destructive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   destructiveText: { fontWeight: "600" },
+  legalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    columnGap: 24,
+    paddingTop: 8,
+  },
+  // 44pt minimum touch target (12 + ~20 line height + 12).
+  legalLink: { paddingVertical: 12, paddingHorizontal: 4, minHeight: 44, justifyContent: "center" },
+  legalLinkText: { fontSize: 14, textDecorationLine: "underline" },
   segmented: { flexDirection: "row", borderRadius: 8, padding: 2 },
   segment: {
     paddingHorizontal: 12,

@@ -59,5 +59,7 @@
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "{{level}} 级",
-  "level.pillA11y": "街机等级 {{level}}"
+  "level.pillA11y": "街机等级 {{level}}",
+  "legal.privacyPolicy": "隐私政策",
+  "legal.termsOfService": "服务条款"
 }

@@ -59,5 +59,7 @@
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "Lv {{level}}",
-  "level.pillA11y": "아케이드 레벨 {{level}}"
+  "level.pillA11y": "아케이드 레벨 {{level}}",
+  "legal.privacyPolicy": "개인정보 처리방침",
+  "legal.termsOfService": "서비스 약관"
 }
