@@ -1,0 +1,101 @@
+{
+  "title": {
+    "component": "DailyChallengeCard",
+    "description": "Heading of the Daily Challenge card at the top of Home — one goal per free game, reset every day.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "progress": {
+    "component": "DailyChallengeCard",
+    "description": "How many of today's challenge goals are done, shown top-right of the card heading, e.g. \"1 of 3 complete\".",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": ["done", "total"],
+    "doNotTranslate": [],
+    "notes": "Shares a row with the heading — keep it short."
+  },
+  "allDone": {
+    "component": "DailyChallengeCard",
+    "description": "Message under the goals once every goal is done. The challenge resets each day.",
+    "tone": "celebratory, friendly",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "goal.complete": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game of the named game.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["game"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.scoreAtLeast": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game of the named game with at least the given score, e.g. \"Score 2000+ in 2048\".",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["target", "game"],
+    "doNotTranslate": ["target", "game"],
+    "notes": "The \"+\" after {{target}} means \"or more\"; use the natural equivalent if \"+\" reads oddly."
+  },
+  "goal.doneA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for a goal chip that is done. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": ["goal"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "goal.todoA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for a goal chip that is not done yet. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": ["goal"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "loading.a11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the card while today's challenge is loading.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "offline.title": {
+    "component": "DailyChallengeCard",
+    "description": "Short heading on the Daily Challenge card when the device is offline and the challenge can't be loaded.",
+    "tone": "neutral, calm",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "offline.body": {
+    "component": "DailyChallengeCard",
+    "description": "Explanation under the offline heading. Tapping the card retries.",
+    "tone": "neutral, helpful",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "offline.retryA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the offline card, which retries loading when tapped.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

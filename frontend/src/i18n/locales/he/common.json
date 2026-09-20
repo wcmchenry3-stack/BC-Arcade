@@ -59,5 +59,7 @@
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "רמה {{level}}",
-  "level.pillA11y": "רמת ארקייד {{level}}"
+  "level.pillA11y": "רמת ארקייד {{level}}",
+  "legal.privacyPolicy": "מדיניות פרטיות",
+  "legal.termsOfService": "תנאי שימוש"
 }

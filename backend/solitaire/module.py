@@ -6,7 +6,7 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
-from solitaire.models import SolitaireMetadata
+from solitaire.models import SolitaireMetadata, SolitaireResult
 from vocab import GameType
 
 
@@ -19,6 +19,7 @@ class SolitaireModule:
 
     game_type = GameType.SOLITAIRE
     metadata_model = SolitaireMetadata
+    result_model = SolitaireResult
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

@@ -59,5 +59,7 @@
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "स्तर {{level}}",
-  "level.pillA11y": "आर्केड स्तर {{level}}"
+  "level.pillA11y": "आर्केड स्तर {{level}}",
+  "legal.privacyPolicy": "गोपनीयता नीति",
+  "legal.termsOfService": "सेवा की शर्तें"
 }

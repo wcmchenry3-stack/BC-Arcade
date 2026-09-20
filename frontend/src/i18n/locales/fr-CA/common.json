@@ -59,5 +59,7 @@
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "Niv. {{level}}",
-  "level.pillA11y": "Niveau d'arcade {{level}}"
+  "level.pillA11y": "Niveau d'arcade {{level}}",
+  "legal.privacyPolicy": "Politique de confidentialité",
+  "legal.termsOfService": "Conditions d’utilisation"
 }

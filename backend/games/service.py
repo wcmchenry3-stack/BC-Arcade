@@ -10,11 +10,14 @@ Idempotency strategy:
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import sentry_sdk
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -25,6 +28,7 @@ from vocab import GameOutcome
 
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
+_MAX_RESULT_BYTES = 8192
 _TS_WINDOW_LOW = timedelta(days=365)
 _TS_WINDOW_HIGH = timedelta(hours=24)
 
@@ -463,6 +467,7 @@ async def complete_game(
     outcome: str | None,
     duration_ms: int | None,
     completed_at: datetime | None = None,
+    result: dict[str, Any] | None = None,
 ) -> Game:
     game = await _get_owned_game(session, game_id, session_id)
     if game.completed_at is not None:
@@ -471,15 +476,73 @@ async def complete_game(
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
+    validated_result = await _validate_result(session, game, result)
+
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
     game.completed_at = valid_completed_at if valid_completed_at is not None else now
     game.final_score = final_score
     game.outcome = outcome
     game.duration_ms = duration_ms
+    if validated_result:
+        # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
+        # Creation-time keys win: leaderboards read player_name / raw_score /
+        # difficulty from here, and a result must never rewrite them.
+        game.game_metadata = {**validated_result, **(game.game_metadata or {})}
     await session.commit()
     await session.refresh(game)
     return game
+
+
+async def _validate_result(
+    session: AsyncSession, game: Game, result: dict[str, Any] | None
+) -> dict:
+    """Validate *result* against the game module's ``result_model`` (#2449).
+
+    Games without a registered module or a ``result_model`` accept any dict
+    unvalidated. Only fields the client actually sent are returned. Results over
+    ``_MAX_RESULT_BYTES`` are rejected — unvalidated games have no other bound.
+    """
+    if not result:
+        return {}
+    name = (
+        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
+    ).scalar_one()
+    if len(json.dumps(result, default=str)) > _MAX_RESULT_BYTES:
+        _report_rejected_result(name, "result too large", {"keys": sorted(result)[:20]})
+        raise GameServiceError(400, "Result too large.")
+    mod = get_module(name)
+    result_model = mod.result_model if mod is not None else None
+    if result_model is None:
+        return dict(result)
+    try:
+        return result_model.model_validate(result).model_dump(exclude_unset=True)
+    except ValidationError as e:
+        errors = e.errors()
+        fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in errors)
+        _report_rejected_result(
+            name,
+            "invalid result",
+            {"fields": fields, "error_types": sorted({err["type"] for err in errors})},
+        )
+        raise GameServiceError(400, f"Invalid result for {name}: {fields}")
+
+
+def _report_rejected_result(game_type: str, reason: str, extra: dict[str, Any]) -> None:
+    """Send a rejected completion result to Sentry (#2449).
+
+    A 400 on ``/complete`` is dead-lettered by the app's sync worker, so the
+    game's score is lost — this must be visible server-side, not just in the
+    client's own report. Field paths and error types only: no session id (the
+    privacy policy says crash reports carry no identifier) and no result values.
+    """
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("game_type", game_type)
+        scope.set_context("result_rejection", extra)
+        scope.fingerprint = ["games-complete-result-rejected", game_type, reason]
+        sentry_sdk.capture_message(
+            f"PATCH /games/{{id}}/complete rejected: {reason} ({game_type})", level="error"
+        )
 
 
 # ---------------------------------------------------------------------------
