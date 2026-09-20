@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
 import { act, render, fireEvent, waitFor } from "@testing-library/react-native";
@@ -151,6 +152,19 @@ describe("HomeScreen — game cards", () => {
     expect(getByLabelText("Play Daily Word")).toBeTruthy();
     // Pachisi is disabled — should not appear
     expect(queryByLabelText("Play Pachisi")).toBeNull();
+  });
+
+  it("colours tile icons from the theme so text-presentation glyphs stay visible", async () => {
+    // Solitaire's "♠" and FreeCell's "🂡" are not colour emoji; without an explicit
+    // colour iOS draws them black, which disappeared on the dark theme.
+    const { getByTestId } = await renderScreen();
+    for (const slug of ["solitaire", "freecell"]) {
+      const style = StyleSheet.flatten(getByTestId(`game-icon-${slug}`).props.style);
+      expect(style.color).toBeTruthy();
+      expect(style.color).not.toBe("#000");
+      expect(style.color).not.toBe("#000000");
+      expect(style.color).not.toBe("black");
+    }
   });
 
   describe("store build — premium games hidden (#2390)", () => {

@@ -307,7 +307,15 @@ export default function HomeScreen() {
 
           {/* Emoji icon zone */}
           <View style={styles.emojiZone}>
-            <Text style={styles.cardEmoji}>{item.emoji}</Text>
+            {/* Not every icon is a colour emoji: "♠", "♥" and "🂡" are text-presentation
+                glyphs that take the Text colour, which defaults to black — invisible on
+                the dark theme. Colour emoji ignore `color`, so this is safe for the rest. */}
+            <Text
+              style={[styles.cardEmoji, { color: colors.text }]}
+              testID={`game-icon-${item.slug}`}
+            >
+              {item.emoji}
+            </Text>
           </View>
 
           {/* Title */}
