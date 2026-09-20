@@ -180,9 +180,17 @@ describe("HomeScreen — lobby prefetch (issue #706, #1055)", () => {
     await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
   });
 
-  it("passes canPlay from useEntitlements to prefetchLobbyGameScreens", async () => {
+  it("passes a predicate backed by canPlay from useEntitlements to prefetchLobbyGameScreens", async () => {
     await renderScreen();
-    await waitFor(() => expect(mockPrefetch).toHaveBeenCalledWith(mockCanPlay));
+    await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
+    const predicate = mockPrefetch.mock.calls[0][0] as (slug: string) => boolean;
+
+    // Jest is a dev build (every game visible — see gameVisibility.test.ts), so
+    // the predicate's answer is exactly canPlay's.
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    expect(predicate("yacht")).toBe(true);
+    expect(predicate("cascade")).toBe(false);
+    expect(mockCanPlay).toHaveBeenCalledWith("cascade");
   });
 });
 

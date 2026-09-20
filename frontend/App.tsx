@@ -27,6 +27,7 @@ import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
 import { EntitlementProvider, useEntitlements } from "./src/entitlements/EntitlementContext";
+import { isGameVisible } from "./src/entitlements/gameVisibility";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
@@ -196,9 +197,15 @@ function LobbyStack() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Home" component={HomeScreen} />
-      <HomeStack.Screen name="Game" component={GuardedGameScreen} />
-      <HomeStack.Screen name="Cascade" component={LazyCascadeScreen} />
-      <HomeStack.Screen name="StarSwarm" component={LazyStarSwarmScreen} />
+      {/* Hidden games get no route at all in store builds (#2390), so nothing —
+          a stale deep link, a restored nav state — can reach a locked screen. */}
+      {isGameVisible("yacht") && <HomeStack.Screen name="Game" component={GuardedGameScreen} />}
+      {isGameVisible("cascade") && (
+        <HomeStack.Screen name="Cascade" component={LazyCascadeScreen} />
+      )}
+      {isGameVisible("starswarm") && (
+        <HomeStack.Screen name="StarSwarm" component={LazyStarSwarmScreen} />
+      )}
       <HomeStack.Screen name="BlackjackBetting" component={LazyBlackjackBettingScreen} />
       <HomeStack.Screen name="BlackjackTable" component={LazyBlackjackTableScreen} />
       <HomeStack.Screen name="BlackjackVictory" component={LazyBlackjackVictoryScreen} />
@@ -206,15 +213,15 @@ function LobbyStack() {
       <HomeStack.Screen name="Twenty48" component={LazyTwenty48Screen} />
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />
-      <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />
-      <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
+      {isGameVisible("hearts") && <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />}
+      {isGameVisible("sudoku") && <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />}
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
       <HomeStack.Screen
         name="MahjongLayoutInspector"
         component={LazyMahjongLayoutInspectorScreen}
       />
       <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
-      <HomeStack.Screen name="Sort" component={LazySortScreen} />
+      {isGameVisible("sort") && <HomeStack.Screen name="Sort" component={LazySortScreen} />}
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
     </HomeStack.Navigator>
@@ -237,7 +244,8 @@ function MainTabs() {
       screenOptions={{ headerShown: false, tabBarPosition: "bottom" }}
     >
       <Tab.Screen name="Lobby" component={LobbyStack} />
-      <Tab.Screen name="Ranks" component={LazyLeaderboardScreen} />
+      {/* The leaderboard is Star Swarm-only — a dead tab while that game is hidden. */}
+      {isGameVisible("starswarm") && <Tab.Screen name="Ranks" component={LazyLeaderboardScreen} />}
       <Tab.Screen name="Profile" component={ProfileStack} />
       <Tab.Screen name="Settings" component={LazySettingsScreen} />
     </Tab.Navigator>
