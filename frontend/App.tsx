@@ -27,7 +27,13 @@ import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
 import { EntitlementProvider, useEntitlements } from "./src/entitlements/EntitlementContext";
-import { isGameVisible } from "./src/entitlements/gameVisibility";
+import {
+  PREMIUM_ROUTES,
+  visiblePremiumRoutes,
+  visiblePremiumTabs,
+  type PremiumRouteName,
+  type PremiumTabName,
+} from "./src/entitlements/premiumRoutes";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
@@ -154,15 +160,23 @@ function makePremiumScreen<P extends object>(
   return PremiumScreen;
 }
 
-const GuardedGameScreen = makePremiumScreen("yacht", GameScreen);
-const LazyCascadeScreen = makePremiumScreen(
-  "cascade",
-  withSuspense(LazyScreens.Cascade, "cascade")
-);
-const LazyStarSwarmScreen = makePremiumScreen(
-  "starswarm",
-  withSuspense(LazyScreens.StarSwarm, "starswarm")
-);
+// Unguarded screen per premium route. The slug ↔ route pairing lives in
+// PREMIUM_ROUTES (premiumRoutes.ts), so the entitlement guard below and the
+// store-build visibility gate in LobbyStack() can never disagree about it.
+const PREMIUM_SCREEN_BASES: Record<PremiumRouteName, React.ComponentType<object>> = {
+  Game: GameScreen as React.ComponentType<object>,
+  Cascade: withSuspense(LazyScreens.Cascade, "cascade"),
+  StarSwarm: withSuspense(LazyScreens.StarSwarm, "starswarm"),
+  Hearts: withSuspense(LazyScreens.Hearts, "hearts"),
+  Sudoku: withSuspense(LazyScreens.Sudoku, "sudoku"),
+  Sort: withSuspense(LazyScreens.Sort, "sort"),
+};
+const PREMIUM_SCREENS = Object.fromEntries(
+  PREMIUM_ROUTES.map(({ slug, route }) => [
+    route,
+    makePremiumScreen(slug, PREMIUM_SCREEN_BASES[route]),
+  ])
+) as Record<PremiumRouteName, React.FC<object>>;
 const LazyBlackjackBettingScreen = withSuspense(LazyScreens.BlackjackBetting, "blackjack_betting");
 const LazyBlackjackTableScreen = withSuspense(LazyScreens.BlackjackTable, "blackjack_table");
 const LazyBlackjackVictoryScreen = withSuspense(LazyScreens.BlackjackVictory, "blackjack_victory");
@@ -170,8 +184,6 @@ const LazyBlackjackStatsScreen = withSuspense(LazyScreens.BlackjackStats, "black
 const LazyTwenty48Screen = withSuspense(LazyScreens.Twenty48, "twenty48");
 const LazySolitaireScreen = withSuspense(LazyScreens.Solitaire, "solitaire");
 const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
-const LazyHeartsScreen = makePremiumScreen("hearts", withSuspense(LazyScreens.Hearts, "hearts"));
-const LazySudokuScreen = makePremiumScreen("sudoku", withSuspense(LazyScreens.Sudoku, "sudoku"));
 const LazyMahjongScreen = withSuspense(LazyScreens.Mahjong, "mahjong");
 const LazyMahjongLayoutInspectorScreen = withSuspense(
   LazyScreens.MahjongLayoutInspector,
@@ -181,9 +193,11 @@ const LazyMahjongLayoutDetailScreen = withSuspense(
   LazyScreens.MahjongLayoutDetail,
   "mahjong_layout_detail"
 );
-const LazySortScreen = makePremiumScreen("sort", withSuspense(LazyScreens.Sort, "sort"));
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
+const PREMIUM_TAB_SCREENS: Record<PremiumTabName, React.ComponentType<object>> = {
+  Ranks: LazyLeaderboardScreen,
+};
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
 const LazyScoreboardScreen = withSuspense(LazyScreens.Scoreboard, "scoreboard");
@@ -197,15 +211,11 @@ function LobbyStack() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="Home" component={HomeScreen} />
-      {/* Hidden games get no route at all in store builds (#2390), so nothing —
-          a stale deep link, a restored nav state — can reach a locked screen. */}
-      {isGameVisible("yacht") && <HomeStack.Screen name="Game" component={GuardedGameScreen} />}
-      {isGameVisible("cascade") && (
-        <HomeStack.Screen name="Cascade" component={LazyCascadeScreen} />
-      )}
-      {isGameVisible("starswarm") && (
-        <HomeStack.Screen name="StarSwarm" component={LazyStarSwarmScreen} />
-      )}
+      {/* Premium games come from the registry: a game hidden in store builds
+          (#2390) gets no route at all, so no locked screen is reachable. */}
+      {visiblePremiumRoutes().map(({ route }) => (
+        <HomeStack.Screen key={route} name={route} component={PREMIUM_SCREENS[route]} />
+      ))}
       <HomeStack.Screen name="BlackjackBetting" component={LazyBlackjackBettingScreen} />
       <HomeStack.Screen name="BlackjackTable" component={LazyBlackjackTableScreen} />
       <HomeStack.Screen name="BlackjackVictory" component={LazyBlackjackVictoryScreen} />
@@ -213,15 +223,12 @@ function LobbyStack() {
       <HomeStack.Screen name="Twenty48" component={LazyTwenty48Screen} />
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />
-      {isGameVisible("hearts") && <HomeStack.Screen name="Hearts" component={LazyHeartsScreen} />}
-      {isGameVisible("sudoku") && <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />}
       <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
       <HomeStack.Screen
         name="MahjongLayoutInspector"
         component={LazyMahjongLayoutInspectorScreen}
       />
       <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
-      {isGameVisible("sort") && <HomeStack.Screen name="Sort" component={LazySortScreen} />}
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
     </HomeStack.Navigator>
@@ -245,7 +252,9 @@ function MainTabs() {
     >
       <Tab.Screen name="Lobby" component={LobbyStack} />
       {/* The leaderboard is Star Swarm-only — a dead tab while that game is hidden. */}
-      {isGameVisible("starswarm") && <Tab.Screen name="Ranks" component={LazyLeaderboardScreen} />}
+      {visiblePremiumTabs().map(({ tab }) => (
+        <Tab.Screen key={tab} name={tab} component={PREMIUM_TAB_SCREENS[tab]} />
+      ))}
       <Tab.Screen name="Profile" component={ProfileStack} />
       <Tab.Screen name="Settings" component={LazySettingsScreen} />
     </Tab.Navigator>

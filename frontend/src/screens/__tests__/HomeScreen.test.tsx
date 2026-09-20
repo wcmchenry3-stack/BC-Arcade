@@ -5,6 +5,7 @@ import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import i18n from "i18next";
 import mahjongEn from "../../i18n/locales/en/mahjong.json";
 
@@ -21,21 +22,6 @@ jest.mock("../../entitlements/EntitlementContext", () => ({
     lastRefreshed: null,
   }),
 }));
-
-// ---------------------------------------------------------------------------
-// Mock game visibility (#2390) — default: a dev build, every game shown. Flip
-// mockStoreBuild to render Home the way a store build does. The real
-// HIDDEN_GAMES set stays the source of truth for which slugs disappear.
-// ---------------------------------------------------------------------------
-let mockStoreBuild = false;
-
-jest.mock("../../entitlements/gameVisibility", () => {
-  const actual = jest.requireActual("../../entitlements/gameVisibility");
-  return {
-    ...actual,
-    isGameVisible: (slug: string) => !mockStoreBuild || !actual.HIDDEN_GAMES.has(slug),
-  };
-});
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -140,10 +126,11 @@ describe("HomeScreen — game cards", () => {
       i18n.removeResourceBundle("en", "mahjong");
     });
     beforeEach(() => {
-      mockStoreBuild = true;
+      // Real isGameVisible, answering as a store build (Jest itself is a dev build).
+      __forceStoreBuildForTests(true);
     });
     afterEach(() => {
-      mockStoreBuild = false;
+      __forceStoreBuildForTests(false);
     });
 
     it("renders exactly the six free games", async () => {

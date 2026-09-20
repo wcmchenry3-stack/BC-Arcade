@@ -69,6 +69,20 @@ describe("gameVisibility", () => {
     for (const slug of [...PREMIUM_SLUGS, ...FREE_SLUGS]) expect(isGameVisible(slug)).toBe(true);
   });
 
+  it("the test seam can only hide: it never reveals hidden games in a store build", () => {
+    const store = loadWith({ dev: false });
+    store.__forceStoreBuildForTests(false);
+    expect(store.isGameVisible("yacht")).toBe(false);
+
+    const dev = loadWith({ dev: true });
+    dev.__forceStoreBuildForTests(true);
+    expect(dev.isGameVisible("yacht")).toBe(false);
+    expect(dev.isGameVisible("blackjack")).toBe(true);
+    dev.__forceStoreBuildForTests(false);
+    expect(dev.isGameVisible("yacht")).toBe(true);
+  });
+
+  // v1.0 hides every premium game. Relax this when IAP (#822) unhides a subset.
   it("HIDDEN_GAMES is exactly the premium set gated by EntitlementContext", () => {
     const { HIDDEN_GAMES } = loadWith({ dev: false });
     expect([...HIDDEN_GAMES].sort()).toEqual([...PREMIUM_GAMES].sort());
