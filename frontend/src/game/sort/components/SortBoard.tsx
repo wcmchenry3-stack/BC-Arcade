@@ -97,7 +97,20 @@ export default function SortBoard({
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
-  const { numCols, numRows } = computeGridShape(numBottles);
+  const { numCols, numRows, rowCounts } = computeGridShape(numBottles);
+  // Row descriptors (start index into state.bottles + bottle count), derived
+  // from rowCounts — used to slice bottles into explicit row groups below
+  // (see #2426: relying on flexWrap to infer row breaks from a computed
+  // bottle width let the actual on-device wrap diverge from this shape,
+  // e.g. 6+1 instead of 4+3).
+  const rows = useMemo(() => {
+    let acc = 0;
+    return rowCounts.map((count) => {
+      const start = acc;
+      acc += count;
+      return { start, count };
+    });
+  }, [rowCounts]);
 
   // Scale bottles to fill available height without overflow
   const avH = availableHeight && availableHeight > 0 ? availableHeight : 480;
@@ -400,35 +413,46 @@ export default function SortBoard({
           };
         }}
       >
-        {state.bottles.map((bottle, idx) => (
-          <View
-            key={idx}
-            testID={`bottle-cell-${idx}`}
-            style={[
-              styles.bottleCell,
-              { width: bottleW },
-              idx === pouringFrom && ghost !== null ? styles.bottleHidden : null,
-            ]}
-            onLayout={(e) => {
-              bottlePositionsRef.current[idx] = {
-                x: gridOffsetRef.current.x + e.nativeEvent.layout.x,
-                y: gridOffsetRef.current.y + e.nativeEvent.layout.y,
-              };
-            }}
-          >
-            <BottleView
-              bottle={bottle}
-              index={idx}
-              selected={state.selectedBottleIndex === idx}
-              pouring={reduceMotion ? idx === pouringFrom : false}
-              pouringDirection={reduceMotion && idx === pouringFrom ? pouringDirection : undefined}
-              colorblindMode={colorblindMode}
-              bottleWidth={bottleW}
-              bottleHeight={bottleH}
-              onTap={handlers[idx]}
-            />
-          </View>
-        ))}
+        {rows.map(({ start, count }, rowIdx) => {
+          return (
+            <View key={rowIdx} style={[styles.gridRow, { gap: BOTTLE_GAP }]}>
+              {state.bottles.slice(start, start + count).map((bottle, localIdx) => {
+                const idx = start + localIdx;
+                return (
+                  <View
+                    key={idx}
+                    testID={`bottle-cell-${idx}`}
+                    style={[
+                      styles.bottleCell,
+                      { width: bottleW },
+                      idx === pouringFrom && ghost !== null ? styles.bottleHidden : null,
+                    ]}
+                    onLayout={(e) => {
+                      bottlePositionsRef.current[idx] = {
+                        x: gridOffsetRef.current.x + e.nativeEvent.layout.x,
+                        y: gridOffsetRef.current.y + e.nativeEvent.layout.y,
+                      };
+                    }}
+                  >
+                    <BottleView
+                      bottle={bottle}
+                      index={idx}
+                      selected={state.selectedBottleIndex === idx}
+                      pouring={reduceMotion ? idx === pouringFrom : false}
+                      pouringDirection={
+                        reduceMotion && idx === pouringFrom ? pouringDirection : undefined
+                      }
+                      colorblindMode={colorblindMode}
+                      bottleWidth={bottleW}
+                      bottleHeight={bottleH}
+                      onTap={handlers[idx]}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
       </View>
 
       {/* Ghost bottle overlay — floats above grid during pour animation.
@@ -701,8 +725,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   grid: {
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  gridRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "center",
     alignItems: "center",
   },
