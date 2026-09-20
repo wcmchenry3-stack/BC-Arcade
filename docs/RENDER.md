@@ -124,10 +124,18 @@ hung request. It is rate limited to 30/minute per IP.
   `dev` → `main` promotion PR.
 - **Prod services have Render's auto-deploy off.** A push to `main` runs
   `.github/workflows/deploy.yml`: the full CI workflow first, then — only if it is
-  green — a Render deploy and an OWASP ZAP baseline scan per service. A red `main`
-  therefore never reaches production. Render's own auto-deploy would ship the
-  commit before CI finished and skip the scan; `test_deploy_workflow.py` pins
-  `autoDeploy: false` in `render.yaml`.
+  green — a Render deploy and an OWASP ZAP baseline scan per service. Render's own
+  auto-deploy would ship the commit before CI finished and skip the scan;
+  `test_deploy_workflow.py` pins `autoDeploy: false` in `render.yaml`.
+- **Known limit — merge promotions one at a time.** The shared deploy workflow
+  asks Render to deploy the _current_ HEAD of `main`; it does not pin the commit CI
+  validated. Deploy runs queue (one at a time, never cancelled mid-deploy), but a
+  second push landing while an earlier run is still going can ship before its own
+  CI finishes. Since `main` only moves by `dev` → `main` promotion PR, wait for the
+  first Deploy run to go green before merging another.
+- If a service-ID variable is unset or blank, its deploy job is skipped and the
+  run shows a **warning annotation** naming it — a green run with that warning
+  means nothing was deployed.
 - The workflow finds the services through two **repository variables** (not
   secrets — service IDs are not sensitive): `RENDER_PROD_API_SERVICE_ID` and
   `RENDER_PROD_FRONTEND_SERVICE_ID`. A deploy job is skipped while its variable is
