@@ -21,6 +21,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import OfflineBanner from "../components/OfflineBanner";
+import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
 import { useEntitlements } from "../entitlements/EntitlementContext";
@@ -28,7 +29,7 @@ import { isGameVisible } from "../entitlements/gameVisibility";
 import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { syncWorker } from "../game/_shared/syncWorker";
+import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -101,12 +102,10 @@ export default function HomeScreen() {
   const refreshArcadeLevel = useCallback(() => {
     if (!isOnline || levelFetchInFlight.current) return;
     levelFetchInFlight.current = true;
-    // A just-finished game is still in the local queue — SyncWorker only uploads
-    // every 30 s — so push it first or /stats/me answers with the old level. A
-    // failed flush must not cost us the pill.
-    syncWorker
-      .flush()
-      .catch(() => {})
+    // Push a just-finished game first or /stats/me answers with the old level.
+    // Shared with the daily-challenge card so their concurrent flushes don't
+    // let one of them read before the upload lands.
+    flushQueuedGames()
       .then(() => withRetry(() => statsApi.getMyStats()))
       .then((stats) => {
         if (mounted.current) setArcadeLevel(stats.arcade_level);
@@ -393,6 +392,7 @@ export default function HomeScreen() {
           },
         ]}
       >
+        <DailyChallengeCard />
         {numColumns === 1
           ? games.map((item, index) => (
               <React.Fragment key={item.key}>{renderCard({ item, index })}</React.Fragment>
