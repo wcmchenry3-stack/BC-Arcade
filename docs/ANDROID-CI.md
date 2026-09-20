@@ -25,12 +25,33 @@ Gradle builds — no prebuild step happens in CI.
 ## Signing configuration
 
 - **Debug**: uses `app/debug.keystore` (standard Android debug key, gitignored)
-- **Release**: uses `app/upload-keystore.jks` (gitignored), passwords via env vars
-  - Keystore passwords are stored as GitHub Actions secrets
-  - Fallback passwords in `app/build.gradle` are for local development only
+- **Release**: signing is local-only. `app/build.gradle` reads four Gradle
+  properties, and they are supplied by the release machine's **user-level**
+  `~/.gradle/gradle.properties` — never by anything in this repo:
 
-**Critical**: Never commit keystores or `local.properties` — they are gitignored
-for security.
+  ```properties
+  UPLOAD_STORE_FILE=C:/path/outside/every/checkout/upload-keystore.jks
+  UPLOAD_STORE_PASSWORD=...
+  UPLOAD_KEY_ALIAS=upload
+  UPLOAD_KEY_PASSWORD=...
+  ```
+
+  - `UPLOAD_STORE_FILE` must be an absolute path (forward slashes on Windows) to
+    a keystore kept **outside every checkout**, so all clones and worktrees sign
+    from the same file. The keystore is PKCS12: one password covers store + key.
+  - User-level properties override the tracked `frontend/android/gradle.properties`,
+    which intentionally contains no signing values.
+  - Verify with `./gradlew :app:signingReport` — the `release` variant's SHA-1 must
+    match Play Console → App integrity → Upload key certificate.
+  - When the properties are absent, `app/build.gradle` falls back to the debug
+    keystore. That is what CI relies on: no workflow reads a signing secret, and
+    the release smoke build passes debug-key `-P` flags explicitly. A
+    debug-signed bundle is rejected by Play, so never upload a build made
+    without the user-level file in place.
+
+**Critical**: Never commit keystores, keystore passwords, or `local.properties`.
+Keystores and `local.properties` are gitignored; passwords belong only in the
+user-level file above (#1918, #2277).
 
 ## Key Gradle files
 
@@ -181,4 +202,4 @@ without the token skip source map upload instead of failing. The plugin reads
 | Lock file        | `Podfile.lock` (committed) | None (Gradle resolves dynamically)        |
 | CI compile check | `ios-build-check` (macOS)  | `android-build-check` (Linux)             |
 | Bundle check     | iOS bundle check           | `android-bundle-check` (Android platform) |
-| Signing          | Xcode managed              | Keystore + env vars                       |
+| Signing          | Xcode managed              | Keystore + user-level `gradle.properties` |

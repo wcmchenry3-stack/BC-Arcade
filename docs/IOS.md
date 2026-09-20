@@ -17,8 +17,15 @@ The `frontend/ios/` directory must exist in the repo. If it is missing:
 
 1. It was likely accidentally added to `.gitignore` — remove `/ios` from `frontend/.gitignore`
 2. Run `expo prebuild` once to regenerate it: `cd frontend && npx expo prebuild`
-3. Commit the generated `ios/` folder
-4. Do **not** add `prebuildCommand` to `eas.json` — EAS is not the build target
+3. Restore the version references in `frontend/ios/GamingApp/Info.plist` — prebuild overwrites them with literals from `app.json` (see [Version numbers](#version-numbers))
+4. Commit the generated `ios/` folder
+5. Do **not** add `prebuildCommand` to `eas.json` — EAS is not the build target
+
+## Version numbers
+
+`Info.plist` does not carry its own version. `CFBundleShortVersionString` is `$(MARKETING_VERSION)` and `CFBundleVersion` is `$(CURRENT_PROJECT_VERSION)`, both resolved from `project.pbxproj`, which `.github/workflows/version-sync.yml` patches on every release. Never type a version into `Info.plist` — a literal looks right on the day and silently drifts at the next release (it sat at 1.0.0 while the app shipped 1.0.9). `frontend/src/__tests__/nativeVersionSync.test.ts` fails if a literal reappears, e.g. after `expo prebuild`.
+
+Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build number, so store builds never carry the pbxproj value (10009, 10100, …). **Do not upload a locally archived build to App Store Connect**: it would carry that large number, and every later Xcode Cloud upload in the same version train would be rejected as lower until the Xcode Cloud next-build-number is raised past it.
 
 ## EAS status
 

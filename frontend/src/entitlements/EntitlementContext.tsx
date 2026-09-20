@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { createGameClient } from "../game/_shared/httpClient";
+import { createGameClient, isNetworkError } from "../game/_shared/httpClient";
 import { clearGame as clearHearts } from "../game/hearts/storage";
 import { clearGame as clearYacht } from "../game/yacht/storage";
 import { clearGame as clearSudoku } from "../game/sudoku/storage";
@@ -136,10 +136,10 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     try {
       await fetchAndApplyToken(setEntitledGames, setLastRefreshed);
     } catch (e) {
-      // Network errors (TypeError) are swallowed — in-memory state stays as-is.
+      // Network errors (isNetworkError) are swallowed — in-memory state stays as-is.
       // Unlike init(), refresh() intentionally does not fall back to cache:
       // a transient error should not downgrade access the user already has.
-      if (!(e instanceof TypeError)) {
+      if (!isNetworkError(e)) {
         Sentry.addBreadcrumb({
           category: "entitlements",
           message: "token refresh failed",
