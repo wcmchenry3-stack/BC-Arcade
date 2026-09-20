@@ -25,12 +25,70 @@ Gradle builds — no prebuild step happens in CI.
 ## Signing configuration
 
 - **Debug**: uses `app/debug.keystore` (standard Android debug key, gitignored)
-- **Release**: uses `app/upload-keystore.jks` (gitignored), passwords via env vars
-  - Keystore passwords are stored as GitHub Actions secrets
-  - Fallback passwords in `app/build.gradle` are for local development only
+- **Release**: signing is local-only. `app/build.gradle` reads four Gradle
+  properties, and they are supplied by the release machine's **user-level**
+  `~/.gradle/gradle.properties` — never by anything in this repo:
 
-**Critical**: Never commit keystores or `local.properties` — they are gitignored
-for security.
+  ```properties
+  UPLOAD_STORE_FILE=C:/path/outside/every/checkout/upload-keystore.jks
+  UPLOAD_STORE_PASSWORD=...
+  UPLOAD_KEY_ALIAS=upload
+  UPLOAD_KEY_PASSWORD=...
+  ```
+
+  - `UPLOAD_STORE_FILE` must be an absolute path (forward slashes on Windows) to
+    a keystore kept **outside every checkout**, so all clones and worktrees sign
+    from the same file. The keystore is PKCS12: one password covers store + key.
+  - User-level properties override the tracked `frontend/android/gradle.properties`,
+    which intentionally contains no signing values.
+  - Verify with `./gradlew :app:signingReport` — the `release` variant's SHA-1 must
+    match Play Console → App integrity → Upload key certificate.
+  - When the properties are absent, `app/build.gradle` falls back to the debug
+    keystore. That is what CI relies on: no workflow reads a signing secret, and
+    the release smoke build passes debug-key `-P` flags explicitly. A
+    debug-signed bundle is rejected by Play, so never upload a build made
+    without the user-level file in place.
+
+**Critical**: Never commit keystores, keystore passwords, or `local.properties`.
+Keystores and `local.properties` are gitignored; passwords belong only in the
+user-level file above (#1918, #2277).
+
+## Release bundle guard
+
+`EXPO_PUBLIC_TEST_HOOKS=1` enables the e2e test hooks **and** unhides the six
+premium games that v1.0 store builds hide (`docs/ARCHITECTURE.md` §10.7). Expo
+inlines the flag into the JS bundle, so the Play artifact is protected twice:
+
+- **Gradle refuses release work when the flag is set.** `app/build.gradle` checks
+  the task graph: if it contains any `:app` release-variant task and the flag is
+  `1` in the environment or in `frontend/.env`, `.env.local`, `.env.production`
+  or `.env.production.local`, the build fails and names the source. The flag is
+  also a declared input of the bundle task, so flipping it never leaves an old
+  bundle UP-TO-DATE. Debug builds — including Maestro CI's
+  `-Pandroid.bundleDebugForCI=true` — are not affected.
+- **Metro's cache is keyed on `EXPO_PUBLIC_*` values** (`frontend/metro.config.js`).
+  Metro's transform cache otherwise ignores them: a release bundle built right
+  after a test-hooks build on the same machine reused the stale transform and
+  shipped with the hooks on (reproduced 2026-09-19). Folding the values into
+  `cacheVersion` re-transforms only when one changes, and covers iOS, web and CI
+  as well as local Gradle builds.
+
+## Windows build prerequisites
+
+Two machine-level fixes are needed before Gradle can build this app on Windows:
+
+- **Long paths.** `react-native-audio-api` compiles sources from outside its
+  `android/` folder, so CMake object paths exceed 260 characters from almost any
+  checkout location, and the build dies with `ninja: error: mkdir(...): No such
+  file or directory`. Enable `LongPathsEnabled` in the registry **and** replace
+  the SDK's bundled ninja 1.10 (`Android/Sdk/cmake/3.22.1/bin/ninja.exe`, not
+  long-path aware) with ninja ≥ 1.12 from the official releases. A `subst` drive
+  does not help — Gradle resolves it back to the real path.
+- **TLS-intercepting antivirus.** If HTTPS scanning re-signs traffic with a root
+  the JDK does not trust, every download fails and Gradle reports it as
+  `Plugin [id: '…foojay-resolver-convention'] was not found`. Add
+  `systemProp.javax.net.ssl.trustStoreType=Windows-ROOT` to the user-level
+  `~/.gradle/gradle.properties` so the JVM uses the Windows certificate store.
 
 ## Key Gradle files
 
@@ -181,4 +239,4 @@ without the token skip source map upload instead of failing. The plugin reads
 | Lock file        | `Podfile.lock` (committed) | None (Gradle resolves dynamically)        |
 | CI compile check | `ios-build-check` (macOS)  | `android-build-check` (Linux)             |
 | Bundle check     | iOS bundle check           | `android-bundle-check` (Android platform) |
-| Signing          | Xcode managed              | Keystore + env vars                       |
+| Signing          | Xcode managed              | Keystore + user-level `gradle.properties` |

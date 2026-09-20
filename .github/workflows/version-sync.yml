@@ -5,6 +5,10 @@ name: Version Sync
 # package.json so all platform version fields stay in sync, then
 # opens a PR targeting dev.
 #
+# iOS Info.plist is intentionally NOT patched: it references
+# $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION) from the pbxproj, so it
+# follows automatically. Guarded by frontend/src/__tests__/nativeVersionSync.test.ts.
+#
 # versionCode / CURRENT_PROJECT_VERSION formula:
 #   major * 10000 + minor * 100 + patch
 #   e.g. 1.0.6 → 10006, 1.1.0 → 10100, 2.0.0 → 20000

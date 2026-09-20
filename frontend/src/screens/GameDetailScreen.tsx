@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
@@ -16,21 +17,6 @@ type Props = {
   route: RouteProp<ProfileStackParamList, "GameDetail">;
 };
 
-function formatGameType(raw: string): string {
-  switch (raw) {
-    case "twenty48":
-      return "2048";
-    case "blackjack":
-      return "Blackjack";
-    case "yacht":
-      return "Yacht";
-    case "cascade":
-      return "Cascade";
-    default:
-      return raw;
-  }
-}
-
 function formatDuration(ms: number | null): string {
   if (ms == null) return "—";
   const s = Math.round(ms / 1000);
@@ -44,7 +30,7 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation("profile");
+  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
 
   const [detail, setDetail] = useState<GameDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,7 +76,7 @@ export default function GameDetailScreen({ navigation, route }: Props) {
         <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
           <DetailRow
             label={t("detail.gameType")}
-            value={formatGameType(detail.game_type)}
+            value={gameTitle(t, detail.game_type)}
             colors={colors}
           />
           <DetailRow

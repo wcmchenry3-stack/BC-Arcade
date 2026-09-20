@@ -17,8 +17,15 @@ The `frontend/ios/` directory must exist in the repo. If it is missing:
 
 1. It was likely accidentally added to `.gitignore` — remove `/ios` from `frontend/.gitignore`
 2. Run `expo prebuild` once to regenerate it: `cd frontend && npx expo prebuild`
-3. Commit the generated `ios/` folder
-4. Do **not** add `prebuildCommand` to `eas.json` — EAS is not the build target
+3. Restore the version references in `frontend/ios/GamingApp/Info.plist` — prebuild overwrites them with literals from `app.json` (see [Version numbers](#version-numbers))
+4. Commit the generated `ios/` folder
+5. Do **not** add `prebuildCommand` to `eas.json` — EAS is not the build target
+
+## Version numbers
+
+`Info.plist` does not carry its own version. `CFBundleShortVersionString` is `$(MARKETING_VERSION)` and `CFBundleVersion` is `$(CURRENT_PROJECT_VERSION)`, both resolved from `project.pbxproj`, which `.github/workflows/version-sync.yml` patches on every release. Never type a version into `Info.plist` — a literal looks right on the day and silently drifts at the next release (it sat at 1.0.0 while the app shipped 1.0.9). `frontend/src/__tests__/nativeVersionSync.test.ts` fails if a literal reappears, e.g. after `expo prebuild`.
+
+Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build number, so store builds never carry the pbxproj value (10009, 10100, …). **Do not upload a locally archived build to App Store Connect**: it would carry that large number, and every later Xcode Cloud upload in the same version train would be rejected as lower until the Xcode Cloud next-build-number is raised past it.
 
 ## EAS status
 
@@ -29,6 +36,10 @@ EAS Build and `eas submit` are **not used** for this project — neither now nor
 iOS builds run via **Xcode Cloud** (App Store Connect), not GitHub Actions.
 GitHub Actions `ci.yml` does not include an iOS build step.
 The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner — not EAS.
+
+### Store-build guard (test hooks)
+
+`EXPO_PUBLIC_TEST_HOOKS=1` is inlined into the JS bundle and unhides the premium games that store builds must not show (`frontend/src/entitlements/gameVisibility.ts`, #2390). `frontend/ios/ci_scripts/ci_post_clone.sh` therefore fails the Xcode Cloud build when the flag is `1` in the workflow's environment variables or in any dotenv file Expo loads for a production bundle (`.env`, `.env.local`, `.env.production`, `.env.production.local`). A healthy build logs `=== test-hooks guard passed ===` in the post-clone step. If it fails, remove the variable from the Xcode Cloud workflow (App Store Connect → Xcode Cloud → workflow → Environment) or from the named file — do not weaken the check. Android has the equivalent guard in `frontend/android/app/build.gradle` (see [`ANDROID-CI.md`](ANDROID-CI.md)).
 
 ## Local simulator troubleshooting
 
@@ -42,7 +53,11 @@ npx expo run:ios      # fresh native build + install on the simulator
 npx expo start -c     # Metro with a cleared cache
 ```
 
-If `pod install` complains that a local pod (`React-Core-prebuilt`, `hermes-engine`, …) "differs from the version stored in `Pods/Local Podspecs`", delete `frontend/ios/Pods/Local Podspecs` and re-run `pod install`. `pod install` also regenerates the tracked codegen under `frontend/ios/build/generated/` — revert that with `git checkout -- frontend/ios/build` unless you are intentionally bumping a native package.
+If `pod install` complains that a local pod (`React-Core-prebuilt`, `hermes-engine`, …) "differs from the version stored in `Pods/Local Podspecs`", delete `frontend/ios/Pods/Local Podspecs` and re-run `pod install`.
+
+`pod install` also generates the React Native codegen under `frontend/ios/build/generated/`. Like `Pods/`, that directory is **not tracked** (`frontend/ios/.gitignore` ignores `build/`) — it must match the installed react-native, so never restore or commit it. A stale copy fails to compile with errors such as `no type named 'ResultT' in 'JS::NativeSafeAreaContext::Constants::Builder'`; the fix is to re-run `pod install`.
+
+**Simulator builds from the command line on this project's Intel Mac** need `ARCHS=x86_64`; an `arm64` simulator build compiles fine and then fails to install with "Failed to find matching arch".
 
 ## Do not suggest
 

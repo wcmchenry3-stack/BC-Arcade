@@ -36,6 +36,7 @@ import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
+import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";
 import {
   loadProgress,
@@ -132,10 +133,10 @@ export default function SortScreen() {
           saveLevelsCache(result).catch(() => {});
           return result;
         })
-        // Only serve cached levels on network failures (TypeError). HTTP errors
+        // Only serve cached levels on network failures (isNetworkError). HTTP errors
         // such as 401 Unauthorized mean the server is actively denying access
         // (e.g. entitlement expired) — falling back to cache would bypass that.
-        .catch((e) => (e instanceof TypeError ? loadLevelsCache() : null)),
+        .catch((e) => (isNetworkError(e) ? loadLevelsCache() : null)),
       loadProgress(),
     ]);
     if (!levelsResult) {
