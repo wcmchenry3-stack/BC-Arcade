@@ -60,17 +60,6 @@ react {
     //   A list of extra flags to pass to the 'bundle' commands.
     //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
     // extraPackagerArgs = []
-    //
-    //   Local bundles always start from a cold Metro cache (#2390). Expo inlines
-    //   EXPO_PUBLIC_* values at transform time and Metro's cache key ignores
-    //   them, so a release bundle built after an EXPO_PUBLIC_TEST_HOOKS=1 build
-    //   on the same machine reuses the stale transform and ships with test hooks
-    //   on — and the hidden premium games visible (reproduced 2026-09-19). Locally
-    //   only release variants bundle, and those are the artifacts uploaded to
-    //   Play; CI artifacts are never shipped, so CI keeps its restored cache.
-    if (!System.getenv("CI")) {
-        extraPackagerArgs = ["--reset-cache"]
-    }
 
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
@@ -180,17 +169,24 @@ def findLeakedTestHooksFlag = { ->
     }
     return null
 }
-tasks.configureEach { task ->
-    if (task.name == "createBundleReleaseJsAndAssets") {
-        task.doFirst {
-            def source = findLeakedTestHooksFlag()
-            if (source != null) {
-                throw new GradleException(
-                    "EXPO_PUBLIC_TEST_HOOKS=1 is set via ${source}. A release bundle built with it " +
-                    "shows the hidden premium games (#2390). Unset it and rebuild.")
-            }
+// Checked once the task graph is known rather than inside one bundle task, so it
+// still fires if the React Native plugin renames that task, a flavor is added,
+// or the bundle is UP-TO-DATE: any release-variant work in :app trips it.
+gradle.taskGraph.whenReady { graph ->
+    def buildsRelease = graph.allTasks.any { it.project == project && it.name =~ /Release/ }
+    if (buildsRelease) {
+        def source = findLeakedTestHooksFlag()
+        if (source != null) {
+            throw new GradleException(
+                "EXPO_PUBLIC_TEST_HOOKS=1 is set via ${source}. A release bundle built with it " +
+                "shows the hidden premium games (#2390). Unset it and rebuild.")
         }
     }
+}
+// The flag changes the bundle's contents, so it is a task input: flipping it
+// can never leave a previously built bundle UP-TO-DATE.
+tasks.matching { it.name ==~ /createBundle.*JsAndAssets/ }.configureEach { task ->
+    task.inputs.property("expoPublicTestHooks", System.getenv("EXPO_PUBLIC_TEST_HOOKS") ?: "")
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

@@ -260,8 +260,13 @@ nothing premium should be free anywhere. That is the production site
 (`bc-arcade-frontend`, built against the production API). The `dev`-branch
 staging site (`bc-arcade-frontend-dev`) is built against the pre-launch API, so
 like TestFlight it shows all 12 until launch.
+the premium games too** (owner decision, 2026-09-19). Web is unmonetized, and
+nothing premium should be free anywhere.
 
-A leaked `EXPO_PUBLIC_TEST_HOOKS=1` would unhide everything, so the Android
-release bundle task refuses to run when the flag is set (see
-`docs/ANDROID-CI.md`, "Release bundle guard"); `scripts/check-build-env.js` does
-the same for the Render web build, and Xcode Cloud rewrites `.env` on every build.
+A leaked `EXPO_PUBLIC_TEST_HOOKS=1` would unhide everything. Android release
+builds refuse to run when the flag is set (`docs/ANDROID-CI.md`, "Release bundle
+guard"), `scripts/check-build-env.js` rejects it for the Render web build, and
+Xcode Cloud rewrites `.env` on every build (it does not check the workflow's own
+environment variables — never add the flag there). `frontend/metro.config.js`
+keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
+test-hooks build can never be reused by a store build on any platform.

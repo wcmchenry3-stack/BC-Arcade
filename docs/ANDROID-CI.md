@@ -57,18 +57,21 @@ user-level file above (#1918, #2277).
 
 `EXPO_PUBLIC_TEST_HOOKS=1` enables the e2e test hooks **and** unhides the six
 premium games that v1.0 store builds hide (`docs/ARCHITECTURE.md` §10.7). Expo
-inlines the flag into the JS bundle, so `app/build.gradle` protects the Play
-artifact in two ways:
+inlines the flag into the JS bundle, so the Play artifact is protected twice:
 
-- **`createBundleReleaseJsAndAssets` refuses to run** when the flag is `1` in the
-  environment or in `frontend/.env`, `.env.local`, `.env.production` or
-  `.env.production.local`. The error names the source. Debug builds — including
-  Maestro CI's `-Pandroid.bundleDebugForCI=true` — are not affected.
-- **Local bundles pass `--reset-cache`.** Metro's transform cache key ignores
-  `EXPO_PUBLIC_*` values: a release bundle built after a test-hooks build on the
-  same machine otherwise reuses the stale transform and ships with the hooks on
-  (reproduced 2026-09-19). Skipped when `CI` is set, since CI artifacts are never
-  uploaded and the jobs rely on their restored Metro cache.
+- **Gradle refuses release work when the flag is set.** `app/build.gradle` checks
+  the task graph: if it contains any `:app` release-variant task and the flag is
+  `1` in the environment or in `frontend/.env`, `.env.local`, `.env.production`
+  or `.env.production.local`, the build fails and names the source. The flag is
+  also a declared input of the bundle task, so flipping it never leaves an old
+  bundle UP-TO-DATE. Debug builds — including Maestro CI's
+  `-Pandroid.bundleDebugForCI=true` — are not affected.
+- **Metro's cache is keyed on `EXPO_PUBLIC_*` values** (`frontend/metro.config.js`).
+  Metro's transform cache otherwise ignores them: a release bundle built right
+  after a test-hooks build on the same machine reused the stale transform and
+  shipped with the hooks on (reproduced 2026-09-19). Folding the values into
+  `cacheVersion` re-transforms only when one changes, and covers iOS, web and CI
+  as well as local Gradle builds.
 
 ## Windows build prerequisites
 
