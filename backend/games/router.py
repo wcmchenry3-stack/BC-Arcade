@@ -66,7 +66,8 @@ def _gt_to_out(gt) -> GameTypeOut:
 
 
 @router.get("/catalog", response_model=CatalogResponse)
-async def get_catalog() -> JSONResponse:
+@limiter.limit("60/minute")
+async def get_catalog(request: Request) -> JSONResponse:
     factory = get_session_factory()
     async with factory() as db:
         game_types = await service.get_catalog(db)
