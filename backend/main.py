@@ -320,5 +320,6 @@ async def health_db(request: Request) -> JSONResponse:
 if os.getenv("ENVIRONMENT") == "test":
 
     @app.get("/debug/error")
+    @limiter.limit("5/minute")
     def trigger_error(request: Request) -> None:
         raise RuntimeError("Intentional test error for Sentry verification")

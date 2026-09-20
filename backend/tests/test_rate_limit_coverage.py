@@ -7,6 +7,10 @@ silently leaves a route wide open. This audit turns that omission into a
 failing test.
 """
 
+import os
+import subprocess
+import sys
+
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -32,7 +36,11 @@ def _api_routes(routes) -> list[APIRoute]:
 
 
 def _route_key(route: APIRoute) -> str:
-    # slowapi registers each decorated handler under "<module>.<function>".
+    # slowapi registers each decorated handler under "<module>.<function>" in
+    # the private `Limiter._route_limits`, and looks limits up by the same key
+    # when enforcing — so this audit sees exactly what slowapi enforces. It is
+    # coupled to slowapi and FastAPI internals (both pinned in requirements.txt):
+    # a rename fails loudly here (AttributeError / the route-count floor below).
     return f"{route.endpoint.__module__}.{route.endpoint.__name__}"
 
 
@@ -60,3 +68,30 @@ def test_catalog_is_rate_limited(client: TestClient) -> None:
     statuses = [client.get("/games/catalog").status_code for _ in range(61)]
     assert statuses[:60] == [200] * 60
     assert statuses[60] == 429
+
+
+def test_every_api_route_has_a_rate_limit_in_test_environment() -> None:
+    """`main.py` registers `/debug/error` only when ENVIRONMENT=test (the
+    sentry-check job sets it), so it is invisible to the audit above unless the
+    app is imported that way. Re-run the audit in a fresh interpreter with the
+    variable set — the conditional route must be throttled too."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            __file__,
+            "-k",
+            "test_every_api_route_has_a_rate_limit and not test_environment",
+            "--no-cov",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        env={**os.environ, "ENVIRONMENT": "test"},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,  # the assert below reports the child's output
+    )
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-500:]
