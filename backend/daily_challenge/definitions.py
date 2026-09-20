@@ -2,8 +2,12 @@
 
 Same stateless pattern as ``daily_word/puzzle.py``: nothing is stored. The
 template list is shuffled once at load time with ``random.Random(SALT)``, then
-``index = (int(local_date.strftime("%Y%m%d")) + SALT) % len(TEMPLATES)``.
-SALT comes from the DAILY_CHALLENGE_SALT env var (int, default 0); changing it
+``index = (local_date.toordinal() + SALT) % len(TEMPLATES)``. The day *ordinal*
+rather than Daily Word's ``YYYYMMDD`` number: with only a handful of templates,
+the jumps ``YYYYMMDD`` makes at month ends can repeat a template on consecutive
+days (2028-02-29 to 03-01 is +72, a multiple of 8); the ordinal always steps by
+one, so every template comes up once per cycle.
+SALT comes from the DAILY_CHALLENGE_SALT env var (default 0); changing it
 shifts the whole future schedule. ``challenge_id`` is the local date,
 ``"YYYY-MM-DD"``.
 
@@ -28,21 +32,42 @@ Goal kinds
   "finished" means is the game's own business — solitaire and mahjong only
   report ``completed`` on a win, twenty48 on game over, blackjack when the
   session is cashed out or busts.
-- ``score_at_least``: as above, with ``final_score >= target``. Only twenty48
-  has a ``final_score`` that is comparable between plays, so only twenty48 gets
-  these.
+- ``score_at_least``: a game of that type ended today with ``final_score >=
+  target``. **Abandoned games count here**: twenty48 only reports ``completed``
+  when the board fills, and a player who passed the target and then started a
+  new game has still reached it. Only twenty48 has a ``final_score`` that is
+  comparable between plays, so only twenty48 gets these.
 """
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 import random
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-# DAILY_CHALLENGE_SALT must be set in production; default 0 makes the schedule trivially derivable.
-SALT = int(os.environ.get("DAILY_CHALLENGE_SALT", "0"))
+logger = logging.getLogger(__name__)
+
+
+def parse_salt(raw: str | None) -> int:
+    """DAILY_CHALLENGE_SALT as an int. Never raises: main.py imports this module,
+    so a secret pasted in the wrong format must not stop the whole API booting.
+    A non-integer value is hashed instead — still secret, still stable."""
+    value = (raw or "").strip()
+    if not value:
+        return 0
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("DAILY_CHALLENGE_SALT is not an integer — using a hash of it")
+        return int.from_bytes(hashlib.sha256(value.encode()).digest()[:8], "big")
+
+
+# Must be set in production; the default 0 makes the schedule trivially derivable.
+SALT = parse_salt(os.environ.get("DAILY_CHALLENGE_SALT"))
 
 GoalKind = Literal["complete", "score_at_least"]
 
@@ -105,7 +130,7 @@ def shuffled_templates(salt: int) -> list[Template]:
 
 
 def pick_index(day: date, salt: int, count: int) -> int:
-    return (int(day.strftime("%Y%m%d")) + salt) % count
+    return (day.toordinal() + salt) % count
 
 
 TEMPLATES: list[Template] = shuffled_templates(SALT)

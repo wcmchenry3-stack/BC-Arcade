@@ -6,6 +6,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
+from itertools import pairwise
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from daily_challenge.definitions import (
     Goal,
     Template,
     local_day,
+    parse_salt,
     pick_index,
     shuffled_templates,
     template_for,
@@ -77,6 +79,24 @@ def test_every_template_comes_up_within_a_run_of_days() -> None:
     assert picked == {t.id for t in TEMPLATES}
 
 
+def test_no_template_repeats_on_consecutive_days_even_across_month_ends() -> None:
+    # YYYYMMDD arithmetic repeated a template here: 20280229 to 20280301 is +72 (8 x 9).
+    start = date(2028, 2, 20)
+    ids = [template_for(start + timedelta(days=i)).id for i in range(30)]
+    assert all(a != b for a, b in pairwise(ids))
+
+
+def test_salt_parsing_never_raises() -> None:
+    assert parse_salt(None) == 0
+    assert parse_salt("  ") == 0
+    assert parse_salt(" 42 ") == 42
+    assert parse_salt("-7") == -7
+    hashed = parse_salt("not-a-number")
+    assert hashed == parse_salt("not-a-number")
+    assert hashed != parse_salt("another-secret")
+    assert hashed > 0
+
+
 def test_salt_shifts_the_schedule() -> None:
     day = date(2026, 10, 9)
     count = len(TEMPLATES)
@@ -124,24 +144,39 @@ _SCORE_2000 = Goal(game_type="twenty48", kind="score_at_least", target=2000)
 
 def test_complete_goal_needs_a_finished_game_of_that_type() -> None:
     assert not evaluate_goal(_COMPLETE_MAHJONG, []).completed
-    assert not evaluate_goal(_COMPLETE_MAHJONG, [("twenty48", 5000)]).completed
-    status = evaluate_goal(_COMPLETE_MAHJONG, [("mahjong", None)])
+    assert not evaluate_goal(_COMPLETE_MAHJONG, [("twenty48", 5000, "completed")]).completed
+    assert not evaluate_goal(_COMPLETE_MAHJONG, [("mahjong", 300, "abandoned")]).completed
+    status = evaluate_goal(_COMPLETE_MAHJONG, [("mahjong", None, "completed")])
     assert status.completed
     assert status.best_score is None
+    # An outcome the client did not send is still a finished game.
+    assert evaluate_goal(_COMPLETE_MAHJONG, [("mahjong", 300, None)]).completed
 
 
 def test_score_goal_reports_best_score_and_completes_at_the_target() -> None:
     assert evaluate_goal(_SCORE_2000, []).best_score is None
-    below = evaluate_goal(_SCORE_2000, [("twenty48", 800), ("twenty48", 1999)])
+    below = evaluate_goal(
+        _SCORE_2000, [("twenty48", 800, "completed"), ("twenty48", 1999, "completed")]
+    )
     assert not below.completed
     assert below.best_score == 1999
-    exact = evaluate_goal(_SCORE_2000, [("twenty48", 2000)])
+    exact = evaluate_goal(_SCORE_2000, [("twenty48", 2000, "completed")])
     assert exact.completed
     assert exact.best_score == 2000
 
 
+def test_score_goal_counts_a_score_reached_in_an_abandoned_game() -> None:
+    # Twenty48 only reports "completed" when the board fills; starting a new game
+    # after passing the target sends the score with outcome "abandoned".
+    status = evaluate_goal(_SCORE_2000, [("twenty48", 2600, "abandoned")])
+    assert status.completed
+    assert status.best_score == 2600
+
+
 def test_score_goal_ignores_missing_scores_and_other_games() -> None:
-    status = evaluate_goal(_SCORE_2000, [("twenty48", None), ("mahjong", 9999)])
+    status = evaluate_goal(
+        _SCORE_2000, [("twenty48", None, "abandoned"), ("mahjong", 9999, "completed")]
+    )
     assert not status.completed
     assert status.best_score is None
 
@@ -310,13 +345,27 @@ def test_abandoned_and_unfinished_games_do_not_count(
 ) -> None:
     sid = str(uuid.uuid4())
     _play(client, sid, game_type="mahjong", final_score=0, outcome="abandoned")
-    _play(client, sid, game_type="twenty48", final_score=9000, outcome="abandoned")
-    r = client.post("/games", headers=_headers(sid), json={"game_type": "mahjong"})
-    assert r.status_code == 200  # started, never finished
+    _play(client, sid, game_type="twenty48", final_score=None, outcome="abandoned")
+    for game_type in ("mahjong", "twenty48"):
+        r = client.post("/games", headers=_headers(sid), json={"game_type": game_type})
+        assert r.status_code == 200  # started, never finished
 
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     assert body["completed_goals"] == 0
     assert _goals_by_id(body)[_SCORE_2000.id]["best_score"] is None
+
+
+@needs_db
+def test_score_reached_then_abandoned_counts_but_abandoned_mahjong_does_not(
+    client: TestClient, fixed_template: Template
+) -> None:
+    sid = str(uuid.uuid4())
+    _play(client, sid, game_type="twenty48", final_score=9000, outcome="abandoned")
+    _play(client, sid, game_type="mahjong", final_score=400, outcome="abandoned")
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_SCORE_2000.id]["completed"] is True
+    assert goals[_SCORE_2000.id]["best_score"] == 9000
+    assert goals[_COMPLETE_MAHJONG.id]["completed"] is False
 
 
 @needs_db

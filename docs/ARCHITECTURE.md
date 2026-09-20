@@ -313,19 +313,22 @@ makes the arcade one product rather than a folder of games (App Review
 guideline 4.2). Backend: `backend/daily_challenge/`.
 
 - **Stateless, like Daily Word.** No table, no migration. Today's challenge is
-  `TEMPLATES[(YYYYMMDD + DAILY_CHALLENGE_SALT) % len(TEMPLATES)]` for the
+  `TEMPLATES[(date.toordinal() + DAILY_CHALLENGE_SALT) % len(TEMPLATES)]` for the
   player's **local** date (`tz_offset_minutes`, the same convention as
   `/daily-word/today`). The salt is a per-environment secret, so the schedule
-  cannot be read off the public repo.
+  cannot be read off the public repo. (The day ordinal, not Daily Word's
+  `YYYYMMDD` number: with eight templates, that number's jumps at month ends can
+  repeat a template on consecutive days.)
 - **Completion is a read-side view.** `GET /daily-challenge/status` runs one
   query over the session's own `games` rows finished inside the local day and
   evaluates the goals in Python. It is the data `PATCH /games/{id}/complete`
   already writes, so a game played offline counts as soon as the sync queue
   uploads it (§4) — by the time it was played, not the time it was uploaded.
-  An `abandoned` completion never counts.
+  An `abandoned` completion never counts towards a `complete` goal.
 - **Two goal kinds.** `complete` (a finished game of that type) and
   `score_at_least` — twenty48 only, the one free game whose `final_score` is
-  comparable between plays.
+  comparable between plays. A score goal counts a score reached in an abandoned
+  game too: twenty48 only reports `completed` when the board fills.
 - **Which games can appear** is `CHALLENGE_GAMES` in `definitions.py`: free
   **and** recording a per-session game. Daily Word (writes no `games` row) and
   FreeCell (writes only shared-session leaderboard rows) are excluded until

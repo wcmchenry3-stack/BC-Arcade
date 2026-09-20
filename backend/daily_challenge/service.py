@@ -41,13 +41,19 @@ class ChallengeStatus:
         return all(g.completed for g in self.goals)
 
 
-def evaluate_goal(goal: Goal, finished: list[tuple[str, int | None]]) -> GoalStatus:
-    """``finished`` is today's non-abandoned completed games as (game_type, final_score)."""
-    scores = [score for game_type, score in finished if game_type == goal.game_type]
-    if goal.kind == "complete":
-        return GoalStatus(goal=goal, completed=bool(scores), best_score=None)
+# (game_type, final_score, outcome) of a game that ended today.
+EndedGame = tuple[str, int | None, str | None]
 
-    real_scores = [s for s in scores if s is not None]
+
+def evaluate_goal(goal: Goal, ended: list[EndedGame]) -> GoalStatus:
+    mine = [(score, outcome) for game_type, score, outcome in ended if game_type == goal.game_type]
+    if goal.kind == "complete":
+        # Leaving a game writes an "abandoned" completion — that is not finishing it.
+        finished = any(outcome != GameOutcome.ABANDONED.value for _, outcome in mine)
+        return GoalStatus(goal=goal, completed=finished, best_score=None)
+
+    # A score that was reached counts however the game ended (see definitions.py).
+    real_scores = [score for score, _ in mine if score is not None]
     best = max(real_scores) if real_scores else None
     target = goal.target if goal.target is not None else 0
     return GoalStatus(goal=goal, completed=best is not None and best >= target, best_score=best)
@@ -78,14 +84,9 @@ async def get_status_for_session(
         )
     ).all()
 
-    # Leaving a game writes an "abandoned" completion — that is not finishing it.
-    finished = [
-        (name, final_score)
-        for name, final_score, outcome in rows
-        if outcome != GameOutcome.ABANDONED.value
-    ]
+    ended: list[EndedGame] = [(name, final_score, outcome) for name, final_score, outcome in rows]
     return ChallengeStatus(
         day=day,
         template=template,
-        goals=tuple(evaluate_goal(goal, finished) for goal in template.goals),
+        goals=tuple(evaluate_goal(goal, ended) for goal in template.goals),
     )
