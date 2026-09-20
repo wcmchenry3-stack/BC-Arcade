@@ -46,6 +46,12 @@ import { CascadeScoreboardProvider } from "./src/game/cascade/CascadeScoreboardC
 import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
+import {
+  makeDropSimulatorEvents,
+  resolveSentryEnvironment,
+  shouldInitSentry,
+  shouldTrackAppHangs,
+} from "./src/utils/sentryConfig";
 import { LazyScreens } from "./src/utils/lazyScreens";
 import type {
   RootStackParamList,
@@ -58,14 +64,19 @@ SessionLogger.init();
 
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
-if (!dsn) {
+if (!shouldInitSentry()) {
+  // Test-hooks build (CI smoke / Maestro) — never reports (#2429).
+} else if (!dsn) {
   console.error("[Sentry] EXPO_PUBLIC_SENTRY_DSN is not set — error reporting disabled.");
 } else {
   try {
+    const environment = resolveSentryEnvironment();
     Sentry.init({
       dsn,
-      environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? "production",
+      environment,
       sendDefaultPii: false,
+      enableAppHangTracking: shouldTrackAppHangs(),
+      beforeSend: makeDropSimulatorEvents(environment),
     });
     installSentryConsoleErrorCapture();
   } catch (e) {
