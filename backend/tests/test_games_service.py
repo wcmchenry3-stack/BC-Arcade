@@ -425,6 +425,38 @@ async def test_complete_game_rejects_oversized_result(db, monkeypatch):
     assert len(captured) == 1 and "too large" in captured[0][0]
 
 
+async def test_complete_game_blackjack_result_carries_hands_played(db):
+    sid = _sid()
+    game = await _make_game(db, sid, "blackjack")
+    g = await complete_game(
+        db,
+        game_id=game.id,
+        session_id=sid,
+        final_score=None,
+        outcome="completed",
+        duration_ms=1,
+        result={"hands_won": 2, "hands_played": 5, "starting_chips": 1000, "final_chips": 1300},
+    )
+    assert g.game_metadata["hands_played"] == 5
+
+
+async def test_complete_game_blackjack_result_without_hands_played_still_completes(db):
+    # Builds that predate the field must not 400 — the sync worker dead-letters a 400.
+    sid = _sid()
+    game = await _make_game(db, sid, "blackjack")
+    g = await complete_game(
+        db,
+        game_id=game.id,
+        session_id=sid,
+        final_score=None,
+        outcome="completed",
+        duration_ms=1,
+        result={"hands_won": 2, "starting_chips": 1000, "final_chips": 1300},
+    )
+    assert g.completed_at is not None
+    assert "hands_played" not in g.game_metadata
+
+
 async def test_complete_game_without_result_leaves_metadata_untouched(db):
     sid = _sid()
     game = await _make_game(db, sid)

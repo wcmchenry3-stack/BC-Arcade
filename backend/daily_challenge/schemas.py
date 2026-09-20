@@ -7,7 +7,6 @@ No display strings: the client builds the copy from ``kind`` + ``game_type`` +
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -15,8 +14,9 @@ from pydantic import BaseModel
 class GoalResponse(BaseModel):
     id: str
     game_type: str
-    kind: Literal["complete", "score_at_least"]
-    # Score to reach for ``score_at_least``; null for ``complete``.
+    # Per-game vocabulary, e.g. ``won``, ``moves_at_least``, ``highest_tile_at_least``.
+    kind: str
+    # The number to reach (or stay under) for the kinds that have one; else null.
     target: int | None
 
 
@@ -31,8 +31,8 @@ class ChallengeResponse(BaseModel):
 
 class GoalStatusResponse(GoalResponse):
     completed: bool
-    # Best qualifying final_score today for ``score_at_least`` goals (null until
-    # a game of that type is finished); always null for ``complete`` goals.
+    # Best final_score today for ``final_score_at_least`` goals (null until a game
+    # of that type is finished); null for every other kind.
     best_score: int | None
 
 
