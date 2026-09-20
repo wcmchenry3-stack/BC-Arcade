@@ -18,6 +18,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const mockRequest = jest.fn();
 jest.mock("../../game/_shared/httpClient", () => ({
+  // Keep the real isNetworkError — refresh() uses it to classify failures.
+  ...jest.requireActual("../../game/_shared/httpClient"),
   createGameClient: jest.fn(
     () =>
       (...args: unknown[]) =>
@@ -316,6 +318,32 @@ describe("EntitlementProvider", () => {
 
       // refresh() preserves the last successful in-memory state; it does NOT re-load from cache
       expect(ctx.canPlay("cascade")).toBe(false);
+    });
+
+    it("foreground refresh treats an Android offline CodedError as a network failure (#2403)", async () => {
+      const { CodedError } = jest.requireActual("expo-modules-core");
+      const Sentry = jest.requireMock("@sentry/react-native");
+
+      mockRequest.mockResolvedValueOnce({
+        token: makeToken(makePayload(["cascade"])),
+        expires_at: "2099-01-01T00:00:00Z",
+      });
+      await renderProvider();
+      expect(ctx.canPlay("cascade")).toBe(true);
+      Sentry.addBreadcrumb.mockClear();
+
+      mockRequest.mockRejectedValue(new CodedError("ERR_NETWORK", "Unable to resolve host"));
+      const listener = getAppStateListener();
+      await act(async () => {
+        listener("active");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+
+      // Swallowed like a TypeError: access is kept and no warning breadcrumb is left.
+      expect(ctx.canPlay("cascade")).toBe(true);
+      expect(Sentry.addBreadcrumb).not.toHaveBeenCalledWith(
+        expect.objectContaining({ category: "entitlements", message: "token refresh failed" })
+      );
     });
 
     it("all-games dev-override cache is denied once the 7-day grace period expires", async () => {
