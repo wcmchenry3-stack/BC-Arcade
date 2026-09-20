@@ -418,6 +418,73 @@ describe("httpClient — Sentry reporting (#513)", () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
+  // #2428: what production actually throws. Expo's native `fetch` rethrows
+  // every native failure as `FetchError extends Error` ("fetch failed: …") —
+  // never the bare CodedError the #2380 cases above use. Built from Expo's own
+  // class so an SDK bump that changes the shape fails here, not in Sentry.
+  // Messages are the verbatim BC_GAMES-4W (Android) / BC_GAMES-4Y (iOS) titles.
+  describe("Expo native FetchError (#2428)", () => {
+    const { FetchError } = require("expo/src/winter/fetch/FetchErrors") as {
+      FetchError: { createFromError(error: Error): Error };
+    };
+    const nativeFailures = [
+      [
+        "Android",
+        'java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname',
+      ],
+      ["iOS", "UnexpectedException: A server with the specified hostname could not be found."],
+    ];
+
+    it.each(nativeFailures)(
+      "%s offline failure is classified as network, not unexpected",
+      async (_platform, nativeMessage) => {
+        const g = globalThis as { __DEV__?: boolean };
+        const originalDev = g.__DEV__;
+        g.__DEV__ = false;
+        process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+        try {
+          const thrown = FetchError.createFromError(new CodedError("ERR_NETWORK", nativeMessage));
+          expect(thrown).not.toBeInstanceOf(CodedError);
+          expect(thrown).not.toBeInstanceOf(TypeError);
+          mockFetch.mockRejectedValueOnce(thrown);
+          const request = makeRequest();
+          await expect(request("/entitlements")).rejects.toBe(thrown);
+          expect(Sentry.captureException).not.toHaveBeenCalled();
+          expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+          expect(Sentry.captureMessage).toHaveBeenCalledWith(
+            expect.stringContaining("network failure"),
+            expect.objectContaining({
+              level: "warning",
+              tags: expect.objectContaining({ errorType: "network" }),
+              extra: expect.objectContaining({ originalMessage: `fetch failed: ${nativeMessage}` }),
+            })
+          );
+        } finally {
+          g.__DEV__ = originalDev;
+          delete process.env.EXPO_PUBLIC_API_URL;
+        }
+      }
+    );
+
+    it("skips captureMessage in dev mode, same as TypeError (#571)", async () => {
+      mockFetch.mockRejectedValueOnce(FetchError.createFromError(new Error("offline")));
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toThrow("fetch failed: offline");
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("isNetworkError matches the fetch-failed shape and nothing broader", () => {
+      const { isNetworkError } = require("../httpClient") as typeof import("../httpClient");
+      expect(isNetworkError(FetchError.createFromError(new Error("offline")))).toBe(true);
+      expect(isNetworkError(new Error("fetch failed: offline"))).toBe(true);
+      expect(isNetworkError(new Error("boom"))).toBe(false);
+      expect(isNetworkError(new Error("the fetch failed"))).toBe(false);
+      expect(isNetworkError("fetch failed: not an Error")).toBe(false);
+      expect(isNetworkError(null)).toBe(false);
+    });
+  });
+
   it("genuine unexpected JS error (non-Api, non-Type) is captured as an exception with stack", async () => {
     // A RangeError from inside fetch is the kind of thing we want loud
     // visibility on — it indicates a bug we wrote, not a network issue.
