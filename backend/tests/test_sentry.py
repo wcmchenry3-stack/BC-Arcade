@@ -67,15 +67,16 @@ class TestSentryUnit:
 
     def test_sentry_environment_defaults_to_development(self, monkeypatch):
         """Unset ENVIRONMENT must never fall through to sentry-sdk's "production" (#851)."""
-        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        # Import before patching: main registers /debug/error at import time from ENVIRONMENT.
         from main import _sentry_options
 
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
         assert _sentry_options("https://key@o0.ingest.sentry.io/0")["environment"] == "development"
 
     def test_sentry_environment_follows_env_var(self, monkeypatch):
-        monkeypatch.setenv("ENVIRONMENT", "production")
         from main import _sentry_options
 
+        monkeypatch.setenv("ENVIRONMENT", "production")
         assert _sentry_options("https://key@o0.ingest.sentry.io/0")["environment"] == "production"
 
     def test_sentry_release_is_the_render_commit(self, monkeypatch):
