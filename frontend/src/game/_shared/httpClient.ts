@@ -124,6 +124,51 @@ function resolveBaseUrl(): string {
   throw new Error(msg);
 }
 
+/**
+ * Minimum gap between Sentry reports of the same failing endpoint (#2430).
+ *
+ * Network failures are expected and low-severity, but a retry loop or a flaky
+ * connection used to capture one event per attempt — one device sent 270,
+ * one web client 1,045. Reporting each endpoint at most once per window keeps
+ * the signal ("this endpoint is unreachable from this install") without
+ * letting one client burn the quota. Per app session: the state is in memory,
+ * so a fresh launch reports again.
+ */
+export const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
+/** Bound the map: paths can embed ids, so the key space is not finite. */
+const NETWORK_FAILURE_MAX_TRACKED = 100;
+
+const networkFailureReports = new Map<string, { at: number; suppressed: number }>();
+
+/**
+ * Decide whether this failure should reach Sentry. `key` is the report message
+ * itself, so throttling matches Sentry's own grouping — a different endpoint
+ * (or method) always reports. Returns how many were swallowed since the last
+ * report so the next event can say so.
+ */
+function claimNetworkFailureReport(
+  key: string,
+  now: number
+): { report: boolean; suppressed: number } {
+  const previous = networkFailureReports.get(key);
+  const age = previous ? now - previous.at : Infinity;
+  // A clock that moved backwards (age < 0) reports again rather than
+  // suppressing until the wall clock catches up.
+  if (previous && age >= 0 && age < NETWORK_FAILURE_REPORT_INTERVAL_MS) {
+    previous.suppressed += 1;
+    return { report: false, suppressed: 0 };
+  }
+  // Delete + set keeps Map insertion order == report recency, so the first
+  // key is always the stalest one to evict.
+  networkFailureReports.delete(key);
+  if (networkFailureReports.size >= NETWORK_FAILURE_MAX_TRACKED) {
+    const oldest = networkFailureReports.keys().next().value;
+    if (oldest !== undefined) networkFailureReports.delete(oldest);
+  }
+  networkFailureReports.set(key, { at: now, suppressed: 0 });
+  return { report: true, suppressed: previous?.suppressed ?? 0 };
+}
+
 export interface HttpClientOptions {
   /** Sentry tag value, e.g. "cascade", "yacht". Used for per-game observability. */
   apiTag: string;
@@ -211,12 +256,31 @@ export function createGameClient(options: HttpClientOptions) {
         // In dev mode, network failures against localhost are expected
         // (backend not running) — skip Sentry to avoid flooding the
         // dashboard with dev noise (#571).
+        //
+        // Every failure leaves a breadcrumb (cheap, and gives any later
+        // event its context); only the first per endpoint per window becomes
+        // a Sentry event (#2430).
+        Sentry.addBreadcrumb({
+          category: "api.error",
+          level: "warning",
+          message: `${method} ${path} → network failure`,
+          data: { url, platform: Platform.OS, api: apiTag, originalMessage: e.message },
+        });
         if (!__DEV__ && !isTestBuild) {
-          Sentry.captureMessage(`API ${apiTag} network failure: ${method} ${path}`, {
-            level: "warning",
-            tags: { api: apiTag, errorType: "network" },
-            extra: { url, platform: Platform.OS, originalMessage: e.message },
-          });
+          const message = `API ${apiTag} network failure: ${method} ${path}`;
+          const claim = claimNetworkFailureReport(message, Date.now());
+          if (claim.report) {
+            Sentry.captureMessage(message, {
+              level: "warning",
+              tags: { api: apiTag, errorType: "network" },
+              extra: {
+                url,
+                platform: Platform.OS,
+                originalMessage: e.message,
+                suppressedSinceLastReport: claim.suppressed,
+              },
+            });
+          }
         }
         throw e;
       }

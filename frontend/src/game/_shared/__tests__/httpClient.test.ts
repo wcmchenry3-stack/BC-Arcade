@@ -423,6 +423,116 @@ describe("httpClient — Sentry reporting (#513)", () => {
   // never the bare CodedError the #2380 cases above use. Built from Expo's own
   // class so an SDK bump that changes the shape fails here, not in Sentry.
   // Messages are the verbatim BC_GAMES-4W (Android) / BC_GAMES-4Y (iOS) titles.
+  describe("network-failure throttle (#2430)", () => {
+    const WINDOW = 10 * 60 * 1000; // NETWORK_FAILURE_REPORT_INTERVAL_MS
+    let now: number;
+    let dateSpy: jest.SpyInstance;
+    let originalDev: boolean | undefined;
+
+    beforeEach(() => {
+      now = 1_700_000_000_000;
+      dateSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+      // The report path only runs outside dev and test-hook builds.
+      const g = globalThis as { __DEV__?: boolean };
+      originalDev = g.__DEV__;
+      g.__DEV__ = false;
+      process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    });
+
+    afterEach(() => {
+      dateSpy.mockRestore();
+      (globalThis as { __DEV__?: boolean }).__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    });
+
+    async function fail(request: ReturnType<typeof makeRequest>, path: string, method = "GET") {
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(request(path, { method })).rejects.toThrow("Failed to fetch");
+    }
+
+    const networkBreadcrumbs = () =>
+      Sentry.addBreadcrumb.mock.calls.filter(
+        ([b]: [{ category: string; message: string }]) =>
+          b.category === "api.error" && b.message.endsWith("network failure")
+      );
+
+    it("repeated failures of one endpoint inside the window produce one event", async () => {
+      const request = makeRequest();
+      for (let i = 0; i < 5; i++) {
+        await fail(request, "/entitlements");
+        now += 1_000;
+      }
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      // The breadcrumb trail is not throttled — every failure is recorded.
+      expect(networkBreadcrumbs()).toHaveLength(5);
+    });
+
+    it("a different endpoint, or the same path with another method, still reports", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      await fail(request, "/starswarm/leaderboard");
+      await fail(request, "/entitlements", "POST");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it("reports again once the window has passed, saying how many were swallowed", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      await fail(request, "/entitlements");
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage.mock.calls[0][1].extra.suppressedSinceLastReport).toBe(0);
+
+      now += WINDOW; // exactly at the boundary counts as passed
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+      expect(Sentry.captureMessage.mock.calls[1][1].extra.suppressedSinceLastReport).toBe(2);
+
+      // and the count starts over for the next window
+      now += WINDOW;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage.mock.calls[2][1].extra.suppressedSinceLastReport).toBe(0);
+    });
+
+    it("stays quiet one millisecond before the window closes", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      now += WINDOW - 1;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("a clock that moves backwards reports again instead of muting the endpoint", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      now -= 60 * 60 * 1000;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it("throttle state is shared by every client in the session", async () => {
+      // Two game clients hitting the same tagged endpoint (e.g. a screen
+      // remounting and building a fresh client) must not double-report.
+      await fail(makeRequest(), "/entitlements");
+      await fail(makeRequest(), "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("remembers a bounded number of endpoints, evicting the stalest", async () => {
+      const request = makeRequest();
+      await fail(request, "/first");
+      for (let i = 0; i < 100; i++) {
+        await fail(request, `/games/${i}/complete`); // ids make the key space unbounded
+      }
+      Sentry.captureMessage.mockClear();
+      await fail(request, "/first"); // evicted — reports again despite being inside the window
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      Sentry.captureMessage.mockClear();
+      await fail(request, "/games/99/complete"); // recent — still remembered
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Expo native FetchError (#2428)", () => {
     const { FetchError } = require("expo/src/winter/fetch/FetchErrors") as {
       FetchError: { createFromError(error: Error): Error };
