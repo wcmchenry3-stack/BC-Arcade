@@ -25,7 +25,7 @@
   "difficulty.start": "Start Game",
   "phase.perfect": "PERFECT!",
   "phase.perfectBonus": "+{{points}} BONUS",
-  "phase.perfectAnnouncement": "Perfect! All 40 ships hit. {{points}} bonus points.",
+  "phase.perfectAnnouncement": "Perfect! All {{count}} ships hit. {{points}} bonus points.",
   "leaderboard.title": "Star Swarm — Top Scores",
   "leaderboard.colRank": "#",
   "leaderboard.colScore": "Score",

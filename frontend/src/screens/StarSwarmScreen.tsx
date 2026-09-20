@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
@@ -32,6 +33,8 @@ import {
   DIFFICULTY_TIERS,
   difficultyLabel,
   difficultyMultiplier,
+  perfectBonusPoints,
+  FREE_FIRE_ENEMY_COUNT,
 } from "../game/starswarm/engine";
 import type { GamePhase, PowerUpType, DifficultyTier } from "../game/starswarm/types";
 import { starSwarmApi } from "../game/starswarm/api";
@@ -116,6 +119,7 @@ export default function StarSwarmScreen() {
     playFreeFireZone,
     playBonusLife,
     playPerfect,
+    stopPerfect,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
@@ -146,12 +150,21 @@ export default function StarSwarmScreen() {
   );
 
   // #2422: a PERFECT Free Fire Zone clear plays the fanfare *instead of* the wave-clear jingle
-  // (GameCanvas calls this rather than onWaveClear) and holds the game while it plays.
-  const handleFreeFirePerfect = useCallback(() => {
+  // (GameCanvas calls this rather than onWaveClear) and holds the game while it plays. Returns
+  // whether the fanfare actually started, so a muted player gets a short silent beat instead of
+  // a ten-second freeze with nothing to wait for.
+  const handleFreeFirePerfect = useCallback((): boolean => {
     setPhase("WaveClear");
-    playPerfect();
     hapticWaveClear();
-  }, [playPerfect]);
+    // A live region on the overlay is Android-only, so speak the announcement explicitly.
+    AccessibilityInfo.announceForAccessibility(
+      t("phase.perfectAnnouncement", {
+        count: FREE_FIRE_ENEMY_COUNT,
+        points: perfectBonusPoints(difficulty).toLocaleString(),
+      })
+    );
+    return playPerfect();
+  }, [playPerfect, t, difficulty]);
 
   const handlePlayerHit = useCallback(() => {
     playPlayerHit();
@@ -172,13 +185,17 @@ export default function StarSwarmScreen() {
     canvasRef.current?.triggerPowerUp(type);
   }, []);
 
-  const handleNewGame = useCallback((opts?: DevOptions) => {
-    if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
-    scoreRef.current = 0;
-    setPhase("SwoopIn");
-    setIsPaused(false);
-    setResetTick((t) => t + 1);
-  }, []);
+  const handleNewGame = useCallback(
+    (opts?: DevOptions) => {
+      if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
+      scoreRef.current = 0;
+      stopPerfect(); // a fanfare still playing must not carry on over the new game
+      setPhase("SwoopIn");
+      setIsPaused(false);
+      setResetTick((t) => t + 1);
+    },
+    [stopPerfect]
+  );
 
   // Show difficulty picker — triggered by header "New Game" and Controls "New Game"
   const handleRequestNewGame = useCallback(() => {
@@ -192,10 +209,11 @@ export default function StarSwarmScreen() {
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
     scoreRef.current = 0;
+    stopPerfect(); // a fanfare still playing must not carry on over the new game
     setPhase("SwoopIn");
     setIsPaused(false);
     setResetTick((t) => t + 1);
-  }, [difficulty]);
+  }, [difficulty, stopPerfect]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);

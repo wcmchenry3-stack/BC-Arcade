@@ -13,6 +13,7 @@ import type {
   StarSwarmInput,
   DifficultyTier,
 } from "./types";
+import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,7 +120,7 @@ export function showMissionCompleteBanner(
     !countdownActive
   );
 }
-const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
+export const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
 
 /** Points awarded for a PERFECT Free Fire Zone clear at the given difficulty. Shared by the
@@ -128,17 +129,13 @@ export function perfectBonusPoints(difficulty: DifficultyTier): number {
   return Math.round(PERFECT_BONUS * difficultyMultiplier(difficulty));
 }
 
-/** #2422: advance the post-PERFECT celebration hold by real elapsed time. Returns the remaining
- * ms (null once finished) and whether it just finished this step. Kept as one shared function so
- * the native and web renderers' RAF loops can't drift apart. */
-export function stepCelebration(
-  remainingMs: number,
-  dtMs: number
-): { remainingMs: number | null; finished: boolean } {
-  const next = Math.max(0, remainingMs - dtMs);
-  return next === 0
-    ? { remainingMs: null, finished: true }
-    : { remainingMs: next, finished: false };
+/** #2422: how long gameplay holds after a PERFECT Free Fire Zone clear — the length of the
+ * fanfare when it is playing, a short silent beat when it isn't. Shared so the native and web
+ * canvases can't drift apart. The hold itself is measured against the frame clock (a deadline),
+ * not by summing frame deltas: those are capped per frame, so on a slow device they would run
+ * slower than the audio they are meant to match. */
+export function perfectHoldMs(fanfarePlaying: boolean): number {
+  return fanfarePlaying ? PERFECT_FANFARE_MS : PERFECT_SILENT_HOLD_MS;
 }
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
 const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };

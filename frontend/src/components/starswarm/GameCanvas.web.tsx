@@ -23,13 +23,10 @@ import {
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
   perfectBonusPoints,
-  stepCelebration,
+  perfectHoldMs,
+  FREE_FIRE_ENEMY_COUNT,
 } from "../../game/starswarm/engine";
-import {
-  HARMLESS_BULLET_OPACITY,
-  PERFECT_FANFARE_MS,
-  WAVE_COUNTDOWN_MS,
-} from "../../game/starswarm/constants";
+import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
@@ -129,6 +126,31 @@ const C = {
   gameOverOverlay: "rgba(0,0,0,0.65)",
 } as const;
 
+/** MISSION COMPLETE, with a PERFECT! line 34px below it when `perfectText` is given. Shared by
+ * the fading wave-clear banner and the #2422 PERFECT celebration so their styling can't drift. */
+function drawMissionCompleteBanner(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  missionCompleteText: string,
+  perfectText: string | null
+) {
+  ctx.font = "bold 26px 'Courier New', monospace";
+  ctx.fillStyle = C.waveClear;
+  ctx.shadowColor = C.waveClear;
+  ctx.shadowBlur = 18;
+  ctx.fillText(missionCompleteText, x, y);
+  ctx.shadowBlur = 0;
+  if (perfectText !== null) {
+    ctx.font = "bold 18px 'Courier New', monospace";
+    ctx.fillStyle = "#ffdd00";
+    ctx.shadowColor = "#ff8800";
+    ctx.shadowBlur = 8;
+    ctx.fillText(perfectText, x, y + 34);
+    ctx.shadowBlur = 0;
+  }
+}
+
 interface Images {
   playerShip: HTMLImageElement | null;
   buddyShip: HTMLImageElement | null;
@@ -172,7 +194,9 @@ interface Props {
   onExplosion?: () => void;
   onFreeFireZone?: () => void;
   /** Called once when all enemies in a Free Fire Zone are hit (#1022). */
-  onFreeFirePerfect?: () => void;
+  /** #2422: called on a PERFECT Free Fire Zone clear. Return true if the fanfare is playing —
+   * the game then holds for its full length; otherwise it holds only a short silent beat. */
+  onFreeFirePerfect?: () => boolean;
   onPowerUpCollect?: (type: PowerUpType) => void;
   isPaused?: boolean;
   onPause?: () => void;
@@ -259,10 +283,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevWaveRef = useRef(stateRef.current.wave);
     // Pre-wave countdown: null = no countdown, positive ms = ticking
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
-    // #2422: ms remaining in the PERFECT-clear celebration hold; null = not celebrating. Runs
-    // before the pre-wave countdown, which starts once it finishes.
-    const celebrationMsRef = useRef<number | null>(null);
-    // Mirrors "celebrationMsRef !== null" so the screen-reader live region can re-render — the
+    // #2422: frame-clock time (RAF timestamp) at which the PERFECT-clear celebration hold ends;
+    // null = not celebrating. A deadline, not a countdown, so it stays in step with the
+    // fanfare audio however slow the frames are. Runs before the pre-wave countdown, which
+    // starts once it finishes.
+    const celebrationEndsAtRef = useRef<number | null>(null);
+    // Mirrors "celebrationEndsAtRef !== null" so the screen-reader live region can re-render — the
     // canvas itself is drawn from refs and never triggers a React render.
     const [celebrating, setCelebrating] = useState(false);
     const imagesRef = useRef<Images>({
@@ -442,7 +468,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevActivePowerUpRef.current = null;
       triggerPowerUpRef.current = null;
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
-      celebrationMsRef.current = null;
+      celebrationEndsAtRef.current = null;
       setCelebrating(false);
     }, [resetTick, width, height]);
 
@@ -748,20 +774,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
-          ctx.font = "bold 26px 'Courier New', monospace";
-          ctx.fillStyle = C.waveClear;
-          ctx.shadowColor = C.waveClear;
-          ctx.shadowBlur = 18;
-          ctx.fillText(t("phase.missionComplete"), width / 2, height / 2);
-          ctx.shadowBlur = 0;
-          if (state.freeFirePerfect) {
-            ctx.font = "bold 18px 'Courier New', monospace";
-            ctx.fillStyle = "#ffdd00";
-            ctx.shadowColor = "#ff8800";
-            ctx.shadowBlur = 8;
-            ctx.fillText(t("phase.perfect"), width / 2, height / 2 + 34);
-            ctx.shadowBlur = 0;
-          }
+          drawMissionCompleteBanner(
+            ctx,
+            width / 2,
+            height / 2,
+            t("phase.missionComplete"),
+            state.freeFirePerfect ? t("phase.perfect") : null
+          );
           ctx.globalAlpha = 1;
         }
       }
@@ -787,20 +806,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
 
       // #2422: PERFECT Free Fire Zone clear — gameplay is held for the length of the fanfare.
-      if (celebrationMsRef.current !== null) {
+      if (celebrationEndsAtRef.current !== null) {
         const points = perfectBonusPoints(state.difficulty).toLocaleString();
-        ctx.font = "bold 26px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.waveClear;
-        ctx.shadowBlur = 18;
-        ctx.fillText(t("phase.missionComplete"), width / 2, height / 2 - 20);
-        ctx.shadowBlur = 0;
-        ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = "#ffdd00";
-        ctx.shadowColor = "#ff8800";
-        ctx.shadowBlur = 8;
-        ctx.fillText(t("phase.perfect"), width / 2, height / 2 + 14);
-        ctx.shadowBlur = 0;
+        drawMissionCompleteBanner(
+          ctx,
+          width / 2,
+          height / 2 - 20,
+          t("phase.missionComplete"),
+          t("phase.perfect")
+        );
         ctx.font = "bold 16px 'Courier New', monospace";
         ctx.fillStyle = "#ffffff";
         ctx.fillText(t("phase.perfectBonus", { points }), width / 2, height / 2 + 44);
@@ -870,12 +884,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         const prev = stateRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
-          if (celebrationMsRef.current !== null) {
-            // #2422: PERFECT-clear celebration — freeze the engine for the length of the
-            // fanfare, then hand over to the normal pre-wave countdown.
-            const step = stepCelebration(celebrationMsRef.current, dtMs);
-            celebrationMsRef.current = step.remainingMs;
-            if (step.finished) {
+          if (celebrationEndsAtRef.current !== null) {
+            // #2422: PERFECT-clear celebration — freeze the engine until the deadline, then
+            // hand over to the normal pre-wave countdown.
+            if (timestamp >= celebrationEndsAtRef.current) {
+              celebrationEndsAtRef.current = null;
               setCelebrating(false);
               if (stateRef.current.phase === "SwoopIn") countdownMsRef.current = WAVE_COUNTDOWN_MS;
             }
@@ -948,10 +961,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // MISSION COMPLETE timer is cleared to keep the two from stacking.
               const perfectClear = waveJustCleared && applied.freeFirePerfect;
               if (perfectClear) {
-                celebrationMsRef.current = PERFECT_FANFARE_MS;
+                const fanfarePlaying = onFreeFirePerfectRef.current?.() ?? false;
+                celebrationEndsAtRef.current = timestamp + perfectHoldMs(fanfarePlaying);
                 setCelebrating(true);
                 stateRef.current = { ...stateRef.current, missionCompleteTimer: 0 };
-                onFreeFirePerfectRef.current?.();
               } else if (waveJustCleared) {
                 onWaveClearRef.current?.();
               }
@@ -999,14 +1012,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const displayH = Math.round(height * scale);
 
     return (
-      <View
-        style={{ width: displayW, height: displayH }}
-        accessibilityLabel={t("game.canvasLabel")}
-        accessibilityRole="image"
-      >
-        <canvas ref={canvasRef} width={displayW} height={displayH} style={{ display: "block" }} />
+      <View style={{ width: displayW, height: displayH }}>
+        <View
+          style={{ width: displayW, height: displayH }}
+          accessibilityLabel={t("game.canvasLabel")}
+          accessibilityRole="image"
+        >
+          <canvas ref={canvasRef} width={displayW} height={displayH} style={{ display: "block" }} />
+        </View>
         {/* #2422: the celebration is drawn on the canvas, which screen readers can't see —
-            announce it through a visually-hidden live region instead. */}
+            announce it through a visually-hidden live region instead. It is a sibling of the
+            role="image" canvas wrapper, not a child: the children of role="img" are
+            presentational, so a live region inside it would never be read. */}
         <View
           style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 }}
           accessibilityLiveRegion="assertive"
@@ -1014,6 +1031,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {celebrating && (
             <Text>
               {t("phase.perfectAnnouncement", {
+                count: FREE_FIRE_ENEMY_COUNT,
                 points: perfectBonusPoints(stateRef.current.difficulty).toLocaleString(),
               })}
             </Text>

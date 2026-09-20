@@ -7,11 +7,13 @@ import { PENDING_PLAY_TIMEOUT_MS, useSound } from "../useSound";
 const mockPlay = jest.fn();
 const mockSeekTo = jest.fn();
 const mockRemove = jest.fn();
+const mockPause = jest.fn();
 
 jest.mock("expo-audio", () => ({
   createAudioPlayer: jest.fn(() => ({
     play: mockPlay,
     seekTo: mockSeekTo,
+    pause: mockPause,
     remove: mockRemove,
   })),
 }));
@@ -37,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   mockSeekTo.mockReset();
   mockPlay.mockReset();
+  mockPause.mockReset();
   jest.restoreAllMocks();
 });
 
@@ -221,5 +224,88 @@ describe("useSound — overlapping play() calls (#2410)", () => {
       result.current.play();
     });
     expect(mockSeekTo).toHaveBeenCalledTimes(2);
+  });
+});
+
+// #2422: Star Swarm's PERFECT clear holds the game for the length of a 10 s fanfare, so the
+// caller needs to know whether playback really started (muted / unregistered / dropped calls
+// mean there is nothing to wait for) and needs to cut the fanfare off on New Game.
+describe("useSound — play() result and stop() (#2422)", () => {
+  it("play() returns true when playback was started", async () => {
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    let started = false;
+    await act(() => {
+      started = result.current.play();
+    });
+    expect(started).toBe(true);
+  });
+
+  it("play() returns false when muted", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("true");
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await act(async () => {});
+    let started = true;
+    await act(() => {
+      started = result.current.play();
+    });
+    expect(started).toBe(false);
+  });
+
+  it("play() returns false when the key has no entry in the registry", async () => {
+    const { result } = await renderHook(() => useSound("unknown.key", EMPTY_REGISTRY), { wrapper });
+    let started = true;
+    await act(() => {
+      started = result.current.play();
+    });
+    expect(started).toBe(false);
+  });
+
+  it("play() returns false when dropped by the in-flight guard", async () => {
+    mockSeekTo.mockImplementation(() => new Promise<void>(() => {})); // never settles
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await act(() => {
+      result.current.play();
+    });
+    let started = true;
+    await act(() => {
+      started = result.current.play();
+    });
+    expect(started).toBe(false);
+  });
+
+  it("stop() pauses the player and rewinds it", async () => {
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await act(() => {
+      result.current.stop();
+    });
+    expect(mockPause).toHaveBeenCalledTimes(1);
+    expect(mockSeekTo).toHaveBeenCalledWith(0);
+  });
+
+  it("stop() is a no-op when the key has no entry in the registry", async () => {
+    const { result } = await renderHook(() => useSound("unknown.key", EMPTY_REGISTRY), { wrapper });
+    await act(() => {
+      result.current.stop();
+    });
+    expect(mockPause).not.toHaveBeenCalled();
+  });
+
+  it("stop() swallows a player that throws", async () => {
+    mockPause.mockImplementationOnce(() => {
+      throw new Error("audio context suspended");
+    });
+    const { result } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await act(() => {
+      expect(() => result.current.stop()).not.toThrow();
+    });
+  });
+
+  it("returns a stable stop reference across re-renders", async () => {
+    const { result, rerender } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), {
+      wrapper,
+    });
+    const first = result.current.stop;
+    await rerender({});
+    expect(result.current.stop).toBe(first);
   });
 });

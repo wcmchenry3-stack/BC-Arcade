@@ -103,9 +103,9 @@
     "description": "Screen-reader announcement when the player hits every ship in a Free Fire Zone.",
     "tone": "neutral, clear",
     "characterLimit": 80,
-    "placeholders": ["{{points}}"],
+    "placeholders": ["{{count}}", "{{points}}"],
     "doNotTranslate": [],
-    "notes": "{{points}} is a pre-formatted number (e.g. 10,000)."
+    "notes": "{{count}} is the number of ships in the Free Fire Zone (an integer, currently 40). {{points}} is a pre-formatted number (e.g. 10,000)."
   },
   "phase.gameOver": {
     "component": "GameCanvas",
