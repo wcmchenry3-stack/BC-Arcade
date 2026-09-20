@@ -58,6 +58,8 @@
   "deleteData.confirm.cancel": "Cancel",
   "deleteData.success": "Your data has been deleted",
   "deleteData.error": "Deletion failed — please try again",
+  "level.pill": "Nv. {{level}}",
+  "level.pillA11y": "Nível de arcade {{level}}",
   "legal.privacyPolicy": "Política de Privacidade",
   "legal.termsOfService": "Termos de Serviço"
 }

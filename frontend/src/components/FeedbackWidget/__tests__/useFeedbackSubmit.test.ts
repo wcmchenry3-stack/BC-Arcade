@@ -1,25 +1,28 @@
 import { renderHook, act } from "@testing-library/react-native";
-import { useFeedbackSubmit } from "../useFeedbackSubmit";
+import * as Sentry from "@sentry/react-native";
+import {
+  _resetFeedbackRateLimit,
+  FEEDBACK_RATE_LIMIT_MAX,
+  FEEDBACK_RATE_LIMIT_WINDOW_MS,
+  useFeedbackSubmit,
+} from "../useFeedbackSubmit";
 import { SessionLogger } from "../SessionLogger";
 
-// Ensure the global fetch mock is available
-const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
-global.fetch = mockFetch;
-
-const WORKER_URL = "https://feedback-worker.wcmchenry3.workers.dev";
-
-function mockEnv(url: string) {
-  process.env.EXPO_PUBLIC_FEEDBACK_WORKER_URL = url;
-}
+const mockCaptureFeedback = Sentry.captureFeedback as jest.Mock;
+const mockGetClient = Sentry.getClient as jest.Mock;
+const mockFetch = jest.fn();
 
 beforeEach(() => {
+  mockCaptureFeedback.mockReset().mockReturnValue("event-id-1");
+  mockGetClient.mockReset().mockReturnValue({});
   mockFetch.mockReset();
+  global.fetch = mockFetch as unknown as typeof fetch;
+  _resetFeedbackRateLimit();
   SessionLogger._reset();
-  mockEnv(WORKER_URL);
 });
 
 afterEach(() => {
-  delete process.env.EXPO_PUBLIC_FEEDBACK_WORKER_URL;
+  jest.useRealTimers();
   SessionLogger._reset();
 });
 
@@ -30,214 +33,161 @@ const basePayload = {
 };
 
 describe("useFeedbackSubmit", () => {
-  describe("initial state", () => {
-    it("starts idle with no result or error", async () => {
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      expect(result.current.status).toBe("idle");
-      expect(result.current.result).toBeNull();
-      expect(result.current.error).toBeNull();
-    });
+  it("starts idle with no result or error", async () => {
+    const { result } = await renderHook(() => useFeedbackSubmit());
+    expect(result.current.status).toBe("idle");
+    expect(result.current.result).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 
   describe("successful submission", () => {
-    it("transitions idle → submitting → success", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: async () => ({ issueNumber: 42, issueUrl: "https://github.com/issues/42" }),
-        headers: { get: () => null },
-      } as unknown as Response);
-
+    it("sends title, description and type to Sentry User Feedback", async () => {
       const { result } = await renderHook(() => useFeedbackSubmit());
-
       await act(async () => {
-        await result.current.submit(basePayload);
+        await result.current.submit({ ...basePayload, type: "feature" });
       });
 
       expect(result.current.status).toBe("success");
-      expect(result.current.result).toEqual({
-        issueNumber: 42,
-        issueUrl: "https://github.com/issues/42",
+      expect(result.current.result).toEqual({ eventId: "event-id-1" });
+      expect(mockCaptureFeedback).toHaveBeenCalledTimes(1);
+      expect(mockCaptureFeedback.mock.calls[0][0]).toEqual({
+        message: "Test title\n\nTest description",
+        source: "in_app_feedback",
+        tags: { "feedback.type": "feature" },
       });
-      expect(result.current.error).toBeNull();
     });
 
-    it("sends appId: gaming_app in request body", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: async () => ({ issueNumber: 1, issueUrl: "https://github.com/issues/1" }),
-        headers: { get: () => null },
-      } as unknown as Response);
-
+    it("never sends a name or email — the app has none", async () => {
       const { result } = await renderHook(() => useFeedbackSubmit());
       await act(async () => {
         await result.current.submit(basePayload);
       });
-
-      const firstCall = mockFetch.mock.calls[0];
-      if (firstCall === undefined) throw new Error("Expected fetch to be called");
-      const [, init] = firstCall;
-      const body = JSON.parse((init as RequestInit).body as string);
-      expect(body.appId).toBe("gaming_app");
+      const params = mockCaptureFeedback.mock.calls[0][0];
+      expect(params).not.toHaveProperty("name");
+      expect(params).not.toHaveProperty("email");
     });
 
-    it("attaches session logs when present", async () => {
-      SessionLogger.init();
-      console.warn("captured log");
-
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: async () => ({ issueNumber: 1, issueUrl: "" }),
-        headers: { get: () => null },
-      } as unknown as Response);
-
+    it("never calls the old feedback worker or any other HTTP endpoint", async () => {
       const { result } = await renderHook(() => useFeedbackSubmit());
       await act(async () => {
         await result.current.submit(basePayload);
       });
-
-      const firstCall = mockFetch.mock.calls[0];
-      if (firstCall === undefined) throw new Error("Expected fetch to be called");
-      const [, init] = firstCall;
-      const body = JSON.parse((init as RequestInit).body as string);
-      expect(body.sessionLogs).toMatch(/captured log/);
-    });
-
-    it("omits sessionLogs key when buffer is empty", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: async () => ({ issueNumber: 1, issueUrl: "" }),
-        headers: { get: () => null },
-      } as unknown as Response);
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      const firstCall = mockFetch.mock.calls[0];
-      if (firstCall === undefined) throw new Error("Expected fetch to be called");
-      const [, init] = firstCall;
-      const body = JSON.parse((init as RequestInit).body as string);
-      expect(body.sessionLogs).toBeUndefined();
-    });
-  });
-
-  describe("rate limit (429)", () => {
-    it("sets error kind: rate_limit with Retry-After from header", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 429,
-        headers: { get: (h: string) => (h === "Retry-After" ? "120" : null) },
-        json: async () => ({}),
-      } as unknown as Response);
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      expect(result.current.status).toBe("error");
-      expect(result.current.error).toEqual({ kind: "rate_limit", retryAfterSeconds: 120 });
-    });
-
-    it("defaults retryAfterSeconds to 60 when Retry-After header absent", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 429,
-        headers: { get: () => null },
-        json: async () => ({}),
-      } as unknown as Response);
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      expect(result.current.error?.retryAfterSeconds).toBe(60);
-    });
-  });
-
-  describe("rejected (422)", () => {
-    it("sets error kind: rejected", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 422,
-        headers: { get: () => null },
-        json: async () => ({}),
-      } as unknown as Response);
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      expect(result.current.status).toBe("error");
-      expect(result.current.error).toEqual({ kind: "rejected" });
-    });
-  });
-
-  describe("network error", () => {
-    it("sets error kind: network when fetch throws", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network request failed"));
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      expect(result.current.status).toBe("error");
-      expect(result.current.error).toEqual({ kind: "network" });
-    });
-  });
-
-  describe("unknown error", () => {
-    it("sets error kind: unknown for unexpected status codes", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 500,
-        headers: { get: () => null },
-        json: async () => ({}),
-      } as unknown as Response);
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
-      expect(result.current.status).toBe("error");
-      expect(result.current.error).toEqual({ kind: "unknown" });
-    });
-  });
-
-  describe("no-op when WORKER_URL unset", () => {
-    it("returns without calling fetch", async () => {
-      delete process.env.EXPO_PUBLIC_FEEDBACK_WORKER_URL;
-
-      const { result } = await renderHook(() => useFeedbackSubmit());
-      await act(async () => {
-        await result.current.submit(basePayload);
-      });
-
       expect(mockFetch).not.toHaveBeenCalled();
-      // Status stays idle (no transition since the hook bails early before setStatus)
-      expect(result.current.status).toBe("idle");
+    });
+
+    it("attaches the session logs when there are any", async () => {
+      SessionLogger.init();
+      console.warn("something odd happened");
+
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+
+      const hint = mockCaptureFeedback.mock.calls[0][1];
+      expect(hint.attachments).toHaveLength(1);
+      expect(hint.attachments[0]).toMatchObject({
+        filename: "session-logs.txt",
+        contentType: "text/plain",
+      });
+      expect(hint.attachments[0].data).toContain("something odd happened");
+    });
+
+    it("sends no attachment when the log buffer is empty", async () => {
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+      expect(mockCaptureFeedback.mock.calls[0][1]).toBeUndefined();
     });
   });
 
-  describe("reset()", () => {
-    it("clears status, result, and error back to initial state", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: async () => ({ issueNumber: 5, issueUrl: "" }),
-        headers: { get: () => null },
-      } as unknown as Response);
+  describe("unavailable", () => {
+    it("reports an error instead of a false success when Sentry is not initialised", async () => {
+      mockGetClient.mockReturnValue(undefined);
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+
+      expect(result.current.status).toBe("error");
+      expect(result.current.error).toEqual({ kind: "unavailable" });
+      expect(mockCaptureFeedback).not.toHaveBeenCalled();
+    });
+
+    it("reports an error when captureFeedback throws", async () => {
+      mockCaptureFeedback.mockImplementation(() => {
+        throw new Error("boom");
+      });
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+
+      expect(result.current.status).toBe("error");
+      expect(result.current.error).toEqual({ kind: "unavailable" });
+    });
+  });
+
+  describe("rate limit", () => {
+    async function submitTimes(n: number) {
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      for (let i = 0; i < n; i++) {
+        await act(async () => {
+          await result.current.submit(basePayload);
+        });
+      }
+      return result;
+    }
+
+    it("blocks the submission after the limit and says when to retry", async () => {
+      const result = await submitTimes(FEEDBACK_RATE_LIMIT_MAX + 1);
+
+      expect(mockCaptureFeedback).toHaveBeenCalledTimes(FEEDBACK_RATE_LIMIT_MAX);
+      expect(result.current.status).toBe("error");
+      expect(result.current.error?.kind).toBe("rate_limit");
+      expect(result.current.error?.retryAfterSeconds).toBeGreaterThan(0);
+      expect(result.current.error?.retryAfterSeconds).toBeLessThanOrEqual(
+        FEEDBACK_RATE_LIMIT_WINDOW_MS / 1000
+      );
+    });
+
+    it("allows submissions again once the window has passed", async () => {
+      jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "queueMicrotask"] });
+      jest.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+      const result = await submitTimes(FEEDBACK_RATE_LIMIT_MAX);
+
+      jest.setSystemTime(new Date(Date.now() + FEEDBACK_RATE_LIMIT_WINDOW_MS + 1000));
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+
+      expect(result.current.status).toBe("success");
+      expect(mockCaptureFeedback).toHaveBeenCalledTimes(FEEDBACK_RATE_LIMIT_MAX + 1);
+    });
+
+    it("does not count a failed submission against the limit", async () => {
+      mockGetClient.mockReturnValue(undefined);
+      await submitTimes(FEEDBACK_RATE_LIMIT_MAX);
+      mockGetClient.mockReturnValue({});
 
       const { result } = await renderHook(() => useFeedbackSubmit());
       await act(async () => {
         await result.current.submit(basePayload);
       });
       expect(result.current.status).toBe("success");
+    });
+  });
 
-      await act(() => {
+  describe("reset", () => {
+    it("returns to idle", async () => {
+      const { result } = await renderHook(() => useFeedbackSubmit());
+      await act(async () => {
+        await result.current.submit(basePayload);
+      });
+      await act(async () => {
         result.current.reset();
       });
-
       expect(result.current.status).toBe("idle");
       expect(result.current.result).toBeNull();
       expect(result.current.error).toBeNull();
