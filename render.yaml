@@ -48,6 +48,8 @@ services:
         sync: false
       - key: DAILY_WORD_SALT
         sync: false
+      - key: DAILY_CHALLENGE_SALT
+        sync: false
       - key: ADMIN_API_TOKEN
         sync: false
 
@@ -114,6 +116,8 @@ services:
       - key: ENTITLEMENT_PUBLIC_KEY
         sync: false
       - key: DAILY_WORD_SALT
+        sync: false
+      - key: DAILY_CHALLENGE_SALT
         sync: false
       - key: ADMIN_API_TOKEN
         sync: false

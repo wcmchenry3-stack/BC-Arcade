@@ -20,6 +20,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from cascade.router import router as cascade_router
+from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
 from db.base import DATABASE_URL, get_engine, is_configured
 from entitlements.dependencies import EntitlementError
@@ -88,6 +89,7 @@ if _sentry_dsn:
 app = FastAPI(title="BC Arcade API")
 app.include_router(entitlements_router, prefix="/entitlements")
 app.include_router(cascade_router, prefix="/cascade")
+app.include_router(daily_challenge_router, prefix="/daily-challenge")
 app.include_router(daily_word_router, prefix="/daily-word")
 app.include_router(freecell_router, prefix="/freecell")
 app.include_router(hearts_router, prefix="/hearts")

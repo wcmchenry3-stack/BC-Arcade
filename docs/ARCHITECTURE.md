@@ -303,3 +303,39 @@ Three tiers, and no tier ever points at another's data:
 
 Operational detail — env vars, first deploy, connection rules — is in
 [`RENDER.md`](RENDER.md).
+
+---
+
+## 12. Daily cross-game challenge
+
+One challenge a day, two goals in two different free games — the thread that
+makes the arcade one product rather than a folder of games (App Review
+guideline 4.2). Backend: `backend/daily_challenge/`.
+
+- **Stateless, like Daily Word.** No table, no migration. Today's challenge is
+  `TEMPLATES[(YYYYMMDD + DAILY_CHALLENGE_SALT) % len(TEMPLATES)]` for the
+  player's **local** date (`tz_offset_minutes`, the same convention as
+  `/daily-word/today`). The salt is a per-environment secret, so the schedule
+  cannot be read off the public repo.
+- **Completion is a read-side view.** `GET /daily-challenge/status` runs one
+  query over the session's own `games` rows finished inside the local day and
+  evaluates the goals in Python. It is the data `PATCH /games/{id}/complete`
+  already writes, so a game played offline counts as soon as the sync queue
+  uploads it (§4) — by the time it was played, not the time it was uploaded.
+  An `abandoned` completion never counts.
+- **Two goal kinds.** `complete` (a finished game of that type) and
+  `score_at_least` — twenty48 only, the one free game whose `final_score` is
+  comparable between plays.
+- **Which games can appear** is `CHALLENGE_GAMES` in `definitions.py`: free
+  **and** recording a per-session game. Daily Word (writes no `games` row) and
+  FreeCell (writes only shared-session leaderboard rows) are excluded until
+  their screens record games — which is also why they earn no Arcade XP today.
+  A test keeps the set disjoint from the premium slugs: a store build hides
+  those games (§10.7), so such a goal could never be met.
+- **No copy on the wire.** Responses carry `kind`, `game_type` and `target`; the
+  client words them in its own i18n namespace.
+
+| Route                         | Auth                         | Limit  |
+| ----------------------------- | ---------------------------- | ------ |
+| `GET /daily-challenge/today`  | none (IP-keyed)              | 60/min |
+| `GET /daily-challenge/status` | `X-Session-ID` (session-key) | 60/min |
