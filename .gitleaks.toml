@@ -25,3 +25,13 @@
   commits = [
     "6c996d98bb38a8971a308fd6a56397fef55dbebb",
   ]
+  # CocoaPods spec checksums (40-hex SHA-1s next to names like "RNAudioAPI")
+  # read as generic-api-key hits; the lockfile never holds credentials.
+  paths = [
+    '''frontend/ios/Podfile\.lock$''',
+  ]
+  # AsyncStorage namespaces assigned to *_KEY constants ("yacht_pref_v1",
+  # "blackjack_runs_v1"): lowercase snake_case ending in a _vN version suffix.
+  regexes = [
+    '''^[a-z0-9]+(?:_[a-z0-9]+)*_v\d+$''',
+  ]
