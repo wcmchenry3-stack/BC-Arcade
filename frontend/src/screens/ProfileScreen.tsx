@@ -21,6 +21,7 @@ import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
 import OfflineBanner from "../components/OfflineBanner";
+import LevelProgress from "../components/shared/LevelProgress";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
@@ -186,6 +187,18 @@ export default function ProfileScreen() {
 
   const listHeader = (
     <View>
+      {/* Server XP as-is, unlike the bento's visible-games re-derivation (#2390): a store
+          build talks to the production database, where the hidden games were never played,
+          and every other build shows all twelve games (#2417). The null check covers an
+          API that predates the XP fields (a rolled-back or lagging deploy). */}
+      {stats?.arcade_level != null && (
+        <LevelProgress
+          level={stats.arcade_level}
+          totalXp={stats.arcade_xp}
+          xpIntoLevel={stats.xp_into_level}
+          xpForNextLevel={stats.xp_for_next_level}
+        />
+      )}
       {bentoTiles && (
         <View style={styles.bento}>
           {bentoTiles.map((tile, idx) => (

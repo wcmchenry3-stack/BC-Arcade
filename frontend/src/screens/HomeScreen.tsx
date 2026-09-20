@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   View,
@@ -25,6 +25,10 @@ import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
 import { useEntitlements } from "../entitlements/EntitlementContext";
 import { isGameVisible } from "../entitlements/gameVisibility";
+import { statsApi } from "../api/stats";
+import { withRetry } from "../game/_shared/withRetry";
+import { useNetwork } from "../game/_shared/NetworkContext";
+import { syncWorker } from "../game/_shared/syncWorker";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -83,6 +87,54 @@ export default function HomeScreen() {
     );
     return () => clearTimeout(id);
   }, [canPlay]);
+
+  // Arcade level pill (#2391). Purely decorative: it never blocks or delays the
+  // grid, and any failure just leaves the pill out (or keeps the last known
+  // level on a refetch). Refetched on focus so a level-up shows on the way back
+  // from a game, and when the device comes back online. Skipped while known
+  // offline — four doomed attempts per Home visit would only add Sentry
+  // "network failure" noise (#2430).
+  const { isOnline } = useNetwork();
+  const [arcadeLevel, setArcadeLevel] = useState<number | null>(null);
+  const levelFetchInFlight = useRef(false);
+  const mounted = useRef(true);
+  const refreshArcadeLevel = useCallback(() => {
+    if (!isOnline || levelFetchInFlight.current) return;
+    levelFetchInFlight.current = true;
+    // A just-finished game is still in the local queue — SyncWorker only uploads
+    // every 30 s — so push it first or /stats/me answers with the old level. A
+    // failed flush must not cost us the pill.
+    syncWorker
+      .flush()
+      .catch(() => {})
+      .then(() => withRetry(() => statsApi.getMyStats()))
+      .then((stats) => {
+        if (mounted.current) setArcadeLevel(stats.arcade_level);
+      })
+      .catch(() => {
+        // httpClient already reports what is worth reporting.
+      })
+      .finally(() => {
+        levelFetchInFlight.current = false;
+      });
+  }, [isOnline]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // On mount, and again whenever connectivity returns.
+  useEffect(() => {
+    refreshArcadeLevel();
+  }, [refreshArcadeLevel]);
+
+  useEffect(
+    () => navigation.addListener("focus", refreshArcadeLevel),
+    [navigation, refreshArcadeLevel]
+  );
 
   async function startYacht() {
     const saved = await loadYachtGame();
@@ -301,7 +353,23 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title={t("common:app.title")} />
+      <AppHeader
+        title={t("common:app.title")}
+        rightSlot={
+          arcadeLevel != null ? (
+            <View
+              style={[styles.levelPill, { backgroundColor: colors.accent }]}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
+            >
+              <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
+                {t("common:level.pill", { level: arcadeLevel })}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
 
       <View style={styles.offlineBannerWrap}>
         <OfflineBanner />
@@ -338,6 +406,16 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  levelPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  levelPillText: {
+    fontFamily: typography.label,
+    fontSize: 12,
+    letterSpacing: 0.6,
+  },
   screen: {
     flex: 1,
   },
