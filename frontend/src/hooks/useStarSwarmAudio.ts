@@ -79,7 +79,7 @@ export function useStarSwarmAudio(
     v.freefirezone
   );
   const { play: playBonusLife } = useSound("starswarm.bonuslife", STARSWARM_SOUNDS, v.bonuslife);
-  const { play: playPerfect } = useSound(
+  const { play: playPerfect, stop: stopPerfect } = useSound(
     "starswarm.perfectbonus",
     STARSWARM_SOUNDS,
     v.perfectbonus
@@ -105,5 +105,6 @@ export function useStarSwarmAudio(
     playFreeFireZone,
     playBonusLife,
     playPerfect,
+    stopPerfect,
   };
 }

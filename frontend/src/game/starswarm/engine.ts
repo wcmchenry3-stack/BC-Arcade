@@ -13,6 +13,7 @@ import type {
   StarSwarmInput,
   DifficultyTier,
 } from "./types";
+import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,8 +120,23 @@ export function showMissionCompleteBanner(
     !countdownActive
   );
 }
-const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
+export const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
+
+/** Points awarded for a PERFECT Free Fire Zone clear at the given difficulty. Shared by the
+ * engine's scoring and the celebration banner so the number shown is the number awarded. */
+export function perfectBonusPoints(difficulty: DifficultyTier): number {
+  return Math.round(PERFECT_BONUS * difficultyMultiplier(difficulty));
+}
+
+/** #2422: how long gameplay holds after a PERFECT Free Fire Zone clear — the length of the
+ * fanfare when it is playing, a short silent beat when it isn't. Shared so the native and web
+ * canvases can't drift apart. The hold itself is measured against the frame clock (a deadline),
+ * not by summing frame deltas: those are capped per frame, so on a slow device they would run
+ * slower than the audio they are meant to match. */
+export function perfectHoldMs(fanfarePlaying: boolean): number {
+  return fanfarePlaying ? PERFECT_FANFARE_MS : PERFECT_SILENT_HOLD_MS;
+}
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
 const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
 // #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
@@ -1840,7 +1856,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
       const hitFraction = Math.min(1, state.freeFireHits / FREE_FIRE_ENEMY_COUNT);
       const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.freeFireHits === FREE_FIRE_ENEMY_COUNT;
-      const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
+      const perfectBonus = perfect ? perfectBonusPoints(state.difficulty) : 0;
       // Note: invincibleTimer and bombFlashTimer don't need resetting here —
       // startNextWave() → buildWaveState() unconditionally resets both on every wave.
       const next = startNextWave({
