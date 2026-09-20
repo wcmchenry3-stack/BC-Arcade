@@ -35,6 +35,29 @@ def test_health_db_503_when_query_fails(
     assert "secret-detail" not in r.text
 
 
+def test_health_db_503_when_database_stalls(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pooler that accepts the connection and then hangs must yield a prompt 503."""
+    import asyncio
+
+    class _StalledEngine:
+        def connect(self):
+            return self
+
+        async def __aenter__(self):
+            await asyncio.sleep(30)
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(main, "get_engine", lambda: _StalledEngine())
+    monkeypatch.setattr(main, "DB_PING_TIMEOUT_SECONDS", 0.05)
+    r = client.get("/health/db")
+    assert r.status_code == 503
+    assert r.json() == {"status": "unavailable"}
+
+
 def test_health_db_503_when_database_unconfigured(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -242,12 +243,24 @@ async def _dev_entitlement_override_warning() -> None:
         )
 
 
+DB_PING_TIMEOUT_SECONDS = 5.0
+
+
 async def _ping_db() -> None:
-    """Round-trip `SELECT 1`. Raises on any connectivity failure."""
+    """Round-trip `SELECT 1`. Raises on any connectivity failure.
+
+    Bounded: a pooler that accepts the TCP connection and then stalls would
+    otherwise hold the request for asyncpg's ~60 s connect timeout (or
+    SQLAlchemy's 30 s pool timeout when the pool is exhausted), so the uptime
+    monitor would see its own timeout instead of a 503 and polls would pile up.
+    """
     from sqlalchemy import text
 
-    async with get_engine().connect() as conn:
-        await conn.execute(text("SELECT 1"))
+    async def _select_one() -> None:
+        async with get_engine().connect() as conn:
+            await conn.execute(text("SELECT 1"))
+
+    await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
 
 
 @app.on_event("startup")
@@ -284,7 +297,9 @@ async def health_db(request: Request) -> JSONResponse:
     try:
         await _ping_db()
     except Exception as exc:  # noqa: BLE001
-        _audit_log.error(json.dumps({"event": "db_health_failed", "error": str(exc)}))
+        # asyncio.TimeoutError stringifies to "" — log the type so a stall is legible.
+        detail = str(exc) or type(exc).__name__
+        _audit_log.error(json.dumps({"event": "db_health_failed", "error": detail}))
         return JSONResponse(status_code=503, content={"status": "unavailable"})
     return JSONResponse(content={"status": "ok"})
 

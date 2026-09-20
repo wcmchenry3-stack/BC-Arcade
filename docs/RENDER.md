@@ -70,6 +70,9 @@ the `/debug/error` route; never set it on Render.
 `EXPO_PUBLIC_*` values are baked into the bundle at build time — change one,
 redeploy the site. The app's Sentry environment is not a variable: it follows
 `EXPO_PUBLIC_API_URL` (`frontend/src/utils/sentryConfig.ts`).
+**Never set `EXPO_PUBLIC_SENTRY_ENVIRONMENT` in a tracked env file or on a service** —
+an explicit value overrides that rule for every build that loads it
+(`sentryEnvFiles.test.ts` guards the tracked files).
 `scripts/check-build-env.js` fails the build if `EXPO_PUBLIC_TEST_HOOKS=1` leaks in.
 
 ### Secrets
@@ -111,8 +114,9 @@ the Data API.
 | `GET /health/db` | `SELECT 1`     | External uptime monitor (5-minute poll)                        |
 
 `/health/db` returns `200 {"status":"ok"}`, or `503` with `unavailable` /
-`unconfigured`; the failure detail goes to the service log only. It is rate
-limited to 30/minute per IP.
+`unconfigured`; the failure detail goes to the service log only. The query is
+bounded at 5 seconds, so a stalled pooler yields a prompt `503` rather than a
+hung request. It is rate limited to 30/minute per IP.
 
 ## Deploys
 
