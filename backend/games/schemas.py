@@ -67,6 +67,7 @@ class CompleteGameRequest(BaseModel):
     outcome: str | None = None
     duration_ms: int | None = Field(default=None, ge=0)
     completed_at: datetime | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

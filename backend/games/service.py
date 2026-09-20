@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -463,6 +464,7 @@ async def complete_game(
     outcome: str | None,
     duration_ms: int | None,
     completed_at: datetime | None = None,
+    result: dict[str, Any] | None = None,
 ) -> Game:
     game = await _get_owned_game(session, game_id, session_id)
     if game.completed_at is not None:
@@ -471,15 +473,43 @@ async def complete_game(
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
+    validated_result = await _validate_result(session, game, result or {})
+
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
     game.completed_at = valid_completed_at if valid_completed_at is not None else now
     game.final_score = final_score
     game.outcome = outcome
     game.duration_ms = duration_ms
+    if validated_result:
+        # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
+        game.game_metadata = {**(game.game_metadata or {}), **validated_result}
     await session.commit()
     await session.refresh(game)
     return game
+
+
+async def _validate_result(session: AsyncSession, game: Game, result: dict[str, Any]) -> dict:
+    """Validate *result* against the game module's ``result_model`` (#2449).
+
+    Games without a registered module or a ``result_model`` accept any dict
+    unvalidated. Only fields the client actually sent are returned, so an
+    absent optional field never overwrites anything in ``game_metadata``.
+    """
+    if not result:
+        return {}
+    name = (
+        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
+    ).scalar_one()
+    mod = get_module(name)
+    result_model = mod.result_model if mod is not None else None
+    if result_model is None:
+        return dict(result)
+    try:
+        return result_model.model_validate(result).model_dump(exclude_unset=True)
+    except ValidationError as e:
+        fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in e.errors())
+        raise GameServiceError(400, f"Invalid result for {name}: {fields}")
 
 
 # ---------------------------------------------------------------------------

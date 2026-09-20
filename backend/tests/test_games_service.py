@@ -289,6 +289,81 @@ async def test_complete_game_invalid_outcome_raises(db):
     assert exc.value.status_code == 400
 
 
+async def test_complete_game_merges_result_into_metadata(db):
+    sid = _sid()
+    game = await create_game(
+        db,
+        session_id=sid,
+        client_id=None,
+        game_type_name="sudoku",
+        metadata={"difficulty": "hard", "variant": "mini"},
+        players=[],
+    )
+    g = await complete_game(
+        db,
+        game_id=game.id,
+        session_id=sid,
+        final_score=500,
+        outcome="completed",
+        duration_ms=1000,
+        result={"won": True, "errors": 2, "ignored_extra": 1},
+    )
+    # Result is additive: creation-time fields survive, unknown keys are dropped.
+    assert g.game_metadata == {"difficulty": "hard", "variant": "mini", "won": True, "errors": 2}
+
+
+async def test_complete_game_rejects_invalid_result_for_registered_game(db):
+    sid = _sid()
+    game = await create_game(
+        db,
+        session_id=sid,
+        client_id=None,
+        game_type_name="solitaire",
+        metadata={},
+        players=[],
+    )
+    with pytest.raises(GameServiceError) as exc:
+        await complete_game(
+            db,
+            game_id=game.id,
+            session_id=sid,
+            final_score=1,
+            outcome="completed",
+            duration_ms=None,
+            result={"won": "not-a-bool", "moves": -3},
+        )
+    assert exc.value.status_code == 400
+    # A rejected result must not half-complete the game.
+    await db.refresh(game)
+    assert game.completed_at is None
+
+
+async def test_complete_game_skips_validation_for_unregistered_game(db):
+    sid = _sid()
+    # yacht has no result_model (None) — any dict is accepted and merged.
+    game = await _make_game(db, sid, "yacht")
+    g = await complete_game(
+        db,
+        game_id=game.id,
+        session_id=sid,
+        final_score=1,
+        outcome="completed",
+        duration_ms=None,
+        result={"anything": [1, 2], "goes": True},
+    )
+    assert g.game_metadata["anything"] == [1, 2]
+    assert g.game_metadata["goes"] is True
+
+
+async def test_complete_game_without_result_leaves_metadata_untouched(db):
+    sid = _sid()
+    game = await _make_game(db, sid)
+    g = await complete_game(
+        db, game_id=game.id, session_id=sid, final_score=1, outcome="completed", duration_ms=None
+    )
+    assert g.game_metadata == {}
+
+
 async def test_complete_game_not_found_raises(db):
     with pytest.raises(GameServiceError) as exc:
         await complete_game(

@@ -37,6 +37,26 @@ def test_module_satisfies_protocol(mod) -> None:
     assert isinstance(mod, GameModule), f"{mod!r} does not satisfy the GameModule Protocol"
 
 
+@pytest.mark.parametrize(
+    "mod,expects_model",
+    [
+        (blackjack_module, True),
+        (mahjong_module, True),
+        (solitaire_module, True),
+        (sudoku_module, True),
+        (cascade_module, False),
+        (daily_word_module, False),
+        (hearts_module, False),
+    ],
+    ids=["blackjack", "mahjong", "solitaire", "sudoku", "cascade", "daily_word", "hearts"],
+)
+def test_result_model_declared(mod, expects_model) -> None:
+    """result_model is a distinct attribute from metadata_model (#2449)."""
+    assert (mod.result_model is not None) == expects_model
+    if expects_model:
+        assert mod.result_model is not mod.metadata_model
+
+
 def test_daily_word_module_game_type() -> None:
     assert daily_word_module.game_type == GameType.DAILY_WORD
 
