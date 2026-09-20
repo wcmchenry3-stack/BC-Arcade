@@ -18,7 +18,7 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 - ❌ **No privacy/terms links** in `frontend/src/screens/SettingsScreen.tsx`; no Privacy Policy or ToS hosted anywhere (#828, #1922).
 - ❌ **No IAP code** anywhere (moot — premium games hidden).
 - ❌ Locked-game UI live: `LockedGameScreen.tsx`, `makePremiumScreen()` in `frontend/App.tsx` (~130–154), premium set in `frontend/src/entitlements/EntitlementContext.tsx` (~line 25).
-- ⚠️ **Version discrepancy**: iOS `Info.plist` CFBundleShortVersionString = 1.0.0 vs app.json 1.0.9 / Android versionName 1.0.9. Fix before building.
+- ✅ **Version discrepancy — fixed Sep 19 (#2412)**: iOS `Info.plist` hardcoded 1.0.0 / build 1 while app.json, Android and the pbxproj were at 1.0.9 / 10009 (`version-sync.yml` never patched the plist). The plist now references `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` — **never hand-edit a version into it**; see `docs/IOS.md` §Version numbers. Side effects of the first post-merge Xcode Cloud build: it uploads as **1.0.9**, opening a new ASC/TestFlight version train (earlier uploads were 1.0.0 — rename the ASC "Prepare for Submission" version to match when it's needed), and the Sentry iOS release id moves from `…@1.0.0+N` to `…@1.0.9+N`.
 - ⚠️ No prod environment: backend runs at dev-games-api.buffingchi.com only (#505).
 - ❌ **`deploy.yml` is invalid at the workflow-file level** (found Sep 18): fails on every push to every branch, no successful run in its last 100. It calls `wcmchenry3-stack/gaming_app/.github/workflows/ci.yml@main` — apparently the repo's pre-rename name. Doesn't block PRs (push-event run, not a check) but **will block the Sep 28 prod deploy** — fix as part of #505.
 - CI: `ci.yml` green on dev; iOS mobile smoke red since June (#2347) — deferred, manual TestFlight verification instead.
@@ -47,7 +47,7 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 | ~~2380~~ | Android offline errors spamming Sentry | ✅ Sep 18 — #2402 (CodedError classified as network in `httpClient.ts`) |
 | 2403 | Offline retries/fallbacks ignore Android `CodedError` | **Fixed Sep 19 in draft PR #2413** (owner decision: fix without waiting for the device check; the airplane-mode Daily Word check becomes a confirmation on the Wed 23 Play internal build). Original note: candidate — decide after a device check. Found reviewing #2402: `withRetry.ts` never retries and `DailyWordScreen.tsx` never falls back to its cached puzzle when an Android offline failure arrives as `CodedError` instead of `TypeError` (3 more sites are premium/cosmetic). Both affect shipping free games. Test: Android build → airplane mode → open Daily Word. If the cached puzzle doesn't load, this gates launch (~1 hr: export `isNetworkError()` from `httpClient.ts`, use at all 5 sites) and goes ahead of hide-premium. |
 | ~~2372/2374~~ | Hearts Android crash | ✅ Sep 18 — #2374 merged (game hidden but code ships) |
-| — | iOS version string mismatch (1.0.0 vs 1.0.9) | Fix with release version bump |
+| ~~—~~ | iOS version string mismatch (1.0.0 vs 1.0.9) | ✅ Sep 19 — #2412 (Info.plist derives from the pbxproj build settings; Jest guard `nativeVersionSync.test.ts`). Confirm 1.0.9 on the next Xcode Cloud build |
 | 851 | Sentry envs/prod DSN/release tag | Needed so prod crashes are visible at launch |
 | 857 | Versioning + forced-upgrade kill-switch | Descope to: pick launch version + document; kill-switch post-launch |
 
@@ -123,7 +123,7 @@ Both machines available daily. Mac = Xcode Cloud/TestFlight/iOS sim/ASC; PC = Gr
 | **Sat 3** | Android screenshots (release build, no test hooks) — phone + 7"/10" tablet if targeted. | iOS screenshots — 6.7"/6.1" (+ iPad since `supportsTablet: true`). |
 | **Sun 4** | Fix QA bugs from Oct 1. | **#836** ATT audit doc (expect "no ATT — no tracking, `NSPrivacyTracking:false`"); draft **reviewer notes** (XP + daily challenge walkthrough, per #1914 Tier 1 item 5). |
 | **Mon 5** | Bug fixes continued; Sentry crash-free monitoring on both tracks. | Same; re-test fixed areas. |
-| **Tue 6** | Version decision: land release-please 1.1.0 (or bump to it) — one version across app.json/build.gradle/Info.plist; release notes. | Verify Xcode Cloud picks up version cleanly. |
+| **Tue 6** | Version decision: land release-please 1.1.0 (or bump to it) — one version across app.json/build.gradle/`project.pbxproj` (all patched by `version-sync.yml`; **do not edit Info.plist** — it derives from the pbxproj); release notes. | Verify Xcode Cloud picks up version cleanly. |
 | **Wed 7** | **RC builds both platforms**; manual regression script on the RC build (all 6 free games, challenge, XP, offline queue, Settings links). | Same, iOS side. |
 | **Thu 8** | Final sweep of #1916 checklist + this plan's gating table; freeze except showstoppers. | TestFlight external/internal sanity pass on RC. |
 
