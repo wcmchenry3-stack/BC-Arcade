@@ -38,7 +38,7 @@ export class ApiError extends Error {
  * IDs come from AsyncStorage, which doesn't throw `CodedError`). Revisit if
  * another Expo module call is ever added there.
  */
-function isNetworkError(e: unknown): e is TypeError | CodedError {
+export function isNetworkError(e: unknown): e is TypeError | CodedError {
   return e instanceof TypeError || e instanceof CodedError;
 }
 
