@@ -23,14 +23,16 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 - ❌ **`deploy.yml` is invalid at the workflow-file level** (found Sep 18): fails on every push to every branch, no successful run in its last 100. It calls `wcmchenry3-stack/gaming_app/.github/workflows/ci.yml@main` — apparently the repo's pre-rename name. Doesn't block PRs (push-event run, not a check) but **will block the Sep 28 prod deploy** — fix as part of #505.
 - CI: `ci.yml` green on dev; iOS mobile smoke red since June (#2347) — deferred, manual TestFlight verification instead.
 - ⚠️ **Correction (2026-09-18): Android Maestro smoke was never actually green.** Every "success" in `mobile-smoke-android.yml`'s history (including Sep 11) is the Maestro job being *skipped* because `detect-maestro-scope` found nothing relevant; every run where it really executed (~30, June → Aug 30, across `main` + 5 branches) failed or was cancelled — cold-launch ANR on the CI emulator plus an unbounded "Wait"-dismiss loop in `_shared/launch.yaml`. **Maestro is descoped from the launch on both platforms**: Android leg taken off `pull_request` (on-demand `workflow_dispatch` only), restoration tracked in #2400. Verification below relies on Jest + manual checks on real release builds instead.
-- Open PRs (end of Sep 18): #2332 (release-please 1.1.0 — **hold until the Oct 6 version decision**). #2374 and all Dependabot PRs merged; dev is at expo 57.0.23 / RN 0.86.3 / reanimated 4.5.5 / gesture-handler 3.3.0 / screens 4.28.0 / skia 2.11.2 / sentry-rn 8.26.0.
+- ❌ **Secret scanning was a no-op (found Sep 19).** `.gitleaks.toml` held only an `[allowlist]`; in gitleaks v8 a custom config *replaces* the built-in rules unless it sets `[extend] useDefault = true`, so `secret-scan` ran with zero rules (verified locally with gitleaks 8.30.1: a synthetic AWS-style key → "no leaks found"). Separately, the default `generic-api-key` rule cannot capture values containing symbols outside `[\w.=-]`, so it would have missed the old password anyway. Fixed in #2414 (defaults restored + a dedicated `UPLOAD_*_PASSWORD` rule; full `dev` history scans clean). Other repos sharing `called-secret-scan.yml` with an allowlist-only config have the same hole.
+- ⚠️ **This PC could not run Gradle at all (found Sep 19).** Norton's HTTPS scanning re-signs TLS with a root the JDK doesn't trust, so every Maven/plugin download failed (`PKIX path building failed`, surfaced by Gradle as "plugin not found"). Fix: add `systemProp.javax.net.ssl.trustStoreType=Windows-ROOT` to the user-level `~/.gradle/gradle.properties` (the same file the keystore steps create), or exclude Java from Norton's SSL scanning. The PC also lacked NDK 27.0.12077973 (Gradle auto-installs it). **Must be sorted before the Wed 23 Play internal build.**
+- Open PRs (end of Sep 19): #2413 (#2403 fix), #2414 (keystore — hold for owner steps), both drafts. #2332 was closed; release-please will regenerate it — still **hold until the Oct 6 version decision**). #2374 and all Dependabot PRs merged; dev is at expo 57.0.23 / RN 0.86.3 / reanimated 4.5.5 / gesture-handler 3.3.0 / screens 4.28.0 / skia 2.11.2 / sentry-rn 8.26.0.
 
 ### Launch-gating issues (must close before submission)
 
 | # | Issue | Notes |
 |---|---|---|
 | 1917 | Locked games blocker | Resolved via hide-premium — implementation issue #2390 |
-| 1918/2277 | Keystore rotation + secret removal | PC + Play Console; Fri 19 — procedure in the schedule row below |
+| 1918/2277 | Keystore rotation + secret removal | **Draft PR #2414 (Sep 19)** — merge only after the owner's rotation steps. PC + Play Console; Sat 19 — procedure in the schedule row below |
 | 1914 | 4.2 cohesion | XP (#2391) + daily challenge (#2392) |
 | 828 | Privacy Policy + ToS hosted at stable URLs | buffingchi.com/privacy, /terms |
 | 1922 | Privacy/ToS links in Settings | Small; i18n'd link text |
@@ -43,7 +45,7 @@ BC Arcade v1.0.9 (build 10009) has never been submitted to either store. Epic #1
 | 836 | ATT/IDFA audit doc | Likely "no ATT needed" — document it |
 | ~~2328~~ | iOS MessageQueue runtime error | ✅ Sep 18 — did not reproduce on a clean Metro cache + fresh native build (stale dev-client binary after the SDK 57/RN 0.86 bumps); recovery recipe in `docs/IOS.md` (#2404) |
 | ~~2380~~ | Android offline errors spamming Sentry | ✅ Sep 18 — #2402 (CodedError classified as network in `httpClient.ts`) |
-| 2403 | Offline retries/fallbacks ignore Android `CodedError` | **Candidate — decide after a device check.** Found reviewing #2402: `withRetry.ts` never retries and `DailyWordScreen.tsx` never falls back to its cached puzzle when an Android offline failure arrives as `CodedError` instead of `TypeError` (3 more sites are premium/cosmetic). Both affect shipping free games. Test: Android build → airplane mode → open Daily Word. If the cached puzzle doesn't load, this gates launch (~1 hr: export `isNetworkError()` from `httpClient.ts`, use at all 5 sites) and goes ahead of hide-premium. |
+| 2403 | Offline retries/fallbacks ignore Android `CodedError` | **Fixed Sep 19 in draft PR #2413** (owner decision: fix without waiting for the device check; the airplane-mode Daily Word check becomes a confirmation on the Wed 23 Play internal build). Original note: candidate — decide after a device check. Found reviewing #2402: `withRetry.ts` never retries and `DailyWordScreen.tsx` never falls back to its cached puzzle when an Android offline failure arrives as `CodedError` instead of `TypeError` (3 more sites are premium/cosmetic). Both affect shipping free games. Test: Android build → airplane mode → open Daily Word. If the cached puzzle doesn't load, this gates launch (~1 hr: export `isNetworkError()` from `httpClient.ts`, use at all 5 sites) and goes ahead of hide-premium. |
 | ~~2372/2374~~ | Hearts Android crash | ✅ Sep 18 — #2374 merged (game hidden but code ships) |
 | — | iOS version string mismatch (1.0.0 vs 1.0.9) | Fix with release version bump |
 | 851 | Sentry envs/prod DSN/release tag | Needed so prod crashes are visible at launch |
@@ -65,7 +67,7 @@ Maestro as a PR gate on either platform (#2400 Android, #2347 iOS — see the 20
 - Backend: **no change** (leave `is_active`/`is_premium` rows alone; `is_active=False` would break `POST /games` for internal testing).
 - Maestro: **no work** (descoped 2026-09-18). Existing premium-game flows are unaffected because test builds set `EXPO_PUBLIC_TEST_HOOKS=1`; the `navigation.yaml` switch, the `home/hidden-games.yaml` negative flow, and the no-test-hooks CI job are dropped.
 - Jest (now the only automated guard): verify `HomeScreen.test.tsx` behavior under Jest's `__DEV__`; add hidden-games describe block (copy the existing "Pachisi disabled" pattern) + `gameVisibility.test.ts`, which must assert all 6 premium slugs are hidden with `__DEV__ === false` and `EXPO_PUBLIC_TEST_HOOKS` unset.
-- Manual guard: the Mon 22 TestFlight and Tue 23 Play internal builds are the real negative test — exactly 6 tiles, 3 tabs, no locked screen reachable.
+- Manual guard: the Tue 22 TestFlight and Wed 23 Play internal builds are the real negative test — exactly 6 tiles, 3 tabs, no locked screen reachable.
 - Screenshots for stores must come from a no-test-hooks release build (correct 6-tile grid).
 
 ### B. Arcade XP + player level (~2 dev-days)
@@ -84,50 +86,52 @@ Clone the Daily Word stateless pattern — no new tables; completion is a read-s
 - Frontend: `frontend/src/game/daily_challenge/api.ts` (`createGameClient` pattern); `DailyChallengeCard.tsx` at top of Home ScrollView — goal chips with checkmarks, refetch on AppState foreground + network reconnect (`useNetwork()`); offline = lightweight "check connection" state, offline completions retroactively count when `scoreQueue` flushes. New `daily_challenge` i18n namespace.
 - Tests: backend determinism + completion-detection; `DailyChallengeCard.test.tsx`; manual end-to-end play-through on sim/device (no Maestro flow — descoped 2026-09-18).
 
-**Top design risks:** (1) env-var regression re-introducing the Xcode Cloud clobber gap — call out in PR; (2) with Maestro descoped there is no automated check of a no-test-hooks build — the Mon 22 / Tue 23 release-build checks are mandatory, not optional; (3) don't bikeshed XP constants pre-launch; (4) richer challenge goals are out of scope; (5) verify Jest `__DEV__` assumption empirically.
+**Top design risks:** (1) env-var regression re-introducing the Xcode Cloud clobber gap — call out in PR; (2) with Maestro descoped there is no automated check of a no-test-hooks build — the Tue 22 / Wed 23 release-build checks are mandatory, not optional; (3) don't bikeshed XP constants pre-launch; (4) richer challenge goals are out of scope; (5) verify Jest `__DEV__` assumption empirically.
 
 ## Day-by-day schedule (Sep 18 → Oct 15)
+
+_Weekday labels corrected 2026-09-19 — they were one day early throughout (Sep 18 2026 is a Friday, submit day Oct 9 a Friday, Oct 15 a Thursday). Dates never moved._
 
 Both machines available daily. Mac = Xcode Cloud/TestFlight/iOS sim/ASC; PC = Gradle/Play Console/backend + most feature dev. Feature code (frontend/backend) is machine-agnostic — the split below assigns it wherever the day's platform work already is. All work branches from `dev`, lands via draft PRs per the git standard.
 
 ### Week 1 — clear the decks + hide premium (Sep 18–24)
 | Day | PC | Mac |
 |---|---|---|
-| **Thu 18** ✅ | Done: #2374 merged; #2401 Maestro descope merged; #2380 fixed early (#2402); #2332 decided (hold to Oct 6); implementation issues filed (#2390 hide-premium, #2391 XP, #2392 daily challenge — no separate umbrella, epic #1916 + the gating table above serve that role; gating checklist posted as a task-list comment on #1916); #2400 filed (Maestro restoration, post-launch); #2403 filed (offline `CodedError` follow-up — launch candidate); keystore investigated and Fri 19 procedure worked out (see ground truth). Found: `deploy.yml` broken (see ground truth / #505). Still open: Play Console record + testing-track history check; airplane-mode Daily Word device check for #2403. | Done: Dependabot cleared (#2396 expo 57.0.23, #2395 12-pkg group — each needed a `pod install` Podfile.lock commit pushed onto the Dependabot branch); #2328 closed (#2404). Still open: Xcode Cloud build of current dev + ASC record/agreements check. |
-| **Fri 19** | **#1918/#2277 keystore** (owner, ~20 min, no Google round-trip): (1) new letters+digits password into the password manager; (2) `keytool -importkeystore … -deststoretype PKCS12 -srcalias upload` into a fixed location **outside every checkout** — non-destructive, original stays as fallback (replaces the earlier `-storepasswd` idea, which rewrites in place); (3) `keytool -list -v` → compare SHA-1 with Play Console → App integrity → Upload key certificate, and confirm Play App Signing is enrolled; (4) user-level `~/.gradle/gradle.properties` gets `UPLOAD_STORE_FILE` (absolute, forward slashes) + both passwords — overrides the tracked file, so every checkout/worktree signs from one keystore with no `build.gradle` change; (5) `./gradlew :app:signingReport` proves it; (6) delete the old-password original, back up the new file off-machine; (7) refresh the 3 `ANDROID_UPLOAD_*` secrets, delete the 4 legacy ones. **Then Claude's PR**: strip lines 72 + 74 from tracked `gradle.properties`, fix `docs/ANDROID-CI.md` (wrongly says passwords come from env vars), find out why gitleaks never flagged it, verify `assembleDebug` + CI release-smoke, close both issues. Order matters: steps 1–5 before pulling that PR. Carry-over: Play Console record check; #2403 device check. | Fix iOS version string (Info.plist 1.0.0 → match app.json). Carry-over: Xcode Cloud + ASC checks. (#2380 already landed Sep 18.) |
-| **Sat 20** | Implement hide-premium (A): `gameVisibility.ts`, HomeScreen filter, App.tsx routes + Ranks tab. | Verify on iOS simulator; check 3-tab layout + 6-tile grid. |
-| **Sun 21** | Finish A: Jest updates (`gameVisibility.test.ts`, HomeScreen hidden-games block), docs. Open PR, review, merge. | Start XP (B) backend: `progression.py` + tests. |
-| **Mon 22** | XP: schemas/router wiring + backend tests green. | **Cut TestFlight internal build #1** (hide-premium in): confirm premium tiles absent in a real release build. |
-| **Tue 23** | XP frontend: types, ProfileScreen level header, Home level pill, i18n. | Upload same rev to **Play internal track**; confirm install on Android device. |
-| **Wed 24** | XP PR review + merge. Start daily challenge (C) backend package. | Buffer: any fallout from first builds (Xcode Cloud, signing, Sentry symbols). |
+| **Fri 18** ✅ | Done: #2374 merged; #2401 Maestro descope merged; #2380 fixed early (#2402); #2332 decided (hold to Oct 6); implementation issues filed (#2390 hide-premium, #2391 XP, #2392 daily challenge — no separate umbrella, epic #1916 + the gating table above serve that role; gating checklist posted as a task-list comment on #1916); #2400 filed (Maestro restoration, post-launch); #2403 filed (offline `CodedError` follow-up — launch candidate); keystore investigated and Sat 19 procedure worked out (see ground truth). Found: `deploy.yml` broken (see ground truth / #505). Still open: Play Console record + testing-track history check; airplane-mode Daily Word device check for #2403. | Done: Dependabot cleared (#2396 expo 57.0.23, #2395 12-pkg group — each needed a `pod install` Podfile.lock commit pushed onto the Dependabot branch); #2328 closed (#2404). Still open: Xcode Cloud build of current dev + ASC record/agreements check. |
+| **Sat 19** | **Status (evening):** afternoon went to an off-plan Star Swarm regression fix (#2409/#2410 → #2411, merged — a hidden game in v1.0). Then: keystore PR **#2414** opened as draft (passwords stripped, docs fixed, gitleaks repaired — see ground truth) — **do not merge until owner steps 1–5 below are done**; #2403 fixed without waiting for the device check (draft PR **#2413**); hide-premium started a day early (branch `feat/hide-premium-v1`: `gameVisibility.ts`, Home filter, conditional routes + Ranks tab, `gameVisibility.test.ts`). Still open: owner keystore steps; Play Console record check. **#1918/#2277 keystore** (owner, ~20 min, no Google round-trip): (1) new letters+digits password into the password manager; (2) `keytool -importkeystore … -deststoretype PKCS12 -srcalias upload` into a fixed location **outside every checkout** — non-destructive, original stays as fallback (replaces the earlier `-storepasswd` idea, which rewrites in place); (3) `keytool -list -v` → compare SHA-1 with Play Console → App integrity → Upload key certificate, and confirm Play App Signing is enrolled; (4) user-level `~/.gradle/gradle.properties` gets `UPLOAD_STORE_FILE` (absolute, forward slashes) + both passwords — overrides the tracked file, so every checkout/worktree signs from one keystore with no `build.gradle` change; (5) `./gradlew :app:signingReport` proves it; (6) delete the old-password original, back up the new file off-machine; (7) refresh the 3 `ANDROID_UPLOAD_*` secrets, delete the 4 legacy ones. **Then Claude's PR**: strip lines 72 + 74 from tracked `gradle.properties`, fix `docs/ANDROID-CI.md` (wrongly says passwords come from env vars), find out why gitleaks never flagged it, verify `assembleDebug` + CI release-smoke, close both issues. Order matters: steps 1–5 before pulling that PR. Carry-over: Play Console record check; #2403 device check. | Fix iOS version string (Info.plist 1.0.0 → match app.json). Carry-over: Xcode Cloud + ASC checks. (#2380 already landed Sep 18.) |
+| **Sun 20** | Implement hide-premium (A): `gameVisibility.ts`, HomeScreen filter, App.tsx routes + Ranks tab. | Verify on iOS simulator; check 3-tab layout + 6-tile grid. |
+| **Mon 21** | Finish A: Jest updates (`gameVisibility.test.ts`, HomeScreen hidden-games block), docs. Open PR, review, merge. | Start XP (B) backend: `progression.py` + tests. |
+| **Tue 22** | XP: schemas/router wiring + backend tests green. | **Cut TestFlight internal build #1** (hide-premium in): confirm premium tiles absent in a real release build. |
+| **Wed 23** | XP frontend: types, ProfileScreen level header, Home level pill, i18n. | Upload same rev to **Play internal track**; confirm install on Android device. |
+| **Thu 24** | XP PR review + merge. Start daily challenge (C) backend package. | Buffer: any fallout from first builds (Xcode Cloud, signing, Sentry symbols). |
 
 ### Week 2 — daily challenge + prod env + legal (Sep 25–Oct 1)
 | Day | PC | Mac |
 |---|---|---|
-| **Thu 25** | C backend: definitions/service/router + rate limits + tests. | C frontend start: `api.ts`, `DailyChallengeCard` skeleton. |
-| **Fri 26** | C backend polish; salt env var on Render. | C frontend: card UI, offline state, refetch wiring, i18n. |
-| **Sat 27** | C: Jest (`DailyChallengeCard.test.tsx`); PR review + merge. | Manual play-through of challenge completion end-to-end on sim/device. |
-| **Sun 28** | **#505 prod Render env**: prod API + DB at games-api.buffingchi.com, pin to main; **#851** Sentry prod DSN/env/release tags; ZAP scan vs prod API (deployment standard). | Draft Privacy Policy + ToS (haiku draft from #828 acceptance criteria; user reviews). |
-| **Mon 29** | Host privacy/terms at buffingchi.com; **#1922** Settings links (i18n'd). | Point release config at prod API; verify entitlements/leaderboards/daily endpoints against prod. |
-| **Tue 30** | **Play closed-track build #2** (all features, prod API). | **TestFlight build #2** (all features, prod API). |
-| **Wed 1** | Device QA Android: all 6 free games, challenge, XP, offline queue. Log bugs. | Device QA iOS: same script + VoiceOver sanity on Home/Settings. |
+| **Fri 25** | C backend: definitions/service/router + rate limits + tests. | C frontend start: `api.ts`, `DailyChallengeCard` skeleton. |
+| **Sat 26** | C backend polish; salt env var on Render. | C frontend: card UI, offline state, refetch wiring, i18n. |
+| **Sun 27** | C: Jest (`DailyChallengeCard.test.tsx`); PR review + merge. | Manual play-through of challenge completion end-to-end on sim/device. |
+| **Mon 28** | **#505 prod Render env**: prod API + DB at games-api.buffingchi.com, pin to main; **#851** Sentry prod DSN/env/release tags; ZAP scan vs prod API (deployment standard). | Draft Privacy Policy + ToS (haiku draft from #828 acceptance criteria; user reviews). |
+| **Tue 29** | Host privacy/terms at buffingchi.com; **#1922** Settings links (i18n'd). | Point release config at prod API; verify entitlements/leaderboards/daily endpoints against prod. |
+| **Wed 30** | **Play closed-track build #2** (all features, prod API). | **TestFlight build #2** (all features, prod API). |
+| **Thu 1** | Device QA Android: all 6 free games, challenge, XP, offline queue. Log bugs. | Device QA iOS: same script + VoiceOver sanity on Home/Settings. |
 
 ### Week 3 — listings, screenshots, RC (Oct 2–8)
 | Day | PC | Mac |
 |---|---|---|
-| **Thu 2** | **#825** Play listing: content rating questionnaire, **#2014** Data Safety (Sentry crash/diagnostics), store description. | **#823** ASC listing: metadata, age rating, privacy-policy URL, App Privacy answers (match PrivacyInfo.xcprivacy). |
-| **Fri 3** | Android screenshots (release build, no test hooks) — phone + 7"/10" tablet if targeted. | iOS screenshots — 6.7"/6.1" (+ iPad since `supportsTablet: true`). |
-| **Sat 4** | Fix QA bugs from Oct 1. | **#836** ATT audit doc (expect "no ATT — no tracking, `NSPrivacyTracking:false`"); draft **reviewer notes** (XP + daily challenge walkthrough, per #1914 Tier 1 item 5). |
-| **Sun 5** | Bug fixes continued; Sentry crash-free monitoring on both tracks. | Same; re-test fixed areas. |
-| **Mon 6** | Version decision: land release-please 1.1.0 (or bump to it) — one version across app.json/build.gradle/Info.plist; release notes. | Verify Xcode Cloud picks up version cleanly. |
-| **Tue 7** | **RC builds both platforms**; manual regression script on the RC build (all 6 free games, challenge, XP, offline queue, Settings links). | Same, iOS side. |
-| **Wed 8** | Final sweep of #1916 checklist + this plan's gating table; freeze except showstoppers. | TestFlight external/internal sanity pass on RC. |
+| **Fri 2** | **#825** Play listing: content rating questionnaire, **#2014** Data Safety (Sentry crash/diagnostics), store description. | **#823** ASC listing: metadata, age rating, privacy-policy URL, App Privacy answers (match PrivacyInfo.xcprivacy). |
+| **Sat 3** | Android screenshots (release build, no test hooks) — phone + 7"/10" tablet if targeted. | iOS screenshots — 6.7"/6.1" (+ iPad since `supportsTablet: true`). |
+| **Sun 4** | Fix QA bugs from Oct 1. | **#836** ATT audit doc (expect "no ATT — no tracking, `NSPrivacyTracking:false`"); draft **reviewer notes** (XP + daily challenge walkthrough, per #1914 Tier 1 item 5). |
+| **Mon 5** | Bug fixes continued; Sentry crash-free monitoring on both tracks. | Same; re-test fixed areas. |
+| **Tue 6** | Version decision: land release-please 1.1.0 (or bump to it) — one version across app.json/build.gradle/Info.plist; release notes. | Verify Xcode Cloud picks up version cleanly. |
+| **Wed 7** | **RC builds both platforms**; manual regression script on the RC build (all 6 free games, challenge, XP, offline queue, Settings links). | Same, iOS side. |
+| **Thu 8** | Final sweep of #1916 checklist + this plan's gating table; freeze except showstoppers. | TestFlight external/internal sanity pass on RC. |
 
 ### Week 4 — submit + buffer (Oct 9–15)
 | Day | Action |
 |---|---|
-| **Thu 9** | **Submit both stores** (6 days of buffer ahead of the deadline): ASC "Submit for Review" with reviewer notes; Play production (or open testing → production per account state) with release notes. |
-| **Fri 10 – Wed 15** | Monitor review status + Sentry. If rejected: same-day triage, fix, resubmit — buffer absorbs 1–2 rejection round-trips (most likely: 4.2 narrative or metadata nits). If approved early: staged rollout on Play (10–20%), hold iOS release for manual release if desired. |
+| **Fri 9** | **Submit both stores** (6 days of buffer ahead of the deadline): ASC "Submit for Review" with reviewer notes; Play production (or open testing → production per account state) with release notes. |
+| **Sat 10 – Thu 15** | Monitor review status + Sentry. If rejected: same-day triage, fix, resubmit — buffer absorbs 1–2 rejection round-trips (most likely: 4.2 narrative or metadata nits). If approved early: staged rollout on Play (10–20%), hold iOS release for manual release if desired. |
 
 ## Execution conventions
 
