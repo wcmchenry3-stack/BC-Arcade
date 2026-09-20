@@ -121,6 +121,25 @@ export function showMissionCompleteBanner(
 }
 const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
 const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
+
+/** Points awarded for a PERFECT Free Fire Zone clear at the given difficulty. Shared by the
+ * engine's scoring and the celebration banner so the number shown is the number awarded. */
+export function perfectBonusPoints(difficulty: DifficultyTier): number {
+  return Math.round(PERFECT_BONUS * difficultyMultiplier(difficulty));
+}
+
+/** #2422: advance the post-PERFECT celebration hold by real elapsed time. Returns the remaining
+ * ms (null once finished) and whether it just finished this step. Kept as one shared function so
+ * the native and web renderers' RAF loops can't drift apart. */
+export function stepCelebration(
+  remainingMs: number,
+  dtMs: number
+): { remainingMs: number | null; finished: boolean } {
+  const next = Math.max(0, remainingMs - dtMs);
+  return next === 0
+    ? { remainingMs: null, finished: true }
+    : { remainingMs: next, finished: false };
+}
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
 const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
 // #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
@@ -1840,7 +1859,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
       const hitFraction = Math.min(1, state.freeFireHits / FREE_FIRE_ENEMY_COUNT);
       const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
       const perfect = state.freeFireHits === FREE_FIRE_ENEMY_COUNT;
-      const perfectBonus = perfect ? Math.round(PERFECT_BONUS * sm) : 0;
+      const perfectBonus = perfect ? perfectBonusPoints(state.difficulty) : 0;
       // Note: invincibleTimer and bombFlashTimer don't need resetting here —
       // startNextWave() → buildWaveState() unconditionally resets both on every wave.
       const next = startNextWave({

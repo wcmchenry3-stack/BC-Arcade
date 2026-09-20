@@ -23,8 +23,14 @@ import {
   MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
+  perfectBonusPoints,
+  stepCelebration,
 } from "../../game/starswarm/engine";
-import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import {
+  HARMLESS_BULLET_OPACITY,
+  PERFECT_FANFARE_MS,
+  WAVE_COUNTDOWN_MS,
+} from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import { useStarSwarmImages } from "../../game/starswarm/assets";
@@ -96,6 +102,8 @@ interface RenderState {
   countdownDigit: number | null;
   /** True when the active countdown follows a wave clear (shows the "— WAVE N —" banner). */
   waveBannerCountdown: boolean;
+  /** #2422: true while gameplay is held to celebrate a PERFECT Free Fire Zone clear. */
+  celebrating: boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -152,6 +160,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // True when the active countdown follows a wave clear (shows the "— WAVE N —" banner).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const waveBannerCountdownRef = useRef(false);
+    // #2422: ms remaining in the PERFECT-clear celebration hold; null = not celebrating. Runs
+    // before the pre-wave countdown, which starts once it finishes.
+    const celebrationMsRef = useRef<number | null>(null);
     const lastFrameTimeRef = useRef(0);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
@@ -216,6 +227,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
       waveBannerCountdown: false,
+      celebrating: false,
     });
 
     useImperativeHandle(
@@ -262,11 +274,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
       waveBannerCountdownRef.current = false;
+      celebrationMsRef.current = null;
       setRenderState({
         game: gameRef.current,
         sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
         waveBannerCountdown: false,
+        celebrating: false,
       });
     }, [resetTick, width, height]);
 
@@ -288,7 +302,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         const prev = gameRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
-          if (countdownMsRef.current !== null) {
+          if (celebrationMsRef.current !== null) {
+            // #2422: PERFECT-clear celebration — freeze the engine for the length of the
+            // fanfare, then hand over to the normal pre-wave countdown.
+            const step = stepCelebration(celebrationMsRef.current, dtMs);
+            celebrationMsRef.current = step.remainingMs;
+            if (step.finished && gameRef.current.phase === "SwoopIn") {
+              countdownMsRef.current = WAVE_COUNTDOWN_MS;
+              waveBannerCountdownRef.current = true;
+            }
+          } else if (countdownMsRef.current !== null) {
             // Pre-wave countdown: freeze engine, tick the timer only. #2352: the cosmetic
             // missionCompleteTimer still needs to decay in real time here — tick() (which
             // normally decrements it) never runs while the countdown is active, so without
@@ -367,13 +390,22 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // directly instead of watching for a phase transition.
               const waveJustCleared = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
-              if (waveJustCleared) {
+              // #2422: a PERFECT Free Fire Zone clear holds the game for the fanfare instead of
+              // rolling straight into the next wave. The fanfare replaces the wave-clear jingle
+              // (it would mask it), and the celebration owns the banner, so the cosmetic
+              // MISSION COMPLETE timer is cleared to keep the two from stacking.
+              const perfectClear = waveJustCleared && applied.freeFirePerfect;
+              if (perfectClear) {
+                celebrationMsRef.current = PERFECT_FANFARE_MS;
+                gameRef.current = { ...gameRef.current, missionCompleteTimer: 0 };
+                onFreeFirePerfectRef.current?.();
+              } else if (waveJustCleared) {
                 onWaveClearRef.current?.();
-                if (applied.freeFirePerfect) onFreeFirePerfectRef.current?.();
               }
               // A fresh clear that lands on SwoopIn starts the pre-wave countdown immediately —
-              // a clear that chains straight into another FreeFireZone wave skips it.
-              if (waveJustCleared && applied.phase === "SwoopIn") {
+              // a clear that chains straight into another FreeFireZone wave skips it. A PERFECT
+              // clear starts it only after the celebration hold (see above).
+              if (waveJustCleared && !perfectClear && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
                 waveBannerCountdownRef.current = true;
               }
@@ -401,6 +433,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           sf: sfRef.current,
           countdownDigit,
           waveBannerCountdown: waveBannerCountdownRef.current,
+          celebrating: celebrationMsRef.current !== null,
         });
         id = requestAnimationFrame(loop);
       }
@@ -409,7 +442,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit, waveBannerCountdown } = renderState;
+    const { game: state, sf, countdownDigit, waveBannerCountdown, celebrating } = renderState;
     const { player } = state;
     const playerDisplayY = player.y;
     const shipVisible = playerDisplayY + player.height > 0;
@@ -761,6 +794,33 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </View>
           )}
 
+          {/* #2422: PERFECT Free Fire Zone clear — gameplay is held for the length of the fanfare.
+              Announced to screen readers as one message; the visible lines are hidden from
+              the accessibility tree so they aren't read twice. */}
+          {celebrating && (
+            <View
+              style={styles.phaseOverlay}
+              pointerEvents="none"
+              accessible
+              accessibilityLiveRegion="assertive"
+              accessibilityLabel={t("phase.perfectAnnouncement", {
+                points: perfectBonusPoints(state.difficulty).toLocaleString(),
+              })}
+            >
+              <Text style={styles.overlayTitle} importantForAccessibility="no">
+                {t("phase.missionComplete")}
+              </Text>
+              <Text style={styles.perfectBanner} importantForAccessibility="no">
+                {t("phase.perfect")}
+              </Text>
+              <Text style={styles.perfectBonusText} importantForAccessibility="no">
+                {t("phase.perfectBonus", {
+                  points: perfectBonusPoints(state.difficulty).toLocaleString(),
+                })}
+              </Text>
+            </View>
+          )}
+
           {countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               {waveBannerCountdown && (
@@ -941,6 +1001,14 @@ const styles = StyleSheet.create({
     textShadowColor: "#ff8800",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+  },
+  perfectBonusText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginTop: 8,
+    letterSpacing: 1,
   },
   waveIncomingText: {
     color: "#00ffcc",

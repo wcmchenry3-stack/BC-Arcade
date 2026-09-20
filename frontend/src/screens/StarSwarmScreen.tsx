@@ -145,8 +145,12 @@ export default function StarSwarmScreen() {
     [playGameOver, difficulty]
   );
 
+  // #2422: a PERFECT Free Fire Zone clear plays the fanfare *instead of* the wave-clear jingle
+  // (GameCanvas calls this rather than onWaveClear) and holds the game while it plays.
   const handleFreeFirePerfect = useCallback(() => {
+    setPhase("WaveClear");
     playPerfect();
+    hapticWaveClear();
   }, [playPerfect]);
 
   const handlePlayerHit = useCallback(() => {

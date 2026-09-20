@@ -89,6 +89,24 @@
     "doNotTranslate": [],
     "notes": "{{count}} is an integer hit count."
   },
+  "phase.perfectBonus": {
+    "component": "GameCanvas",
+    "description": "Line under PERFECT! during the celebration pause after a perfect Free Fire Zone clear, showing the bonus points awarded.",
+    "tone": "celebratory, classic arcade",
+    "characterLimit": 20,
+    "placeholders": ["{{points}}"],
+    "doNotTranslate": [],
+    "notes": "{{points}} is a pre-formatted number (e.g. 10,000)."
+  },
+  "phase.perfectAnnouncement": {
+    "component": "GameCanvas",
+    "description": "Screen-reader announcement when the player hits every ship in a Free Fire Zone.",
+    "tone": "neutral, clear",
+    "characterLimit": 80,
+    "placeholders": ["{{points}}"],
+    "doNotTranslate": [],
+    "notes": "{{points}} is a pre-formatted number (e.g. 10,000)."
+  },
   "phase.gameOver": {
     "component": "GameCanvas",
     "description": "Large overlay text when the player loses all lives.",
