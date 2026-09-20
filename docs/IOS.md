@@ -49,7 +49,11 @@ npx expo run:ios      # fresh native build + install on the simulator
 npx expo start -c     # Metro with a cleared cache
 ```
 
-If `pod install` complains that a local pod (`React-Core-prebuilt`, `hermes-engine`, …) "differs from the version stored in `Pods/Local Podspecs`", delete `frontend/ios/Pods/Local Podspecs` and re-run `pod install`. `pod install` also regenerates the tracked codegen under `frontend/ios/build/generated/` — revert that with `git checkout -- frontend/ios/build` unless you are intentionally bumping a native package.
+If `pod install` complains that a local pod (`React-Core-prebuilt`, `hermes-engine`, …) "differs from the version stored in `Pods/Local Podspecs`", delete `frontend/ios/Pods/Local Podspecs` and re-run `pod install`.
+
+`pod install` also generates the React Native codegen under `frontend/ios/build/generated/`. Like `Pods/`, that directory is **not tracked** (`frontend/ios/.gitignore` ignores `build/`) — it must match the installed react-native, so never restore or commit it. A stale copy fails to compile with errors such as `no type named 'ResultT' in 'JS::NativeSafeAreaContext::Constants::Builder'`; the fix is to re-run `pod install`.
+
+**Simulator builds from the command line on this project's Intel Mac** need `ARCHS=x86_64`; an `arm64` simulator build compiles fine and then fails to install with "Failed to find matching arch".
 
 ## Do not suggest
 

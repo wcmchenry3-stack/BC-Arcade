@@ -1,0 +1,6 @@
+# Known, burned, and rotated: the Android upload-keystore password committed in
+# April 2026 (#1918, #2277). This repo is public, so the old value is treated as
+# permanently disclosed; the keystore password was changed and history is
+# intentionally not rewritten. Ignored here so a full-history scan stays clean.
+bda955114357a968404c8187692af8cb4402e800:frontend/android/gradle.properties:android-upload-keystore-password:65
+bda955114357a968404c8187692af8cb4402e800:frontend/android/gradle.properties:android-upload-keystore-password:67

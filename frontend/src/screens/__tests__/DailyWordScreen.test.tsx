@@ -10,6 +10,7 @@
 
 import React from "react";
 import { act, render } from "@testing-library/react-native";
+import { CodedError } from "expo-modules-core";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -294,6 +295,25 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
 
     await findByTestId("tile-0-0");
     expect(queryByText("Could not load today's puzzle")).toBeNull();
+  });
+
+  it("serves cached meta when the offline failure is an Android CodedError (#2403)", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(
+      new CodedError("ERR_NETWORK", "Unable to resolve host")
+    );
+    storage.loadTodayMeta.mockResolvedValue(TODAY_META);
+
+    const { findByTestId, queryByText } = await renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+    // Retried like any other network failure before falling back to cache.
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });
 
   it("shows error when API fails and cache is cold", async () => {
