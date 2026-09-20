@@ -115,5 +115,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "legal.privacyPolicy": {
+    "component": "SettingsScreen",
+    "description": "Link label at the bottom of Settings that opens the Privacy Policy web page in the browser. Use the standard legal term for this document in the target language.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Two links share one row — keep it short."
+  },
+  "legal.termsOfService": {
+    "component": "SettingsScreen",
+    "description": "Link label at the bottom of Settings that opens the Terms of Service web page in the browser. Use the standard legal term for this document in the target language.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Two links share one row — keep it short."
   }
 }
