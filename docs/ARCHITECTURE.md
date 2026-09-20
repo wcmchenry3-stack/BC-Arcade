@@ -204,3 +204,31 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
+5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
+   `gameVisibility.ts` — `gameVisibility.test.ts` fails if the two sets drift.
+
+### 10.7 Game visibility in store builds (v1.0)
+
+Entitlement answers "locked or playable?". **Visibility** answers "does this game
+exist in this build at all?" and lives separately in
+`frontend/src/entitlements/gameVisibility.ts`.
+
+v1.0 ships with the six premium games hidden entirely — no tile, no route, no
+locked screen — until IAP lands (epic #822). `isGameVisible(slug)` filters the
+Home grid and chunk prefetch (`HomeScreen.tsx`) and gates route registration in
+`App.tsx`, including the Star Swarm-only **Ranks** tab.
+
+`SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1"`, so dev builds and
+e2e test builds keep all 12 games; a store build shows 6 tiles and 3 tabs. It is a
+compiled constant on purpose:
+
+- **Not a new env var** — `frontend/ios/ci_scripts/ci_post_clone.sh` deletes
+  `.env.production` and rewrites `.env` on every Xcode Cloud build, so a new
+  `EXPO_PUBLIC_*` flag would silently vanish and could ship premium games to
+  App Review.
+- **Not server-driven** — the binary App Review approves must be the binary users
+  get (guideline 2.3.1).
+
+Store screenshots must therefore come from a release build without test hooks.
+Profile history is not filtered: `/stats/me` aggregates are server-side, and a
+fresh install has no hidden-game history to show.
