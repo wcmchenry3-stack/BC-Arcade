@@ -40,8 +40,9 @@ pick identically.
 
 Rules the pick enforces (all tested): Daily Word is always present; the other two
 games differ from each other and from the previous day's two; at most one goal
-per day requires a win — the win slot rotates by day, and any other win goal is
-swapped for that game's easy goal (every game's easy goal is not a win).
+per day is luck-dependent (a win, or a blackjack run ending in profit) — the slot
+rotates by day, and any other such goal is swapped for that game's easy goal
+(every game's easy goal is not luck-dependent).
 Targets are tuned to be reachable and are marked ``tune post-launch``.
 SALT comes from the DAILY_CHALLENGE_SALT env var (default 0); changing it
 shifts the whole future schedule and reshuffles the game order.
@@ -125,9 +126,14 @@ class Goal:
     kind: str
     target: int | None
     tier: Tier
-    # True when the player must win. At most one such goal is picked per day.
+    # True when the goal depends on the game going the player's way (a win, or
+    # ending a blackjack run in profit) — the luck-dependent kind. At most one
+    # such goal is picked per day.
     is_win: bool
     check: Callable[[Facts], bool] = field(repr=False, compare=False)
+    # The numeric measure a progress goal tracks (``at_least`` goals), so the
+    # service can report the best value without parsing ``kind``.
+    measure: str | None = None
 
     @property
     def id(self) -> str:
@@ -156,7 +162,7 @@ def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
         value = _number(f, measure)
         return value is not None and value >= target
 
-    return Goal(game_type, f"{measure}_at_least", target, tier, False, check)
+    return Goal(game_type, f"{measure}_at_least", target, tier, False, check, measure)
 
 
 def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
@@ -249,7 +255,12 @@ def rotation(slate: Slate, salt: int) -> tuple[str, ...]:
 def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
     """Two games for ``day``. They step two places along the rotation each day, so
     the pair shares no game with the previous day's (and the ordinal always
-    advances by one, unlike YYYYMMDD arithmetic across month ends)."""
+    advances by one, unlike YYYYMMDD arithmetic across month ends).
+
+    A pair is two neighbours in the rotation, so a slate has ``len(rotation)``
+    distinct pairs — but only if that length is odd. With an even length the step
+    of two never lands on odd positions and half the pairs never occur; a test
+    fails if a pool ever reaches that state so the schedule is reconsidered."""
     order = rotation(slate, salt)
     base = (2 * day.toordinal() + salt) % len(order)
     return order[base], order[(base + 1) % len(order)]

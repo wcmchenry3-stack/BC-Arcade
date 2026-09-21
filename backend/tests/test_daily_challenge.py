@@ -194,11 +194,41 @@ def test_every_games_easy_goal_needs_no_win(game: str) -> None:
     assert PREMIUM_GOAL_POOL[game][0].is_win is False
 
 
-@pytest.mark.parametrize("game", sorted(PREMIUM_GOAL_POOL))
-def test_win_flag_matches_what_the_goal_requires(game: str) -> None:
-    for goal in PREMIUM_GOAL_POOL[game]:
-        # A goal that is met by a game that did not win must not claim to be a win goal.
-        assert goal.is_win == goal.kind.startswith(("won", "chips_gained"))
+# The luck-dependent goals, spelled out so a new one is a deliberate edit here.
+_LUCK_DEPENDENT = {
+    "daily_word:won",
+    "daily_word:won_guesses_used_at_most:4",
+    "solitaire:won",
+    "solitaire:won_moves_at_most:120",
+    "mahjong:won",
+    "mahjong:won_duration_ms_at_most:480000",
+    "freecell:won",
+    "freecell:won_moves_at_most:100",
+    "blackjack:chips_gained",
+}
+
+
+def test_luck_dependent_flag_is_exactly_the_listed_goals() -> None:
+    flagged = {g.id for goals in PREMIUM_GOAL_POOL.values() for g in goals if g.is_win}
+    assert flagged == _LUCK_DEPENDENT
+
+
+def test_win_required_goals_need_a_win_and_progress_goals_do_not() -> None:
+    for goals in PREMIUM_GOAL_POOL.values():
+        for g in goals:
+            if g.kind.startswith("won"):
+                assert not g.evaluate({"won": False, "moves": 1, "pairs": 99, "duration_ms": 1})
+            if g.kind.endswith("_at_least"):
+                assert g.measure is not None and g.kind == f"{g.measure}_at_least"
+
+
+@pytest.mark.parametrize("slate", _SLATES)
+def test_every_neighbouring_pair_occurs_so_the_rotation_length_stays_odd(slate: str) -> None:
+    # Step-of-two pairs only reach every position when the rotation length is odd.
+    order = rotation(slate, 0)
+    assert len(order) % 2 == 1, "even rotation halves the pairs — revisit pick_games"
+    pairs = {frozenset(pick_games(d, slate, 0)) for d in _days(len(order) * 2)}
+    assert len(pairs) == len(order)
 
 
 def test_win_limits_are_above_the_physical_minimum() -> None:

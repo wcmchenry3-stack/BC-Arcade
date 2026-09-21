@@ -58,7 +58,7 @@ def evaluate_goal(goal: Goal, ended: list[EndedGame]) -> GoalStatus:
     mine = [facts for game_type, facts in ended if game_type == goal.game_type]
     completed = any(goal.evaluate(facts) for facts in mine)
     best_score: int | None = None
-    if goal.kind == "final_score_at_least":
+    if goal.measure == "final_score":
         scores = [f["final_score"] for f in mine if isinstance(f.get("final_score"), int)]
         best_score = max(scores) if scores else None
     return GoalStatus(goal=goal, completed=completed, best_score=best_score)
