@@ -31,5 +31,8 @@ class BlackjackResult(BaseModel):
     """
 
     hands_won: int = Field(ge=0)
+    # Hands resolved this session — the daily challenge's "play N hands" goal.
+    # Optional so builds that predate it still complete (#2453).
+    hands_played: int | None = Field(default=None, ge=0)
     starting_chips: int | None = None
     final_chips: int | None = None

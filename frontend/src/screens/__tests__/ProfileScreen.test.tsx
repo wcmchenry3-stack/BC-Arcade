@@ -68,6 +68,7 @@ const SAMPLE_STATS: StatsResponse = {
   arcade_level: 2,
   xp_into_level: 120,
   xp_for_next_level: 30,
+  streak_days: 0,
 };
 
 const SAMPLE_GAMES: GameHistoryResponse = {
@@ -189,6 +190,7 @@ describe("ProfileScreen", () => {
       arcade_level: 1,
       xp_into_level: 0,
       xp_for_next_level: 100,
+      streak_days: 0,
     });
     await renderScreen();
     await waitFor(() => {

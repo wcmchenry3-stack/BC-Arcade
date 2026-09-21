@@ -375,6 +375,39 @@ describe("httpClient — Sentry reporting (#513)", () => {
     }
   });
 
+  it("keeps the query string out of the reported message text so one outage stays one issue", async () => {
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    try {
+      // Network failure.
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(makeRequest()("/stats/me?tz_offset_minutes=-300")).rejects.toThrow();
+      const [netMessage, netOptions] = Sentry.captureMessage.mock.calls[0];
+      expect(netMessage).toBe("API test network failure: GET /stats/me");
+      expect(netOptions.extra.url).toContain("tz_offset_minutes=-300");
+
+      // 5xx.
+      Sentry.captureMessage.mockClear();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Unavailable",
+        json: () => Promise.resolve({ detail: "down" }),
+      } as Response);
+      await expect(
+        makeRequest({ sampleRate: 1, random: () => 0 })("/stats/me?tz_offset_minutes=330")
+      ).rejects.toThrow();
+      const [fiveMessage, fiveOptions] = Sentry.captureMessage.mock.calls[0];
+      expect(fiveMessage).toBe("API test 5xx: GET /stats/me → 503");
+      expect(fiveOptions.extra.url).toContain("tz_offset_minutes=330");
+    } finally {
+      g.__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
+  });
+
   it("Android offline failure surfacing as an Expo CodedError is classified as network, not unexpected (#2380)", async () => {
     // On Android, a DNS/connectivity failure (device offline) doesn't throw
     // a TypeError like web `fetch` does — Expo's native fetch layer wraps it

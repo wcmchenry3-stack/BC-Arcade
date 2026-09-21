@@ -597,6 +597,24 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
 
+  it("unmount abandon carries final_score in the result, never as the ranked summary score (#2450)", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    mockCompleteGame.mockClear();
+    await unmount();
+    const summary = mockCompleteGame.mock.calls[0]?.[1] as Record<string, unknown>;
+    // The daily challenge's score goals read result.final_score (games.metadata)…
+    expect(summary["result"]).toEqual(
+      expect.objectContaining({
+        final_score: expect.any(Number),
+        highest_tile: expect.any(Number),
+        move_count: expect.any(Number),
+      })
+    );
+    // …while summary.finalScore would become games.final_score and rank the game.
+    expect(summary).not.toHaveProperty("finalScore");
+  });
+
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const { getByLabelText, unmount } = await mountAndSettle();

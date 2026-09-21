@@ -98,10 +98,27 @@ describe("useGameSync", () => {
       result.current.start();
       result.current.complete({ finalScore: 250, outcome: "completed" }, { final_score: 250 });
     });
+    // The per-game payload doubles as the PATCH result block (#2450).
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "test-game-id",
-      { finalScore: 250, outcome: "completed" },
+      { finalScore: 250, outcome: "completed", result: { final_score: 250 } },
       { final_score: 250 }
+    );
+  });
+
+  it("complete() keeps an explicit summary.result over the payload", async () => {
+    const { result } = await renderHook(() => useGameSync("solitaire"));
+    await act(() => {
+      result.current.start();
+      result.current.complete(
+        { outcome: "completed", result: { won: true, moves: 3 } },
+        { final_score: 9, outcome: "completed" }
+      );
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "completed", result: { won: true, moves: 3 } },
+      { final_score: 9, outcome: "completed" }
     );
   });
 
@@ -150,6 +167,99 @@ describe("useGameSync", () => {
       { outcome: "abandoned" },
       { outcome: "abandoned" }
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // progress snapshot (#2450) — abandon paths carry score + result block
+  // ---------------------------------------------------------------------------
+
+  it("unmount abandon merges the registered snapshot's result into summary and event", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("solitaire"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({ result: { won: false, moves: 12 } }));
+    });
+    await unmount();
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "abandoned", result: { won: false, moves: 12 } },
+      { won: false, moves: 12, outcome: "abandoned" }
+    );
+  });
+
+  it("snapshot getter is read at abandon time, not registration time", async () => {
+    let moves = 0;
+    const { result, unmount } = await renderHook(() => useGameSync("solitaire"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({ result: { won: false, moves } }));
+    });
+    moves = 30;
+    await unmount();
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "abandoned", result: { won: false, moves: 30 } },
+      { won: false, moves: 30, outcome: "abandoned" }
+    );
+  });
+
+  it("restart() abandon merges the registered snapshot", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    const { result } = await renderHook(() => useGameSync("mahjong"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => ({ result: { won: false, pairs: 5 } }));
+    });
+    await act(() => {
+      result.current.restart();
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "session-1",
+      { outcome: "abandoned", result: { won: false, pairs: 5 } },
+      { won: false, pairs: 5, outcome: "abandoned" }
+    );
+  });
+
+  it("a hook-driven abandon never carries a score, so it cannot rank on a leaderboard", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({ result: { total_drops: 9 } }));
+    });
+    await unmount();
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary).not.toHaveProperty("finalScore");
+  });
+
+  it("a throwing snapshot getter degrades to a bare abandon", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("solitaire"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => {
+        throw new Error("state gone");
+      });
+    });
+    await unmount();
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "abandoned" },
+      { outcome: "abandoned" }
+    );
+  });
+
+  it("abandon without a snapshot sends no result (backend then skips validation)", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+    });
+    await unmount();
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary).not.toHaveProperty("result");
   });
 
   it("unmount after complete does not call completeGame again", async () => {

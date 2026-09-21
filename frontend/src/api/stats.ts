@@ -10,8 +10,15 @@ import type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./t
 
 const request = createGameClient({ apiTag: "stats" });
 
+// Minutes EAST of UTC, the /daily-challenge/* convention. The streak counts the player's
+// local days, so /stats/me needs it (a server without it falls back to UTC days).
+function tzOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
+}
+
 export const statsApi = {
-  getMyStats: (): Promise<StatsResponse> => request<StatsResponse>("/stats/me"),
+  getMyStats: (): Promise<StatsResponse> =>
+    request<StatsResponse>(`/stats/me?tz_offset_minutes=${tzOffsetMinutes()}`),
 
   getMyGames: (limit = 20, cursor: string | null = null): Promise<GameHistoryResponse> => {
     const params = new URLSearchParams({ limit: String(limit) });

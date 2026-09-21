@@ -50,9 +50,14 @@ export interface HandResolvedArgs {
   readonly isBust: boolean;
 }
 
+/** A hand the player won — the one rule shared by the on-screen stats and the result block (#2450). */
+export function isWinningHand(outcome: string): boolean {
+  return outcome === "win" || outcome === "blackjack";
+}
+
 export function reduceHandResolved(prev: SessionStats, args: HandResolvedArgs): SessionStats {
   const { outcome, payoutDelta, chipsAfter, isBust } = args;
-  const isWin = outcome === "win" || outcome === "blackjack";
+  const isWin = isWinningHand(outcome);
   const isLose = outcome === "lose";
   const isPush = outcome === "push";
   const isBlackjack = outcome === "blackjack";

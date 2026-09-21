@@ -151,7 +151,7 @@ const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  * segments collapse to `:id`, so `PATCH /games/<uuid-1>/complete` and
  * `PATCH /games/<uuid-2>/complete` are one endpoint. A raw-path key would give
  * a queue flush of N games N keys, defeating the throttle exactly when many
- * requests fail together. (The reported message keeps the real path.)
+ * requests fail together. (The reported message keeps the real path, minus its query.)
  */
 export function networkFailureKey(apiTag: string, method: string, path: string): string {
   const route = (path.split(/[?#]/, 1)[0] ?? "")
@@ -214,6 +214,10 @@ export function createGameClient(options: HttpClientOptions) {
 
   return async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const url = `${BASE_URL}${path}`;
+    // Query strings (tz offset, cursors, …) vary per user and would split one outage into
+    // many Sentry issues, so grouped message text uses the route only. `extra.url` and the
+    // breadcrumbs keep the full URL.
+    const route = path.split(/[?#]/, 1)[0] ?? path;
     const method = options?.method ?? "GET";
     Sentry.addBreadcrumb({
       category: "api.request",
@@ -246,7 +250,7 @@ export function createGameClient(options: HttpClientOptions) {
         // without flooding it. 4xx never escalates — those are client-
         // side / expected-recoverable.
         if (res.status >= 500 && random() < serverErrorSampleRate) {
-          Sentry.captureMessage(`API ${apiTag} 5xx: ${method} ${path} → ${res.status}`, {
+          Sentry.captureMessage(`API ${apiTag} 5xx: ${method} ${route} → ${res.status}`, {
             level: "warning",
             tags: { api: apiTag, errorType: "http5xx", status: String(res.status) },
             extra: { url, detail: msg, platform: Platform.OS },
@@ -287,7 +291,7 @@ export function createGameClient(options: HttpClientOptions) {
             Date.now()
           );
           if (suppressed !== null) {
-            Sentry.captureMessage(`API ${apiTag} network failure: ${method} ${path}`, {
+            Sentry.captureMessage(`API ${apiTag} network failure: ${method} ${route}`, {
               level: "warning",
               tags: { api: apiTag, errorType: "network" },
               extra: {

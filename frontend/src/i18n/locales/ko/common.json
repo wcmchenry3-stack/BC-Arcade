@@ -60,6 +60,9 @@
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "Lv {{level}}",
   "level.pillA11y": "아케이드 레벨 {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_one": "현재 연속 기록: {{count}}일",
+  "streak.pillA11y_other": "현재 연속 기록: {{count}}일",
   "legal.privacyPolicy": "개인정보 처리방침",
   "legal.termsOfService": "서비스 약관"
 }

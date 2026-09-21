@@ -60,6 +60,10 @@
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "רמה {{level}}",
   "level.pillA11y": "רמת ארקייד {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_one": "רצף נוכחי: יום אחד",
+  "streak.pillA11y_two": "רצף נוכחי: יומיים",
+  "streak.pillA11y_other": "רצף נוכחי: {{count}} ימים",
   "legal.privacyPolicy": "מדיניות פרטיות",
   "legal.termsOfService": "תנאי שימוש"
 }
