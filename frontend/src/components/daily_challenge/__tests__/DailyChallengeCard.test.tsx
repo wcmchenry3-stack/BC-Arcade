@@ -1,9 +1,12 @@
 import React from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import i18n from "i18next";
+import mahjong from "../../../i18n/locales/en/mahjong.json";
 import DailyChallengeCard from "../DailyChallengeCard";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import type { DailyChallenge } from "../../../game/daily_challenge/api";
+import type { ChallengeGoal, DailyChallenge } from "../../../game/daily_challenge/api";
+import { __forceStoreBuildForTests } from "../../../entitlements/gameVisibility";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -60,21 +63,21 @@ function challenge(completedIds: string[] = []): DailyChallenge {
       {
         id: "g1",
         gameSlug: "solitaire",
-        kind: "complete",
-        target: null,
+        kind: "moves_at_least",
+        target: 10,
         completed: done("g1"),
       },
       {
         id: "g2",
         gameSlug: "twenty48",
-        kind: "score_at_least",
-        target: 2000,
+        kind: "final_score_at_least",
+        target: 2500,
         completed: done("g2"),
       },
       {
         id: "g3",
         gameSlug: "daily_word",
-        kind: "complete",
+        kind: "completed",
         target: null,
         completed: done("g3"),
       },
@@ -91,6 +94,20 @@ async function renderCard() {
 }
 
 const networkError = () => new TypeError("Failed to fetch");
+
+// The shared Jest i18n fixture has no `mahjong` namespace (MahjongScreen's suites rely on
+// that), so register it here for the goals that name the game.
+beforeAll(() => {
+  i18n.addResourceBundle("en", "mahjong", mahjong, true, true);
+});
+
+afterAll(() => {
+  i18n.removeResourceBundle("en", "mahjong");
+});
+
+afterEach(() => {
+  __forceStoreBuildForTests(false);
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -111,15 +128,111 @@ beforeEach(() => {
 describe("DailyChallengeCard — goals", () => {
   it("shows one chip per goal with localised game names and the score target", async () => {
     const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Make 10+ moves in Solitaire, not completed yet")).toBeTruthy();
+    expect(await findByLabelText("Score 2500+ in 2048, not completed yet")).toBeTruthy();
+    expect(await findByLabelText("Finish today's Daily Word, not completed yet")).toBeTruthy();
+  });
+
+  it("words each goal in its own game's terms, with its target", async () => {
+    const goal = (gameSlug: string, kind: string, target: number | null): ChallengeGoal => ({
+      id: `${gameSlug}:${kind}`,
+      gameSlug,
+      kind,
+      target,
+      completed: false,
+    });
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        goal("daily_word", "won_guesses_used_at_most", 4),
+        goal("twenty48", "highest_tile_at_least", 512),
+        goal("mahjong", "won_duration_ms_at_most", 480_000),
+        goal("blackjack", "hands_won_at_least", 3),
+        goal("freecell", "won_moves_at_most", 100),
+        goal("blackjack", "chips_gained", null),
+      ],
+    });
+    const { findByLabelText } = await renderCard();
+    expect(
+      await findByLabelText("Solve Daily Word in 4 guesses or fewer, not completed yet")
+    ).toBeTruthy();
+    expect(await findByLabelText("Reach the 512 tile in 2048, not completed yet")).toBeTruthy();
+    // The backend sends milliseconds; the player reads minutes.
+    expect(
+      await findByLabelText("Clear Mahjong Solitaire in 8 minutes or less, not completed yet")
+    ).toBeTruthy();
+    expect(await findByLabelText("Win 3 hands of Blackjack, not completed yet")).toBeTruthy();
+    expect(
+      await findByLabelText("Win FreeCell in 100 moves or fewer, not completed yet")
+    ).toBeTruthy();
+    expect(
+      await findByLabelText("Finish a Blackjack session up on chips, not completed yet")
+    ).toBeTruthy();
+  });
+
+  // Mirrors FREE_GOAL_POOL in backend/daily_challenge/definitions.py — a kind added there
+  // needs copy here, or its goal shows as the generic "Play <game>".
+  it.each([
+    ["daily_word", ["completed", "won", "won_guesses_used_at_most"]],
+    ["twenty48", ["final_score_at_least", "highest_tile_at_least"]],
+    ["solitaire", ["moves_at_least", "won", "won_moves_at_most"]],
+    ["mahjong", ["pairs_at_least", "won", "won_duration_ms_at_most"]],
+    ["freecell", ["moves_at_least", "won", "won_moves_at_most"]],
+    ["blackjack", ["hands_played_at_least", "chips_gained", "hands_won_at_least"]],
+  ])("has wording for every %s goal the backend can send", (slug, kinds) => {
+    for (const kind of kinds) {
+      expect(i18n.exists(`daily_challenge:goal.${slug}.${kind}`, { count: 5 })).toBe(true);
+    }
+  });
+
+  it("uses the singular wording when a target is 1", async () => {
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        {
+          id: "a",
+          gameSlug: "daily_word",
+          kind: "won_guesses_used_at_most",
+          target: 1,
+          completed: false,
+        },
+      ],
+    });
+    const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Solve Daily Word in 1 guess, not completed yet")).toBeTruthy();
+  });
+
+  it("falls back to a plain 'Play <game>' for a goal kind this build has no wording for", async () => {
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        { id: "a", gameSlug: "solitaire", kind: "brand_new_kind", target: 7, completed: false },
+      ],
+    });
+    const { findByLabelText, queryByText } = await renderCard();
     expect(await findByLabelText("Play Solitaire, not completed yet")).toBeTruthy();
-    expect(await findByLabelText("Score 2000+ in 2048, not completed yet")).toBeTruthy();
-    expect(await findByLabelText("Play Daily Word, not completed yet")).toBeTruthy();
+    expect(queryByText(/brand_new_kind/)).toBeNull();
+  });
+
+  it("drops a goal for a game this build hides, and counts progress over what is shown", async () => {
+    __forceStoreBuildForTests(true);
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        { id: "v", gameSlug: "solitaire", kind: "won", target: null, completed: true },
+        { id: "h", gameSlug: "yacht", kind: "won", target: null, completed: false },
+      ],
+    });
+    const { findByText, queryByTestId, getByTestId } = await renderCard();
+    expect(await findByText("1 of 1 complete")).toBeTruthy();
+    expect(getByTestId("daily-challenge-goal-v")).toBeTruthy();
+    expect(queryByTestId("daily-challenge-goal-h")).toBeNull();
   });
 
   it("marks finished goals with a check and open goals with an empty circle", async () => {
     mockGetDailyChallenge.mockResolvedValue(challenge(["g2"]));
     const { findByLabelText, getByTestId } = await renderCard();
-    expect(await findByLabelText("Score 2000+ in 2048, completed")).toBeTruthy();
+    expect(await findByLabelText("Score 2500+ in 2048, completed")).toBeTruthy();
     // The glyphs are hidden from screen readers (the chip's label carries the state).
     const hidden = { includeHiddenElements: true };
     expect(getByTestId("daily-challenge-mark-g2", hidden).props.children).toBe("✓");
@@ -128,7 +241,7 @@ describe("DailyChallengeCard — goals", () => {
 
   it("gives the glyph an explicit colour so it stays visible on the dark theme", async () => {
     const { findByLabelText, getByTestId } = await renderCard();
-    await findByLabelText("Play Solitaire, not completed yet");
+    await findByLabelText("Make 10+ moves in Solitaire, not completed yet");
     const style = getByTestId("daily-challenge-mark-g1", { includeHiddenElements: true }).props
       .style;
     expect(JSON.stringify(style)).toMatch(/"color":"[^"]+"/);

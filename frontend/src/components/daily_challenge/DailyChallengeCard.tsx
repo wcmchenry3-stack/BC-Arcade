@@ -5,8 +5,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../../i18n/gameTitle";
+import { isGameVisible } from "../../entitlements/gameVisibility";
 import type { ChallengeGoal } from "../../game/daily_challenge/api";
 import { useDailyChallenge } from "../../game/daily_challenge/useDailyChallenge";
+
+const MS_PER_MINUTE = 60_000;
 
 /**
  * Today's cross-game challenge, shown at the top of Home (#2392).
@@ -17,23 +20,38 @@ import { useDailyChallenge } from "../../game/daily_challenge/useDailyChallenge"
  * they can fix.
  */
 export default function DailyChallengeCard() {
-  const { t } = useTranslation(["daily_challenge", ...GAME_TITLE_NAMESPACES]);
+  const { t, i18n } = useTranslation(["daily_challenge", ...GAME_TITLE_NAMESPACES]);
   const { colors } = useTheme();
   const { phase, challenge, refresh } = useDailyChallenge();
 
   const gradient: [string, string] = [colors.tertiary, colors.secondary];
 
+  /**
+   * Each game words its own goals: `goal.<gameSlug>.<kind>`. `count` drives the
+   * plural forms of the "how many" kinds; a mahjong time limit arrives in ms and
+   * is shown in minutes. A game/kind pair this build has no wording for (a newer
+   * backend) degrades to a plain "Play {game}" rather than a raw key.
+   */
   function goalLabel(goal: ChallengeGoal): string {
     const game = gameTitle(t, goal.gameSlug);
-    return goal.kind === "score_at_least"
-      ? t("daily_challenge:goal.scoreAtLeast", { game, target: goal.target })
-      : t("daily_challenge:goal.complete", { game });
+    const target = goal.target;
+    const count =
+      target !== null && goal.kind.endsWith("_duration_ms_at_most")
+        ? Math.round((target / MS_PER_MINUTE) * 100) / 100
+        : target;
+    const key = `daily_challenge:goal.${goal.gameSlug}.${goal.kind}`;
+    const options = { game, target, count: count ?? undefined };
+    return i18n.exists(key, options)
+      ? t(key, options)
+      : t("daily_challenge:goal.fallback", { game });
   }
 
   function renderBody() {
     if (challenge) {
-      const total = challenge.goals.length;
-      const done = challenge.goals.filter((goal) => goal.completed).length;
+      // A store build hides some games; never show a goal the player can't play.
+      const goals = challenge.goals.filter((goal) => isGameVisible(goal.gameSlug));
+      const total = goals.length;
+      const done = goals.filter((goal) => goal.completed).length;
       const allDone = total > 0 && done === total;
       return (
         <>
@@ -47,7 +65,7 @@ export default function DailyChallengeCard() {
             </Text>
           </View>
           <View style={styles.chips}>
-            {challenge.goals.map((goal) => {
+            {goals.map((goal) => {
               const label = goalLabel(goal);
               return (
                 <View

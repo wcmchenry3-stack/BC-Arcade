@@ -1,15 +1,19 @@
 /**
- * Daily cross-game challenge API client (#2392).
+ * Daily cross-game challenge API client (#2392, #2455).
  *
  * The UI consumes only the normalised `DailyChallenge` model below. Everything
- * that depends on the backend's wire format — endpoint paths, field names, the
- * split between the public definition (`/today`) and the session-scoped
- * completion (`/status`) — lives in this file, so adopting the published
- * backend contract means editing this file and nothing else.
+ * that depends on the backend's wire format — endpoint paths, field names, and
+ * which of the two endpoints a goal list comes from — lives in this file.
  *
- * PROVISIONAL: the `Wire*` shapes and paths are a best guess from the plan
- * (`docs/RELEASE-PLAN-2026-10.md` §C), written before the backend contract was
- * published. Reconcile them with the real contract when it lands.
+ * Wire contract (`backend/daily_challenge/schemas.py`):
+ *  - `GET /daily-challenge/status` — session-scoped: the goals from the slate
+ *    that session resolves to (free or premium) plus which it has met. This is
+ *    the source of truth for what the card shows.
+ *  - `GET /daily-challenge/today` — public, no session, always the FREE slate.
+ *    Only a fallback for when `/status` fails, so the card can still name the
+ *    day's goals (without progress).
+ * A premium session's two responses can describe different goals, so the goal
+ * list is never built from one and its completion read from the other.
  */
 
 import { createGameClient } from "../_shared/httpClient";
@@ -20,15 +24,17 @@ const request = createGameClient({ apiTag: "daily_challenge" });
 // Model the UI consumes — stable, independent of the wire format
 // ---------------------------------------------------------------------------
 
-/** `complete`: finish one game. `score_at_least`: finish one game with `target`+ points. */
-export type GoalKind = "complete" | "score_at_least";
-
 export interface ChallengeGoal {
   readonly id: string;
   /** Backend `game_type` slug — also the i18n namespace holding the game's title. */
   readonly gameSlug: string;
-  readonly kind: GoalKind;
-  /** Score to reach; only set for `score_at_least`. */
+  /**
+   * The backend's per-game goal vocabulary, e.g. `won`, `moves_at_least`,
+   * `highest_tile_at_least`. Meaningful only together with `gameSlug`; the card
+   * words it as `goal.<gameSlug>.<kind>`.
+   */
+  readonly kind: string;
+  /** The number to reach (or stay under) for the kinds that have one; else null. */
   readonly target: number | null;
   readonly completed: boolean;
 }
@@ -39,14 +45,18 @@ export interface DailyChallenge {
 }
 
 // ---------------------------------------------------------------------------
-// Wire format (provisional)
+// Wire format
 // ---------------------------------------------------------------------------
 
 interface WireGoal {
   readonly id: string;
   readonly game_type: string;
-  readonly kind: GoalKind;
-  readonly target?: number | null;
+  readonly kind: string;
+  readonly target: number | null;
+}
+
+interface WireGoalStatus extends WireGoal {
+  readonly completed: boolean;
 }
 
 interface WireToday {
@@ -56,33 +66,42 @@ interface WireToday {
 
 interface WireStatus {
   readonly challenge_id: string;
-  readonly completed_goal_ids: readonly string[];
+  readonly goals: readonly WireGoalStatus[];
 }
 
-function toDailyChallenge(today: WireToday, status: WireStatus): DailyChallenge {
-  // A day rollover between the two requests leaves them describing different
-  // challenges; completion for the other day says nothing about this one.
-  const done = new Set(status.challenge_id === today.challenge_id ? status.completed_goal_ids : []);
+function toDailyChallenge(
+  challengeId: string,
+  goals: readonly (WireGoal & { readonly completed?: boolean })[]
+): DailyChallenge {
   return {
-    challengeId: today.challenge_id,
-    goals: today.goals.map((goal) => ({
+    challengeId,
+    goals: goals.map((goal) => ({
       id: goal.id,
       gameSlug: goal.game_type,
       kind: goal.kind,
       target: goal.target ?? null,
-      completed: done.has(goal.id),
+      completed: goal.completed ?? false,
     })),
   };
 }
 
 export const dailyChallengeApi = {
-  /** Today's challenge with the caller's progress, for the local day `tzOffsetMinutes` east of UTC. */
+  /**
+   * Today's challenge with the caller's progress, for the local day
+   * `tzOffsetMinutes` east of UTC.
+   *
+   * Asks `/status` first. Only if that fails does it fall back to the public
+   * free slate from `/today` (every goal shown as not done); if that fails too,
+   * its error is the one thrown, so the caller can tell offline from a server fault.
+   */
   getDailyChallenge: async (tzOffsetMinutes: number): Promise<DailyChallenge> => {
     const query = `?tz_offset_minutes=${tzOffsetMinutes}`;
-    const [today, status] = await Promise.all([
-      request<WireToday>(`/daily-challenge/today${query}`),
-      request<WireStatus>(`/daily-challenge/status${query}`),
-    ]);
-    return toDailyChallenge(today, status);
+    try {
+      const status = await request<WireStatus>(`/daily-challenge/status${query}`);
+      return toDailyChallenge(status.challenge_id, status.goals);
+    } catch {
+      const today = await request<WireToday>(`/daily-challenge/today${query}`);
+      return toDailyChallenge(today.challenge_id, today.goals);
+    }
   },
 };
