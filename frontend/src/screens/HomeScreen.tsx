@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
   View,
   Text,
   Pressable,
@@ -91,18 +92,20 @@ export default function HomeScreen() {
 
   // Arcade level pill (#2391) and streak badge (#2457), both fed by one /stats/me
   // call. Purely decorative: they never block or delay the grid, and any failure
-  // just leaves them out (or keeps the last known values on a refetch). Refetched on focus so a level-up shows on the way back
-  // from a game, and when the device comes back online. Skipped while known
-  // offline — four doomed attempts per Home visit would only add Sentry
-  // "network failure" noise (#2430).
+  // just leaves them out (or keeps the last known values on a refetch). Refetched
+  // on focus so a level-up shows on the way back from a game, when the device
+  // comes back online, and when the app returns to the foreground (the streak is
+  // a local-day value, so it can lapse while Home sits open overnight). Skipped
+  // while known offline — four doomed attempts per Home visit would only add
+  // Sentry "network failure" noise (#2430).
   const { isOnline } = useNetwork();
   const [arcadeLevel, setArcadeLevel] = useState<number | null>(null);
   const [streakDays, setStreakDays] = useState<number>(0);
-  const levelFetchInFlight = useRef(false);
+  const statsFetchInFlight = useRef(false);
   const mounted = useRef(true);
-  const refreshArcadeLevel = useCallback(() => {
-    if (!isOnline || levelFetchInFlight.current) return;
-    levelFetchInFlight.current = true;
+  const refreshStats = useCallback(() => {
+    if (!isOnline || statsFetchInFlight.current) return;
+    statsFetchInFlight.current = true;
     // Push a just-finished game first or /stats/me answers with the old level.
     // Shared with the daily-challenge card so their concurrent flushes don't
     // let one of them read before the upload lands.
@@ -118,7 +121,7 @@ export default function HomeScreen() {
         // httpClient already reports what is worth reporting.
       })
       .finally(() => {
-        levelFetchInFlight.current = false;
+        statsFetchInFlight.current = false;
       });
   }, [isOnline]);
 
@@ -131,13 +134,17 @@ export default function HomeScreen() {
 
   // On mount, and again whenever connectivity returns.
   useEffect(() => {
-    refreshArcadeLevel();
-  }, [refreshArcadeLevel]);
+    refreshStats();
+  }, [refreshStats]);
 
-  useEffect(
-    () => navigation.addListener("focus", refreshArcadeLevel),
-    [navigation, refreshArcadeLevel]
-  );
+  useEffect(() => navigation.addListener("focus", refreshStats), [navigation, refreshStats]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshStats();
+    });
+    return () => sub.remove();
+  }, [refreshStats]);
 
   async function startYacht() {
     const saved = await loadYachtGame();
@@ -370,19 +377,15 @@ export default function HomeScreen() {
           arcadeLevel != null ? (
             <View style={styles.headerBadges}>
               {streakDays > 0 ? (
-                <View
-                  style={[
-                    styles.streakPill,
-                    { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-                  ]}
+                <Text
+                  style={[styles.streakText, { color: colors.text }]}
                   accessible
                   accessibilityRole="text"
                   accessibilityLabel={t("common:streak.pillA11y", { count: streakDays })}
+                  maxFontSizeMultiplier={1.2}
                 >
-                  <Text style={[styles.levelPillText, { color: colors.text }]}>
-                    {t("common:streak.pill", { count: streakDays })}
-                  </Text>
-                </View>
+                  {t("common:streak.pill", { count: streakDays })}
+                </Text>
               ) : null}
               <View
                 style={[styles.levelPill, { backgroundColor: colors.accent }]}
@@ -435,16 +438,17 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // The header's right slot reserves 80pt and the title is flex:1, so the badges must
+  // stay near that width: the streak is plain text, not a second pill.
   headerBadges: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
-  streakPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
+  streakText: {
+    fontFamily: typography.label,
+    fontSize: 12,
+    letterSpacing: 0.6,
   },
   levelPill: {
     paddingHorizontal: 10,

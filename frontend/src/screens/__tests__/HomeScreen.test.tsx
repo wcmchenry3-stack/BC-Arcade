@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
 import { act, render, fireEvent, waitFor } from "@testing-library/react-native";
@@ -461,6 +461,29 @@ describe("HomeScreen — streak badge (#2457)", () => {
     });
     await waitFor(() => expect(mockGetMyStats).toHaveBeenCalledTimes(2));
     expect(getByText("🔥 6")).toBeTruthy();
+  });
+
+  it("refetches when the app returns to the foreground, so a lapsed streak clears overnight", async () => {
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 5));
+    const { findByText, queryByText } = await renderScreen();
+    expect(await findByText("🔥 5")).toBeTruthy();
+
+    // RN's jest preset already makes AppState.addEventListener a jest.fn: read the
+    // callbacks it recorded (Home's and the daily-challenge card's) instead of replacing it.
+    const emit = async (state: string) =>
+      act(async () => {
+        (AppState.addEventListener as jest.Mock).mock.calls
+          .filter(([event]) => event === "change")
+          .forEach(([, cb]) => cb(state));
+      });
+
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 0));
+    await emit("background");
+    expect(mockGetMyStats).toHaveBeenCalledTimes(1);
+
+    await emit("active");
+    await waitFor(() => expect(queryByText(/🔥/)).toBeNull());
+    expect(mockGetMyStats).toHaveBeenCalledTimes(2);
   });
 });
 

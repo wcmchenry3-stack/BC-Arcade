@@ -32,8 +32,8 @@ export interface StatsResponse {
   xp_into_level: number;
   xp_for_next_level: number;
   // Consecutive local days with 2+ daily-challenge goals done (#2456/#2457). Counts the
-  // player's local days via the tz_offset_minutes the client sends. Absent on a server
-  // that predates the streak, so consumers treat a missing value as "no badge".
+  // player's local days via the tz_offset_minutes the client sends. Always sent by a current
+  // server; HomeScreen still guards against a missing value during a staggered deploy.
   streak_days: number;
 }
 
