@@ -45,7 +45,7 @@ def test_module_satisfies_protocol(mod) -> None:
         (solitaire_module, True),
         (sudoku_module, True),
         (cascade_module, False),
-        (daily_word_module, False),
+        (daily_word_module, True),
         (hearts_module, False),
     ],
     ids=["blackjack", "mahjong", "solitaire", "sudoku", "cascade", "daily_word", "hearts"],
