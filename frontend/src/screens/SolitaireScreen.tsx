@@ -140,7 +140,13 @@ export default function SolitaireScreen() {
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("solitaire");
+
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({ result: { won: false, moves: movesRef.current } }));
+  }, [syncSetProgressSnapshot]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();
 
@@ -241,7 +247,7 @@ export default function SolitaireScreen() {
     if (state.isComplete && !prevCompleteRef.current) {
       syncComplete(
         { finalScore: state.score, outcome: "completed", durationMs: state.accumulatedMs },
-        { final_score: state.score, outcome: "completed", moves: movesRef.current }
+        { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
       );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
@@ -277,7 +283,7 @@ export default function SolitaireScreen() {
       if (movesRef.current < 1) return;
       syncComplete(
         { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
-        { outcome: "abandoned", moves: movesRef.current }
+        { outcome: "abandoned", won: false, moves: movesRef.current }
       );
     });
     return unsub;

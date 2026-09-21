@@ -363,6 +363,8 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0];
     expect(summary).toEqual(expect.objectContaining({ outcome: "abandoned" }));
+    // #2450 — result block must satisfy backend SolitaireResult (won + moves).
+    expect(summary.result).toEqual({ outcome: "abandoned", won: false, moves: 1 });
   });
 
   it("does not fire an abandon event before any moves are made", async () => {

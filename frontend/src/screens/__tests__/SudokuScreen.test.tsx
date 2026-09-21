@@ -171,6 +171,29 @@ describe("SudokuScreen — in-game input", () => {
     expect(mockStartGame.mock.calls[0]![0]).toBe("sudoku");
   });
 
+  it("unmount after a digit abandons with a result block that satisfies SudokuResult, and no score (#2450)", async () => {
+    const { getAllByRole, getByLabelText, unmount } = await startEasy();
+    const emptyCells = getAllByRole("button").filter((n) =>
+      /empty/.test(String(n.props.accessibilityLabel ?? ""))
+    );
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText(/enter digit 1/i));
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+    mockCompleteGame.mockClear();
+    await unmount();
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    // Backend SudokuResult requires both `won` and `errors` — a missing one is a 400
+    // that the sync worker dead-letters.
+    expect(summary["result"]).toEqual({ won: false, errors: expect.any(Number) });
+    expect(summary).not.toHaveProperty("finalScore");
+  });
+
   it("persists state after digit input", async () => {
     const { getAllByRole, getByLabelText } = await startEasy();
     const emptyCells = getAllByRole("button").filter((n) =>

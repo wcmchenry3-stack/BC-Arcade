@@ -29,6 +29,12 @@ export interface CompleteSummary {
   finalScore?: number | null;
   outcome?: string | null;
   durationMs?: number | null;
+  /**
+   * Per-game result block sent as `result` on PATCH /games/:id/complete (#2450).
+   * Shape is owned by each game's backend `result_model` (e.g. Solitaire:
+   * `{ won, moves }`). Omitted/empty is always accepted by the backend.
+   */
+  result?: Record<string, unknown>;
 }
 
 export interface PendingGame {

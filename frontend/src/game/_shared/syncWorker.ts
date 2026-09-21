@@ -346,6 +346,7 @@ export class SyncWorker {
         outcome: summary.outcome ?? null,
         duration_ms: summary.durationMs ?? null,
         completed_at: game.completedAt != null ? new Date(game.completedAt).toISOString() : null,
+        result: summary.result ?? {},
       };
       const res = await this.api.request("PATCH", `/games/${gameId}/complete`, body, now);
       result.attempted += 1;
