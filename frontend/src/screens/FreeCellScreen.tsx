@@ -201,8 +201,10 @@ export default function FreeCellScreen() {
 
   // Open the session on the first move made here — not on load, so opening a
   // resumed or untouched game records nothing. Watching the move count (rather than
-  // hooking handleMove) also covers drag, tap and auto-complete. Must run before
-  // the win effect below: a winning move opens and closes the session in one commit.
+  // hooking handleMove) also covers drag, tap and auto-complete: a resumed game whose
+  // remaining cards all go straight to the foundation auto-completes on load, and
+  // that finish is recorded — it is the player's own game. Must run before the win
+  // effect below: a winning move opens and closes the session in one commit.
   useEffect(() => {
     if (state === null || !hasLoadedRef.current) return;
     const previous = seenMovesRef.current;
@@ -276,6 +278,15 @@ export default function FreeCellScreen() {
         { outcome: "abandoned", won: false, moves: stateRef.current?.moveCount ?? 0 }
       );
     }
+    // Stop an in-flight auto-complete. Its next scheduled step would otherwise overwrite
+    // the new deal with the old game's state — and, since that state's move count is
+    // above zero, the first-move effect would open a second session for the old game.
+    if (autoStepTimeoutRef.current !== null) {
+      clearTimeout(autoStepTimeoutRef.current);
+      autoStepTimeoutRef.current = null;
+    }
+    autoCompletingRef.current = false;
+    setAutoCompleting(false);
     seenMovesRef.current = 0;
     clearGame().catch(() => {});
     setState(dealGame());

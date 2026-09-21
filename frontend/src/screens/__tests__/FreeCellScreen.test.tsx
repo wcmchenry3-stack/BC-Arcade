@@ -276,6 +276,37 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     expect(summary).not.toHaveProperty("finalScore");
   });
 
+  it("New Game during auto-complete stops it — the old game must not open a second session (#2452)", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four auto-steps to go
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS); // step 1 opens the session
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start New"));
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1); // the abandon
+
+    // The old game's scheduled steps must not run: left alone they would overwrite the
+    // new deal with the old game's state, the first-move effect would open a phantom
+    // session for it, and finishing it would record a win next to the abandon.
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1]["outcome"]).toBe("abandoned");
+  });
+
   it("a win does not also fire an abandon on unmount", async () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
     const { getByLabelText, unmount } = await renderScreen();

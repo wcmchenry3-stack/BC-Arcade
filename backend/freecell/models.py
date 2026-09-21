@@ -4,14 +4,14 @@ from pydantic import BaseModel, ConfigDict, Field
 class FreeCellMetadata(BaseModel):
     """Validated creation-time metadata for FreeCell game rows (#2452).
 
-    Nothing is required: the session row the app opens with ``POST /games`` is
-    separate from the name-gated leaderboard submission (``POST /freecell/score``),
-    which writes its own row with ``player_name``. ``extra="forbid"`` rejects
-    unknown keys.
+    Deliberately empty: the session row the app opens with ``POST /games`` carries
+    no creation-time fields. The name-gated leaderboard submission
+    (``POST /freecell/score``) writes its own row — with ``player_name`` — and
+    never goes through this model, so a name here would read as feeding the
+    leaderboard when it does not. ``extra="forbid"`` rejects anything sent.
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
 
 
 class FreeCellResult(BaseModel):

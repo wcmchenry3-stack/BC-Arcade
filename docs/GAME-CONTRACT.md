@@ -134,7 +134,7 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Blackjack   | `BlackjackMetadata` | `best_run_chips: int \| None`, `total_runs: int \| None`, `runs_completed: int \| None`, `current_table: Literal["beginner","intermediate","high_roller"] \| None` |
 | Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                 |
-| FreeCell    | `FreeCellMetadata`  | `player_name: str = ""` (max 64 chars). The per-session row (#2452) is separate from the leaderboard router's own rows and carries no `final_score`                |
+| FreeCell    | `FreeCellMetadata`  | None (empty model). The per-session row (#2452) is separate from the leaderboard router's own rows (which hold `player_name`) and carries no `final_score`         |
 | Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                             |

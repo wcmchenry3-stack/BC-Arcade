@@ -55,11 +55,12 @@ def test_stats_shape_strips_latest_score() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_metadata_requires_nothing_and_forbids_unknown_keys() -> None:
-    assert FreeCellMetadata.model_validate({}).player_name == ""
-    assert FreeCellMetadata.model_validate({"player_name": "alice"}).player_name == "alice"
-    with pytest.raises(ValidationError):
-        FreeCellMetadata.model_validate({"moves": 3})
+def test_metadata_is_empty_and_forbids_everything_else() -> None:
+    assert FreeCellMetadata.model_validate({}).model_dump() == {}
+    # player_name belongs to the leaderboard row, not the session row.
+    for extra in ({"player_name": "alice"}, {"moves": 3}):
+        with pytest.raises(ValidationError):
+            FreeCellMetadata.model_validate(extra)
 
 
 def test_result_accepts_a_win_and_an_abandon() -> None:
