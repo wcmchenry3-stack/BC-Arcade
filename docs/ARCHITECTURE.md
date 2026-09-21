@@ -375,6 +375,30 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   list therefore comes from `/status`, which can differ from `/today` in the goals
   themselves, not just their completion — a client must not build its goals from
   `/today` and only read completion off `/status` (#2455).
+- **Streak: replayed, not stored (#2456).** `streak_days` on `GET /stats/me` is the
+  number of consecutive local days with at least 2 of that day's 3 goals met — a
+  count only, no reward, no new table. It works because a past day's challenge is
+  reproducible from its date: `compute_streak` recomputes each day's template and
+  scores it with the same `evaluate_template` the live `/status` uses, so there is
+  one definition of a day and of a goal. The run ends **today** if today already has
+  2 of 3, otherwise **yesterday** (today is not failed, just unfinished). One
+  windowed query grouped by day in Python — never a query per day — plus one for the
+  session's entitlements only when some day's free and premium templates differ
+  (not until #2458). Capped at 60 days: a value of 60 means "at least 60", shown as
+  "60+". `/stats/me` takes the same optional `tz_offset_minutes` as
+  `/daily-challenge/*`; old clients omit it and get UTC days. A streak failure is
+  logged and returns 0 rather than taking down the XP/level fields the same response
+  carries. Owner decision, 2026-09-20 — not in the original release plan.
+  Accepted approximations: **replay is retroactive re-scoring** — history is not
+  stored, so changing a goal target, adding premium goal specs (#2458) or changing
+  `DAILY_CHALLENGE_SALT` shifts every streak (treat the salt as permanent once
+  players have streaks); past days use the session's _current_ entitlements, so once
+  premium goals exist a purchase or refund re-scores the window under the other
+  slate; one UTC offset covers the whole window, so a daylight-saving change moves a
+  game finished within an hour of local midnight onto the neighbouring day; and
+  history is client-reported (`completed_at` is accepted up to a year back), so a
+  streak can be fabricated — fine for a count with no reward, to be revisited before
+  it earns anything (#2469).
 - **No copy on the wire.** Responses carry `kind` (per game, e.g. `won`,
   `moves_at_least`, `highest_tile_at_least`), `game_type` and `target`; the
   client words them in its own i18n namespace.
