@@ -97,7 +97,11 @@ export default function Twenty48Screen({ navigation }: Props) {
       const s = stateRef.current;
       if (!s) return {};
       return {
+        // final_score goes in the result (games.metadata) — the daily challenge's
+        // score goals read it — but NOT as summary.finalScore: that column ranks
+        // the game on leaderboards, and an abandon must not (#2468).
         result: {
+          final_score: s.score,
           highest_tile: highestTile(s.board),
           move_count: moveCountRef.current,
           duration_ms: computeDurationMs(s),

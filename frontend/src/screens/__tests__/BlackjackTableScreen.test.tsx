@@ -501,13 +501,14 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
-    // #2450 — backend BlackjackResult fields. The losing hand is not a win, and
-    // final_chips must be the post-hand balance (0), not the stale pre-hand one.
+    // #2450 — backend BlackjackResult fields. The losing hand is not a win,
+    // final_chips must be the post-hand balance (0), not the stale pre-hand one,
+    // and starting_chips is this session's opening balance (the resumed 50).
     expect(summary.result).toEqual(
       expect.objectContaining({
         hands_won: 0,
         hands_played: 1,
-        starting_chips: 1000,
+        starting_chips: 50,
         final_chips: 0,
       })
     );
@@ -539,6 +540,30 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       starting_chips: expect.any(Number),
       final_chips: 100,
     });
+  });
+
+  it("a resumed run that is above its opening balance is not a profit if no hand is played (#2450)", async () => {
+    // engine.startingChips is the RUN's opening balance; the hand counters are
+    // per-session, so starting_chips must be the chips at session start — else the
+    // daily "chips_gained" goal is credited for leaving without playing.
+    const aheadOfRun: EngineState = {
+      ...engineNewGame(),
+      startingChips: 1000,
+      chips: 1500,
+      bet: 50,
+      phase: "player",
+      player_hand: [card("10", "♠"), card("6", "♥")],
+      dealer_hand: [card("10", "♦"), card("9", "♣")],
+    };
+    const { unmount } = await renderWithConsumer(aheadOfRun);
+    await settle();
+    mockCompleteGame.mockClear();
+    await unmount();
+
+    const result = mockCompleteGame.mock.calls[0]?.[1]?.result as Record<string, unknown>;
+    expect(result["hands_played"]).toBe(0);
+    expect(result["starting_chips"]).toBe(1500);
+    expect(result["final_chips"]).toBe(1500);
   });
 
   it("fires abandoned on unmount mid-game", async () => {

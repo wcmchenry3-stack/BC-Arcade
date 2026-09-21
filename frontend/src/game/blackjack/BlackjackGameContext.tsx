@@ -10,7 +10,12 @@ import {
 } from "./engine";
 import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, loadRuns } from "./storage";
-import { SessionStats, initialSessionStats, reduceHandResolved } from "./sessionStats";
+import {
+  SessionStats,
+  initialSessionStats,
+  isWinningHand,
+  reduceHandResolved,
+} from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
 import { TableConfig } from "./tables";
 
@@ -58,8 +63,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   } = useGameSync("blackjack");
   const sessionStartedAtRef = useRef<number>(0);
   const totalHandsRef = useRef(0);
-  // Hands won this session ("win" or "blackjack" — same rule as reduceHandResolved).
+  // Hands won this session — counted with isWinningHand, the same rule the
+  // on-screen stats use.
   const handsWonRef = useRef(0);
+  // Chips when THIS session began. A resumed run starts a new session mid-run, so
+  // engine.startingChips (the run's opening balance) would make a session with no
+  // hands look profitable — the hand counters are per-session, so chips must be too.
+  const sessionStartChipsRef = useRef<number | null>(null);
   const lowestChipsRef = useRef(0);
   const biggestWinRef = useRef(0);
   const engineRef = useRef<EngineState | null>(null);
@@ -73,7 +83,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       result: {
         hands_won: handsWonRef.current,
         hands_played: totalHandsRef.current,
-        starting_chips: engineRef.current?.startingChips ?? null,
+        starting_chips: sessionStartChipsRef.current,
         final_chips: engineRef.current?.chips ?? null,
       },
     }));
@@ -84,6 +94,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
       handsWonRef.current = 0;
+      sessionStartChipsRef.current = startingChips;
       lowestChipsRef.current = startingChips;
       biggestWinRef.current = 0;
       setSessionStats(initialSessionStats(startingChips));
@@ -130,7 +141,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           // #2450 — backend BlackjackResult fields.
           hands_won: handsWonRef.current,
           hands_played: totalHandsRef.current,
-          starting_chips: engine?.startingChips ?? null,
+          starting_chips: sessionStartChipsRef.current,
           final_chips: finalChips ?? engine?.chips ?? null,
         }
       );
@@ -239,7 +250,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       const nextHasNoSplit = next.player_hands.length === 0;
       if (prevHadNoSplit && nextHasNoSplit && prev.outcome === null && next.outcome !== null) {
         totalHandsRef.current += 1;
-        if (next.outcome === "win" || next.outcome === "blackjack") handsWonRef.current += 1;
+        if (isWinningHand(next.outcome)) handsWonRef.current += 1;
         if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
         if (next.payout > biggestWinRef.current) biggestWinRef.current = next.payout;
         syncEnqueue({
@@ -268,7 +279,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const nOut = next.hand_outcomes[i] ?? null;
         if (pOut === null && nOut !== null) {
           totalHandsRef.current += 1;
-          if (nOut === "win") handsWonRef.current += 1;
+          if (isWinningHand(nOut)) handsWonRef.current += 1;
           if (next.chips < lowestChipsRef.current) lowestChipsRef.current = next.chips;
           const splitPayout = next.hand_payouts[i] ?? 0;
           if (splitPayout > biggestWinRef.current) biggestWinRef.current = splitPayout;

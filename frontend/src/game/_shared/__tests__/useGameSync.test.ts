@@ -222,7 +222,7 @@ describe("useGameSync", () => {
     );
   });
 
-  it("an abandon never carries a score, so it cannot rank on a leaderboard", async () => {
+  it("a hook-driven abandon never carries a score, so it cannot rank on a leaderboard", async () => {
     const { result, unmount } = await renderHook(() => useGameSync("cascade"));
     await act(() => {
       result.current.start();
