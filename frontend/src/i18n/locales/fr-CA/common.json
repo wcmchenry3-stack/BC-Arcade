@@ -60,6 +60,9 @@
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "Niv. {{level}}",
   "level.pillA11y": "Niveau d'arcade {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_one": "Série actuelle : {{count}} jour",
+  "streak.pillA11y_other": "Série actuelle : {{count}} jours",
   "legal.privacyPolicy": "Politique de confidentialité",
   "legal.termsOfService": "Conditions d’utilisation"
 }

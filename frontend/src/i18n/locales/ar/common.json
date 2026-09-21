@@ -60,6 +60,13 @@
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "مستوى {{level}}",
   "level.pillA11y": "مستوى الأركيد {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_zero": "السلسلة الحالية: {{count}} يوم",
+  "streak.pillA11y_one": "السلسلة الحالية: يوم واحد",
+  "streak.pillA11y_two": "السلسلة الحالية: يومان",
+  "streak.pillA11y_few": "السلسلة الحالية: {{count}} أيام",
+  "streak.pillA11y_many": "السلسلة الحالية: {{count}} يومًا",
+  "streak.pillA11y_other": "السلسلة الحالية: {{count}} يوم",
   "legal.privacyPolicy": "سياسة الخصوصية",
   "legal.termsOfService": "شروط الخدمة"
 }

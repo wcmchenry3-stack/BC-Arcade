@@ -89,14 +89,15 @@ export default function HomeScreen() {
     return () => clearTimeout(id);
   }, [canPlay]);
 
-  // Arcade level pill (#2391). Purely decorative: it never blocks or delays the
-  // grid, and any failure just leaves the pill out (or keeps the last known
-  // level on a refetch). Refetched on focus so a level-up shows on the way back
+  // Arcade level pill (#2391) and streak badge (#2457), both fed by one /stats/me
+  // call. Purely decorative: they never block or delay the grid, and any failure
+  // just leaves them out (or keeps the last known values on a refetch). Refetched on focus so a level-up shows on the way back
   // from a game, and when the device comes back online. Skipped while known
   // offline — four doomed attempts per Home visit would only add Sentry
   // "network failure" noise (#2430).
   const { isOnline } = useNetwork();
   const [arcadeLevel, setArcadeLevel] = useState<number | null>(null);
+  const [streakDays, setStreakDays] = useState<number>(0);
   const levelFetchInFlight = useRef(false);
   const mounted = useRef(true);
   const refreshArcadeLevel = useCallback(() => {
@@ -108,7 +109,10 @@ export default function HomeScreen() {
     flushQueuedGames()
       .then(() => withRetry(() => statsApi.getMyStats()))
       .then((stats) => {
-        if (mounted.current) setArcadeLevel(stats.arcade_level);
+        if (!mounted.current) return;
+        setArcadeLevel(stats.arcade_level);
+        // A server that predates the streak omits the field: treat it as no streak.
+        setStreakDays(typeof stats.streak_days === "number" ? stats.streak_days : 0);
       })
       .catch(() => {
         // httpClient already reports what is worth reporting.
@@ -364,15 +368,32 @@ export default function HomeScreen() {
         title={t("common:app.title")}
         rightSlot={
           arcadeLevel != null ? (
-            <View
-              style={[styles.levelPill, { backgroundColor: colors.accent }]}
-              accessible
-              accessibilityRole="text"
-              accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
-            >
-              <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
-                {t("common:level.pill", { level: arcadeLevel })}
-              </Text>
+            <View style={styles.headerBadges}>
+              {streakDays > 0 ? (
+                <View
+                  style={[
+                    styles.streakPill,
+                    { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+                  ]}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={t("common:streak.pillA11y", { count: streakDays })}
+                >
+                  <Text style={[styles.levelPillText, { color: colors.text }]}>
+                    {t("common:streak.pill", { count: streakDays })}
+                  </Text>
+                </View>
+              ) : null}
+              <View
+                style={[styles.levelPill, { backgroundColor: colors.accent }]}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
+              >
+                <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
+                  {t("common:level.pill", { level: arcadeLevel })}
+                </Text>
+              </View>
             </View>
           ) : null
         }
@@ -414,6 +435,17 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  streakPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   levelPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,

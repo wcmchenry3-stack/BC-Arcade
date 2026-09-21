@@ -60,6 +60,11 @@
   "deleteData.error": "Deletion failed — please try again",
   "level.pill": "Ур. {{level}}",
   "level.pillA11y": "Уровень аркады {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_one": "Текущая серия: {{count}} день",
+  "streak.pillA11y_few": "Текущая серия: {{count}} дня",
+  "streak.pillA11y_many": "Текущая серия: {{count}} дней",
+  "streak.pillA11y_other": "Текущая серия: {{count}} дня",
   "legal.privacyPolicy": "Политика конфиденциальности",
   "legal.termsOfService": "Условия использования"
 }

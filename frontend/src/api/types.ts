@@ -31,6 +31,10 @@ export interface StatsResponse {
   arcade_level: number;
   xp_into_level: number;
   xp_for_next_level: number;
+  // Consecutive local days with 2+ daily-challenge goals done (#2456/#2457). Counts the
+  // player's local days via the tz_offset_minutes the client sends. Absent on a server
+  // that predates the streak, so consumers treat a missing value as "no badge".
+  streak_days: number;
 }
 
 export interface GameRow {
