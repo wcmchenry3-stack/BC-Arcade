@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -170,6 +172,35 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "blackjack",
     }
     assert set(FREE_GOAL_POOL).isdisjoint(_ALL_PREMIUM_SLUGS)
+
+
+_EN_COPY = (
+    Path(__file__).parents[2]
+    / "frontend"
+    / "src"
+    / "i18n"
+    / "locales"
+    / "en"
+    / "daily_challenge.json"
+)
+
+
+def test_every_free_goal_kind_has_frontend_wording() -> None:
+    """The card words a goal from ``goal.<game_type>.<kind>`` (plural kinds carry a
+    ``_one`` / ``_other`` suffix). A kind with no copy ships as the generic
+    "Play <game>" chip, so adding one here must add its wording there (#2455).
+    Premium-only goals are out of scope until #2458."""
+    copy = json.loads(_EN_COPY.read_text(encoding="utf-8"))
+    missing = sorted(
+        {
+            f"goal.{g.game_type}.{g.kind}"
+            for goals in FREE_GOAL_POOL.values()
+            for g in goals
+            if f"goal.{g.game_type}.{g.kind}" not in copy
+            and f"goal.{g.game_type}.{g.kind}_other" not in copy
+        }
+    )
+    assert not missing, f"No wording in {_EN_COPY.name} for: {missing}"
 
 
 def test_premium_pool_is_a_superset_of_the_free_pool() -> None:
