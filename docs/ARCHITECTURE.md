@@ -72,6 +72,21 @@ What we log:
 - **Gameplay event logs:** per-move or per-action records, useful for analytics
   and for diagnosing reported bugs.
 
+**Result envelope (#2449).** `PATCH /games/{id}/complete` accepts an optional
+`result` dict alongside `final_score` / `outcome` / `duration_ms`. Each game
+module may declare a `result_model` (a Pydantic model, separate from the
+creation-time `metadata_model`, which forbids extra keys); the validated result
+is merged into `games.metadata` — creation-time keys always win on a collision,
+because leaderboards read `player_name` / `raw_score` from there — and an
+invalid or oversized (> 8 KB) result returns 400 without completing the game
+and is reported to Sentry (game type, failing field paths, error types — no
+session id or values), because the app's sync worker dead-letters a 400. Modules with
+`result_model = None` accept any dict. Result models ignore unknown keys so a
+newer app build never fails completion against an older backend. `won` inside
+the result is the win signal — `games.outcome` stays lifecycle-only
+(`completed` / `abandoned` / `kept_playing`) and must not be read as one.
+Older app builds that send no `result` keep working.
+
 **Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
 kicks in (see §5). If 2 MB turns out to be too small in practice, that is a
 signal to revisit _how_ we queue — not a signal to bump the cap.

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -50,6 +51,13 @@ _audit_log = logging.getLogger("audit")
 # ---------------------------------------------------------------------------
 
 
+# Request headers the SDK would otherwise forward verbatim. Its default denylist
+# matches keys exactly and knows neither of ours: X-Admin-Token is a secret, and
+# X-Session-ID is the player's pseudonymous ID — the Privacy Policy says crash
+# reports carry no identifier.
+SENTRY_SCRUBBED_HEADERS = ["x-session-id", "x-admin-token"]
+
+
 def _sentry_options(dsn: str) -> dict:
     """Build the sentry_sdk.init kwargs.
 
@@ -65,6 +73,7 @@ def _sentry_options(dsn: str) -> dict:
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "release": os.environ.get("RENDER_GIT_COMMIT"),
         "send_default_pii": False,
+        "event_scrubber": EventScrubber(denylist=DEFAULT_DENYLIST + SENTRY_SCRUBBED_HEADERS),
     }
 
 
@@ -311,5 +320,6 @@ async def health_db(request: Request) -> JSONResponse:
 if os.getenv("ENVIRONMENT") == "test":
 
     @app.get("/debug/error")
+    @limiter.limit("5/minute")
     def trigger_error(request: Request) -> None:
         raise RuntimeError("Intentional test error for Sentry verification")

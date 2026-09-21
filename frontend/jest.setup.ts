@@ -160,6 +160,8 @@ jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
   addBreadcrumb: jest.fn(),
+  captureFeedback: jest.fn(() => "mock-feedback-event-id"),
+  getClient: jest.fn(() => ({})),
   init: jest.fn(),
   wrap: (c: unknown) => c,
   ReactNavigationInstrumentation: jest.fn(),
@@ -224,6 +226,7 @@ import feedback from "./src/i18n/locales/en/feedback.json";
 import profile from "./src/i18n/locales/en/profile.json";
 import sort from "./src/i18n/locales/en/sort.json";
 import daily_word from "./src/i18n/locales/en/daily_word.json";
+import daily_challenge from "./src/i18n/locales/en/daily_challenge.json";
 
 i18n.use(initReactI18next).init({
   lng: "en",
@@ -243,6 +246,7 @@ i18n.use(initReactI18next).init({
     "profile",
     "sort",
     "daily_word",
+    "daily_challenge",
   ],
   defaultNS: "common",
   resources: {
@@ -261,6 +265,7 @@ i18n.use(initReactI18next).init({
       profile,
       sort,
       daily_word,
+      daily_challenge,
     },
   },
   interpolation: { escapeValue: false },

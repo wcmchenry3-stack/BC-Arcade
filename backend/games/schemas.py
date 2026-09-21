@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.registry import get_module
 
@@ -67,6 +67,14 @@ class CompleteGameRequest(BaseModel):
     outcome: str | None = None
     duration_ms: int | None = Field(default=None, ge=0)
     completed_at: datetime | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _null_result_is_empty(cls, v: Any) -> Any:
+        # A client serialising an absent result as `null` must not 422 — the
+        # sync worker dead-letters non-403 4xx, which would lose the completion.
+        return {} if v is None else v
 
 
 # ---------------------------------------------------------------------------

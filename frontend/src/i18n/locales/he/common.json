@@ -57,5 +57,9 @@
   "deleteData.confirm.confirm": "Delete my data",
   "deleteData.confirm.cancel": "Cancel",
   "deleteData.success": "Your data has been deleted",
-  "deleteData.error": "Deletion failed — please try again"
+  "deleteData.error": "Deletion failed — please try again",
+  "level.pill": "רמה {{level}}",
+  "level.pillA11y": "רמת ארקייד {{level}}",
+  "legal.privacyPolicy": "מדיניות פרטיות",
+  "legal.termsOfService": "תנאי שימוש"
 }

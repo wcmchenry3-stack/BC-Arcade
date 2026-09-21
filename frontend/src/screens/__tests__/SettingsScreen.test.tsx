@@ -1,4 +1,6 @@
 import React from "react";
+import { Linking } from "react-native";
+import * as Sentry from "@sentry/react-native";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
@@ -54,6 +56,50 @@ describe("SettingsScreen", () => {
     await fireEvent.press(screen.getByTestId("theme-mode-light"));
     expect(screen.getByTestId("theme-mode-light").props.accessibilityState?.selected).toBe(true);
     expect(screen.getByTestId("theme-mode-dark").props.accessibilityState?.selected).toBe(false);
+  });
+
+  describe("Legal links (#1922)", () => {
+    let openURL: jest.SpyInstance;
+
+    beforeEach(() => {
+      openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      openURL.mockRestore();
+    });
+
+    it("opens the hosted Privacy Policy", async () => {
+      await renderScreen();
+      const link = screen.getByTestId("privacy-policy-link");
+      expect(link.props.accessibilityRole).toBe("link");
+      await fireEvent.press(link);
+      expect(openURL).toHaveBeenCalledWith("https://buffingchi.com/privacy");
+    });
+
+    it("opens the hosted Terms of Service", async () => {
+      await renderScreen();
+      await fireEvent.press(screen.getByTestId("terms-of-service-link"));
+      expect(openURL).toHaveBeenCalledWith("https://buffingchi.com/terms");
+    });
+
+    it("labels the links from i18n", async () => {
+      await renderScreen();
+      expect(screen.getByText("Privacy Policy")).toBeTruthy();
+      expect(screen.getByText("Terms of Service")).toBeTruthy();
+    });
+
+    it("reports to Sentry instead of crashing when the URL cannot be opened", async () => {
+      openURL.mockRejectedValueOnce(new Error("no browser"));
+      await renderScreen();
+      await fireEvent.press(screen.getByTestId("privacy-policy-link"));
+      await waitFor(() => {
+        expect(Sentry.captureException).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.objectContaining({ tags: { subsystem: "settings", op: "openLegalUrl" } })
+        );
+      });
+    });
   });
 
   describe("Clear local logs", () => {

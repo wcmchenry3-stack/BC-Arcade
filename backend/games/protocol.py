@@ -15,6 +15,9 @@ Adding a new game
 4. Define a ``metadata_model`` Pydantic ``BaseModel`` subclass (in the
    game's ``models.py``) and assign it as a class variable.  The generic
    ``POST /games`` endpoint validates incoming ``metadata`` against it.
+5. Optionally define a ``result_model`` (also in ``models.py``) describing the
+   per-game result block sent on ``PATCH /games/{id}/complete``, or set
+   ``result_model = None`` to accept any dict unvalidated.
 """
 
 from __future__ import annotations
@@ -43,6 +46,13 @@ class GameModule(Protocol):
         ``POST /games`` router validates the incoming ``metadata`` dict
         against this model before writing to the DB.
 
+    result_model:
+        A Pydantic ``BaseModel`` subclass for the result block sent on
+        ``PATCH /games/{id}/complete`` (#2449), or ``None`` to skip validation.
+        Deliberately separate from ``metadata_model`` — those forbid extra keys
+        and describe creation-time state only.  The validated result is merged
+        into ``games.metadata``.
+
     Methods
     -------
     stats_shape(raw_stats):
@@ -63,5 +73,6 @@ class GameModule(Protocol):
 
     game_type: GameType
     metadata_model: type[BaseModel]
+    result_model: type[BaseModel] | None
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

@@ -21,5 +21,11 @@
   "detail.outcome": "Outcome",
   "detail.startedAt": "Started",
   "detail.completedAt": "Completed",
-  "detail.gameType": "Game"
+  "detail.gameType": "Game",
+  "level.title": "Arcade Level",
+  "level.value": "Level {{level}}",
+  "level.xpTotal": "{{xp}} XP",
+  "level.xpToNext": "{{xp}} XP to level {{level}}",
+  "level.max": "Max level reached",
+  "level.progressA11y": "Progress to level {{level}}"
 }

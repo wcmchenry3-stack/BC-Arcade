@@ -29,83 +29,89 @@ export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const { t } = useTranslation("common");
 
   return (
-    <View
-      accessible={true}
-      accessibilityRole="tablist"
-      style={[
-        styles.wrapper,
-        {
-          paddingBottom: insets.bottom || 8,
-          shadowColor: colors.chromeShadowColor,
-          shadowOpacity: colors.chromeShadowOpacity,
-        },
-        Platform.OS === "web" && styles.wrapperWeb,
-      ]}
-    >
-      {/* Blur background */}
-      {Platform.OS === "web" ? (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.blurFallback,
-            {
-              backgroundColor: colors.chromeBg,
-              ...Platform.select({
-                web: {
-                  backdropFilter: "blur(20px)",
-                  WebkitBackdropFilter: "blur(20px)",
-                } as object,
-              }),
-            },
-          ]}
-        />
-      ) : (
-        <BlurView
-          intensity={80}
-          tint={theme === "dark" ? "dark" : "light"}
-          style={[StyleSheet.absoluteFill, styles.blurFallback]}
-        />
-      )}
+    // The panel has rounded top corners and sits in normal flow below the scene,
+    // so something has to paint the two corner cut-outs. Without this backing
+    // view the native window background showed through — white corners on the
+    // dark theme (seen on iOS 26).
+    <View style={{ backgroundColor: colors.background }} testID="tab-bar-backing">
+      <View
+        accessible={true}
+        accessibilityRole="tablist"
+        style={[
+          styles.wrapper,
+          {
+            paddingBottom: insets.bottom || 8,
+            shadowColor: colors.chromeShadowColor,
+            shadowOpacity: colors.chromeShadowOpacity,
+          },
+          Platform.OS === "web" && styles.wrapperWeb,
+        ]}
+      >
+        {/* Blur background */}
+        {Platform.OS === "web" ? (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.blurFallback,
+              {
+                backgroundColor: colors.chromeBg,
+                ...Platform.select({
+                  web: {
+                    backdropFilter: "blur(20px)",
+                    WebkitBackdropFilter: "blur(20px)",
+                  } as object,
+                }),
+              },
+            ]}
+          />
+        ) : (
+          <BlurView
+            intensity={80}
+            tint={theme === "dark" ? "dark" : "light"}
+            style={[StyleSheet.absoluteFill, styles.blurFallback]}
+          />
+        )}
 
-      {/* Tab items */}
-      <View style={styles.tabs}>
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const config = TAB_CONFIG[route.name] ?? {
-            icon: "circle" as MaterialIconName,
-            labelKey: route.name,
-          };
-          const label = t(config.labelKey as Parameters<typeof t>[0]);
+        {/* Tab items */}
+        <View style={styles.tabs}>
+          {state.routes.map((route, index) => {
+            const focused = state.index === index;
+            const config = TAB_CONFIG[route.name] ?? {
+              icon: "circle" as MaterialIconName,
+              labelKey: route.name,
+            };
+            const label = t(config.labelKey as Parameters<typeof t>[0]);
 
-          return (
-            <Pressable
-              key={route.key}
-              onPress={() => navigation.navigate(route.name)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
-              accessibilityLabel={label}
-              style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
-              testID={`tab-${route.name.toLowerCase()}`}
-            >
-              {focused ? (
-                <LinearGradient
-                  colors={[colors.accent, colors.accentBright]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.activePill}
-                >
-                  <MaterialIcons name={config.icon} size={20} color={colors.textOnAccent} />
-                  <Text style={[styles.label, { color: colors.textOnAccent }]}>{label}</Text>
-                </LinearGradient>
-              ) : (
-                <View style={styles.inactivePill}>
-                  <MaterialIcons name={config.icon} size={20} color={colors.text} />
-                  <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
+            return (
+              <Pressable
+                key={route.key}
+                onPress={() => navigation.navigate(route.name)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: focused }}
+                accessibilityLabel={label}
+                style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+                testID={`tab-${route.name.toLowerCase()}`}
+              >
+                {focused ? (
+                  <LinearGradient
+                    colors={[colors.accent, colors.accentBright]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.activePill}
+                  >
+                    <MaterialIcons name={config.icon} size={20} color={colors.textOnAccent} />
+                    <Text style={[styles.label, { color: colors.textOnAccent }]}>{label}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.inactivePill}>
+                    <MaterialIcons name={config.icon} size={20} color={colors.text} />
+                    <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </View>
   );

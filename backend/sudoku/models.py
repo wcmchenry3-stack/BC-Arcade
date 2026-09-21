@@ -32,3 +32,15 @@ class ScoreEntry(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     scores: list[ScoreEntry]
+
+
+class SudokuResult(BaseModel):
+    """Validated result block sent on ``PATCH /games/{id}/complete`` (#2449).
+
+    Distinct from the creation-time metadata model. Unknown keys are ignored so
+    a newer app build never fails completion. ``won`` is the win signal for
+    goal evaluation — ``games.outcome`` is lifecycle-only.
+    """
+
+    won: bool
+    errors: int = Field(ge=0)

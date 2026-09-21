@@ -15,6 +15,7 @@ class YachtModule:
 
     game_type = GameType.YACHT
     metadata_model = YachtMetadata
+    result_model = None
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

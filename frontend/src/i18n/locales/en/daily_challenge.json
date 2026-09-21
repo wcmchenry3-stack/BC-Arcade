@@ -1,0 +1,13 @@
+{
+  "title": "Daily Challenge",
+  "progress": "{{done}} of {{total}} complete",
+  "allDone": "All done! A new challenge arrives tomorrow.",
+  "goal.complete": "Play {{game}}",
+  "goal.scoreAtLeast": "Score {{target}}+ in {{game}}",
+  "goal.doneA11y": "{{goal}}, completed",
+  "goal.todoA11y": "{{goal}}, not completed yet",
+  "loading.a11y": "Loading the daily challenge",
+  "offline.title": "Check your connection",
+  "offline.body": "Connect to the internet to see today's challenge.",
+  "offline.retryA11y": "Retry loading the daily challenge"
+}

@@ -57,5 +57,9 @@
   "deleteData.confirm.confirm": "Delete my data",
   "deleteData.confirm.cancel": "Cancel",
   "deleteData.success": "Your data has been deleted",
-  "deleteData.error": "Deletion failed — please try again"
+  "deleteData.error": "Deletion failed — please try again",
+  "level.pill": "مستوى {{level}}",
+  "level.pillA11y": "مستوى الأركيد {{level}}",
+  "legal.privacyPolicy": "سياسة الخصوصية",
+  "legal.termsOfService": "شروط الخدمة"
 }
