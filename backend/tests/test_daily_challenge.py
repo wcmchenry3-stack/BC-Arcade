@@ -10,7 +10,7 @@ from itertools import pairwise
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from daily_challenge import service
 from daily_challenge.definitions import (
@@ -32,7 +32,7 @@ from daily_challenge.definitions import (
 )
 from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory, is_configured
-from db.models import Game, GameType
+from db.models import Game, GameEntitlement, GameType
 from entitlements.service import _ALL_PREMIUM_SLUGS
 
 # ---------------------------------------------------------------------------
@@ -633,3 +633,248 @@ async def test_only_games_inside_the_local_day_count(fixed_template: Template) -
     assert await completed_goals(first) == 1
     assert await completed_goals(last) == 1
     assert await completed_goals(after) == 0
+
+
+# ---------------------------------------------------------------------------
+# slate resolution (#2454)
+# ---------------------------------------------------------------------------
+
+# A premium-slate day that names two premium games (yacht, sudoku) — patched in,
+# because until #2458 the real premium pool holds only free games.
+_PREMIUM_DAY = Template(
+    "premium_for_tests",
+    (
+        FREE_GOAL_POOL["daily_word"][_EASY],
+        _at_least("yacht", "score", 1, "easy"),
+        _at_least("sudoku", "errors", 0, "easy"),
+    ),
+)
+_DAY = date(2026, 10, 9)
+
+
+@pytest.fixture()
+def two_slates(monkeypatch: pytest.MonkeyPatch) -> Template:
+    # A shell that exports the dev override must not change what these assert.
+    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+
+    def pick(_day: date, slate: str = "free") -> Template:
+        return _PREMIUM_DAY if slate == "premium" else _FIXED
+
+    monkeypatch.setattr("daily_challenge.service.template_for", pick)
+    monkeypatch.setattr("daily_challenge.router.template_for", pick)
+    return _PREMIUM_DAY
+
+
+async def _grant(sid: str, *slugs: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add_all([GameEntitlement(session_id=sid, game_slug=slug) for slug in slugs])
+        await db.commit()
+
+
+async def _slate(sid: str, day: date = _DAY) -> str:
+    factory = get_session_factory()
+    async with factory() as db:
+        return await service.resolve_slate(db, sid, day)
+
+
+@needs_db
+async def test_free_session_gets_the_free_slate(two_slates: Template) -> None:
+    assert await _slate(str(uuid.uuid4())) == "free"
+
+
+@needs_db
+async def test_partly_entitled_session_gets_the_free_slate(two_slates: Template) -> None:
+    # Owns yacht but not sudoku: the premium day names both, so it would hand
+    # this session a goal in a game it cannot open.
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    assert await _slate(sid) == "free"
+
+
+@needs_db
+async def test_fully_entitled_session_gets_the_premium_slate(two_slates: Template) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht", "sudoku")
+    assert await _slate(sid) == "premium"
+
+
+@needs_db
+async def test_entitlement_to_other_premium_games_does_not_unlock_it(two_slates: Template) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "cascade", "hearts")  # premium, but not the ones named
+    assert await _slate(sid) == "free"
+
+
+@needs_db
+async def test_dev_override_session_is_always_premium_eligible(
+    two_slates: Template, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    assert await _slate(str(uuid.uuid4())) == "premium"  # no entitlement rows at all
+
+
+@needs_db
+async def test_a_premium_day_naming_no_premium_game_is_the_free_slate() -> None:
+    # Real pools: until #2458 the premium pool holds only free games, so even a
+    # session that owns every premium game has nothing to unlock.
+    sid = str(uuid.uuid4())
+    await _grant(sid, *_ALL_PREMIUM_SLUGS)
+    assert await _slate(sid) == "free"
+    assert template_for(_DAY, "premium") == template_for(_DAY, "free")
+
+
+@needs_db
+async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
+    # The slate tests read real game_types rows — fail loudly, and here, if the
+    # seed the migrations produce ever stops matching what they assume.
+    factory = get_session_factory()
+    async with factory() as db:
+        premium = set(
+            (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
+        )
+    assert {"yacht", "sudoku", "cascade", "hearts"} <= premium
+
+
+@needs_db
+async def test_override_follows_the_same_rule_as_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Real pools: nothing premium is named, so the override changes nothing — dev
+    # must not report "premium" while production would say "free".
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    assert await _slate(str(uuid.uuid4())) == "free"
+
+
+@needs_db
+async def test_a_differing_premium_template_naming_only_free_games_is_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    only_free = Template("premium_free_games_only", (*_FIXED.goals, _FIXED.goals[0]))
+
+    def pick(_day: date, slate: str = "free") -> Template:
+        return only_free if slate == "premium" else _FIXED
+
+    monkeypatch.setattr("daily_challenge.service.template_for", pick)
+    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    assert await _slate(str(uuid.uuid4())) == "free"
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    assert await _slate(str(uuid.uuid4())) == "free"  # the override does not skip the rule
+
+
+@needs_db
+async def test_identical_templates_skip_the_query() -> None:
+    statements: list[str] = []
+    factory = get_session_factory()
+    async with factory() as db:
+        engine = db.sync_session.get_bind()
+
+        def record(_conn, _cursor, statement, *_rest) -> None:
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            assert await service.resolve_slate(db, str(uuid.uuid4()), _DAY) == "free"
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+    assert statements == [], "the slate is moot when the templates match — no round trip"
+
+
+@needs_db
+async def test_a_mid_day_entitlement_change_swaps_the_challenge(two_slates: Template) -> None:
+    # Slate is resolved live and nothing pins it, so buying the last premium game a
+    # premium day names switches the next /status to the premium template. Pinned
+    # here so the behaviour is deliberate, not an accident.
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    assert await _slate(sid) == "free"
+    await _grant(sid, "sudoku")
+    assert await _slate(sid) == "premium"
+
+
+@needs_db
+async def test_slate_resolution_is_one_statement(two_slates: Template) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    statements: list[str] = []
+    factory = get_session_factory()
+    async with factory() as db:
+        engine = db.sync_session.get_bind()
+
+        def record(_conn, _cursor, statement, *_rest) -> None:
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            await service.resolve_slate(db, sid, _DAY)
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+    assert len(statements) == 1, statements
+
+
+@needs_db
+async def test_status_reports_and_uses_the_resolved_slate(two_slates: Template) -> None:
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
+    await _grant(entitled, "yacht", "sudoku")
+    factory = get_session_factory()
+    async with factory() as db:
+        free_status = await service.get_status_for_session(
+            db, session_id=free, tz_offset_minutes=0, utc_now=now
+        )
+        premium_status = await service.get_status_for_session(
+            db, session_id=entitled, tz_offset_minutes=0, utc_now=now
+        )
+    assert (free_status.slate, free_status.template) == ("free", _FIXED)
+    assert (premium_status.slate, premium_status.template) == ("premium", _PREMIUM_DAY)
+
+
+@needs_db
+def test_today_is_always_free_and_never_resolves_a_slate(
+    client: TestClient, two_slates: Template, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*_a, **_k):
+        raise AssertionError("/today must not resolve a slate")
+
+    monkeypatch.setattr("daily_challenge.service.resolve_slate", boom)
+    body = client.get("/daily-challenge/today").json()
+    assert body["template_id"] == _FIXED.id  # the free template, never the premium one
+
+
+@needs_db
+def test_status_for_a_premium_session_differs_from_today(
+    client: TestClient, two_slates: Template, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Router wiring only — the DB-level slate rules are covered by the async tests
+    # above (mixing their event loop with TestClient's would not be portable).
+    async def premium(*_a, **_k) -> str:
+        return "premium"
+
+    monkeypatch.setattr("daily_challenge.service.resolve_slate", premium)
+    today = client.get("/daily-challenge/today").json()
+    status = client.get("/daily-challenge/status", headers=_headers(str(uuid.uuid4()))).json()
+    assert today["template_id"] == _FIXED.id
+    assert status["template_id"] == _PREMIUM_DAY.id
+    assert [g["id"] for g in status["goals"]] != [g["id"] for g in today["goals"]]
+    assert {g["game_type"] for g in status["goals"]} >= {"yacht", "sudoku"}
+
+
+@needs_db
+def test_status_for_a_free_session_matches_today(client: TestClient, two_slates: Template) -> None:
+    status = client.get("/daily-challenge/status", headers=_headers(str(uuid.uuid4()))).json()
+    today = client.get("/daily-challenge/today").json()
+    assert status["template_id"] == today["template_id"]
+    assert [g["id"] for g in status["goals"]] == [g["id"] for g in today["goals"]]
+
+
+@needs_db
+async def test_goal_pools_agree_with_the_games_table() -> None:
+    # The pools are static spec tables; which games are premium is a database fact
+    # that can change. Fail here (in CI) if they drift, rather than hand a free
+    # player a goal in a game they cannot open.
+    factory = get_session_factory()
+    async with factory() as db:
+        premium = set(
+            (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
+        )
+    assert set(FREE_GOAL_POOL).isdisjoint(premium)

@@ -1,9 +1,11 @@
 """Daily cross-game challenge REST endpoints (#2392).
 
 Rate limits:
-  GET /today   — 60/minute (IP-keyed, no auth): today's goals, no player state
-  GET /status  — 60/minute keyed by X-Session-ID: the same goals plus which
-                 ones this session has met today
+  GET /today   — 60/minute (IP-keyed, no auth): today's goals, no player state.
+                 Always the FREE slate — there is no session to resolve.
+  GET /status  — 60/minute keyed by X-Session-ID: the goals from the slate this
+                 session resolves to (free or premium, #2454) plus which it has
+                 met today. For an entitled session these differ from /today.
 """
 
 from __future__ import annotations
@@ -36,7 +38,9 @@ async def get_today(
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
 ) -> ChallengeResponse:
     day = local_day(tz_offset_minutes)
-    template = template_for(day.date)
+    # Always the free slate: no session here, so nothing to resolve. Only /status
+    # (below) may return the premium slate.
+    template = template_for(day.date, "free")
     return ChallengeResponse(
         challenge_id=day.date.isoformat(),
         template_id=template.id,
