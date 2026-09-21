@@ -10,6 +10,7 @@ in ``games.metadata`` plus the score/duration columns) — never ``outcome``.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -67,6 +68,24 @@ def evaluate_goal(goal: Goal, ended: list[EndedGame]) -> GoalStatus:
     return GoalStatus(goal=goal, completed=completed, best_score=best_score)
 
 
+def slate_for_games(
+    premium_named: Collection[str], owned: Collection[str], override: bool
+) -> Slate:
+    """The slate rule, with no I/O — the one place it is written (#2454).
+
+    ``premium_named``: the premium games that day's premium template names.
+    ``owned``: the premium games the session owns. A session gets the premium
+    slate only if it owns every premium game named; a template naming none has
+    nothing to unlock, so it is the free slate. ``override`` (the dev entitlement
+    override) counts every named game as owned. ``resolve_slate`` (one day, one
+    query) and the streak (many days, entitlements fetched once) both call this.
+    """
+    named = set(premium_named)
+    if not named:
+        return "free"
+    return "premium" if override or named <= set(owned) else "free"
+
+
 async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Slate:
     """Which slate this session's challenge for ``day`` is drawn from (#2454).
 
@@ -106,11 +125,11 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
             .where(GameType.name.in_(named), GameType.is_premium.is_(True))
         )
     ).all()
-    if not rows:
-        return "free"
-    if is_dev_override_active():
-        return "premium"
-    return "premium" if all(owned is not None for _, owned in rows) else "free"
+    return slate_for_games(
+        premium_named={name for name, _ in rows},
+        owned={name for name, slug in rows if slug is not None},
+        override=is_dev_override_active(),
+    )
 
 
 async def get_status_for_session(

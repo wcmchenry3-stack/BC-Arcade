@@ -300,13 +300,21 @@ class LocalDay:
     end_utc: datetime
 
 
+def local_day_of(day: date, tz_offset_minutes: int) -> LocalDay:
+    """The window for calendar ``day`` in a client ``tz_offset_minutes`` east of UTC.
+
+    Used for today (``local_day``) and for any past day (the streak replays the
+    challenge over a range), so there is one definition of where a local day starts.
+    """
+    start_utc = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - timedelta(
+        minutes=tz_offset_minutes
+    )
+    return LocalDay(date=day, start_utc=start_utc, end_utc=start_utc + timedelta(days=1))
+
+
 def local_day(tz_offset_minutes: int, utc_now: datetime | None = None) -> LocalDay:
     """Resolve "today" for a client ``tz_offset_minutes`` east of UTC (as Daily Word does)."""
     if utc_now is None:
         utc_now = datetime.now(timezone.utc)
-    offset = timedelta(minutes=tz_offset_minutes)
-    local_date = (utc_now + offset).date()
-    start_utc = (
-        datetime(local_date.year, local_date.month, local_date.day, tzinfo=timezone.utc) - offset
-    )
-    return LocalDay(date=local_date, start_utc=start_utc, end_utc=start_utc + timedelta(days=1))
+    local_date = (utc_now + timedelta(minutes=tz_offset_minutes)).date()
+    return local_day_of(local_date, tz_offset_minutes)
