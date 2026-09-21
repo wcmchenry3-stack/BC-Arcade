@@ -265,6 +265,57 @@ def test_complete_game_result_merged_and_visible_in_detail(
     assert detail.json()["metadata"] == {"won": True, "moves": 87}
 
 
+def test_daily_word_session_round_trip(client: TestClient, session_id: str) -> None:
+    """#2451 — create with puzzle metadata, complete with the result block, read it back.
+
+    Daily Word has no numeric score, so ``final_score`` is null and the win
+    signal lives only in the merged result block.
+    """
+    r = client.post(
+        "/games",
+        headers=_headers(session_id),
+        json={
+            "game_type": "daily_word",
+            "metadata": {"puzzle_id": "20260920-en", "language": "en"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={
+            "outcome": "completed",
+            "result": {"is_complete": True, "won": True, "guesses_used": 4},
+        },
+    )
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=_headers(session_id)).json()
+    assert detail["metadata"] == {
+        "puzzle_id": "20260920-en",
+        "language": "en",
+        "is_complete": True,
+        "won": True,
+        "guesses_used": 4,
+    }
+    assert detail["final_score"] is None
+
+
+def test_daily_word_rejects_invalid_result(client: TestClient, session_id: str) -> None:
+    r = client.post(
+        "/games",
+        headers=_headers(session_id),
+        json={"game_type": "daily_word", "metadata": {"puzzle_id": "20260920-en"}},
+    )
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={"outcome": "completed", "result": {"won": True}},  # is_complete, guesses_used missing
+    )
+    assert r.status_code == 400
+
+
 def test_complete_game_rejects_invalid_result(client: TestClient, session_id: str) -> None:
     gid = _new_game(client, session_id, "solitaire")
     r = client.patch(

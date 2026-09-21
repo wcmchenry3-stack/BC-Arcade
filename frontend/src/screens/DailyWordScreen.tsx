@@ -45,10 +45,12 @@ import {
   applyServerResult,
   markComplete,
   buildShareText,
+  sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
+import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
   saveState,
@@ -637,6 +639,10 @@ export default function DailyWordScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   const [state, setState] = useState<DailyWordState | null>(null);
+  // Always holds the latest state — read by the async submit, the session
+  // abandon paths and the unmount snapshot, none of which can close over `state`.
+  const stateRef = useRef<DailyWordState | null>(null);
+  stateRef.current = state;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -661,6 +667,23 @@ export default function DailyWordScreen() {
   const language = getLanguage();
   const tzOffset = getTimezoneOffset();
 
+  // #2451 — report each puzzle attempt as a per-session game so it earns Arcade
+  // XP, shows in Profile history and can be measured by the daily challenge.
+  // The session opens on the first accepted guess (not on load), so opening a
+  // finished or untouched puzzle creates no row. Abandons on unmount are handled
+  // by the hook; the snapshot below gives them the result block.
+  const {
+    start: syncStart,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+  } = useGameSync("daily_word");
+
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
+  }, [syncSetProgressSnapshot]);
+
   // ---------------------------------------------------------------------------
   // Countdown timer
   // ---------------------------------------------------------------------------
@@ -676,6 +699,11 @@ export default function DailyWordScreen() {
     try {
       await clearState();
       const todayMeta = await dailyWordApi.getToday(tzOffset, language);
+      // The old puzzle's session must close now: left open, the next guess would
+      // skip start() and be reported against the old puzzle_id.
+      if (syncGetGameId()) {
+        syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+      }
       const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
       setState(fresh);
       setAnswer(null);
@@ -686,7 +714,7 @@ export default function DailyWordScreen() {
     } catch {
       return false;
     }
-  }, [tzOffset, language]);
+  }, [tzOffset, language, syncGetGameId, syncComplete]);
 
   useEffect(() => {
     return () => {
@@ -813,10 +841,6 @@ export default function DailyWordScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  // Use a ref to always access latest state in the async submit
-  const stateRef = useRef<DailyWordState | null>(null);
-  stateRef.current = state;
-
   const lastSubmitMsRef = useRef<number>(0);
 
   const onSubmit = useCallback(async () => {
@@ -864,9 +888,17 @@ export default function DailyWordScreen() {
       const won = tileStates.every((tile) => tile.status === "correct");
       const outOfGuesses = !won && afterApply.current_row >= 6;
 
+      if (!syncGetGameId()) {
+        syncStart({ puzzle_id: s.puzzle_id }, { puzzle_id: s.puzzle_id, language: s.language });
+      }
+      syncMarkStarted();
+
       let finalState = afterApply;
       if (won || outOfGuesses) {
         finalState = markComplete(afterApply, won);
+        // Daily Word has no numeric score: final_score stays null and the
+        // challenge reads the result block instead.
+        syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finalState));
       }
 
       setState(finalState);
@@ -923,7 +955,18 @@ export default function DailyWordScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, showToast, startCountdown, t, tzOffset, resetToToday]);
+  }, [
+    submitting,
+    showToast,
+    startCountdown,
+    t,
+    tzOffset,
+    resetToToday,
+    syncGetGameId,
+    syncStart,
+    syncMarkStarted,
+    syncComplete,
+  ]);
 
   const handleKey = useCallback(
     (key: string) => {

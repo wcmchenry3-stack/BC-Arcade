@@ -5,6 +5,7 @@ import {
   deleteLastLetter,
   markComplete,
   buildShareText,
+  sessionResult,
 } from "../engine";
 import type { TileState } from "../types";
 
@@ -254,5 +255,46 @@ describe("buildShareText", () => {
     const text = buildShareText(s, "https://bcarcade.com/daily-word");
     expect(text).toContain("Daily Word #1 — X/6");
     expect(text).toContain("⬜⬜⬜⬜⬜");
+  });
+});
+
+describe("sessionResult (#2451)", () => {
+  const tiles = (word: string, status: TileState["status"]): TileState[] =>
+    word.split("").map((letter) => ({ letter, status }));
+
+  it("reports an empty attempt when there is no state", () => {
+    expect(sessionResult(null)).toEqual({ is_complete: false, won: false, guesses_used: 0 });
+  });
+
+  it("reports an untouched puzzle as zero guesses", () => {
+    expect(sessionResult(initialState("2026-05-03:en", 5, "en"))).toEqual({
+      is_complete: false,
+      won: false,
+      guesses_used: 0,
+    });
+  });
+
+  it("counts submitted rows mid-puzzle without marking it complete", () => {
+    let s = initialState("2026-05-03:en", 5, "en");
+    s = applyServerResult(typeWord(s, "crane"), tiles("crane", "absent"));
+    s = applyServerResult(typeWord(s, "stole"), tiles("stole", "present"));
+    s = typeWord(s, "bun"); // a half-typed row is not a guess
+    expect(sessionResult(s)).toEqual({ is_complete: false, won: false, guesses_used: 2 });
+  });
+
+  it("counts the winning guess exactly once (current_row has already advanced)", () => {
+    let s = initialState("2026-05-03:en", 5, "en");
+    s = applyServerResult(typeWord(s, "crane"), tiles("crane", "correct"));
+    s = markComplete(s, true);
+    expect(sessionResult(s)).toEqual({ is_complete: true, won: true, guesses_used: 1 });
+  });
+
+  it("reports a lost puzzle as complete, not won, all six guesses used", () => {
+    let s = initialState("2026-05-03:en", 5, "en");
+    for (const word of ["crane", "stole", "bunny", "fizzy", "hippo", "jazzy"]) {
+      s = applyServerResult(typeWord(s, word), tiles(word, "absent"));
+    }
+    s = markComplete(s, false);
+    expect(sessionResult(s)).toEqual({ is_complete: true, won: false, guesses_used: 6 });
   });
 });
