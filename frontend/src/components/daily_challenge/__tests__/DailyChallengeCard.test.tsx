@@ -146,7 +146,7 @@ describe("DailyChallengeCard — goals", () => {
       goals: [
         goal("daily_word", "won_guesses_used_at_most", 4),
         goal("twenty48", "highest_tile_at_least", 512),
-        goal("mahjong", "won_duration_ms_at_most", 480_000),
+        goal("mahjong", "won_duration_ms_at_most", 8),
         goal("blackjack", "hands_won_at_least", 3),
         goal("freecell", "won_moves_at_most", 100),
         goal("blackjack", "chips_gained", null),
@@ -157,7 +157,7 @@ describe("DailyChallengeCard — goals", () => {
       await findByLabelText("Solve Daily Word in 4 guesses or fewer, not completed yet")
     ).toBeTruthy();
     expect(await findByLabelText("Reach the 512 tile in 2048, not completed yet")).toBeTruthy();
-    // The backend sends milliseconds; the player reads minutes.
+    // The target is already in minutes (api.ts converts the wire's milliseconds).
     expect(
       await findByLabelText("Clear Mahjong Solitaire in 8 minutes or less, not completed yet")
     ).toBeTruthy();
@@ -261,6 +261,20 @@ describe("DailyChallengeCard — goals", () => {
     expect(await findByText("All done! A new challenge arrives tomorrow.")).toBeTruthy();
   });
 
+  it("renders no card when every goal belongs to a hidden game", async () => {
+    __forceStoreBuildForTests(true);
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        { id: "h1", gameSlug: "yacht", kind: "won", target: null, completed: false },
+        { id: "h2", gameSlug: "hearts", kind: "won", target: null, completed: false },
+      ],
+    });
+    const { queryByTestId } = await renderCard();
+    await waitFor(() => expect(mockGetDailyChallenge).toHaveBeenCalled());
+    await waitFor(() => expect(queryByTestId("daily-challenge-card")).toBeNull());
+  });
+
   it("does not claim victory for a challenge with no goals", async () => {
     mockGetDailyChallenge.mockResolvedValue({ challengeId: "empty", goals: [] });
     const { findByText, queryByText } = await renderCard();
@@ -339,6 +353,28 @@ describe("DailyChallengeCard — loading, offline and failure", () => {
 
     expect(queryByText("1 of 3 complete")).toBeTruthy();
     expect(queryByText("Check your connection")).toBeNull();
+  });
+
+  it("does not let a degraded free-slate answer overwrite a challenge it already holds", async () => {
+    mockGetDailyChallenge.mockResolvedValueOnce(challenge(["g1", "g2"]));
+    const { findByText, queryByText } = await renderCard();
+    await findByText("2 of 3 complete");
+
+    // /status hiccuped and the api fell back to /today: same goals, no progress known.
+    mockGetDailyChallenge.mockResolvedValueOnce({ ...challenge(), isFallback: true });
+    await act(async () => {
+      appStateListener?.("active");
+    });
+    await waitFor(() => expect(mockGetDailyChallenge).toHaveBeenCalledTimes(2));
+
+    expect(queryByText("2 of 3 complete")).toBeTruthy();
+    expect(queryByText("0 of 3 complete")).toBeNull();
+  });
+
+  it("shows the free-slate fallback when it is all there is", async () => {
+    mockGetDailyChallenge.mockResolvedValue({ ...challenge(), isFallback: true });
+    const { findByText } = await renderCard();
+    expect(await findByText("0 of 3 complete")).toBeTruthy();
   });
 
   it("keeps showing the last known challenge if the device then goes offline", async () => {

@@ -1,5 +1,6 @@
 const mockRequest = jest.fn();
 jest.mock("../../_shared/httpClient", () => ({
+  ...jest.requireActual("../../_shared/httpClient"),
   createGameClient: () => (path: string) => mockRequest(path),
 }));
 
@@ -101,7 +102,7 @@ describe("dailyChallengeApi.getDailyChallenge — /status is the source of truth
           id: "mahjong:won_duration_ms_at_most:480000",
           gameSlug: "mahjong",
           kind: "won_duration_ms_at_most",
-          target: 480000,
+          target: 8, // the wire's 480000 ms, as minutes
           completed: false,
         },
         {
@@ -135,11 +136,51 @@ describe("dailyChallengeApi.getDailyChallenge — /status is the source of truth
   });
 });
 
+describe("dailyChallengeApi.getDailyChallenge — target units", () => {
+  const goalWith = (kind: string, target: number | null) => ({
+    id: `mahjong:${kind}`,
+    game_type: "mahjong",
+    kind,
+    target,
+    completed: false,
+    best_score: null,
+  });
+
+  it("converts any time-limit kind's milliseconds to minutes and leaves other targets alone", async () => {
+    respond({
+      status: {
+        ...status,
+        goals: [
+          goalWith("won_duration_ms_at_most", 90_000),
+          goalWith("duration_ms_at_least", 120_000),
+          goalWith("pairs_at_least", 10),
+        ],
+      },
+    });
+    const targets = (await dailyChallengeApi.getDailyChallenge(0)).goals.map((g) => g.target);
+    expect(targets).toEqual([1.5, 2, 10]);
+  });
+
+  it("converts the fallback slate's time limits too", async () => {
+    respond({
+      today: { ...today, goals: [goalWith("won_duration_ms_at_most", 480_000)] },
+      status: new Error("HTTP 500"),
+    });
+    expect((await dailyChallengeApi.getDailyChallenge(0)).goals[0]?.target).toBe(8);
+  });
+});
+
 describe("dailyChallengeApi.getDailyChallenge — /today fallback", () => {
-  it("falls back to the free slate, all goals not done, when /status fails", async () => {
+  it("does not mark a /status answer as a fallback", async () => {
+    respond({ status });
+    expect((await dailyChallengeApi.getDailyChallenge(0)).isFallback).toBeUndefined();
+  });
+
+  it("falls back to the free slate, marked and with no goal done, when /status fails", async () => {
     respond({ today, status: new Error("HTTP 500") });
     const result = await dailyChallengeApi.getDailyChallenge(120);
     expect(mockRequest).toHaveBeenCalledWith(`${TODAY_PATH}?tz_offset_minutes=120`);
+    expect(result.isFallback).toBe(true);
     expect(result.challengeId).toBe("2026-09-27");
     expect(result.goals.map((goal) => goal.id)).toEqual(today.goals.map((goal) => goal.id));
     expect(result.goals.every((goal) => !goal.completed)).toBe(true);
@@ -153,10 +194,24 @@ describe("dailyChallengeApi.getDailyChallenge — /today fallback", () => {
   it("falls back when /status is not the shape this build expects (older backend)", async () => {
     respond({ today, status: { challenge_id: "2026-09-27", completed_goal_ids: [] } });
     const result = await dailyChallengeApi.getDailyChallenge(0);
+    expect(result.isFallback).toBe(true);
     expect(result.goals).toHaveLength(today.goals.length);
   });
 
-  it("rejects, with the fallback's error, when both requests fail", async () => {
+  it("falls back rather than read a goal with no completed flag as not done", async () => {
+    const { completed: _omitted, ...noFlag } = status.goals[0]!;
+    respond({ today, status: { ...status, goals: [noFlag] } });
+    expect((await dailyChallengeApi.getDailyChallenge(0)).isFallback).toBe(true);
+  });
+
+  it("rethrows a network error without trying /today, so retry and offline handling see it once", async () => {
+    respond({ today, status: new TypeError("Failed to fetch") });
+    await expect(dailyChallengeApi.getDailyChallenge(0)).rejects.toThrow("Failed to fetch");
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).not.toHaveBeenCalledWith(expect.stringContaining(TODAY_PATH));
+  });
+
+  it("rejects, with the fallback's error, when the server fails both requests", async () => {
     respond({ today: new Error("fallback failed"), status: new Error("HTTP 500") });
     await expect(dailyChallengeApi.getDailyChallenge(0)).rejects.toThrow("fallback failed");
   });

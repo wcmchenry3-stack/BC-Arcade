@@ -9,8 +9,6 @@ import { isGameVisible } from "../../entitlements/gameVisibility";
 import type { ChallengeGoal } from "../../game/daily_challenge/api";
 import { useDailyChallenge } from "../../game/daily_challenge/useDailyChallenge";
 
-const MS_PER_MINUTE = 60_000;
-
 /**
  * Today's cross-game challenge, shown at the top of Home (#2392).
  *
@@ -26,21 +24,22 @@ export default function DailyChallengeCard() {
 
   const gradient: [string, string] = [colors.tertiary, colors.secondary];
 
+  // A store build hides some games; never show a goal the player can't play.
+  const goals = challenge?.goals.filter((goal) => isGameVisible(goal.gameSlug)) ?? [];
+  // Every goal belongs to a hidden game: there is nothing playable to show.
+  const nothingPlayable = challenge !== null && challenge.goals.length > 0 && goals.length === 0;
+
   /**
    * Each game words its own goals: `goal.<gameSlug>.<kind>`. `count` drives the
-   * plural forms of the "how many" kinds; a mahjong time limit arrives in ms and
-   * is shown in minutes. A game/kind pair this build has no wording for (a newer
-   * backend) degrades to a plain "Play {game}" rather than a raw key.
+   * plural forms of the "how many" kinds (a time limit's target is already in
+   * minutes — see `ChallengeGoal.target`). A game/kind pair this build has no
+   * wording for (a newer backend) degrades to a plain "Play {game}" rather than a raw key.
    */
   function goalLabel(goal: ChallengeGoal): string {
     const game = gameTitle(t, goal.gameSlug);
     const target = goal.target;
-    const count =
-      target !== null && goal.kind.endsWith("_duration_ms_at_most")
-        ? Math.round((target / MS_PER_MINUTE) * 100) / 100
-        : target;
     const key = `daily_challenge:goal.${goal.gameSlug}.${goal.kind}`;
-    const options = { game, target, count: count ?? undefined };
+    const options = { game, target, count: target ?? undefined };
     return i18n.exists(key, options)
       ? t(key, options)
       : t("daily_challenge:goal.fallback", { game });
@@ -48,8 +47,6 @@ export default function DailyChallengeCard() {
 
   function renderBody() {
     if (challenge) {
-      // A store build hides some games; never show a goal the player can't play.
-      const goals = challenge.goals.filter((goal) => isGameVisible(goal.gameSlug));
       const total = goals.length;
       const done = goals.filter((goal) => goal.completed).length;
       const allDone = total > 0 && done === total;
@@ -160,7 +157,7 @@ export default function DailyChallengeCard() {
     );
   }
 
-  if (phase === "unavailable") return null;
+  if (phase === "unavailable" || nothingPlayable) return null;
 
   return (
     <View

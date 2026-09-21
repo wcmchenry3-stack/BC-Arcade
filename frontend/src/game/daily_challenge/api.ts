@@ -16,7 +16,7 @@
  * list is never built from one and its completion read from the other.
  */
 
-import { createGameClient } from "../_shared/httpClient";
+import { createGameClient, isNetworkError } from "../_shared/httpClient";
 
 const request = createGameClient({ apiTag: "daily_challenge" });
 
@@ -34,7 +34,11 @@ export interface ChallengeGoal {
    * words it as `goal.<gameSlug>.<kind>`.
    */
   readonly kind: string;
-  /** The number to reach (or stay under) for the kinds that have one; else null. */
+  /**
+   * The number to reach (or stay under) for the kinds that have one; else null.
+   * In display units: the wire sends time limits (`*duration_ms*` kinds) in
+   * milliseconds and this is minutes, so the card never needs to know the wire unit.
+   */
   readonly target: number | null;
   readonly completed: boolean;
 }
@@ -42,6 +46,12 @@ export interface ChallengeGoal {
 export interface DailyChallenge {
   readonly challengeId: string;
   readonly goals: readonly ChallengeGoal[];
+  /**
+   * True when `/status` could not be read and this is only the free slate from
+   * `/today`, with no progress. A consumer that already holds a real challenge
+   * should keep it rather than replace it with this.
+   */
+  readonly isFallback?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,19 +79,36 @@ interface WireStatus {
   readonly goals: readonly WireGoalStatus[];
 }
 
-function toDailyChallenge(
-  challengeId: string,
-  goals: readonly (WireGoal & { readonly completed?: boolean })[]
-): DailyChallenge {
+const MS_PER_MINUTE = 60_000;
+
+function toGoal(goal: WireGoal, completed: boolean): ChallengeGoal {
+  const isDuration = goal.kind.includes("duration_ms");
+  const target =
+    typeof goal.target === "number" && isDuration
+      ? Math.round((goal.target / MS_PER_MINUTE) * 100) / 100
+      : (goal.target ?? null);
+  return { id: goal.id, gameSlug: goal.game_type, kind: goal.kind, target, completed };
+}
+
+/** Throws on a body that is not the `/status` contract, so the caller can degrade to `/today`. */
+function fromStatus(status: WireStatus): DailyChallenge {
+  if (!Array.isArray(status.goals)) throw new Error("daily-challenge /status has no goals");
   return {
-    challengeId,
-    goals: goals.map((goal) => ({
-      id: goal.id,
-      gameSlug: goal.game_type,
-      kind: goal.kind,
-      target: goal.target ?? null,
-      completed: goal.completed ?? false,
-    })),
+    challengeId: status.challenge_id,
+    goals: status.goals.map((goal) => {
+      if (typeof goal.completed !== "boolean") {
+        throw new Error("daily-challenge /status goal has no completed flag");
+      }
+      return toGoal(goal, goal.completed);
+    }),
+  };
+}
+
+function fromToday(today: WireToday): DailyChallenge {
+  return {
+    challengeId: today.challenge_id,
+    goals: today.goals.map((goal) => toGoal(goal, false)),
+    isFallback: true,
   };
 }
 
@@ -90,18 +117,19 @@ export const dailyChallengeApi = {
    * Today's challenge with the caller's progress, for the local day
    * `tzOffsetMinutes` east of UTC.
    *
-   * Asks `/status` first. Only if that fails does it fall back to the public
-   * free slate from `/today` (every goal shown as not done); if that fails too,
-   * its error is the one thrown, so the caller can tell offline from a server fault.
+   * Asks `/status`. If the server answers but `/status` fails or is not the shape
+   * this build expects, it degrades to the public free slate from `/today` (marked
+   * `isFallback`, every goal not done). A network error is rethrown untouched:
+   * `/today` would fail the same way, and the caller's retry/backoff and its
+   * offline state depend on seeing it once, not twice.
    */
   getDailyChallenge: async (tzOffsetMinutes: number): Promise<DailyChallenge> => {
     const query = `?tz_offset_minutes=${tzOffsetMinutes}`;
     try {
-      const status = await request<WireStatus>(`/daily-challenge/status${query}`);
-      return toDailyChallenge(status.challenge_id, status.goals);
-    } catch {
-      const today = await request<WireToday>(`/daily-challenge/today${query}`);
-      return toDailyChallenge(today.challenge_id, today.goals);
+      return fromStatus(await request<WireStatus>(`/daily-challenge/status${query}`));
+    } catch (e) {
+      if (isNetworkError(e)) throw e;
+      return fromToday(await request<WireToday>(`/daily-challenge/today${query}`));
     }
   },
 };

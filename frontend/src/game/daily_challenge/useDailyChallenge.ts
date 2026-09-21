@@ -32,7 +32,8 @@ function tzOffsetMinutes(): number {
  * checkmark appears on the way back from it).
  *
  * Must be used inside a screen — it subscribes to that screen's `focus` event.
- * A failed refetch keeps the last known challenge rather than blanking it.
+ * A failed refetch, or one that only reaches the free-slate fallback, keeps the
+ * last known challenge rather than blanking or downgrading it.
  */
 export function useDailyChallenge(): DailyChallengeResult {
   const navigation = useNavigation();
@@ -59,7 +60,9 @@ export function useDailyChallenge(): DailyChallengeResult {
       .then(() => withRetry(() => dailyChallengeApi.getDailyChallenge(tzOffsetMinutes())))
       .then((next) => {
         if (!mounted.current) return;
-        setChallenge(next);
+        // A degraded free-slate answer (no progress) must not overwrite a challenge we
+        // already hold — a hiccup in /status would otherwise reset "2 of 3" to "0 of 3".
+        setChallenge((prev) => (next.isFallback && prev ? prev : next));
         setFailure(null);
       })
       .catch((e: unknown) => {
