@@ -24,8 +24,13 @@ class DailyWordResult(BaseModel):
     "finish the puzzle" goal, ``won`` for the win goal, and ``guesses_used`` for
     the "win in N guesses" goal. An abandoned attempt reports
     ``is_complete=False, won=False`` plus the guesses made so far.
+
+    ``guesses_used`` has no upper bound on purpose: the board size lives in the
+    client, and a 400 on ``/complete`` is dead-lettered by the sync worker, which
+    would silently lose a finished game's XP and challenge credit if the board
+    ever gained a row.
     """
 
     is_complete: bool
     won: bool
-    guesses_used: int = Field(ge=0, le=6)
+    guesses_used: int = Field(ge=0)

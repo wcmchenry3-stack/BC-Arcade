@@ -61,12 +61,15 @@ def test_result_ignores_unknown_keys_so_newer_builds_still_complete() -> None:
         {"is_complete": True, "guesses_used": 3},  # won missing
         {"is_complete": True, "won": True},  # guesses_used missing
         {"is_complete": True, "won": True, "guesses_used": -1},
-        {"is_complete": True, "won": True, "guesses_used": 7},  # only 6 rows exist
     ],
 )
 def test_result_rejects_invalid_blocks(bad: dict) -> None:
     with pytest.raises(ValidationError):
         DailyWordResult.model_validate(bad)
+
+
+def test_result_does_not_cap_guesses_so_a_taller_board_cannot_dead_letter_a_game() -> None:
+    assert DailyWordResult.model_validate({"is_complete": True, "won": True, "guesses_used": 8})
 
 
 def _met(result: dict, tier: str) -> bool:

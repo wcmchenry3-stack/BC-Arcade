@@ -661,6 +661,7 @@ export default function DailyWordScreen() {
   const [devExpandedIndex, setDevExpandedIndex] = useState<number | null>(null);
 
   const hasLoadedRef = useRef(false);
+  const mountedRef = useRef(true);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -717,7 +718,9 @@ export default function DailyWordScreen() {
   }, [tzOffset, language, syncGetGameId, syncComplete]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (flipTimerRef.current) clearTimeout(flipTimerRef.current);
@@ -882,6 +885,10 @@ export default function DailyWordScreen() {
           status: 200,
           response: result,
         });
+      // The player left while the guess was in flight. useGameSync's unmount
+      // cleanup has already run, so opening a session now would leave one that
+      // nothing ever completes or abandons.
+      if (!mountedRef.current) return;
       const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
 
       const afterApply = applyServerResult(s, tileStates);

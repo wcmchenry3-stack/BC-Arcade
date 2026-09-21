@@ -498,6 +498,29 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     });
   });
 
+  it("does not open a session for a guess that resolves after the player left", async () => {
+    let resolveGuess: (v: unknown) => void = () => {};
+    dailyWordApi.submitGuess.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGuess = resolve;
+      })
+    );
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      api.unmount();
+    });
+    await act(async () => {
+      resolveGuess({ tiles: tilesFor("zzzzz", "absent") });
+    });
+
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
   it("does not report an abandon when the player never made a guess", async () => {
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
