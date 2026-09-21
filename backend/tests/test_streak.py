@@ -273,8 +273,7 @@ async def test_dev_override_replays_with_the_premium_slate(
 # ---------------------------------------------------------------------------
 
 
-@needs_db
-async def test_the_lookback_is_two_queries_not_one_per_day() -> None:
+async def _statements_for_a_30_day_streak() -> list[str]:
     sid = str(uuid.uuid4())
     for n in range(1, 31):
         await _qualifying_day(sid, _ago(n))
@@ -291,6 +290,20 @@ async def test_the_lookback_is_two_queries_not_one_per_day() -> None:
             assert await compute_streak(db, sid, 0, _NOW) == 30
         finally:
             event.remove(engine, "before_cursor_execute", record)
+    return statements
+
+
+@needs_db
+async def test_the_lookback_is_one_query_not_one_per_day_while_the_slates_match() -> None:
+    # Free and premium templates are identical (as until #2458), so entitlements are moot.
+    assert len(await _statements_for_a_30_day_streak()) == 1
+
+
+@needs_db
+async def test_entitlements_are_one_more_query_and_only_when_the_slates_differ(
+    two_slates: None,
+) -> None:
+    statements = await _statements_for_a_30_day_streak()
     assert len(statements) == 2, statements  # the window of games + the entitlements
 
 
@@ -326,3 +339,19 @@ def test_stats_me_accepts_a_timezone_and_rejects_an_out_of_range_one(client: Tes
     assert ok.status_code == 200 and ok.json()["streak_days"] == 0
     bad = client.get("/stats/me", headers=_headers(sid), params={"tz_offset_minutes": 900})
     assert bad.status_code == 422
+
+
+@needs_db
+def test_a_streak_failure_does_not_take_down_stats_me(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # /stats/me also carries XP and level, which Home and Profile read.
+    async def boom(*_a, **_k) -> int:
+        raise RuntimeError("streak exploded")
+
+    monkeypatch.setattr("stats.router.compute_streak", boom)
+    r = client.get("/stats/me", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["streak_days"] == 0
+    assert "arcade_xp" in body and "arcade_level" in body

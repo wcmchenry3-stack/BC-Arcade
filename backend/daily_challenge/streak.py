@@ -10,19 +10,31 @@ Rule (owner decision, 2026-09-20): count consecutive qualifying days ending **to
 if today already has 2 of 3 goals met; otherwise ending **yesterday** — today is not
 failed, just not finished yet. It stops at the first day with fewer than 2.
 
-Cost: the lookback is capped at ``LOOKBACK_DAYS`` and read with ONE windowed query
-(plus one for the session's entitlements), grouped by local day in Python, rather than
-a query per day. The streak therefore never exceeds ``LOOKBACK_DAYS``; a client showing
-it should render that value as "60+".
+Cost: the lookback is capped at ``LOOKBACK_DAYS`` and read with ONE windowed query,
+grouped by local day in Python, rather than a query per day. The session's
+entitlements are read (one more query) only when some day's free and premium templates
+differ — until #2458 they never do, so today it is one query. The streak never exceeds
+``LOOKBACK_DAYS``: a value equal to it means "at least that many", so a client renders
+it as "60+" (a true 60 and a true 200 look the same — that is the cap, not a bug).
 
 Accepted approximations (documented, not silent):
-- **Current entitlements are used for every past day**, not the ones the session had
-  then. Premium status does not change during the launch window.
 - **Replay means retroactive re-scoring.** History is not stored, so anything that
   changes what a past day's challenge *was* changes the streak: tuning a goal target,
   adding premium goal specs (#2458), or changing ``DAILY_CHALLENGE_SALT`` (which
   reshuffles every day). Treat the salt as permanent once players have streaks, and
   expect a target change to shift streaks — it is not a bug in the replay.
+- **Current entitlements are used for every past day**, not the ones the session had
+  then. Invisible while the two pools are identical; once #2458 gives the premium pool
+  games of its own, buying (or losing) a premium game re-scores the whole window under
+  the other slate, and can break or extend a streak with goals the player never saw.
+- **One UTC offset for the whole window.** The client sends its offset *today*
+  (``tz_offset_minutes``, as for every other route here); a daylight-saving change
+  inside the 60 days moves a game finished within an hour of local midnight onto the
+  neighbouring day. There is no IANA zone on the wire to do better.
+- **History is client-reported.** ``completed_at`` is accepted up to a year back and the
+  result block is unvalidated for some games, so a session can fabricate a streak. The
+  same trust model as ``final_score``; harmless while the streak is a count with no
+  reward — revisit before it earns anything (#2469).
 """
 
 from __future__ import annotations
@@ -40,7 +52,7 @@ from daily_challenge.definitions import (
     local_day_of,
     template_for,
 )
-from daily_challenge.service import EndedGame, evaluate_goal, slate_for_games
+from daily_challenge.service import EndedGame, evaluate_template, slate_for_games
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
 
@@ -95,8 +107,13 @@ async def compute_streak(
             (name, game_facts(metadata, final_score, duration_ms))
         )
 
-    # … and one for the session's entitlements, so the slate rule is pure per day.
-    premium_all, owned = await _premium_and_owned(session, session_id)
+    # Which slate each day uses needs the session's entitlements — but only if some day's
+    # premium template differs from its free one. Until #2458 none do, so skip the query.
+    days = [today.date - timedelta(days=n) for n in range(LOOKBACK_DAYS + 1)]  # today first
+    if any(template_for(d, "premium") != template_for(d, "free") for d in days):
+        premium_all, owned = await _premium_and_owned(session, session_id)
+    else:
+        premium_all, owned = set(), set()
     override = is_dev_override_active()
 
     def qualifies(day: date) -> bool:
@@ -108,20 +125,19 @@ async def compute_streak(
             named = {goal.game_type for goal in premium.goals} & premium_all
             slate = slate_for_games(named, named & owned, override)
             template = premium if slate == "premium" else free
-        ended = by_day.get(day, [])
-        met = sum(1 for goal in template.goals if evaluate_goal(goal, ended).completed)
+        met = sum(
+            1 for status in evaluate_template(template, by_day.get(day, [])) if status.completed
+        )
         return met >= GOALS_TO_QUALIFY
 
+    # Newest first. Today is optional: if it has not qualified yet it is not a break —
+    # the run simply ends yesterday — but any earlier day that fails ends it.
     streak = 0
-    day = today.date
-    if qualifies(day):
-        streak = 1
-    day -= timedelta(days=1)
-    for _ in range(LOOKBACK_DAYS):
-        if not qualifies(day):
+    for i, day in enumerate(days):
+        if qualifies(day):
+            streak += 1
+        elif i > 0:
             break
-        streak += 1
-        day -= timedelta(days=1)
     return min(streak, LOOKBACK_DAYS)
 
 

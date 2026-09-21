@@ -5,6 +5,8 @@ Thin wrapper — actual aggregation lives in games.service.get_stats_for_session
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Query, Request
 
 from daily_challenge.streak import compute_streak
@@ -16,6 +18,7 @@ from limiter import limiter, session_key
 from session import get_session_id
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=StatsResponse)
@@ -30,7 +33,15 @@ async def get_my_stats(
     factory = get_session_factory()
     async with factory() as db:
         summary = await games_service.get_stats_for_session(db, session_id=sid)
-        streak_days = await compute_streak(db, sid, tz_offset_minutes)
+        try:
+            streak_days = await compute_streak(db, sid, tz_offset_minutes)
+        except Exception:
+            # The streak is a secondary count on the path that also carries XP and level,
+            # which Home and Profile read: a failure here (a transient DB error, a bad
+            # pool or salt) must not take the whole response down. Logged at ERROR so
+            # Sentry still sees it.
+            logger.exception("streak computation failed for /stats/me")
+            streak_days = 0
     progression = compute_progression(summary)
     return StatsResponse(
         total_games=summary.total_games,

@@ -86,6 +86,15 @@ def slate_for_games(
     return "premium" if override or named <= set(owned) else "free"
 
 
+def evaluate_template(template: Template, ended: list[EndedGame]) -> tuple[GoalStatus, ...]:
+    """Every goal of ``template`` evaluated against one day's finished games.
+
+    The one place a day is scored: ``get_status_for_session`` (today, live) and the
+    streak (past days, replayed) both call it, so they cannot disagree.
+    """
+    return tuple(evaluate_goal(goal, ended) for goal in template.goals)
+
+
 async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Slate:
     """Which slate this session's challenge for ``day`` is drawn from (#2454).
 
@@ -166,5 +175,5 @@ async def get_status_for_session(
         day=day,
         slate=slate,
         template=template,
-        goals=tuple(evaluate_goal(goal, ended) for goal in template.goals),
+        goals=evaluate_template(template, ended),
     )
