@@ -654,6 +654,9 @@ _DAY = date(2026, 10, 9)
 
 @pytest.fixture()
 def two_slates(monkeypatch: pytest.MonkeyPatch) -> Template:
+    # A shell that exports the dev override must not change what these assert.
+    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+
     def pick(_day: date, slate: str = "free") -> Template:
         return _PREMIUM_DAY if slate == "premium" else _FIXED
 
@@ -719,6 +722,74 @@ async def test_a_premium_day_naming_no_premium_game_is_the_free_slate() -> None:
     await _grant(sid, *_ALL_PREMIUM_SLUGS)
     assert await _slate(sid) == "free"
     assert template_for(_DAY, "premium") == template_for(_DAY, "free")
+
+
+@needs_db
+async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
+    # The slate tests read real game_types rows — fail loudly, and here, if the
+    # seed the migrations produce ever stops matching what they assume.
+    factory = get_session_factory()
+    async with factory() as db:
+        premium = set(
+            (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
+        )
+    assert {"yacht", "sudoku", "cascade", "hearts"} <= premium
+
+
+@needs_db
+async def test_override_follows_the_same_rule_as_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Real pools: nothing premium is named, so the override changes nothing — dev
+    # must not report "premium" while production would say "free".
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    assert await _slate(str(uuid.uuid4())) == "free"
+
+
+@needs_db
+async def test_a_differing_premium_template_naming_only_free_games_is_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    only_free = Template("premium_free_games_only", (*_FIXED.goals, _FIXED.goals[0]))
+
+    def pick(_day: date, slate: str = "free") -> Template:
+        return only_free if slate == "premium" else _FIXED
+
+    monkeypatch.setattr("daily_challenge.service.template_for", pick)
+    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    assert await _slate(str(uuid.uuid4())) == "free"
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    assert await _slate(str(uuid.uuid4())) == "free"  # the override does not skip the rule
+
+
+@needs_db
+async def test_identical_templates_skip_the_query() -> None:
+    statements: list[str] = []
+    factory = get_session_factory()
+    async with factory() as db:
+        engine = db.sync_session.get_bind()
+
+        def record(_conn, _cursor, statement, *_rest) -> None:
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            assert await service.resolve_slate(db, str(uuid.uuid4()), _DAY) == "free"
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+    assert statements == [], "the slate is moot when the templates match — no round trip"
+
+
+@needs_db
+async def test_a_mid_day_entitlement_change_swaps_the_challenge(two_slates: Template) -> None:
+    # Slate is resolved live and nothing pins it, so buying the last premium game a
+    # premium day names switches the next /status to the premium template. Pinned
+    # here so the behaviour is deliberate, not an accident.
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    assert await _slate(sid) == "free"
+    await _grant(sid, "sudoku")
+    assert await _slate(sid) == "premium"
 
 
 @needs_db

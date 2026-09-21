@@ -76,14 +76,22 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     game that day's premium template names — a partly-entitled session would
     otherwise be handed a goal in a game it cannot open — else the free slate.
     A premium template naming no premium game has nothing to unlock, so it is
-    the free slate too. ``ENTITLEMENT_DEV_OVERRIDE`` makes every session
-    premium-eligible, as it does everywhere else.
+    the free slate too. ``ENTITLEMENT_DEV_OVERRIDE`` counts every named premium
+    game as owned, so the dev API follows the same rule as production rather than
+    a special case of its own.
 
-    One statement: the template's games joined to this session's entitlements.
+    When the two templates are identical (always, until #2458 gives the premium
+    pool games of its own) the slate is moot and no query runs — ``/status`` is
+    refreshed on every Home focus. Otherwise one statement: the template's games
+    joined to this session's entitlements.
+
+    Live means a mid-day entitlement change swaps the day's challenge on the next
+    call — nothing is stored to pin it (the feature is stateless by design).
     """
-    if is_dev_override_active():
-        return "premium"
-    named = {goal.game_type for goal in template_for(day, "premium").goals}
+    premium_template = template_for(day, "premium")
+    if premium_template == template_for(day, "free"):
+        return "free"
+    named = {goal.game_type for goal in premium_template.goals}
     rows = (
         await session.execute(
             select(GameType.name, GameEntitlement.game_slug)
@@ -100,6 +108,8 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     ).all()
     if not rows:
         return "free"
+    if is_dev_override_active():
+        return "premium"
     return "premium" if all(owned is not None for _, owned in rows) else "free"
 
 

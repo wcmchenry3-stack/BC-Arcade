@@ -360,10 +360,13 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   `game_types.is_premium` and the session's `game_entitlements`: a session gets
   the **premium** slate only if it owns **every** premium game that day's premium
   template names — otherwise it would be handed a goal in a game it cannot open —
-  else the free slate. `ENTITLEMENT_DEV_OVERRIDE` makes every session
-  premium-eligible, as elsewhere (§10.4). Premium-only goal specs are post-launch
-  (#2458), so today the premium template names no premium game and every session
-  resolves to the free slate. Two guards keep the static pool honest: a test
+  else the free slate. `ENTITLEMENT_DEV_OVERRIDE` counts every named premium
+  game as owned (§10.4) but follows the same rule, so dev never reports a slate
+  production would not. Premium-only goal specs are post-launch (#2458), so today
+  the two templates are identical, every session resolves to the free slate —
+  override or not — and no query runs. The slate is live: nothing pins it for the
+  day, so a mid-day entitlement change swaps the challenge on the next `/status`
+  (the feature is stateless by design). Two guards keep the static pool honest: a test
   fails if any free-pool game is premium in `game_types` (the pool would then
   name a game a free player cannot open), and the free pool is disjoint from the
   premium slugs, which a store build hides (§10.7).
