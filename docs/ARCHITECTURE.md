@@ -318,3 +318,53 @@ Three tiers, and no tier ever points at another's data:
 
 Operational detail — env vars, first deploy, connection rules — is in
 [`RENDER.md`](RENDER.md).
+
+---
+
+## 12. Daily cross-game challenge
+
+One challenge a day, three goals — **Daily Word always, plus two other games** —
+the thread that makes the arcade one product rather than a folder of games (App
+Review guideline 4.2). Backend: `backend/daily_challenge/`.
+
+- **Stateless, like Daily Word.** No table, no migration. Today's challenge is
+  derived from `date.toordinal()` and `DAILY_CHALLENGE_SALT` for the player's
+  **local** date (`tz_offset_minutes`, the same convention as
+  `/daily-word/today`): the non-Daily-Word games sit in a salt-shuffled rotation
+  and each day steps two places along it, so the day's two games never repeat the
+  previous day's. The salt is a per-environment secret, so the schedule cannot be
+  read off the public repo. (The day ordinal, not Daily Word's `YYYYMMDD`
+  number, whose jumps at month ends can repeat a pick.) Tiers rotate by day too.
+- **Completion is a read-side view.** `GET /daily-challenge/status` runs one
+  query over the session's own `games` rows finished inside the local day and
+  evaluates the goals in Python. It is the data `PATCH /games/{id}/complete`
+  already writes, so a game played offline counts as soon as the sync queue
+  uploads it (§4) — by the time it was played, not the time it was uploaded.
+- **Goals are per game, over the result envelope (#2449).** No one measure fits
+  every game, so each game owns three goals (easy / medium / hard) in its own
+  terms — moves, pairs, highest tile, chips, guesses. Each goal is a predicate
+  over one row's measures: the result block in `games.metadata` plus the
+  `final_score` / `duration_ms` columns (`game_facts`). It is met if any one of
+  the player's games of that type satisfies it. `games.outcome` is never read —
+  a game reports `won` and its progress on abandon, so progress goals ("make 10
+  moves") credit a game the player left, and `won` goals need a win. The fields
+  each game must send are listed in `definitions.py`.
+- **Rules the pick enforces (tested):** Daily Word every day; two distinct other
+  games; none repeated from the previous day; at most one goal per day that
+  requires a win (luck-dependent — a Klondike deal is not always winnable), the
+  win slot rotating by day and any extra win goal falling back to that game's
+  easy goal, which never needs a win.
+- **Two slates.** `FREE_GOAL_POOL` (the six free games) and a superset
+  `PREMIUM_GOAL_POOL`. Which a session gets is decided per request from
+  `game_types.is_premium` + entitlements, never from a list in this module
+  (#2454). Premium-only goal specs are post-launch, so today the pools match.
+  A test keeps the free pool disjoint from the premium slugs: a store build
+  hides those games (§10.7), so such a goal could never be met.
+- **No copy on the wire.** Responses carry `kind` (per game, e.g. `won`,
+  `moves_at_least`, `highest_tile_at_least`), `game_type` and `target`; the
+  client words them in its own i18n namespace.
+
+| Route                         | Auth                         | Limit  |
+| ----------------------------- | ---------------------------- | ------ |
+| `GET /daily-challenge/today`  | none (IP-keyed)              | 60/min |
+| `GET /daily-challenge/status` | `X-Session-ID` (session-key) | 60/min |
