@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
 import { act, render, fireEvent, waitFor } from "@testing-library/react-native";
@@ -53,7 +53,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getMyStats: () => mockGetMyStats() },
 }));
 
-function statsAtLevel(level: number): StatsResponse {
+function statsAtLevel(level: number, streakDays = 0): StatsResponse {
   return {
     total_games: 0,
     by_game: {},
@@ -62,6 +62,7 @@ function statsAtLevel(level: number): StatsResponse {
     arcade_level: level,
     xp_into_level: 0,
     xp_for_next_level: 100,
+    streak_days: streakDays,
   };
 }
 
@@ -375,6 +376,114 @@ describe("HomeScreen — Arcade level pill (#2391)", () => {
     });
     await waitFor(() => expect(mockGetMyStats).toHaveBeenCalledTimes(2));
     expect(getByText("Lv 3")).toBeTruthy();
+  });
+});
+
+describe("HomeScreen — streak badge (#2457)", () => {
+  it("shows the streak next to the level pill, with a plural-aware label", async () => {
+    mockGetMyStats.mockResolvedValue(statsAtLevel(4, 5));
+    const { findByText, getByLabelText } = await renderScreen();
+    expect(await findByText("🔥 5")).toBeTruthy();
+    expect(getByLabelText("Current streak: 5 days")).toBeTruthy();
+    expect(getByLabelText("Arcade level 4")).toBeTruthy();
+  });
+
+  it("uses the singular form for a one-day streak", async () => {
+    mockGetMyStats.mockResolvedValue(statsAtLevel(1, 1));
+    const { findByLabelText } = await renderScreen();
+    expect(await findByLabelText("Current streak: 1 day")).toBeTruthy();
+  });
+
+  it("omits the badge for a zero streak, keeping the level pill", async () => {
+    mockGetMyStats.mockResolvedValue(statsAtLevel(2, 0));
+    const { findByText, queryByText, queryByLabelText } = await renderScreen();
+    expect(await findByText("Lv 2")).toBeTruthy();
+    expect(queryByText(/🔥/)).toBeNull();
+    expect(queryByLabelText(/^Current streak/)).toBeNull();
+  });
+
+  it("omits the badge when the server predates the streak (field missing)", async () => {
+    const legacy: Partial<StatsResponse> = statsAtLevel(3);
+    delete legacy.streak_days;
+    mockGetMyStats.mockResolvedValue(legacy as StatsResponse);
+    const { findByText, queryByText } = await renderScreen();
+    expect(await findByText("Lv 3")).toBeTruthy();
+    expect(queryByText(/🔥/)).toBeNull();
+  });
+
+  it("omits the badge and still renders every card when /stats/me fails", async () => {
+    mockGetMyStats.mockRejectedValue(new Error("500 server error"));
+    const { getByLabelText, queryByText, queryByLabelText } = await renderScreen();
+    await waitFor(() => expect(mockGetMyStats).toHaveBeenCalledTimes(1));
+    expect(queryByText(/🔥/)).toBeNull();
+    expect(queryByLabelText(/^Current streak/)).toBeNull();
+    expect(getByLabelText("Play Daily Word")).toBeTruthy();
+  });
+
+  it("renders no badge before /stats/me answers", async () => {
+    mockGetMyStats.mockImplementation(() => new Promise(() => {}));
+    const { getByLabelText, queryByText } = await renderScreen();
+    expect(getByLabelText("Play Daily Word")).toBeTruthy();
+    expect(queryByText(/🔥/)).toBeNull();
+  });
+
+  it("updates on focus, and drops the badge when the streak resets", async () => {
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 3));
+    const { findByText, queryByText } = await renderScreen();
+    expect(await findByText("🔥 3")).toBeTruthy();
+
+    const focusCalls = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    const onFocus = focusCalls[focusCalls.length - 1][1];
+
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 4));
+    await act(async () => {
+      onFocus();
+    });
+    expect(await findByText("🔥 4")).toBeTruthy();
+
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 0));
+    await act(async () => {
+      onFocus();
+    });
+    await waitFor(() => expect(queryByText(/🔥/)).toBeNull());
+  });
+
+  it("keeps the last known streak when a refetch fails", async () => {
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 6));
+    const { findByText, getByText } = await renderScreen();
+    expect(await findByText("🔥 6")).toBeTruthy();
+
+    const focusCalls = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    const onFocus = focusCalls[focusCalls.length - 1][1];
+    mockGetMyStats.mockRejectedValueOnce(new Error("500 server error"));
+    await act(async () => {
+      onFocus();
+    });
+    await waitFor(() => expect(mockGetMyStats).toHaveBeenCalledTimes(2));
+    expect(getByText("🔥 6")).toBeTruthy();
+  });
+
+  it("refetches when the app returns to the foreground, so a lapsed streak clears overnight", async () => {
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 5));
+    const { findByText, queryByText } = await renderScreen();
+    expect(await findByText("🔥 5")).toBeTruthy();
+
+    // RN's jest preset already makes AppState.addEventListener a jest.fn: read the
+    // callbacks it recorded (Home's and the daily-challenge card's) instead of replacing it.
+    const emit = async (state: string) =>
+      act(async () => {
+        (AppState.addEventListener as jest.Mock).mock.calls
+          .filter(([event]) => event === "change")
+          .forEach(([, cb]) => cb(state));
+      });
+
+    mockGetMyStats.mockResolvedValueOnce(statsAtLevel(1, 0));
+    await emit("background");
+    expect(mockGetMyStats).toHaveBeenCalledTimes(1);
+
+    await emit("active");
+    await waitFor(() => expect(queryByText(/🔥/)).toBeNull());
+    expect(mockGetMyStats).toHaveBeenCalledTimes(2);
   });
 });
 
