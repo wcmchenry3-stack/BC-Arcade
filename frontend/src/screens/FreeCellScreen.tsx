@@ -43,6 +43,7 @@ import {
 } from "../game/freecell/storage";
 import { freecellApi, type ScoreEntry } from "../game/freecell/api";
 import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useGameSync } from "../game/_shared/useGameSync";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
@@ -62,6 +63,10 @@ export default function FreeCellScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   const [state, setState] = useState<FreeCellState | null>(null);
+  // Always the latest state — read by the new-game abandon and the unmount snapshot,
+  // neither of which can close over `state`.
+  const stateRef = useRef<FreeCellState | null>(null);
+  stateRef.current = state;
   const [loading, setLoading] = useState(true);
   const statsRef = useRef<FreeCellStats>({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
 
@@ -73,6 +78,28 @@ export default function FreeCellScreen() {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
   const prevCompleteRef = useRef(false);
+
+  // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
+  // XP, shows in Profile history and can be measured by the daily challenge. This
+  // is separate from the name-gated leaderboard submit (`freecellApi.submitScore`),
+  // which is unchanged. No score is sent, on a win or an abandon: the leaderboard
+  // ranks every row with a non-null `final_score` (fewer moves first), so a scored
+  // session row would duplicate each win as "anon" and rank abandoned games.
+  const {
+    start: syncStart,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+  } = useGameSync("freecell");
+  /** Move count last seen — a rise is the first move of a session. */
+  const seenMovesRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: { won: false, moves: stateRef.current?.moveCount ?? 0 },
+    }));
+  }, [syncSetProgressSnapshot]);
 
   const [showFoundation, setShowFoundation] = useState(false);
   const [showGameWin, setShowGameWin] = useState(false);
@@ -172,6 +199,20 @@ export default function FreeCellScreen() {
     () => setState((prev) => (prev === null ? null : { ...prev, events: [] }))
   );
 
+  // Open the session on the first move made here — not on load, so opening a
+  // resumed or untouched game records nothing. Watching the move count (rather than
+  // hooking handleMove) also covers drag, tap and auto-complete. Must run before
+  // the win effect below: a winning move opens and closes the session in one commit.
+  useEffect(() => {
+    if (state === null || !hasLoadedRef.current) return;
+    const previous = seenMovesRef.current;
+    seenMovesRef.current = state.moveCount;
+    if (previous !== null && state.moveCount > previous && !syncGetGameId()) {
+      syncStart();
+      syncMarkStarted();
+    }
+  }, [state, syncGetGameId, syncStart, syncMarkStarted]);
+
   // Handle win: update stats and clear saved game
   useEffect(() => {
     if (state === null) {
@@ -179,6 +220,10 @@ export default function FreeCellScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
+      syncComplete(
+        { outcome: "completed" },
+        { outcome: "completed", won: true, moves: state.moveCount }
+      );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
@@ -195,7 +240,7 @@ export default function FreeCellScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state]);
+  }, [state, syncComplete]);
 
   const handleMove = useCallback(
     (move: Move) => {
@@ -224,13 +269,21 @@ export default function FreeCellScreen() {
   }, [state]);
 
   const handleNewGame = useCallback(() => {
+    // Close the current session as abandoned (a no-op after a win or before a move).
+    if (syncGetGameId()) {
+      syncComplete(
+        { outcome: "abandoned" },
+        { outcome: "abandoned", won: false, moves: stateRef.current?.moveCount ?? 0 }
+      );
+    }
+    seenMovesRef.current = 0;
     clearGame().catch(() => {});
     setState(dealGame());
     const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
     statsRef.current = updated;
     saveStats(updated).catch(() => {});
     winRecordedRef.current = false;
-  }, []);
+  }, [syncGetGameId, syncComplete]);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;

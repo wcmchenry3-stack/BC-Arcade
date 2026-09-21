@@ -6,6 +6,13 @@ GET  /freecell/leaderboard — returns top-10 scores sorted ascending by
                              move_count (fewer moves = better).
 
 Sort order: ascending move_count; ties broken by completed_at (older wins).
+
+The leaderboard ranks EVERY ``games`` row of this type with a non-null
+``final_score`` — it never looks at ``outcome`` or ``session_id``. The per-session
+rows the app now records through ``POST /games`` + ``PATCH /games/{id}/complete``
+(#2452) therefore send no ``final_score`` (moves travel in the result block), or
+each win would appear here twice — once as "anon" — and an abandoned game with a
+handful of moves would rank first (fewer moves is better).
 """
 
 from __future__ import annotations
