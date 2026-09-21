@@ -354,12 +354,24 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   requires a win (luck-dependent — a Klondike deal is not always winnable), the
   win slot rotating by day and any extra win goal falling back to that game's
   easy goal, which never needs a win.
-- **Two slates.** `FREE_GOAL_POOL` (the six free games) and a superset
-  `PREMIUM_GOAL_POOL`. Which a session gets is decided per request from
-  `game_types.is_premium` + entitlements, never from a list in this module
-  (#2454). Premium-only goal specs are post-launch, so today the pools match.
-  A test keeps the free pool disjoint from the premium slugs: a store build
-  hides those games (§10.7), so such a goal could never be met.
+- **Two slates, resolved per request (#2454).** `FREE_GOAL_POOL` (the six free
+  games) and a superset `PREMIUM_GOAL_POOL` are static spec tables; which slate a
+  session gets is a live database fact. `resolve_slate` runs one join over
+  `game_types.is_premium` and the session's `game_entitlements`: a session gets
+  the **premium** slate only if it owns **every** premium game that day's premium
+  template names — otherwise it would be handed a goal in a game it cannot open —
+  else the free slate. `ENTITLEMENT_DEV_OVERRIDE` makes every session
+  premium-eligible, as elsewhere (§10.4). Premium-only goal specs are post-launch
+  (#2458), so today the premium template names no premium game and every session
+  resolves to the free slate. Two guards keep the static pool honest: a test
+  fails if any free-pool game is premium in `game_types` (the pool would then
+  name a game a free player cannot open), and the free pool is disjoint from the
+  premium slugs, which a store build hides (§10.7).
+- **`/today` is always the free slate; only `/status` can be premium.** `/today`
+  has no session, so it never resolves a slate. For an entitled session the goal
+  list therefore comes from `/status`, which can differ from `/today` in the goals
+  themselves, not just their completion — a client must not build its goals from
+  `/today` and only read completion off `/status` (#2455).
 - **No copy on the wire.** Responses carry `kind` (per game, e.g. `won`,
   `moves_at_least`, `highest_tile_at_least`), `game_type` and `target`; the
   client words them in its own i18n namespace.

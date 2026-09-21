@@ -11,21 +11,23 @@ in ``games.metadata`` plus the score/duration columns) — never ``outcome``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge.definitions import (
     Facts,
     Goal,
     LocalDay,
+    Slate,
     Template,
     game_facts,
     local_day,
     template_for,
 )
-from db.models import Game, GameType
+from db.models import Game, GameEntitlement, GameType
+from entitlements.service import is_dev_override_active
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class GoalStatus:
 @dataclass(frozen=True)
 class ChallengeStatus:
     day: LocalDay
+    slate: Slate
     template: Template
     goals: tuple[GoalStatus, ...]
 
@@ -64,6 +67,42 @@ def evaluate_goal(goal: Goal, ended: list[EndedGame]) -> GoalStatus:
     return GoalStatus(goal=goal, completed=completed, best_score=best_score)
 
 
+async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Slate:
+    """Which slate this session's challenge for ``day`` is drawn from (#2454).
+
+    Live from the database, never from a constant: ``game_types.is_premium``
+    says which games are premium, ``game_entitlements`` says which this session
+    owns. The session gets the **premium** slate only if it owns *every* premium
+    game that day's premium template names — a partly-entitled session would
+    otherwise be handed a goal in a game it cannot open — else the free slate.
+    A premium template naming no premium game has nothing to unlock, so it is
+    the free slate too. ``ENTITLEMENT_DEV_OVERRIDE`` makes every session
+    premium-eligible, as it does everywhere else.
+
+    One statement: the template's games joined to this session's entitlements.
+    """
+    if is_dev_override_active():
+        return "premium"
+    named = {goal.game_type for goal in template_for(day, "premium").goals}
+    rows = (
+        await session.execute(
+            select(GameType.name, GameEntitlement.game_slug)
+            .select_from(GameType)
+            .outerjoin(
+                GameEntitlement,
+                and_(
+                    GameEntitlement.game_slug == GameType.name,
+                    GameEntitlement.session_id == session_id,
+                ),
+            )
+            .where(GameType.name.in_(named), GameType.is_premium.is_(True))
+        )
+    ).all()
+    if not rows:
+        return "free"
+    return "premium" if all(owned is not None for _, owned in rows) else "free"
+
+
 async def get_status_for_session(
     session: AsyncSession,
     *,
@@ -72,7 +111,8 @@ async def get_status_for_session(
     utc_now: datetime | None = None,
 ) -> ChallengeStatus:
     day = local_day(tz_offset_minutes, utc_now)
-    template = template_for(day.date)
+    slate = await resolve_slate(session, session_id, day.date)
+    template = template_for(day.date, slate)
     game_types = {goal.game_type for goal in template.goals}
 
     rows = (
@@ -95,6 +135,7 @@ async def get_status_for_session(
     ]
     return ChallengeStatus(
         day=day,
+        slate=slate,
         template=template,
         goals=tuple(evaluate_goal(goal, ended) for goal in template.goals),
     )
