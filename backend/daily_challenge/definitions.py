@@ -1,10 +1,12 @@
 """Daily cross-game challenge — per-game goals, two slates, deterministic pick (#2392, #2453).
 
-Same stateless pattern as ``daily_word/puzzle.py``: nothing is stored. Each day
+This module is the pure *scheduling policy* — nothing here does I/O. Each day
 gets three goals — **Daily Word always**, plus two goals in two other games —
 picked from the day's ordinal and ``DAILY_CHALLENGE_SALT``. The day *ordinal*
 (not Daily Word's ``YYYYMMDD``) is used because it always steps by one, so month
 ends cannot repeat a pick. ``challenge_id`` is the local date, ``"YYYY-MM-DD"``.
+A day's actual pick is frozen the first time it is requested (``schedule.py``,
+#2493), so this module is only ever consulted for a day not yet frozen.
 
 Goals are per game
 ------------------
@@ -183,6 +185,37 @@ def _chips_gained(game_type: str, tier: Tier) -> Goal:
         return start is not None and end is not None and end > start
 
     return Goal(game_type, "chips_gained", None, tier, True, check)
+
+
+def goal_to_spec(goal: Goal) -> dict[str, Any]:
+    """A goal as JSON-safe data (#2493) — game_type/kind/target/tier, never the
+    ``check`` callable. Round-trips through ``goal_from_spec`` via the same
+    builder that made it, so the rebuilt goal is `==` the original (``Goal``
+    ignores ``check`` in comparisons) whether or not it is still in a live pool."""
+    return {
+        "game_type": goal.game_type,
+        "kind": goal.kind,
+        "target": goal.target,
+        "tier": goal.tier,
+    }
+
+
+def goal_from_spec(spec: Mapping[str, Any]) -> Goal:
+    """Rebuild a goal from ``goal_to_spec`` output, dispatching on ``kind`` to the
+    same builder that produces it in the pools below — never a pool lookup, so a
+    frozen day survives its goal being retuned or removed from the live pool."""
+    game_type, kind, target, tier = spec["game_type"], spec["kind"], spec["target"], spec["tier"]
+    if kind == "completed":
+        return _completed(game_type, tier)
+    if kind == "won":
+        return _won(game_type, tier)
+    if kind == "chips_gained":
+        return _chips_gained(game_type, tier)
+    if kind.startswith("won_") and kind.endswith("_at_most"):
+        return _won_within(game_type, kind[len("won_") : -len("_at_most")], target, tier)
+    if kind.endswith("_at_least"):
+        return _at_least(game_type, kind[: -len("_at_least")], target, tier)
+    raise ValueError(f"cannot rebuild a goal of kind {kind!r}")
 
 
 # Easy / medium / hard per game. Every game's *easy* goal must not require a win
