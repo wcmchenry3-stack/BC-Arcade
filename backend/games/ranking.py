@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Game
+from games.filters import not_abandoned
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ async def compute_rank(
                 select(func.count()).where(
                     Game.game_type_id == game_type_id,
                     Game.final_score.is_not(None),
+                    not_abandoned(),
                     *extra_filters,
                     or_(
                         Game.final_score > score_val,

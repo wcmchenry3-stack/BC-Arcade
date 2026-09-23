@@ -18,11 +18,12 @@ from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import EventType, Game, GameEvent, GameType
+from games.filters import not_abandoned
 from games.registry import get_module
 from vocab import GameOutcome
 
@@ -231,6 +232,10 @@ class GameTypeStats:
     best: int | None
     avg: float | None
     last_played_at: datetime | None
+    # Completed-only count behind Arcade XP (#2472). Set straight from the
+    # aggregate query, never through stats_shape(): a game module must not be
+    # able to shape how much XP it grants.
+    completed_played: int = 0
     best_chips: int | None = None
     current_chips: int | None = None
     best_run_chips: int | None = None
@@ -252,17 +257,28 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     Only counts completed games — in-progress games are excluded from
     played/best/avg so the leaderboard stays stable until a game finishes.
 
+    Abandoned games (#2468 / #2472) are counted but not scored. ``played`` and
+    ``last_played_at`` are lifecycle facts and still include them; every score
+    aggregate (``best`` / ``avg`` / ``latest_score``) and ``completed_played``
+    — the count XP is derived from — excludes them, because the frontend
+    abandon paths do send a ``final_score`` (Sudoku sends the full completion
+    formula, so a 0-error abandon on Hard scores 300).
+
     Per-game stat shaping is delegated to each module's ``stats_shape()``
     method via the registry (#541).  No game-name branches live here.
     """
     # --- aggregate query -------------------------------------------------
+    # Conditional aggregates keep this one round-trip: `case` with no `else`
+    # yields NULL, which count/max/avg all skip.
+    scored = case((not_abandoned(), Game.final_score))
     rows = (
         await session.execute(
             select(
                 GameType.name,
                 func.count(Game.id).label("played"),
-                func.max(Game.final_score).label("best"),
-                func.avg(Game.final_score).label("avg"),
+                func.count(case((not_abandoned(), Game.id))).label("completed_played"),
+                func.max(scored).label("best"),
+                func.avg(scored).label("avg"),
                 func.max(Game.completed_at).label("last_played_at"),
             )
             .select_from(Game)
@@ -278,6 +294,9 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     # --- pre-fetch latest final_score per game type in one query ---------
     # Used by modules (e.g. Blackjack) that need the most-recent score.
     # Subquery: per game_type_id, find the max(completed_at).
+    # Abandoned rows are excluded on both sides (#2468): otherwise quitting a
+    # game would be the "latest" session and blank out Blackjack's
+    # current_chips, which reads through latest_score.
     latest_sq = (
         select(
             Game.game_type_id,
@@ -286,6 +305,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
         .where(
             Game.session_id == session_id,
             Game.completed_at.is_not(None),
+            not_abandoned(),
         )
         .group_by(Game.game_type_id)
         .subquery()
@@ -299,7 +319,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 (Game.game_type_id == latest_sq.c.game_type_id)
                 & (Game.completed_at == latest_sq.c.max_completed_at),
             )
-            .where(Game.session_id == session_id)
+            .where(Game.session_id == session_id, not_abandoned())
         )
     ).all()
     latest_score_by_name: dict[str, int | None] = {
@@ -315,7 +335,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     favorite: str | None = None
     favorite_count = -1
 
-    for name, played, best, avg, last_played in rows:
+    for name, played, completed_played, best, avg, last_played in rows:
         total += played
 
         raw: dict = {
@@ -345,6 +365,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             total_runs=shaped.get("total_runs"),
             runs_completed=shaped.get("runs_completed"),
             current_table=shaped.get("current_table"),
+            completed_played=completed_played,
         )
 
         if played > favorite_count:

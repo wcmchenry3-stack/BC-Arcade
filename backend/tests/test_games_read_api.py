@@ -32,6 +32,11 @@ def client() -> Iterator[TestClient]:
         yield c
 
 
+# Sudoku rows need creation metadata: SudokuMetadata forbids extras and
+# requires a difficulty tier.
+_HARD = {"difficulty": "hard"}
+
+
 def _headers(sid: str) -> dict[str, str]:
     return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
@@ -44,9 +49,18 @@ async def _grant(session_id: str, game_slug: str) -> None:
 
 
 def _create_and_complete(
-    client: TestClient, sid: str, *, game_type: str, final_score: int, outcome: str = "win"
+    client: TestClient,
+    sid: str,
+    *,
+    game_type: str,
+    final_score: int,
+    outcome: str = "win",
+    metadata: dict | None = None,
 ) -> str:
-    r = client.post("/games", headers=_headers(sid), json={"game_type": game_type})
+    body: dict = {"game_type": game_type}
+    if metadata is not None:
+        body["metadata"] = metadata
+    r = client.post("/games", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     gid = r.json()["id"]
     r = client.patch(
@@ -138,6 +152,107 @@ def test_stats_me_reports_arcade_xp_and_level(client: TestClient) -> None:
     assert 1 < level < len(LEVEL_THRESHOLDS)
     assert LEVEL_THRESHOLDS[level - 1] + body["xp_into_level"] == xp
     assert xp + body["xp_for_next_level"] == LEVEL_THRESHOLDS[level]
+
+
+# ---------------------------------------------------------------------------
+# Abandoned games: counted, never scored (#2468 / #2472)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_abandoned_game_is_played_but_not_scored(client: TestClient) -> None:
+    """The Sudoku case from #2468.
+
+    The frontend abandon path sends the *completion* score formula, so a
+    0-error abandon on Hard posts 300 — the same as a perfect solve. It must
+    still count as played, but must not touch best/avg.
+    """
+    sid = str(uuid.uuid4())
+    await _grant(sid, "sudoku")
+    _create_and_complete(
+        client, sid, game_type="sudoku", final_score=100, outcome="completed", metadata=_HARD
+    )
+    _create_and_complete(
+        client, sid, game_type="sudoku", final_score=300, outcome="abandoned", metadata=_HARD
+    )
+
+    body = client.get("/stats/me", headers=_headers(sid)).json()
+    sudoku = body["by_game"]["sudoku"]
+
+    assert sudoku["played"] == 2, "abandons are a lifecycle fact and still count as played"
+    assert sudoku["best"] == 100, "the abandoned 300 must not become the best score"
+    assert sudoku["avg"] == 100.0, "the abandoned 300 must not drag the average"
+
+
+@pytest.mark.asyncio
+async def test_abandoned_game_earns_no_xp_over_the_wire(client: TestClient) -> None:
+    """#2472: the farming exploit, end to end."""
+    sid = str(uuid.uuid4())
+    await _grant(sid, "sudoku")
+    _create_and_complete(
+        client, sid, game_type="sudoku", final_score=100, outcome="completed", metadata=_HARD
+    )
+    baseline = client.get("/stats/me", headers=_headers(sid)).json()["arcade_xp"]
+
+    for _ in range(5):
+        _create_and_complete(
+            client, sid, game_type="sudoku", final_score=300, outcome="abandoned", metadata=_HARD
+        )
+
+    after = client.get("/stats/me", headers=_headers(sid)).json()
+    assert after["arcade_xp"] == baseline, "quitting five games must earn nothing"
+    assert after["by_game"]["sudoku"]["played"] == 6
+
+
+@pytest.mark.asyncio
+async def test_abandoning_a_new_game_type_earns_no_variety_bonus(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    _create_and_complete(client, sid, game_type="twenty48", final_score=2048, outcome="completed")
+    before = client.get("/stats/me", headers=_headers(sid)).json()["arcade_xp"]
+
+    await _grant(sid, "sudoku")
+    _create_and_complete(
+        client, sid, game_type="sudoku", final_score=300, outcome="abandoned", metadata=_HARD
+    )
+
+    after = client.get("/stats/me", headers=_headers(sid)).json()["arcade_xp"]
+    assert after == before, "a game type only ever quit must not unlock its breadth bonus"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "outcome", ["completed", "kept_playing", "win", "loss", "push", "blackjack"]
+)
+async def test_non_abandoned_outcomes_still_score(client: TestClient, outcome: str) -> None:
+    """The predicate is NULL-safe and outcome-inclusive on purpose.
+
+    `kept_playing` (Twenty48 past 2048) and the Blackjack result vocabulary are
+    real finishes — filtering on `outcome == "completed"` would have dropped them.
+    """
+    sid = str(uuid.uuid4())
+    _create_and_complete(client, sid, game_type="twenty48", final_score=2048, outcome=outcome)
+
+    body = client.get("/stats/me", headers=_headers(sid)).json()
+    assert body["by_game"]["twenty48"]["best"] == 2048
+    assert body["arcade_xp"] == BASE_XP_PER_GAME + VARIETY_BONUS_PER_GAME_TYPE
+
+
+@pytest.mark.asyncio
+async def test_abandoned_session_does_not_blank_blackjack_current_chips(
+    client: TestClient,
+) -> None:
+    """Blackjack reads current_chips through latest_score (#2468).
+
+    If the abandon were the "latest" session it would become the player's live
+    chip balance, so the latest-score subquery has to skip abandons too.
+    """
+    sid = str(uuid.uuid4())
+    _create_and_complete(client, sid, game_type="blackjack", final_score=2400, outcome="completed")
+    _create_and_complete(client, sid, game_type="blackjack", final_score=50, outcome="abandoned")
+
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["current_chips"] == 2400
+    assert bj["best_chips"] == 2400
 
 
 # ---------------------------------------------------------------------------
