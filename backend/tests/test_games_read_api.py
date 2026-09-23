@@ -255,6 +255,46 @@ async def test_abandoned_session_does_not_blank_blackjack_current_chips(
     assert bj["best_chips"] == 2400
 
 
+@pytest.mark.asyncio
+async def test_abandoned_session_still_supplies_blackjack_run_metadata(
+    client: TestClient,
+) -> None:
+    """Metadata comes from the latest row of *any* outcome (#2468 review).
+
+    Blackjack writes its cumulative run aggregates at session start, so the
+    newest row always holds the freshest figures — even when that session was
+    later abandoned. "New Game" and unmount are both abandon paths, so a player
+    who has not just cashed out or busted would otherwise lose their whole run
+    history from Profile.
+    """
+    sid = str(uuid.uuid4())
+    # Cash-out: older row, stale aggregates.
+    _create_and_complete(
+        client,
+        sid,
+        game_type="blackjack",
+        final_score=2400,
+        outcome="completed",
+        metadata={"total_runs": 1, "runs_completed": 1, "best_run_chips": 2400},
+    )
+    # Next table, played then navigated away: newest row, freshest aggregates.
+    _create_and_complete(
+        client,
+        sid,
+        game_type="blackjack",
+        final_score=50,
+        outcome="abandoned",
+        metadata={"total_runs": 2, "runs_completed": 1, "best_run_chips": 2400},
+    )
+
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["total_runs"] == 2, "run history must come from the newest row, abandoned or not"
+    assert bj["runs_completed"] == 1
+    assert bj["best_run_chips"] == 2400
+    # ...while the live chip balance still ignores the abandoned table.
+    assert bj["current_chips"] == 2400
+
+
 # ---------------------------------------------------------------------------
 # GET /games/me (history with cursor pagination)
 # ---------------------------------------------------------------------------

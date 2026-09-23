@@ -291,27 +291,36 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
         )
     ).all()
 
-    # --- pre-fetch latest final_score per game type in one query ---------
-    # Used by modules (e.g. Blackjack) that need the most-recent score.
-    # Subquery: per game_type_id, find the max(completed_at).
-    # Abandoned rows are excluded on both sides (#2468): otherwise quitting a
-    # game would be the "latest" session and blank out Blackjack's
-    # current_chips, which reads through latest_score.
-    latest_sq = (
-        select(
-            Game.game_type_id,
-            func.max(Game.completed_at).label("max_completed_at"),
+    # --- pre-fetch the latest row per game type --------------------------
+    # Used by modules (e.g. Blackjack) that need the most-recent score or
+    # metadata. Score and metadata come from *different* latest rows on
+    # purpose:
+    #
+    #   score    — skips abandons (#2468). Blackjack reads current_chips
+    #              through it, so an abandoned table must not become the
+    #              player's live chip balance.
+    #   metadata — takes the latest row whatever its outcome. Blackjack writes
+    #              its cumulative run aggregates (best_run_chips, total_runs,
+    #              runs_completed, current_table) at session *start*, so the
+    #              newest row always holds the freshest figures even when that
+    #              session was later abandoned — and "New Game" and unmount are
+    #              both abandon paths, so filtering here would blank the run
+    #              history for anyone who has not just cashed out or busted.
+    def _latest_row_query(*extra_filters):
+        latest_sq = (
+            select(
+                Game.game_type_id,
+                func.max(Game.completed_at).label("max_completed_at"),
+            )
+            .where(
+                Game.session_id == session_id,
+                Game.completed_at.is_not(None),
+                *extra_filters,
+            )
+            .group_by(Game.game_type_id)
+            .subquery()
         )
-        .where(
-            Game.session_id == session_id,
-            Game.completed_at.is_not(None),
-            not_abandoned(),
-        )
-        .group_by(Game.game_type_id)
-        .subquery()
-    )
-    latest_score_rows = (
-        await session.execute(
+        return (
             select(GameType.name, Game.final_score, Game.game_metadata)
             .join(GameType, Game.game_type_id == GameType.id)
             .join(
@@ -319,14 +328,16 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 (Game.game_type_id == latest_sq.c.game_type_id)
                 & (Game.completed_at == latest_sq.c.max_completed_at),
             )
-            .where(Game.session_id == session_id, not_abandoned())
+            .where(Game.session_id == session_id, *extra_filters)
         )
-    ).all()
+
+    latest_score_rows = (await session.execute(_latest_row_query(not_abandoned()))).all()
+    latest_meta_rows = (await session.execute(_latest_row_query())).all()
     latest_score_by_name: dict[str, int | None] = {
         name: (int(score) if score is not None else None) for name, score, _ in latest_score_rows
     }
     latest_meta_by_name: dict[str, dict] = {
-        name: (meta or {}) for name, _, meta in latest_score_rows
+        name: (meta or {}) for name, _, meta in latest_meta_rows
     }
 
     # --- build per-game stats via module dispatch -------------------------
