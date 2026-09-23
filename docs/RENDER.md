@@ -121,29 +121,27 @@ hung request. It is rate limited to 30/minute per IP.
 
 ## Deploys
 
-- Push to `dev` → both dev services auto-deploy. Production changes only through a
-  `dev` → `main` promotion PR.
-- **Prod services have Render's auto-deploy off.** A push to `main` runs
-  `.github/workflows/deploy.yml`: the full CI workflow first, then — only if it is
-  green — a Render deploy and an OWASP ZAP baseline scan per service. Render's own
-  auto-deploy would ship the commit before CI finished and skip the scan;
-  `test_deploy_workflow.py` pins `autoDeploy: false` in `render.yaml`.
-- **Known limit — merge promotions one at a time.** The shared deploy workflow
-  asks Render to deploy the _current_ HEAD of `main`; it does not pin the commit CI
-  validated. Deploy runs queue (one at a time, never cancelled mid-deploy), but a
-  second push landing while an earlier run is still going can ship before its own
-  CI finishes. Since `main` only moves by `dev` → `main` promotion PR, wait for the
-  first Deploy run to go green before merging another.
-- If a service-ID variable is unset or blank, its deploy job is skipped and the
-  run shows a **warning annotation** naming it — a green run with that warning
-  means nothing was deployed.
-- The workflow finds the services through two **repository variables** (not
-  secrets — service IDs are not sensitive): `RENDER_PROD_API_SERVICE_ID` and
-  `RENDER_PROD_FRONTEND_SERVICE_ID`. A deploy job is skipped while its variable is
-  unset, so promoting `dev` → `main` before the prod services exist is not a red
-  run. `RENDER_API_KEY` (a secret) is already set.
-- The first production deploy needs `main` to contain everything the release
-  depends on — promote before creating the prod services.
+- **Dev services deploy by hand** (auto-deploy off, to keep build costs down on
+  busy `dev` days): Render dashboard → the service → Manual Deploy.
+- **Prod services auto-deploy `main`**, with Render's trigger set to **After CI
+  Checks Pass** (`autoDeployTrigger: checksPass` in `render.yaml`, pinned by
+  `test_deploy_workflow.py`). Production changes only through a `dev` → `main`
+  promotion PR, and a commit ships only once its CI is green.
+- **Post-deploy ZAP scan:** `.github/workflows/post-deploy-scan.yml` runs when CI
+  finishes on `main`, waits (up to 30 minutes) for Render to report that commit
+  live on each prod service, then runs an OWASP ZAP baseline scan against
+  `games-api.buffingchi.com` and `games.buffingchi.com`. Reports are run
+  artifacts; findings never file public issues. It can also be run by hand
+  (Actions → "Post-deploy ZAP scan" → Run workflow) to scan what is live now.
+- The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
+  and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
+- It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of
+  the checks Render waits for while itself waiting for Render — a deadlock.
+- History: until Sep 23 2026 a `deploy.yml` was meant to deploy prod after CI. The
+  services were created by hand with Render's default trigger (every commit), and
+  the workflow read the service IDs as variables while they were stored as
+  secrets, so the first prod deploy (Sep 22) shipped before CI finished and was
+  never scanned.
 
 ## First production deploy — checklist
 
@@ -151,8 +149,8 @@ hung request. It is rate limited to 30/minute per IP.
 2. Supabase project hardened (settings above) and schema built with
    `alembic upgrade head`; `game_types` has 12 rows.
 3. Create `bc-arcade-api` and `bc-arcade-frontend` from `render.yaml`'s values
-   (Oregon, branch `main`, **auto-deploy off**), then record each `srv-…` ID as
-   the repository variable named under "Deploys" above.
+   (Oregon, branch `main`, auto-deploy trigger **After CI Checks Pass**), then
+   record each `srv-…` ID as the secret named under "Deploys" above.
 4. Owner pastes every dashboard secret from the table above. Confirm
    `ENTITLEMENT_DEV_OVERRIDE` is absent.
 5. Cloudflare CNAMEs for `games-api` and `games`; add the custom domains in Render.
