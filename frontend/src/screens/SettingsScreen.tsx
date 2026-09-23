@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
-import { MODAL_SCRIM } from "../theme/theme.constants";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { gameEventClient } from "../game/_shared/gameEventClient";
@@ -254,7 +253,7 @@ export default function SettingsScreen() {
         animationType="fade"
         onRequestClose={() => setConfirmVisible(false)}
       >
-        <View style={[styles.modalBackdrop, { backgroundColor: MODAL_SCRIM }]}>
+        <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {t("clearLogs.confirm.title")}
@@ -292,7 +291,7 @@ export default function SettingsScreen() {
         animationType="fade"
         onRequestClose={() => setDeleteConfirmVisible(false)}
       >
-        <View style={[styles.modalBackdrop, { backgroundColor: MODAL_SCRIM }]}>
+        <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {t("deleteData.confirm.title")}
