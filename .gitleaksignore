@@ -4,3 +4,8 @@
 # intentionally not rewritten. Ignored here so a full-history scan stays clean.
 bda955114357a968404c8187692af8cb4402e800:frontend/android/gradle.properties:android-upload-keystore-password:65
 bda955114357a968404c8187692af8cb4402e800:frontend/android/gradle.properties:android-upload-keystore-password:67
+
+# backend/main.py: FastAPI(title="BC Arcade API", ...) — the app's display
+# title, not a credential. generic-api-key false-positives on it once the
+# line is touched by a diff (#2495).
+6ac1c53441a241044d596f43da9c0ccff9b96f36:backend/main.py:generic-api-key:95
