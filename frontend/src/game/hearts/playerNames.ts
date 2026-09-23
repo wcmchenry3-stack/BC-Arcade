@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
+import { loadDisplayName } from "../_shared/displayName";
 
 const STORAGE_KEY = "hearts_player_names";
 const MAX_NAME_LENGTH = 32;
@@ -12,6 +13,17 @@ export function validateName(raw: string, fallback: string): string {
 }
 
 export async function loadPlayerNames(): Promise<string[]> {
+  const names = await loadStoredNames();
+  // The human seat follows the profile display name (#2502) until the player
+  // gives that seat a name of its own here.
+  if (names[0] === DEFAULT_NAMES[0]) {
+    const displayName = await loadDisplayName();
+    if (displayName) names[0] = displayName;
+  }
+  return names;
+}
+
+async function loadStoredNames(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return [...DEFAULT_NAMES];

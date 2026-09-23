@@ -22,6 +22,7 @@ import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
 import OfflineBanner from "../components/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
+import DisplayNameField from "../components/shared/DisplayNameField";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
@@ -283,6 +284,18 @@ export default function ProfileScreen() {
     >
       <AppHeader title={t("title")} />
       <OfflineBanner />
+      <View
+        style={[
+          styles.displayNameCard,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <DisplayNameField
+          testID="profile-display-name"
+          label={t("displayName.label")}
+          helper={t("displayName.helper")}
+        />
+      </View>
       {body}
     </View>
   );
@@ -290,6 +303,14 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  displayNameCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   errorText: { fontSize: 14, marginBottom: 12, textAlign: "center" },
   retryBtn: {

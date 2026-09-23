@@ -132,6 +132,19 @@ describe("ProfileScreen", () => {
     });
   });
 
+  it("shows the display name field, even while stats fail to load (#2502)", async () => {
+    mockGetMyStats.mockRejectedValue(new Error("Network down"));
+    mockGetMyGames.mockRejectedValue(new Error("Network down"));
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Couldn't load recent games")).toBeTruthy();
+    });
+    expect(screen.getByLabelText("Display name")).toBeTruthy();
+    expect(
+      screen.getByText("Shown on leaderboards when your scores are submitted. 1–32 characters.")
+    ).toBeTruthy();
+  });
+
   it("shows a loading spinner while fetching", async () => {
     // Leave the mocks unresolved to keep loading state visible.
     mockGetMyStats.mockImplementation(() => new Promise(() => {}));
