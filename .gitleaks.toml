@@ -32,11 +32,6 @@
   ]
   # AsyncStorage namespaces assigned to *_KEY constants ("yacht_pref_v1",
   # "blackjack_runs_v1"): lowercase snake_case ending in a _vN version suffix.
-  # backend/main.py: FastAPI(title="BC Arcade API", ...) — the app's display
-  # title, not a credential. Contains "API" as a plain English word, which is
-  # enough for generic-api-key's keyword+assignment pattern once this line is
-  # touched by a diff (#2495).
   regexes = [
     '''^[a-z0-9]+(?:_[a-z0-9]+)*_v\d+$''',
-    '''^BC Arcade API$''',
   ]
