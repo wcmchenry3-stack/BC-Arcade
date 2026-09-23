@@ -21,7 +21,7 @@ on:
         required: true
         default: "60s"
 
-  # Callable by deploy.yml post-deploy (informational only)
+  # Callable from another workflow (no caller today; informational only)
   workflow_call:
     inputs:
       target_url:
