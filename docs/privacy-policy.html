@@ -29,81 +29,230 @@
   </head>
   <body>
     <h1>Privacy Policy</h1>
-    <p><strong>BC Arcade</strong> — Last updated: April 3, 2026</p>
+    <p><strong>BC Arcade</strong> — Last updated: September 20, 2026</p>
 
     <h2>Overview</h2>
     <p>
-      BC Arcade is a collection of classic and casual games including Yacht,
-      Blackjack, 2048, Cascade, and Ludo. Your privacy is important to us. This
-      policy explains what data the app does and does not collect.
+      BC Arcade is a free collection of classic games for iOS and Android, also
+      playable at games.buffingchi.com. It is published by Buffing Chi ("we",
+      "us"). There are no accounts, no ads and no tracking. This policy explains
+      what the app collects, why, where it is kept, and how to delete it.
     </p>
 
-    <h2>Data We Do Not Collect</h2>
+    <h2>What We Collect</h2>
+
+    <h3>An anonymous session ID</h3>
+    <p>
+      On first launch the app generates a random identifier and stores it on
+      your device. It is sent to our server with each request so that your
+      scores and statistics can be kept together. It is not derived from your
+      device, your name or any other identifier, and we never ask for your name,
+      email address or phone number. Because it can single out one installation
+      of the app, privacy laws such as the GDPR treat it as pseudonymous
+      personal data, and we handle it that way.
+    </p>
+
+    <h3>Gameplay data</h3>
+    <p>Linked to that session ID, our server stores:</p>
     <ul>
       <li>
-        We do not collect personal information (name, email, phone number,
-        etc.).
+        Which game you played, when it started and finished, and how long it
+        lasted
       </li>
-      <li>We do not require user accounts or registration.</li>
-      <li>We do not use advertising or tracking services.</li>
-      <li>We do not use cookies or device identifiers for tracking.</li>
+      <li>The outcome and final score</li>
+      <li>
+        Game settings for that session (for example difficulty or variant)
+      </li>
+      <li>
+        A log of in-game events such as moves, used to show statistics and
+        diagnose bugs
+      </li>
+      <li>Which games your session is entitled to open</li>
+    </ul>
+    <p>
+      Statistics, leaderboard rankings, Arcade XP, player level and daily
+      challenge progress are calculated from these records. When you are
+      offline, results are queued on your device and sent the next time the app
+      has a connection.
+    </p>
+
+    <h3>Automatic error logs</h3>
+    <p>
+      When the app hits a warning or error, it may send our server a short log
+      entry — severity, the part of the app involved, the error message and
+      technical context — linked to your session ID. We use these only to find
+      and fix bugs.
+    </p>
+
+    <h3>Crash and performance reports (Sentry)</h3>
+    <p>
+      The app and our server use <strong>Sentry</strong> (<a
+        href="https://sentry.io/privacy/"
+        >sentry.io</a
+      >) for crash reporting and performance monitoring. A report can include
+      the error message and stack trace, app version, device model, operating
+      system version, device state such as free memory and storage, and timing
+      measurements. We have Sentry's option to send personal identifiers turned
+      off, and reports never contain a name or email because we do not have one.
+      Your anonymous session ID is removed from server reports before they are
+      sent. Sentry keeps this data for 90 days.
+    </p>
+
+    <h3>Feedback you choose to send</h3>
+    <p>
+      If you use the in-app feedback form, what you submit is sent to Sentry,
+      the same service we use for crash reports: the title and description you
+      type, whether it is a bug report or a suggestion, and the app's recent
+      warning and error messages to help us reproduce the problem. It is not
+      published anywhere, it is not linked to a name or email because we do not
+      ask for one, and Sentry keeps it for 90 days. Please do not include
+      personal information in feedback.
+    </p>
+
+    <h3>Server logs</h3>
+    <p>
+      Like any internet service, our server records each request: IP address,
+      time, the path requested, status code and response time. We use this for
+      security, rate limiting and troubleshooting. These logs are kept by our
+      hosting provider for a limited period and are not combined with your
+      gameplay data.
+    </p>
+
+    <h2>What We Do Not Collect</h2>
+    <ul>
+      <li>
+        No name, email address, phone number or contacts — there are no accounts
+      </li>
+      <li>
+        No advertising identifier (IDFA / Android advertising ID) and no
+        tracking across other apps or websites
+      </li>
+      <li>No advertising or third-party analytics SDKs</li>
+      <li>No location data</li>
+      <li>No payment information — version 1.0 has no purchases</li>
+      <li>We do not sell personal information or share it for advertising</li>
     </ul>
 
     <h2>Data Stored on Your Device</h2>
-    <p>
-      The app stores game preferences (such as language and display settings)
-      locally on your device using standard device storage. This data never
-      leaves your device.
-    </p>
-
-    <h2>Network Requests</h2>
-    <p>
-      The app communicates with our game server to process game logic (dice
-      rolls, card dealing, move validation, etc.). These requests contain only
-      game-state information and no personal data. No data from these requests
-      is stored on our servers beyond the duration of a game session.
-    </p>
-
-    <h2>Error Reporting</h2>
-    <p>
-      The app uses <strong>Sentry</strong> (<a href="https://sentry.io/privacy/"
-        >sentry.io</a
-      >) for crash reporting and error monitoring. When an error occurs, Sentry
-      may receive:
-    </p>
     <ul>
-      <li>Error messages and stack traces</li>
-      <li>Device type, operating system version, and app version</li>
-      <li>An anonymized session identifier</li>
+      <li>Your anonymous session ID</li>
+      <li>Preferences such as theme, language and sound</li>
+      <li>Games in progress, so they survive closing the app</li>
+      <li>Results and event logs waiting to be sent while you are offline</li>
+      <li>A cached copy of which games your session may open</li>
+    </ul>
+    <p>Uninstalling the app removes all of it.</p>
+
+    <h2>Why We Use This Data (Legal Bases)</h2>
+    <ul>
+      <li>
+        <strong>To provide the games you asked for</strong> — saving results,
+        statistics, progress and leaderboards (performance of our agreement with
+        you under the Terms of Service).
+      </li>
+      <li>
+        <strong>Our legitimate interests</strong> in keeping the service secure
+        and reliable — crash reports, error logs, server logs, rate limiting and
+        preventing abuse of leaderboards.
+      </li>
     </ul>
     <p>
-      Sentry does <strong>not</strong> receive your name, email, gameplay data,
-      or any other personal information. This data is used solely to identify
-      and fix bugs. Sentry retains error data for 90 days.
+      We do not use your data for advertising, profiling or automated decisions.
     </p>
 
-    <h2>Third-Party Services</h2>
+    <h2>Who Processes It and Where</h2>
     <p>
-      Other than Sentry for error reporting (described above), the app does not
-      share data with any third parties.
+      We use the following service providers, which process data on our behalf.
+      All of them store it in the United States:
+    </p>
+    <ul>
+      <li>
+        <strong>Render</strong> — hosts our application server (Oregon, USA)
+      </li>
+      <li>
+        <strong>Supabase</strong> (on Amazon Web Services) — hosts our database
+        (Oregon, USA)
+      </li>
+      <li><strong>Sentry</strong> — crash and performance reports</li>
+      <li>
+        <strong>Cloudflare</strong> — DNS and network routing for our domains
+      </li>
+    </ul>
+    <p>
+      If you are outside the United States, your data is transferred to and
+      processed in the United States. Where the law requires it, those transfers
+      rely on safeguards such as the European Commission's Standard Contractual
+      Clauses in our providers' data processing terms.
+    </p>
+
+    <h2>How Long We Keep It</h2>
+    <ul>
+      <li>
+        Gameplay data and error logs: until you delete them (see below). [OWNER
+        TO CONFIRM: a maximum retention period for inactive sessions.]
+      </li>
+      <li>Sentry reports: 90 days</li>
+      <li>Server logs: a limited period set by our hosting provider</li>
+      <li>
+        Data on your device: until you delete your data in the app or uninstall
+        it
+      </li>
+    </ul>
+
+    <h2>Deleting Your Data</h2>
+    <p>
+      Open <strong>Settings</strong> in the app, choose
+      <strong>Delete my data</strong> and confirm. This permanently deletes the
+      game records, event logs, entitlements and error logs linked to your
+      session ID from our server, and clears the session ID and any queued
+      results from your device. It cannot be undone. The next time you play, the
+      app starts a new anonymous session.
+    </p>
+    <p>
+      Because we do not know who you are, the in-app button is the only way we
+      can reliably find your records. If you cannot use it, email
+      <strong>buffingchi@gmail.com</strong> and we will help.
+    </p>
+
+    <h2>Your Rights</h2>
+    <h3>European Economic Area, United Kingdom and Switzerland (GDPR)</h3>
+    <p>
+      You have the right to access, correct, delete, restrict or object to the
+      processing of your personal data, the right to data portability, and the
+      right to complain to your local data protection authority. The data
+      controller is Buffing Chi [OWNER TO CONFIRM: legal name and postal address
+      of the publisher].
+    </p>
+    <h3>California (CCPA / CPRA)</h3>
+    <p>
+      You have the right to know what personal information we collect and how we
+      use it, to delete it, to correct it, and not to be discriminated against
+      for exercising these rights. We do not sell personal information and we do
+      not share it for cross-context behavioural advertising.
+    </p>
+    <p>
+      To exercise any right, use <strong>Delete my data</strong> in the app or
+      email <strong>buffingchi@gmail.com</strong>. Since we hold no name or
+      email for you, we may ask you to send the request from the app or tell us
+      your session ID so we can find your records.
     </p>
 
     <h2>Children's Privacy</h2>
     <p>
-      The app does not knowingly collect any personal information from children
-      or any other users.
+      BC Arcade is not directed at children under 13, and we do not knowingly
+      collect personal information from them. If you believe a child has used
+      the app and want their data removed, use <strong>Delete my data</strong>
+      on that device or contact us.
     </p>
 
     <h2>Changes to This Policy</h2>
     <p>
-      We may update this policy from time to time. Any changes will be reflected
-      on this page with an updated date.
+      We may update this policy. Changes are posted on this page with a new
+      "last updated" date; significant changes will also be noted in the app's
+      release notes.
     </p>
 
     <h2>Contact</h2>
-    <p>
-      If you have questions about this privacy policy, please contact us at:
-      <strong>buffingchi@gmail.com</strong>
-    </p>
+    <p>Buffing Chi — <strong>buffingchi@gmail.com</strong></p>
   </body>
 </html>

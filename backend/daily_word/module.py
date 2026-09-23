@@ -6,13 +6,14 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
-from daily_word.models import DailyWordMetadata
+from daily_word.models import DailyWordMetadata, DailyWordResult
 from vocab import GameType
 
 
 class DailyWordModule:
     game_type = GameType.DAILY_WORD
     metadata_model = DailyWordMetadata
+    result_model = DailyWordResult
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

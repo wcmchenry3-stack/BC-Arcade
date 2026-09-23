@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.registry import get_module
 
@@ -67,6 +67,14 @@ class CompleteGameRequest(BaseModel):
     outcome: str | None = None
     duration_ms: int | None = Field(default=None, ge=0)
     completed_at: datetime | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _null_result_is_empty(cls, v: Any) -> Any:
+        # A client serialising an absent result as `null` must not 422 — the
+        # sync worker dead-letters non-403 4xx, which would lose the completion.
+        return {} if v is None else v
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +126,15 @@ class StatsResponse(BaseModel):
     total_games: int
     by_game: dict[str, GameTypeStatsResponse]
     favorite_game: str | None
+    # Arcade XP + player level (#2391) — derived by games.progression from the
+    # same summary; see that module for the max-level convention.
+    arcade_xp: int
+    arcade_level: int
+    xp_into_level: int
+    xp_for_next_level: int
+    # Consecutive days with >= 2 of 3 daily goals met (#2456) — see
+    # daily_challenge.streak. Capped at its LOOKBACK_DAYS; a count only, no reward.
+    streak_days: int
 
 
 class GameRowResponse(BaseModel):

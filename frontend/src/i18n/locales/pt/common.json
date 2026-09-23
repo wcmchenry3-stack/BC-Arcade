@@ -57,5 +57,12 @@
   "deleteData.confirm.confirm": "Delete my data",
   "deleteData.confirm.cancel": "Cancel",
   "deleteData.success": "Your data has been deleted",
-  "deleteData.error": "Deletion failed — please try again"
+  "deleteData.error": "Deletion failed — please try again",
+  "level.pill": "Nv. {{level}}",
+  "level.pillA11y": "Nível de arcade {{level}}",
+  "streak.pill": "🔥 {{count}}",
+  "streak.pillA11y_one": "Sequência atual: {{count}} dia",
+  "streak.pillA11y_other": "Sequência atual: {{count}} dias",
+  "legal.privacyPolicy": "Política de Privacidade",
+  "legal.termsOfService": "Termos de Serviço"
 }

@@ -18,6 +18,29 @@ function mkState(bottles: Color[][]): SortState {
   };
 }
 
+// Mimics RN: each layout x/y is relative to the element's immediate parent, so
+// cells report row-relative coordinates and rows report grid-relative ones.
+async function layoutRows(
+  getByTestId: (id: string) => Parameters<typeof fireEvent>[0],
+  grid: { x: number; y: number },
+  rows: { y: number; x: number; cellXs: number[] }[]
+) {
+  await fireEvent(getByTestId("sort-grid"), "layout", {
+    nativeEvent: { layout: { ...grid, width: 400, height: 400 } },
+  });
+  let idx = 0;
+  for (const [rowIdx, row] of rows.entries()) {
+    await fireEvent(getByTestId(`sort-row-${rowIdx}`), "layout", {
+      nativeEvent: { layout: { x: row.x, y: row.y, width: 300, height: 140 } },
+    });
+    for (const cellX of row.cellXs) {
+      await fireEvent(getByTestId(`bottle-cell-${idx++}`), "layout", {
+        nativeEvent: { layout: { x: cellX, y: 0, width: 90, height: 140 } },
+      });
+    }
+  }
+}
+
 describe("SortBoard", () => {
   it("renders the board region with the correct accessibility label", async () => {
     const state = mkState([["red", "red", "red", "red"], ["blue", "blue", "blue", "blue"], []]);
@@ -143,7 +166,7 @@ describe("SortBoard", () => {
       // same SortBoard instance across a level change rather than unmounting it.
       // bottlePositionsRef/gridOffsetRef are plain refs populated only by async
       // onLayout — if a level change alters the grid shape (bottle count, so a
-      // different numCols/numRows or re-centered last row) and a pour is started
+      // different numCols/numRows/rowCounts) and a pour is started
       // before fresh onLayout events land for the new grid, the pour used to be
       // computed from the *previous* level's coordinates: a highlight ring/stream
       // that visually straddles the wrong bottle(s) instead of framing the real
@@ -151,29 +174,18 @@ describe("SortBoard", () => {
       // pour attempted before fresh layout data arrives is suppressed rather than
       // rendered in the wrong place.
       const onBottleTap = jest.fn();
-      // Level A: 5 bottles → 3-col × 2-row grid (matches numCols formula in SortBoard).
+      // Level A: 5 bottles → rows of 3 + 2 (see computeGridShape).
       const levelA = mkState([["red"], ["blue"], ["green"], ["yellow"], ["orange"]]);
 
       const { getByTestId, queryByTestId, rerender } = await render(
         withTheme(<SortBoard state={levelA} onBottleTap={onBottleTap} />)
       );
 
-      // Simulate real onLayout events landing for level A's 3×2 grid.
-      await fireEvent(getByTestId("sort-grid"), "layout", {
-        nativeEvent: { layout: { x: 8, y: 40, width: 300, height: 300 } },
-      });
-      const levelAPositions = [
-        { x: 0, y: 0 },
-        { x: 100, y: 0 },
-        { x: 200, y: 0 },
-        { x: 0, y: 150 },
-        { x: 100, y: 150 },
-      ];
-      for (const [idx, pos] of levelAPositions.entries()) {
-        await fireEvent(getByTestId(`bottle-cell-${idx}`), "layout", {
-          nativeEvent: { layout: { ...pos, width: 90, height: 140 } },
-        });
-      }
+      // Simulate real onLayout events landing for level A's 3+2 rows.
+      await layoutRows(getByTestId, { x: 8, y: 40 }, [
+        { x: 0, y: 0, cellXs: [0, 100, 200] },
+        { x: 50, y: 150, cellXs: [0, 100] },
+      ]);
 
       // Advance to a level with a different grid shape WITHOUT unmounting — this
       // mirrors handleNextLevel/handleSelectLevel, which just swap `state`.
@@ -197,14 +209,7 @@ describe("SortBoard", () => {
 
       // Once level B's real layout lands, a pour renders normally again — this
       // guards against the fix over-suppressing the feature entirely.
-      await fireEvent(getByTestId("sort-grid"), "layout", {
-        nativeEvent: { layout: { x: 8, y: 40, width: 400, height: 150 } },
-      });
-      for (let idx = 0; idx < 4; idx++) {
-        await fireEvent(getByTestId(`bottle-cell-${idx}`), "layout", {
-          nativeEvent: { layout: { x: idx * 100, y: 0, width: 90, height: 140 } },
-        });
-      }
+      await layoutRows(getByTestId, { x: 8, y: 40 }, [{ x: 0, y: 0, cellXs: [0, 100, 200, 300] }]);
       await rerender(
         withTheme(
           <SortBoard state={levelB} onBottleTap={onBottleTap} pouringFrom={0} pouringTo={2} />
@@ -213,4 +218,66 @@ describe("SortBoard", () => {
       expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
     }
   );
+
+  it("groups bottles into explicit rows matching computeGridShape (regression #2426)", async () => {
+    // 7 bottles → 4 + 3; 9 bottles → 3 + 3 + 3 (used to strand 1 alone).
+    const seven = mkState(Array.from({ length: 7 }, () => ["red"] as Color[]));
+    const { getByTestId, queryByTestId, rerender } = await render(
+      withTheme(<SortBoard state={seven} onBottleTap={jest.fn()} />)
+    );
+    const rowOf = (idx: number) => getByTestId(`bottle-cell-${idx}`).parent?.props.testID;
+    expect([0, 1, 2, 3].map(rowOf)).toEqual(Array(4).fill("sort-row-0"));
+    expect([4, 5, 6].map(rowOf)).toEqual(Array(3).fill("sort-row-1"));
+    expect(queryByTestId("sort-row-2")).toBeNull();
+
+    const nine = mkState(Array.from({ length: 9 }, () => ["red"] as Color[]));
+    await rerender(withTheme(<SortBoard state={nine} onBottleTap={jest.fn()} />));
+    expect([0, 1, 2].map(rowOf)).toEqual(Array(3).fill("sort-row-0"));
+    expect([3, 4, 5].map(rowOf)).toEqual(Array(3).fill("sort-row-1"));
+    expect([6, 7, 8].map(rowOf)).toEqual(Array(3).fill("sort-row-2"));
+  });
+
+  it("resolves cross-row bottle positions from grid + row + cell offsets", async () => {
+    // 7 bottles → rows of 4 and 3. The shorter row is centered (row.x = 50) and
+    // sits below the first (row.y = 150). Cells report row-relative coordinates,
+    // as RN does, so the destination ring must land at grid + row + cell. Using
+    // grid + cell alone would draw it over row 0.
+    const state = mkState(
+      ["red", "blue", "green", "yellow", "orange", "purple", "pink"].map((c) => [c as Color])
+    );
+    const onBottleTap = jest.fn();
+    const { getByTestId, rerender } = await render(
+      withTheme(<SortBoard state={state} onBottleTap={onBottleTap} />)
+    );
+    await layoutRows(getByTestId, { x: 8, y: 40 }, [
+      { x: 0, y: 0, cellXs: [0, 100, 200, 300] },
+      { x: 50, y: 150, cellXs: [0, 100, 200] },
+    ]);
+
+    // Pour bottle 1 (row 0) into bottle 5 (row 1, second cell).
+    await rerender(
+      withTheme(<SortBoard state={state} onBottleTap={onBottleTap} pouringFrom={1} pouringTo={5} />)
+    );
+    // Ring is inset 4px around the destination: left = 8 + 50 + 100 - 4,
+    // top = 40 + 150 + 0 - 4.
+    const ring = getByTestId("pour-dst-ring", { includeHiddenElements: true });
+    expect(ring).toHaveStyle({ left: 154, top: 186 });
+  });
+
+  it("suppresses a pour until the row layout lands, not just the cell layout", async () => {
+    const state = mkState([["red"], ["blue"], ["green"], ["yellow"], ["orange"]]);
+    const { getByTestId, queryByTestId, rerender } = await render(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
+    );
+    // Only cell layouts land; rows haven't reported yet, so positions are partial.
+    for (let idx = 0; idx < 5; idx++) {
+      await fireEvent(getByTestId(`bottle-cell-${idx}`), "layout", {
+        nativeEvent: { layout: { x: idx * 100, y: 0, width: 90, height: 140 } },
+      });
+    }
+    await rerender(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} pouringFrom={0} pouringTo={4} />)
+    );
+    expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
+  });
 });

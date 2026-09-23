@@ -115,5 +115,68 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "level.pill": {
+    "component": "HomeScreen",
+    "description": "Compact Arcade level badge in the Home header, e.g. 'Lv 4'. Abbreviate 'level' the way games in this language usually do.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "Must stay very short — it sits in the header next to the title."
+  },
+  "level.pillA11y": {
+    "component": "HomeScreen",
+    "description": "Screen-reader label for the Arcade level badge in the Home header.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "streak.pill": {
+    "component": "HomeScreen",
+    "description": "Compact daily-streak badge in the Home header next to the level pill: a fire emoji and the number of consecutive days, e.g. '🔥 5'.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": ["count"],
+    "doNotTranslate": [],
+    "notes": "Keep the emoji and the {{count}} placeholder; it must stay tiny — it shares the header with the title and the level pill. Do not add words."
+  },
+  "streak.pillA11y_one": {
+    "component": "HomeScreen",
+    "description": "Screen-reader label for the streak badge, singular form ({{count}} = 1): the number of consecutive days the player has hit their daily-challenge target.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["count"],
+    "doNotTranslate": [],
+    "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
+  },
+  "streak.pillA11y_other": {
+    "component": "HomeScreen",
+    "description": "Screen-reader label for the streak badge, plural form.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["count"],
+    "doNotTranslate": [],
+    "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
+  },
+  "legal.privacyPolicy": {
+    "component": "SettingsScreen",
+    "description": "Link label at the bottom of Settings that opens the Privacy Policy web page in the browser. Use the standard legal term for this document in the target language.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Two links share one row — keep it short."
+  },
+  "legal.termsOfService": {
+    "component": "SettingsScreen",
+    "description": "Link label at the bottom of Settings that opens the Terms of Service web page in the browser. Use the standard legal term for this document in the target language.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Two links share one row — keep it short."
   }
 }

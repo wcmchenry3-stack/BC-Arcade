@@ -58,6 +58,15 @@ function loadJson(path) {
   }
 }
 
+// A locale may carry plural categories English lacks (ru: few/many, ar: zero/two/few/many,
+// he: two). They are legitimate when English has the `_other` form of the key and the
+// locale's own CLDR plural rules include the category.
+function isLocalePluralVariant(key, code, enSet) {
+  const m = key.match(/^(.*)_(zero|one|two|few|many|other)$/);
+  if (!m || !enSet.has(`${m[1]}_other`)) return false;
+  return new Intl.PluralRules(code).resolvedOptions().pluralCategories.includes(m[2]);
+}
+
 function flattenKeys(obj, prefix = "") {
   const keys = [];
   for (const [k, v] of Object.entries(obj)) {
@@ -108,7 +117,9 @@ function main() {
       const targetSet = new Set(targetKeys);
 
       const missing = enKeys.filter((k) => !targetSet.has(k));
-      const extra = targetKeys.filter((k) => !enSet.has(k));
+      const extra = targetKeys.filter(
+        (k) => !enSet.has(k) && !isLocalePluralVariant(k, code, enSet)
+      );
       const pending = enKeys.filter(
         (k) => targetStrings[k] === PLACEHOLDER || targetStrings[k] === undefined
       );

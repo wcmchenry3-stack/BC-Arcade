@@ -488,6 +488,26 @@ describe("SyncWorker", () => {
     expect(patch!.body).not.toHaveProperty("durationMs");
   });
 
+  // #2450: the per-game result block must reach the backend's result_model.
+  it("PATCH /complete body carries summary.result, or {} when absent", async () => {
+    api.defaultResponse = ok();
+    const withResult = client.startGame("solitaire");
+    client.completeGame(withResult, {
+      outcome: "completed",
+      result: { won: true, moves: 87 },
+    });
+    const without = client.startGame("solitaire");
+    client.completeGame(without, { outcome: "abandoned" });
+    await flushMicro();
+    await worker.flush();
+
+    const bodyFor = (gid: string) =>
+      api.calls.find((c) => c.method === "PATCH" && c.path === `/games/${gid}/complete`)!
+        .body as Record<string, unknown>;
+    expect(bodyFor(withResult)["result"]).toEqual({ won: true, moves: 87 });
+    expect(bodyFor(without)["result"]).toEqual({});
+  });
+
   // #572/#553: 400 on PATCH /complete is now terminal — dead-letter immediately.
   // The backend has accepted "completed" since #514; a 400 is a permanent
   // bad-request that retrying cannot fix.

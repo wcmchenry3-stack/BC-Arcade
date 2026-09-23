@@ -9,10 +9,11 @@
  */
 
 import React from "react";
-import { act, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { CodedError } from "expo-modules-core";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
+import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,22 @@ jest.mock("../../game/daily_word/storage", () => ({
   clearState: jest.fn(),
   saveTodayMeta: jest.fn().mockResolvedValue(undefined),
   loadTodayMeta: jest.fn().mockResolvedValue(null),
+}));
+
+// Mock gameEventClient so we can assert the start/complete calls the
+// useGameSync wiring makes (#2451) without initialising the real client.
+const mockStartGame = jest.fn();
+const mockCompleteGame = jest.fn();
+jest.mock("../../game/_shared/gameEventClient", () => ({
+  gameEventClient: {
+    startGame: (...args: unknown[]) => mockStartGame(...args),
+    enqueueEvent: jest.fn(),
+    completeGame: (...args: unknown[]) => mockCompleteGame(...args),
+    init: jest.fn().mockResolvedValue(undefined),
+    reportBug: jest.fn(),
+    getQueueStats: jest.fn(),
+    clearAll: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
 jest.mock("expo-haptics", () => ({
@@ -160,6 +177,7 @@ beforeEach(() => {
   storage.clearState.mockResolvedValue(undefined);
   storage.saveTodayMeta.mockResolvedValue(undefined);
   storage.loadTodayMeta.mockResolvedValue(null); // cold cache by default
+  mockStartGame.mockReturnValue("game-1");
 });
 
 // ---------------------------------------------------------------------------
@@ -316,6 +334,29 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });
 
+  it("serves cached meta on Expo's native FetchError shape — what devices really throw (#2428)", async () => {
+    jest.useFakeTimers();
+    // Plain Error with a "fetch failed: …" message: neither TypeError nor
+    // CodedError. Verbatim BC_GAMES-4W message.
+    dailyWordApi.getToday.mockRejectedValue(
+      new Error(
+        'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname'
+      )
+    );
+    storage.loadTodayMeta.mockResolvedValue(TODAY_META);
+
+    const { findByTestId, queryByText } = await renderScreen();
+
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Could not load today's puzzle")).toBeNull();
+    // Retried like any other network failure before falling back to cache.
+    expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
+  });
+
   it("shows error when API fails and cache is cold", async () => {
     jest.useFakeTimers();
     dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
@@ -359,5 +400,177 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
 
     await findByText("Could not load today's puzzle");
     expect(storage.loadTodayMeta).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-session game reporting (#2451)
+// ---------------------------------------------------------------------------
+
+describe("DailyWordScreen — session game reporting (#2451)", () => {
+  const tilesFor = (word: string, status: "correct" | "absent") =>
+    word.split("").map((letter) => ({ letter, status }));
+
+  async function typeAndSubmit(api: Awaited<ReturnType<typeof renderScreen>>, word: string) {
+    for (const ch of word) {
+      await act(async () => {
+        await fireEvent.press(api.getByTestId(`daily-word-key-${ch}`));
+      });
+    }
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("daily-word-key-enter"));
+    });
+  }
+
+  it("does not start a session on load", async () => {
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    expect(mockStartGame).not.toHaveBeenCalled();
+  });
+
+  it("does not start a session when opening an already-finished puzzle", async () => {
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const api = await renderScreen();
+    await api.findByText("Brilliant!");
+    await act(async () => {
+      api.unmount();
+    });
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("starts with puzzle metadata on the first accepted guess and does not complete it", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const [gameType, metadata] = mockStartGame.mock.calls[0]!;
+    expect(gameType).toBe("daily_word");
+    expect(metadata).toEqual({ puzzle_id: TODAY_META.puzzle_id, language: "en" });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("does not start a session when the guess is rejected by the server", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new Error("not_a_word"));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+  });
+
+  it("completes with a null score and the win result block on a winning guess", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "crane");
+
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-1");
+    expect(summary).toEqual({
+      finalScore: null,
+      outcome: "completed",
+      result: { is_complete: true, won: true, guesses_used: 1 },
+    });
+  });
+
+  it("abandons on unmount with the guesses made so far", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+
+    await act(async () => {
+      api.unmount();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-1");
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { is_complete: false, won: false, guesses_used: 1 },
+    });
+  });
+
+  it("does not open a session for a guess that resolves after the player left", async () => {
+    let resolveGuess: (v: unknown) => void = () => {};
+    dailyWordApi.submitGuess.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGuess = resolve;
+      })
+    );
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      api.unmount();
+    });
+    await act(async () => {
+      resolveGuess({ tiles: tilesFor("zzzzz", "absent") });
+    });
+
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("does not report an abandon when the player never made a guess", async () => {
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await act(async () => {
+      api.unmount();
+    });
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("closes the old puzzle's session when the day rolls over mid-puzzle", async () => {
+    // onSubmit debounces guesses within 500 ms of each other, so drive the clock.
+    let clock = 1_000_000;
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const api = await renderScreen();
+      await api.findByTestId("tile-0-0");
+
+      dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+      await typeAndSubmit(api, "zzzzz");
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+      // Midnight passes: the server rejects the guess as stale and the screen
+      // resets to the new puzzle.
+      clock += 1000;
+      dailyWordApi.submitGuess.mockRejectedValueOnce(new ApiError("stale_puzzle_id", 422));
+      dailyWordApi.getToday.mockResolvedValue({ puzzle_id: "2026-05-04:en", word_length: 5 });
+      await typeAndSubmit(api, "yyyyy");
+
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      const [oldGameId, summary] = mockCompleteGame.mock.calls[0]!;
+      expect(oldGameId).toBe("game-1");
+      expect(summary).toEqual({
+        outcome: "abandoned",
+        result: { is_complete: false, won: false, guesses_used: 1 },
+      });
+
+      // The next guess belongs to the new puzzle, in a new session.
+      clock += 1000;
+      mockStartGame.mockReturnValue("game-2");
+      dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+      await typeAndSubmit(api, "zzzzz");
+
+      expect(mockStartGame).toHaveBeenCalledTimes(2);
+      expect(mockStartGame.mock.calls[1]![1]).toEqual({
+        puzzle_id: "2026-05-04:en",
+        language: "en",
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

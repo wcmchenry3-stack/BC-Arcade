@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
   View,
   Text,
   Pressable,
@@ -21,10 +22,15 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import OfflineBanner from "../components/OfflineBanner";
+import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
 import { useEntitlements } from "../entitlements/EntitlementContext";
 import { isGameVisible } from "../entitlements/gameVisibility";
+import { statsApi } from "../api/stats";
+import { withRetry } from "../game/_shared/withRetry";
+import { useNetwork } from "../game/_shared/NetworkContext";
+import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -83,6 +89,62 @@ export default function HomeScreen() {
     );
     return () => clearTimeout(id);
   }, [canPlay]);
+
+  // Arcade level pill (#2391) and streak badge (#2457), both fed by one /stats/me
+  // call. Purely decorative: they never block or delay the grid, and any failure
+  // just leaves them out (or keeps the last known values on a refetch). Refetched
+  // on focus so a level-up shows on the way back from a game, when the device
+  // comes back online, and when the app returns to the foreground (the streak is
+  // a local-day value, so it can lapse while Home sits open overnight). Skipped
+  // while known offline — four doomed attempts per Home visit would only add
+  // Sentry "network failure" noise (#2430).
+  const { isOnline } = useNetwork();
+  const [arcadeLevel, setArcadeLevel] = useState<number | null>(null);
+  const [streakDays, setStreakDays] = useState<number>(0);
+  const statsFetchInFlight = useRef(false);
+  const mounted = useRef(true);
+  const refreshStats = useCallback(() => {
+    if (!isOnline || statsFetchInFlight.current) return;
+    statsFetchInFlight.current = true;
+    // Push a just-finished game first or /stats/me answers with the old level.
+    // Shared with the daily-challenge card so their concurrent flushes don't
+    // let one of them read before the upload lands.
+    flushQueuedGames()
+      .then(() => withRetry(() => statsApi.getMyStats()))
+      .then((stats) => {
+        if (!mounted.current) return;
+        setArcadeLevel(stats.arcade_level);
+        // A server that predates the streak omits the field: treat it as no streak.
+        setStreakDays(typeof stats.streak_days === "number" ? stats.streak_days : 0);
+      })
+      .catch(() => {
+        // httpClient already reports what is worth reporting.
+      })
+      .finally(() => {
+        statsFetchInFlight.current = false;
+      });
+  }, [isOnline]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // On mount, and again whenever connectivity returns.
+  useEffect(() => {
+    refreshStats();
+  }, [refreshStats]);
+
+  useEffect(() => navigation.addListener("focus", refreshStats), [navigation, refreshStats]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshStats();
+    });
+    return () => sub.remove();
+  }, [refreshStats]);
 
   async function startYacht() {
     const saved = await loadYachtGame();
@@ -255,7 +317,15 @@ export default function HomeScreen() {
 
           {/* Emoji icon zone */}
           <View style={styles.emojiZone}>
-            <Text style={styles.cardEmoji}>{item.emoji}</Text>
+            {/* Not every icon is a colour emoji: "♠", "♥" and "🂡" are text-presentation
+                glyphs that take the Text colour, which defaults to black — invisible on
+                the dark theme. Colour emoji ignore `color`, so this is safe for the rest. */}
+            <Text
+              style={[styles.cardEmoji, { color: colors.text }]}
+              testID={`game-icon-${item.slug}`}
+            >
+              {item.emoji}
+            </Text>
           </View>
 
           {/* Title */}
@@ -301,7 +371,36 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title={t("common:app.title")} />
+      <AppHeader
+        title={t("common:app.title")}
+        rightSlot={
+          arcadeLevel != null ? (
+            <View style={styles.headerBadges}>
+              {streakDays > 0 ? (
+                <Text
+                  style={[styles.streakText, { color: colors.text }]}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={t("common:streak.pillA11y", { count: streakDays })}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {t("common:streak.pill", { count: streakDays })}
+                </Text>
+              ) : null}
+              <View
+                style={[styles.levelPill, { backgroundColor: colors.accent }]}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
+              >
+                <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
+                  {t("common:level.pill", { level: arcadeLevel })}
+                </Text>
+              </View>
+            </View>
+          ) : null
+        }
+      />
 
       <View style={styles.offlineBannerWrap}>
         <OfflineBanner />
@@ -317,6 +416,7 @@ export default function HomeScreen() {
           },
         ]}
       >
+        <DailyChallengeCard />
         {numColumns === 1
           ? games.map((item, index) => (
               <React.Fragment key={item.key}>{renderCard({ item, index })}</React.Fragment>
@@ -338,6 +438,28 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // The header's right slot reserves 80pt and the title is flex:1, so the badges must
+  // stay near that width: the streak is plain text, not a second pill.
+  headerBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  streakText: {
+    fontFamily: typography.label,
+    fontSize: 12,
+    letterSpacing: 0.6,
+  },
+  levelPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  levelPillText: {
+    fontFamily: typography.label,
+    fontSize: 12,
+    letterSpacing: 0.6,
+  },
   screen: {
     flex: 1,
   },

@@ -375,6 +375,39 @@ describe("httpClient — Sentry reporting (#513)", () => {
     }
   });
 
+  it("keeps the query string out of the reported message text so one outage stays one issue", async () => {
+    const g = globalThis as { __DEV__?: boolean };
+    const originalDev = g.__DEV__;
+    g.__DEV__ = false;
+    process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    try {
+      // Network failure.
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(makeRequest()("/stats/me?tz_offset_minutes=-300")).rejects.toThrow();
+      const [netMessage, netOptions] = Sentry.captureMessage.mock.calls[0];
+      expect(netMessage).toBe("API test network failure: GET /stats/me");
+      expect(netOptions.extra.url).toContain("tz_offset_minutes=-300");
+
+      // 5xx.
+      Sentry.captureMessage.mockClear();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Unavailable",
+        json: () => Promise.resolve({ detail: "down" }),
+      } as Response);
+      await expect(
+        makeRequest({ sampleRate: 1, random: () => 0 })("/stats/me?tz_offset_minutes=330")
+      ).rejects.toThrow();
+      const [fiveMessage, fiveOptions] = Sentry.captureMessage.mock.calls[0];
+      expect(fiveMessage).toBe("API test 5xx: GET /stats/me → 503");
+      expect(fiveOptions.extra.url).toContain("tz_offset_minutes=330");
+    } finally {
+      g.__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    }
+  });
+
   it("Android offline failure surfacing as an Expo CodedError is classified as network, not unexpected (#2380)", async () => {
     // On Android, a DNS/connectivity failure (device offline) doesn't throw
     // a TypeError like web `fetch` does — Expo's native fetch layer wraps it
@@ -416,6 +449,214 @@ describe("httpClient — Sentry reporting (#513)", () => {
     await expect(request("/x")).rejects.toBeInstanceOf(CodedError);
     expect(Sentry.captureException).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  describe("network-failure throttle (#2430)", () => {
+    let WINDOW: number; // NETWORK_FAILURE_REPORT_INTERVAL_MS
+    let MAX_TRACKED: number; // NETWORK_FAILURE_MAX_TRACKED
+    let now: number;
+    let dateSpy: jest.SpyInstance;
+    let originalDev: boolean | undefined;
+
+    beforeEach(() => {
+      const throttle = require("../httpClient") as typeof import("../httpClient");
+      WINDOW = throttle.NETWORK_FAILURE_REPORT_INTERVAL_MS;
+      MAX_TRACKED = throttle.NETWORK_FAILURE_MAX_TRACKED;
+      now = 1_700_000_000_000;
+      dateSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+      // The report path only runs outside dev and test-hook builds.
+      const g = globalThis as { __DEV__?: boolean };
+      originalDev = g.__DEV__;
+      g.__DEV__ = false;
+      process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    });
+
+    afterEach(() => {
+      dateSpy.mockRestore();
+      (globalThis as { __DEV__?: boolean }).__DEV__ = originalDev;
+      delete process.env.EXPO_PUBLIC_API_URL;
+    });
+
+    async function fail(request: ReturnType<typeof makeRequest>, path: string, method = "GET") {
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(request(path, { method })).rejects.toThrow("Failed to fetch");
+    }
+
+    it("repeated failures of one endpoint inside the window produce one event", async () => {
+      const request = makeRequest();
+      for (let i = 0; i < 5; i++) {
+        await fail(request, "/entitlements");
+        now += 1_000;
+      }
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      // The trail is not throttled: every attempt still leaves its api.request breadcrumb.
+      const attempts = Sentry.addBreadcrumb.mock.calls.filter(
+        ([b]: [{ category: string }]) => b.category === "api.request"
+      );
+      expect(attempts).toHaveLength(5);
+    });
+
+    it("a different endpoint, or the same path with another method, still reports", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      await fail(request, "/starswarm/leaderboard");
+      await fail(request, "/entitlements", "POST");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it("failures for different record ids of one endpoint share a key (a queue flush is one event)", async () => {
+      const request = makeRequest();
+      const uuid = (n: number) => `0b8f1c2e-4d5a-4e6f-8a9b-${String(n).padStart(12, "0")}`;
+      for (let i = 0; i < 25; i++) {
+        await fail(request, `/games/${uuid(i)}/complete`, "PATCH");
+      }
+      for (let i = 0; i < 25; i++) {
+        await fail(request, `/games/${i}/events`, "POST"); // numeric ids too
+      }
+      // one event per endpoint shape — not one per id
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+      expect(Sentry.captureMessage.mock.calls[0][1].extra.suppressedSinceLastReport).toBe(0);
+    });
+
+    it("query strings do not create new keys", async () => {
+      const request = makeRequest();
+      await fail(request, "/games/me?limit=20&offset=0");
+      await fail(request, "/games/me?limit=20&offset=20");
+      await fail(request, "/games/me");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("ids collapse only where a whole segment is an id", async () => {
+      const request = makeRequest();
+      await fail(request, "/games/me");
+      await fail(request, "/games/catalog");
+      await fail(request, "/daily-word/today");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it("reports again once the window has passed, saying how many were swallowed", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      await fail(request, "/entitlements");
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage.mock.calls[0][1].extra.suppressedSinceLastReport).toBe(0);
+
+      now += WINDOW; // exactly at the boundary counts as passed
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+      expect(Sentry.captureMessage.mock.calls[1][1].extra.suppressedSinceLastReport).toBe(2);
+
+      // and the count starts over for the next window
+      now += WINDOW;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage.mock.calls[2][1].extra.suppressedSinceLastReport).toBe(0);
+    });
+
+    it("stays quiet one millisecond before the window closes", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      now += WINDOW - 1;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("a clock that moves backwards reports again instead of muting the endpoint", async () => {
+      const request = makeRequest();
+      await fail(request, "/entitlements");
+      now -= 60 * 60 * 1000;
+      await fail(request, "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it("throttle state is shared by every client in the session", async () => {
+      // Two game clients hitting the same tagged endpoint (e.g. a screen
+      // remounting and building a fresh client) must not double-report.
+      await fail(makeRequest(), "/entitlements");
+      await fail(makeRequest(), "/entitlements");
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("remembers a bounded number of endpoints, evicting the stalest", async () => {
+      const request = makeRequest();
+      await fail(request, "/first");
+      for (let i = 0; i < MAX_TRACKED; i++) {
+        await fail(request, `/route-${i}`); // ids collapse, so vary a non-id segment
+      }
+      Sentry.captureMessage.mockClear();
+      await fail(request, "/first"); // evicted — reports again despite being inside the window
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      Sentry.captureMessage.mockClear();
+      await fail(request, `/route-${MAX_TRACKED - 1}`); // recent — still remembered
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2428: what production actually throws. Expo's native `fetch` rethrows
+  // every native failure as `FetchError extends Error` ("fetch failed: …") —
+  // never the bare CodedError the #2380 cases above use. Built from Expo's own
+  // class so an SDK bump that changes the shape fails here, not in Sentry.
+  // Messages are the verbatim BC_GAMES-4W (Android) / BC_GAMES-4Y (iOS) titles.
+  describe("Expo native FetchError (#2428)", () => {
+    const { FetchError } = require("expo/src/winter/fetch/FetchErrors") as {
+      FetchError: { createFromError(error: Error): Error };
+    };
+    const nativeFailures = [
+      [
+        "Android",
+        'java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname',
+      ],
+      ["iOS", "UnexpectedException: A server with the specified hostname could not be found."],
+    ];
+
+    it.each(nativeFailures)(
+      "%s offline failure is classified as network, not unexpected",
+      async (_platform, nativeMessage) => {
+        const g = globalThis as { __DEV__?: boolean };
+        const originalDev = g.__DEV__;
+        g.__DEV__ = false;
+        process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+        try {
+          const thrown = FetchError.createFromError(new CodedError("ERR_NETWORK", nativeMessage));
+          expect(thrown).not.toBeInstanceOf(CodedError);
+          expect(thrown).not.toBeInstanceOf(TypeError);
+          mockFetch.mockRejectedValueOnce(thrown);
+          const request = makeRequest();
+          await expect(request("/entitlements")).rejects.toBe(thrown);
+          expect(Sentry.captureException).not.toHaveBeenCalled();
+          expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+          expect(Sentry.captureMessage).toHaveBeenCalledWith(
+            expect.stringContaining("network failure"),
+            expect.objectContaining({
+              level: "warning",
+              tags: expect.objectContaining({ errorType: "network" }),
+              extra: expect.objectContaining({ originalMessage: `fetch failed: ${nativeMessage}` }),
+            })
+          );
+        } finally {
+          g.__DEV__ = originalDev;
+          delete process.env.EXPO_PUBLIC_API_URL;
+        }
+      }
+    );
+
+    it("skips captureMessage in dev mode, same as TypeError (#571)", async () => {
+      mockFetch.mockRejectedValueOnce(FetchError.createFromError(new Error("offline")));
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toThrow("fetch failed: offline");
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("isNetworkError matches the fetch-failed shape and nothing broader", () => {
+      const { isNetworkError } = require("../httpClient") as typeof import("../httpClient");
+      expect(isNetworkError(FetchError.createFromError(new Error("offline")))).toBe(true);
+      expect(isNetworkError(new Error("fetch failed: offline"))).toBe(true);
+      expect(isNetworkError(new Error("boom"))).toBe(false);
+      expect(isNetworkError(new Error("the fetch failed"))).toBe(false);
+      expect(isNetworkError("fetch failed: not an Error")).toBe(false);
+      expect(isNetworkError(null)).toBe(false);
+    });
   });
 
   it("genuine unexpected JS error (non-Api, non-Type) is captured as an exception with stack", async () => {

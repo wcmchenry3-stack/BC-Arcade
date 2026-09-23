@@ -11,6 +11,11 @@ from fastapi.testclient import TestClient
 
 from db.base import get_session_factory, is_configured
 from db.models import GameEntitlement
+from games.progression import (
+    BASE_XP_PER_GAME,
+    LEVEL_THRESHOLDS,
+    VARIETY_BONUS_PER_GAME_TYPE,
+)
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -99,6 +104,40 @@ def test_stats_me_blackjack_uses_chip_shape(client: TestClient) -> None:
     # non-blackjack fields should be absent or null on this entry
     assert bj.get("best") is None
     assert bj.get("avg") is None
+
+
+def test_stats_me_empty_session_is_level_one(client: TestClient) -> None:
+    """#2391: a brand-new session still gets a full progression block."""
+    r = client.get("/stats/me", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["arcade_xp"] == 0
+    assert body["arcade_level"] == 1
+    assert body["xp_into_level"] == 0
+    assert body["xp_for_next_level"] == LEVEL_THRESHOLDS[1]
+
+
+def test_stats_me_reports_arcade_xp_and_level(client: TestClient) -> None:
+    """#2391: XP on the wire is derived from the same summary as the stats.
+
+    The XP/level maths is unit-tested in test_progression.py; this only proves
+    the endpoint exposes it and that the four fields agree with each other.
+    """
+    sid = str(uuid.uuid4())
+    for _ in range(3):
+        _create_and_complete(client, sid, game_type="twenty48", final_score=2048)
+    _create_and_complete(client, sid, game_type="blackjack", final_score=1500)
+    # Started but never completed — must not earn XP.
+    r = client.post("/games", headers=_headers(sid), json={"game_type": "solitaire"})
+    assert r.status_code == 200, r.text
+
+    body = client.get("/stats/me", headers=_headers(sid)).json()
+    xp = body["arcade_xp"]
+    level = body["arcade_level"]
+    assert xp == 4 * BASE_XP_PER_GAME + 2 * VARIETY_BONUS_PER_GAME_TYPE
+    assert 1 < level < len(LEVEL_THRESHOLDS)
+    assert LEVEL_THRESHOLDS[level - 1] + body["xp_into_level"] == xp
+    assert xp + body["xp_for_next_level"] == LEVEL_THRESHOLDS[level]
 
 
 # ---------------------------------------------------------------------------

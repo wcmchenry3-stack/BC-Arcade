@@ -1,7 +1,11 @@
 databases:
-  # --- BC Arcade Postgres (prod) ---
-  # Managed by render.yaml; do not manually edit in the dashboard.
-  # New services reference this via fromDatabase.
+  # --- BC Arcade Postgres (DEV ONLY) ---
+  # This is the dev database. Production does NOT use a Render database —
+  # prod data lives in Supabase (see docs/RENDER.md). Nothing on a `main`
+  # service may reference this block via fromDatabase;
+  # test_render_yaml_prod_database_is_not_a_render_db enforces that.
+  # NOTE: the live dev DB predates this blueprint (its real database/user
+  # names differ), so do not apply this block expecting it to adopt that DB.
   - name: bc-arcade-db
     databaseName: bc_arcade
     user: bc_arcade_user
@@ -17,7 +21,7 @@ services:
     runtime: python
     branch: main
     rootDir: backend
-    autoDeploy: true
+    autoDeploy: false # deployed by .github/workflows/deploy.yml after CI, then ZAP-scanned
     buildCommand: pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --limit-max-requests 10000
     healthCheckPath: /health
@@ -26,11 +30,27 @@ services:
         value: 3.11.0
       - key: ALLOWED_ORIGINS
         value: "https://games.buffingchi.com,https://games-api.buffingchi.com"
+      # Tags Sentry events and is the only environment whose crash-free
+      # number counts (#851).
+      - key: ENVIRONMENT
+        value: production
+      # Supabase session pooler (*.pooler.supabase.com, port 5432 — never the
+      # transaction pooler on 6543, never the Render dev DB). The URL carries
+      # the DB password: dashboard secret only, never committed.
       - key: DATABASE_URL
-        fromDatabase:
-          name: bc-arcade-db
-          property: connectionString
+        sync: false
       - key: SENTRY_DSN
+        sync: false
+      # Prod-only values — never reuse dev's keypair, salts or token.
+      - key: ENTITLEMENT_PRIVATE_KEY
+        sync: false
+      - key: ENTITLEMENT_PUBLIC_KEY
+        sync: false
+      - key: DAILY_WORD_SALT
+        sync: false
+      - key: DAILY_CHALLENGE_SALT
+        sync: false
+      - key: ADMIN_API_TOKEN
         sync: false
 
   # --- BC Arcade Expo Web static frontend (prod) ---
@@ -39,7 +59,7 @@ services:
     runtime: static
     branch: main
     rootDir: frontend
-    autoDeploy: true
+    autoDeploy: false # deployed by .github/workflows/deploy.yml after CI, then ZAP-scanned
     buildCommand: npm ci && node scripts/fetch-render-env.js && node scripts/check-build-env.js && npx expo export --platform web
     staticPublishPath: dist
     envVars:
@@ -84,9 +104,22 @@ services:
         value: 3.11.0
       - key: ALLOWED_ORIGINS
         value: "https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com"
+      - key: ENVIRONMENT
+        value: development
+      # Render Postgres `bc-arcade-db` (dev only).
       - key: DATABASE_URL
         sync: false
       - key: SENTRY_DSN
+        sync: false
+      - key: ENTITLEMENT_PRIVATE_KEY
+        sync: false
+      - key: ENTITLEMENT_PUBLIC_KEY
+        sync: false
+      - key: DAILY_WORD_SALT
+        sync: false
+      - key: DAILY_CHALLENGE_SALT
+        sync: false
+      - key: ADMIN_API_TOKEN
         sync: false
 
   # --- Expo Web static frontend (dev environment) ---

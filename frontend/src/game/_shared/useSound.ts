@@ -12,7 +12,7 @@ export function useSound(
   key: string,
   registry: Record<string, number>,
   volume = 1.0
-): { play: () => void } {
+): { play: () => boolean; stop: () => void } {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
   const mutedRef = useRef(muted);
@@ -54,13 +54,16 @@ export function useSound(
     }
   }, [volume]);
 
-  const play = useCallback(() => {
-    if (mutedRef.current) return;
+  // Returns whether playback was actually started — false when muted, when the sound has no
+  // player, or when the call was dropped by the in-flight guard. Most callers ignore it; a
+  // caller that syncs something to the sound's length (Star Swarm's PERFECT hold) needs it.
+  const play = useCallback((): boolean => {
+    if (mutedRef.current) return false;
     const player = playerRef.current;
-    if (!player) return;
+    if (!player) return false;
     const startedAt = Date.now();
     const pendingSince = pendingSinceRef.current;
-    if (pendingSince !== null && startedAt - pendingSince < PENDING_PLAY_TIMEOUT_MS) return;
+    if (pendingSince !== null && startedAt - pendingSince < PENDING_PLAY_TIMEOUT_MS) return false;
     pendingSinceRef.current = startedAt;
     // Only the chain that currently holds the guard may release it — a timed-out chain that
     // settles late must not clear the guard out from under its replacement.
@@ -77,8 +80,23 @@ export function useSound(
     } catch {
       // expo-audio may throw on web if audio context is suspended; fail silently.
       release();
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Cuts the sound off and rewinds it — for a long sound (a fanfare) that must not carry on
+  // over whatever the player does next.
+  const stop = useCallback(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      player.pause();
+      Promise.resolve(player.seekTo(0)).catch(() => {});
+    } catch {
+      // Same as play(): expo-audio may throw on web; nothing useful to do about it.
     }
   }, []);
 
-  return { play };
+  return { play, stop };
 }

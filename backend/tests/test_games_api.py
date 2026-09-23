@@ -250,6 +250,103 @@ def test_complete_game_rejects_invalid_outcome(client: TestClient, session_id: s
     assert r.status_code == 400
 
 
+def test_complete_game_result_merged_and_visible_in_detail(
+    client: TestClient, session_id: str
+) -> None:
+    gid = _new_game(client, session_id, "solitaire")
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={"outcome": "completed", "result": {"won": True, "moves": 87}},
+    )
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=_headers(session_id))
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["metadata"] == {"won": True, "moves": 87}
+
+
+def test_daily_word_session_round_trip(client: TestClient, session_id: str) -> None:
+    """#2451 — create with puzzle metadata, complete with the result block, read it back.
+
+    Daily Word has no numeric score, so ``final_score`` is null and the win
+    signal lives only in the merged result block.
+    """
+    r = client.post(
+        "/games",
+        headers=_headers(session_id),
+        json={
+            "game_type": "daily_word",
+            "metadata": {"puzzle_id": "20260920-en", "language": "en"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={
+            "outcome": "completed",
+            "result": {"is_complete": True, "won": True, "guesses_used": 4},
+        },
+    )
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=_headers(session_id)).json()
+    assert detail["metadata"] == {
+        "puzzle_id": "20260920-en",
+        "language": "en",
+        "is_complete": True,
+        "won": True,
+        "guesses_used": 4,
+    }
+    assert detail["final_score"] is None
+
+
+def test_daily_word_rejects_invalid_result(client: TestClient, session_id: str) -> None:
+    r = client.post(
+        "/games",
+        headers=_headers(session_id),
+        json={"game_type": "daily_word", "metadata": {"puzzle_id": "20260920-en"}},
+    )
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={"outcome": "completed", "result": {"won": True}},  # is_complete, guesses_used missing
+    )
+    assert r.status_code == 400
+
+
+def test_complete_game_rejects_invalid_result(client: TestClient, session_id: str) -> None:
+    gid = _new_game(client, session_id, "solitaire")
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={"outcome": "completed", "result": {"won": True}},  # moves missing
+    )
+    assert r.status_code == 400
+    assert "moves" in r.json()["detail"]
+
+
+def test_complete_game_without_result_still_works(client: TestClient, session_id: str) -> None:
+    """Back-compat: app builds that predate the result envelope send no `result`."""
+    gid = _new_game(client, session_id, "solitaire")
+    r = client.patch(
+        f"/games/{gid}/complete", headers=_headers(session_id), json={"outcome": "completed"}
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_complete_game_null_result_treated_as_empty(client: TestClient, session_id: str) -> None:
+    """`"result": null` must not 422 — the sync worker would dead-letter the completion."""
+    gid = _new_game(client, session_id, "solitaire")
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(session_id),
+        json={"outcome": "completed", "result": None},
+    )
+    assert r.status_code == 200, r.text
+
+
 # #514: prior to this fix the set of valid outcomes only covered the blackjack
 # result vocabulary (`win` / `loss` / `push` / `blackjack`) plus `abandoned`,
 # so every natural game-end from a score-based game (yacht, cascade, twenty48)

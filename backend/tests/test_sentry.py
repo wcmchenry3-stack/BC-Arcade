@@ -65,6 +65,57 @@ class TestSentryUnit:
             "if _sentry_dsn:" in source or "if _sentry_dsn" in source
         ), "Sentry init should be conditional on DSN being set"
 
+    def test_sentry_environment_defaults_to_development(self, monkeypatch):
+        """Unset ENVIRONMENT must never fall through to sentry-sdk's "production" (#851)."""
+        # Import before patching: main registers /debug/error at import time from ENVIRONMENT.
+        from main import _sentry_options
+
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        assert _sentry_options("https://key@o0.ingest.sentry.io/0")["environment"] == "development"
+
+    def test_sentry_environment_follows_env_var(self, monkeypatch):
+        from main import _sentry_options
+
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        assert _sentry_options("https://key@o0.ingest.sentry.io/0")["environment"] == "production"
+
+    def test_sentry_release_is_the_render_commit(self, monkeypatch):
+        monkeypatch.setenv("RENDER_GIT_COMMIT", "abc1234")
+        from main import _sentry_options
+
+        assert _sentry_options("https://key@o0.ingest.sentry.io/0")["release"] == "abc1234"
+
+    def test_sentry_never_sends_default_pii(self):
+        from main import _sentry_options
+
+        assert _sentry_options("https://key@o0.ingest.sentry.io/0")["send_default_pii"] is False
+
+    def test_sentry_scrubs_session_and_admin_headers(self):
+        """X-Session-ID (pseudonymous player ID) and X-Admin-Token (a secret) must not reach
+        Sentry. sentry-sdk's default denylist matches keys exactly and contains neither."""
+        import main
+        from main import _sentry_options
+
+        assert main  # imported first so ENVIRONMENT-gated routes register (see sentry-check job)
+        scrubber = _sentry_options("https://key@o0.ingest.sentry.io/0")["event_scrubber"]
+        event = {
+            "request": {
+                "url": "https://dev-games-api.buffingchi.com/games/me",
+                "headers": {
+                    "X-Session-ID": "11111111-2222-4333-8444-555555555555",
+                    "X-Admin-Token": "super-secret",
+                    "Authorization": "Bearer abc",
+                    "User-Agent": "BCArcade/1.0.9",
+                },
+            }
+        }
+        scrubber.scrub_event(event)
+        headers = event["request"]["headers"]
+        assert "11111111-2222-4333-8444-555555555555" not in repr(headers)
+        assert "super-secret" not in repr(headers)
+        assert "Bearer abc" not in repr(headers)  # default denylist still applies
+        assert headers["User-Agent"] == "BCArcade/1.0.9"
+
     def test_sentry_captures_callable(self):
         """Verify that Sentry's core capture functions are available."""
         assert callable(sentry_sdk.capture_exception)

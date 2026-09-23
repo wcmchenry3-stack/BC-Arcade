@@ -336,6 +336,7 @@ function CascadeGame() {
     enqueue: syncEnqueue,
     complete: syncComplete,
     getGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("cascade");
   const { setSnapshot: setScoreboardSnapshot } = useCascadeScoreboard();
   const bestScoreRef = useRef(0);
@@ -346,6 +347,17 @@ function CascadeGame() {
   const completedGameIdRef = useRef<string | null>(null);
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
+
+  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: {
+        total_drops: dropCountRef.current,
+        total_merges: mergeCountRef.current,
+        duration_ms: Date.now() - gameStartTimeRef.current,
+      },
+    }));
+  }, [syncSetProgressSnapshot]);
 
   const lastSaveTimeRef = useRef<number>(0);
   const settlingTicksLeftRef = useRef<number>(0);

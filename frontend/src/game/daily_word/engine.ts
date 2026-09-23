@@ -138,6 +138,25 @@ export function markComplete(state: DailyWordState, won: boolean): DailyWordStat
   };
 }
 
+/**
+ * The result block sent on `PATCH /games/{id}/complete` (#2451). Must satisfy
+ * the backend `DailyWordResult`; the daily challenge reads exactly these fields.
+ * Counts submitted rows rather than `current_row` so it is right both at the
+ * win (where `current_row` has already advanced) and mid-puzzle for an abandon.
+ */
+export function sessionResult(state: DailyWordState | null): {
+  is_complete: boolean;
+  won: boolean;
+  guesses_used: number;
+} {
+  if (!state) return { is_complete: false, won: false, guesses_used: 0 };
+  return {
+    is_complete: state.is_complete,
+    won: state.won,
+    guesses_used: state.rows.filter((row) => row.submitted).length,
+  };
+}
+
 const TILE_EMOJI: Record<"correct" | "present" | "absent", string> = {
   correct: "🟩",
   present: "🟨",

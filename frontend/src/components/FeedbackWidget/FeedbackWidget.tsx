@@ -24,7 +24,7 @@ interface Props {
 export default function FeedbackWidget({ visible, onClose }: Props) {
   const { t } = useTranslation("feedback");
   const { colors } = useTheme();
-  const { status, result, error, submit, reset } = useFeedbackSubmit();
+  const { status, error, submit, reset } = useFeedbackSubmit();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -101,11 +101,6 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
               /* ── Success state ── */
               <View style={s.successContainer} accessibilityLiveRegion="polite">
                 <Text style={s.successTitle}>{t("submit_success")}</Text>
-                {result && (
-                  <Text style={s.successSub}>
-                    {t("submit_success_issue", { number: result.issueNumber })}
-                  </Text>
-                )}
                 <Pressable
                   style={[s.primaryBtn, { backgroundColor: colors.accent }]}
                   onPress={handleClose}
@@ -131,11 +126,7 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
                         ? t("submit_error_rate_limit", {
                             seconds: error.retryAfterSeconds ?? 60,
                           })
-                        : error.kind === "rejected"
-                          ? t("submit_error_rejected")
-                          : error.kind === "network"
-                            ? t("submit_error_network")
-                            : t("submit_error")}
+                        : t("submit_error")}
                     </Text>
                   </View>
                 )}
@@ -389,11 +380,6 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       fontSize: 17,
       fontWeight: "600",
       color: colors.text,
-      textAlign: "center",
-    },
-    successSub: {
-      fontSize: 14,
-      color: colors.textMuted,
       textAlign: "center",
     },
   });
