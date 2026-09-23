@@ -18,11 +18,13 @@ pgcrypto.
 from __future__ import annotations
 
 import uuid
+from datetime import date as dt_date
 from datetime import datetime
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -200,3 +202,32 @@ class BugLog(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+
+
+class DailyChallengeDay(Base):
+    """Frozen at first request: which goals a calendar day's daily challenge
+    actually showed players, for a given slate (#2493).
+
+    `daily_challenge/definitions.py`'s ``pick_template`` is a pure function of
+    (day, slate, salt, pool) — the scheduling *policy*, only ever correct for a
+    day nobody has been shown yet. The first time a (date, slate) pair is
+    requested (`daily_challenge/schedule.py`), the result lands here and every
+    later request for that pair reads the row back instead of recomputing — so
+    retuning the goal pool or changing DAILY_CHALLENGE_SALT afterward can only
+    ever affect days not yet frozen, never one a player has already seen or a
+    streak has already been scored against.
+
+    Each goal is a self-contained spec (game_type/kind/target/tier), not a
+    lookup key into a pool dict — so a day's history survives a goal being
+    retuned or removed from the live pool later.
+    """
+
+    __tablename__ = "daily_challenge_days"
+
+    date: Mapped[dt_date] = mapped_column(Date, primary_key=True)
+    slate: Mapped[str] = mapped_column(Text, primary_key=True)
+    template_id: Mapped[str] = mapped_column(Text, nullable=False)
+    goals: Mapped[list] = mapped_column(_JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
