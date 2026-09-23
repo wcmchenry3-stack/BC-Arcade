@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
 
-from daily_challenge import service
+from daily_challenge import schedule, service
 from daily_challenge.definitions import Goal, local_day, template_for
 from daily_challenge.schemas import (
     ChallengeResponse,
@@ -40,7 +40,11 @@ async def get_today(
     day = local_day(tz_offset_minutes)
     # Always the free slate: no session here, so nothing to resolve. Only /status
     # (below) may return the premium slate.
-    template = template_for(day.date, "free")
+    factory = get_session_factory()
+    async with factory() as db:
+        template = await schedule.get_or_create_template(
+            db, day.date, "free", lambda: template_for(day.date, "free")
+        )
     return ChallengeResponse(
         challenge_id=day.date.isoformat(),
         template_id=template.id,

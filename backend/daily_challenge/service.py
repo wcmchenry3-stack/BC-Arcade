@@ -1,11 +1,16 @@
 """Daily challenge completion — a read-side view over ``games`` (#2392).
 
-Nothing is written. A goal is met by a game the session finished inside the
-player's local day; the rows are the ones ``PATCH /games/{id}/complete``
-already wrote, so offline plays count as soon as the client's queue uploads
-them (``completed_at`` is the client's timestamp, validated on write). Each
-goal is evaluated against one row's measures (``game_facts``: the result block
-in ``games.metadata`` plus the score/duration columns) — never ``outcome``.
+A goal is met by a game the session finished inside the player's local day; the
+rows are the ones ``PATCH /games/{id}/complete`` already wrote, so offline
+plays count as soon as the client's queue uploads them (``completed_at`` is
+the client's timestamp, validated on write). Each goal is evaluated against
+one row's measures (``game_facts``: the result block in ``games.metadata``
+plus the score/duration columns) — never ``outcome``.
+
+The only write here is indirect: ``schedule.get_or_create_template`` (#2493)
+freezes today's assignment into ``daily_challenge_days`` the first time it is
+requested, so tuning the goal pool or ``DAILY_CHALLENGE_SALT`` later can never
+change what a day already showed.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from datetime import date, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from daily_challenge import schedule
 from daily_challenge.definitions import (
     Facts,
     Goal,
@@ -150,7 +156,9 @@ async def get_status_for_session(
 ) -> ChallengeStatus:
     day = local_day(tz_offset_minutes, utc_now)
     slate = await resolve_slate(session, session_id, day.date)
-    template = template_for(day.date, slate)
+    template = await schedule.get_or_create_template(
+        session, day.date, slate, lambda: template_for(day.date, slate)
+    )
     game_types = {goal.game_type for goal in template.goals}
 
     rows = (
