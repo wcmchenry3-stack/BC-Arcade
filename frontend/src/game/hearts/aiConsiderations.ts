@@ -294,55 +294,90 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
 // ---------------------------------------------------------------------------
 
 /**
- * Score = how effectively this card blocks an opponent's moon attempt.
+ * Moon-defense thresholds (#2235). Always-on engine behaviour (#2269): the
+ * personas differ only through their `moonThreat` weight.
+ */
+export const MOON_DEFENSE = {
+  /** A lone point-holder is treated as a threat from this many points. */
+  minThreatPoints: 2,
+  /** ...and as a full threat from this many (the old all-or-nothing gate was 4). */
+  fullThreatPoints: 4,
+};
+
+/**
+ * The opponent who holds every point taken this hand, or null when nobody
+ * has points, several players do, or it's this player (no threat to block).
+ */
+export function moonShooter(infoSet: HeartsInfoSet): number | null {
+  const { pointsPerPlayer, playerIndex } = infoSet;
+  const total = pointsPerPlayer.reduce((s, v) => s + v, 0);
+  if (total === 0) return null;
+  for (let i = 0; i < 4; i++) {
+    if ((pointsPerPlayer[i] ?? 0) === total) return i === playerIndex ? null : i;
+  }
+  return null;
+}
+
+/**
+ * Probability that the current trick ends up won by someone other than the
+ * shooter, assuming this player's own card doesn't win it. 0 or 1 once the
+ * shooter has played (they're winning or beaten); 1 when the shooter is
+ * known void in the led suit. Otherwise the shooter overtakes only with a
+ * higher card of the led suit: each of the `h` outstanding higher cards is
+ * in one of three unknown hands, so the shooter holds none with ≈ (2/3)^h.
+ */
+function pTrickAvoidsShooter(infoSet: HeartsInfoSet, shooter: number): number {
+  const { currentTrick, ledSuit, seenKeys, hand, voidLedger } = infoSet;
+  if (ledSuit === null || currentTrick.length === 0) return 0.5;
+  let winner = currentTrick[0]!;
+  for (const tc of currentTrick) {
+    if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > aceHigh(winner.card.rank)) winner = tc;
+  }
+  if (currentTrick.some((tc) => tc.playerIndex === shooter)) {
+    return winner.playerIndex === shooter ? 0 : 1;
+  }
+  if (voidLedger[shooter]?.[ledSuit]) return 1;
+  const higher = countHigherOutstanding(winner.card, ledSuit, seenKeys, hand);
+  return (2 / 3) ** higher;
+}
+
+/**
+ * Score = how well this card defends against an opponent's moon (#2235).
  *
- * Decomposed from: the moon-blocking dump sequences in the legacy Medium/Hard
- * AI — dump highest safe point card on the moon-shooter's trick
- * when following, prefer low leads that won't feed the shooter when leading.
+ * A moon is stopped the moment any other player takes a point, so the card
+ * is judged on where its points go:
+ * - points that land on a non-shooter (this player winning the trick, or a
+ *   trick the shooter can no longer take) block the moon: high score;
+ * - points that feed the shooter's trick help the moon: low score, so the
+ *   player keeps its hearts and Q♠ — its stoppers — and discards safe cards.
+ * The old version rewarded any point dump while a lone opponent held 4+
+ * points, including onto the shooter's own winning trick.
  *
- * 1.0: optimal block (safe high-value point dump onto the shooter's winning trick).
- * 0.5: neutral (no moon threat, or card has no blocking effect).
- * 0.0: counter-productive (would win back a point trick, helping the shooter).
+ * Detection is graded: the threat grows from `minThreatPoints` to full at
+ * `fullThreatPoints`, instead of switching on only at 4 points. The score is
+ * blended towards neutral by the threat level.
+ *
+ * 1.0: best block. 0.5: neutral (no threat, or no effect). 0.0: feeds the moon.
  */
 export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
-  const { pointsPerPlayer, playerIndex, ledSuit } = infoSet;
-
-  const totalPts = pointsPerPlayer.reduce((s, v) => s + v, 0);
-  if (totalPts < 4) return 0.5; // insufficient signal for a moon threat
-
-  // Moon threat: exactly one opponent holds all points taken so far
-  let threatFound = false;
-  for (let i = 0; i < 4; i++) {
-    if (i === playerIndex) continue;
-    const pts = pointsPerPlayer[i] ?? 0;
-    if (pts > 0 && pts === totalPts) {
-      threatFound = true;
-      break;
-    }
-  }
-  if (!threatFound) return 0.5;
+  const shooter = moonShooter(infoSet);
+  if (shooter === null) return 0.5;
+  const shooterPts = infoSet.pointsPerPlayer[shooter] ?? 0;
+  if (shooterPts < MOON_DEFENSE.minThreatPoints) return 0.5;
+  const threat = Math.min(1, shooterPts / MOON_DEFENSE.fullThreatPoints);
 
   const pts = cardPoints(card);
+  if (pts === 0) return 0.5; // only point cards move the moon either way
+
+  // Where do this card's points end up? Winning the trick ourselves blocks;
+  // otherwise it depends on whether the shooter takes the trick.
   const pWin = computePWin(card, infoSet);
-  const isVoid = ledSuit !== null && card.suit !== ledSuit;
-
-  if (ledSuit === null) {
-    // Leading during a moon threat: avoid starting point tricks the shooter can take
-    return pts > 0 ? 0.2 : 0.6;
-  }
-
-  if (isVoid) {
-    // Off-suit discard onto the shooter's trick: dumping points is ideal blocking
-    // Q♠ (13 pts) is worth maximally dumping; each heart (1 pt) is still useful
-    if (pts > 0) return 0.7 + (pts / 26) * 0.3;
-    return 0.5; // non-point discard: neutral
-  }
-
-  // Following in led suit: dump points only when we won't win the trick back
-  if (pts > 0) {
-    return 0.5 + (1.0 - pWin) * 0.45; // safe dump → up to 0.95; self-win → ~0.5
-  }
-  return 0.5;
+  const pAvoid = infoSet.ledSuit === null ? 0 : pTrickAvoidsShooter(infoSet, shooter);
+  const pBlock = pWin + (1 - pWin) * pAvoid;
+  // Bigger point cards matter more either way (Q♠ onto the shooter is the worst).
+  const size = 0.35 + 0.1 * (pts / 13);
+  const raw = 0.5 + (2 * pBlock - 1) * size;
+  return 0.5 + threat * (raw - 0.5);
 };
 
 // ---------------------------------------------------------------------------
