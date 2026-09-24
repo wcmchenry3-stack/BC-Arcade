@@ -133,9 +133,97 @@ When adding a sound:
 
 ## Star Swarm (#803)
 
-### starswarm-laser.ogg, starswarm-chargeshot.ogg, starswarm-explosion.ogg, starswarm-gameover.ogg, starswarm-waveclear.ogg
+### Provenance of the five original gameplay sounds (#2492)
 
-_(Previously placed — provenance to be confirmed)_
+These were committed without a source filename. Each file still carries the title Kenney embedded
+in it (a Vorbis `TITLE` comment, encoder `Xiph.Org libVorbis I 20070622`) — the same tag
+convention and encoder as the repo's other Kenney Digital Audio sounds (for example
+`blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio `powerUp1.ogg`). Where the title
+is also a filename in that pack, the match is definite. Two titles aren't pack filenames (Kenney's
+internal titles don't always match: `solitaire-invalid-move.ogg` carries `TITLE=twobop` but is
+credited as `lowDown.ogg` and is different audio), so those two record the pack and the title, and
+leave the exact filename open. Re-check the pair against the pack if it can be downloaded
+(kenney.nl is blocked from the build container), and swap in a named file if no match is found.
+
+Four of the five also ship a second time, byte for byte, as a power-up sound (entries below).
+
+### starswarm-laser.ogg
+
+- **Event:** Player shot (lightning super-state fire); also the Carrier beam firing (`starswarm.beamfire`, #2485)
+- **Original filename:** `laser7.ogg` from Kenney Digital Audio (embedded `TITLE=laser7`, `TRACKNUMBER=7`)
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+
+### starswarm-chargeshot.ogg
+
+- **Event:** Carrier beam telegraph (`starswarm.beamcharge`, #2485). Registered as `starswarm.chargeshot`
+  too, but nothing plays that key today (the charge shot is silent)
+- **Original filename:** `laser9.ogg` from Kenney Digital Audio (embedded `TITLE=laser9`, `TRACKNUMBER=9`)
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+
+### starswarm-explosion.ogg
+
+- **Event:** Any new explosion — an enemy destroyed, a rock broken, or the player's ship lost
+- **Original filename:** `zap1.ogg` from Kenney Digital Audio (embedded `TITLE=zap1`)
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+
+### starswarm-gameover.ogg
+
+- **Event:** Game over
+- **Original filename:** Kenney Digital Audio, embedded `TITLE=twobop` — exact pack filename unconfirmed (see note above)
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+
+### starswarm-waveclear.ogg
+
+- **Event:** Wave cleared; also the bonus-life sting (`starswarm.bonuslife`)
+- **Original filename:** Kenney Digital Audio, embedded `TITLE=twotone` — likely `twoTone1.ogg` or `twoTone2.ogg`, unconfirmed (see note above)
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+
+### starswarm-powerup-buddy.ogg, -shield.ogg, -bomb.ogg, -lightning.ogg
+
+- **Event:** Power-up collected (buddy, shield, bomb, lightning); `-lightning` and `-shield` are also
+  reused for the #2488 salvage and hull pickups
+- **Files:** byte-identical copies (same MD5) of gameplay sounds above:
+
+  | File                              | Same audio as              | Original                       |
+  | --------------------------------- | -------------------------- | ------------------------------ |
+  | `starswarm-powerup-buddy.ogg`     | `starswarm-laser.ogg`      | Digital Audio `laser7.ogg`     |
+  | `starswarm-powerup-shield.ogg`    | `starswarm-chargeshot.ogg` | Digital Audio `laser9.ogg`     |
+  | `starswarm-powerup-bomb.ogg`      | `starswarm-explosion.ogg`  | Digital Audio `zap1.ogg`       |
+  | `starswarm-powerup-lightning.ogg` | `starswarm-waveclear.ogg`  | Digital Audio, `TITLE=twotone` |
+
+- **License / source:** as the originals — Kenney Digital Audio, CC0, no attribution required.
+- **Notes:** Previously uncredited anywhere (found while closing #2492). Kept as separate files so
+  each event can be swapped independently when dedicated stings arrive.
 
 ### starswarm-playerhit.ogg
 

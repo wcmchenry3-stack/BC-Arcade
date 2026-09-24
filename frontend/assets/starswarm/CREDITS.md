@@ -4,11 +4,12 @@ All sprites in this folder derive from Kenney.nl packs released under CC0 1.0 Un
 (Public Domain). No attribution required, but appreciated. Sources were recorded in PR #863
 when the sprites were added; this file keeps that record in the repo (#2492).
 
-Power-up sprites and the buddy ship are credited separately in [`powerups/CREDITS.md`](powerups/CREDITS.md).
+Power-up sprites are credited separately in [`powerups/CREDITS.md`](powerups/CREDITS.md).
 
 | File                     | Pack                    | Source file             | Notes                                                                                                                                                                       |
 | ------------------------ | ----------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | player-ship.webp         | Space Shooter Redux     | playerShip1_orange.png  |                                                                                                                                                                             |
+| buddy-ship.webp          | Space Shooter Redux     | playerShip1_orange.png  | Hue-rotated +200° to a blue variant (playerShip1_blue.png equivalent) — the #1035 buddy ship. Also listed in `powerups/CREDITS.md`.                                         |
 | enemy-grunt.webp         | Space Shooter Redux     | enemyBlack1.png         |                                                                                                                                                                             |
 | enemy-elite.webp         | Space Shooter Redux     | enemyRed3.png           |                                                                                                                                                                             |
 | enemy-boss.webp          | Space Shooter Redux     | ufoRed.png              |                                                                                                                                                                             |
