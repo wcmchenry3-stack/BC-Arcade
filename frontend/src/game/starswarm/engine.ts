@@ -897,13 +897,49 @@ function rockThreatens(a: Asteroid, e: Enemy): boolean {
   return false;
 }
 
-/** Shift the remaining path sideways; the destination (p3) is untouched so the ship still arrives. */
+function lerp(a: Vec2, b: Vec2, t: number): Vec2 {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/**
+ * The part of a cubic still ahead of parameter `t`, as its own cubic (de Casteljau split).
+ * Evaluating the result at u gives the original at t + u·(1 − t); at t = 0 it is the same curve.
+ */
+export function splitRemaining(path: CubicBezier, t: number): CubicBezier {
+  if (t <= 0) return path;
+  const a = lerp(path.p0, path.p1, t);
+  const b = lerp(path.p1, path.p2, t);
+  const c = lerp(path.p2, path.p3, t);
+  const d = lerp(a, b, t);
+  const e = lerp(b, c, t);
+  const f = lerp(d, e, t);
+  return { p0: f, p1: e, p2: c, p3: path.p3 };
+}
+
+/** Shift a path's middle control points sideways; p0 and the destination (p3) are untouched. */
 export function nudgePath(path: CubicBezier, dir: 1 | -1): CubicBezier {
   return {
     p0: path.p0,
     p1: { x: path.p1.x + dir * DODGE_PATH_NUDGE, y: path.p1.y },
     p2: { x: path.p2.x + dir * DODGE_PATH_NUDGE, y: path.p2.y },
     p3: path.p3,
+  };
+}
+
+/**
+ * Bend the rest of a ship's path away from a rock without moving the ship: split the curve at
+ * its current progress, nudge only the remaining segment, and restart that segment at pathT = 0
+ * with the duration it had left, so speed along the path is unchanged. (Nudging the original
+ * control points in place would pull the ship's current position sideways by up to ~30 px.)
+ */
+function nudgeRemainingPath(e: Enemy, dir: 1 | -1): Enemy {
+  const t = Math.max(0, Math.min(1, e.pathT));
+  if (t >= 1 || !e.path) return e;
+  return {
+    ...e,
+    path: nudgePath(splitRemaining(e.path, t), dir),
+    pathT: 0,
+    pathDuration: e.pathDuration * (1 - t),
   };
 }
 
@@ -977,7 +1013,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         bumpStat(stats, e.tier, { dodged: 1, pathDodged: onPath ? 1 : 0 });
         const dir: 1 | -1 = e.x < a.x + a.vx * 400 ? -1 : 1;
         e = onPath
-          ? { ...e, path: nudgePath(e.path!, dir) }
+          ? nudgeRemainingPath(e, dir)
           : { ...e, dodge: { dir, t: 0, dur: DODGE_SIDESTEP_MS } };
       }
     }

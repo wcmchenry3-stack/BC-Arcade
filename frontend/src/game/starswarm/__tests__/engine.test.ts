@@ -46,6 +46,7 @@ import {
   reinforceCap,
   dodgeChance,
   nudgePath,
+  splitRemaining,
   emptyTierStats,
   DODGE_SIDESTEP,
   DODGE_SIDESTEP_MS,
@@ -3763,7 +3764,34 @@ describe("Enemy asteroid response (#2487)", () => {
     expect(nudgePath(path, 1).p1.x).toBe(10 + DODGE_PATH_NUDGE);
   });
 
-  it("a swooping ship on screen rolls, and a successful roll nudges its path (p3 unchanged)", () => {
+  it("splitRemaining is the tail of the curve: same points, re-parameterised from 0", () => {
+    const path = {
+      p0: { x: 0, y: 0 },
+      p1: { x: 100, y: 200 },
+      p2: { x: 300, y: -50 },
+      p3: { x: 360, y: 400 },
+    };
+    const evalAt = (p: typeof path, t: number) => {
+      const u = 1 - t;
+      return {
+        x:
+          u * u * u * p.p0.x + 3 * u * u * t * p.p1.x + 3 * u * t * t * p.p2.x + t * t * t * p.p3.x,
+        y:
+          u * u * u * p.p0.y + 3 * u * u * t * p.p1.y + 3 * u * t * t * p.p2.y + t * t * t * p.p3.y,
+      };
+    };
+    const t0 = 0.35;
+    const tail = splitRemaining(path, t0);
+    for (const u of [0, 0.25, 0.5, 0.8, 1]) {
+      const a = evalAt(tail, u);
+      const b = evalAt(path, t0 + u * (1 - t0));
+      expect(a.x).toBeCloseTo(b.x, 6);
+      expect(a.y).toBeCloseTo(b.y, 6);
+    }
+    expect(splitRemaining(path, 0)).toBe(path);
+  });
+
+  it("a swooping ship on screen rolls, and a successful roll bends the rest of its path without moving it", () => {
     let found = false;
     for (let seed = 1; seed < 80 && !found; seed++) {
       seedRng(seed);
@@ -3785,9 +3813,18 @@ describe("Enemy asteroid response (#2487)", () => {
       expect(s.tierStats[flyer.tier].pathRolls).toBe(before.pathRolls + 1);
       if (s.tierStats[flyer.tier].pathDodged > before.pathDodged) {
         found = true;
+        // destination kept; path restarted from where the ship was, with the time it had left
         expect(after.path!.p3).toEqual(flyer.path!.p3);
-        expect(Math.abs(after.path!.p1.x - flyer.path!.p1.x)).toBe(DODGE_PATH_NUDGE);
-        expect(Math.abs(after.path!.p2.x - flyer.path!.p2.x)).toBe(DODGE_PATH_NUDGE);
+        expect(after.pathT).toBeLessThan(0.05);
+        expect(after.pathDuration).toBeCloseTo(flyer.pathDuration * (1 - flyer.pathT), 3);
+        expect(after.path!.p0.x).toBeCloseTo(flyer.x, 0);
+        expect(after.path!.p0.y).toBeCloseTo(flyer.y, 0);
+        // no sideways jump: this tick moved it about as far as any other 16 ms tick would
+        expect(Math.hypot(after.x - flyer.x, after.y - flyer.y)).toBeLessThan(16);
+        // and the bend is there: the nudged tail's middle points sit off the un-nudged tail's
+        const tail = splitRemaining(flyer.path!, flyer.pathT);
+        expect(Math.abs(after.path!.p1.x - tail.p1.x)).toBe(DODGE_PATH_NUDGE);
+        expect(Math.abs(after.path!.p2.x - tail.p2.x)).toBe(DODGE_PATH_NUDGE);
       }
     }
     expect(found).toBe(true);

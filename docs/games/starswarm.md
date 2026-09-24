@@ -78,8 +78,9 @@ rolls **once per rock** to dodge. Success chance is `base × difficulty paramSca
 | Boss    | 80%        | 90%       | same                                                 |
 | Carrier | never      | 100%      | rocks shatter on its force field                     |
 
-A path nudge shifts the remaining control points 40 px away from the rock and keeps the
-destination, so the ship still arrives where it was going. Ships still off-screen (`pathT < 0`)
+A path nudge splits the curve at the ship's current progress and shifts the _remaining_ segment's
+control points 40 px away from the rock, restarting it from the ship's position with the time it
+had left — the ship doesn't jump, and it still arrives where it was going. Ships still off-screen (`pathT < 0`)
 are not threatened; circling ships never dodge. A failed roll takes no action, so the collision
 follows naturally and reads as a botched dodge.
 
