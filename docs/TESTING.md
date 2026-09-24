@@ -486,11 +486,11 @@ not the mixed table.
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 42.2%
-  at the all-Cautious table, 25.6% at all-Schemer and 17.2% at all-Daring
-  (26.1% at the mixed table). At the mixed table Daring wins 38.4%, Schemer
-  25.2%, Cautious 10.2%; in the field matchup Daring beats Schemer by
-  +8.3pp and Schemer beats Cautious by +13.6pp. All six steps are
+- The difficulty ladder holds at every step: the human stand-in wins 43.4%
+  at the all-Cautious table, 26.0% at all-Schemer and 16.5% at all-Daring
+  (26.1% at the mixed table). At the mixed table Daring wins 39.3%, Schemer
+  25.3%, Cautious 9.3%; in the field matchup Daring beats Schemer by
+  +9.4pp and Schemer beats Cautious by +13.8pp. All six steps are
   separation checks. #2236's tactics widened the ladder: better play on
   every non-random move makes each persona's noise rate (Cautious 38%,
   Schemer 10%, Daring 0%) cost more.
@@ -519,14 +519,14 @@ counts are in `baseline.json`):
 - #2236 added engine-level tactics (`rateTactics`), validated one at a time
   head to head (a seat with the tactic against the same seat without it,
   same cards, Schemer field): duck high (play the highest card that already
-  loses — #1500's rule) +28.4pp win share with its moon guard; forced/free
-  win with the highest card +4.3pp; low-spade flush leads +3.3pp. Keeping
+  loses — #1500's rule) +30.5pp win share with its moon guard; forced/free
+  win with the highest card +4.1pp; low-spade flush leads +3.0pp. Keeping
   low "exit" cards for the endgame cost 1.2-2.2pp in every variant and was
   left out. Duck-high stands aside while a lone opponent holds every
-  point: unguarded, defenders shed their stoppers and Daring's moon
+  point taken, and at least 2 of them: unguarded, defenders shed their stoppers and Daring's moon
   success rose from 5% to 21%. At the all-Daring table paired moon success
-  is now 8.0%.
-- 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
+  is now 9.3%.
+- 34% of Daring's Q♠ dumps land on the human (Schemer: 33%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.
 
