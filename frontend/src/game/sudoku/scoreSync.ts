@@ -6,6 +6,7 @@
  */
 
 import { sudokuApi } from "./api";
+import { flushQueuedGames } from "../_shared/flushQueuedGames";
 import { scoreQueue } from "../_shared/scoreQueue";
 import type { PendingSubmission } from "../_shared/types";
 
@@ -16,6 +17,9 @@ export function registerSudokuScoreHandler(): void {
       // Malformed payload — drop by "succeeding" (throwing would keep retrying forever).
       return;
     }
+    // On reconnect NetworkContext flushes this queue and SyncWorker together;
+    // make sure the game itself has been uploaded before naming it.
+    await flushQueuedGames();
     await sudokuApi.submitPlayerName(game_id, player_name);
   });
 }

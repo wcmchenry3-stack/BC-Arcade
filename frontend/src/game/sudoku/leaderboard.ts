@@ -8,6 +8,7 @@
 
 import type { LeaderboardAdapter } from "../_shared/useLeaderboardSubmit";
 import { retryUntilGameSynced } from "../_shared/useLeaderboardSubmit";
+import { flushQueuedGames } from "../_shared/flushQueuedGames";
 import { sudokuApi } from "./api";
 
 export interface SudokuSubmission {
@@ -17,6 +18,10 @@ export interface SudokuSubmission {
 export const sudokuLeaderboard: LeaderboardAdapter<SudokuSubmission> = {
   gameType: "sudoku",
   submit: async (playerName, { gameId }) => {
+    // The completion only sits in the local game queue (SyncWorker uploads
+    // every 30 s); until it lands the server rejects the name with 400.
+    // Upload it first; the retry covers a flush that loses a race.
+    await flushQueuedGames();
     const entry = await retryUntilGameSynced(() => sudokuApi.submitPlayerName(gameId, playerName));
     return entry.rank;
   },

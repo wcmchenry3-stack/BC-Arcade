@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { act, renderHook } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
   retryUntilGameSynced,
   topTenRank,
@@ -9,6 +9,10 @@ import {
 import { resetDisplayNameCacheForTests, saveDisplayName, loadDisplayName } from "../displayName";
 import { scoreQueue } from "../scoreQueue";
 import { ApiError } from "../httpClient";
+
+jest.mock("../flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
 
 const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../NetworkContext", () => ({
@@ -224,5 +228,36 @@ describe("useLeaderboardSubmit", () => {
 
     expect(result.current.status).toBe("idle");
     expect((await scoreQueue.peek()).at(-1)?.payload).toEqual({ player_name: "Riley", score: 7 });
+  });
+
+  it("flushes the queue right away after queuing while online (#2530 review)", async () => {
+    await saveDisplayName("Riley");
+    const flush = jest.spyOn(scoreQueue, "flush").mockResolvedValue({
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      remaining: 0,
+    });
+    const { result } = await setup(jest.fn().mockRejectedValue(new Error("500")));
+
+    await act(() => result.current.submit({ score: 500 }));
+
+    expect(result.current.status).toBe("offline");
+    await waitFor(() => expect(flush).toHaveBeenCalled());
+    flush.mockRestore();
+  });
+
+  it("leaves the queue for the reconnect flush while offline", async () => {
+    await saveDisplayName("Riley");
+    mockNetwork.isOnline = false;
+    const flush = jest.spyOn(scoreQueue, "flush");
+    const { result } = await setup();
+
+    await act(() => result.current.submit({ score: 500 }));
+    await act(async () => {});
+
+    expect(result.current.status).toBe("offline");
+    expect(flush).not.toHaveBeenCalled();
+    flush.mockRestore();
   });
 });

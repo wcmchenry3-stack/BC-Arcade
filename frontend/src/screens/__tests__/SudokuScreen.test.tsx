@@ -49,6 +49,10 @@ jest.mock("../../game/sudoku/api", () => ({
   },
 }));
 
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
+
 jest.mock("../../game/_shared/scoreQueue", () => ({
   scoreQueue: {
     enqueue: jest.fn().mockResolvedValue({ id: "q-1" }),
@@ -60,6 +64,7 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 import { sudokuApi } from "../../game/sudoku/api";
+import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
@@ -313,6 +318,8 @@ describe("SudokuScreen — result card (#2511)", () => {
     await waitFor(() =>
       expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Riley")
     );
+    // The completion is uploaded before the name is attached to it.
+    expect(flushQueuedGames).toHaveBeenCalled();
     await r.findByText("Saved as Riley · #3 on the leaderboard");
     expect(r.queryByLabelText(/your name/i)).toBeNull();
   });

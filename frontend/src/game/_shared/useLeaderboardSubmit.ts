@@ -5,6 +5,7 @@ import { scoreQueue } from "./scoreQueue";
 import { useNetwork } from "./NetworkContext";
 import { loadDisplayName, saveDisplayName } from "./displayName";
 import { ApiError } from "./httpClient";
+import { flushQueuedGames } from "./flushQueuedGames";
 
 /**
  * Automatic leaderboard submission under the player's display name (#2503).
@@ -106,6 +107,14 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
       try {
         await scoreQueue.enqueue(gameType, queuePayload(name, payload));
         if (isCurrent()) setStatus("offline");
+        // scoreQueue otherwise only flushes on an offline→online edge, so a
+        // player who stays online would never send a queued score. Upload the
+        // game itself first so a name-attach handler doesn't race it.
+        if (!offlineRef.current) {
+          flushQueuedGames()
+            .then(() => scoreQueue.flush())
+            .catch(() => undefined);
+        }
       } catch (e) {
         Sentry.captureException(e, { tags: { subsystem: "leaderboardSubmit", gameType } });
         if (isCurrent()) setStatus("error");
