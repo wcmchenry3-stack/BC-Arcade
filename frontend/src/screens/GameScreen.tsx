@@ -14,7 +14,6 @@ import {
   toggleHold as engineToggleHold,
   possibleScores as enginePossibleScores,
   isInProgress,
-  setDiceOverride,
   Category,
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
@@ -65,6 +64,8 @@ export default function GameScreen({ navigation, route }: Props) {
   const [rollingIndices, setRollingIndices] = useState<readonly number[]>([]);
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [devDice, setDevDice] = useState<[number, number, number, number, number]>([3, 3, 3, 3, 3]);
+  // Dev panel: dice to force on the next human roll; consumed (cleared) by handleRoll.
+  const devDiceOverrideRef = useRef<number[] | null>(null);
 
   // VS mode: difficulty selector overlay shown once per fresh game.
   const isFreshGame =
@@ -283,7 +284,13 @@ export default function GameScreen({ navigation, route }: Props) {
     setError(null);
     syncMarkStarted();
     try {
-      const next = engineRoll(gameState, gameState.held);
+      const diceOverride = devDiceOverrideRef.current;
+      devDiceOverrideRef.current = null;
+      const next = engineRoll(
+        gameState,
+        gameState.held,
+        diceOverride ? { dice: diceOverride } : undefined
+      );
       setGameState(next);
       syncEnqueue({
         type: "roll",
@@ -695,7 +702,7 @@ export default function GameScreen({ navigation, route }: Props) {
                         onPress={() =>
                           setDevDice((d) => {
                             const next = [...d] as typeof d;
-                            next[i] = Math.min(6, d[i] + 1);
+                            next[i] = Math.min(6, d[i]! + 1);
                             return next;
                           })
                         }
@@ -709,7 +716,7 @@ export default function GameScreen({ navigation, route }: Props) {
                         onPress={() =>
                           setDevDice((d) => {
                             const next = [...d] as typeof d;
-                            next[i] = Math.max(1, d[i] - 1);
+                            next[i] = Math.max(1, d[i]! - 1);
                             return next;
                           })
                         }
@@ -749,7 +756,7 @@ export default function GameScreen({ navigation, route }: Props) {
                 <Pressable
                   style={[styles.devActionBtn, { backgroundColor: DEV_ACCENT }]}
                   onPress={() => {
-                    setDiceOverride([...devDice]);
+                    devDiceOverrideRef.current = [...devDice];
                     setDevPanelOpen(false);
                   }}
                 >

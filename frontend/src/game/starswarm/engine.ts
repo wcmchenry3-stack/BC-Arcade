@@ -142,7 +142,12 @@ export function perfectHoldMs(fanfarePlaying: boolean): number {
   return fanfarePlaying ? PERFECT_FANFARE_MS : PERFECT_SILENT_HOLD_MS;
 }
 // #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
-const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 1, Boss: 2 };
+const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = {
+  Grunt: 1,
+  Elite: 1,
+  Boss: 2,
+  Carrier: 2, // #2484: free fire never spawns a Carrier; listed only to keep the Record total
+};
 // #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
 const FREE_FIRE_PATH_DURATION = 5000; // ms each enemy traverses its arc
 const FREE_FIRE_STAGGER_MS = 400; // ms between successive enemy entries

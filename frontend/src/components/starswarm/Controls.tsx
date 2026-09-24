@@ -160,7 +160,7 @@ export default function Controls({
         {isPaused && !isGameOver && (
           <View style={styles.pauseOverlay}>
             <Pressable
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               onPress={onResume}
               accessibilityLabel={t("controls.resumeLabel")}
               accessibilityRole="button"
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     left: 0,
   },
   pauseOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 16, 0.72)",
     alignItems: "center",
     justifyContent: "center",

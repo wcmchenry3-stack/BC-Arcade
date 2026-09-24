@@ -198,7 +198,7 @@ function drawBoard(
     // null instead (images[i] is only set in onload, so non-null means ready).
     const img = tileImages[tile.faceId - 1];
     ctx.globalAlpha = isFree ? 1 : 0.35;
-    if (img !== null) {
+    if (img) {
       ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     } else {
       ctx.fillStyle = suitColor;
@@ -447,7 +447,7 @@ export default function GameCanvas({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,

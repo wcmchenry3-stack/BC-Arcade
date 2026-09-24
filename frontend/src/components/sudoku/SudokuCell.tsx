@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 18,
-    fontVariantNumeric: "tabular-nums",
+    fontVariant: ["tabular-nums"],
     lineHeight: 18,
   },
   notesGrid: {

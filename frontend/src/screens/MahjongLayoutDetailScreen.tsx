@@ -122,13 +122,7 @@ export default function MahjongLayoutDetailScreen() {
             <Animated.View
               style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
             >
-              <GameCanvas
-                state={state}
-                camera={camera}
-                onTilePress={NOOP}
-                onShufflePress={NOOP}
-                onNewGamePress={NOOP}
-              />
+              <GameCanvas state={state} camera={camera} onTilePress={NOOP} onNewGamePress={NOOP} />
             </Animated.View>
           </GestureDetector>
         </View>
