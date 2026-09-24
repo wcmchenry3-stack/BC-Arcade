@@ -7,19 +7,20 @@
  */
 
 import React from "react";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { SudokuScoreboardProvider } from "../../game/sudoku/SudokuScoreboardContext";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
-import { saveGame } from "../../game/sudoku/storage";
+import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
+const mockPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
-    popToTop: jest.fn(),
+    popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: jest.fn(),
     addListener: jest.fn(() => () => {}),
@@ -58,6 +59,9 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 // Import after mocks so the test file gets the jest.fn() flavour.
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
+import { sudokuApi } from "../../game/sudoku/api";
+import { ApiError } from "../../game/_shared/httpClient";
+import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): SudokuState {
   let s = state;
@@ -94,6 +98,12 @@ async function renderAndAwaitLoad() {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  resetDisplayNameCacheForTests();
+  mockPopToTop.mockClear();
+  (sudokuApi.submitPlayerName as jest.Mock).mockReset();
+  (sudokuApi.submitPlayerName as jest.Mock).mockImplementation((_id: string, name: string) =>
+    Promise.resolve({ player_name: name, score: 100, rank: 3 })
+  );
   mockStartGame.mockClear();
   mockStartGame.mockReturnValue("game-123");
   mockCompleteGame.mockClear();
@@ -212,14 +222,12 @@ describe("SudokuScreen — in-game input", () => {
   });
 });
 
-describe("SudokuScreen — win flow", () => {
+describe("SudokuScreen — result card (#2511)", () => {
   // Load an almost-complete save (one non-given cell remaining), then enter
-  // the last correct digit so ensureSyncStarted fires and completedGameId is
-  // captured before syncComplete clears gameIdRef.
-  async function renderIntoWinModal(): Promise<ReturnType<typeof renderScreen>> {
+  // the last correct digit so a sync session starts and the puzzle completes.
+  async function solvePuzzle({ elapsedMs = 0 }: { elapsedMs?: number } = {}) {
     const fresh = loadPuzzle("easy", "classic", () => 0);
 
-    // Find the first non-given cell to leave as the "last move".
     let lastCell: { row: number; col: number } | null = null;
     outer: for (let r = 0; r < 9; r++) {
       for (let c = 0; c < 9; c++) {
@@ -236,59 +244,134 @@ describe("SudokuScreen — win flow", () => {
     await saveGame(almostSolved);
 
     const rendered = await renderScreen();
-    // Wait for the board to load (no Start button = in-game).
     await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
 
-    // Select the one remaining empty cell and enter the correct digit.
     const emptyCells = rendered
       .getAllByRole("button")
       .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
     await act(async () => {
       await fireEvent.press(emptyCells[0]!);
     });
-    const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
-    await act(async () => {
-      await fireEvent.press(
-        rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i"))
-      );
-    });
 
-    await waitFor(() => rendered.getByLabelText(/submit score/i));
+    // The resumed game's clock started at mount; jump it forward.
+    const realNow = Date.now.bind(Date);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + elapsedMs);
+    const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
+    try {
+      await act(async () => {
+        await fireEvent.press(
+          rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i"))
+        );
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    await waitFor(() => expect(rendered.getByTestId("sudoku-result-title")).toBeTruthy());
     return rendered;
   }
 
-  it("enqueues score and shows saved confirmation after submit", async () => {
-    const { getByLabelText, findByText } = await renderIntoWinModal();
-
-    await act(async () => {
-      await fireEvent.changeText(getByLabelText(/your name/i), "Alice");
-    });
-    await act(async () => {
-      await fireEvent.press(getByLabelText(/submit score/i));
-    });
-    await findByText(/saved/i);
-    expect(scoreQueue.enqueue).toHaveBeenCalledWith(
-      "sudoku",
-      expect.objectContaining({ game_id: "game-123", player_name: "Alice" })
-    );
+  it("shows the shared win card with time, score and errors", async () => {
+    const r = await solvePuzzle({ elapsedMs: 65_000 });
+    const card = within(r.getByTestId("sudoku-result"));
+    expect(card.getByTestId("sudoku-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText("Sudoku · Easy")).toBeTruthy();
+    expect(card.getByText("Classic 9×9")).toBeTruthy();
+    expect(card.getByText("Time")).toBeTruthy();
+    // Hero time, plus the Best stat — a first solve is its own best.
+    expect(card.getAllByText("01:05")).toHaveLength(2);
+    expect(card.getByText("Score")).toBeTruthy();
+    expect(card.getByText("Errors")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
   });
 
-  it("enqueue failure shows retry control; second attempt succeeds", async () => {
-    (scoreQueue.enqueue as jest.Mock)
-      .mockRejectedValueOnce(new Error("storage full"))
-      .mockResolvedValueOnce({ id: "q-2" });
+  it("marks a New Best when the previous best time is beaten", async () => {
+    await saveStats({
+      ...EMPTY_SUDOKU_STATS,
+      classic: {
+        ...EMPTY_SUDOKU_STATS.classic,
+        easy: { bestTimeS: 120, gamesSolved: 1 },
+      },
+    });
+    const r = await solvePuzzle({ elapsedMs: 65_000 });
+    const card = within(r.getByTestId("sudoku-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+  });
 
-    const { getByLabelText, findByLabelText, findByText } = await renderIntoWinModal();
-    await act(async () => await fireEvent.changeText(getByLabelText(/your name/i), "Bob"));
+  it("reports the real play time to game sync instead of 0", async () => {
+    await solvePuzzle({ elapsedMs: 65_000 });
+    const completed = mockCompleteGame.mock.calls.find(
+      ([, summary]) => (summary as { outcome?: string }).outcome === "completed"
+    );
+    expect(completed).toBeTruthy();
+    expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
+  });
+
+  it("submits under the display name automatically and shows the rank", async () => {
+    await saveDisplayName("Riley");
+    const r = await solvePuzzle();
+    await waitFor(() =>
+      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Riley")
+    );
+    await r.findByText("Saved as Riley · #3 on the leaderboard");
+    expect(r.queryByLabelText(/your name/i)).toBeNull();
+  });
+
+  it("asks for a display name once when none is set, then submits", async () => {
+    const r = await solvePuzzle();
+    const input = await r.findByLabelText("Pick a display name for leaderboards");
+    expect(sudokuApi.submitPlayerName).not.toHaveBeenCalled();
+
     await act(async () => {
-      await fireEvent.press(getByLabelText(/submit score/i));
+      await fireEvent.changeText(input, "Alice");
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Save" }));
     });
 
-    const retry = await findByLabelText(/retry submit/i);
-    await act(async () => {
-      await fireEvent.press(retry);
+    await waitFor(() =>
+      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Alice")
+    );
+    await r.findByText("Saved as Alice · #3 on the leaderboard");
+  });
+
+  it("queues the name when the server rejects it", async () => {
+    await saveDisplayName("Riley");
+    (sudokuApi.submitPlayerName as jest.Mock).mockRejectedValue(new ApiError("boom", 500));
+    const r = await solvePuzzle();
+    await r.findByText("Saved offline · syncs when you're back online");
+    expect(scoreQueue.enqueue).toHaveBeenCalledWith("sudoku", {
+      game_id: "game-123",
+      player_name: "Riley",
     });
-    await findByText(/saved/i);
-    expect(scoreQueue.enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it("Change Difficulty returns to the picker", async () => {
+    await saveDisplayName("Riley");
+    const r = await solvePuzzle();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+    });
+    await waitFor(() => expect(r.getByRole("button", { name: /start/i })).toBeTruthy());
+    expect(r.queryByTestId("sudoku-result-title")).toBeNull();
+  });
+
+  it("Play Again starts a new puzzle and closes the card", async () => {
+    await saveDisplayName("Riley");
+    const r = await solvePuzzle();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    await waitFor(() => expect(r.queryByTestId("sudoku-result-title")).toBeNull());
+    expect(r.queryByRole("button", { name: /start/i })).toBeNull();
+  });
+
+  it("Home returns to the lobby", async () => {
+    await saveDisplayName("Riley");
+    const r = await solvePuzzle();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Home" }));
+    });
+    expect(mockPopToTop).toHaveBeenCalled();
   });
 });

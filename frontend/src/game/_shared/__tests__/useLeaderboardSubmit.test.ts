@@ -1,8 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, renderHook } from "@testing-library/react-native";
-import { topTenRank, useLeaderboardSubmit, type LeaderboardAdapter } from "../useLeaderboardSubmit";
+import {
+  retryUntilGameSynced,
+  topTenRank,
+  useLeaderboardSubmit,
+  type LeaderboardAdapter,
+} from "../useLeaderboardSubmit";
 import { resetDisplayNameCacheForTests, saveDisplayName, loadDisplayName } from "../displayName";
 import { scoreQueue } from "../scoreQueue";
+import { ApiError } from "../httpClient";
 
 const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../NetworkContext", () => ({
@@ -39,6 +45,32 @@ describe("topTenRank", () => {
     expect(topTenRank(11)).toBeNull();
     expect(topTenRank(null)).toBeNull();
     expect(topTenRank(0)).toBeNull();
+  });
+});
+
+describe("retryUntilGameSynced", () => {
+  const fast = { attempts: 3, baseDelayMs: 1 };
+
+  it("retries while the game isn't synced yet (404/400), then resolves", async () => {
+    const fn = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError("Game not found.", 404))
+      .mockRejectedValueOnce(new ApiError("Game has no final score.", 400))
+      .mockResolvedValueOnce("ok");
+    await expect(retryUntilGameSynced(fn, fast)).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after the last attempt", async () => {
+    const fn = jest.fn().mockRejectedValue(new ApiError("Game not found.", 404));
+    await expect(retryUntilGameSynced(fn, fast)).rejects.toThrow("Game not found.");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry other errors", async () => {
+    const fn = jest.fn().mockRejectedValue(new ApiError("Forbidden.", 403));
+    await expect(retryUntilGameSynced(fn, fast)).rejects.toThrow("Forbidden.");
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 
