@@ -21,6 +21,7 @@ import {
   ratePassingQuality,
   rateQueenSpadesRisk,
   rateSuitVoidingUtility,
+  rateTactics,
 } from "../aiConsiderations";
 import { buildHeartsInfoSet } from "../aiInfoSet";
 import { createSeededRng, dealGame, getValidPlays, playCard, setRng } from "../engine";
@@ -578,6 +579,84 @@ describe("rateMoonThreat (#2235)", () => {
       expect(rateMoonThreat(info, c("hearts", 2))).toBeLessThan(0.5); // the shooter likely takes it
       const voidInfo = mkInfo(hand, [], { ...st, knownVoids: [[], ["hearts"], [], []] });
       expect(rateMoonThreat(voidInfo, c("hearts", 2))).toBeGreaterThan(0.8);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rateTactics (#2236)
+// ---------------------------------------------------------------------------
+
+describe("rateTactics (#2236)", () => {
+  describe("(a) duck high", () => {
+    it("prefers the highest card that is already beaten", () => {
+      // 10♠ leads the trick; 5♠ and 9♠ are beaten.
+      const trick = [tc("spades", 10, 1)];
+      const hand = [c("spades", 5), c("spades", 9), c("spades", 11)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(rateTactics(info, c("spades", 5)));
+    });
+
+    it("gives no duck bonus to a card that still beats the current winner", () => {
+      // J♠ beats the 10♠ even though Q/K/A♠ are out (computePWin says 0 here).
+      const trick = [tc("spades", 10, 1)];
+      const hand = [c("spades", 9), c("spades", 11)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(computePWin(c("spades", 11), info)).toBe(0);
+      expect(rateTactics(info, c("spades", 11))).toBe(0.5);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(0.5);
+    });
+
+    it("sheds the highest off-suit card when void", () => {
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(rateTactics(info, c("diamonds", 13))).toBeGreaterThan(
+        rateTactics(info, c("diamonds", 3))
+      );
+    });
+  });
+
+  describe("(b) forced or free win", () => {
+    it("wins with the highest card when every card of the suit wins (last to play)", () => {
+      const trick = [tc("hearts", 2, 1), tc("hearts", 3, 2), tc("hearts", 4, 3)];
+      const hand = [c("hearts", 8), c("hearts", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 0);
+      expect(rateTactics(info, c("hearts", 13))).toBeGreaterThan(rateTactics(info, c("hearts", 8)));
+    });
+
+    it("plays the highest card of the suit when the trick holds no points (a free win)", () => {
+      // Last to play in a pointless club trick: A♣ wins for free, 9♣ would duck.
+      const trick = [tc("clubs", 2, 1), tc("clubs", 7, 2), tc("clubs", 11, 3)];
+      const hand = [c("clubs", 1), c("clubs", 9), c("clubs", 4)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 0);
+      expect(rateTactics(info, c("clubs", 1))).toBeGreaterThan(rateTactics(info, c("clubs", 9)));
+    });
+
+    it("ducks instead when the trick holds points and a card can lose", () => {
+      const trick = [tc("clubs", 10, 1), tc("hearts", 5, 2), tc("clubs", 3, 3)];
+      const hand = [c("clubs", 1), c("clubs", 9)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 0);
+      expect(rateTactics(info, c("clubs", 9))).toBeGreaterThan(rateTactics(info, c("clubs", 1)));
+      expect(rateTactics(info, c("clubs", 1))).toBe(0.5); // A♣ wins: no bonus
+    });
+  });
+
+  describe("(c) spade flush", () => {
+    it("rewards leading a low spade while Q♠ is out and we hold none of Q/K/A♠", () => {
+      const hand = [c("spades", 4), c("diamonds", 4)];
+      const info = mkInfo(hand, []);
+      expect(rateTactics(info, c("spades", 4))).toBeGreaterThan(0.5);
+      expect(rateTactics(info, c("diamonds", 4))).toBe(0.5);
+    });
+
+    it("does not flush when Q♠ is gone, ours, or could land on our A♠/K♠", () => {
+      const lead = (hand: Card[], extra: Partial<HeartsState> = {}) =>
+        rateTactics(mkInfo(hand, [], extra), c("spades", 4));
+      expect(lead([c("spades", 4)], { wonCards: [[], [c("spades", 12)], [], []] })).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 12)])).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 13)])).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 1)])).toBe(0.5);
     });
   });
 });

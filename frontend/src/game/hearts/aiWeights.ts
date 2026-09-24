@@ -116,6 +116,15 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
   suitVoiding: 2.5,
 };
 
+// ─── Engine-level tactics (#2236) ────────────────────────────────────────────
+
+/**
+ * Weight of rateTactics (duck high, forced/free win high, spade flush). The same for every persona and mode except moon-attempt mode,
+ * where ducking would fight collecting the hearts (#2269: universally
+ * correct plays are engine logic, not persona flavour).
+ */
+export const TACTICS_WEIGHT = 1.0;
+
 // ─── Cognitive noise rates ─────────────────────────────────────────────────────
 
 /** Probability of ignoring the best-scoring action and picking a random legal one. */

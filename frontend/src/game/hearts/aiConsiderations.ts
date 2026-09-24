@@ -472,6 +472,82 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card
 };
 
 // ---------------------------------------------------------------------------
+// rateTactics (#2236)
+// ---------------------------------------------------------------------------
+
+/**
+ * Standard Hearts plays the other considerations don't express (#2236).
+ * Engine-level, not persona flavour (#2269): the same for every persona,
+ * added at a fixed weight (TACTICS_WEIGHT in aiWeights.ts). Each can be
+ * switched off on its own; the sim validated them one at a time — a seat
+ * with the tactic against the same seat without it, same cards and field
+ * (Schemer, 3,000 blocks): (a) +35.2pp win share, −1.88 points a hand;
+ * (b) +4.3pp, −0.25; (c) +3.3pp, −0.21.
+ *
+ * #2236's fourth tactic, (d) keeping low "exit" cards in two suits for the
+ * last tricks, is not here: it did cut all-high endgame leads (17% → 8%),
+ * but cost 1.2-2.2pp of win share in every variant tried, since holding
+ * low cards means shedding high ones later, into point tricks.
+ */
+export const PLAY_TACTICS = {
+  /** (a) Can't win the trick → play the highest such card (#1500's rule). */
+  duckHigh: true,
+  /**
+   * (b) Last to play, and every legal card wins or the trick holds no
+   * points (a free win) → play the highest card of the suit.
+   */
+  forcedWinHigh: true,
+  /** (c) Lead low spades to force Q♠ out, when safe (no Q♠, A♠ or K♠ held). */
+  spadeFlush: true,
+};
+
+/**
+ * Score = how well this card follows the standard tactics above. 0.5 is
+ * neutral; each tactic moves it by at most ±0.3, so tactics break ties and
+ * nudge close calls without overriding point or Q♠ safety.
+ */
+export const rateTactics: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
+  const { hand, currentTrick, ledSuit, seenKeys } = infoSet;
+  const rankFrac = (aceHigh(card.rank) - 2) / 12; // 0 for a 2, 1 for an ace
+  let score = 0.5;
+
+  if (ledSuit !== null) {
+    const winRank = currentTrickWinRank(currentTrick, ledSuit);
+    const last = currentTrick.length === 3;
+    const trickPoints = currentTrick.reduce((sum, tc) => sum + cardPoints(tc.card), 0);
+    const inSuit = hand.filter((c) => c.suit === ledSuit);
+    // (b) Forced or free win: last to play, following suit, and either every
+    // card of the suit wins or the trick holds no points (so winning costs
+    // nothing) — play the highest card of the suit and keep the low ones as
+    // exits. On trick 1 this is the old "play your highest club" rule.
+    const forcedOrFree =
+      last &&
+      inSuit.length > 0 &&
+      (trickPoints === 0 || inSuit.every((c) => aceHigh(c.rank) > winRank));
+    if (PLAY_TACTICS.forcedWinHigh && forcedOrFree) {
+      if (card.suit === ledSuit) score += 0.3 * rankFrac;
+    } else if (PLAY_TACTICS.duckHigh) {
+      // (a) Duck high: of the cards already beaten (or off-suit), shed the
+      // highest — it's a future liability, and losing with it costs nothing.
+      // "Beaten" is strict: a card that still beats the current winner may
+      // take the trick even if higher cards are outstanding.
+      const beaten = card.suit !== ledSuit || aceHigh(card.rank) < winRank;
+      if (beaten) score += 0.3 * rankFrac;
+    }
+  } else {
+    // (c) Spade flush: Q♠ still out, not ours, and no A♠/K♠ it could be
+    // dumped on — a low spade lead makes its holder follow or reveal it.
+    if (PLAY_TACTICS.spadeFlush && card.suit === "spades" && aceHigh(card.rank) < 12) {
+      const held = (rank: number) => hand.some((c) => c.suit === "spades" && c.rank === rank);
+      const queenOut = !seenKeys.has("spades:12") && !held(12);
+      if (queenOut && !held(1) && !held(13)) score += 0.25;
+    }
+  }
+
+  return Math.max(0, Math.min(1, score));
+};
+
+// ---------------------------------------------------------------------------
 // rateMoonAttemptProgress
 // ---------------------------------------------------------------------------
 

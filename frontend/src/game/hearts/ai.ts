@@ -17,6 +17,7 @@ import {
   rateQueenSpadesRisk,
   rateMoonThreat,
   rateMoonAttemptProgress,
+  rateTactics,
   ratePassingQuality,
   rateSuitVoidingUtility,
 } from "./aiConsiderations";
@@ -31,6 +32,7 @@ import {
   SCHEMER_PASS_WEIGHTS,
   DARING_PASS_WEIGHTS,
   NOISE_RATE,
+  TACTICS_WEIGHT,
 } from "./aiWeights";
 import type { PlayWeights } from "./aiWeights";
 
@@ -293,7 +295,8 @@ export function selectCardToPlayUtility(
         weights.minimizePoints * rateMinimizeImmediatePoints(infoSet, card) +
         weights.queenSpadesRisk * rateQueenSpadesRisk(infoSet, card) +
         weights.moonThreat * rateMoonThreat(infoSet, card) +
-        weights.moonProgress * rateMoonAttemptProgress(infoSet, card),
+        weights.moonProgress * rateMoonAttemptProgress(infoSet, card) +
+        (isMoonAttempt ? 0 : TACTICS_WEIGHT * rateTactics(infoSet, card)),
     }))
     .sort((a, b) => b.score - a.score);
 
