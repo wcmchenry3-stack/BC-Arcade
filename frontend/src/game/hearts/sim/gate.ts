@@ -89,7 +89,8 @@ export const GATE_GROUPS: Readonly<Record<string, GateGroup>> = {
     lookEvery: 200,
     minBlocks: 400,
     // 12,000: the Cautious-vs-Schemer table step (+2.3pp, per-block SD ~0.58)
-    // needs ~7,700 blocks on average to decide (#2235).
+    // can need ~7,700 blocks by a rough Wald estimate — above the old 8,000
+    // cap's comfort zone (#2235). The gate seed decided it at 4,800.
     maxBlocks: 12000,
     baselineBlocks: 12000,
   },

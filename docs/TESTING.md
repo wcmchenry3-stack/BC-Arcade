@@ -448,7 +448,8 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 | `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 12,000 blocks ×
-6 games, field 6,000 × 9), is about 8.5 min per group; the job timeout is
+6 games, field 6,000 × 9), is about 8.5–17 min per group at 7–14 ms a game
+(a full field-group baseline run measured ~14 ms); the job timeout is
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 

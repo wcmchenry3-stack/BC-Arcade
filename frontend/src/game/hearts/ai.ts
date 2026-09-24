@@ -12,6 +12,7 @@ import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./t
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import { MOON_HAND_RULES, assessMoonHand } from "./moonHand";
 import {
+  currentTrickWinner,
   rateMinimizeImmediatePoints,
   rateQueenSpadesRisk,
   rateMoonThreat,
@@ -42,25 +43,6 @@ function isQueenOfSpades(c: Card): boolean {
 }
 
 const aceHigh = (rank: number): number => (rank === 1 ? 14 : rank);
-
-/**
- * Returns the player index currently winning a non-empty trick.
- * Highest card in the led suit wins; off-suit cards cannot win.
- */
-function currentTrickWinner(trick: readonly TrickCard[]): number {
-  const first = trick[0]!;
-  const ledSuit = first.card.suit;
-  let winnerIdx = first.playerIndex;
-  let winnerRank = aceHigh(first.card.rank);
-  for (let i = 1; i < trick.length; i++) {
-    const tc = trick[i]!;
-    if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > winnerRank) {
-      winnerRank = aceHigh(tc.card.rank);
-      winnerIdx = tc.playerIndex;
-    }
-  }
-  return winnerIdx;
-}
 
 // ---------------------------------------------------------------------------
 // Passing strategy
@@ -261,7 +243,7 @@ export function selectCardToPlayUtility(
     const first = trick[0]!;
     const inSuit = valid.filter((c) => c.suit === first.card.suit);
     if (inSuit.length > 0) return false;
-    return currentTrickWinner(trick) === 0;
+    return currentTrickWinner(trick).playerIndex === 0;
   })();
 
   // ── Weight selection ──────────────────────────────────────────────────────
@@ -293,7 +275,7 @@ export function selectCardToPlayUtility(
       const first = trickState[0]!;
       const inSuit = valid.filter((c) => c.suit === first.card.suit);
       if (inSuit.length === 0) {
-        const winnerIdx = currentTrickWinner(trickState);
+        const winnerIdx = currentTrickWinner(trickState).playerIndex;
         const winnerScore = allScores[winnerIdx] ?? 0;
         if (winnerScore + 13 >= 100) {
           const withoutQ = valid.filter((c) => !isQueenOfSpades(c));
