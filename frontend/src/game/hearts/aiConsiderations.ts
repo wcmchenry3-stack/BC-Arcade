@@ -488,9 +488,9 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card
  * Engine-level, not persona flavour (#2269): the `tactics` weight is 1.0 in
  * every weight map and 0 in moon-attempt mode (aiWeights.ts). Each tactic
  * was validated on its own — a seat with it against the same seat without
- * it, same cards and Schemer field (3,000 blocks): (a) duck high +28.4pp
- * win share, −1.54 points a hand (with its moon guard); (b) +4.3pp, −0.25;
- * (c) +3.3pp, −0.21.
+ * it, same cards and Schemer field (3,000 blocks): (a) duck high +30.5pp
+ * win share, −1.65 points a hand (with its moon guard); (b) +4.1pp, −0.24;
+ * (c) +3.0pp, −0.21.
  *
  * #2236's fourth tactic, (d) keeping low "exit" cards in two suits for the
  * last tricks, is not here: it did cut all-high endgame leads (17% → 8%),
@@ -557,7 +557,6 @@ export const rateTactics: Consideration<HeartsInfoSet, Card> = (infoSet, card) =
   const { ledSuit } = infoSet;
   const ctx = tacticsContext(infoSet);
   const rankFrac = (aceHigh(card.rank) - 2) / 12; // 0 for a 2, 1 for an ace
-  const points = cardPoints(card);
   let score = 0.5;
 
   if (ledSuit !== null) {
@@ -573,16 +572,15 @@ export const rateTactics: Consideration<HeartsInfoSet, Card> = (infoSet, card) =
       // (a) Duck high: of the cards already beaten (strictly: off-suit, or
       // below the current winner — a card that still beats the winner may
       // take the trick), shed the highest: it's a future liability and
-      // losing with it costs nothing. An off-suit point card is the best
-      // shed of all (points leave our hand). Not while a moon is live (a lone
+      // losing with it costs nothing. Rank decides, points or not: giving an
+      // off-suit heart the full bonus kept A♦ over 2♥ and cut this tactic
+      // from +30.5pp to +19.1pp (dumping points where they hurt is left to
+      // the point considerations). Not while a moon is live (a lone
       // opponent with minThreatPoints+): shedding high cards then throws away
       // the stoppers needed to break it, and rateMoonThreat decides where
       // points go. Unguarded, Daring's moon success against a Schemer field
       // rose from 5% to 21%.
-      const offSuit = card.suit !== ledSuit;
-      if (offSuit || aceHigh(card.rank) < ctx.winRank) {
-        score += 0.3 * (offSuit && points > 0 ? 1 : rankFrac);
-      }
+      if (card.suit !== ledSuit || aceHigh(card.rank) < ctx.winRank) score += 0.3 * rankFrac;
     }
   } else if (
     PLAY_TACTICS.spadeFlush &&

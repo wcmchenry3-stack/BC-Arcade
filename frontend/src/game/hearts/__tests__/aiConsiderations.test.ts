@@ -625,13 +625,13 @@ describe("rateTactics (#2236)", () => {
       );
     });
 
-    it("gives an off-suit point card the full shed bonus", () => {
+    it("ranks an off-suit point card by rank like any other shed", () => {
+      // Keeping A♦ to shed 2♥ costs more than the heart saves.
       const trick = [tc("clubs", 5, 1)];
-      const hand = [c("hearts", 2), c("diamonds", 13)];
+      const hand = [c("hearts", 2), c("diamonds", 1)];
       const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 2);
-      expect(rateTactics(info, c("hearts", 2))).toBeCloseTo(0.8, 5);
-      expect(rateTactics(info, c("hearts", 2))).toBeGreaterThan(
-        rateTactics(info, c("diamonds", 13))
+      expect(rateTactics(info, c("diamonds", 1))).toBeGreaterThan(
+        rateTactics(info, c("hearts", 2))
       );
     });
 
