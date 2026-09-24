@@ -68,18 +68,24 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
   offlineRef.current = isInitialized && !isOnline;
   const pendingRef = useRef<{ payload: P } | null>(null);
   const startedRef = useRef(false);
+  // Bumped by reset(): a request still in flight from the previous game must
+  // not write its status/rank over the new game's (it still gets sent or
+  // queued — only its state updates are dropped).
+  const generationRef = useRef(0);
 
   const send = useCallback(async (name: string, payload: P) => {
     const { gameType, submit, queuePayload } = adapterRef.current;
+    const generation = generationRef.current;
+    const isCurrent = () => generationRef.current === generation;
     setPlayerName(name);
 
     const enqueue = async () => {
       try {
         await scoreQueue.enqueue(gameType, queuePayload(name, payload));
-        setStatus("offline");
+        if (isCurrent()) setStatus("offline");
       } catch (e) {
         Sentry.captureException(e, { tags: { subsystem: "leaderboardSubmit", gameType } });
-        setStatus("error");
+        if (isCurrent()) setStatus("error");
       }
     };
 
@@ -90,6 +96,7 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     setStatus("submitting");
     try {
       const placed = await submit(name, payload);
+      if (!isCurrent()) return;
       setRank(topTenRank(placed));
       setStatus("saved");
     } catch {
@@ -98,36 +105,13 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     }
   }, []);
 
-  const submit = useCallback(
-    async (payload: P) => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      pendingRef.current = { payload };
-      const name = await loadDisplayName();
-      if (!name) {
-        setStatus("needsName");
-        return;
-      }
-      await send(name, payload);
-    },
-    [send]
-  );
-
-  const provideName = useCallback(
-    async (raw: string) => {
-      const name = await saveDisplayName(raw);
-      if (!name) return false;
-      const pending = pendingRef.current;
-      if (pending) await send(name, pending.payload);
-      return true;
-    },
-    [send]
-  );
-
-  const retry = useCallback(async () => {
+  /** Sends the pending score under the stored name, or asks for one. */
+  const sendPending = useCallback(async () => {
     const pending = pendingRef.current;
     if (!pending) return;
+    const generation = generationRef.current;
     const name = await loadDisplayName();
+    if (generationRef.current !== generation) return;
     if (!name) {
       setStatus("needsName");
       return;
@@ -135,7 +119,32 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     await send(name, pending.payload);
   }, [send]);
 
+  const submit = useCallback(
+    async (payload: P) => {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      pendingRef.current = { payload };
+      await sendPending();
+    },
+    [sendPending]
+  );
+
+  const provideName = useCallback(
+    async (raw: string) => {
+      const generation = generationRef.current;
+      const name = await saveDisplayName(raw);
+      if (!name) return false;
+      const pending = pendingRef.current;
+      if (pending && generationRef.current === generation) await send(name, pending.payload);
+      return true;
+    },
+    [send]
+  );
+
+  const retry = sendPending;
+
   const reset = useCallback(() => {
+    generationRef.current += 1;
     startedRef.current = false;
     pendingRef.current = null;
     setStatus("idle");

@@ -362,6 +362,9 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   const { t } = useTranslation("result");
   const { status, rank, playerName, onProvideName, onRetry } = submission;
 
+  // Nothing submitted yet (or this outcome isn't submitted): no line at all.
+  if (status === "idle") return null;
+
   if (status === "needsName") {
     return (
       <View style={[styles.namePrompt, { backgroundColor: colors.surfaceAlt }]}>
@@ -396,9 +399,10 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
       text = t("submission.error");
       color = colors.error;
       break;
-    default:
+    case "submitting":
       icon = "cloud-upload-outline";
       text = t("submission.saving");
+      break;
   }
 
   return (

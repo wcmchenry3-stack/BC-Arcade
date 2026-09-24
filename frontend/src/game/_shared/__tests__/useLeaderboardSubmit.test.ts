@@ -150,4 +150,47 @@ describe("useLeaderboardSubmit", () => {
     expect(result.current.rank).toBe(4);
     enqueue.mockRestore();
   });
+
+  it("ignores a previous game's request that finishes after reset()", async () => {
+    await saveDisplayName("Riley");
+    let finishOld: (rank: number) => void = () => {};
+    const submit = jest.fn(() => new Promise<number>((resolve) => (finishOld = resolve)));
+    const { result } = await setup(submit);
+
+    // Start the old game's submission and leave it in flight.
+    let inFlight: Promise<void> = Promise.resolve();
+    await act(async () => {
+      inFlight = result.current.submit({ score: 1 });
+    });
+    expect(result.current.status).toBe("submitting");
+
+    await act(async () => result.current.reset());
+    await act(async () => {
+      finishOld(3);
+      await inFlight;
+    });
+
+    expect(result.current.status).toBe("idle");
+    expect(result.current.rank).toBeNull();
+  });
+
+  it("still queues a previous game's failed request after reset(), without touching state", async () => {
+    await saveDisplayName("Riley");
+    let failOld: (e: Error) => void = () => {};
+    const submit = jest.fn(() => new Promise<number>((_, reject) => (failOld = reject)));
+    const { result } = await setup(submit);
+
+    let inFlight: Promise<void> = Promise.resolve();
+    await act(async () => {
+      inFlight = result.current.submit({ score: 7 });
+    });
+    await act(async () => result.current.reset());
+    await act(async () => {
+      failOld(new Error("500"));
+      await inFlight;
+    });
+
+    expect(result.current.status).toBe("idle");
+    expect((await scoreQueue.peek()).at(-1)?.payload).toEqual({ player_name: "Riley", score: 7 });
+  });
 });

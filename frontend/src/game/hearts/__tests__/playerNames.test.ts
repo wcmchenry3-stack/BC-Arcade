@@ -22,4 +22,14 @@ describe("loadPlayerNames", () => {
     await savePlayerNames(["Ace", "West", "North", "East"]);
     await expect(loadPlayerNames()).resolves.toEqual(["Ace", "West", "North", "East"]);
   });
+
+  it("keeps following the display name after the player renames a different seat", async () => {
+    await saveDisplayName("Riley");
+    // The rename form is seeded from loadPlayerNames(), so seat 0 comes back as "Riley".
+    const seeded = await loadPlayerNames();
+    await savePlayerNames([seeded[0] ?? "", "Bob", "North", "East"]);
+
+    await saveDisplayName("Sam");
+    await expect(loadPlayerNames()).resolves.toEqual(["Sam", "Bob", "North", "East"]);
+  });
 });

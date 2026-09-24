@@ -165,6 +165,17 @@ describe("GameResultModal — submission line", () => {
     expect(screen.getByText("Saved as Riley")).toBeTruthy();
   });
 
+  it("shows no submission line while idle", async () => {
+    await renderCard({ submission: { status: "idle" } });
+    expect(screen.queryByText("Saving your score…")).toBeNull();
+    expect(screen.queryByText(/Saved/)).toBeNull();
+  });
+
+  it("shows the saving state while submitting", async () => {
+    await renderCard({ submission: { status: "submitting" } });
+    expect(screen.getByText("Saving your score…")).toBeTruthy();
+  });
+
   it("shows the offline state", async () => {
     const { toJSON } = await renderCard({ submission: { status: "offline" } });
     expect(screen.getByText("Saved offline · syncs when you're back online")).toBeTruthy();

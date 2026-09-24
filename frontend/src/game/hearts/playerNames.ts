@@ -15,7 +15,7 @@ export function validateName(raw: string, fallback: string): string {
 export async function loadPlayerNames(): Promise<string[]> {
   const names = await loadStoredNames();
   // The human seat follows the profile display name (#2502) until the player
-  // gives that seat a name of its own here.
+  // gives that seat a different name of its own here.
   if (names[0] === DEFAULT_NAMES[0]) {
     const displayName = await loadDisplayName();
     if (displayName) names[0] = displayName;
@@ -37,8 +37,14 @@ async function loadStoredNames(): Promise<string[]> {
 }
 
 export async function savePlayerNames(names: string[]): Promise<void> {
+  // The rename form is seeded from loadPlayerNames(), so seat 0 comes back as
+  // the display name even when the player only renamed another seat. Store it
+  // as the default so it keeps following later display-name changes.
+  const toStore = [...names];
+  const displayName = await loadDisplayName();
+  if (displayName && toStore[0] === displayName) toStore[0] = DEFAULT_NAMES[0];
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(names));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "hearts.playerNames", op: "save" } });
   }
