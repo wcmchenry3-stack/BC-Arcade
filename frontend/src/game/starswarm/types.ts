@@ -169,6 +169,10 @@ export interface Bullet {
   readonly damage: number;
   /** Charge shot: passes through all enemies in its lane instead of stopping on first hit. */
   readonly piercing?: boolean;
+  /** Enemy ids this piercing bullet has already damaged, across its whole flight — piercing
+   * bullets aren't consumed on hit, so without this a slow bullet overlapping a big hitbox
+   * (e.g. the Carrier) for several ticks would re-deal damage every tick it stays inside it. */
+  readonly hitEnemyIds?: readonly number[];
   /** Enemy bullet already in flight when the wave it was fired in cleared — keeps moving and
    * rendering normally until it exits the screen, but can no longer hit the player (see #2352
    * follow-up: the wave-clear autopilot dodge was removed, this replaces it non-blockingly). */
