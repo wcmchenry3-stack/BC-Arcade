@@ -459,6 +459,8 @@ export default function DailyWordScreen() {
   const nextWordAtRef = useRef<number | null>(null);
   const [nextWordReady, setNextWordReady] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Play Again couldn't load the next puzzle (offline, server error).
+  const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
 
   // Dev panel (#1293) — all gated by __DEV__; Metro eliminates in production
@@ -497,44 +499,75 @@ export default function DailyWordScreen() {
   // Countdown timer
   // ---------------------------------------------------------------------------
 
-  const startCountdown = useCallback(() => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    nextWordAtRef.current = Date.now() + msUntilMidnight(tzOffset);
-    setNextWordReady(false);
-    const tick = () => {
-      const remaining = Math.max(0, (nextWordAtRef.current ?? 0) - Date.now());
-      setCountdown(formatCountdown(remaining));
-      if (remaining === 0) {
-        setNextWordReady(true);
-        if (countdownRef.current) clearInterval(countdownRef.current);
-      }
-    };
-    tick();
-    countdownRef.current = setInterval(tick, 1000);
-  }, [tzOffset]);
-
-  const resetToToday = useCallback(async (): Promise<boolean> => {
-    try {
-      await clearState();
-      const todayMeta = await dailyWordApi.getToday(tzOffset, language);
-      // The old puzzle's session must close now: left open, the next guess would
-      // skip start() and be reported against the old puzzle_id.
-      if (syncGetGameId()) {
-        syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
-      }
-      const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
-      setState(fresh);
-      setAnswer(null);
-      setWinModalVisible(false);
-      setLossModalVisible(false);
-      setFlippingRowIndex(null);
+  const startCountdown = useCallback(
+    (untilMs?: number) => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      nextWordAtRef.current = untilMs ?? Date.now() + msUntilMidnight(tzOffset);
       setNextWordReady(false);
-      setCopied(false);
-      return true;
-    } catch {
-      return false;
+      const tick = () => {
+        const remaining = Math.max(0, (nextWordAtRef.current ?? 0) - Date.now());
+        setCountdown(formatCountdown(remaining));
+        if (remaining === 0) {
+          setNextWordReady(true);
+          if (countdownRef.current) clearInterval(countdownRef.current);
+        }
+      };
+      tick();
+      countdownRef.current = setInterval(tick, 1000);
+    },
+    [tzOffset]
+  );
+
+  /**
+   * Loads today's puzzle in place of the current one. Fetches before clearing
+   * the saved game, so a failure leaves the finished result intact (#2553
+   * review). With `requireNewPuzzle`, a server still serving the current
+   * puzzle (device clock ahead of the server's) changes nothing: "same".
+   */
+  const resetToToday = useCallback(
+    async ({ requireNewPuzzle = false } = {}): Promise<"ok" | "same" | "failed"> => {
+      try {
+        const todayMeta = await dailyWordApi.getToday(tzOffset, language);
+        if (requireNewPuzzle && todayMeta.puzzle_id === stateRef.current?.puzzle_id) {
+          return "same";
+        }
+        await clearState();
+        // The old puzzle's session must close now: left open, the next guess would
+        // skip start() and be reported against the old puzzle_id.
+        if (syncGetGameId()) {
+          syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+        }
+        const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+        setState(fresh);
+        setAnswer(null);
+        setWinModalVisible(false);
+        setLossModalVisible(false);
+        setFlippingRowIndex(null);
+        setNextWordReady(false);
+        setCopied(false);
+        setPlayAgainFailed(false);
+        return "ok";
+      } catch {
+        return "failed";
+      }
+    },
+    [tzOffset, language, syncGetGameId, syncComplete]
+  );
+
+  /** How long to wait before retrying when the server hasn't rolled over yet. */
+  const NEXT_WORD_RETRY_MS = 60_000;
+
+  const handlePlayAgain = useCallback(async () => {
+    setPlayAgainFailed(false);
+    const result = await resetToToday({ requireNewPuzzle: true });
+    if (!mountedRef.current) return;
+    if (result === "same") {
+      // The server hasn't moved on yet: count down briefly and try again.
+      startCountdown(Date.now() + NEXT_WORD_RETRY_MS);
+    } else if (result === "failed") {
+      setPlayAgainFailed(true);
     }
-  }, [tzOffset, language, syncGetGameId, syncComplete]);
+  }, [resetToToday, startCountdown]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -765,7 +798,7 @@ export default function DailyWordScreen() {
         if (err.message === "not_a_word") {
           showToast(t("error.notAWord"));
         } else if (err.message === "stale_puzzle_id") {
-          const recovered = await resetToToday();
+          const recovered = (await resetToToday()) === "ok";
           showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
         } else if (err.message === "wrong_guess_length") {
           showToast(t("error.wrongLength"));
@@ -895,11 +928,13 @@ export default function DailyWordScreen() {
           outcome={state.won ? "win" : "loss"}
           eyebrow={t("game.title")}
           subtitle={
-            state.won
-              ? tResult("subtitle.solvedIn", { count: guessCount })
-              : answer !== null
-                ? t("result.loss.answer", { answer })
-                : undefined
+            playAgainFailed
+              ? t("error.couldNotLoad")
+              : state.won
+                ? tResult("subtitle.solvedIn", { count: guessCount })
+                : answer !== null
+                  ? t("result.loss.answer", { answer })
+                  : undefined
           }
           hero={{
             kind: "score",
@@ -908,7 +943,7 @@ export default function DailyWordScreen() {
           }}
           primaryAction={
             nextWordReady
-              ? { label: tResult("action.playAgain"), onPress: () => void resetToToday() }
+              ? { label: tResult("action.playAgain"), onPress: () => void handlePlayAgain() }
               : {
                   label: t("result.countdown", { time: countdown }),
                   onPress: () => {},

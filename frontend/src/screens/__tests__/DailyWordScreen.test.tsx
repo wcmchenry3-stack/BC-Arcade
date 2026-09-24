@@ -601,24 +601,61 @@ describe("DailyWordScreen — result card (#2514)", () => {
     expect(r.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
-  it("turns the countdown into Play Again once the next word is out, which loads it", async () => {
+  /** Loads a won game and jumps the clock past midnight so Play Again shows. */
+  async function reachPlayAgain() {
     storage.loadState.mockResolvedValue(WIN_STATE);
     const r = await renderScreen();
     await r.findByText("You Win!");
     storage.clearState.mockClear();
-
-    // Jump past the next midnight; the next countdown tick flips the button.
     const realNow = Date.now.bind(Date);
     jest.spyOn(Date, "now").mockImplementation(() => realNow() + 25 * 60 * 60 * 1000);
     await waitFor(() => expect(r.getByRole("button", { name: "Play Again" })).toBeTruthy(), {
       timeout: 3000,
     });
+    return r;
+  }
+
+  it("turns the countdown into Play Again once the next word is out, which loads it", async () => {
+    const r = await reachPlayAgain();
+    dailyWordApi.getToday.mockResolvedValue({ puzzle_id: "2026-05-04:en", word_length: 5 });
 
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
     });
+
     expect(storage.clearState).toHaveBeenCalled();
     await waitFor(() => expect(r.queryByText("You Win!")).toBeNull());
+  });
+
+  it("keeps the finished game when the server still serves the same puzzle (#2553 review)", async () => {
+    const r = await reachPlayAgain();
+    // Device clock ahead of the server: today is still the solved puzzle.
+    dailyWordApi.getToday.mockResolvedValue(TODAY_META);
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+
+    expect(storage.clearState).not.toHaveBeenCalled();
+    expect(r.getByText("You Win!")).toBeTruthy();
+    // Back to a short countdown before retrying.
+    expect(r.getByTestId("game-result-primary").props.accessibilityState.disabled).toBe(true);
+    expect(r.getByTestId("game-result-primary")).toHaveTextContent(/Next word in/);
+  });
+
+  it("keeps the finished game and says so when loading the next puzzle fails (#2553 review)", async () => {
+    const r = await reachPlayAgain();
+    dailyWordApi.getToday.mockRejectedValue(new Error("offline"));
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+
+    expect(storage.clearState).not.toHaveBeenCalled();
+    expect(r.getByText("You Win!")).toBeTruthy();
+    expect(r.getByText("Could not load today's puzzle")).toBeTruthy();
+    // Still enabled, so tapping retries.
+    expect(r.getByRole("button", { name: "Play Again" })).toBeTruthy();
   });
 
   it("shares through the system share sheet on native", async () => {
