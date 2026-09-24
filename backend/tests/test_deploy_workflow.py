@@ -70,7 +70,14 @@ def test_scan_covers_every_prod_service_by_its_secret() -> None:
     assert all(e["id_secret"].startswith("RENDER_PROD_") for e in entries)
     assert all(e["url"].startswith("https://") for e in entries)
     wait = next(s for s in job["steps"] if s.get("id") == "wait")
-    assert wait["env"]["SERVICE_ID"] == "${{ secrets[matrix.id_secret] }}"
+    # Each secret is referenced statically; a dynamic `secrets[...]` index
+    # exposes every repo and org secret to the runner.
+    for e in entries:
+        name = e["id_secret"]
+        assert wait["env"][name] == f"${{{{ secrets.{name} }}}}"
+    assert wait["env"]["ID_SECRET"] == "${{ matrix.id_secret }}"
+    assert 'SERVICE_ID="${!ID_SECRET}"' in wait["run"]
+    assert "${{ secrets[" not in SCAN.read_text(encoding="utf-8")
     assert "vars." not in SCAN.read_text(encoding="utf-8")
 
 
