@@ -42,18 +42,21 @@ import type { PlayWeights } from "./aiWeights";
 
 /**
  * Weighted pick for a plausible mistake (#2283): each option is weighted
- * exp(−(best − score) / spread), so cards scoring close to the best one are
- * likely and clear blunders are rare. `spread` is in utility-score units;
+ * exp(−(top − score) / spread), `top` being the best of the options, so
+ * cards scoring close to the best are likely and clear blunders are rare.
+ * Measuring from the options' own top (not the overall best card, which a
+ * mistake excludes) gives the same relative weights and keeps one weight at
+ * 1, so they can't all underflow to 0. `spread` is in utility-score units;
  * Infinity makes every option equally likely (the old uniform noise).
  */
 function pickNearBest<T>(
   options: readonly { item: T; score: number }[],
-  best: number,
   spread: number,
   rng: () => number
 ): number {
+  const top = Math.max(...options.map((o) => o.score));
   const weights = options.map((o) =>
-    Number.isFinite(spread) ? Math.exp(-(best - o.score) / spread) : 1
+    Number.isFinite(spread) ? Math.exp(-(top - o.score) / spread) : 1
   );
   let r = rng() * weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < weights.length; i++) {
@@ -186,12 +189,9 @@ export function selectCardsToPassUtility(
     // A sloppy pass: three cards drawn without replacement, weighted towards
     // the top of the ranking rather than uniformly (#2283).
     const pool = scored.map((s) => ({ item: s.card, score: s.score }));
-    const best = pool[0]?.score ?? 0;
     const result: Card[] = [];
     for (let i = 0; i < 3 && pool.length > 0; i++) {
-      result.push(
-        pool.splice(pickNearBest(pool, best, MISTAKE_SPREAD[difficulty], rng), 1)[0]!.item
-      );
+      result.push(pool.splice(pickNearBest(pool, MISTAKE_SPREAD[difficulty], rng), 1)[0]!.item);
     }
     return result;
   }
@@ -339,7 +339,7 @@ export function selectCardToPlayUtility(
   const noiseRate = NOISE_RATE[difficulty];
   if (noiseRate > 0 && scored.length > 1 && rng() < noiseRate) {
     const others = scored.slice(1).map((s) => ({ item: s.card, score: s.score }));
-    return others[pickNearBest(others, scored[0]!.score, MISTAKE_SPREAD[difficulty], rng)]!.item;
+    return others[pickNearBest(others, MISTAKE_SPREAD[difficulty], rng)]!.item;
   }
 
   return scored[0]!.card;

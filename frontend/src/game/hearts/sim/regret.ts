@@ -347,7 +347,7 @@ export interface LadderStep {
 
 /**
  * The noise-ladder sanity check (#2239): Cautious (the noisiest persona, NOISE_RATE) should lose
- * more points than Schemer (10%), and Schemer more than Daring (0%) — both
+ * more points than Schemer, and Schemer more than Daring (0%) — both
  * in total and on noise plays alone.
  */
 export function noiseLadder(blocks: readonly RegretBlock[], sampleEvery = 1): LadderStep[] {
