@@ -6,7 +6,7 @@ Covers:
   - Stale puzzle_id → 422
   - Grace-window edge cases (#1208)
   - Invalid word → 422 not_a_word
-  - Brute-force 7th guess → 429
+  - 7th guess → 403 no_guesses_remaining (#2197)
   - Missing X-Session-ID → 400
   - GET /answer happy path and invalid puzzle_id (#1208)
   - Answer-not-in-response security assertions (#1195)
@@ -317,8 +317,26 @@ def _guess(client: TestClient, headers: dict, puzzle_id: str, word: str):
     )
 
 
-# Six valid five-letter words, none of them the answer for any puzzle we test.
-_SIX_WRONG = ["crane", "slate", "mound", "pilot", "brick", "fudge"]
+# Six valid five-letter guesses that are NOT in the answer pool, so they can
+# never accidentally solve the puzzle. The earlier picks included "crane",
+# "pilot" and "zesty", all of which *are* answers — on the days the scheduler
+# chose one of them, the first guess would win, every later guess would 403
+# already_solved, and four of the tests below would fail. A calendar-dependent
+# failure is the worst kind to debug, so the invariant is asserted rather than
+# assumed (test_guess_words_are_never_answers).
+_SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
+# A seventh, for testing the guess past the cap.
+_SEVENTH = "vozhd"
+
+
+def test_guess_words_are_never_answers() -> None:
+    """Guards the fixture above against a word-list change (#2197 review)."""
+    from daily_word.puzzle import _ANSWERS_EN, is_valid_guess
+
+    for word in [*_SIX_WRONG, _SEVENTH]:
+        assert is_valid_guess(word, "en"), f"{word} must be an accepted guess"
+        assert word not in _ANSWERS_EN, f"{word} can be an answer — pick another fixture word"
+    assert len(set(_SIX_WRONG)) == 6, "the six must be distinct or they replay instead of spending"
 
 
 def test_get_answer_refuses_a_session_that_has_not_played(client: TestClient) -> None:
@@ -399,7 +417,7 @@ def test_a_seventh_guess_is_refused(client: TestClient) -> None:
     for word in _SIX_WRONG:
         assert _guess(client, headers, puzzle_id, word).status_code == 200
 
-    r = _guess(client, headers, puzzle_id, "whisk")
+    r = _guess(client, headers, puzzle_id, _SEVENTH)
     assert r.status_code == 403
     assert r.json()["detail"] == "no_guesses_remaining"
 
@@ -420,7 +438,7 @@ def test_no_further_guesses_once_solved(client: TestClient) -> None:
     headers = _sid_headers()
     assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
 
-    r = _guess(client, headers, puzzle_id, "crane")
+    r = _guess(client, headers, puzzle_id, _SIX_WRONG[0])
     assert r.status_code == 403
     assert r.json()["detail"] == "already_solved"
 
@@ -429,8 +447,8 @@ def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:
     """withRetry can replay a guess that already reached the server."""
     headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
-    first = _guess(client, headers, puzzle_id, "crane").json()
-    again = _guess(client, headers, puzzle_id, "crane").json()
+    first = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
+    again = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
 
     assert first["tiles"] == again["tiles"]
     assert again["guesses_used"] == 1, "a replay must not spend a second guess"
@@ -442,7 +460,7 @@ def test_an_invalid_word_costs_nothing(client: TestClient) -> None:
     puzzle_id = _today_puzzle_id()
     assert _guess(client, headers, puzzle_id, "zzzzz").status_code == 422
 
-    body = _guess(client, headers, puzzle_id, "crane").json()
+    body = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
     assert body["guesses_used"] == 1
 
 
@@ -452,7 +470,7 @@ def test_guess_state_is_per_puzzle(client: TestClient) -> None:
     today = _today_puzzle_id()
     for word in _SIX_WRONG:
         _guess(client, headers, today, word)
-    assert _guess(client, headers, today, "whisk").status_code == 403
+    assert _guess(client, headers, today, _SEVENTH).status_code == 403
 
     # A different language is a different puzzle_id, and a separate budget.
     other = _today_puzzle_id(lang="hi")

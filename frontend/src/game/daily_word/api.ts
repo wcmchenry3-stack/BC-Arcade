@@ -17,6 +17,14 @@ export interface GuessResponse {
   readonly tiles: readonly TileResult[];
   /** Groupings of code-point indices into visual grapheme clusters. Present for Hindi only. */
   readonly grapheme_clusters?: readonly (readonly number[])[];
+  /**
+   * Server-side guess count for this session and puzzle (#2197). The server,
+   * not the board, is the authority on how many guesses have been spent — a
+   * recorded guess whose response was lost leaves the board one behind.
+   * Optional so a build talking to an older API still type-checks.
+   */
+  readonly guesses_used?: number;
+  readonly guesses_remaining?: number;
 }
 
 export interface AnswerResponse {

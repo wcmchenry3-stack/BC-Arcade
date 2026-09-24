@@ -126,6 +126,7 @@ async def get_today(
 
 @router.post("/guess")
 @limiter.limit("20/hour", key_func=_guess_key)
+@limiter.limit("120/hour")
 async def post_guess(request: Request, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
@@ -165,7 +166,14 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
     # client behaves. A guess already on record is re-scored without spending a
     # turn, so a retried request cannot rob the player.
     tiles = _score_guess(answer, guess)
-    won = all(t["status"] == "correct" for t in tiles)
+    # Compared, not inferred from the tiles: `_score_guess` builds one tile per
+    # code point of the *guess* and zips against the answer, while the length
+    # check above compares grapheme clusters. For a Hindi guess with matching
+    # clusters but fewer code points, every tile can read "correct" without the
+    # words being equal — which would persist solved=True and release the
+    # answer for a non-winning guess. No such pair exists in today's word
+    # lists, so this is latent rather than live, but equality is exact and free.
+    won = guess == answer
     factory = get_session_factory()
     async with factory() as db:
         outcome = await record_guess(
@@ -188,6 +196,7 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
 
 @router.get("/answer")
 @limiter.limit("20/minute")
+@limiter.limit("60/hour")
 async def get_answer_route(
     request: Request,
     puzzle_id: str = Query(...),

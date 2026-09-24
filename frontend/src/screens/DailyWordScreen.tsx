@@ -868,6 +868,21 @@ export default function DailyWordScreen() {
       return;
     }
 
+    // #2197 — a word already on the board must not be submitted again. The
+    // server treats a repeat of a recorded guess as a replay (so a re-send
+    // after a lost response cannot rob a turn), which means a *deliberate*
+    // repeat would advance the board without spending a server-side guess.
+    // Six rows and five recorded guesses would then leave the player short of
+    // the answer they earned.
+    const alreadyGuessed = s.rows
+      .slice(0, s.current_row)
+      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
+    if (alreadyGuessed) {
+      showToast(t("error.alreadyGuessed"));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      return;
+    }
+
     const _devTs = __DEV__ ? Date.now() : 0;
     const _devBody = __DEV__
       ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
@@ -955,6 +970,32 @@ export default function DailyWordScreen() {
         }
       } else if (err instanceof ApiError && err.status === 429) {
         showToast(t("error.rateLimited"));
+      } else if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        (err.message === "no_guesses_remaining" || err.message === "already_solved")
+      ) {
+        // #2197 — the server says this puzzle is finished and the local board
+        // disagrees, which happens when a guess was recorded but its response
+        // never arrived. Trust the server: close the game out and reveal the
+        // answer it will now release, rather than stranding the player on a
+        // board that can never complete.
+        const current = stateRef.current;
+        if (current) {
+          const finished = markComplete(current, false);
+          setState(finished);
+          saveState(finished).catch(() => {});
+          try {
+            const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
+            setAnswer(answerData.answer.toUpperCase());
+          } catch {
+            // Modal still opens; it just won't reveal the word.
+          }
+          setLossModalVisible(true);
+          startCountdown();
+        } else {
+          showToast(t("error.couldNotSubmit"));
+        }
       } else {
         showToast(t("error.couldNotSubmit"));
       }

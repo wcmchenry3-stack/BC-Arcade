@@ -99,10 +99,22 @@ async def _get_or_create(
 
     Two concurrent first guesses both miss the SELECT and both insert; the
     unique constraint rejects the loser, which then re-reads the winner's row.
+
+    The row is locked for the caller's transaction, because ``record_guess``
+    read-modify-writes the whole ``guesses`` value: without it, two concurrent
+    guesses would both read the same list, both append their own, and the later
+    UPDATE would drop the earlier guess — under-counting, and letting more than
+    MAX_GUESSES scored guesses through. ``with_for_update`` is a no-op on
+    SQLite, which is fine: the test suite is single-threaded and Postgres is
+    what serves concurrent traffic.
     """
-    stmt = select(DailyWordProgress).where(
-        DailyWordProgress.session_id == session_id,
-        DailyWordProgress.puzzle_id == puzzle_id,
+    stmt = (
+        select(DailyWordProgress)
+        .where(
+            DailyWordProgress.session_id == session_id,
+            DailyWordProgress.puzzle_id == puzzle_id,
+        )
+        .with_for_update()
     )
     row = (await session.execute(stmt)).scalar_one_or_none()
     if row is not None:
