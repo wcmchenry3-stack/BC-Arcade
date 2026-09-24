@@ -5,7 +5,7 @@
  * variant applies when the old `isMoonAttempt` thresholds fire — rateMoonAttemptProgress
  * dominates at 100.0 (calibration-drift guard) while card selection stays utility-driven.
  *
- * Noise rates: Cautious 37% / Schemer 10% / Daring 0%.
+ * Noise rates: Cautious 51% / Schemer 14% / Daring 0%.
  * Daring noise is 0 because even a small deviation can derail moon attempts.
  *
  * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
@@ -18,9 +18,10 @@
  * #2283 made the mistakes plausible: a noise hit used to play a uniformly
  * random card, so every slip cost the same ~1.3 points whoever made it (the
  * regret report, #2239) and could look like a broken bot. It now picks a
- * near-best card (MISTAKE_SPREAD). Rates were re-tuned to the chosen ladder —
- * a competent player (the sim's Schemer stand-in) winning ~40% at the
- * Cautious table, ~26% at Schemer's, ~16% at Daring's.
+ * near-best card (MISTAKE_SPREAD 0.1). Near-best mistakes cost fewer games,
+ * so the personas err more often for the same ladder — the chosen targets
+ * being a competent player (the sim's Schemer stand-in) winning ~40% at the
+ * Cautious table, ~25% at Schemer's, ~16% at Daring's.
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
@@ -134,8 +135,8 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
  * alternative, of not playing (or passing) its best-scoring choice.
  */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.37,
-  schemer: 0.1,
+  cautious: 0.51,
+  schemer: 0.14,
   daring: 0.0,
 };
 
@@ -146,7 +147,7 @@ export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
  * player, not a random card. Infinity would be the old uniform noise.
  */
 export const MISTAKE_SPREAD: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.5,
-  schemer: 0.5,
-  daring: 0.5,
+  cautious: 0.1,
+  schemer: 0.1,
+  daring: 0.1,
 };
