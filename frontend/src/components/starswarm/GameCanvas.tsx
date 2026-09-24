@@ -30,6 +30,7 @@ import {
   isCarrierArmored,
   asteroidOutline,
   throwAsteroid,
+  killEscorts,
   carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
@@ -71,6 +72,10 @@ export interface DevOptions {
   enemyFireDisabled?: boolean;
   /** Suppress timed asteroid spawns (#2486). */
   asteroidsDisabled?: boolean;
+  /** Enemies never roll to dodge a rock (#2491). */
+  dodgeDisabled?: boolean;
+  /** Enemies never fire flak at a rock (#2491). */
+  flakDisabled?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -80,6 +85,8 @@ export interface GameCanvasHandle {
   triggerPowerUp: (type: PowerUpType) => void;
   /** Throw an asteroid now — dev-panel testing (#2486). */
   throwAsteroid: () => void;
+  /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
+  killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
 }
@@ -217,6 +224,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
     const throwAsteroidRef = useRef(false); // #2486
+    const killEscortsRef = useRef(false); // #2491
     const prevBonusLivesRef = useRef(gameRef.current.bonusLivesAwarded);
     const bonusFlashEndRef = useRef(0); // ms timestamp when 1UP flash expires
 
@@ -288,6 +296,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         throwAsteroid() {
           throwAsteroidRef.current = true;
         },
+        killEscorts() {
+          killEscortsRef.current = true;
+        },
         getState() {
           return gameRef.current;
         },
@@ -349,6 +360,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           throwAsteroidRef.current = false;
           gameRef.current = throwAsteroid(gameRef.current); // #2486
         }
+        if (killEscortsRef.current) {
+          killEscortsRef.current = false;
+          gameRef.current = killEscorts(gameRef.current); // #2491
+        }
 
         const prev = gameRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
@@ -395,6 +410,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const asteroidsDisabled = devOptionsRef.current?.asteroidsDisabled ?? false; // #2486
               if (tickInput.asteroidsDisabled !== asteroidsDisabled)
                 tickInput = { ...tickInput, asteroidsDisabled };
+              const dodgeDisabled = devOptionsRef.current?.dodgeDisabled ?? false; // #2491
+              if (tickInput.dodgeDisabled !== dodgeDisabled)
+                tickInput = { ...tickInput, dodgeDisabled };
+              const flakDisabled = devOptionsRef.current?.flakDisabled ?? false; // #2491
+              if (tickInput.flakDisabled !== flakDisabled)
+                tickInput = { ...tickInput, flakDisabled };
               const next = tick(tickInput, dtMs, {
                 playerX: inputRef.current.playerX,
                 fire: inputRef.current.fire,

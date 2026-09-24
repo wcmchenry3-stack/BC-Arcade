@@ -109,7 +109,32 @@ bullet marked `flak`: it is drawn amber, sits outside `bulletCap()`, is spent on
 shot, and can still hit the player if it misses. The dev "Enemy missiles off" toggle silences it.
 
 **Counters.** `state.tierStats` records per tier: rolls, dodged, pathRolls, pathDodged, struck and
-flak. They carry across waves and reset on a new game; the dev panel view is #2491.
+flak. They carry across waves and reset on a new game; see _Telemetry_ below for how to read them.
+
+## Telemetry: run stats (#2491)
+
+Two sets of counters live on the engine state, both carried across waves and reset on a new game:
+
+- `tierStats` (per tier, #2487): dodge rolls, dodged, path rolls, struck, flak shots.
+- `runStats` (whole run): reinforcements launched, armor deflections (ordinary shots the escorted
+  Carrier shrugged off), beam hits on the player (sweeps that cost plating or a life — a
+  shield-absorbed sweep is not one), rocks spawned, rocks broken by the player's shots and by
+  enemy shots (flak included; a bomb or a hull shatter credits nobody). `routCaught` /
+  `routEscaped` are reserved for the grunt rout (#2489) and stay 0 until it lands.
+
+`dodgeRateByTier(state)` is the pure selector the dev panel and the breadcrumb share: one row per
+tier with the base odds, the effective odds at this run's difficulty, and the counts.
+
+**Dev panel** (dev builds only, same `__DEV__` guard as the other toggles): a _Run stats_ section
+shows the tier table and the run counters, refreshed 4× a second from a timer — never per frame —
+plus _Dodge off_, _Flak off_ and _Kill escorts_ next to _Throw asteroid_. See
+[`docs/TESTING.md`](../TESTING.md#star-swarm-tuning-with-the-run-stats-dev-panel-2491) for how to
+use it when tuning.
+
+**Sentry.** At game over the screen adds one `starswarm.run_stats` breadcrumb (info level) with
+the run counters, the tier table, wave reached, difficulty and score — counts only, nothing that
+identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
+`globalThis.__starswarm_getRunStats()` for an E2E driver.
 
 ## Scoring (Persistence)
 

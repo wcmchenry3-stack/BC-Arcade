@@ -5,6 +5,7 @@ import {
   AppStateStatus,
   LayoutChangeEvent,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,14 +36,20 @@ import {
   difficultyMultiplier,
   perfectBonusPoints,
   FREE_FIRE_ENEMY_COUNT,
+  dodgeRateByTier,
 } from "../game/starswarm/engine";
+import type { TierDodgeRow } from "../game/starswarm/engine";
 import type {
   GamePhase,
   PowerUpType,
   DifficultyTier,
   CarrierEvent,
   UpgradeEvent,
+  RunStats,
+  StarSwarmState,
 } from "../game/starswarm/types";
+import { reportRunStats } from "../game/starswarm/telemetry";
+import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import { starSwarmApi } from "../game/starswarm/api";
 import {
   getSavedPausedState,
@@ -52,6 +59,57 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
 import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+
+// #2491: dev-panel run-stats view — a 4 Hz snapshot of the engine's counters.
+const DEV_STATS_POLL_MS = 250;
+
+interface DevStatsSnapshot {
+  readonly wave: number;
+  readonly difficulty: DifficultyTier;
+  readonly score: number;
+  readonly rows: readonly TierDodgeRow[];
+  readonly run: RunStats;
+}
+
+function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
+  return {
+    wave: s.wave,
+    difficulty: s.difficulty,
+    score: s.score,
+    rows: dodgeRateByTier(s),
+    run: s.runStats,
+  };
+}
+
+/** What the `__starswarm_getRunStats` test hook returns (#2491). */
+interface RunStatsHook {
+  readonly runStats: RunStats;
+  readonly tierStats: StarSwarmState["tierStats"];
+  readonly wave: number;
+  readonly difficulty: DifficultyTier;
+  readonly score: number;
+}
+
+const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
+const col = (x: number | string, w: number) => String(x).padStart(w);
+const TIER_TABLE_HEADER = `${"tier".padEnd(7)} base  eff rolls dodge  rate struck flak`;
+
+function tierTableLine(row: TierDodgeRow): string {
+  const rate = row.rolls > 0 ? pct(row.dodged / row.rolls) : col("-", 4);
+  return (
+    `${row.tier.padEnd(7)} ${pct(row.base)} ${pct(row.effective)} ` +
+    `${col(row.rolls, 5)} ${col(row.dodged, 5)} ${col(rate, 5)} ${col(row.struck, 6)} ${col(row.flak, 4)}`
+  );
+}
+
+const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
+  ["Reinforcements launched", "reinforced"],
+  ["Armor deflections", "armorDeflects"],
+  ["Beam hits on player", "beamHits"],
+  ["Rocks spawned", "rocksSpawned"],
+  ["Rocks broken by player", "rocksBrokenByPlayer"],
+  ["Rocks broken by enemies", "rocksBrokenByEnemy"],
+];
 
 const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
@@ -83,6 +141,10 @@ export default function StarSwarmScreen() {
   const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
   const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
   const [devAsteroidsOff, setDevAsteroidsOff] = useState(false); // #2486
+  const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
+  const [devFlakOff, setDevFlakOff] = useState(false); // #2491
+  // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
+  const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
   // Defaults to Ensign for new users; AsyncStorage load below promotes it to the last-played tier.
@@ -144,6 +206,10 @@ export default function StarSwarmScreen() {
     scoreRef.current = s;
   }, []);
 
+  // #2491: the run's counters go to Sentry once per run; the canvas has already stored the
+  // game-over state when it calls back, so getState() sees the final tick's counts too.
+  const runStatsReportedRef = useRef(false);
+
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
       setPhase("GameOver");
@@ -154,6 +220,13 @@ export default function StarSwarmScreen() {
         setHighScore(finalScore);
       }
       starSwarmApi.submitScore(finalScore, wave, difficulty).catch(() => {});
+      if (!runStatsReportedRef.current) {
+        const state = canvasRef.current?.getState();
+        if (state) {
+          runStatsReportedRef.current = true;
+          reportRunStats(state);
+        }
+      }
     },
     [playGameOver, difficulty]
   );
@@ -236,10 +309,52 @@ export default function StarSwarmScreen() {
     canvasRef.current?.throwAsteroid(); // #2486
   }, []);
 
+  const handleKillEscorts = useCallback(() => {
+    canvasRef.current?.killEscorts(); // #2491
+  }, []);
+
+  // #2491: refresh the dev panel's counters at 4 Hz while it is open — a timer, never a
+  // per-frame React update; the loop itself keeps running in the canvas untouched.
+  useEffect(() => {
+    if (!__DEV__ || !devPanelOpen) return;
+    const read = () => {
+      const s = canvasRef.current?.getState();
+      setDevStats(s ? snapshotStats(s) : null);
+    };
+    read();
+    const id = setInterval(read, DEV_STATS_POLL_MS);
+    return () => clearInterval(id);
+  }, [devPanelOpen]);
+
+  // #2491: test-hook seam (EXPO_PUBLIC_TEST_HOOKS=1 builds only) so an E2E driver can read the
+  // counters without the panel: `__starswarm_getRunStats()` → counts + wave/difficulty/score.
+  useEffect(() => {
+    if (!areTestHooksEnabled()) return;
+    const g = globalThis as typeof globalThis & {
+      __starswarm_getRunStats?: () => RunStatsHook | null;
+    };
+    g.__starswarm_getRunStats = () => {
+      const s = canvasRef.current?.getState();
+      return s
+        ? {
+            runStats: s.runStats,
+            tierStats: s.tierStats,
+            wave: s.wave,
+            difficulty: s.difficulty,
+            score: s.score,
+          }
+        : null;
+    };
+    return () => {
+      delete g.__starswarm_getRunStats;
+    };
+  }, []);
+
   const handleNewGame = useCallback(
     (opts?: DevOptions) => {
       if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
       scoreRef.current = 0;
+      runStatsReportedRef.current = false; // #2491: the next run reports again
       stopPerfect(); // a fanfare still playing must not carry on over the new game
       setPhase("SwoopIn");
       setIsPaused(false);
@@ -370,6 +485,8 @@ export default function StarSwarmScreen() {
                       playerFireDisabled: devPlayerFireOff,
                       enemyFireDisabled: devEnemyFireOff,
                       asteroidsDisabled: devAsteroidsOff,
+                      dodgeDisabled: devDodgeOff,
+                      flakDisabled: devFlakOff,
                     }
                   : undefined
               }
@@ -512,6 +629,48 @@ export default function StarSwarmScreen() {
               >
                 <Text style={dynamicStyles.devLabel}>Throw asteroid</Text>
               </Pressable>
+
+              <View style={styles.devRow}>
+                <Text style={dynamicStyles.devLabel}>Dodge off</Text>
+                <Switch value={devDodgeOff} onValueChange={setDevDodgeOff} />
+              </View>
+
+              <View style={styles.devRow}>
+                <Text style={dynamicStyles.devLabel}>Flak off</Text>
+                <Switch value={devFlakOff} onValueChange={setDevFlakOff} />
+              </View>
+
+              <Pressable
+                style={styles.devActionBtn}
+                onPress={handleKillEscorts}
+                accessibilityLabel="Kill escorts"
+              >
+                <Text style={dynamicStyles.devLabel}>Kill escorts</Text>
+              </Pressable>
+
+              <Text style={dynamicStyles.devSectionHeader}>── Run stats ──</Text>
+
+              {devStats ? (
+                <View accessibilityLabel="Run stats">
+                  <Text style={styles.devMono}>
+                    {`wave ${devStats.wave} · ${devStats.difficulty} · score ${devStats.score}`}
+                  </Text>
+                  <Text style={styles.devMono}>{TIER_TABLE_HEADER}</Text>
+                  {devStats.rows.map((row) => (
+                    <Text key={row.tier} style={styles.devMono}>
+                      {tierTableLine(row)}
+                    </Text>
+                  ))}
+                  {RUN_STAT_LINES.map(([label, key]) => (
+                    <View key={key} style={styles.devRow}>
+                      <Text style={dynamicStyles.devLabel}>{label}</Text>
+                      <Text style={styles.devValue}>{devStats.run[key]}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={dynamicStyles.devLabel}>Start a game to see counters</Text>
+              )}
 
               <Text style={dynamicStyles.devSectionHeader}>── Difficulty ──</Text>
 
@@ -675,6 +834,12 @@ const baseStyles = StyleSheet.create({
     fontWeight: "700",
     minWidth: 28,
     textAlign: "center",
+  },
+  devMono: {
+    color: "#fff",
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
   },
   devScrollContent: {
     gap: 16,
