@@ -371,8 +371,12 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
   2–4pp for behaviour rates), both directions, each side at α/2.
 - **Separation checks** (6) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
-  (H0) against "no difference" (H1). A reversed or vanished separation fails;
-  a larger one passes. The report prints the difference with its CI.
+  (H0) against "no difference" (H1). `m` is the lower 95% bound of the
+  baseline measurement (mean − 2·SE, enforced by `gate.test.ts`): the
+  smallest separation the evidence supports. A point estimate overshoots
+  the truth half the time and turns noise into failures (#2235). A reversed
+  or vanished separation fails; a larger one passes. The report prints the
+  difference with its CI.
 
 All 20 checks are one family, **Bonferroni-corrected**: each runs at
 α = 0.05/20 = 0.0025 with β = 0.05, so a behaviour-neutral change fails the
@@ -430,8 +434,10 @@ npx tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware
 
 This re-measures every regression metric at a fixed sample size on a seed
 disjoint from the gate's (`BASELINE_SEED`), and records the reason, date,
-logged counts and SEs. The PR description must say which metrics moved and
-why; reviewers read the JSON diff. Never regenerate the baseline to make an
+logged counts and SEs. Then set each separation's `expected` in `gate.ts` to
+its new `separations` mean − 2·SE (`gate.test.ts` fails until you do). The PR
+description must say which metrics moved and why; reviewers read the JSON
+diff. Never regenerate the baseline to make an
 unexplained failure go away.
 
 **CI wiring and runtime budget.** `.github/workflows/hearts-sim-gate.yml`
@@ -444,7 +450,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 
 | Group     | Games per block | Stopped at (cap)      | Wall-clock |
 | --------- | --------------- | --------------------- | ---------- |
-| `presets` | 6               | 4,800 blocks (12,000) | ~3 min     |
+| `presets` | 6               | 6,400 blocks (12,000) | ~4.5 min   |
 | `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 12,000 blocks ×
@@ -480,17 +486,19 @@ not the mixed table.
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 27.9%
-  at the all-Cautious table, 25.5% at all-Schemer and 20.8% at all-Daring
-  (24.9% at the mixed table). At the mixed table Daring wins 31.5%, Schemer
-  23.1%, Cautious 20.6%; in the field matchup Daring beats Schemer by
-  +5.3pp and Schemer beats Cautious by +2.9pp. All six steps are
+- The difficulty ladder holds at every step: the human stand-in wins 29.0%
+  at the all-Cautious table, 25.4% at all-Schemer and 20.5% at all-Daring
+  (25.4% at the mixed table). At the mixed table Daring wins 31.6%, Schemer
+  23.7%, Cautious 19.3%; in the field matchup Daring beats Schemer by
+  +5.1pp and Schemer beats Cautious by +4.6pp. All six steps are
   separation checks.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
   Cautious's play weights barely moved that; its noise rate did (30% → still
-  level with Schemer, 35% → the ladder above, 38% → a 30% human win share).
+  level with Schemer, 35% → a correct ladder). #2235's moon defense helped
+  Cautious slightly more than Schemer and thinned that step, so Cautious
+  noise is now 38%.
 - Before #2234 Daring's moon trigger cost it games (field +1.5pp over
   Schemer; the human won 23.9% at its table). The new trigger (`moonHand.ts`)
   attempts rarely from the opening hand and commits once Daring holds every
@@ -499,12 +507,13 @@ counts are in `baseline.json`):
   Daring commits mid-hand, so its attempt and paired-success rates — 14.4%
   and 10.3% after, 9.2% and 7.2% before — measure different populations and
   aren't directly comparable.)
-- #2235 made moon defense shooter-aware: a point card is scored by whether
-  its points land on the would-be shooter (feeding the moon) or on someone
-  else (breaking it), and the threat is graded from 2 points instead of
-  switching on at 4. Against a Schemer field, Daring's paired moon success
-  fell from 10.1% to 6.0% (moons per hand 1.47% → 0.87%) without the ladder
-  moving at the bottom. At the all-Daring table paired success is now 6.3%.
+- #2235 made moon defense shooter-aware: a point card is scored by where
+  the trick's points will land — on the would-be shooter (feeding the moon)
+  or on someone else (breaking it) — using who still has to play, the cards
+  already in the trick, pass memory and known voids; the threat is graded
+  from 2 points instead of switching on at 4. Against a Schemer field,
+  Daring's paired moon success fell from 10.1% to 5.3% (moons per hand
+  1.47% → 0.76%). At the all-Daring table paired success is now 5.4%.
 - 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "reason": "#2235: shooter-aware moon defense (who plays after, points in the trick, pass memory) with graded detection from 2 points",
+  "reason": "#2235: shooter-aware moon defense (graded from 2 points); Cautious noise 35% -> 38% to keep the Cautious-vs-Schemer step",
   "generated": "2026-09-24",
   "seed": 1111577413,
   "blocks": {
@@ -9,10 +9,10 @@
   },
   "metrics": {
     "table-cautious/proxy/win_share": {
-      "value": 0.27308333333333334,
-      "num": 3277,
+      "value": 0.28987500000000005,
+      "num": 3478.5000000000005,
       "den": 12000,
-      "se": 0.004037699845621978
+      "se": 0.00410957199786994
     },
     "table-schemer/proxy/win_share": {
       "value": 0.2543472222222222,
@@ -27,28 +27,28 @@
       "se": 0.003656512653943231
     },
     "table-mixed/proxy/win_share": {
-      "value": 0.2480000000000039,
-      "num": 8928,
+      "value": 0.2544398148148194,
+      "num": 9159.833333333334,
       "den": 36000,
-      "se": 0.0025492983809842643
+      "se": 0.002532886843716808
     },
     "table-mixed/cautious/win_share": {
-      "value": 0.20970833333333405,
-      "num": 7549.499999999999,
+      "value": 0.19257407407407107,
+      "num": 6932.666666666665,
       "den": 36000,
-      "se": 0.0020463299714381655
+      "se": 0.0019923003750205136
     },
     "table-mixed/schemer/win_share": {
-      "value": 0.23052777777778283,
-      "num": 8299,
+      "value": 0.23706944444445052,
+      "num": 8534.499999999998,
       "den": 36000,
-      "se": 0.00211501217852903
+      "se": 0.0021420319647511357
     },
     "table-mixed/daring/win_share": {
-      "value": 0.3117638888889001,
-      "num": 11223.500000000002,
+      "value": 0.31591666666667934,
+      "num": 11373.000000000002,
       "den": 36000,
-      "se": 0.00235185025040961
+      "se": 0.0023583600417997766
     },
     "table-daring/daring/moon_attempt": {
       "value": 0.1398643990167349,
@@ -75,10 +75,10 @@
       "se": 0.0018620220357498448
     },
     "table-cautious/cautious/void_created": {
-      "value": 0.19851744655478618,
-      "num": 63925,
-      "den": 322012,
-      "se": 0.0007070950879930109
+      "value": 0.1948416672368423,
+      "num": 62649,
+      "den": 321538,
+      "se": 0.0007021540953575521
     },
     "table-schemer/schemer/void_created": {
       "value": 0.6477692350514348,
@@ -95,16 +95,16 @@
   },
   "separations": {
     "mixed:daring-over-schemer": {
-      "mean": 0.0812361111111115,
-      "se": 0.003598902847018199
+      "mean": 0.07884722222222255,
+      "se": 0.003644143156231639
     },
     "mixed:schemer-over-cautious": {
-      "mean": 0.020819444444444547,
-      "se": 0.0032612285602427456
+      "mean": 0.044495370370370164,
+      "se": 0.0032289996568742184
     },
     "presets:cautious-table-easier-than-schemer": {
-      "mean": 0.01873611111111111,
-      "se": 0.005246310435359516
+      "mean": 0.03552777777777778,
+      "se": 0.0052809341328813415
     },
     "presets:schemer-table-easier-than-daring": {
       "mean": 0.04981944444444445,
@@ -115,8 +115,8 @@
       "se": 0.0032582584390311226
     },
     "field:schemer-over-cautious": {
-      "mean": 0.02827777777777777,
-      "se": 0.0031800558019625448
+      "mean": 0.04550925925925965,
+      "se": 0.003184599850015862
     }
   }
 }

@@ -71,6 +71,16 @@ describe("gate definition", () => {
     for (const check of SEPARATION_CHECKS) expect(check.expected).not.toBe(0);
   });
 
+  it("pre-registers each separation at the baseline's lower 95% bound (mean − 2·SE)", () => {
+    for (const check of SEPARATION_CHECKS) {
+      const measured = BASELINE.separations[check.id];
+      expect(measured).toBeDefined();
+      // Rounded to 3 decimals in gate.ts.
+      expect(Math.abs(check.expected - (measured!.mean - 2 * measured!.se))).toBeLessThan(0.0006);
+      expect(check.expected).toBeGreaterThan(0);
+    }
+  });
+
   it("pre-registers the difficulty ladder (#2555)", () => {
     // Positive `expected` = left beats right, so each tuple reads "left > right".
     const holds = (left: [string, string], right: [string, string]) =>
