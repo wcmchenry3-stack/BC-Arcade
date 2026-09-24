@@ -40,5 +40,6 @@
   "subtitle.noMoves": "No more moves",
   "stat.guesses": "Guesses",
   "subtitle.solvedIn_one": "Solved in {{count}} guess",
-  "subtitle.solvedIn_other": "Solved in {{count}} guesses"
+  "subtitle.solvedIn_other": "Solved in {{count}} guesses",
+  "action.changeMode": "Change Mode"
 }

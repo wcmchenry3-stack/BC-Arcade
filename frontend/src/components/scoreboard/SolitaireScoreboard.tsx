@@ -2,18 +2,10 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import HeroStatScoreboard from "./HeroStatScoreboard";
 import type { SolitaireScoreboardSnapshot } from "../../game/solitaire/SolitaireScoreboardContext";
+import { formatMs } from "../../game/solitaire/formatMs";
 
 interface Props {
   snapshot: SolitaireScoreboardSnapshot;
-}
-
-function formatMs(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export default function SolitaireScoreboard({ snapshot }: Props) {

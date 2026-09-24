@@ -42,6 +42,9 @@ jest.mock("../../sudoku/scoreSync", () => ({
 jest.mock("../../mahjong/scoreSync", () => ({
   registerMahjongScoreHandler: jest.fn(),
 }));
+jest.mock("../../solitaire/scoreSync", () => ({
+  registerSolitaireScoreHandler: jest.fn(),
+}));
 
 jest.mock("../../../components/shared/CapacityWarningToast", () => ({
   CapacityWarningToast: () => null,
