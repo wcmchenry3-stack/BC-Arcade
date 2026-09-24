@@ -444,7 +444,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 
 | Group     | Games per block | Stopped at (cap)     | Wall-clock |
 | --------- | --------------- | -------------------- | ---------- |
-| `presets` | 6               | 5,800 blocks (8,000) | ~3.5 min   |
+| `presets` | 6               | 3,000 blocks (8,000) | ~2 min     |
 | `field`   | 9               | 400 blocks (6,000)   | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 8,000 blocks ×
@@ -481,9 +481,9 @@ counts are in `baseline.json`):
 
 - The difficulty ladder holds at every step: the human stand-in wins 28.3%
   at the all-Cautious table, 25.5% at all-Schemer and 19.3% at all-Daring
-  (24.0% at the mixed table). At the mixed table Daring wins 33.9%, Schemer
+  (24.0% at the mixed table). At the mixed table Daring wins 33.7%, Schemer
   22.3%, Cautious 19.9%; in the field matchup Daring beats Schemer by
-  +7.7pp and Schemer beats Cautious by +3.2pp. All six steps are
+  +7.3pp and Schemer beats Cautious by +3.2pp. All six steps are
   separation checks.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
@@ -495,8 +495,8 @@ counts are in `baseline.json`):
   attempts rarely from the opening hand and commits once Daring holds every
   point taken and at least 13 of them. Moons completed rose from 0.77% to
   ~1.4% of Daring's hands. (`moon_attempt` now also counts hands where
-  Daring commits mid-hand, so its attempt and paired-success rates — 13.9%
-  and 9.9% after, 9.2% and 7.2% before — measure different populations and
+  Daring commits mid-hand, so its attempt and paired-success rates — 14.4%
+  and 10.3% after, 9.2% and 7.2% before — measure different populations and
   aren't directly comparable.)
 - 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
