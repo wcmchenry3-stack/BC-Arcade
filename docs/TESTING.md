@@ -416,6 +416,34 @@ test (see "What's Tested" note above — no React/canvas coverage).
    - The rest of the frame (enemies, enemy bullets, starfield) still freezes as expected —
      only the player's own ship/bullets should be gone.
 
+### Star Swarm: tuning with the run-stats dev panel (#2491)
+
+The question the panel answers is "does the collision rate match the enemy's skill?" — the
+per-tier dodge odds are configuration; the panel shows what actually happened next to them. Dev
+builds only (the `DEV` button in the corner of the canvas; the whole panel is behind `__DEV__`, so
+store builds never carry it).
+
+1. Start a run at the difficulty you are tuning (the _Difficulty_ section applies on New Game).
+2. Open the panel. Under _Run stats_ the tier table has one row per tier:
+   `base` (configured dodge chance), `eff` (base × difficulty, capped at 97%), `rolls`, `dodge`,
+   `rate` (dodged ÷ rolls), `struck` (rocks that hit a ship of that tier) and `flak` (shots fired
+   at rocks). Below it are the run counters: reinforcements launched, armor deflections, beam hits
+   on the player, rocks spawned and rocks broken by each side.
+3. To get a sample quickly, press _Throw asteroid_ repeatedly (two rocks on screen at most) instead
+   of waiting for timed spawns. `rate` should converge on `eff` for each tier; if it doesn't, the
+   threat check or the path nudge is not giving that tier its roll.
+4. _Dodge off_ removes every roll so `struck` becomes the no-skill baseline for comparison;
+   _Flak off_ removes the enemy's other defence so only dodging is in play. _Enemy missiles off_
+   silences flak too (it is an enemy bullet), so leave it on when measuring flak.
+5. _Kill escorts_ destroys every non-Carrier ship at once, which is the fastest way to reach the
+   Carrier's exposed state, its lone twin lasers and the plating drop.
+6. The panel refreshes 4× a second from a timer; the game keeps running underneath, so pause
+   (header button) when you want a still reading.
+
+The same numbers reach Sentry as one `starswarm.run_stats` breadcrumb per finished run (counts,
+wave, difficulty, score) — look at the breadcrumbs on any Star Swarm event to compare real play
+against the panel. Unit coverage: `engine.test.ts` ("Run stats (#2491)") and `telemetry.test.ts`.
+
 ---
 
 ## E2E Test Conventions

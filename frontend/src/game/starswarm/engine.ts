@@ -16,6 +16,7 @@ import type {
   AsteroidKind,
   BeamPhase,
   TierStats,
+  RunStats,
   GunsLevel,
   HullLevel,
   UpgradeEvent,
@@ -690,7 +691,11 @@ export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarS
     state.asteroids.length >= MAX_ASTEROIDS
   )
     return state;
-  return { ...state, asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)] };
+  return {
+    ...state,
+    asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)],
+    runStats: bumpRun(state.runStats, { rocksSpawned: 1 }), // #2491
+  };
 }
 
 function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmState {
@@ -709,16 +714,18 @@ function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmState {
 
   // The timer only runs mid-wave, so a wave never opens with a rock already on the way in.
   let nextAsteroidTimer = state.nextAsteroidTimer;
+  let runStats = state.runStats;
   if (state.phase === "Playing") {
     nextAsteroidTimer -= dtMs;
     if (nextAsteroidTimer <= 0) {
       nextAsteroidTimer = asteroidInterval();
       if (canSpawnAsteroid({ ...state, asteroids })) {
         asteroids = [...asteroids, spawnAsteroid(canvasW)];
+        runStats = bumpRun(runStats, { rocksSpawned: 1 }); // #2491
       }
     }
   }
-  return { ...state, asteroids, nextAsteroidTimer };
+  return { ...state, asteroids, nextAsteroidTimer, runStats };
 }
 
 function circleCircle(
@@ -735,14 +742,18 @@ function circleCircle(
   return dx * dx + dy * dy <= r * r;
 }
 
-/** Bullets (either owner, piercing or not) that reach a rock are spent on it and chip its HP. */
+/**
+ * Bullets (either owner, piercing or not) that reach a rock are spent on it and chip its HP.
+ * `broken` counts the rocks this batch of shots finished off (#2491).
+ */
 function absorbBulletsIntoRocks<B extends Bullet>(
   bullets: readonly B[],
   rocks: readonly Asteroid[]
-): { bullets: B[]; rocks: Asteroid[] } {
+): { bullets: B[]; rocks: Asteroid[]; broken: number } {
   const outRocks = [...rocks];
-  if (rocks.length === 0) return { bullets: [...bullets], rocks: outRocks };
+  if (rocks.length === 0) return { bullets: [...bullets], rocks: outRocks, broken: 0 };
   const kept: B[] = [];
+  let broken = 0;
   for (const b of bullets) {
     const idx = outRocks.findIndex(
       (r) => r.hp > 0 && collideCircleAABB(r.x, r.y, r.radius, b.x, b.y, b.width, b.height)
@@ -752,9 +763,11 @@ function absorbBulletsIntoRocks<B extends Bullet>(
       continue;
     }
     const r = outRocks[idx]!;
-    outRocks[idx] = { ...r, hp: r.hp - b.damage, hitFlashTimer: ASTEROID_HIT_FLASH_MS };
+    const hp = r.hp - b.damage;
+    if (hp <= 0) broken++;
+    outRocks[idx] = { ...r, hp, hitFlashTimer: ASTEROID_HIT_FLASH_MS };
   }
-  return { bullets: kept, rocks: outRocks };
+  return { bullets: kept, rocks: outRocks, broken };
 }
 
 /**
@@ -948,9 +961,81 @@ function bumpStat(
   };
 }
 
+const ZERO_RUN_STATS: RunStats = {
+  reinforced: 0,
+  armorDeflects: 0,
+  beamHits: 0,
+  routCaught: 0,
+  routEscaped: 0,
+  rocksSpawned: 0,
+  rocksBrokenByPlayer: 0,
+  rocksBrokenByEnemy: 0,
+};
+
+/** #2491: a fresh run's counters. */
+export function emptyRunStats(): RunStats {
+  return ZERO_RUN_STATS;
+}
+
+function bumpRun(stats: RunStats, patch: Partial<Record<keyof RunStats, number>>): RunStats {
+  const next = { ...stats };
+  for (const key of Object.keys(patch) as (keyof RunStats)[]) {
+    next[key] = stats[key] + (patch[key] ?? 0);
+  }
+  return next;
+}
+
 /** #2487: chance a ship of this tier sidesteps a rock — base × difficulty, capped. Carrier never rolls. */
 export function dodgeChance(tier: EnemyTier, paramScale: number): number {
   return Math.min(DODGE_CAP, DODGE_BASE[tier] * paramScale);
+}
+
+const TIER_ORDER: readonly EnemyTier[] = ["Grunt", "Elite", "Boss", "Carrier"];
+
+/** #2491: one dev-panel row per tier — the configured dodge odds next to what actually happened. */
+export interface TierDodgeRow {
+  readonly tier: EnemyTier;
+  /** Base dodge chance for the tier (before difficulty). */
+  readonly base: number;
+  /** Effective dodge chance at this run's difficulty (base × paramScale, capped). */
+  readonly effective: number;
+  readonly rolls: number;
+  readonly dodged: number;
+  readonly struck: number;
+  readonly flak: number;
+}
+
+/** #2491: pure selector over `state.tierStats` — used by the dev panel and the breadcrumb. */
+export function dodgeRateByTier(state: StarSwarmState): TierDodgeRow[] {
+  const paramScale = difficultyParamScale(state.difficulty);
+  return TIER_ORDER.map((tier) => {
+    const t = state.tierStats[tier];
+    return {
+      tier,
+      base: DODGE_BASE[tier],
+      effective: dodgeChance(tier, paramScale),
+      rolls: t.rolls,
+      dodged: t.dodged,
+      struck: t.struck,
+      flak: t.flak,
+    };
+  });
+}
+
+/**
+ * #2491 dev-panel hook: destroy every escort at once so the Carrier's exposed state, lone fire
+ * and plating drop can be reached without playing the wave out. No points — it's a tool, not a
+ * bomb — and the escalation latches are left to the next tick to work out as usual.
+ */
+export function killEscorts(state: StarSwarmState): StarSwarmState {
+  if (state.phase !== "Playing") return state;
+  const explosions: Explosion[] = [...state.explosions];
+  const enemies = state.enemies.map((e) => {
+    if (!e.isAlive || e.tier === "Carrier") return e;
+    explosions.push(spawnExplosion(e.x, e.y));
+    return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
+  });
+  return { ...state, enemies, explosions };
 }
 
 const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning"]);
@@ -1060,7 +1145,12 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
 
     for (const a of rocks) {
       // Flak: a formation ship shoots at a rock coming its way
-      if (e.phase === "Formation" && e.flakCooldown <= 0 && !state.enemyFireDisabled) {
+      if (
+        e.phase === "Formation" &&
+        e.flakCooldown <= 0 &&
+        !state.enemyFireDisabled &&
+        !state.flakDisabled // #2491 dev toggle
+      ) {
         const dx = a.x - e.x;
         const dy = a.y - e.y;
         const approaching = a.vx * -dx + a.vy * -dy > 0;
@@ -1087,8 +1177,14 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         }
       }
 
-      // Dodge: one roll per rock per ship
-      if (e.tier === "Carrier" || e.phase === "Circling" || e.rolledAsteroidIds.includes(a.id)) {
+      // Dodge: one roll per rock per ship (the #2491 dev toggle skips the roll entirely, so the
+      // counters only ever describe rolls that were actually taken)
+      if (
+        state.dodgeDisabled ||
+        e.tier === "Carrier" ||
+        e.phase === "Circling" ||
+        e.rolledAsteroidIds.includes(a.id)
+      ) {
         continue;
       }
       if (!rockThreatens(a, e)) continue;
@@ -1317,7 +1413,9 @@ function buildWaveState(
   // #2486: rocks in flight carry over too — the next wave's swoop-in meets them
   asteroids: readonly Asteroid[] = [],
   // #2487: counters carry across waves, reset on a new game
-  tierStats: Readonly<Record<EnemyTier, TierStats>> = emptyTierStats()
+  tierStats: Readonly<Record<EnemyTier, TierStats>> = emptyTierStats(),
+  // #2491: likewise
+  runStats: RunStats = emptyRunStats()
 ): StarSwarmState {
   let enemies: Enemy[];
   let phase: StarSwarmState["phase"];
@@ -1363,6 +1461,9 @@ function buildWaveState(
     reinforceTimer: REINFORCE_INTERVAL,
     reinforcedThisWave: 0,
     tierStats,
+    runStats,
+    dodgeDisabled: false,
+    flakDisabled: false,
     phaseTimer: 0,
     canvasW,
     canvasH,
@@ -2124,6 +2225,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // are unaffected once crossed; until then they delay the escalation, which is the point.
   let reinforceTimer = state.reinforceTimer;
   let reinforcedThisWave = state.reinforcedThisWave;
+  let runStats = state.runStats;
   const carrierAlive = enemies.some((e) => e.isAlive && e.tier === "Carrier");
   if (state.phase === "Playing" && carrierAlive && state.difficulty !== "Ensign") {
     reinforceTimer -= dtMs;
@@ -2151,6 +2253,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       if (launched.length > 0) {
         enemies = [...enemies, ...launched];
         reinforcedThisWave += launched.length;
+        runStats = bumpRun(runStats, { reinforced: launched.length }); // #2491
       }
     }
   }
@@ -2193,6 +2296,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     bossDeepThresholdCrossed,
     reinforceTimer,
     reinforcedThisWave,
+    runStats,
   };
 }
 
@@ -2344,6 +2448,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   const carrierArmored = carrierArmoredIn(state.enemies);
   let rocks: Asteroid[] = [...state.asteroids]; // #2486
   let tierStats: Record<EnemyTier, TierStats> = { ...state.tierStats }; // #2487
+  let runStats = state.runStats; // #2491
+  let armorDeflects = 0;
   // #2488: in-run upgrade ladders — pickups raise them, a lost life lowers the guns, plating
   // absorbs a hit; pickups spawned this tick (salvage from rocks, plating from the Carrier)
   let guns: GunsLevel = player.guns;
@@ -2371,6 +2477,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       // #2484: an escorted Carrier shrugs off ordinary shots — the bullet is spent, the force-field
       // ring plays, no damage. Piercing shots (lightning super-state, buddy burst) go through.
       if (enemy.tier === "Carrier" && carrierArmored && !b.piercing) {
+        armorDeflects++;
         return { ...enemy, hitFlashTimer: HIT_FLASH_DURATION };
       }
 
@@ -2396,6 +2503,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     return enemy;
   });
 
+  if (armorDeflects > 0) runStats = bumpRun(runStats, { armorDeflects });
+
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
   let playerBullets: Bullet[] = state.playerBullets.filter((b) => !hitBulletIds.has(b.id));
 
@@ -2404,6 +2513,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   {
     const absorbed = absorbBulletsIntoRocks(playerBullets, rocks);
     playerBullets = absorbed.bullets;
+    if (absorbed.broken > 0) runStats = bumpRun(runStats, { rocksBrokenByPlayer: absorbed.broken }); // #2491
     const struckTiers: EnemyTier[] = [];
     const struck = rocksStrikeEnemies(absorbed.rocks, enemies, newExplosions, struckTiers);
     rocks = struck.rocks;
@@ -2537,6 +2647,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     const absorbed = absorbBulletsIntoRocks(currentEnemyBullets, rocks);
     currentEnemyBullets = absorbed.bullets;
     rocks = absorbed.rocks;
+    if (absorbed.broken > 0) runStats = bumpRun(runStats, { rocksBrokenByEnemy: absorbed.broken }); // #2491
   }
 
   if (player.invincibleTimer <= 0) {
@@ -2610,6 +2721,9 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         });
 
       if (hitByShip || (projectileHit && !absorbed)) {
+        // #2491: a sweep that lands (plating or a life) counts once — the grace that follows
+        // keeps the rest of the same sweep out of this block
+        if (hitByBeam && !absorbed) runStats = bumpRun(runStats, { beamHits: 1 });
         const finalEnemies =
           hitByShip && rammingEnemyId !== null
             ? enemies.map((e) => {
@@ -2649,6 +2763,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             enemies: finalEnemies,
             asteroids: settledRocks,
             tierStats,
+            runStats,
             playerBullets,
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,
@@ -2687,6 +2802,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             enemies: finalEnemies,
             asteroids: settledRocks, // #2486
             tierStats,
+            runStats,
             // #2334: tick() short-circuits on GameOver (see the phase guard near the top
             // of this file), freezing whatever frame is current — including any player
             // bullets mid-flight. Normally we'd clear them here so the frozen frame doesn't
@@ -2717,6 +2833,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           enemies: finalEnemies,
           asteroids: settledRocks, // #2486
           tierStats,
+          runStats,
           playerBullets,
           enemyBullets: enemyBulletsAfterHit,
           explosions: newExplosions,
@@ -2747,6 +2864,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     enemies,
     asteroids: settledRocks, // #2486
     tierStats,
+    runStats,
     player: { ...player, guns, hull, hullFlashTimer }, // #2488
     playerBullets,
     enemyBullets: currentEnemyBullets,
@@ -2860,7 +2978,8 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     state.playerBullets,
     state.enemyBullets.map((b) => (b.harmless ? b : { ...b, harmless: true })),
     state.asteroids,
-    state.tierStats
+    state.tierStats,
+    state.runStats
   );
 }
 

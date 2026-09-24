@@ -127,6 +127,30 @@ export interface TierStats {
   readonly flak: number;
 }
 
+/**
+ * #2491: whole-run counters — carried across waves, reset on a new game. The dev panel shows
+ * them live and one Sentry breadcrumb rolls them up at game over. Counts only, never anything
+ * that identifies the player.
+ */
+export interface RunStats {
+  /** Grunts the Carrier launched as reinforcements. */
+  readonly reinforced: number;
+  /** Ordinary shots spent on the escorted Carrier's force field. */
+  readonly armorDeflects: number;
+  /** Carrier beam sweeps that cost hull plating or a life (a shield-absorbed sweep isn't one). */
+  readonly beamHits: number;
+  /** Grunt rout (#2489, not built yet): fleeing grunts shot down. Stays 0 until then. */
+  readonly routCaught: number;
+  /** Grunt rout (#2489, not built yet): fleeing grunts that got away. Stays 0 until then. */
+  readonly routEscaped: number;
+  /** Rocks that entered play — timed spawns and dev-panel throws alike. */
+  readonly rocksSpawned: number;
+  /** Rocks the player's shots broke (a bomb or a hull shatter isn't counted). */
+  readonly rocksBrokenByPlayer: number;
+  /** Rocks enemy shots broke, flak included. */
+  readonly rocksBrokenByEnemy: number;
+}
+
 /** #2485: the Carrier's sweep beam — telegraph, then a vertical beam it drags across the lane. */
 export type BeamPhase = "idle" | "charge" | "fire";
 
@@ -260,6 +284,12 @@ export interface StarSwarmState {
   readonly reinforcedThisWave: number;
   /** #2487: asteroid-response counters per tier (see TierStats). */
   readonly tierStats: Readonly<Record<EnemyTier, TierStats>>;
+  /** #2491: whole-run counters (see RunStats). */
+  readonly runStats: RunStats;
+  /** Dev (#2491): enemies never roll to dodge a rock — collisions become the baseline. */
+  readonly dodgeDisabled: boolean;
+  /** Dev (#2491): enemies never fire flak at a rock. */
+  readonly flakDisabled: boolean;
   /** General-purpose countdown timer (WaveClear pause, etc.). */
   readonly phaseTimer: number;
   readonly canvasW: number;
