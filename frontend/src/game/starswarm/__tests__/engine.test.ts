@@ -52,12 +52,19 @@ import {
   DODGE_SIDESTEP_MS,
   DODGE_PATH_NUDGE,
   FLAK_COOLDOWN,
+  playerVolley,
+  upgradeEvents,
+  SPREAD_VX,
+  HULL_INVINCIBLE_MS,
+  GUNS_MAX,
+  HULL_MAX,
 } from "../engine";
 import type {
   Asteroid,
   AsteroidKind,
   Bullet,
   DifficultyTier,
+  PowerUp,
   StarSwarmInput,
   StarSwarmState,
 } from "../types";
@@ -3952,5 +3959,270 @@ describe("Enemy asteroid response (#2487)", () => {
     expect(s.tierStats.Grunt.struck).toBe(1);
 
     expect(initStarSwarm(CANVAS_W, CANVAS_H).tierStats).toEqual(emptyTierStats());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-run ship upgrades (#2488)
+// ---------------------------------------------------------------------------
+
+describe("In-run ship upgrades (#2488)", () => {
+  let nextId = 90_000;
+  function quiet(): StarSwarmState {
+    const s = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, 2), 8000);
+    return {
+      ...s,
+      enemyFireDisabled: true,
+      enemyBullets: [],
+      playerBullets: [],
+      asteroids: [],
+      asteroidsDisabled: true,
+      nextDiveTimer: 1e9,
+      pauseStraggler: true,
+      powerUps: [],
+      player: { ...s.player, x: 40, lives: 3, invincibleTimer: 0, shootCooldown: 0 },
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
+    };
+  }
+  const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
+  const FIRE_ASIDE: StarSwarmInput = { playerX: 40, fire: true };
+  const withPlayer = (s: StarSwarmState, patch: Partial<StarSwarmState["player"]>) => ({
+    ...s,
+    player: { ...s.player, ...patch },
+  });
+  const enemyShotOn = (s: StarSwarmState): Bullet => ({
+    id: nextId++,
+    x: s.player.x,
+    y: s.player.y,
+    vx: 0,
+    vy: 0.3,
+    owner: "enemy",
+    width: 5,
+    height: 10,
+    damage: 1,
+  });
+  const pickupOn = (s: StarSwarmState, type: PowerUp["type"]): PowerUp => ({
+    id: nextId++,
+    type,
+    x: s.player.x,
+    y: s.player.y,
+    vy: 0,
+    width: 24,
+    height: 24,
+    despawnTimer: 5000,
+  });
+
+  it("a new run starts at guns 1, hull 0", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    expect(s.player.guns).toBe(1);
+    expect(s.player.hull).toBe(0);
+    expect(s.player.hullFlashTimer).toBe(0);
+  });
+
+  it("a volley is 1, 2 or 4 bullets by gun level; lightning keeps its piercing shots", () => {
+    expect(playerVolley(100, 500, 1, false).map((b) => b.x)).toEqual([100]);
+    expect(playerVolley(100, 500, 2, false).map((b) => b.x)).toEqual([93, 107]);
+    const l3 = playerVolley(100, 500, 3, false);
+    expect(l3).toHaveLength(4);
+    expect(l3.map((b) => b.vx).sort((a, b) => a - b)).toEqual([-SPREAD_VX, 0, 0, SPREAD_VX]);
+    const superL3 = playerVolley(100, 500, 3, true);
+    expect(superL3.every((b) => b.piercing === true && b.damage === 4)).toBe(true);
+
+    let s = withPlayer(quiet(), { guns: 3 });
+    s = tick(s, 16, FIRE_ASIDE);
+    expect(s.playerBullets).toHaveLength(4);
+  });
+
+  it("the volley never pushes past MAX_PLAYER_BULLETS", () => {
+    let s = withPlayer(quiet(), { guns: 3 });
+    const filler: Bullet[] = Array.from({ length: MAX_PLAYER_BULLETS - 1 }, (_, i) => ({
+      id: nextId++,
+      x: 50 + i,
+      y: 520,
+      vx: 0,
+      vy: -0.56,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+    }));
+    s = tick({ ...s, playerBullets: filler }, 16, FIRE_ASIDE);
+    expect(s.playerBullets.length).toBe(MAX_PLAYER_BULLETS);
+  });
+
+  it("hit order is shield → hull → life; a death costs one gun level, floored at 1", () => {
+    // hull takes the hit: no life lost, plating flash, short grace, bullet spent
+    let s = withPlayer(quiet(), { hull: 1 });
+    s = tick({ ...s, enemyBullets: [enemyShotOn(s)] }, 16, ASIDE);
+    expect(s.player.lives).toBe(3);
+    expect(s.player.hull).toBe(0);
+    expect(s.player.hullFlashTimer).toBeGreaterThan(0);
+    expect(s.player.invincibleTimer).toBeGreaterThanOrEqual(HULL_INVINCIBLE_MS - 16);
+    expect(s.enemyBullets).toHaveLength(0);
+
+    // shield first: plating untouched
+    s = applyPowerUp(withPlayer(quiet(), { hull: 1 }), "shield");
+    s = tick({ ...s, enemyBullets: [enemyShotOn(s)] }, 16, ASIDE);
+    expect(s.player.lives).toBe(3);
+    expect(s.player.hull).toBe(1);
+
+    // no plating: a life and a gun level
+    s = withPlayer(quiet(), { guns: 3, hull: 0 });
+    s = tick({ ...s, enemyBullets: [enemyShotOn(s)] }, 16, ASIDE);
+    expect(s.player.lives).toBe(2);
+    expect(s.player.guns).toBe(2);
+    s = withPlayer(quiet(), { guns: 1 });
+    s = tick({ ...s, enemyBullets: [enemyShotOn(s)] }, 16, ASIDE);
+    expect(s.player.guns).toBe(1);
+  });
+
+  it("plating absorbs a ram, and the rammer still dies", () => {
+    let s = withPlayer(quiet(), { hull: 1 });
+    const grunt = s.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
+    const ram = { x: s.player.x, y: s.player.y };
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === grunt.id
+          ? {
+              ...e,
+              phase: "Circling" as const,
+              x: ram.x,
+              y: ram.y,
+              circleCx: ram.x,
+              circleCy: ram.y,
+              circleRadius: 0,
+              circleAngle: 0,
+            }
+          : e
+      ),
+    };
+    s = tick(s, 16, ASIDE);
+    expect(s.player.lives).toBe(3);
+    expect(s.player.hull).toBe(0);
+    expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false);
+  });
+
+  it("a broken large rock can drop salvage, whoever broke it", () => {
+    let byPlayer = 0;
+    let byEnemy = 0;
+    const N = 60;
+    for (let i = 0; i < N; i++) {
+      const base = quiet();
+      // consecutive LCG seeds give near-identical first outputs — scatter them
+      seedRng(Math.imul(5000 + i, 2654435761) >>> 0);
+      const rock: Asteroid = {
+        id: nextId++,
+        kind: "large",
+        x: CANVAS_W / 2,
+        y: 460,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS.large.radius,
+        hp: 1,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+      };
+      const shot = (owner: "player" | "enemy"): Bullet => ({
+        id: nextId++,
+        x: rock.x,
+        y: rock.y,
+        vx: 0,
+        vy: 0,
+        owner,
+        width: 5,
+        height: 10,
+        damage: 1,
+      });
+      let s = tick({ ...base, asteroids: [rock], playerBullets: [shot("player")] }, 16, ASIDE);
+      if (s.powerUps.some((p) => p.type === "salvage")) byPlayer++;
+      seedRng(Math.imul(7000 + i, 2654435761) >>> 0);
+      s = tick({ ...base, asteroids: [rock], enemyBullets: [shot("enemy")] }, 16, ASIDE);
+      if (s.powerUps.some((p) => p.type === "salvage")) byEnemy++;
+    }
+    expect(byPlayer).toBeGreaterThan(N * 0.2);
+    expect(byPlayer).toBeLessThan(N * 0.65);
+    expect(byEnemy).toBeGreaterThan(N * 0.2);
+  });
+
+  it("salvage raises the gun level up to 3 for no points; plating stacks up to 2", () => {
+    let s = { ...quiet(), score: 777 };
+    s = tick({ ...s, powerUps: [pickupOn(s, "salvage")] }, 16, ASIDE);
+    expect(s.player.guns).toBe(2);
+    expect(s.score).toBe(777);
+    s = withPlayer(s, { guns: GUNS_MAX });
+    s = tick({ ...s, powerUps: [pickupOn(s, "salvage")] }, 16, ASIDE);
+    expect(s.player.guns).toBe(GUNS_MAX);
+    expect(s.powerUps).toHaveLength(0);
+
+    s = tick({ ...s, powerUps: [pickupOn(s, "hull")] }, 16, ASIDE);
+    expect(s.player.hull).toBe(1);
+    s = withPlayer(s, { hull: HULL_MAX });
+    s = tick({ ...s, powerUps: [pickupOn(s, "hull")] }, 16, ASIDE);
+    expect(s.player.hull).toBe(HULL_MAX);
+  });
+
+  it("the Carrier drops hull plating when it dies", () => {
+    let s = quiet();
+    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.tier === "Boss" ? { ...e, isAlive: false, hp: 0 } : e.id === c.id ? { ...e, hp: 1 } : e
+      ),
+      playerBullets: [
+        {
+          id: nextId++,
+          x: c.x,
+          y: c.y,
+          vx: 0,
+          vy: 0,
+          owner: "player",
+          width: 5,
+          height: 14,
+          damage: 1,
+        },
+      ],
+    };
+    s = tick(s, 16, ASIDE);
+    expect(s.enemies.find((e) => e.id === c.id)!.isAlive).toBe(false);
+    const drop = s.powerUps.find((p) => p.type === "hull");
+    expect(drop).toBeDefined();
+    expect(Math.abs(drop!.x - c.x)).toBeLessThan(1);
+  });
+
+  it("dev-panel applyPowerUp raises the ladders too", () => {
+    const s = quiet();
+    expect(applyPowerUp(s, "salvage").player.guns).toBe(2);
+    expect(applyPowerUp(s, "hull").player.hull).toBe(1);
+  });
+
+  it("upgradeEvents reports ladder changes", () => {
+    const a = quiet();
+    const kinds = (b: StarSwarmState) => upgradeEvents(a, b).map((e) => e.kind);
+    expect(kinds(withPlayer(a, { guns: 2 }))).toEqual(["gunsUp"]);
+    expect(kinds(withPlayer(a, { hull: 1 }))).toEqual(["hullUp"]);
+    expect(
+      upgradeEvents(withPlayer(a, { guns: 3 }), withPlayer(a, { guns: 2 })).map((e) => e.kind)
+    ).toEqual(["gunsDown"]);
+    const armored = withPlayer(a, { hull: 1 });
+    expect(upgradeEvents(armored, withPlayer(armored, { hull: 0 })).map((e) => e.kind)).toEqual([
+      "hullHit",
+    ]);
+    expect(kinds(a)).toEqual([]);
+  });
+
+  it("the ladders survive a wave clear but reset on a new game", () => {
+    let s = withPlayer(quiet(), { guns: 3, hull: 2 });
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, ASIDE);
+    expect(s.wave).toBe(3);
+    expect(s.player.guns).toBe(3);
+    expect(s.player.hull).toBe(2);
+    const fresh = initStarSwarm(CANVAS_W, CANVAS_H);
+    expect(fresh.player.guns).toBe(1);
+    expect(fresh.player.hull).toBe(0);
   });
 });

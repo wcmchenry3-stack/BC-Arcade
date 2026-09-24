@@ -1,7 +1,20 @@
 /** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
 export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
 
-export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb";
+/** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
+ * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
+export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb" | "salvage" | "hull";
+
+/** #2488: in-run upgrade ladders. Guns: single → twin → twin + spread. Hull: extra hits absorbed. */
+export type GunsLevel = 1 | 2 | 3;
+export type HullLevel = 0 | 1 | 2;
+
+/** #2488: an upgrade-ladder change the screen reacts to (sound + spoken cue). */
+export interface UpgradeEvent {
+  readonly kind: "gunsUp" | "gunsDown" | "hullUp" | "hullHit";
+  readonly guns: GunsLevel;
+  readonly hull: HullLevel;
+}
 
 /** Starfleet difficulty tiers (#1037) — ordered easiest to hardest. */
 export type DifficultyTier =
@@ -150,6 +163,12 @@ export interface Player {
   readonly invincibleTimer: number;
   /** ms until player can fire again. */
   readonly shootCooldown: number;
+  /** #2488: gun level for this run — lost one step per life lost, never persisted. */
+  readonly guns: GunsLevel;
+  /** #2488: hull plating — each level absorbs one hit that would otherwise cost a life. */
+  readonly hull: HullLevel;
+  /** #2488: ms remaining for the plating's force-field flash; 0 when not flashing. */
+  readonly hullFlashTimer: number;
 }
 
 export interface Explosion {

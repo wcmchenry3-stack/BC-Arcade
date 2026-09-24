@@ -36,7 +36,7 @@ import {
   perfectBonusPoints,
   FREE_FIRE_ENEMY_COUNT,
 } from "../game/starswarm/engine";
-import type { GamePhase, PowerUpType, DifficultyTier, CarrierEvent } from "../game/starswarm/types";
+import type { GamePhase, PowerUpType, DifficultyTier, CarrierEvent, UpgradeEvent } from "../game/starswarm/types";
 import { starSwarmApi } from "../game/starswarm/api";
 import {
   getSavedPausedState,
@@ -122,6 +122,7 @@ export default function StarSwarmScreen() {
     playPerfect,
     stopPerfect,
     playCarrierEvent,
+    playUpgrade,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
@@ -185,6 +186,25 @@ export default function StarSwarmScreen() {
       }
     },
     [playCarrierEvent, t]
+  );
+
+  // #2488: ladder changes — sound plus a spoken level, since the HUD text is canvas-only
+  const handleUpgrade = useCallback(
+    (ev: UpgradeEvent) => {
+      playUpgrade(ev);
+      const key =
+        ev.kind === "gunsUp"
+          ? "a11y.gunsUp"
+          : ev.kind === "gunsDown"
+            ? "a11y.gunsDown"
+            : ev.kind === "hullUp"
+              ? "a11y.hullUp"
+              : "a11y.hullHit";
+      AccessibilityInfo.announceForAccessibility(
+        t(key, { level: ev.kind.startsWith("guns") ? ev.guns : ev.hull })
+      );
+    },
+    [playUpgrade, t]
   );
 
   const handlePlayerHit = useCallback(() => {
@@ -322,6 +342,7 @@ export default function StarSwarmScreen() {
               onFreeFirePerfect={handleFreeFirePerfect}
               onCarrierExposed={handleCarrierExposed}
               onCarrierEvent={handleCarrierEvent}
+              onUpgrade={handleUpgrade}
               onBonusLife={handleBonusLife}
               isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
@@ -516,7 +537,7 @@ export default function StarSwarmScreen() {
               <Text style={dynamicStyles.devSectionHeader}>── Power-ups ──</Text>
 
               <View style={styles.devPowerUpRow}>
-                {(["lightning", "shield", "buddy", "bomb"] as PowerUpType[]).map((type) => (
+                {(["lightning", "shield", "buddy", "bomb", "salvage", "hull"] as PowerUpType[]).map((type) => (
                   <Pressable
                     key={type}
                     style={styles.devPowerUpBtn}
@@ -546,6 +567,9 @@ export default function StarSwarmScreen() {
                   ["Beam charge", "beamcharge"],
                   ["Beam fire", "beamfire"],
                   ["Reinforce", "reinforce"],
+                  ["Salvage", "salvage"],
+                  ["Hull up", "hullup"],
+                  ["Hull hit", "hullhit"],
                 ] as [string, keyof SfxVolumes][]
               ).map(([label, key]) => (
                 <View key={key} style={styles.devRow}>

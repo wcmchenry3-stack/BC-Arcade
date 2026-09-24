@@ -16,6 +16,9 @@ import type {
   AsteroidKind,
   BeamPhase,
   TierStats,
+  GunsLevel,
+  HullLevel,
+  UpgradeEvent,
 } from "./types";
 import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
@@ -39,14 +42,15 @@ const BULLET_P_VY = -0.56; // px/ms upward
 // #2334: hard cap on simultaneous player bullets. Lightning's 4x fire rate combined with
 // piercing bullets (never consumed on enemy hit — only removed off-screen, see tickBullets)
 // has no other bound; this guards against runaway growth feeding the O(enemies × bullets)
-// collision scan in tickCollisions. Set comfortably above the ~15-bullet ceiling normal
-// sustained Lightning fire reaches on its own, so ordinary play is unaffected.
+// collision scan in tickCollisions. #2488: raised from 20 to 40 — gun level 3 fires four
+// bullets a volley, and sustained Lightning at L3 sits around 30 in flight; ordinary L1 play
+// never gets near either number.
 //
 // Deliberately flat (not wave/difficulty-scaled like bulletCap() below): bulletCap() bounds
 // enemy bullet *density* as a gameplay-difficulty knob that should get harder with wave/
 // paramScale. This cap instead bounds a technical worst-case (fire-rate × piercing bullets
 // never despawning on hit) that doesn't grow with wave, so it stays a plain constant.
-export const MAX_PLAYER_BULLETS = 20;
+export const MAX_PLAYER_BULLETS = 40;
 
 export const BULLET_C_W = 12; // super-state bullet — wider
 const BULLET_C_H = 22;
@@ -224,6 +228,15 @@ const REINFORCE_MAX = 4;
 export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys when the Carrier is alone
 const LONE_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 const BEAM_DIFFICULTY_CAP = 1.6; // paramScale is capped here for beam/lone-fire cadence
+
+// #2488: in-run ship upgrades — never persisted, never sold
+export const GUNS_MAX: GunsLevel = 3;
+export const HULL_MAX: HullLevel = 2;
+const TWIN_OFFSET = 7; // px either side of centre for the twin guns (L2+)
+const SPREAD_OFFSET = 12; // px either side for the L3 spread pair
+export const SPREAD_VX = 0.14; // px/ms sideways drift of the L3 spread pair
+export const SALVAGE_DROP_CHANCE = 0.4; // per large asteroid destroyed, whoever broke it
+export const HULL_INVINCIBLE_MS = 600; // grace after plating takes a hit (same as a bonus life)
 
 // #2487: how enemies respond to asteroids — dodge rolls by tier, and flak at approaching rocks
 export const DODGE_BASE: Record<EnemyTier, number> = {
@@ -792,8 +805,16 @@ function rocksStrikeEnemies(
   return { rocks: outRocks, enemies: outEnemies };
 }
 
-/** Broken rocks pop an explosion; a large one splits in two unless it shattered on impact. */
-function settleRocks(rocks: readonly Asteroid[], explosions: Explosion[]): Asteroid[] {
+/**
+ * Broken rocks pop an explosion; a large one splits in two unless it shattered on impact.
+ * #2488: a broken large rock also has a chance to drop a salvage crate — whoever broke it.
+ */
+function settleRocks(
+  rocks: readonly Asteroid[],
+  explosions: Explosion[],
+  drops: PowerUp[],
+  canvasH: number
+): Asteroid[] {
   const out: Asteroid[] = [];
   for (const a of rocks) {
     if (a.hp > 0) {
@@ -801,6 +822,9 @@ function settleRocks(rocks: readonly Asteroid[], explosions: Explosion[]): Aster
       continue;
     }
     explosions.push(spawnExplosion(a.x, a.y));
+    if (a.kind === "large" && rng() < SALVAGE_DROP_CHANCE) {
+      drops.push(makePickup("salvage", a.x, a.y, canvasH));
+    }
     if (a.kind === "large" && !a.shattered) {
       for (const side of [-1, 1] as const) {
         out.push(makeAsteroid("small", a.x + side * 10, a.y, a.vx + side * 0.06, a.vy));
@@ -827,6 +851,61 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
     });
   }
   return pts;
+}
+
+// ---------------------------------------------------------------------------
+// In-run ship upgrades (#2488)
+// ---------------------------------------------------------------------------
+
+/** A falling pickup of any type at a world position. */
+function makePickup(type: PowerUpType, x: number, y: number, canvasH: number): PowerUp {
+  return {
+    id: nextId(),
+    type,
+    x,
+    y,
+    vy: POWERUP_VY,
+    width: POWERUP_W,
+    height: POWERUP_H,
+    despawnTimer: powerUpDespawnMs(canvasH),
+  };
+}
+
+/**
+ * #2488: the bullets one trigger pull produces at a gun level. L1 a single shot; L2 a twin pair;
+ * L3 the pair plus a spread pair drifting outward. Lightning's super-state bullets keep their
+ * size, damage and piercing at every level — the ladder decides how many, lightning what kind.
+ */
+export function playerVolley(x: number, y: number, guns: GunsLevel, isSuper: boolean): Bullet[] {
+  const make = (dx: number, vx: number): Bullet => ({
+    id: nextId(),
+    x: x + dx,
+    y,
+    vx,
+    vy: BULLET_P_VY,
+    owner: "player",
+    width: isSuper ? BULLET_C_W : BULLET_P_W,
+    height: isSuper ? BULLET_C_H : BULLET_P_H,
+    damage: isSuper ? SUPER_DAMAGE : 1,
+    piercing: isSuper ? true : undefined,
+  });
+  if (guns === 1) return [make(0, 0)];
+  const volley = [make(-TWIN_OFFSET, 0), make(TWIN_OFFSET, 0)];
+  if (guns === 3) volley.push(make(-SPREAD_OFFSET, -SPREAD_VX), make(SPREAD_OFFSET, SPREAD_VX));
+  return volley;
+}
+
+/** #2488: ladder changes between two ticks, for the screen's sound and spoken cues. */
+export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): UpgradeEvent[] {
+  const a = prev.player;
+  const b = next.player;
+  const out: UpgradeEvent[] = [];
+  const ev = (kind: UpgradeEvent["kind"]) => out.push({ kind, guns: b.guns, hull: b.hull });
+  if (b.guns > a.guns) ev("gunsUp");
+  else if (b.guns < a.guns) ev("gunsDown");
+  if (b.hull > a.hull) ev("hullUp");
+  else if (b.hull < a.hull) ev("hullHit");
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,6 +1290,9 @@ export function initStarSwarm(
     lives: 3,
     invincibleTimer: 0,
     shootCooldown: 0,
+    guns: 1, // #2488: the ladders start over every run
+    hull: 0,
+    hullFlashTimer: 0,
   };
 
   return buildWaveState(canvasW, canvasH, wave, player, 0, 0, difficulty);
@@ -1385,7 +1467,8 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   const invincibleTimer = Math.max(0, p.invincibleTimer - dtMs);
   const shootCooldown = Math.max(0, p.shootCooldown - dtMs);
 
-  const player: Player = { ...p, x: newX, invincibleTimer, shootCooldown };
+  const hullFlashTimer = Math.max(0, p.hullFlashTimer - dtMs); // #2488
+  const player: Player = { ...p, x: newX, invincibleTimer, shootCooldown, hullFlashTimer };
 
   const isSuper = state.activePowerUp?.type === "lightning";
 
@@ -1395,22 +1478,13 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
     !state.playerFireDisabled &&
     state.playerBullets.length < MAX_PLAYER_BULLETS
   ) {
-    const bullet: Bullet = {
-      id: nextId(),
-      x: newX,
-      y: p.y - p.height / 2,
-      vx: 0,
-      vy: BULLET_P_VY,
-      owner: "player",
-      width: isSuper ? BULLET_C_W : BULLET_P_W,
-      height: isSuper ? BULLET_C_H : BULLET_P_H,
-      damage: isSuper ? SUPER_DAMAGE : 1,
-      piercing: isSuper ? true : undefined,
-    };
+    // #2488: the gun level decides how many bullets a trigger pull spawns; the cap still holds
+    const room = MAX_PLAYER_BULLETS - state.playerBullets.length;
+    const volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
     return {
       ...state,
       player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
-      playerBullets: [...state.playerBullets, bullet],
+      playerBullets: [...state.playerBullets, ...volley],
     };
   }
 
@@ -2268,6 +2342,12 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   const carrierArmored = carrierArmoredIn(state.enemies);
   let rocks: Asteroid[] = [...state.asteroids]; // #2486
   let tierStats: Record<EnemyTier, TierStats> = { ...state.tierStats }; // #2487
+  // #2488: in-run upgrade ladders — pickups raise them, a lost life lowers the guns, plating
+  // absorbs a hit; pickups spawned this tick (salvage from rocks, plating from the Carrier)
+  let guns: GunsLevel = player.guns;
+  let hull: HullLevel = player.hull;
+  let hullFlashTimer = player.hullFlashTimer;
+  const newDrops: PowerUp[] = [];
 
   // ── Player bullets ↔ enemies ──────────────────────────────────────────────
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
@@ -2296,6 +2376,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
 
       if (newHp <= 0) {
         newExplosions.push(spawnExplosion(enemy.x, enemy.y));
+        // #2488: the Carrier always drops hull plating
+        if (enemy.tier === "Carrier") newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
         const base = TIER_SCORE[enemy.tier];
         const mult = enemy.phase === "Diving" || enemy.phase === "Circling" ? DIVE_SCORE_MULT : 1;
         const bonus = state.phase === "FreeFireZone" ? 1 : mult;
@@ -2375,7 +2457,12 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       });
     }
 
-    if (collected.type === "bomb") {
+    if (collected.type === "salvage") {
+      // #2488: one gun level per crate; nothing at the top of the ladder (and no points)
+      guns = Math.min(GUNS_MAX, guns + 1) as GunsLevel;
+    } else if (collected.type === "hull") {
+      hull = Math.min(HULL_MAX, hull + 1) as HullLevel;
+    } else if (collected.type === "bomb") {
       // #1034: instant — clear all enemy bullets, deal 1 damage to every alive enemy
       bombActivated = true;
       bombFlashTimer = BOMB_FLASH_DURATION;
@@ -2512,9 +2599,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         });
 
       if (hitByShip || (projectileHit && !absorbed)) {
-        const newLives = player.lives - 1;
-        newExplosions.push(spawnExplosion(player.x, player.y));
-
         const finalEnemies =
           hitByShip && rammingEnemyId !== null
             ? enemies.map((e) => {
@@ -2543,11 +2627,48 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             )
           : currentEnemyBullets;
 
-        if (newLives <= 0) {
+        // #2488: hull plating takes the hit before a life does — shield → hull → life. The rammer
+        // still dies and the bullet is still spent; the ship gets a short grace, not a respawn.
+        if (hull > 0) {
+          hull = (hull - 1) as HullLevel;
+          hullFlashTimer = HIT_FLASH_DURATION;
+          const settledRocks = settleRocks(rocks, newExplosions, newDrops, state.canvasH);
           return {
             ...state,
             enemies: finalEnemies,
-            asteroids: settleRocks(rocks, newExplosions), // #2486
+            asteroids: settledRocks,
+            tierStats,
+            playerBullets,
+            enemyBullets: enemyBulletsAfterHit,
+            explosions: newExplosions,
+            score,
+            freeFireHits,
+            powerUps: [...powerUps, ...newDrops],
+            buddyShips,
+            killsSinceLastDrop,
+            dropJitterTarget,
+            activePowerUp,
+            bombFlashTimer,
+            player: {
+              ...player,
+              guns,
+              hull,
+              hullFlashTimer,
+              invincibleTimer: Math.max(player.invincibleTimer, HULL_INVINCIBLE_MS),
+            },
+          };
+        }
+
+        const newLives = player.lives - 1;
+        guns = Math.max(1, guns - 1) as GunsLevel; // #2488: a death costs one gun level
+        newExplosions.push(spawnExplosion(player.x, player.y));
+
+        if (newLives <= 0) {
+          const settledRocks = settleRocks(rocks, newExplosions, newDrops, state.canvasH);
+          return {
+            ...state,
+            enemies: finalEnemies,
+            asteroids: settledRocks, // #2486
             tierStats,
             // #2334: tick() short-circuits on GameOver (see the phase guard near the top
             // of this file), freezing whatever frame is current — including any player
@@ -2562,50 +2683,60 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             explosions: newExplosions,
             score,
             freeFireHits,
-            powerUps,
+            powerUps: [...powerUps, ...newDrops],
             buddyShips,
             killsSinceLastDrop,
             dropJitterTarget,
             activePowerUp,
             bombFlashTimer,
-            player: { ...player, lives: 0 },
+            player: { ...player, guns, hull, hullFlashTimer, lives: 0 },
             phase: "GameOver",
           };
         }
 
+        const settledRocks = settleRocks(rocks, newExplosions, newDrops, state.canvasH);
         return {
           ...state,
           enemies: finalEnemies,
-          asteroids: settleRocks(rocks, newExplosions), // #2486
+          asteroids: settledRocks, // #2486
           tierStats,
           playerBullets,
           enemyBullets: enemyBulletsAfterHit,
           explosions: newExplosions,
           score,
           freeFireHits,
-          powerUps,
+          powerUps: [...powerUps, ...newDrops],
           buddyShips,
           killsSinceLastDrop,
           dropJitterTarget,
           activePowerUp,
           bombFlashTimer,
-          player: { ...player, lives: newLives, invincibleTimer: PLAYER_INVINCIBLE_MS },
+          player: {
+            ...player,
+            guns,
+            hull,
+            hullFlashTimer,
+            lives: newLives,
+            invincibleTimer: PLAYER_INVINCIBLE_MS,
+          },
         };
       }
     }
   }
 
+  const settledRocks = settleRocks(rocks, newExplosions, newDrops, state.canvasH);
   return {
     ...state,
     enemies,
-    asteroids: settleRocks(rocks, newExplosions), // #2486
+    asteroids: settledRocks, // #2486
     tierStats,
+    player: { ...player, guns, hull, hullFlashTimer }, // #2488
     playerBullets,
     enemyBullets: currentEnemyBullets,
     score,
     freeFireHits,
     explosions: newExplosions,
-    powerUps,
+    powerUps: [...powerUps, ...newDrops],
     buddyShips,
     killsSinceLastDrop,
     dropJitterTarget,
@@ -2722,6 +2853,16 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
 
 export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwarmState {
   if (state.phase !== "Playing") return state;
+
+  // #2488: dev-panel upgrades apply straight to the ladders
+  if (type === "salvage") {
+    const guns = Math.min(GUNS_MAX, state.player.guns + 1) as GunsLevel;
+    return { ...state, player: { ...state.player, guns } };
+  }
+  if (type === "hull") {
+    const hull = Math.min(HULL_MAX, state.player.hull + 1) as HullLevel;
+    return { ...state, player: { ...state.player, hull } };
+  }
 
   if (type === "bomb") {
     const newExplosions: Explosion[] = [...state.explosions];

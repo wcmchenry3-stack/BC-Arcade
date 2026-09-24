@@ -44,6 +44,25 @@ helper for the armor state; the screen announces `a11y.carrierExposed` when it d
   side and plink it. These do count against `bulletCap()`.
 - Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
+## In-Run Ship Upgrades (#2488)
+
+Two ladders that live and die with the run. Nothing persists between runs and nothing is sold, so
+the leaderboard stays fair.
+
+| Ladder | Levels                                                            | Source                                                                              | Lost on                            |
+| ------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
+| Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: 40% chance from any large asteroid that breaks, whoever broke it | one level per life lost (floor L1) |
+| Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                              | one level per hit absorbed         |
+
+- Hit order is **shield → hull → life**. Plating absorbs a shot, a rock, the beam or a ram (the
+  rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
+  multiplies fire rate on top of the gun level (its piercing shots at every level).
+- `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
+- Collecting salvage at L3 or plating at 2 does nothing (and awards no points).
+- HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
+- Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
+
 ## Hazards: Errant Asteroids (#2486)
 
 From wave 2, a rock drifts in from a top corner every 12–20 s of the Playing phase (never during
