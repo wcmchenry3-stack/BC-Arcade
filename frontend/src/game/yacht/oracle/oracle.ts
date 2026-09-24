@@ -2,10 +2,11 @@
  * Yacht runtime oracle — public API (#2243).
  *
  * Shipped, lazy-loaded: `oracleTable.generated.ts` (the precomputed ~786K-
- * entry EV table, built offline by `scripts/build-yacht-oracle.ts`) is
- * `require()`d lazily inside `loadTable()`, not imported at module top-level
- * — its multi-MB base64 payload is never parsed/decoded during app startup,
- * only when a caller actually asks the oracle something. A lazy `require()`
+ * entry EV table, built offline by `scripts/build-yacht-oracle.ts`, stored
+ * compressed — see `tableCodec.ts`) is `require()`d lazily inside
+ * `getOracleTable()`, not imported at module top-level — its ~0.9 MB base64
+ * payload is never parsed/decoded during app startup, only when a caller
+ * actually asks the oracle something. A lazy `require()`
  * (rather than dynamic `import()`) is deliberate: it defers evaluation
  * identically, but works in both Jest (no --experimental-vm-modules needed)
  * and Metro without relying on dynamic-import support in either bundler.
@@ -23,57 +24,65 @@ import type { GameState } from "../types";
 import { keyFromGameState, legalCategoriesFor, successorAfterScore } from "./stateKey";
 import { buildHoldOptions, indexOfDice, type HoldOption } from "./multisetIndex";
 import { computeArr0, computeHoldLayer } from "./microDp";
+import { decodeOracleTable } from "./tableCodec";
 
 // ---------------------------------------------------------------------------
 // Lazy singletons — table load and hold-options build each happen at most
 // once per app session, cached for every subsequent query.
 // ---------------------------------------------------------------------------
 
-let tablePromise: Promise<Float32Array> | null = null;
+let table: Float32Array | null = null;
 let holdOptionsCache: readonly (readonly HoldOption[])[] | null = null;
 
 /**
- * Decode a base64-encoded Float32Array payload. Uses `atob` (not `Buffer`)
- * to match the app's existing cross-platform base64 convention (see
- * EntitlementContext.tsx's JWT decoding) — works identically in Jest/Node
- * and Hermes/React Native without a platform split.
+ * The decoded table, decoding it on first call (synchronously — tens of ms
+ * on dev hardware). The live AI (`../ai.ts`) is synchronous and calls this
+ * directly; screens call `preloadOracleTable()` early so a game's first AI
+ * turn doesn't pay the decode.
  */
-export function decodeFloat32Table(base64: string, length: number): Float32Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Float32Array(bytes.buffer, 0, length);
+export function getOracleTable(): Float32Array {
+  if (!table) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require is the point: defer eval until first real use, see module doc
+    const mod = require("./oracleTable.generated") as {
+      ORACLE_TABLE_SIZE: number;
+      ORACLE_TABLE_BASE64: string;
+    };
+    table = decodeOracleTable(mod.ORACLE_TABLE_BASE64, mod.ORACLE_TABLE_SIZE);
+  }
+  return table;
 }
 
 async function loadTable(): Promise<Float32Array> {
-  if (!tablePromise) {
-    tablePromise = Promise.resolve().then(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require is the point: defer eval until first real use, see module doc
-      const mod = require("./oracleTable.generated") as {
-        ORACLE_TABLE_SIZE: number;
-        ORACLE_TABLE_BASE64: string;
-      };
-      return decodeFloat32Table(mod.ORACLE_TABLE_BASE64, mod.ORACLE_TABLE_SIZE);
-    });
-  }
-  return tablePromise;
+  return getOracleTable();
 }
 
-function getHoldOptions(): readonly (readonly HoldOption[])[] {
+export function getHoldOptions(): readonly (readonly HoldOption[])[] {
   if (!holdOptionsCache) holdOptionsCache = buildHoldOptions();
   return holdOptionsCache;
 }
 
-/** True once the oracle table has resolved — for UI "still loading" states. */
+/** True once the oracle table has been decoded. */
 export function isOracleTableLoaded(): boolean {
-  return tablePromise !== null;
+  return table !== null;
 }
 
-/** Force-start loading the table without waiting for a query — call this
- * ahead of time (e.g. when Hard difficulty is selected) to avoid the first
- * real query paying the load latency. */
+/**
+ * Decode the table ahead of time (e.g. when a VS game starts) so the first
+ * AI decision doesn't pay for it. Defers to a macrotask so the calling
+ * screen can render first; resolves once the table is ready.
+ */
 export function preloadOracleTable(): Promise<void> {
-  return loadTable().then(() => undefined);
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        getOracleTable();
+        getHoldOptions();
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    }, 0);
+  });
 }
 
 // ---------------------------------------------------------------------------

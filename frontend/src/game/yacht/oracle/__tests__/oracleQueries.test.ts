@@ -22,7 +22,9 @@ jest.mock(
   "../oracleTable.generated",
   () => ({
     ORACLE_TABLE_SIZE: 786_432,
-    ORACLE_TABLE_BASE64: Buffer.from(new Float32Array(786_432).buffer).toString("base64"),
+    // Encoded with the real codec, the same one the build script uses.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories can't use top-level imports
+    ORACLE_TABLE_BASE64: require("../tableCodec").encodeOracleTable(new Float32Array(786_432)),
   }),
   { virtual: true }
 );

@@ -4,19 +4,20 @@
  * of truth for bands — `scripts/simulate-yacht.ts --gate` runs it, locally
  * and in .github/workflows/yacht-sim-gate.yml.
  *
- * These are REGRESSION bands, centred on the current AI as measured with
- * this harness on 2026-09-24 (numbers in the comments below). They catch a
- * change that moves the AI's strength; they don't assert the design
- * targets in #2157 (Easy ~160 / Medium ~215 / Hard ~245 mean score). The
- * current AI doesn't meet those — Hard and Medium are close to even — and
- * reshaping the tiers to meet them is #2246, which should re-centre these
- * bands when it lands.
+ * The bands encode the tier design from #2246 (ai.ts): mean scores around
+ * the #2157 targets — Easy ~160, Medium ~215, Hard ~250 (near-optimal;
+ * perfect play is ~254.5) — and a strictly ordered ladder. Win-rate and
+ * bonus bands are centred on the values measured on 2026-09-24 (in the
+ * comments below), so they also catch drift inside a tier.
  *
- * Sizing (details and the power calculation in docs/TESTING.md): the
- * per-block SD of a win rate or order effect is ~0.25, so 500 blocks
- * (2,000 games) gives a 95% CI of about ±2.2pp against ±5pp bands, and
- * 250 blocks of self-play gives about ±2.2pp on the first-mover rate.
- * Score floors sit ~2.5 CI half-widths below the observed means.
+ * The tiers ignore the opponent entirely, so each player's game depends only
+ * on their own dice and noise streams: the order effect is exactly 0 and the
+ * first-mover rate exactly 50%. Those bands stay as a guard in case an
+ * opponent-aware layer (#2200-class risk) is ever added.
+ *
+ * Sizing (details and the power calculation in docs/TESTING.md): 500 blocks
+ * (2,000 games) gives a win-rate 95% CI of about ±1.6–2.4pp against ±5pp
+ * bands; mean-score CIs are ±2.4–4.9 points against ±10-point bands.
  */
 
 import type { AiDifficulty } from "../types";
@@ -130,78 +131,85 @@ function ordering(
   };
 }
 
+/** A tier's pooled self-play mean score (the tiers are opponent-blind, so this is its solitaire score). */
+function tierScoreBand(id: string, min: number, max: number, note: string): Band {
+  return {
+    id: `${id}:score`,
+    description: note,
+    matchups: [id],
+    metric: (r) => pooled(id)(r).meanScore,
+    min,
+    max,
+  };
+}
+
 export const GATE_BANDS: readonly Band[] = [
-  // hard-vs-easy — measured: Hard 61.9% [59.5, 64.4], order −0.1pp,
-  // scores 202.6 / 182.0, bonus rates 46.6% / 5.0%.
-  ...matchupBands("hard-vs-easy", 0.57, 0.67, "Hard beats Easy (measured 61.9%)"),
-  {
-    id: "hard-vs-easy:hard-score",
-    description: "Hard's mean score (measured 202.6)",
-    matchups: ["hard-vs-easy"],
-    metric: (r) => a("hard-vs-easy")(r).meanScore,
-    min: 195,
-  },
-  {
-    id: "hard-vs-easy:easy-score",
-    description: "Easy's mean score stays in its tier (measured 182.0)",
-    matchups: ["hard-vs-easy"],
-    metric: (r) => b("hard-vs-easy")(r).meanScore,
-    min: 172,
-    max: 192,
-  },
+  // hard-vs-easy — measured: Hard 92.3% [90.7, 93.9], order 0,
+  // scores 249.6 / 163.9, bonus rates 65.4% / 0.6%.
+  ...matchupBands("hard-vs-easy", 0.87, 0.97, "Hard beats Easy (measured 92.3%)"),
   {
     id: "hard-vs-easy:hard-bonus",
-    description: "Hard's upper-bonus rate (measured 46.6%)",
+    description: "Hard's upper-bonus rate (measured 65.4%)",
     matchups: ["hard-vs-easy"],
     metric: (r) => a("hard-vs-easy")(r).bonusRate,
-    min: 0.4,
+    min: 0.58,
     percent: true,
   },
   {
     id: "hard-vs-easy:easy-bonus",
-    description: "Easy's upper-bonus rate stays low (measured 5.0%)",
+    description: "Easy almost never plans for the upper bonus (measured 0.6%)",
     matchups: ["hard-vs-easy"],
     metric: (r) => b("hard-vs-easy")(r).bonusRate,
-    max: 0.1,
+    max: 0.05,
     percent: true,
   },
 
-  // hard-vs-medium — measured: Hard 51.9% [49.7, 54.1], order −0.7pp,
-  // Medium score 197.1, Medium bonus 37.1%.
-  ...matchupBands("hard-vs-medium", 0.47, 0.57, "Hard vs Medium (measured 51.9%)"),
-  {
-    id: "hard-vs-medium:medium-score",
-    description: "Medium's mean score (measured 197.1)",
-    matchups: ["hard-vs-medium"],
-    metric: (r) => b("hard-vs-medium")(r).meanScore,
-    min: 190,
-  },
+  // hard-vs-medium — measured: Hard 71.9% [69.4, 74.3], order 0,
+  // scores 251.6 / 215.6, Medium bonus 16.5%.
+  ...matchupBands("hard-vs-medium", 0.67, 0.77, "Hard beats Medium (measured 71.9%)"),
   {
     id: "hard-vs-medium:medium-bonus",
-    description: "Medium's upper-bonus rate (measured 37.1%)",
+    description: "Medium's upper-bonus rate (measured 16.5%)",
     matchups: ["hard-vs-medium"],
     metric: (r) => b("hard-vs-medium")(r).bonusRate,
-    min: 0.3,
-    max: 0.45,
+    min: 0.1,
+    max: 0.23,
     percent: true,
   },
 
-  // self-play — measured first-mover rates: Easy 48.8%, Medium 50.8%,
-  // Hard 48.3%. Pooled: scores 184.3 / 195.5 / 199.4, bonus 5.4% / 35.0% /
-  // 42.6%, below-par fills 3.91 / 2.30 / 2.38.
-  firstMoverBand("easy-self", "48.8%"),
-  firstMoverBand("medium-self", "50.8%"),
-  firstMoverBand("hard-self", "48.3%"),
+  // self-play — measured pooled scores 161.6 / 211.8 / 245.2, bonus
+  // 0.6% / 13.4% / 63.0%, below-par fills 5.12 / 4.05 / 2.14.
+  tierScoreBand("easy-self", 150, 172, "Easy's mean score, target ~160 (measured 161.6)"),
+  tierScoreBand("medium-self", 205, 225, "Medium's mean score, target ~215 (measured 211.8)"),
+  tierScoreBand("hard-self", 240, 260, "Hard's mean score, target ~250 (measured 245.2)"),
+  firstMoverBand("easy-self", "50.0%"),
+  firstMoverBand("medium-self", "50.0%"),
+  firstMoverBand("hard-self", "50.0%"),
+  ordering(
+    "order:hard-over-medium-score",
+    "Hard outscores Medium (measured +33.4)",
+    "hard-self",
+    "medium-self",
+    (p) => p.meanScore
+  ),
   ordering(
     "order:medium-over-easy-score",
-    "Medium outscores Easy (measured +11.2)",
+    "Medium outscores Easy (measured +50.2)",
     "medium-self",
     "easy-self",
     (p) => p.meanScore
   ),
   ordering(
+    "order:hard-over-medium-bonus",
+    "Hard makes the upper bonus more often than Medium (measured +49.6pp)",
+    "hard-self",
+    "medium-self",
+    (p) => p.bonusRate,
+    true
+  ),
+  ordering(
     "order:medium-over-easy-bonus",
-    "Medium makes the upper bonus more often than Easy (measured +29.6pp)",
+    "Medium makes the upper bonus more often than Easy (measured +12.8pp)",
     "medium-self",
     "easy-self",
     (p) => p.bonusRate,
@@ -209,19 +217,17 @@ export const GATE_BANDS: readonly Band[] = [
   ),
   ordering(
     "order:easy-over-medium-below-par",
-    "Easy burns more upper boxes below par than Medium (measured +1.61)",
+    "Easy burns more upper boxes below par than Medium (measured +1.07)",
     "easy-self",
     "medium-self",
     (p) => p.belowParMean
   ),
   ordering(
-    "order:hard-over-medium-bonus",
-    "Hard makes the upper bonus more often than Medium (measured +7.6pp; the only " +
-      "ordering that currently separates Hard from Medium — see #2246)",
-    "hard-self",
+    "order:medium-over-hard-below-par",
+    "Medium burns more upper boxes below par than Hard (measured +1.91)",
     "medium-self",
-    (p) => p.bonusRate,
-    true
+    "hard-self",
+    (p) => p.belowParMean
   ),
 ];
 

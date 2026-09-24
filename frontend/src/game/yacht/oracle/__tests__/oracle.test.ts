@@ -1,53 +1,48 @@
 /**
- * oracle.ts round-trip test (#2243).
+ * Oracle table codec round-trip (#2243, compact format #2246).
  *
- * Self-contained: encodes synthetic data with the SAME base64 method
- * scripts/build-yacht-oracle.ts uses (Buffer, Node-only, fine for a build
- * script and for this Jest test) and decodes it with the SHIPPED runtime
- * decoder (`decodeFloat32Table`, atob-based — the actual code path the app
- * runs) — verifying the two agree without depending on the real generated
- * table (a separate pinned-EV test covers that, once built).
+ * Encodes synthetic data with the SAME function scripts/build-yacht-oracle.ts
+ * uses and decodes it with the shipped runtime decoder — the actual code path
+ * the app runs — without depending on the real generated table (pinnedEV.test.ts
+ * covers that).
  */
 
-import { decodeFloat32Table } from "../oracle";
+import { ORACLE_TABLE_SCALE, decodeOracleTable, encodeOracleTable } from "../tableCodec";
 
-describe("decodeFloat32Table — round-trip against the build script's encoding", () => {
-  it("recovers the original values (within Float32 precision) for a sample table", () => {
-    const original = new Float32Array([0, 1, -1, 254.5896, 3.14159, 12345.678, 0.001, -9999.5]);
-    const base64 = Buffer.from(original.buffer).toString("base64");
+const HALF_STEP = 0.5 / ORACLE_TABLE_SCALE;
 
-    const decoded = decodeFloat32Table(base64, original.length);
+describe("oracle table codec", () => {
+  it("round-trips values to within half a storage step", () => {
+    const original = [0, 1, 254.5896, 3.14159, 270.83, 0.004, 655.35];
+    const decoded = decodeOracleTable(encodeOracleTable(original), original.length);
 
     expect(decoded.length).toBe(original.length);
-    for (let i = 0; i < original.length; i++) {
-      expect(decoded[i]).toBe(original[i]); // exact — same bytes, same Float32 representation
-    }
+    original.forEach((v, i) => expect(Math.abs(decoded[i]! - v)).toBeLessThanOrEqual(HALF_STEP));
+    expect(decoded[0]).toBe(0);
   });
 
-  it("round-trips a large, TABLE_SIZE-scale array without corruption", () => {
-    // Not the real solve (way too slow for a unit test) — a synthetic array
-    // of the same size, to catch any bugs specific to large buffers (base64
-    // chunking, off-by-one in the byte length, etc.).
-    const size = 786_432; // TABLE_SIZE
+  it("round-trips a TABLE_SIZE-scale array without corruption", () => {
+    // Synthetic, same size as the real table: catches large-buffer bugs
+    // (base64 chunking, byte-length off-by-ones, inflate output size).
+    const size = 786_432;
     const original = new Float32Array(size);
-    for (let i = 0; i < size; i++) original[i] = Math.sin(i) * 100;
+    for (let i = 0; i < size; i++) original[i] = i % 3 === 0 ? 0 : 100 + Math.sin(i) * 100;
 
-    const base64 = Buffer.from(original.buffer).toString("base64");
-    const decoded = decodeFloat32Table(base64, size);
+    const decoded = decodeOracleTable(encodeOracleTable(original), size);
 
     expect(decoded.length).toBe(size);
-    // Spot-check rather than a full 786K-entry loop (still fast, but keeps
-    // the test's own runtime negligible).
-    for (const i of [0, 1, 1000, 393216, 786431]) {
-      expect(decoded[i]).toBe(original[i]);
+    for (const i of [0, 1, 2, 1000, 393_216, 786_431]) {
+      expect(Math.abs(decoded[i]! - original[i]!)).toBeLessThanOrEqual(HALF_STEP);
     }
   });
 
-  it("length parameter truncates correctly if the buffer has trailing padding", () => {
-    const original = new Float32Array([1, 2, 3, 4, 5]);
-    const base64 = Buffer.from(original.buffer).toString("base64");
-    const decoded = decodeFloat32Table(base64, 3);
-    expect(decoded.length).toBe(3);
-    expect([...decoded]).toEqual([1, 2, 3]);
+  it("rejects values outside the Uint16 range", () => {
+    expect(() => encodeOracleTable([-1])).toThrow(/out of Uint16 range/);
+    expect(() => encodeOracleTable([700])).toThrow(/out of Uint16 range/);
+  });
+
+  it("rejects a payload whose length doesn't match", () => {
+    const base64 = encodeOracleTable([1, 2, 3]);
+    expect(() => decodeOracleTable(base64, 4)).toThrow(/expected 8 bytes, got 6/);
   });
 });

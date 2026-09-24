@@ -407,3 +407,25 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
 | ----------------------------- | ---------------------------- | ------ |
 | `GET /daily-challenge/today`  | none (IP-keyed)              | 60/min |
 | `GET /daily-challenge/status` | `X-Session-ID` (session-key) | 60/min |
+
+## 13. Yacht computer opponent
+
+Since #2246 (architecture decision #2269, epic #2283) all three Yacht difficulties are **one optimal engine, handicapped**. There is no separate "medium brain". The engine is the solved-game oracle (`frontend/src/game/yacht/oracle/`, [YACHT_ORACLE.md](YACHT_ORACLE.md)); `frontend/src/game/yacht/ai.ts` reads it for every decision.
+
+Each tier values a move as **points banked now + λ × the optimal expected points still to come**, then picks among near-best options with a capped softmax:
+
+| Tier   | Foresight λ | Temperature T | Loss cap Δ | Mean score | Upper-bonus rate |
+| ------ | ----------- | ------------- | ---------- | ---------- | ---------------- |
+| Easy   | 0 (greedy)  | 3             | 10         | ~162       | ~1%              |
+| Medium | 0.4         | 1             | 5          | ~212–216   | ~13–17%          |
+| Hard   | 1 (optimal) | 0.5           | 3          | ~245–252   | ~63–67%          |
+
+- **Foresight** is the structural dial. λ = 0 grabs the biggest score on the table and never plans for the bonus, which reads as a real beginner. λ = 1 is perfect play. With noise off the tiers still differ.
+- **Temperature** adds plausible slips: options are weighted by exp(−loss / T), so small misjudgements happen and big ones are rare.
+- **The loss cap** stops outright blunders: nothing more than Δ points below the tier's best is ever picked. Holds whose best outcome can't beat banking the roll are excluded too, so no tier rerolls a made yacht or large straight.
+- The tiers ignore the opponent's score (the old Hard adversarial layer was retired), so turn order can't affect their strength.
+
+Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
+
+**Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
+

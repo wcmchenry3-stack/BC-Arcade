@@ -1,7 +1,7 @@
 # Yacht Optimal-Play EV Oracle
 
 **Issue:** #2243
-**Scope:** Ground-truth optimal-EV table + runtime lookup API for the Yacht AI. Feeds the future Hard-difficulty tier and the AI simulator's regret metric (separate stories, not part of this one).
+**Scope:** Ground-truth optimal-EV table + runtime lookup API for the Yacht AI. Since #2246 it drives every difficulty tier (`frontend/src/game/yacht/ai.ts`, see [ARCHITECTURE.md §13](ARCHITECTURE.md#13-yacht-computer-opponent)) and the simulator's regret metric (#2244).
 
 ---
 
@@ -9,7 +9,7 @@
 
 Solitaire Yacht is a solved game: a dynamic-programming pass over every reachable scorecard state produces the exact expected value of optimal play. This ships that as a precomputed lookup table plus a small runtime API, so AI strength and decision quality can be measured against ground truth instead of estimated via win rates or hand-tuned heuristics.
 
-**Not part of this story:** wiring the oracle into the live difficulty tiers or the simulator's regret metric — those are separate epic stories that consume this API once it exists.
+The live AI consumes the table synchronously (`getOracleTable()`, plus the exported micro-DP and hold-option helpers); the async API below is used by the regret metric and tests.
 
 ## 2. State model
 
@@ -34,7 +34,8 @@ The Joker rule's three-tier legal-category priority (mandatory matching-upper, t
 | `oracle/stateKey.ts`              | Yes             | State encoding + engine-faithful scoring transitions (§3).                                                                                                                                                                                                                                                       |
 | `oracle/multisetIndex.ts`         | Yes             | Dice-multiset indexing + hold/reroll transition tables. Pure combinatorics, no rule-drift risk — reused by both the offline solver and live hold-EV queries.                                                                                                                                                     |
 | `oracle/microDp.ts`               | Yes             | The per-turn micro-DP (`solveStateVTG`, `computeArr0`, `computeHoldLayer`) — the SAME core computation used both by the offline solver (wrapped in the full retrograde sweep) and by live `optimalHoldEVs`/`optimalCategoryEVs` queries (evaluated for one specific dice roll instead of averaged over all 252). |
-| `oracle/oracle.ts`                | Yes             | Public API: `optimalStateEV`, `optimalCategoryEVs`, `optimalHoldEVs`. Lazy-loads the generated table.                                                                                                                                                                                                            |
+| `oracle/oracle.ts`                | Yes             | Public API: `optimalStateEV`, `optimalCategoryEVs`, `optimalHoldEVs` (async), plus `getOracleTable`/`getHoldOptions`/`preloadOracleTable` for the synchronous live AI. Lazy-loads the generated table.                                                                                                                                                                                                            |
+| `oracle/tableCodec.ts`            | Yes             | Compact table encoding (§5), shared by the build and the runtime decoder so they can't drift.                                                                                                                                                                                                                    |
 | `oracle/oracleTable.generated.ts` | Yes             | Generated data asset — committed, not hand-edited. See §5.                                                                                                                                                                                                                                                       |
 | `oracleBuild/solver.ts`           | No (build-only) | The outer retrograde loop over all ~786K states. Takes tens of minutes; must never run on-device. Not imported by any app screen/component, so Metro never bundles it.                                                                                                                                           |
 | `scripts/build-yacht-oracle.ts`   | No (build-only) | CLI entry point: `npx tsx scripts/build-yacht-oracle.ts`. Regenerate after any change to `stateKey.ts`'s scoring/transition rules.                                                                                                                                                                               |
@@ -43,10 +44,10 @@ The Joker rule's three-tier legal-category priority (mandatory matching-upper, t
 
 ## 5. Generated table format
 
-- **Encoding**: `Float32Array` of `ORACLE_TABLE_SIZE` (786,432) entries, base64-encoded, embedded in a generated TypeScript module. Index `i` is `VTG(i)` — expected _additional_ score ("value to go") for scorecard-state key `i`, not including points already scored.
+- **Encoding** (since #2246): `ORACLE_TABLE_SIZE` (786,432) little-endian Uint16 values in hundredths of a point, zlib-compressed (`fflate`), base64-encoded, embedded in a generated TypeScript module — ~0.9 MB of source (the original Float32 encoding was 4.2 MB, which would have pushed the app's JS bundle past its 8 MB CI limit once the live AI imported it). Values are exact to ±0.005 points; a decision can only change where two options were already within 0.01 points. Index `i` is `VTG(i)` — expected _additional_ score ("value to go") for scorecard-state key `i`, not including points already scored. The committed table was re-encoded from the original Float32 build, not re-solved; the file header records both.
 - **Why a TS module, not a binary asset file**: avoids Metro's native-asset resolution pipeline (and its web/native platform-split complexity) entirely — it's just a plain JS string constant, resolved identically by Jest/Node and Hermes/React Native.
 - **Why base64, not raw binary**: the acceptance criteria explicitly allows either; a TS-module string constant only supports the former without extra tooling.
-- **Why Float32, not Float64**: halves the raw table size (3.0 MB vs 6.3 MB) with no observed precision cost for this use case — EV values in the 0-300ish range need nowhere near Float32's ~7 significant digits.
+- **Why Uint16 hundredths**: the largest value-to-go is ~271, so 0.01-point steps fit in 16 bits with room to spare, and the ~207K unreachable (zero) slots compress to almost nothing. The runtime decodes into a `Float32Array`.
 - **Lazy loading**: `oracle.ts`'s `loadTable()` uses a lazy `require()` inside the function body (not a top-level import, and not dynamic `import()` — see §6) so the multi-MB payload is never parsed during app startup, only on first actual oracle query.
 
 **Build results** (this table's actual build, `oracleTable.generated.ts`'s header has the full record):
@@ -55,7 +56,7 @@ The Joker rule's three-tier legal-category priority (mandatory matching-upper, t
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | States computed                                               | 579,262 (of 786,432 dense slots — the rest pruned as unreachable)                                                                                                                        |
 | Build time                                                    | 2,182s (~36.4 min)                                                                                                                                                                       |
-| Generated file size                                           | 4.00 MB as source text                                                                                                                                                                   |
+| Generated file size                                           | 4.00 MB as source text (Float32); 0.86 MB after the #2246 re-encode                                                                                                                                                                   |
 | Optimal EV at game start                                      | 254.4848                                                                                                                                                                                 |
 | Published reference (Verhoeff / Glenn 2006, joker+bonus rule) | 254.5896                                                                                                                                                                                 |
 | Difference                                                    | 0.105 (0.04% relative) — Float32 quantization + accumulated floating-point error across ~579K states, not a rule gap; see §9 for how this was caught the first time it _was_ a rule gap. |
@@ -70,7 +71,7 @@ Measured on dev hardware (Node/tsx, not on-device — same dev-vs-mobile caveat 
 
 | Operation                         | Mean     | p95      |
 | --------------------------------- | -------- | -------- |
-| Table load (first call, one-time) | 242ms    | —        |
+| Table load (first call, one-time) | 128ms (+182ms hold options) | — |
 | `optimalStateEV`                  | 0.0011ms | 0.0019ms |
 | `optimalCategoryEVs`              | 0.053ms  | 0.31ms   |
 | `optimalHoldEVs`                  | 2.5ms    | 6.4ms    |

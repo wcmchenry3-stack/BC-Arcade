@@ -1,168 +1,200 @@
 /**
- * Yacht AI engine — hold and score strategies for Easy / Medium / Hard.
+ * Yacht AI — Easy / Medium / Hard as handicapped reads off one optimal
+ * engine (#2246, architecture decision #2269 / epic #2283).
  *
- * Utility AI: state parser → consideration evaluators [0,1] → per-difficulty
- * weight broker → decision selector + cognitive noise.
+ * Every tier scores its options with the exact optimal-play oracle
+ * (`oracle/`), valuing each move as
  *
- * Win-rate targets (calibrated with YACHT_SIM_FULL):
- *   Easy   ~65%  — greedy/reactive; 25% cognitive noise
- *   Medium ~50%  — balanced hold/score weighting; 10% cognitive noise
- *   Hard   ~35%  — EV-dominant hold, adversarial score; no noise
+ *     points banked now + foresight × (optimal expected points still to come)
+ *
+ * and then picks among the near-best options with a capped softmax:
+ *
+ * - `foresight` (λ) is the structural dial. λ = 1 is optimal play; λ = 0 is a
+ *   greedy player who grabs the biggest score on the table and never plans
+ *   for the upper bonus. It changes what the tier *understands*, so tiers
+ *   stay distinct with all noise switched off.
+ * - `temperature` (points) adds plausible slips: options are weighted by
+ *   exp(−loss / T), so small misjudgements are common and big ones rare.
+ * - `maxLoss` (points) caps the slips: an option more than this far below the
+ *   tier's best is never taken. Holds whose best outcome can't beat banking
+ *   the current roll are also excluded (e.g. any reroll of a made yacht, or
+ *   rerolling one die of a made large straight); together with the cap, no
+ *   tier ever breaks a made yacht or large straight it can score.
+ *
+ * Measured in the #2245 harness (mean final score): Easy ~161, Medium ~219,
+ * Hard ~252 (pure optimal play is ~254.5). See sim/gate.ts for the bands
+ * that guard these and docs/ARCHITECTURE.md for the design.
  */
 
-import { AiDifficulty, GameState } from "./types";
-import { Category, possibleScores, getRng } from "./engine";
-import { buildYachtInfoSet, type YachtInfoSet } from "./aiInfoSet";
-import {
-  rateUpperBonusUrgency,
-  rateEVOfHold,
-  rateScorecardSafety,
-  rateImmediateValue,
-  rateChanceSafetyValve,
-  rateAdversarialVariance,
-  rateUpperCategoryEfficiency,
-  type YachtHoldAction,
-} from "./aiConsiderations";
-import {
-  EASY_HOLD_WEIGHTS,
-  MEDIUM_HOLD_WEIGHTS,
-  HARD_HOLD_WEIGHTS,
-  EASY_SCORE_WEIGHTS,
-  MEDIUM_SCORE_WEIGHTS,
-  HARD_SCORE_WEIGHTS,
-  NOISE_RATE,
-  type HoldWeights,
-  type ScoreWeights,
-} from "./aiWeights";
+import { getRng, type Category } from "./engine";
+import type { AiDifficulty, GameState } from "./types";
+import { getHoldOptions, getOracleTable } from "./oracle/oracle";
+import { computeArr0, computeHoldLayer } from "./oracle/microDp";
+import { indexOfDice } from "./oracle/multisetIndex";
+import { keyFromGameState, legalCategoriesFor, successorAfterScore } from "./oracle/stateKey";
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+export interface TierParams {
+  /** λ in [0, 1]: weight on the optimal value still to come. */
+  readonly foresight: number;
+  /** Softmax temperature in points; 0 = always the tier's best option. */
+  readonly temperature: number;
+  /** Options more than this many points below the tier's best are never picked. */
+  readonly maxLoss: number;
+}
 
-function maskToBools(mask: number): boolean[] {
-  return [!!(mask & 1), !!(mask & 2), !!(mask & 4), !!(mask & 8), !!(mask & 16)];
+export const TIERS: Readonly<Record<AiDifficulty, TierParams>> = {
+  easy: { foresight: 0, temperature: 3, maxLoss: 10 },
+  medium: { foresight: 0.4, temperature: 1, maxLoss: 5 },
+  hard: { foresight: 1, temperature: 0.5, maxLoss: 3 },
+};
+
+// ─── Option scoring ───────────────────────────────────────────────────────────
+
+interface TurnLayers {
+  /** Value of each 5-dice multiset if the tier scores it now. */
+  readonly bankNow: Float64Array;
+  /** Value of each multiset with one reroll still available. */
+  readonly oneReroll: Float64Array;
+}
+
+// Per-turn DP layers depend only on (scorecard key, foresight), which is
+// fixed for a whole turn, so each turn computes them once. A few entries
+// cover two simulated players plus the live game.
+const layerCache = new Map<string, TurnLayers>();
+const LAYER_CACHE_SIZE = 8;
+
+function turnLayers(key: number, foresight: number): TurnLayers {
+  const cacheKey = `${key}:${foresight}`;
+  const cached = layerCache.get(cacheKey);
+  if (cached) return cached;
+  const table = getOracleTable();
+  const bankNow = computeArr0(key, (next) => foresight * table[next]!);
+  const layers = { bankNow, oneReroll: computeHoldLayer(bankNow, getHoldOptions()) };
+  if (layerCache.size >= LAYER_CACHE_SIZE) layerCache.delete(layerCache.keys().next().value!);
+  layerCache.set(cacheKey, layers);
+  return layers;
+}
+
+export interface ScoredHold {
+  /** Dice values kept (sorted). Keeping all five means "stop and score". */
+  readonly kept: readonly number[];
+  readonly value: number;
+  /** Excluded because it can't beat banking the current roll. */
+  readonly dominated: boolean;
+}
+
+/**
+ * Every distinct hold for `state`'s dice, valued for a tier with this
+ * foresight. Call after a roll (rolls_used 1 or 2).
+ */
+export function scoreHolds(state: GameState, foresight: number): ScoredHold[] {
+  const key = keyFromGameState(state.scores);
+  const { bankNow, oneReroll } = turnLayers(key, foresight);
+  const source = state.rolls_used === 2 ? bankNow : oneReroll;
+  const diceIndex = indexOfDice(state.dice);
+  if (diceIndex === undefined) throw new Error(`scoreHolds: invalid dice ${state.dice}`);
+  const banked = bankNow[diceIndex]!;
+
+  return getHoldOptions()[diceIndex]!.map((option) => {
+    // Keeping every die ends the turn (the AI loop stops rolling), so its
+    // value is banking now, not "hold everything and maybe reroll later".
+    if (option.keptSize === 5) return { kept: option.keptValues, value: banked, dominated: false };
+    let value = 0;
+    let best = -Infinity;
+    for (const t of option.transitions) {
+      const v = source[t.targetIndex]!;
+      value += t.weight * v;
+      if (v > best) best = v;
+    }
+    return { kept: option.keptValues, value, dominated: best <= banked };
+  });
+}
+
+export interface ScoredCategory {
+  readonly category: Category;
+  readonly value: number;
+}
+
+/** Every legal category for `state`'s dice (Joker-aware), valued for this foresight. */
+export function scoreCategories(state: GameState, foresight: number): ScoredCategory[] {
+  const key = keyFromGameState(state.scores);
+  const table = getOracleTable();
+  return legalCategoriesFor(key, state.dice).map((category) => {
+    const { scoreDelta, nextKey } = successorAfterScore(key, category, state.dice);
+    return { category, value: scoreDelta + foresight * table[nextKey]! };
+  });
+}
+
+// ─── Selection ────────────────────────────────────────────────────────────────
+
+/**
+ * Index of the option to play: the best one at temperature 0, otherwise a
+ * softmax draw over options within `maxLoss` of the best (and not
+ * `excluded`). Draws from the engine RNG so seeded simulations replay.
+ */
+export function chooseOption(
+  values: readonly number[],
+  params: Pick<TierParams, "temperature" | "maxLoss">,
+  excluded: (i: number) => boolean = () => false,
+  rng: () => number = getRng()
+): number {
+  let best = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (!excluded(i) && (best < 0 || values[i]! > values[best]!)) best = i;
+  }
+  if (best < 0) throw new Error("chooseOption: no eligible option");
+  if (params.temperature <= 0) return best;
+
+  const top = values[best]!;
+  const weights = values.map((v, i) =>
+    excluded(i) || top - v > params.maxLoss ? 0 : Math.exp((v - top) / params.temperature)
+  );
+  const total = weights.reduce((s, w) => s + w, 0);
+  let r = rng() * total;
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]!;
+    if (weights[i]! > 0 && r <= 0) return i;
+  }
+  return best;
+}
+
+/** Map a kept multiset back onto dice positions. */
+function keptToMask(dice: readonly number[], kept: readonly number[]): boolean[] {
+  const remaining = [...kept];
+  return dice.map((d) => {
+    const i = remaining.indexOf(d);
+    if (i < 0) return false;
+    remaining.splice(i, 1);
+    return true;
+  });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Pure, noise-free hold selection: the hold mask with the highest weighted-sum
- * score under `weights`. Extracted out of `holdStrategy` so the regret
- * simulator (#2244) can compute a diagnostic "what would this weight map
- * choose with cognitive noise disabled" decision using the exact same scoring
- * logic the live AI uses, rather than a reimplementation that could quietly
- * drift from it.
- */
-export function bestHoldMask(infoSet: YachtInfoSet, weights: HoldWeights): boolean[] {
-  let bestMask = 0;
-  let bestScore = -Infinity;
-  for (let mask = 0; mask < 32; mask++) {
-    const holdMask: YachtHoldAction = maskToBools(mask);
-    const s =
-      weights.upperBonusUrgency * rateUpperBonusUrgency(infoSet, holdMask) +
-      weights.evOfHold * rateEVOfHold(infoSet, holdMask);
-    if (s > bestScore) {
-      bestScore = s;
-      bestMask = mask;
-    }
-  }
-  return maskToBools(bestMask);
-}
-
-/**
- * Pure, noise-free category selection: the legal category with the highest
- * weighted-sum score under `weights`. Extracted out of `scoreStrategy` at the
- * same generalization depth as `bestHoldMask` above, so a future noise-free
- * category decision (e.g. a regret diagnostic mirroring
- * `playHoldOnlyDiagnostic`'s hold-only one) has a `bestCategory`-equivalent
- * to call instead of needing its own reimplementation.
- */
-export function bestCategory(
-  infoSet: YachtInfoSet,
-  legalCats: readonly Category[],
-  weights: ScoreWeights
-): Category {
-  let bestCat = legalCats[0]!;
-  let bestScore = -Infinity;
-  for (const cat of legalCats) {
-    const s =
-      rateScorecardSafety(infoSet, cat) *
-      (weights.immediateValue * rateImmediateValue(infoSet, cat) +
-        weights.chanceSafetyValve * rateChanceSafetyValve(infoSet, cat) +
-        weights.adversarialVariance * rateAdversarialVariance(infoSet, cat) +
-        weights.upperCategoryEfficiency * rateUpperCategoryEfficiency(infoSet, cat));
-    if (s > bestScore) {
-      bestScore = s;
-      bestCat = cat;
-    }
-  }
-  return bestCat;
-}
-
-/**
- * Returns which dice the AI should hold before its next roll.
- *
- * Call after each roll (when state.rolls_used is 1 or 2). Returns a boolean[]
- * parallel to state.dice — true means keep that die.
+ * Which dice to keep before the next roll. Call after each roll while
+ * rolls_used is 1 or 2; true = keep that die. All five kept means the AI
+ * stops rolling and scores.
  */
 export function holdStrategy(state: GameState, difficulty: AiDifficulty): boolean[] {
-  const infoSet = buildYachtInfoSet(state, 0);
-  const weights =
-    difficulty === "easy"
-      ? EASY_HOLD_WEIGHTS
-      : difficulty === "medium"
-        ? MEDIUM_HOLD_WEIGHTS
-        : HARD_HOLD_WEIGHTS;
-
-  const best = bestHoldMask(infoSet, weights);
-
-  const noiseRate = NOISE_RATE[difficulty];
-  if (noiseRate > 0) {
-    const rng = getRng();
-    if (rng() < noiseRate) {
-      return maskToBools(Math.floor(rng() * 32));
-    }
-  }
-
-  return best;
+  const params = TIERS[difficulty];
+  const holds = scoreHolds(state, params.foresight);
+  const pick = chooseOption(
+    holds.map((h) => h.value),
+    params,
+    (i) => holds[i]!.dominated
+  );
+  return keptToMask(state.dice, holds[pick]!.kept);
 }
 
-/**
- * Returns the category the AI should score into.
- *
- * Call when the AI decides to stop rolling (rolls_used >= 3 or elects to bank).
- * Uses engine.possibleScores() as the legal move set — this enforces Joker
- * priority rules automatically, preventing illegal category selections.
- * `opponentScore` is the human player's current total, used by Hard for
- * adversarial awareness (high-variance plays when trailing, conservative when
- * leading). `opponentRound` is the opponent's current round number — pass it
- * whenever it's known so adversarial scoring can tell a "moving first this
- * round" turn from a "moving second" one instead of always comparing against
- * a stale snapshot (GH #2200); omit it only for solo play / callers with no
- * opponent turn-order tracking.
- */
-export function scoreStrategy(
-  state: GameState,
-  difficulty: AiDifficulty,
-  opponentScore = 0,
-  opponentRound?: number
-): Category {
-  const infoSet = buildYachtInfoSet(state, opponentScore, opponentRound);
-  const legalCats = Object.keys(possibleScores(state)) as Category[];
-  const weights =
-    difficulty === "easy"
-      ? EASY_SCORE_WEIGHTS
-      : difficulty === "medium"
-        ? MEDIUM_SCORE_WEIGHTS
-        : HARD_SCORE_WEIGHTS;
-
-  const bestCat = bestCategory(infoSet, legalCats, weights);
-
-  const noiseRate = NOISE_RATE[difficulty];
-  if (noiseRate > 0) {
-    const rng = getRng();
-    if (rng() < noiseRate) {
-      return legalCats[Math.floor(rng() * legalCats.length)]!;
-    }
-  }
-
-  return bestCat;
+/** The category to score the current dice in (always legal, Joker rules included). */
+export function scoreStrategy(state: GameState, difficulty: AiDifficulty): Category {
+  const params = TIERS[difficulty];
+  const options = scoreCategories(state, params.foresight);
+  return options[
+    chooseOption(
+      options.map((o) => o.value),
+      params
+    )
+  ]!.category;
 }
