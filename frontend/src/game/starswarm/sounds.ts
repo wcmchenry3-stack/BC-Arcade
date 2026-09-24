@@ -39,6 +39,9 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.hullup": require("../../../assets/sounds/starswarm-powerup-shield.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.hullhit": require("../../../assets/sounds/starswarm-playerhit.ogg"),
+  // #2489 grunt rout — the stage sting again until a dedicated one lands (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.rout": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
   // Background music tracks
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),

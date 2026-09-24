@@ -36,7 +36,8 @@ export type EnemyPhase =
   | "Wiggling" // pre-dive telegraph: oscillates ±6px for ~350ms (#975)
   | "Diving" // following Bézier arc toward player (#977)
   | "Circling" // looping around a fixed center point
-  | "Returning"; // following Bézier path back to formation slot
+  | "Returning" // following Bézier path back to formation slot
+  | "Fleeing"; // #2489: grunt rout — Bézier path off the top edge; no shooting, diving or ramming
 
 export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid
@@ -138,9 +139,9 @@ export interface RunStats {
   readonly armorDeflects: number;
   /** Carrier beam sweeps that cost hull plating or a life (a shield-absorbed sweep isn't one). */
   readonly beamHits: number;
-  /** Grunt rout (#2489, not built yet): fleeing grunts shot down. Stays 0 until then. */
+  /** #2489: fleeing grunts the player shot down (or bombed). */
   readonly routCaught: number;
-  /** Grunt rout (#2489, not built yet): fleeing grunts that got away. Stays 0 until then. */
+  /** #2489: fleeing grunts that reached the top edge and got away. */
   readonly routEscaped: number;
   /** Rocks that entered play — timed spawns and dev-panel throws alike. */
   readonly rocksSpawned: number;
@@ -326,6 +327,10 @@ export interface StarSwarmState {
   readonly stragglerEnabled: boolean;
   /** When true (dev panel), straggler aggression is suppressed regardless of enemy count (#1039). */
   readonly pauseStraggler: boolean;
+  /** #2489: latched once the wave's grunts have routed (no Elite, Boss or Carrier left alive). */
+  readonly routed: boolean;
+  /** Dev (#2489): grunts never rout — the old hunt-the-last-three ending, for comparison. */
+  readonly routDisabled: boolean;
   /** ms remaining for the Smart Bomb full-screen flash overlay; 0 when inactive (#1034). */
   readonly bombFlashTimer: number;
   /** Active difficulty tier; drives score multiplier and AI param scaling (#1037). */

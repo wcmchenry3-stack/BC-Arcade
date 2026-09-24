@@ -16,6 +16,8 @@ import {
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
   isBossWave,
+  routJustStarted,
+  fleeingCount,
   carrierJustExposed,
   isCarrierArmored,
   asteroidOutline,
@@ -185,6 +187,8 @@ export interface DevOptions {
   dodgeDisabled?: boolean;
   /** Enemies never fire flak at a rock (#2491). */
   flakDisabled?: boolean;
+  /** Grunts never rout when the leaders die (#2489). */
+  routDisabled?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -209,6 +213,8 @@ interface Props {
   onExplosion?: () => void;
   /** #2490: called once when a boss wave (the Carrier and its escorts, nothing else) begins. */
   onBossWave?: () => void;
+  /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
+  onRout?: (count: number) => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
@@ -240,6 +246,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onLaserFire,
       onExplosion,
       onBossWave,
+      onRout,
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
@@ -289,6 +296,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
     const onBossWaveRef = useRef(onBossWave);
+    const onRoutRef = useRef(onRout);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
@@ -369,6 +377,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onBossWaveRef.current = onBossWave;
     }, [onBossWave]);
+    useEffect(() => {
+      onRoutRef.current = onRout;
+    }, [onRout]);
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
@@ -892,6 +903,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
+      // #2489: rout banner — up while grunts are running for the edge
+      if (fleeingCount(state) > 0 && countdownDigit === null) {
+        ctx.font = "bold 20px 'Courier New', monospace";
+        ctx.fillStyle = C.bossWave;
+        ctx.fillText(t("phase.rout"), width / 2, height / 2 - 18);
+      }
+
       // #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in
       if (isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null) {
         ctx.font = "bold 20px 'Courier New', monospace";
@@ -1014,6 +1032,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const flakDisabled = devOptionsRef.current?.flakDisabled ?? false; // #2491
               if (tickInput.flakDisabled !== flakDisabled)
                 tickInput = { ...tickInput, flakDisabled };
+              const routDisabled = devOptionsRef.current?.routDisabled ?? false; // #2489
+              if (tickInput.routDisabled !== routDisabled)
+                tickInput = { ...tickInput, routDisabled };
               const next = tick(tickInput, dtMs, {
                 playerX: inputRef.current.playerX,
                 fire: inputRef.current.fire,
@@ -1051,6 +1072,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
+              if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

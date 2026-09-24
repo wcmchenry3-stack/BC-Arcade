@@ -80,6 +80,15 @@
     "doNotTranslate": [],
     "notes": "Carrier is the large top-row enemy ship (#2484). All caps in English to match the other phase banners."
   },
+  "phase.rout": {
+    "component": "GameCanvas",
+    "description": "Overlay banner while the wave's surviving grunts flee for the top edge after every Elite, Boss and Carrier is destroyed (#2489).",
+    "tone": "dramatic, arcade",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A rout is a panicked retreat. All caps in English to match the other phase banners."
+  },
   "phase.gameOver": {
     "component": "GameCanvas",
     "description": "Large overlay text when the player loses all lives.",
@@ -187,6 +196,15 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Carrier is the large top-row enemy ship (#2484); escorts are its four Bosses."
+  },
+  "a11y.rout": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the grunts rout, with how many are fleeing (#2489).",
+    "tone": "neutral, urgent",
+    "characterLimit": 70,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "{{count}} is an integer (1–40). Phrased so the number can sit after a colon and avoid plural forms."
   },
   "hud.guns": {
     "component": "GameCanvas",
