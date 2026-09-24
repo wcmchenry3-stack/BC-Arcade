@@ -161,7 +161,8 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 
 ### starswarm-chargeshot.ogg
 
-- **Event:** Charge shot released; also the Carrier beam telegraph (`starswarm.beamcharge`, #2485)
+- **Event:** Carrier beam telegraph (`starswarm.beamcharge`, #2485). Registered as `starswarm.chargeshot`
+  too, but nothing plays that key today (the charge shot is silent)
 - **Original filename:** `laser9.ogg` from Kenney Digital Audio (embedded `TITLE=laser9`, `TRACKNUMBER=9`)
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
@@ -173,7 +174,7 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 
 ### starswarm-explosion.ogg
 
-- **Event:** Enemy destroyed
+- **Event:** Any new explosion — an enemy destroyed, a rock broken, or the player's ship lost
 - **Original filename:** `zap1.ogg` from Kenney Digital Audio (embedded `TITLE=zap1`)
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
