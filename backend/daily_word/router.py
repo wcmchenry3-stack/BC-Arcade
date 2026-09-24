@@ -15,18 +15,25 @@ Rate limits:
                  retries on top of the 6 scored guesses, which are now capped
                  by ``progress.MAX_GUESSES`` rather than by this limit)
   GET /answer  — 20/minute, and gated on the caller's own guess record
+
+Availability posture (#2542): ``/guess`` degrades *open* if the guess record is
+unreachable — it scores the guess and skips the cap rather than failing, because
+``/today`` needs no DB and has already handed the player a board. ``/answer``
+stays closed: with no record there is nothing to check entitlement against.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
+import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from daily_word.progress import MAX_GUESSES, may_see_answer, record_guess
+from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
 from db.base import get_session_factory
 from limiter import _real_ip, limiter
@@ -35,6 +42,7 @@ from session import get_session_id
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _guess_key(request: Request) -> str:
@@ -181,20 +189,40 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
     # answer for a non-winning guess. No such pair exists in today's word
     # lists, so this is latent rather than live, but equality is exact and free.
     won = guess == answer
-    factory = get_session_factory()
-    async with factory() as db:
-        outcome = await record_guess(
-            db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
+
+    # Degrade open if the record cannot be reached (#2542). Daily Word is a
+    # free shipping game and the daily challenge's anchor, `/today` needs no DB
+    # so the player has already been handed a board, and prod Postgres is on a
+    # plan that pauses when idle — so a DB blip must not turn a playable game
+    # into an error mid-puzzle. The cap is deterrence and volume bounding, not
+    # a security boundary (sessions are self-asserted until #1047), so losing
+    # enforcement during an outage is the cheaper failure. Reported to Sentry so
+    # a permanent degrade is visible rather than a cap that quietly never
+    # applies. `/answer` stays closed: without the record there is nothing to
+    # check entitlement against.
+    outcome: GuessOutcome | None = None
+    try:
+        factory = get_session_factory()
+        async with factory() as db:
+            outcome = await record_guess(
+                db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
+            )
+    except Exception:
+        logger.exception("daily_word: guess state unavailable, scoring without the cap")
+        sentry_sdk.capture_message(
+            "daily_word guess state unavailable — cap not enforced", level="warning"
         )
-    if not outcome.allowed:
+
+    if outcome is not None and not outcome.allowed:
         raise HTTPException(
             status_code=403,
             detail="already_solved" if outcome.solved else "no_guesses_remaining",
         )
 
     result: dict = {"tiles": tiles}
-    result["guesses_used"] = outcome.guesses_used
-    result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
+    if outcome is not None:
+        result["guesses_used"] = outcome.guesses_used
+        result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
     if lang == "hi":
         # clusters describe how to split the guess's code points into displayable tile units (not the answer)
         result["grapheme_clusters"] = _grapheme_clusters(guess)

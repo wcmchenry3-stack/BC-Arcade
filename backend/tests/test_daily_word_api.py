@@ -329,6 +329,57 @@ _SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
 _SEVENTH = "vozhd"
 
 
+def test_guess_degrades_open_when_the_record_is_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2542 — a DB outage must not turn a playable game into an error.
+
+    `/today` needs no DB, so the player already has a board in front of them.
+    Scoring keeps working and the cap is skipped for that request; the
+    alternative is a shipping free game breaking mid-puzzle on a blip.
+    """
+    import daily_word.router as router_mod
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+
+    headers = _sid_headers()
+    r = _guess(client, headers, _today_puzzle_id(), _SIX_WRONG[0])
+    assert r.status_code == 200, "the guess must still be scored"
+    body = r.json()
+    assert len(body["tiles"]) == 5
+    # No counts are claimed when they could not be read.
+    assert "guesses_used" not in body
+    assert "guesses_remaining" not in body
+
+
+def test_answer_stays_closed_when_the_record_is_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of #2542: no record, no entitlement, no answer."""
+    import daily_word.router as router_mod
+
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+    assert (
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers).status_code == 200
+    )
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    # TestClient re-raises server exceptions rather than converting them; in
+    # production this surfaces as a 500. Either way the answer is not released,
+    # which is the property under test.
+    with pytest.raises(RuntimeError):
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+
+
 def test_guess_and_answer_keep_both_rate_limits() -> None:
     """The session-keyed limit and the IP backstop must both stay registered.
 
