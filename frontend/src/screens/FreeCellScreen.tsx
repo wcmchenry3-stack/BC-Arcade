@@ -1,15 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -23,6 +13,7 @@ import FreeCellBoard from "../components/freecell/FreeCellBoard";
 import { CARD_WIDTH, CARD_HEIGHT } from "../components/freecell/FreeCellSlot";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
+import GameResultModal from "../components/shared/GameResultModal";
 import {
   dealGame,
   applyMove,
@@ -41,23 +32,22 @@ import {
   saveStats,
   type FreeCellStats,
 } from "../game/freecell/storage";
-import { freecellApi, type ScoreEntry } from "../game/freecell/api";
+import { freecellLeaderboard } from "../game/freecell/leaderboard";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
-import { useNetwork } from "../game/_shared/NetworkContext";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
 
 const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
-const MAX_NAME_LENGTH = 32;
 
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -78,11 +68,20 @@ export default function FreeCellScreen() {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
   const prevCompleteRef = useRef(false);
+  /** Best moves after this win, and whether the win beat the old best — for the result card. */
+  const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
+  /**
+   * The loaded save was already won — the app was closed between the win and
+   * `clearGame()`. Its result was submitted and its celebration played back then.
+   */
+  const [resumedWin, setResumedWin] = useState(false);
+  const leaderboard = useLeaderboardSubmit(freecellLeaderboard);
+  const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
   // XP, shows in Profile history and can be measured by the daily challenge. This
-  // is separate from the name-gated leaderboard submit (`freecellApi.submitScore`),
-  // which is unchanged. No score is sent, on a win or an abandon: the leaderboard
+  // is separate from the leaderboard submit (`freecellLeaderboard`, #2508),
+  // which posts the move count under the player's display name. No score is sent, on a win or an abandon: the leaderboard
   // ranks every row with a non-null `final_score` (fewer moves first), so a scored
   // session row would duplicate each win as "anon" and rank abandoned games.
   const {
@@ -102,7 +101,6 @@ export default function FreeCellScreen() {
   }, [syncSetProgressSnapshot]);
 
   const [showFoundation, setShowFoundation] = useState(false);
-  const [showGameWin, setShowGameWin] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
   const { play: playCardPlace } = useSound("freecell.cardPlace", FREECELL_SOUNDS, 0.4);
@@ -150,7 +148,11 @@ export default function FreeCellScreen() {
       const initial = saved ?? dealGame();
       setState(initial);
       // Suppress re-counting a win when resuming an already-won game.
-      if (saved?.isComplete) winRecordedRef.current = true;
+      if (saved?.isComplete) {
+        winRecordedRef.current = true;
+        setResumedWin(true);
+        setWinSummary({ best: savedStats.bestMoves, isNewBest: false });
+      }
       if (!saved) {
         // First deal (not a resume) — count as a game started.
         const withPlay = { ...savedStats, gamesPlayed: savedStats.gamesPlayed + 1 };
@@ -191,7 +193,6 @@ export default function FreeCellScreen() {
       },
       gameWin: () => {
         playGameWin();
-        setShowGameWin(true);
         setShowNoMovesBanner(false);
       },
       noMovesAvailable: () => setShowNoMovesBanner(true),
@@ -231,6 +232,11 @@ export default function FreeCellScreen() {
         winRecordedRef.current = true;
         const finalMoves = state.moveCount;
         const curr = statsRef.current;
+        // Submit only a win that happened this session, so a resumed won
+        // game can't post the same result twice.
+        submitScore({ moves: finalMoves });
+        const isNewBest = curr.bestMoves === 0 || finalMoves < curr.bestMoves;
+        setWinSummary({ best: isNewBest ? finalMoves : curr.bestMoves, isNewBest });
         const updated: FreeCellStats = {
           ...curr,
           gamesWon: curr.gamesWon + 1,
@@ -242,7 +248,7 @@ export default function FreeCellScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete]);
+  }, [state, syncComplete, submitScore]);
 
   const handleMove = useCallback(
     (move: Move) => {
@@ -294,7 +300,10 @@ export default function FreeCellScreen() {
     statsRef.current = updated;
     saveStats(updated).catch(() => {});
     winRecordedRef.current = false;
-  }, [syncGetGameId, syncComplete]);
+    setResumedWin(false);
+    setWinSummary(null);
+    resetSubmission();
+  }, [syncGetGameId, syncComplete, resetSubmission]);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
@@ -410,176 +419,42 @@ export default function FreeCellScreen() {
         </CardSizeContext.Provider>
       )}
 
-      {state?.isComplete === true && (
-        <WinModal
-          moves={state.moveCount}
-          onNewGame={handleNewGame}
-          onGoHome={() => navigation.popToTop()}
+      {state !== null ? (
+        <GameResultModal
+          visible={state.isComplete}
+          outcome="win"
+          eyebrow={t("game.title")}
+          subtitle={tResult("subtitle.completedIn", { count: state.moveCount })}
+          hero={{ kind: "score", label: tResult("stat.moves"), value: state.moveCount }}
+          isNewBest={winSummary?.isNewBest ?? false}
+          stats={
+            winSummary && winSummary.best > 0
+              ? [{ label: tResult("stat.best"), value: winSummary.best }]
+              : []
+          }
+          submission={{
+            status: leaderboard.status,
+            rank: leaderboard.rank,
+            playerName: leaderboard.playerName,
+            onProvideName: leaderboard.provideName,
+            onRetry: leaderboard.retry,
+          }}
+          onPlayAgain={handleNewGame}
+          onHome={() => navigation.popToTop()}
+          // Only a win that just happened plays the celebration; a resumed,
+          // already-won game goes straight to the card.
+          celebration={
+            resumedWin ? undefined : (done) => <FreeCellGameWinAnimation visible onDismiss={done} />
+          }
+          testID="freecell-result"
         />
-      )}
+      ) : null}
 
       <FreeCellFoundationAnimation
         visible={showFoundation}
         onAnimationEnd={() => setShowFoundation(false)}
       />
-      <FreeCellGameWinAnimation visible={showGameWin} onDismiss={() => setShowGameWin(false)} />
     </GameShell>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Win modal — name entry + score POST with retry
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  moves,
-  onNewGame,
-  onGoHome,
-}: {
-  readonly moves: number;
-  readonly onNewGame: () => void;
-  readonly onGoHome: () => void;
-}) {
-  const { t } = useTranslation("freecell");
-  const { colors } = useTheme();
-  const { isOnline, isInitialized } = useNetwork();
-
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<ScoreEntry | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const offline = isInitialized && !isOnline;
-
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
-  const trimmed = name.trim();
-  const canSubmit = !submitting && !offline && trimmed.length > 0;
-
-  async function handleSubmit() {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const entry = await freecellApi.submitScore(trimmed, moves);
-      setSubmitted(entry);
-    } catch {
-      setError(t("freecell:error.submitFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const submitLabel = error ? t("freecell:error.submitRetry") : t("freecell:action.submitScore");
-
-  return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("win.title")}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t("win.moves", { moves })}
-          </Text>
-
-          {submitted === null ? (
-            <>
-              <TextInput
-                style={[
-                  styles.nameInput,
-                  {
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: colors.border,
-                    color: colors.text,
-                  },
-                ]}
-                placeholder={t("freecell:win.namePlaceholder")}
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                maxLength={MAX_NAME_LENGTH}
-                editable={!submitting}
-                accessibilityLabel={t("freecell:win.nameLabel")}
-                accessibilityHint={t("freecell:win.nameHint")}
-              />
-              {offline ? (
-                <OfflineBanner />
-              ) : (
-                error !== null && (
-                  <Text
-                    style={[styles.winError, { color: colors.error }]}
-                    accessibilityLiveRegion="assertive"
-                    accessibilityRole="alert"
-                  >
-                    {error}
-                  </Text>
-                )
-              )}
-              <Pressable
-                style={[styles.modalPrimary, gradient, !canSubmit && styles.modalPrimaryDisabled]}
-                onPress={handleSubmit}
-                disabled={!canSubmit}
-                accessibilityRole="button"
-                accessibilityLabel={submitLabel}
-                accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-                testID="freecell-submit-score-button"
-              >
-                {submitting ? (
-                  <ActivityIndicator color={colors.textOnAccent} />
-                ) : (
-                  <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-                    {submitLabel}
-                  </Text>
-                )}
-              </Pressable>
-            </>
-          ) : (
-            <Text
-              style={[styles.winSaved, { color: colors.bonus }]}
-              accessibilityLiveRegion="polite"
-            >
-              {submitted.rank <= 10
-                ? t("freecell:win.rank", { rank: submitted.rank })
-                : t("freecell:win.rankUnranked")}
-            </Text>
-          )}
-
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onNewGame}
-            accessibilityRole="button"
-            accessibilityLabel={t("freecell:action.newGame")}
-            testID="freecell-new-game-button"
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("freecell:action.newGame")}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onGoHome}
-            accessibilityRole="button"
-            accessibilityLabel={t("freecell:action.goHome")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("freecell:action.goHome")}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -652,81 +527,5 @@ const styles = StyleSheet.create({
   boardWrap: {
     alignSelf: "stretch",
     alignItems: "center",
-  },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginBottom: 10,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  nameInput: {
-    width: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  modalPrimaryDisabled: {
-    opacity: 0.5,
-  },
-  winError: {
-    fontSize: 13,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  winSaved: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
   },
 });

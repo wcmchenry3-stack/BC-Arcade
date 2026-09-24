@@ -8,7 +8,9 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useTranslation } from "react-i18next";
 import { AnimationOverlay } from "../shared/AnimationOverlay";
+import { useTheme } from "../../theme/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -28,8 +30,18 @@ const SUIT_OFFSETS = [
   { x: 30, y: 130 },
 ] as const;
 
+/**
+ * The win celebration: a gold badge with card suits bursting around it.
+ * Rendered in the shared result card's `celebration` slot (#2508); calls
+ * `onDismiss` when it has played (at once under reduce motion) so the card
+ * can appear. The card announces the result, so the badge stays silent.
+ */
 export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const { t } = useTranslation("result");
+  const { colors } = useTheme();
+  // null until the setting has been read: the animation mounts at the moment of
+  // the win, so it must not start before it knows whether motion is wanted.
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const badgeScale = useSharedValue(0);
@@ -47,7 +59,15 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
   const suits = [suit0, suit1, suit2, suit3, suit4, suit5, suit6, suit7];
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((enabled) => {
+        if (alive) setReduceMotion(enabled);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -66,13 +86,10 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
       return;
     }
 
+    if (reduceMotion === null) return;
     if (reduceMotion) {
-      badgeScale.value = 1;
-      badgeOpacity.value = 1;
-      suits.forEach((s) => {
-        s.value = 1;
-      });
-      timersRef.current.push(setTimeout(onDismiss, 2000));
+      // No motion wanted: go straight to the result card.
+      onDismiss();
       return;
     }
 
@@ -110,6 +127,8 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
     useAnimatedStyle(() => ({ opacity: s.value, transform: [{ scale: s.value }] }))
   );
 
+  if (reduceMotion !== false) return null;
+
   return (
     <AnimationOverlay visible={visible} onDismiss={onDismiss}>
       <View style={styles.content} pointerEvents="none">
@@ -123,7 +142,7 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
                 top: "50%",
                 marginLeft: offset.x,
                 marginTop: offset.y,
-                color: i % 2 === 0 ? "#1a1a1a" : "#dc2626",
+                color: i % 2 === 0 ? colors.text : colors.error,
               },
               suitStyles[i],
             ]}
@@ -131,13 +150,13 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
             {CARD_SUITS[i]}
           </Animated.Text>
         ))}
-        <Animated.View style={[styles.badge, badgeStyle]}>
+        <Animated.View style={[styles.badge, { backgroundColor: colors.celebration }, badgeStyle]}>
           <Text
-            style={styles.badgeText}
-            accessibilityRole="text"
-            accessibilityLiveRegion="assertive"
+            style={[styles.badgeText, { color: colors.background }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
           >
-            You Win!
+            {t("title.win")}
           </Text>
         </Animated.View>
       </View>
@@ -151,7 +170,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   badge: {
-    backgroundColor: "rgba(255,215,0,0.95)",
     borderRadius: 20,
     paddingHorizontal: 36,
     paddingVertical: 18,
@@ -159,7 +177,6 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 38,
     fontWeight: "900",
-    color: "#1a1a1a",
     letterSpacing: 2,
     textTransform: "uppercase",
   },

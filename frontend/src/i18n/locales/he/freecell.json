@@ -4,9 +4,6 @@
   "game.playLabel": "Play FreeCell",
   "action.undo": "Undo",
   "action.hint": "Hint",
-  "action.newGame": "New Game",
-  "action.submitScore": "Submit Score",
-  "action.goHome": "Go Home",
   "noMoves.message": "No moves left — undo to continue?",
   "suit.spades": "Spades",
   "suit.hearts": "Hearts",
@@ -19,16 +16,5 @@
   "pile.foundation.empty": "Empty {{suit}} foundation",
   "pile.freecell.empty": "Empty free cell {{cell}}",
   "a11y.boardRegion": "FreeCell board",
-  "score.moves": "Moves: {{moves}}",
-  "win.title": "You Win!",
-  "win.moves": "Completed in {{moves}} moves",
-  "win.newGame": "New Game",
-  "win.goHome": "Go Home",
-  "win.namePlaceholder": "Enter your name",
-  "win.nameLabel": "Your name",
-  "win.nameHint": "Enter your name to submit to the leaderboard",
-  "win.rank": "Saved! #{{rank}}",
-  "error.submitFailed": "Submission failed — try again",
-  "win.rankUnranked": "Score submitted!",
-  "error.submitRetry": "Try Again"
+  "score.moves": "Moves: {{moves}}"
 }

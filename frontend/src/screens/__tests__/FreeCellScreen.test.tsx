@@ -1,5 +1,6 @@
 /**
- * FreeCellScreen — hint and no-moves-banner integration tests (#1295).
+ * FreeCellScreen — hint and no-moves-banner integration tests (#1295),
+ * per-session game sync (#2452), and the shared result card (#2508).
  *
  * Engine correctness is covered by engine.test.ts. These tests focus on
  * the screen's hint handler: when getHintMoves returns [] (all moves are
@@ -8,10 +9,13 @@
  */
 
 import React from "react";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AccessibilityInfo } from "react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
+import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // ---------------------------------------------------------------------------
 // Global setup: expo-blur, navigation, storage
@@ -42,7 +46,13 @@ jest.mock("../../game/freecell/storage", () => ({
   saveStats: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { loadGame } from "../../game/freecell/storage";
+import { loadGame, loadStats } from "../../game/freecell/storage";
+
+jest.mock("../../game/freecell/api", () => ({
+  freecellApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+}));
+
+import { freecellApi } from "../../game/freecell/api";
 
 // Mock gameEventClient so the useGameSync wiring (#2452) can be asserted without the
 // real client, which would otherwise start a session on the first move.
@@ -317,5 +327,115 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2508 — the shared result card and leaderboard auto-submit
+// ---------------------------------------------------------------------------
+
+describe("FreeCellScreen — result card (#2508)", () => {
+  const submitScore = freecellApi.submitScore as jest.Mock;
+  let reduceMotion: jest.SpyInstance;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetDisplayNameCacheForTests();
+    submitScore.mockReset();
+    submitScore.mockResolvedValue({ player_id: "Riley", move_count: 1, rank: 2 });
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+  });
+
+  /** Loads a game one auto-complete step from winning and plays that step. */
+  async function winInOneMove() {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    return r;
+  }
+
+  it("shows the card with the move count, Play Again and Home", async () => {
+    const r = await winInOneMove();
+    const card = within(await r.findByTestId("freecell-result"));
+    expect(card.getByTestId("freecell-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText("Completed in 1 move")).toBeTruthy();
+    expect(card.getByText("Moves")).toBeTruthy();
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(card.queryByRole("button", { name: /Submit/ })).toBeNull();
+  });
+
+  it("submits the move count under the saved display name", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    const r = await winInOneMove();
+    await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
+    expect(submitScore).toHaveBeenCalledTimes(1);
+    expect(submitScore).toHaveBeenCalledWith("Riley", 1);
+  });
+
+  it("marks a new best and shows it", async () => {
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 90, gamesPlayed: 4, gamesWon: 2 });
+    const r = await winInOneMove();
+    const card = within(await r.findByTestId("freecell-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.getByText("Best")).toBeTruthy();
+  });
+
+  it("plays the win celebration before the card", async () => {
+    reduceMotion.mockResolvedValue(false);
+    const r = await winInOneMove();
+    expect(r.queryByTestId("freecell-result")).toBeNull();
+    expect(r.getByTestId("animation-overlay")).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(r.getByTestId("freecell-result")).toBeTruthy();
+  });
+
+  it("Play Again deals a new game and clears the card", async () => {
+    const r = await winInOneMove();
+    await r.findByTestId("freecell-result");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(r.queryByTestId("freecell-result")).toBeNull();
+    expect(r.getByLabelText("Moves: 0")).toBeTruthy();
+  });
+
+  // The app closed after a win but before the save was cleared.
+  it("does not resubmit or replay the celebration for a resumed, already-won game", async () => {
+    reduceMotion.mockResolvedValue(false);
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...nearlyWon(13),
+      isComplete: true,
+      moveCount: 52,
+      events: ["gameWin"],
+    });
+    const r = await renderScreen();
+    // Let the load settle without advancing timers (findBy* would run them past
+    // the celebration): the card must be up at once, with no celebration.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(r.getByTestId("freecell-result")).toBeTruthy();
+    expect(r.queryByTestId("animation-overlay")).toBeNull();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(submitScore).not.toHaveBeenCalled();
   });
 });

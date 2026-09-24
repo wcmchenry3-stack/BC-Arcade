@@ -41,5 +41,7 @@
   "stat.guesses": "Guesses",
   "subtitle.solvedIn_one": "Solved in {{count}} guess",
   "subtitle.solvedIn_other": "Solved in {{count}} guesses",
-  "action.changeMode": "Change Mode"
+  "action.changeMode": "Change Mode",
+  "subtitle.completedIn_one": "Completed in {{count}} move",
+  "subtitle.completedIn_other": "Completed in {{count}} moves"
 }
