@@ -15,7 +15,10 @@ test.describe("Sort Puzzle — smoke tests", () => {
   });
 
   test("navigates from Home to Sort Puzzle level-select screen", async ({ page }) => {
-    await expect(page.getByText("Sort Puzzle").first()).toBeVisible();
+    // The Home card underneath the stack also reads "Sort Puzzle" (hidden).
+    await expect(
+      page.getByText("Sort Puzzle", { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
     await expect(page.getByText("Choose a Level")).toBeVisible();
   });
 

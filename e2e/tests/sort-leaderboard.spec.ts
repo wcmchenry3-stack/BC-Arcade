@@ -53,7 +53,8 @@ test.describe("Sort Puzzle — leaderboard", () => {
   });
 
   test("renders top-10 player names", async ({ page }) => {
-    await expect(page.getByText("Player1")).toBeVisible({ timeout: 5_000 });
+    // exact: "Player1" is otherwise also a substring of "Player10".
+    await expect(page.getByText("Player1", { exact: true })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("Player10")).toBeVisible({ timeout: 5_000 });
   });
 

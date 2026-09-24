@@ -552,7 +552,10 @@ export default function SortScreen() {
         )}
 
         {/* Tab bar */}
-        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+        <View
+          style={[styles.tabBar, { borderBottomColor: colors.border }]}
+          accessibilityRole="tablist"
+        >
           {(["levels", "leaderboard"] as SelectTab[]).map((tab) => (
             <Pressable
               key={tab}
@@ -707,6 +710,8 @@ export default function SortScreen() {
         accessibilityRole="switch"
         accessibilityLabel={t("action.colorblindToggle")}
         accessibilityState={{ checked: colorblindMode }}
+        // RN Web 0.21 drops accessibilityState; aria-checked reaches the DOM.
+        aria-checked={colorblindMode}
       >
         <Text style={[styles.colorblindToggleText, { color: colors.textMuted }]}>
           {t("settings.colorblindMode")}
