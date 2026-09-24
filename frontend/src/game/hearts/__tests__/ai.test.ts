@@ -16,7 +16,7 @@ import { detectPotentialMoon, selectCardToPlay, selectCardsToPass } from "../ai"
 import { getValidPlays, setRng } from "../engine";
 import type { Card, HeartsState, Rank, Suit, TrickCard } from "../types";
 
-// Pin RNG to suppress cognitive noise (Cautious 25%, Schemer 10%) so tests
+// Pin RNG to suppress cognitive noise (Cautious 35%, Schemer 10%) so tests
 // are deterministic — noise fires only when rng() < noiseRate, never at 0.99.
 beforeEach(() => setRng(() => 0.99));
 

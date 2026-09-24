@@ -550,7 +550,7 @@ describe("Utility AI — noise determinism", () => {
   });
 
   it("different seeds produce different play decisions for cautious (probabilistic)", () => {
-    // With 25% noise, two different seeds should differ across many calls.
+    // With 35% noise, two different seeds should differ across many calls.
     // Run 20 decisions with each seed; at least one should differ.
     // Theoretical false-failure probability: ≈ (1/5)^20 ≈ 10^-14 — practically impossible.
     const state = mkState({

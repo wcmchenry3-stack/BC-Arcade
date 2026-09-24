@@ -84,7 +84,7 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
  * threshold exactly and selects by inverse-rank utility (lowest non-hearts
  * pass first), which is equivalent to the rule-based moon-viable logic.
  *
- * Noise (Cautious 25 %, Schemer 10 %, Daring 0 %): applied once per decision
+ * Noise (Cautious 35 %, Schemer 10 %, Daring 0 %): applied once per decision
  * before picking — a noise hit draws 3 random valid cards instead of top-3.
  */
 export function selectCardsToPassUtility(
@@ -191,7 +191,7 @@ export function selectCardsToPassUtility(
  * (moonProgress: 100.0) dominates, hardcoding moon behavior at the activation
  * boundary while keeping card selection utility-driven (calibration-drift guard).
  *
- * Noise: Cautious 25 %, Schemer 10 %, Daring 0 % (seeded RNG via getRng()).
+ * Noise: Cautious 35 %, Schemer 10 %, Daring 0 % (seeded RNG via getRng()).
  */
 /**
  * Returns true when `playerIndex` is in an active moon attempt this trick,

@@ -71,15 +71,23 @@ describe("gate definition", () => {
     for (const check of SEPARATION_CHECKS) expect(check.expected).not.toBe(0);
   });
 
-  it("keeps HRT-3's corrected direction: the human does better against Schemers than Cautious players", () => {
-    const hrt3 = SEPARATION_CHECKS.find(
-      (c) =>
-        c.left.matchup === "table-schemer" &&
-        c.right.matchup === "table-cautious" &&
-        c.left.role === "proxy" &&
-        c.right.role === "proxy"
-    );
-    expect(hrt3?.expected).toBeGreaterThan(0);
+  it("pre-registers the full difficulty ladder (#2555)", () => {
+    // Positive `expected` = left beats right, so each tuple reads "left > right".
+    const holds = (left: [string, string], right: [string, string]) =>
+      SEPARATION_CHECKS.some(
+        (c) =>
+          c.expected > 0 &&
+          c.left.matchup === left[0] &&
+          c.left.role === left[1] &&
+          c.right.matchup === right[0] &&
+          c.right.role === right[1]
+      );
+    // Persona strength: Daring > Schemer > Cautious, same seat, cards and field.
+    expect(holds(["field-schemer", "daring"], ["field-schemer", "schemer"])).toBe(true);
+    expect(holds(["field-schemer", "schemer"], ["field-schemer", "cautious"])).toBe(true);
+    // The human wins most at the Cautious table and least at the Daring table.
+    expect(holds(["table-cautious", "proxy"], ["table-schemer", "proxy"])).toBe(true);
+    expect(holds(["table-schemer", "proxy"], ["table-daring", "proxy"])).toBe(true);
   });
 
   it("gates the paired moon success rate (HRT-1)", () => {

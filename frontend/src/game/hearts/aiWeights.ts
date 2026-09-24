@@ -5,8 +5,15 @@
  * variant applies when the old `isMoonAttempt` thresholds fire — rateMoonAttemptProgress
  * dominates at 100.0 (calibration-drift guard) while card selection stays utility-driven.
  *
- * Noise rates: Cautious 25% / Schemer 10% / Daring 0%.
+ * Noise rates: Cautious 35% / Schemer 10% / Daring 0%.
  * Daring noise is 0 because even a small random deviation can derail moon attempts.
+ *
+ * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
+ * weights are strong Hearts play on their own: at 25% noise Cautious was the
+ * strongest persona and the all-Cautious table the hardest for the human.
+ * The sim gate (sim/gate.ts) showed the weights barely move its strength
+ * while noise does, so 35% puts it back at the bottom — the human wins ~28%
+ * at the Cautious table vs ~25.5% (Schemer) and ~22% (Daring).
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
@@ -110,7 +117,7 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
 
 /** Probability of ignoring the best-scoring action and picking a random legal one. */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.25,
+  cautious: 0.35,
   schemer: 0.1,
   daring: 0.0,
 };

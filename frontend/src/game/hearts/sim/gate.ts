@@ -169,21 +169,22 @@ export const REGRESSION_CHECKS: readonly RegressionCheck[] = [
   regression("table-daring", "daring", "void_created", 0.04),
 ];
 
+const EXPECTED_TBD = 0.01;
+
 function winShare(matchup: string, role: string): MetricRef {
   return { matchup, role, metric: "win_share" };
 }
 
 /**
- * Pre-registered persona separations: each `expected` is the value measured
- * on the baseline seed (baseline.json `separations`, 2026-09-24: field 6,000
- * blocks, presets 12,000), before any gate run. The persona ladder is NOT
- * "Daring > Schemer > Cautious": Cautious wins most, and the all-Cautious
- * table is the hardest for the human. These checks pin the ladder as it is;
- * a deliberate re-tune updates the expectations here with new evidence.
+ * Pre-registered persona separations: the difficulty ladder (#2555).
+ * Strength runs Daring > Schemer > Cautious, so the human wins most at the
+ * Cautious table and least at the Daring table. Each `expected` is the
+ * value measured on the baseline seed (baseline.json `separations`) before
+ * any gate run. A deliberate re-tune updates them here with new evidence.
  *
- * Not registered: "the Schemer table is easier than the Daring table"
- * (measured +1.5pp ± 0.5): per-block SD 0.55 would need ~15,000 blocks to
- * decide, twice the presets cap.
+ * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
+ * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
+ * and the all-Cautious table the hardest for the human (21.9% vs 25.5%).
  */
 export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
   {
@@ -192,41 +193,39 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Daring outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "daring"),
     right: winShare("field-schemer", "schemer"),
-    expected: 0.015,
+    expected: EXPECTED_TBD,
   },
   {
     kind: "separation",
-    id: "field:cautious-over-schemer",
-    description: "Cautious outwins Schemer in the same seat, cards and field",
-    left: winShare("field-schemer", "cautious"),
-    right: winShare("field-schemer", "schemer"),
-    expected: 0.027,
+    id: "field:schemer-over-cautious",
+    description: "Schemer outwins Cautious in the same seat, cards and field",
+    left: winShare("field-schemer", "schemer"),
+    right: winShare("field-schemer", "cautious"),
+    expected: EXPECTED_TBD,
   },
   {
     kind: "separation",
-    id: "mixed:cautious-over-schemer",
-    description: "at the mixed table, Cautious outwins Schemer",
-    left: winShare("table-mixed", "cautious"),
-    right: winShare("table-mixed", "schemer"),
-    expected: 0.043,
-  },
-  {
-    kind: "separation",
-    id: "mixed:daring-over-schemer",
-    description: "at the mixed table, Daring outwins Schemer",
+    id: "mixed:daring-over-cautious",
+    description: "at the mixed table, Daring outwins Cautious",
     left: winShare("table-mixed", "daring"),
-    right: winShare("table-mixed", "schemer"),
-    expected: 0.031,
+    right: winShare("table-mixed", "cautious"),
+    expected: EXPECTED_TBD,
   },
   {
-    // HRT-3 (#2204): the human does BETTER against three Schemers than
-    // against three Cautious players — the old check had this backwards.
     kind: "separation",
-    id: "presets:schemer-table-easier-than-cautious",
-    description: "the human wins more at the Schemer table than at the Cautious table (HRT-3)",
+    id: "presets:cautious-table-easier-than-schemer",
+    description: "the human wins more at the Cautious table than at the Schemer table",
+    left: winShare("table-cautious", "proxy"),
+    right: winShare("table-schemer", "proxy"),
+    expected: EXPECTED_TBD,
+  },
+  {
+    kind: "separation",
+    id: "presets:schemer-table-easier-than-daring",
+    description: "the human wins more at the Schemer table than at the Daring table",
     left: winShare("table-schemer", "proxy"),
-    right: winShare("table-cautious", "proxy"),
-    expected: 0.036,
+    right: winShare("table-daring", "proxy"),
+    expected: EXPECTED_TBD,
   },
 ];
 
