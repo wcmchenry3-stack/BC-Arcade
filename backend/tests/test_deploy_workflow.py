@@ -128,3 +128,13 @@ def test_header_check_targets_a_real_route() -> None:
     api = next(e for e in entries if e["service"] == "bc-arcade-api")
     assert api["header_path"] == "/health"
     assert all(e["header_path"].startswith("/") for e in entries)
+
+
+def test_known_red_smoke_legs_do_not_gate_prod_deploys() -> None:
+    """Render's "After CI Checks Pass" waits for every check on a `main` commit.
+    The Maestro legs have never passed (#2347, #2400), so while they ran on
+    push to main no prod deploy could happen (#2522 sat undeployed)."""
+    for name in ("mobile-smoke-ios.yml", "mobile-smoke-android.yml"):
+        on = _load(WORKFLOWS / name)["on"]
+        assert "push" not in on, f"{name} runs on push again - is it green now?"
+        assert "workflow_dispatch" in on
