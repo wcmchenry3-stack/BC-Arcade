@@ -1,14 +1,14 @@
 /**
  * #2563 (epic #2562): when the native canvas's RAF loop hands a new frame to React.
  *
- * Every published frame costs a full reconciliation of the Skia scene and the HUD, so the loop
- * publishes only when something the render reads has actually changed. The engine returns the
+ * Every published frame costs work — recording the Skia Picture on the UI thread (#2565), and
+ * checking the HUD for changes (#2566) — so the loop publishes only when something drawn has
+ * actually changed. The engine returns the
  * same state object on a tick that changes nothing (paused is never ticked; GameOver short-
  * circuits), and the starfield only advances while the game is live — so identity comparison of
  * the inputs is exact, and a paused or finished game stops re-rendering entirely.
  *
- * Pure and React-free so the gate is unit-tested; phase 3 (#2565) replaces per-frame React
- * publishing with a shared value, at which point this gate covers only the HUD.
+ * Pure and React-free so the gate is unit-tested.
  */
 import type { StarSwarmState } from "../types";
 import type { StarfieldState } from "../starfield";

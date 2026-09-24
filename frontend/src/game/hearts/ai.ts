@@ -17,6 +17,7 @@ import {
   rateQueenSpadesRisk,
   rateMoonThreat,
   rateMoonAttemptProgress,
+  rateTactics,
   ratePassingQuality,
   rateSuitVoidingUtility,
 } from "./aiConsiderations";
@@ -173,7 +174,7 @@ export function selectCardsToPassUtility(
 
 /**
  * Utility-AI play selection. Scores every legal card by a weighted sum of
- * the four play considerations and returns the argmax (with optional noise).
+ * the five play considerations and returns the argmax (with optional noise).
  *
  * Moon-attempt activation: when detectMoonAttempt fires (a hand-quality
  * check, moonHand.ts — #2234), DARING_MOON_PLAY_WEIGHTS (moonProgress: 100.0)
@@ -293,7 +294,8 @@ export function selectCardToPlayUtility(
         weights.minimizePoints * rateMinimizeImmediatePoints(infoSet, card) +
         weights.queenSpadesRisk * rateQueenSpadesRisk(infoSet, card) +
         weights.moonThreat * rateMoonThreat(infoSet, card) +
-        weights.moonProgress * rateMoonAttemptProgress(infoSet, card),
+        weights.moonProgress * rateMoonAttemptProgress(infoSet, card) +
+        weights.tactics * rateTactics(infoSet, card),
     }))
     .sort((a, b) => b.score - a.score);
 

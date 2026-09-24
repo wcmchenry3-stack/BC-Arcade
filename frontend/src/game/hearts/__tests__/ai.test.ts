@@ -606,7 +606,9 @@ describe("selectCardToPlay — Cautious difficulty", () => {
     expect(pick).toEqual(c("spades", 12));
   });
 
-  it("follows suit with the lowest card in suit", () => {
+  it("follows suit with the highest card that still loses (duck high, #1500, #2236)", () => {
+    // 10♠ is winning with A♥ in the trick. 5♠ and 9♠ are beaten; J♠ could
+    // still take the trick (and the heart). Shed 9♠ — the higher liability.
     const hand = [c("spades", 5), c("spades", 9), c("spades", 11)];
     const trick: TrickCard[] = [
       { card: c("spades", 10), playerIndex: 0 },
@@ -619,7 +621,7 @@ describe("selectCardToPlay — Cautious difficulty", () => {
       currentPlayerIndex: 2,
     });
     const pick = selectCardToPlay(hand, trick, state, 2, "cautious");
-    expect(pick).toEqual(c("spades", 5));
+    expect(pick).toEqual(c("spades", 9));
   });
 });
 

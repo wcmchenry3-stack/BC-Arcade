@@ -1,5 +1,17 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { runOnJS, useDerivedValue, useSharedValue } from "react-native-reanimated";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from "react-native-reanimated";
 import { StyleSheet, Text, View } from "react-native";
 import {
   Canvas,
@@ -18,12 +30,9 @@ import {
   initStarSwarm,
   tick,
   applyPowerUp,
-  POWERUP_DURATION,
   difficultyLabel,
   difficultyMultiplier,
-  MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
-  showMissionCompleteBanner,
   isBossWave,
   routJustStarted,
   fleeingCount,
@@ -38,6 +47,8 @@ import {
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
+import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
+import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import {
@@ -379,8 +390,32 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       waveBannerCountdown: false,
       bonusFlash: false,
     }));
-    // #2563: the frame React last received. The loop publishes only when the next one differs,
-    // so a paused or finished game stops re-rendering instead of reconciling ~60×/s.
+    // #2566: the HUD, published to React only when a value in it changes — a few commits a second
+    // in steady play (score ticks), none while paused. `renderState` above now feeds only the
+    // legacy declarative renderer (dev switch), and goes away with it in phase 5 (#2567).
+    const [hud, setHud] = useState<HudState>(() =>
+      deriveHud(renderState.game, {
+        countdownDigit: renderState.countdownDigit,
+        waveBannerCountdown: renderState.waveBannerCountdown,
+        bonusFlash: renderState.bonusFlash,
+      })
+    );
+    const hudRef = useRef<HudState>(hud);
+    // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
+    const [initialCues] = useState<HudCues>(() => hudCues(renderState.game));
+    const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
+    const powerUpSV = useSharedValue(initialCues.powerUpFraction);
+    const cueSVRef = useRef({ mission: missionOpacitySV, powerUp: powerUpSV });
+    cueSVRef.current = { mission: missionOpacitySV, powerUp: powerUpSV };
+    const cuesRef = useRef<HudCues>(initialCues);
+    const missionStyle = useAnimatedStyle(() => ({ opacity: missionOpacitySV.value }));
+    // translateX, not width: a transform stays off the layout path; the wrap's overflow clips it
+    const powerUpBarStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: -POWERUP_BAR_WIDTH * (1 - powerUpSV.value) }],
+    }));
+    // #2563: the frame last published — to the Picture (#2565) or, under the legacy renderer, to
+    // React. The loop publishes only when the next one differs, so a paused or finished game
+    // stops publishing instead of reconciling ~60×/s.
     const publishedRef = useRef<RenderState>(renderState);
 
     // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
@@ -414,9 +449,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     }, [drawImages, width, height]);
 
     // #2565: republish when sprites finish loading or the dev renderer switch flips — without
-    // this a paused game would keep its fallback shapes until it resumed.
-    useEffect(() => {
-      if (rendererMode !== "picture") return;
+    // this a paused game would keep its fallback shapes until it resumed. A layout effect, so the
+    // legacy path's catch-up render lands before paint instead of flashing a stale frame.
+    useLayoutEffect(() => {
+      if (rendererMode !== "picture") {
+        // #2566: the legacy path reads the full frame state, which picture mode stops updating
+        setRenderState(publishedRef.current);
+        return;
+      }
       const { width: w, height: h } = sizeRef.current;
       publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
     }, [drawImages, rendererMode]);
@@ -483,8 +523,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       publishedRef.current = fresh;
       if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
         publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
+      } else {
+        setRenderState(fresh);
       }
-      setRenderState(fresh);
+      publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height]);
 
     // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
@@ -655,13 +697,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         // frame after game over. Live play still publishes each frame: the starfield moves.
         if (!sameFrame(publishedRef.current, next)) {
           publishedRef.current = next;
-          // #2565: the scene goes to the UI thread as data; React still re-renders for the HUD
-          // until phase 4 (#2566), but no longer reconciles the scene's hundreds of elements
+          // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
+          // when the HUD changed — or every frame under the legacy renderer, which draws from it.
           if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
             const { width: w, height: h } = sizeRef.current;
             publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
+          } else {
+            setRenderState(next);
           }
-          setRenderState(next);
+          publishHud(next, hudRef, setHud, cuesRef, cueSVRef.current);
         }
         id = requestAnimationFrame(loop);
       }
@@ -670,7 +714,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
+    const { game: state, sf } = renderState; // #2566: legacy renderer only — the HUD reads `hud`
     // #2564: every drawing decision (sprites vs fallbacks, rings, flashes, the beam, the #2334
     // hidden-ship-at-game-over rule, the invincibility blink) lives in buildFrame — tested there.
     // #2565: only the legacy declarative renderer builds it here; the Picture path builds it in
@@ -681,8 +725,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         : null;
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
-    const hs = Math.max(highScore, state.score);
-    const showBonusFlash = bonusFlash; // #2563: decided in the loop so its expiry publishes
+    const hs = Math.max(highScore, hud.score);
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -705,34 +748,34 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         {/* HUD overlay — React Native Text over the Skia canvas */}
         <View style={styles.hud} pointerEvents="none">
           <View style={styles.hudTop}>
-            <Text style={styles.hudText}>{t("hud.scoreValue", { score: state.score })}</Text>
+            <Text style={styles.hudText}>{t("hud.scoreValue", { score: hud.score })}</Text>
             <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
-            <Text style={styles.hudText}>{t("hud.waveValue", { wave: state.wave })}</Text>
+            <Text style={styles.hudText}>{t("hud.waveValue", { wave: hud.wave })}</Text>
           </View>
           <View style={styles.hudDifficulty}>
             <Text style={styles.hudDifficultyText}>
-              {`${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`}
+              {`${difficultyLabel(hud.difficulty)} ×${difficultyMultiplier(hud.difficulty)}`}
             </Text>
             {/* #2488 upgrade ladders */}
             <Text style={styles.hudDifficultyText}>
-              {`${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`}
+              {`${t("hud.guns")}${hud.guns} · ${t("hud.hull")} ${"◆".repeat(hud.hull) || "–"}`}
             </Text>
           </View>
 
-          {showBonusFlash && (
+          {hud.bonusFlash && (
             <View style={styles.bonusLifeOverlay} pointerEvents="none">
               <Text style={styles.bonusLifeText}>1UP</Text>
             </View>
           )}
 
-          {countdownDigit !== null && (
+          {hud.countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              {waveBannerCountdown && (
+              {hud.waveBannerCountdown && (
                 <Text
                   style={styles.waveIncomingText}
-                >{`— ${t("hud.waveValue", { wave: state.wave })} —`}</Text>
+                >{`— ${t("hud.waveValue", { wave: hud.wave })} —`}</Text>
               )}
-              <Text style={styles.countdownText}>{countdownDigit}</Text>
+              <Text style={styles.countdownText}>{hud.countdownDigit}</Text>
             </View>
           )}
 
@@ -741,28 +784,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               a freeze. See showMissionCompleteBanner() for the full suppression rationale —
               also skipped while the pre-wave countdown overlay (above) is showing, since both
               render full-screen and centered and would otherwise garble together. */}
-          {showMissionCompleteBanner(state, countdownDigit !== null) && (
+          {hud.missionComplete && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              <Text
-                style={[
-                  styles.overlayTitle,
-                  { opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS) },
-                ]}
-              >
+              {/* #2566: the fade runs on the UI thread from a shared value */}
+              <Animated.Text style={[styles.overlayTitle, missionStyle]}>
                 {t("phase.missionComplete")}
-              </Text>
+              </Animated.Text>
             </View>
           )}
 
           {/* #2489: rout banner — up while grunts are running for the edge */}
-          {fleeingCount(state) > 0 && countdownDigit === null && (
+          {hud.rout && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.rout")}</Text>
             </View>
           )}
 
           {/* #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in */}
-          {isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null && (
+          {hud.bossWave && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.bossWave")}</Text>
             </View>
@@ -774,30 +813,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
         <View style={styles.hudBottom} pointerEvents="none">
-          {Array.from({ length: state.player.lives }, (_, i) => (
+          {Array.from({ length: hud.lives }, (_, i) => (
             <View key={i} style={styles.lifeIndicator} />
           ))}
         </View>
 
         {/* Power-up indicator — outside hud for the same reason as lives */}
-        {state.activePowerUp !== null && (
+        {hud.powerUp !== null && (
           <View style={styles.powerUpIndicator} pointerEvents="none">
             <Text
               style={[
                 styles.powerUpLabel,
-                { color: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00" },
+                { color: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
               ]}
             >
-              {state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING"}
+              {hud.powerUp === "shield" ? "SHIELD" : "LIGHTNING"}
             </Text>
             <View style={styles.powerUpBarWrap}>
-              <View
+              {/* #2566: the bar drains on the UI thread from a shared value */}
+              <Animated.View
                 style={[
                   styles.powerUpBar,
-                  {
-                    width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
-                    backgroundColor: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
-                  },
+                  { backgroundColor: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
+                  powerUpBarStyle,
                 ]}
               />
             </View>
@@ -857,13 +895,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   powerUpBarWrap: {
-    width: 60,
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: 3,
     overflow: "hidden",
   },
   powerUpBar: {
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     borderRadius: 3,
   },
