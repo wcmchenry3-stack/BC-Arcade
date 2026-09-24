@@ -555,12 +555,12 @@ describe("Utility AI — noise determinism", () => {
   });
 
   it("different seeds produce different play decisions for cautious (probabilistic)", () => {
-    // With 35% noise, two different seeds should differ across many calls.
+    // With 38% noise, two different seeds should differ across many calls.
     // Run 20 decisions with each seed; at least one should differ.
     // All 13 cards are legal leads, so each seed picks the best card with
-    // p = 0.65 + 0.35/13 ≈ 0.68 and any other with 0.35/13. Two seeds agree on
-    // one decision with p ≈ 0.68² + 12·(0.35/13)² ≈ 0.47, so all 20 agree with
-    // p ≈ 0.47^20 ≈ 2×10⁻⁷ (and the seeds are fixed, so the result is stable).
+    // p = 0.62 + 0.38/13 ≈ 0.65 and any other with 0.38/13. Two seeds agree on
+    // one decision with p ≈ 0.65² + 12·(0.38/13)² ≈ 0.43, so all 20 agree with
+    // p ≈ 0.43^20 ≈ 5×10⁻⁸ (and the seeds are fixed, so the result is stable).
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],

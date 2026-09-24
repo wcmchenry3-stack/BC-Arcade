@@ -442,13 +442,14 @@ directory or the script, plus nightly and on demand. Measured on a 4-core
 dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 (seed 2238) decided every check early:
 
-| Group     | Games per block | Stopped at (cap)     | Wall-clock |
-| --------- | --------------- | -------------------- | ---------- |
-| `presets` | 6               | 3,000 blocks (8,000) | ~2 min     |
-| `field`   | 9               | 400 blocks (6,000)   | ~0.5 min   |
+| Group     | Games per block | Stopped at (cap)      | Wall-clock |
+| --------- | --------------- | --------------------- | ---------- |
+| `presets` | 6               | 4,800 blocks (12,000) | ~3 min     |
+| `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
-Worst case, with every check running to its cap (presets 8,000 blocks ×
-6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
+Worst case, with every check running to its cap (presets 12,000 blocks ×
+6 games, field 6,000 × 9), is about 8.5–17 min per group at 7–14 ms a game
+(a full field-group baseline run measured ~14 ms); the job timeout is
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 
@@ -475,15 +476,15 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24, after #2555 and #2234).** Baseline
+**What the gate measured (2026-09-24, after #2555, #2234 and #2235).** Baseline
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 28.3%
-  at the all-Cautious table, 25.5% at all-Schemer and 19.3% at all-Daring
-  (24.0% at the mixed table). At the mixed table Daring wins 33.7%, Schemer
-  22.3%, Cautious 19.9%; in the field matchup Daring beats Schemer by
-  +7.3pp and Schemer beats Cautious by +3.2pp. All six steps are
+- The difficulty ladder holds at every step: the human stand-in wins 27.9%
+  at the all-Cautious table, 25.5% at all-Schemer and 20.8% at all-Daring
+  (24.9% at the mixed table). At the mixed table Daring wins 31.5%, Schemer
+  23.1%, Cautious 20.6%; in the field matchup Daring beats Schemer by
+  +5.3pp and Schemer beats Cautious by +2.9pp. All six steps are
   separation checks.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
@@ -498,6 +499,12 @@ counts are in `baseline.json`):
   Daring commits mid-hand, so its attempt and paired-success rates — 14.4%
   and 10.3% after, 9.2% and 7.2% before — measure different populations and
   aren't directly comparable.)
+- #2235 made moon defense shooter-aware: a point card is scored by whether
+  its points land on the would-be shooter (feeding the moon) or on someone
+  else (breaking it), and the threat is graded from 2 points instead of
+  switching on at 4. Against a Schemer field, Daring's paired moon success
+  fell from 10.1% to 6.0% (moons per hand 1.47% → 0.87%) without the ladder
+  moving at the bottom. At the all-Daring table paired success is now 6.3%.
 - 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.
