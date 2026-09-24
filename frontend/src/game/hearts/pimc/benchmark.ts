@@ -44,6 +44,8 @@ export interface BenchmarkOptions {
   readonly onProgress?: (done: number, total: number) => void;
   /** Clock in ms (injectable for tests). */
   readonly now?: () => number;
+  /** Polled between moves: return true to stop early (rows so far are returned). */
+  readonly cancelled?: () => boolean;
 }
 
 const clock = (): number =>
@@ -99,7 +101,7 @@ function percentile(sorted: readonly number[], p: number): number {
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/** Time the engine per sample count; one row per count. */
+/** Time the engine per sample count; one row per count (fewer if cancelled). */
 export async function runPimcBenchmark(options: BenchmarkOptions = {}): Promise<LatencyRow[]> {
   const counts = options.sampleCounts ?? [16, 32, 64];
   const n = options.decisions ?? 30;
@@ -117,6 +119,7 @@ export async function runPimcBenchmark(options: BenchmarkOptions = {}): Promise<
     };
     const times: number[] = [];
     for (const [i, state] of states.entries()) {
+      if (options.cancelled?.()) return rows;
       const rng = createSeededRng(samples * 1000 + i);
       const t0 = now();
       pimcChooseCard(state, config, rng);

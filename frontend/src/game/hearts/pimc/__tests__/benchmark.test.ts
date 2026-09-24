@@ -39,4 +39,17 @@ describe("runPimcBenchmark", () => {
     ]);
     expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
+
+  it("stops between moves when cancelled, returning the rows so far", async () => {
+    let moves = 0;
+    const rows = await runPimcBenchmark({
+      sampleCounts: [2, 4],
+      decisions: 3,
+      now: () => 0,
+      onProgress: () => moves++,
+      cancelled: () => moves >= 4, // stops one move into the second count
+    });
+    expect(moves).toBe(4);
+    expect(rows.map((r) => r.samples)).toEqual([2]);
+  });
 });

@@ -43,18 +43,45 @@ async function copyToClipboard(text: string): Promise<void> {
  * decision points at 16 / 32 / 64 sampled deals and shows the median, p95
  * and worst case per move. Budget: under 1 s per move, aiming for 250 ms.
  */
-function PimcTimingSection() {
+function PimcTimingSection({ active }: { active: boolean }) {
   const { colors } = useTheme();
   const [rows, setRows] = useState<readonly LatencyRow[] | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Stops a run when the panel closes or unmounts, so it never keeps
+  // loading the JS thread behind the live game or overlaps a new run.
+  const runId = useRef(0);
+  useEffect(() => {
+    if (!active) {
+      runId.current++;
+      setProgress(null);
+    }
+  }, [active]);
+  useEffect(
+    () => () => {
+      runId.current++;
+    },
+    []
+  );
   const run = async () => {
+    const id = ++runId.current;
+    const stale = () => runId.current !== id;
     setRows(null);
+    setError(null);
     setProgress("0%");
-    const result = await runPimcBenchmark({
-      onProgress: (done, total) => setProgress(`${Math.round((100 * done) / total)}%`),
-    });
-    setRows(result);
-    setProgress(null);
+    try {
+      const result = await runPimcBenchmark({
+        cancelled: stale,
+        onProgress: (done, total) => {
+          if (!stale()) setProgress(`${Math.round((100 * done) / total)}%`);
+        },
+      });
+      if (!stale()) setRows(result);
+    } catch (e) {
+      if (!stale()) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!stale()) setProgress(null);
+    }
   };
   const ms = (x: number) => `${Math.round(x)} ms`;
   return (
@@ -73,6 +100,9 @@ function PimcTimingSection() {
           {progress !== null ? `Running… ${progress}` : "Run timing"}
         </Text>
       </Pressable>
+      {error !== null && (
+        <Text style={[styles.handRow, { color: colors.textMuted }]}>Failed: {error}</Text>
+      )}
       {rows?.map((r) => (
         <Text key={r.samples} style={[styles.handRow, { color: colors.textMuted }]}>
           <Text style={{ color: colors.text }}>{r.samples} deals: </Text>
@@ -284,7 +314,7 @@ export default function HeartsDebugPanel({
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}
           keyboardShouldPersistTaps="handled"
         >
-          <PimcTimingSection />
+          <PimcTimingSection active={visible} />
           {logs.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               No hands logged yet. Play a hand to see debug data here.
