@@ -9,7 +9,8 @@
  */
 
 import React from "react";
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { Share } from "react-native";
 import { CodedError } from "expo-modules-core";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
@@ -69,7 +70,9 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn().mockResolvedValue(undefined),
+  notificationAsync: jest.fn().mockResolvedValue(undefined),
   ImpactFeedbackStyle: { Light: "Light", Heavy: "Heavy" },
+  NotificationFeedbackType: { Success: "Success", Warning: "Warning", Error: "Error" },
 }));
 
 // ---------------------------------------------------------------------------
@@ -207,7 +210,7 @@ describe("DailyWordScreen — stale state", () => {
 
     const { findByText } = await renderScreen();
     // Wait for load to complete (win modal renders)
-    await findByText("Brilliant!");
+    await findByText("You Win!");
 
     expect(storage.clearState).not.toHaveBeenCalled();
   });
@@ -218,7 +221,7 @@ describe("DailyWordScreen — win modal", () => {
     storage.loadState.mockResolvedValue(WIN_STATE);
 
     const { findByText } = await renderScreen();
-    await expect(findByText("Brilliant!")).resolves.toBeTruthy();
+    await expect(findByText("You Win!")).resolves.toBeTruthy();
   });
 });
 
@@ -227,7 +230,7 @@ describe("DailyWordScreen — loss modal", () => {
     storage.loadState.mockResolvedValue(LOSS_STATE);
 
     const { findByText } = await renderScreen();
-    await expect(findByText("Better luck tomorrow")).resolves.toBeTruthy();
+    await expect(findByText("You Lose")).resolves.toBeTruthy();
   });
 
   it("shows the answer in loss modal after answer fetch resolves", async () => {
@@ -242,7 +245,7 @@ describe("DailyWordScreen — loss modal", () => {
 
     const { findByText } = await renderScreen();
     // Wait for modal to appear
-    await findByText("Better luck tomorrow");
+    await findByText("You Lose");
 
     expect(dailyWordApi.getAnswer).toHaveBeenCalledWith(LOSS_STATE.puzzle_id);
   });
@@ -431,7 +434,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
   it("does not start a session when opening an already-finished puzzle", async () => {
     storage.loadState.mockResolvedValue(WIN_STATE);
     const api = await renderScreen();
-    await api.findByText("Brilliant!");
+    await api.findByText("You Win!");
     await act(async () => {
       api.unmount();
     });
@@ -572,5 +575,64 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2514 — shared result card
+// ---------------------------------------------------------------------------
+
+describe("DailyWordScreen — result card (#2514)", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("shows guesses, a disabled next-word countdown, Share and Home", async () => {
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const r = await renderScreen();
+    await r.findByText("You Win!");
+
+    const primary = r.getByTestId("game-result-primary");
+    expect(primary.props.accessibilityState.disabled).toBe(true);
+    expect(primary).toHaveTextContent(/Next word in \d{2}:\d{2}:\d{2}/);
+    expect(r.getByRole("button", { name: "Share" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Home" })).toBeTruthy();
+    // No close button: the card isn't dismissible.
+    expect(r.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
+  it("turns the countdown into Play Again once the next word is out, which loads it", async () => {
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const r = await renderScreen();
+    await r.findByText("You Win!");
+    storage.clearState.mockClear();
+
+    // Jump past the next midnight; the next countdown tick flips the button.
+    const realNow = Date.now.bind(Date);
+    jest.spyOn(Date, "now").mockImplementation(() => realNow() + 25 * 60 * 60 * 1000);
+    await waitFor(() => expect(r.getByRole("button", { name: "Play Again" })).toBeTruthy(), {
+      timeout: 3000,
+    });
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(storage.clearState).toHaveBeenCalled();
+    await waitFor(() => expect(r.queryByText("You Win!")).toBeNull());
+  });
+
+  it("shares through the system share sheet on native", async () => {
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const share = jest.spyOn(Share, "share").mockResolvedValue({ action: "sharedAction" });
+    const r = await renderScreen();
+    await r.findByText("You Win!");
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Share" }));
+    });
+
+    expect(share).toHaveBeenCalledWith({ message: expect.stringContaining("Daily Word #") });
+    // Nothing was copied, so the button doesn't claim it was.
+    expect(r.queryByText("Copied!")).toBeNull();
   });
 });

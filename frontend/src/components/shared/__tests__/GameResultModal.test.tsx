@@ -87,6 +87,14 @@ describe("GameResultModal — outcomes", () => {
     expect(Haptics.notificationAsync).toHaveBeenCalledWith("success");
   });
 
+  it("still shows the card when haptics are unavailable", async () => {
+    (Haptics.notificationAsync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error("no haptics");
+    });
+    await renderCard({ outcome: "win" });
+    expect(screen.getByRole("header")).toHaveTextContent("You Win!");
+  });
+
   it("fires a warning haptic on a loss and a light impact on a draw", async () => {
     await renderCard({ outcome: "loss" });
     expect(Haptics.notificationAsync).toHaveBeenCalledWith("warning");
