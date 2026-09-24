@@ -40,6 +40,8 @@ import {
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
+import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
+import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import { useStarSwarmImages } from "../../game/starswarm/assets";
 import type {
@@ -129,13 +131,8 @@ interface Props {
   initialState?: StarSwarmState;
 }
 
-interface RenderState {
-  game: StarSwarmState;
-  sf: StarfieldState;
-  countdownDigit: number | null;
-  /** True when the active countdown follows a wave clear (shows the "— WAVE N —" banner). */
-  waveBannerCountdown: boolean;
-}
+/** #2563: what the render reads each frame — see render/publish.ts for when it is published. */
+type RenderState = FrameInputs;
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
@@ -267,12 +264,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onUpgradeRef.current = onUpgrade;
     }, [onUpgrade]);
 
-    const [renderState, setRenderState] = useState<RenderState>({
+    const [renderState, setRenderState] = useState<RenderState>(() => ({
       game: gameRef.current,
       sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
       waveBannerCountdown: false,
-    });
+      bonusFlash: false,
+    }));
+    // #2563: the frame React last received. The loop publishes only when the next one differs,
+    // so a paused or finished game stops re-rendering instead of reconciling ~60×/s.
+    const publishedRef = useRef<RenderState>(renderState);
 
     useImperativeHandle(
       ref,
@@ -326,15 +327,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       waveBannerCountdownRef.current = false;
       // #2490: a game that opens on a boss wave (dev wave jump) is announced like a cleared-into one
       if (isBossWave(gameRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
-      setRenderState({
+      const fresh: RenderState = {
         game: gameRef.current,
         sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
         waveBannerCountdown: false,
-      });
+        bonusFlash: false,
+      };
+      publishedRef.current = fresh;
+      setRenderState(fresh);
     }, [resetTick, width, height]);
 
-    // RAF game loop — drives both engine tick and Skia re-renders
+    // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
+    // something drawn changed (#2563)
     useEffect(() => {
       let id: number;
 
@@ -480,19 +485,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             }
           }
         }
-        // Starfield scrolls continuously
-        sfRef.current = tickStarfield(sfRef.current, dtMs);
+        // Starfield scrolls while the game is live; paused or over, the frame holds still (#2563)
+        if (starfieldRuns(gameRef.current.phase, isPausedRef.current)) {
+          sfRef.current = tickStarfield(sfRef.current, dtMs);
+        }
 
         const countdownDigit =
           countdownMsRef.current !== null
             ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
             : null;
-        setRenderState({
+        const next: RenderState = {
           game: gameRef.current,
           sf: sfRef.current,
           countdownDigit,
           waveBannerCountdown: waveBannerCountdownRef.current,
-        });
+          bonusFlash: Date.now() < bonusFlashEndRef.current,
+        };
+        // #2563: an unchanged frame is not handed to React — that is every frame while paused
+        // (unless a dev-panel injection or the 1UP flash expiring changes something) and every
+        // frame after game over. Live play still publishes each frame: the starfield moves.
+        if (!sameFrame(publishedRef.current, next)) {
+          publishedRef.current = next;
+          setRenderState(next);
+        }
         id = requestAnimationFrame(loop);
       }
 
@@ -500,7 +515,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit, waveBannerCountdown } = renderState;
+    const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
     const { player } = state;
     const playerDisplayY = player.y;
     const shipVisible = playerDisplayY + player.height > 0;
@@ -511,7 +526,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, state.score);
-    const showBonusFlash = Date.now() < bonusFlashEndRef.current;
+    const showBonusFlash = bonusFlash; // #2563: decided in the loop so its expiry publishes
 
     const blink =
       player.invincibleTimer > 0 &&
