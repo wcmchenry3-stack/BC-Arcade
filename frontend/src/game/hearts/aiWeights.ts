@@ -5,7 +5,7 @@
  * variant applies when the old `isMoonAttempt` thresholds fire — rateMoonAttemptProgress
  * dominates at 100.0 (calibration-drift guard) while card selection stays utility-driven.
  *
- * Noise rates: Cautious 51% / Schemer 14% / Daring 0%.
+ * Noise rates: Cautious 55% / Schemer 19% / Daring 0%.
  * Daring noise is 0 because even a small deviation can derail moon attempts.
  *
  * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
@@ -135,8 +135,8 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
  * alternative, of not playing (or passing) its best-scoring choice.
  */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.51,
-  schemer: 0.14,
+  cautious: 0.55,
+  schemer: 0.19,
   daring: 0.0,
 };
 
