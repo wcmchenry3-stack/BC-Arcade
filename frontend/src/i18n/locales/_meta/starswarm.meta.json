@@ -205,5 +205,59 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "See #2485."
+  },
+  "hud.guns": {
+    "component": "GameCanvas",
+    "description": "HUD label before the gun level number (1–3). Rendered as e.g. 'GUNS L2'.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488. Keep very short; canvas HUD."
+  },
+  "hud.hull": {
+    "component": "GameCanvas",
+    "description": "HUD label before the hull plating pips.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.gunsUp": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue after collecting a salvage crate.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.gunsDown": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue when a lost life drops the gun level.",
+    "tone": "neutral",
+    "characterLimit": 35,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.hullUp": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue after collecting hull plating.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.hullHit": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue when hull plating absorbs a hit instead of a life.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488."
   }
 }

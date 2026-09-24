@@ -35,6 +35,7 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   BEAM_HALF_WIDTH,
+  upgradeEvents,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -45,6 +46,7 @@ import type {
   PowerUpType,
   DifficultyTier,
   CarrierEvent,
+  UpgradeEvent,
 } from "../../game/starswarm/types";
 
 const EXPLOSION_DRAW_SIZE = 48;
@@ -101,6 +103,8 @@ interface Props {
   onCarrierExposed?: () => void;
   /** #2485: beam telegraph, beam firing, reinforcement launch. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
+  /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
+  onUpgrade?: (ev: UpgradeEvent) => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -143,6 +147,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
+      onUpgrade,
       isPaused = false,
       width,
       height,
@@ -208,6 +213,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
+    const onUpgradeRef = useRef(onUpgrade);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
     const throwAsteroidRef = useRef(false); // #2486
@@ -255,6 +261,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onCarrierEventRef.current = onCarrierEvent;
     }, [onCarrierEvent]);
+    useEffect(() => {
+      onUpgradeRef.current = onUpgrade;
+    }, [onUpgrade]);
 
     const [renderState, setRenderState] = useState<RenderState>({
       game: gameRef.current,
@@ -438,6 +447,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
               // the wave counter bumps in the same tick the last enemy dies. Detect that bump
               // directly instead of watching for a phase transition.
@@ -752,6 +762,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               />
             )}
 
+            {/* #2488 Hull plating flash — the plating that just took a hit */}
+            {showPlayerShip && player.hullFlashTimer > 0 && (
+              <Circle
+                cx={player.x}
+                cy={playerDisplayY}
+                r={player.width * (0.6 + 0.4 * (1 - player.hullFlashTimer / HIT_FLASH_DURATION))}
+                color={`rgba(0,170,255,${((0.75 * player.hullFlashTimer) / HIT_FLASH_DURATION).toFixed(3)})`}
+                style="stroke"
+                strokeWidth={3}
+              />
+            )}
+
             {/* Lightning super-state electric tint on player ship */}
             {showPlayerShip && state.activePowerUp?.type === "lightning" && (
               <Rect
@@ -801,17 +823,44 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const ly = pu.y - pu.height / 2;
               const pw = pu.width;
               const ph = pu.height;
-              const spriteMap = {
+              const spriteMap: Partial<Record<PowerUpType, typeof images.puShield>> = {
                 shield: images.puShield,
                 bomb: images.puBomb,
                 buddy: images.puBuddy,
                 lightning: images.puLightning,
-              } as const;
+              };
               const sprite = spriteMap[pu.type] ?? null;
               if (sprite) {
                 return (
                   <SkiaImage key={pu.id} image={sprite} x={lx} y={ly} width={pw} height={ph} />
                 );
+              }
+              // #2488 salvage crate (gold) and hull plating (cyan hexagon) — procedural for now
+              if (pu.type === "salvage") {
+                return (
+                  <Group key={pu.id}>
+                    <Rect
+                      x={lx + pw * 0.15}
+                      y={ly + ph * 0.15}
+                      width={pw * 0.7}
+                      height={ph * 0.7}
+                      color="#ffb020"
+                    />
+                    <Rect
+                      x={lx + pw * 0.15}
+                      y={ly + ph * 0.45}
+                      width={pw * 0.7}
+                      height={ph * 0.1}
+                      color="#7a4d08"
+                    />
+                  </Group>
+                );
+              }
+              if (pu.type === "hull") {
+                const hex =
+                  `M${pu.x},${ly} L${lx + pw},${ly + ph * 0.25} L${lx + pw},${ly + ph * 0.75} ` +
+                  `L${pu.x},${ly + ph} L${lx},${ly + ph * 0.75} L${lx},${ly + ph * 0.25} Z`;
+                return <Path key={pu.id} path={hex} color="#00aaff" />;
               }
               // fallback procedural shapes when sprite not yet loaded
               if (pu.type === "shield") {
@@ -918,6 +967,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           <View style={styles.hudDifficulty}>
             <Text style={styles.hudDifficultyText}>
               {`${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`}
+            </Text>
+            {/* #2488 upgrade ladders */}
+            <Text style={styles.hudDifficultyText}>
+              {`${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`}
             </Text>
           </View>
 

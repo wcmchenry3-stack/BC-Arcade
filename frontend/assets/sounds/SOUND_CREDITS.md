@@ -168,6 +168,12 @@ _(Previously placed — provenance to be confirmed)_
 - **Notes:** No new files — kenney.nl is unreachable from the build container. Dedicated Kenney CC0
   stings are tracked in #2492; swap the keys in `sounds.ts` when they land.
 
+### starswarm.salvage / starswarm.hullup / starswarm.hullhit (#2488, reuse)
+
+- **Event:** salvage crate collected (gun level up), hull plating collected, plating absorbs a hit
+- **Files:** reuse `starswarm-powerup-lightning.ogg`, `starswarm-powerup-shield.ogg`, `starswarm-playerhit.ogg`
+- **Notes:** No new files (kenney.nl unreachable from the build container); dedicated stings tracked in #2492.
+
 ### starswarm-bg-1.mp3 — starswarm-bg-4.mp3
 
 - **Event:** Background music (looping ambient track, one chosen at random per game)

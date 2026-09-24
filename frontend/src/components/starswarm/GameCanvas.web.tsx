@@ -34,6 +34,7 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   BEAM_HALF_WIDTH,
+  upgradeEvents,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -43,6 +44,7 @@ import type {
   PowerUpType,
   DifficultyTier,
   CarrierEvent,
+  UpgradeEvent,
 } from "../../game/starswarm/types";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
@@ -227,6 +229,8 @@ interface Props {
   onCarrierExposed?: () => void;
   /** #2485: beam telegraph, beam firing, reinforcement launch. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
+  /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
+  onUpgrade?: (ev: UpgradeEvent) => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -255,6 +259,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
+      onUpgrade,
       isPaused = false,
       onPause,
       width,
@@ -304,6 +309,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
+    const onUpgradeRef = useRef(onUpgrade);
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
@@ -375,6 +381,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onCarrierEventRef.current = onCarrierEvent;
     }, [onCarrierEvent]);
+    useEffect(() => {
+      onUpgradeRef.current = onUpgrade;
+    }, [onUpgrade]);
     useEffect(() => {
       onPauseRef.current = onPause;
     }, [onPause]);
@@ -713,6 +722,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.globalAlpha = 1;
           ctx.lineWidth = 1;
         }
+        // #2488 Hull plating flash — the plating that just took a hit
+        if (player.hullFlashTimer > 0) {
+          const k = player.hullFlashTimer / HIT_FLASH_DURATION;
+          ctx.globalAlpha = 0.75 * k;
+          ctx.strokeStyle = C.shieldRing;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(player.x, playerDisplayY, player.width * (0.6 + 0.4 * (1 - k)), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
+        }
 
         // Lightning super-state electric tint
         if (state.activePowerUp?.type === "lightning") {
@@ -774,6 +795,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         } else if (pu.type === "buddy") {
           ctx.fillStyle = C.powerUpBuddy;
           ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
+        } else if (pu.type === "salvage") {
+          // #2488 salvage crate — gold with a strap
+          ctx.fillStyle = "#ffb020";
+          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.15, pw * 0.7, ph * 0.7);
+          ctx.fillStyle = "#7a4d08";
+          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.45, pw * 0.7, ph * 0.1);
+        } else if (pu.type === "hull") {
+          // #2488 hull plating — cyan hexagon
+          ctx.fillStyle = "#00aaff";
+          ctx.beginPath();
+          ctx.moveTo(pu.x, ly);
+          ctx.lineTo(lx + pw, ly + ph * 0.25);
+          ctx.lineTo(lx + pw, ly + ph * 0.75);
+          ctx.lineTo(pu.x, ly + ph);
+          ctx.lineTo(lx, ly + ph * 0.75);
+          ctx.lineTo(lx, ly + ph * 0.25);
+          ctx.closePath();
+          ctx.fill();
         } else {
           ctx.fillStyle = C.powerUpLightning;
           ctx.beginPath();
@@ -851,6 +890,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         `${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`,
         width / 2,
         26
+      );
+      // #2488 upgrade ladders
+      ctx.fillText(
+        `${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`,
+        width / 2,
+        38
       );
 
       // Phase overlays
@@ -1050,6 +1095,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

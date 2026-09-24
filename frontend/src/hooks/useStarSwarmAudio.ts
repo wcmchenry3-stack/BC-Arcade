@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useSound } from "../game/_shared/useSound";
 import { useBackgroundMusic } from "../game/_shared/useBackgroundMusic";
 import { STARSWARM_SOUNDS } from "../game/starswarm/sounds";
-import type { CarrierEvent, PowerUpType } from "../game/starswarm/types";
+import type { CarrierEvent, PowerUpType, UpgradeEvent } from "../game/starswarm/types";
 
 const BG_KEYS = ["starswarm.bg1", "starswarm.bg2", "starswarm.bg3", "starswarm.bg4"] as const;
 
@@ -22,6 +22,9 @@ export interface SfxVolumes {
   beamcharge: number;
   beamfire: number;
   reinforce: number;
+  salvage: number;
+  hullup: number;
+  hullhit: number;
 }
 
 export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
@@ -40,6 +43,9 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   beamcharge: 0.7,
   beamfire: 0.5,
   reinforce: 0.6,
+  salvage: 0.8,
+  hullup: 0.8,
+  hullhit: 0.7,
 };
 
 // bgMusicActive should be false when the game is over so the track stops.
@@ -95,6 +101,20 @@ export function useStarSwarmAudio(
   const { play: playBeamFire } = useSound("starswarm.beamfire", STARSWARM_SOUNDS, v.beamfire);
   const { play: playReinforce } = useSound("starswarm.reinforce", STARSWARM_SOUNDS, v.reinforce);
 
+  const { play: playSalvage } = useSound("starswarm.salvage", STARSWARM_SOUNDS, v.salvage);
+  const { play: playHullUp } = useSound("starswarm.hullup", STARSWARM_SOUNDS, v.hullup);
+  const { play: playHullHit } = useSound("starswarm.hullhit", STARSWARM_SOUNDS, v.hullhit);
+
+  // #2488: ladder changes — gunsDown reuses the hull-hit sting (it comes with a lost life)
+  const playUpgrade = useCallback(
+    (ev: UpgradeEvent) => {
+      if (ev.kind === "gunsUp") playSalvage();
+      else if (ev.kind === "hullUp") playHullUp();
+      else if (ev.kind === "hullHit") playHullHit();
+    },
+    [playSalvage, playHullUp, playHullHit]
+  );
+
   // #2485: one entry point for the Carrier's moments
   const playCarrierEvent = useCallback(
     (kind: CarrierEvent) => {
@@ -110,7 +130,8 @@ export function useStarSwarmAudio(
       if (type === "lightning") playPowerUpLightning();
       else if (type === "shield") playPowerUpShield();
       else if (type === "buddy") playPowerUpBuddy();
-      else playPowerUpBomb();
+      else if (type === "bomb") playPowerUpBomb();
+      // salvage / hull (#2488) are announced through playUpgrade instead
     },
     [playPowerUpLightning, playPowerUpShield, playPowerUpBuddy, playPowerUpBomb]
   );
@@ -127,5 +148,6 @@ export function useStarSwarmAudio(
     playPerfect,
     stopPerfect,
     playCarrierEvent,
+    playUpgrade,
   };
 }

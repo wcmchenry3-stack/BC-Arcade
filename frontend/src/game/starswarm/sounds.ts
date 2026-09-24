@@ -34,6 +34,13 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.beamfire": require("../../../assets/sounds/starswarm-laser.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.reinforce": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
+  // #2488 in-run upgrades — reuse existing Kenney CC0 files until dedicated SFX land (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.salvage": require("../../../assets/sounds/starswarm-powerup-lightning.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.hullup": require("../../../assets/sounds/starswarm-powerup-shield.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.hullhit": require("../../../assets/sounds/starswarm-playerhit.ogg"),
   // Background music tracks
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),
