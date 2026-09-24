@@ -149,9 +149,9 @@ _(Previously placed — provenance to be confirmed)_
 - **Download date:** 2026-04-26
 - **Notes:** Force-field deflection sound. Signals a shield/hull hit without sounding like a full explosion.
 
-### starswarm-freefirezone.ogg (`starswarm.bosswave`)
+### starswarm-freefirezone.ogg (`starswarm.bosswave`, `starswarm.rout`)
 
-- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); also reused by `starswarm.reinforce`
+- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); grunt rout (#2489); also reused by `starswarm.reinforce`
 - **Original filename:** `phaserUp5.ogg`
 - **Source:** Kenney Digital Audio (www.kenney.nl)
 - **License:** Creative Commons Zero (CC0)

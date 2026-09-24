@@ -104,6 +104,8 @@ const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
   ["Reinforcements launched", "reinforced"],
   ["Armor deflections", "armorDeflects"],
   ["Beam hits on player", "beamHits"],
+  ["Rout caught", "routCaught"],
+  ["Rout escaped", "routEscaped"],
   ["Rocks spawned", "rocksSpawned"],
   ["Rocks broken by player", "rocksBrokenByPlayer"],
   ["Rocks broken by enemies", "rocksBrokenByEnemy"],
@@ -141,6 +143,7 @@ export default function StarSwarmScreen() {
   const [devAsteroidsOff, setDevAsteroidsOff] = useState(false); // #2486
   const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
   const [devFlakOff, setDevFlakOff] = useState(false); // #2491
+  const [devRoutOff, setDevRoutOff] = useState(false); // #2489
   // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
   const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
 
@@ -184,6 +187,7 @@ export default function StarSwarmScreen() {
     playWaveClear,
     playGameOver,
     playBossWave,
+    playRout,
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
@@ -236,6 +240,15 @@ export default function StarSwarmScreen() {
     playBossWave();
     AccessibilityInfo.announceForAccessibility(t("a11y.bossWave"));
   }, [playBossWave, t]);
+
+  // #2489: the rout has its banner, but the count is worth speaking — it's what to chase.
+  const handleRout = useCallback(
+    (count: number) => {
+      playRout();
+      AccessibilityInfo.announceForAccessibility(t("a11y.rout", { count }));
+    },
+    [playRout, t]
+  );
 
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
@@ -443,6 +456,7 @@ export default function StarSwarmScreen() {
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
               onBossWave={handleBossWave}
+              onRout={handleRout}
               onCarrierExposed={handleCarrierExposed}
               onCarrierEvent={handleCarrierEvent}
               onUpgrade={handleUpgrade}
@@ -469,6 +483,7 @@ export default function StarSwarmScreen() {
                       asteroidsDisabled: devAsteroidsOff,
                       dodgeDisabled: devDodgeOff,
                       flakDisabled: devFlakOff,
+                      routDisabled: devRoutOff,
                     }
                   : undefined
               }
@@ -622,6 +637,11 @@ export default function StarSwarmScreen() {
                 <Switch value={devFlakOff} onValueChange={setDevFlakOff} />
               </View>
 
+              <View style={styles.devRow}>
+                <Text style={dynamicStyles.devLabel}>Rout off</Text>
+                <Switch value={devRoutOff} onValueChange={setDevRoutOff} />
+              </View>
+
               <Pressable
                 style={styles.devActionBtn}
                 onPress={handleKillEscorts}
@@ -718,6 +738,7 @@ export default function StarSwarmScreen() {
                   ["Salvage", "salvage"],
                   ["Hull up", "hullup"],
                   ["Hull hit", "hullhit"],
+                  ["Rout", "rout"],
                 ] as [string, keyof SfxVolumes][]
               ).map(([label, key]) => (
                 <View key={key} style={styles.devRow}>

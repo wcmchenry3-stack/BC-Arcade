@@ -30,8 +30,10 @@ helper for the armor state; the screen announces `a11y.carrierExposed` when it d
 ## Wave Structure (#2490)
 
 Every wave opens on a swoop-in, a 3-second countdown, then combat; the next wave starts the
-instant the last enemy dies (the "MISSION COMPLETE" banner is cosmetic). Clearing wave _n_ pays
-`500 × n × difficultyMultiplier`.
+instant no enemy is alive — killed or escaped (the "MISSION COMPLETE" banner is cosmetic). Clearing
+wave _n_ pays `500 × n × difficultyMultiplier`. A wave ends one of two ways: every ship is shot
+down, or the leaders die first and the surviving grunts rout (below) — caught or escaped, they are
+gone within a few seconds either way.
 
 **Boss waves** — wave 5, then every 4th (5, 9, 13, …; `isBossWave`) — are the Carrier and its four
 Boss escorts and nothing else: a short, hostile stage of its own.
@@ -84,6 +86,25 @@ the leaderboard stays fair.
 - HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
 - Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
 - Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
+
+## Grunt Rout (#2489)
+
+The moment no Elite, Boss or Carrier is left alive in the Playing phase and at least one grunt is,
+the wave's grunts break and run: `state.routed` latches for the wave and every surviving grunt in
+any phase but swoop-in enters `Fleeing` — a cubic path from where it is to off-screen top on its
+nearer side, 1.5–2.1 s long (× 1.4 on Ensign) after a 0–375 ms hesitation. A reinforcement still
+swooping in when it happens runs the moment it lands. Fleeing grunts never shoot, dive or ram;
+they still roll to dodge rocks and can be struck by them.
+
+- **Caught** on the way out: `TIER_SCORE.Grunt × 2` (the dive multiplier) and `runStats.routCaught`.
+- **Escaped** (`pathT ≥ 1`): removed with no score, `runStats.routEscaped`. The wave clears once
+  nothing is alive, escapes included.
+- The ≤3-survivor straggler rule stands down for a routed set; it still engages when an Elite or
+  Boss is among the survivors (the grunts don't rout then).
+- Boss waves have no grunts, so nothing routs there. Killing the leaders last farms nothing: the
+  Carrier's reinforcement cap bounds how many grunts can exist, and each caught one pays double.
+- "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a `starswarm.rout` sting and an
+  `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
 
 ## Hazards: Errant Asteroids (#2486)
 
@@ -140,8 +161,8 @@ Two sets of counters live on the engine state, both carried across waves and res
 - `runStats` (whole run): reinforcements launched, armor deflections (ordinary shots the escorted
   Carrier shrugged off), beam hits on the player (sweeps that cost plating or a life — a
   shield-absorbed sweep is not one), rocks spawned, rocks broken by the player's shots and by
-  enemy shots (flak included; a bomb or a hull shatter credits nobody). `routCaught` /
-  `routEscaped` are reserved for the grunt rout (#2489) and stay 0 until it lands.
+  enemy shots (flak included; a bomb or a hull shatter credits nobody), and fleeing grunts caught
+  (shot or bombed) or escaped (#2489).
 
 `dodgeRateByTier(state)` is the pure selector the dev panel and the breadcrumb share: one row per
 tier with the base odds, the effective odds at this run's difficulty, and the counts.

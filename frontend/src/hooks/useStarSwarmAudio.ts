@@ -24,6 +24,7 @@ export interface SfxVolumes {
   salvage: number;
   hullup: number;
   hullhit: number;
+  rout: number;
 }
 
 export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
@@ -44,6 +45,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   salvage: 0.8,
   hullup: 0.8,
   hullhit: 0.7,
+  rout: 0.8,
 };
 
 // bgMusicActive should be false when the game is over so the track stops.
@@ -93,6 +95,7 @@ export function useStarSwarmAudio(
   const { play: playSalvage } = useSound("starswarm.salvage", STARSWARM_SOUNDS, v.salvage);
   const { play: playHullUp } = useSound("starswarm.hullup", STARSWARM_SOUNDS, v.hullup);
   const { play: playHullHit } = useSound("starswarm.hullhit", STARSWARM_SOUNDS, v.hullhit);
+  const { play: playRout } = useSound("starswarm.rout", STARSWARM_SOUNDS, v.rout); // #2489
 
   // #2488: ladder changes — gunsDown reuses the hull-hit sting (it comes with a lost life)
   const playUpgrade = useCallback(
@@ -133,6 +136,7 @@ export function useStarSwarmAudio(
     playWaveClear,
     playGameOver,
     playBossWave,
+    playRout,
     playBonusLife,
     playCarrierEvent,
     playUpgrade,

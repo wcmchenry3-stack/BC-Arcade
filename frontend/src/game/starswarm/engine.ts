@@ -144,6 +144,13 @@ export function waveClearBonusPoints(wave: number, difficulty: DifficultyTier): 
 // Score diving enemies get a 2× multiplier.
 const DIVE_SCORE_MULT = 2;
 
+// #2489: grunt rout — once no Elite, Boss or Carrier is left alive, surviving grunts break and run
+// for the top edge. Catch one on the way out for 2× (the dive multiplier); an escape pays nothing.
+export const FLEE_DURATION_MIN = 1500; // ms along the flee path
+export const FLEE_DURATION_MAX = 2100;
+export const FLEE_STAGGER_MAX = 375; // ms a grunt hesitates before bolting
+export const FLEE_ENSIGN_SCALE = 1.4; // slower on Ensign — easier to catch
+
 // #944 Dive/circle shooting
 const DIVE_SHOOT_INTERVAL = 1500; // ms between shots while Diving or Circling
 
@@ -541,6 +548,18 @@ function returnPath(ex: number, ey: number, fx: number, fy: number): CubicBezier
   };
 }
 
+/** #2489: from where the grunt is to off-screen top on its nearer side — a lift, then a bolt. */
+function fleePath(x: number, y: number, canvasW: number): CubicBezier {
+  const endX = x < canvasW / 2 ? -60 : canvasW + 60;
+  const endY = -60;
+  return {
+    p0: { x, y },
+    p1: { x: x + (endX - x) * 0.15, y: y - 40 - rng() * 30 },
+    p2: { x: endX - (endX - x) * 0.25, y: endY + 80 },
+    p3: { x: endX, y: endY },
+  };
+}
+
 // #977: wide Bézier arc for Diving phase — sweeps outward before descending
 // shallow=true produces an Elite Phase-1 dive that stays above 60% canvas height
 function divePath(enemy: Enemy, targetX: number, canvasH: number, shallow = false): CubicBezier {
@@ -754,7 +773,8 @@ function rocksStrikeEnemies(
     if (rock.hp <= 0) continue;
     for (let ei = 0; ei < outEnemies.length; ei++) {
       const e = outEnemies[ei]!;
-      if (!e.isAlive || e.pathT < 0 || rock.hitEnemyIds.includes(e.id)) continue;
+      if (!e.isAlive || (e.pathT < 0 && e.phase !== "Fleeing") || rock.hitEnemyIds.includes(e.id))
+        continue;
       if (!collideCircleAABB(rock.x, rock.y, rock.radius, e.x, e.y, e.width, e.height)) continue;
       if (e.tier === "Carrier") {
         outEnemies[ei] = { ...e, hitFlashTimer: HIT_FLASH_DURATION };
@@ -1004,7 +1024,7 @@ export function killEscorts(state: StarSwarmState): StarSwarmState {
   return { ...state, enemies, explosions };
 }
 
-const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning"]);
+const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning", "Fleeing"]);
 
 /** Where the ship will be `ms` from now: on its path if it has one, else where it is. */
 function predictEnemyPos(e: Enemy, ms: number): Vec2 {
@@ -1107,7 +1127,9 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
       const t = e.dodge.t + dtMs;
       e = t >= e.dodge.dur ? { ...e, dodge: null } : { ...e, dodge: { ...e.dodge, t } };
     }
-    if (rocks.length === 0 || e.pathT < 0) return e;
+    // pathT < 0 means "still off screen" for a swoop-in — a fleeing grunt in its stagger is on
+    // screen and fair game (#2489)
+    if (rocks.length === 0 || (e.pathT < 0 && e.phase !== "Fleeing")) return e;
 
     for (const a of rocks) {
       // Flak: a formation ship shoots at a rock coming its way
@@ -1401,6 +1423,8 @@ function buildWaveState(
     bossDeepThresholdCrossed: false,
     stragglerEnabled,
     pauseStraggler: false,
+    routed: false,
+    routDisabled: false,
     bombFlashTimer: 0,
     difficulty,
     playerFireDisabled: false,
@@ -1623,6 +1647,16 @@ export function reinforcementsJustLaunched(prev: StarSwarmState, next: StarSwarm
   return next.wave === prev.wave && next.reinforcedThisWave > prev.reinforcedThisWave;
 }
 
+/** #2489: true on the tick the wave's grunts break and run. */
+export function routJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.wave === prev.wave && next.routed && !prev.routed;
+}
+
+/** #2489: live grunts currently fleeing — the banner shows while this is > 0. */
+export function fleeingCount(state: StarSwarmState): number {
+  return state.enemies.filter((e) => e.isAlive && e.phase === "Fleeing").length;
+}
+
 /** #2485: reinforcements are capped at half the wave's grunt slots. */
 export function reinforceCap(wave: number): number {
   return Math.floor(waveSlots(wave).filter((s) => s.tier === "Grunt").length / 2);
@@ -1677,6 +1711,8 @@ function tickSingleEnemy(
       return tickCircling(enemy, dtMs, playerX, playerY);
     case "Returning":
       return tickReturning(enemy, dtMs);
+    case "Fleeing":
+      return tickFleeing(enemy, dtMs);
   }
 }
 
@@ -2022,6 +2058,38 @@ function tickReturning(enemy: Enemy, dtMs: number): EnemyTickResult {
   return { enemy: { ...enemy, x: pos.x, y: pos.y, pathT: newT }, bullet: null };
 }
 
+/** #2489: a grunt breaking for the top edge. It never shoots; reaching the end of the path is an
+ * escape — the ship is removed with no score (tickEnemies counts it as routEscaped). */
+function tickFleeing(enemy: Enemy, dtMs: number): EnemyTickResult {
+  const newT = enemy.pathT + dtMs / enemy.pathDuration;
+  if (newT < 0) {
+    // Hesitating before it bolts — still where it was, still shootable
+    return { enemy: { ...enemy, pathT: newT }, bullet: null };
+  }
+  if (newT >= 1) {
+    return { enemy: { ...enemy, isAlive: false, hp: 0, pathT: 1, hitFlashTimer: 0 }, bullet: null };
+  }
+  const pos = evalCubic(enemy.path!, newT);
+  return { enemy: { ...enemy, x: pos.x, y: pos.y, pathT: newT }, bullet: null };
+}
+
+/** #2489: put a grunt on its flee path from wherever it is — any phase but SwoopIn. */
+function startFleeing(e: Enemy, canvasW: number, difficulty: DifficultyTier): Enemy {
+  const scale = difficulty === "Ensign" ? FLEE_ENSIGN_SCALE : 1;
+  const duration = (FLEE_DURATION_MIN + rng() * (FLEE_DURATION_MAX - FLEE_DURATION_MIN)) * scale;
+  const stagger = rng() * FLEE_STAGGER_MAX;
+  return {
+    ...e,
+    phase: "Fleeing",
+    path: fleePath(e.x, e.y, canvasW),
+    pathT: -stagger / duration,
+    pathDuration: duration,
+    dodge: null,
+    wiggleTimer: 0,
+    burstShotsLeft: 0,
+  };
+}
+
 function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #1030: bossThresholdCrossed latches true once ≤35% non-boss enemies remain
   const aliveNonBoss = state.enemies.filter((e) => e.isAlive && !isLeaderTier(e.tier)).length;
@@ -2041,6 +2109,29 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       aliveAll > 0 &&
       aliveAll <= 3);
 
+  // #2489: grunt rout — the moment nothing but grunts is left alive (Elites count as leaders here,
+  // unlike isLeaderTier), every surviving grunt breaks for the top edge. Decided on the tick's
+  // starting roster, before anything shoots or dives, so the trigger tick fires no last volley.
+  // Latched for the wave, and re-applied every tick so a reinforcement still swooping in when it
+  // happens runs too, the moment it lands.
+  let routed = state.routed;
+  if (
+    !routed &&
+    !state.routDisabled &&
+    state.phase === "Playing" &&
+    state.enemies.some((e) => e.isAlive && e.tier === "Grunt") &&
+    !state.enemies.some((e) => e.isAlive && e.tier !== "Grunt")
+  ) {
+    routed = true;
+  }
+  const roster = routed
+    ? state.enemies.map((e) =>
+        e.isAlive && e.tier === "Grunt" && e.phase !== "SwoopIn" && e.phase !== "Fleeing"
+          ? startFleeing(e, state.canvasW, state.difficulty)
+          : e
+      )
+    : state.enemies;
+
   // #926 Dive AI: pick up to maxDivers(wave) formation enemies to send diving
   let nextDiveTimer = state.nextDiveTimer;
   const diveIndices = new Set<number>();
@@ -2050,7 +2141,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (nextDiveTimer <= 0) {
       nextDiveTimer = diveInterval(state.wave, difficultyParamScale(state.difficulty));
       // #978/#1030: Boss only eligible once bossThresholdCrossed
-      const candidates = state.enemies
+      const candidates = roster
         .map((e, i) => ({ e, i }))
         .filter(
           ({ e }) =>
@@ -2060,7 +2151,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
             (e.tier !== "Boss" || bossThresholdCrossed)
         );
       // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
-      const currentDivers = state.enemies.filter((e) => e.isAlive && e.phase === "Diving").length;
+      const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
       const allowedNew = Math.max(0, maxDivers(state.wave) - currentDivers);
       for (let k = 0; k < allowedNew && candidates.length > 0; k++) {
         const pick = Math.floor(rng() * candidates.length);
@@ -2096,7 +2187,8 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     alone: !state.enemies.some((e) => e.isAlive && e.tier !== "Carrier"),
     bossWave: isBossWave(state.wave), // #2490
   };
-  let enemies = state.enemies.map((enemy, idx) => {
+  let routEscaped = 0; // #2489: fleeing grunts that reached the edge this tick
+  let enemies = roster.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
     const result = tickSingleEnemy(
       enemy,
@@ -2112,6 +2204,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       carrierCtx
     );
     let e = result.enemy;
+    if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
     // Apply sway offset to enemies holding Formation position
     // #979: Boss sways ±BOSS_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
@@ -2186,10 +2279,13 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     }
   }
 
+  if (routEscaped > 0) runStats = bumpRun(runStats, { routEscaped });
+
   // #1031: straggler aggression — when ≤3 enemies survive in a Playing wave,
   // all Formation enemies immediately start wiggling
   // #1039: pauseStraggler dev-panel toggle suppresses this
-  if (state.stragglerEnabled && !state.pauseStraggler && state.phase === "Playing") {
+  // #2489: a routed survivor set is fleeing, not fighting — the rule stands down
+  if (state.stragglerEnabled && !state.pauseStraggler && state.phase === "Playing" && !routed) {
     const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
     if (aliveCount > 0 && aliveCount <= 3) {
       enemies = enemies.map((e) => {
@@ -2217,6 +2313,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     reinforceTimer,
     reinforcedThisWave,
     runStats,
+    routed,
   };
 }
 
@@ -2370,6 +2467,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   let tierStats: Record<EnemyTier, TierStats> = { ...state.tierStats }; // #2487
   let runStats = state.runStats; // #2491
   let armorDeflects = 0;
+  let routCaught = 0; // #2489
   // #2488: in-run upgrade ladders — pickups raise them, a lost life lowers the guns, plating
   // absorbs a hit; pickups spawned this tick (salvage from rocks, plating from the Carrier)
   let guns: GunsLevel = player.guns;
@@ -2409,7 +2507,11 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         if (enemy.tier === "Carrier")
           newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
         const base = TIER_SCORE[enemy.tier];
-        const mult = enemy.phase === "Diving" || enemy.phase === "Circling" ? DIVE_SCORE_MULT : 1;
+        // #2489: a fleeing grunt pays the dive multiplier — it was getting away
+        const onTheMove =
+          enemy.phase === "Diving" || enemy.phase === "Circling" || enemy.phase === "Fleeing";
+        const mult = onTheMove ? DIVE_SCORE_MULT : 1;
+        if (enemy.phase === "Fleeing") routCaught++;
         score += Math.round(base * mult * scoreMult);
         if (state.phase === "Playing") killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
@@ -2422,6 +2524,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   });
 
   if (armorDeflects > 0) runStats = bumpRun(runStats, { armorDeflects });
+  if (routCaught > 0) runStats = bumpRun(runStats, { routCaught });
 
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
   let playerBullets: Bullet[] = state.playerBullets.filter((b) => !hitBulletIds.has(b.id));
@@ -2502,6 +2605,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       bombActivated = true;
       bombFlashTimer = BOMB_FLASH_DURATION;
       rocks = rocks.map((a) => ({ ...a, hp: 0, shattered: true })); // #2486: the blast clears rocks too
+      let bombCaught = 0;
       const armoredNow = carrierArmoredIn(enemies);
       enemies = enemies.map((e) => {
         if (!e.isAlive) return e;
@@ -2512,12 +2616,14 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           newExplosions.push(spawnExplosion(e.x, e.y));
           // #2488: the Carrier drops plating however it dies
           if (e.tier === "Carrier") newDrops.push(makePickup("hull", e.x, e.y, state.canvasH));
+          if (e.phase === "Fleeing") bombCaught++; // #2489: caught is caught, even at 1×
           score += Math.round(TIER_SCORE[e.tier] * scoreMult); // no dive multiplier for bomb kills
           if (state.phase === "Playing") killsSinceLastDrop++;
           return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
         }
         return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
       });
+      if (bombCaught > 0) runStats = bumpRun(runStats, { routCaught: bombCaught });
     } else if (collected.type === "buddy") {
       // #1035: spawn a buddy ship
       const aliveEnemies = enemies.filter((e) => e.isAlive);
