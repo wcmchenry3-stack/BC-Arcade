@@ -369,15 +369,15 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
 - **Regression checks** (14) hold a metric at its `baseline.json` value:
   H0 "equals the baseline" against H1 "moved by δ" (3pp for win shares,
   2–4pp for behaviour rates), both directions, each side at α/2.
-- **Separation checks** (5) are signed hypotheses written into `gate.ts`
+- **Separation checks** (6) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
   (H0) against "no difference" (H1). A reversed or vanished separation fails;
   a larger one passes. The report prints the difference with its CI.
 
-All 19 checks are one family, **Bonferroni-corrected**: each runs at
-α = 0.05/19 ≈ 0.0026 with β = 0.05, so a behaviour-neutral change fails the
+All 20 checks are one family, **Bonferroni-corrected**: each runs at
+α = 0.05/20 = 0.0025 with β = 0.05, so a behaviour-neutral change fails the
 gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
-of the time. CIs in the report use the same adjusted level (99.74%).
+of the time. CIs in the report use the same adjusted level (99.75%).
 
 **How a run proceeds.** Each group adds 200 blocks to every matchup, then
 evaluates its undecided checks. A check's decision is final the first time
@@ -444,8 +444,8 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 
 | Group     | Games per block | Stopped at (cap)     | Wall-clock |
 | --------- | --------------- | -------------------- | ---------- |
-| `presets` | 6               | 3,400 blocks (8,000) | ~2 min     |
-| `field`   | 9               | 1,600 blocks (6,000) | ~1.5 min   |
+| `presets` | 6               | 5,800 blocks (8,000) | ~3.5 min   |
+| `field`   | 9               | 400 blocks (6,000)   | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 8,000 blocks ×
 6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
@@ -475,30 +475,29 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24, after #2555).** Baseline
+**What the gate measured (2026-09-24, after #2555 and #2234).** Baseline
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds: the human stand-in wins 28.3% at the
-  all-Cautious table, 25.5% at all-Schemer and 23.9% at all-Daring (25.9%
-  at the mixed table). At the mixed table Daring wins 28.2%, Schemer 24.4%,
-  Cautious 21.5%; in the field matchup Daring beats Schemer by +1.5pp and
-  Schemer beats Cautious by +3.2pp.
-- The separation checks pin both adjacent steps of the ladder twice: head
-  to head in the field matchup and at the mixed table (Daring − Schemer
-  +3.7pp, Schemer − Cautious +3.0pp there), plus the Cautious-vs-Schemer
-  table gap for the human. The Schemer-vs-Daring _table_ gap for the human
-  (+1.5pp ± 0.5) is too small for an SPRT inside the block cap, so it is
-  only checked on the baseline when it is re-measured (`gate.test.ts`).
-  #2234/#2235 are expected to widen it.
+- The difficulty ladder holds at every step: the human stand-in wins 28.3%
+  at the all-Cautious table, 25.5% at all-Schemer and 19.3% at all-Daring
+  (24.0% at the mixed table). At the mixed table Daring wins 33.9%, Schemer
+  22.3%, Cautious 19.9%; in the field matchup Daring beats Schemer by
+  +7.7pp and Schemer beats Cautious by +3.2pp. All six steps are
+  separation checks.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
   Cautious's play weights barely moved that; its noise rate did (30% → still
   level with Schemer, 35% → the ladder above, 38% → a 30% human win share).
-- Daring: moon attempts in 9.2% of hands, paired success 7.2% of attempts;
-  33% of its Q♠ dumps land on the human (Schemer: 34%). Passes that could
-  void a suit do so 20% (Cautious), 65% (Schemer), 83% (Daring) of the time.
+- Before #2234 Daring's moon trigger cost it games (field +1.5pp over
+  Schemer; the human won 23.9% at its table). The new trigger (`moonHand.ts`)
+  attempts rarely from the opening hand and commits once Daring holds every
+  point taken and at least 13 of them: moon attempts in 13.9% of hands,
+  paired success 9.9% of attempts (was 9.2% / 7.2%).
+- 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
+  could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
+  the time.
 
 **Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never

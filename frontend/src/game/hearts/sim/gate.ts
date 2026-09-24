@@ -184,6 +184,10 @@ function winShare(matchup: string, role: string): MetricRef {
  * Both adjacent steps are checked twice: head to head in the field matchup,
  * and at the mixed table the app actually deals.
  *
+ * The Schemer-vs-Daring table step became checkable with #2234: Daring's
+ * moon commitment moved the human's win share at its table from 23.9% to
+ * 19.3% (it was +1.5pp, too small for an SPRT within the cap).
+ *
  * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
  * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
  * and the all-Cautious table the hardest for the human (21.9% vs 25.5%).
@@ -195,7 +199,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Daring outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "daring"),
     right: winShare("field-schemer", "schemer"),
-    expected: 0.015,
+    expected: 0.076,
   },
   {
     kind: "separation",
@@ -211,7 +215,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Daring outwins Schemer",
     left: winShare("table-mixed", "daring"),
     right: winShare("table-mixed", "schemer"),
-    expected: 0.037,
+    expected: 0.115,
   },
   {
     kind: "separation",
@@ -219,7 +223,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Schemer outwins Cautious",
     left: winShare("table-mixed", "schemer"),
     right: winShare("table-mixed", "cautious"),
-    expected: 0.03,
+    expected: 0.024,
   },
   {
     kind: "separation",
@@ -235,7 +239,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "the human wins more at the Schemer table than at the Daring table",
     left: winShare("table-schemer", "proxy"),
     right: winShare("table-daring", "proxy"),
-    expected: 0.01,
+    expected: 0.062,
   },
 ];
 

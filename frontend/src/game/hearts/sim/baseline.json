@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "reason": "#2555: Cautious noise 25% -> 35% to restore the difficulty ladder (Daring > Schemer > Cautious)",
+  "reason": "#2234: rank-aware moon evaluation + commitment after capturing 13 points (Daring much stronger)",
   "generated": "2026-09-24",
   "seed": 1111577413,
   "blocks": {
@@ -21,52 +21,52 @@
       "se": 0.003948787614271284
     },
     "table-daring/proxy/win_share": {
-      "value": 0.239125,
-      "num": 2869.5,
+      "value": 0.19269444444444442,
+      "num": 2312.333333333333,
       "den": 12000,
-      "se": 0.0038696293435000776
+      "se": 0.003573167622605571
     },
     "table-mixed/proxy/win_share": {
-      "value": 0.2593101851851908,
-      "num": 9335.166666666666,
+      "value": 0.23983796296296608,
+      "num": 8634.166666666666,
       "den": 36000,
-      "se": 0.0025725195151875976
+      "se": 0.002469941975796107
     },
     "table-mixed/cautious/win_share": {
-      "value": 0.2146574074074087,
-      "num": 7727.666666666665,
+      "value": 0.1986111111111101,
+      "num": 7149.999999999998,
       "den": 36000,
-      "se": 0.0020795248987638165
+      "se": 0.0020217248134363716
     },
     "table-mixed/schemer/win_share": {
-      "value": 0.24428703703704494,
-      "num": 8794.333333333332,
+      "value": 0.22303703703704025,
+      "num": 8029.333333333332,
       "den": 36000,
-      "se": 0.002156270468838397
+      "se": 0.0020906477173956183
     },
     "table-mixed/daring/win_share": {
-      "value": 0.2817453703703806,
-      "num": 10142.833333333334,
+      "value": 0.3385138888889007,
+      "num": 12186.500000000002,
       "den": 36000,
-      "se": 0.002275404919526748
+      "se": 0.0024014486224754735
     },
     "table-daring/daring/moon_attempt": {
-      "value": 0.0915544839595466,
-      "num": 36909,
-      "den": 403137,
-      "se": 0.00041339252702338696
+      "value": 0.13853622297366308,
+      "num": 54079,
+      "den": 390360,
+      "se": 0.00046378440045792395
     },
     "table-daring/daring/moon_success": {
-      "value": 0.07228589232978988,
-      "num": 2668,
-      "den": 36909,
-      "se": 0.0013426727147164252
+      "value": 0.09941012222858943,
+      "num": 5376,
+      "den": 54079,
+      "se": 0.0012818748650220296
     },
     "table-daring/daring/qs_dump_on_human": {
-      "value": 0.3319906749617138,
-      "num": 24067,
-      "den": 72493,
-      "se": 0.0016857116580046546
+      "value": 0.3304625156437095,
+      "num": 24557,
+      "den": 74311,
+      "se": 0.0016574612430527596
     },
     "table-schemer/schemer/qs_dump_on_human": {
       "value": 0.3350994243851434,
@@ -87,32 +87,36 @@
       "se": 0.0008344257315272926
     },
     "table-daring/daring/void_created": {
-      "value": 0.8342093609811134,
-      "num": 259968,
-      "den": 311634,
-      "se": 0.0006671635158202002
+      "value": 0.8377336386741443,
+      "num": 253143,
+      "den": 302176,
+      "se": 0.0006720401676323966
     }
   },
   "separations": {
-    "field:daring-over-schemer": {
-      "mean": 0.014861111111111205,
-      "se": 0.00316855017215573
-    },
-    "field:schemer-over-cautious": {
-      "mean": 0.031888888888889064,
-      "se": 0.0032336094939525916
-    },
     "mixed:daring-over-schemer": {
-      "mean": 0.037458333333333246,
-      "se": 0.003541628573236511
+      "mean": 0.11547685185185162,
+      "se": 0.003657093561676711
     },
     "mixed:schemer-over-cautious": {
-      "mean": 0.029629629629629547,
-      "se": 0.0033281522635937237
+      "mean": 0.02442592592592603,
+      "se": 0.003193954543414088
     },
     "presets:cautious-table-easier-than-schemer": {
       "mean": 0.02863888888888889,
       "se": 0.005300423209953557
+    },
+    "presets:schemer-table-easier-than-daring": {
+      "mean": 0.061875,
+      "se": 0.004832957593971618
+    },
+    "field:daring-over-schemer": {
+      "mean": 0.07652777777777743,
+      "se": 0.0033686150059782025
+    },
+    "field:schemer-over-cautious": {
+      "mean": 0.031888888888889064,
+      "se": 0.0032336094939525916
     }
   }
 }
