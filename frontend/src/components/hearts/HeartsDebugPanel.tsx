@@ -19,6 +19,7 @@ import {
   passOffset,
 } from "../../game/hearts/debugLog";
 import type { AiPreset } from "../../game/hearts/types";
+import { runPimcBenchmark, type LatencyRow } from "../../game/hearts/pimc/benchmark";
 import { resolvePersona } from "../../game/hearts/types";
 
 interface Props {
@@ -35,6 +36,51 @@ async function copyToClipboard(text: string): Promise<void> {
   if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
     await navigator.clipboard.writeText(text);
   }
+}
+
+/**
+ * PIMC engine timing on this device (#2587): times the engine on 30 real
+ * decision points at 10 / 20 / 40 sampled deals and shows the median, p95
+ * and worst case per move. Budget: under 1 s per move, aiming for 250 ms.
+ */
+function PimcTimingSection() {
+  const { colors } = useTheme();
+  const [rows, setRows] = useState<readonly LatencyRow[] | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const run = async () => {
+    setRows(null);
+    setProgress("0%");
+    const result = await runPimcBenchmark({
+      onProgress: (done, total) => setProgress(`${Math.round((100 * done) / total)}%`),
+    });
+    setRows(result);
+    setProgress(null);
+  };
+  const ms = (x: number) => `${Math.round(x)} ms`;
+  return (
+    <View style={[styles.handSection, { borderColor: colors.border }]}>
+      <Text style={[styles.handTitle, { color: colors.accent }]}>
+        PIMC engine timing ({Platform.OS})
+      </Text>
+      <Pressable
+        style={[styles.copyBtn, { backgroundColor: colors.surfaceAlt, alignSelf: "flex-start" }]}
+        onPress={() => void run()}
+        disabled={progress !== null}
+        accessibilityRole="button"
+        accessibilityLabel="Run the PIMC engine timing benchmark"
+      >
+        <Text style={[styles.copyBtnText, { color: colors.text }]}>
+          {progress !== null ? `Running… ${progress}` : "Run timing"}
+        </Text>
+      </Pressable>
+      {rows?.map((r) => (
+        <Text key={r.samples} style={[styles.handRow, { color: colors.textMuted }]}>
+          <Text style={{ color: colors.text }}>{r.samples} deals: </Text>
+          median {ms(r.p50)} · p95 {ms(r.p95)} · worst {ms(r.max)} ({r.decisions} moves)
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 interface HandSectionProps {
@@ -238,6 +284,7 @@ export default function HeartsDebugPanel({
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}
           keyboardShouldPersistTaps="handled"
         >
+          <PimcTimingSection />
           {logs.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               No hands logged yet. Play a hand to see debug data here.
