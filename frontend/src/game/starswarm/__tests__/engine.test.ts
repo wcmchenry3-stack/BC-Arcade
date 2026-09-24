@@ -34,6 +34,16 @@ import {
   throwAsteroid,
   MAX_ASTEROIDS,
   ASTEROID_STATS,
+  BEAM_CHARGE_MS,
+  BEAM_FIRE_MS,
+  BEAM_INTERVAL_BASE,
+  BEAM_HALF_WIDTH,
+  LONE_FIRE_INTERVAL,
+  carrierBeam,
+  carrierBeamJustStarted,
+  carrierBeamJustFired,
+  reinforcementsJustLaunched,
+  reinforceCap,
 } from "../engine";
 import type {
   Asteroid,
@@ -3000,16 +3010,18 @@ describe("Carrier tier (#2484)", () => {
     expect(seen.has("Formation")).toBe(true);
   });
 
-  it("stays passive: alone on the field it fires nothing", () => {
+  it("holds station when alone: never leaves formation, and a live Carrier keeps the wave open", () => {
+    // (its lone-ship lasers are covered under Carrier actions, #2485)
     let s = settled();
     s = {
       ...s,
       enemies: s.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 })),
       enemyBullets: [],
+      enemyFireDisabled: true,
     };
     for (let t = 0; t < 10_000; t += 16) {
       s = tick(s, 16, NO_INPUT);
-      expect(s.enemyBullets).toHaveLength(0);
+      expect(carrierOf(s)!.phase).toBe("Formation");
     }
     expect(carrierOf(s)!.isAlive).toBe(true);
     expect(s.wave).toBe(1); // a live Carrier keeps the wave open
@@ -3120,7 +3132,13 @@ describe("Carrier tier (#2484)", () => {
       ...s,
       enemies: s.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 })),
       enemyBullets: [], // nothing already in flight from the dead escorts
+      enemyFireDisabled: true, // #2485: its lone-ship lasers are not a ram
       player: { ...s.player, lives: 3, invincibleTimer: 0 },
+    };
+    // #2485: nor is its beam — park it so only a ram could cost a life
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
     };
     const livesBefore = s.player.lives;
     for (let t = 0; t < 15_000; t += 16) s = tick(s, 16, NO_INPUT);
@@ -3175,6 +3193,8 @@ describe("Errant asteroids (#2486)", () => {
       enemyBullets: [],
       asteroids: [],
       player: { ...s.player, lives: 3, invincibleTimer: 0 },
+      // #2485: the Carrier's beam would eventually kill a player parked in its column
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
     };
   }
   const SAFE_Y = 460; // below the deepest formation row, above the player lane
@@ -3375,5 +3395,241 @@ describe("Errant asteroids (#2486)", () => {
     );
     expect(s.asteroids).toHaveLength(0);
     expect(s.explosions.length).toBeGreaterThanOrEqual(s0.explosions.length + 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Carrier actions (#2485)
+// ---------------------------------------------------------------------------
+
+describe("Carrier actions (#2485)", () => {
+  /** Mid-wave, nobody else shooting, player parked well left of the Carrier's column. */
+  function quiet(difficulty: DifficultyTier = "LieutenantJG"): StarSwarmState {
+    const s = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, difficulty), 8000);
+    return {
+      ...s,
+      enemyFireDisabled: true,
+      enemyBullets: [],
+      asteroids: [],
+      asteroidsDisabled: true,
+      player: { ...s.player, x: 40, lives: 3, invincibleTimer: 0 },
+    };
+  }
+  const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
+  const carrierOf = (s: StarSwarmState) =>
+    s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+  const killAllBut = (s: StarSwarmState, keep: (e: (typeof s.enemies)[number]) => boolean) => ({
+    ...s,
+    enemies: s.enemies.map((e) => (keep(e) ? e : { ...e, isAlive: false, hp: 0 })),
+  });
+
+  it("beam cycles idle → charge (600 ms) → fire (1200 ms) → idle on the base cadence", () => {
+    let s = quiet();
+    expect(s.phase).toBe("Playing");
+    expect(carrierBeam(s)).toBeNull();
+    const seen: { phase: string; at: number }[] = [];
+    let t = 0;
+    let chargeAt = -1;
+    let fireAt = -1;
+    while (t < BEAM_INTERVAL_BASE + BEAM_CHARGE_MS + BEAM_FIRE_MS + 2000) {
+      const prev = s;
+      s = tick(s, 16, ASIDE);
+      t += 16;
+      const c = carrierOf(s);
+      if (seen.length === 0 || seen[seen.length - 1]!.phase !== c.beamPhase) {
+        seen.push({ phase: c.beamPhase, at: t });
+      }
+      if (carrierBeamJustStarted(prev, s)) chargeAt = t;
+      if (carrierBeamJustFired(prev, s)) fireAt = t;
+    }
+    const order = seen.map((x) => x.phase);
+    expect(order.slice(0, 4)).toEqual(["idle", "charge", "fire", "idle"]);
+    expect(chargeAt).toBeGreaterThan(0);
+    expect(fireAt - chargeAt).toBeGreaterThanOrEqual(BEAM_CHARGE_MS - 16);
+    expect(fireAt - chargeAt).toBeLessThanOrEqual(BEAM_CHARGE_MS + 32);
+    const idleAgain = seen[3]!.at;
+    expect(idleAgain - fireAt).toBeGreaterThanOrEqual(BEAM_FIRE_MS - 16);
+    expect(idleAgain - fireAt).toBeLessThanOrEqual(BEAM_FIRE_MS + 32);
+    // and it never shot a bullet while doing so (beam is not a bullet)
+    expect(s.enemyBullets).toHaveLength(0);
+  });
+
+  it("carrierBeam() reports position and progress while charging or firing", () => {
+    const s = quiet();
+    const c = carrierOf(s);
+    const charging = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === c.id ? { ...e, beamPhase: "charge" as const, beamTimer: BEAM_CHARGE_MS / 2 } : e
+      ),
+    };
+    const b = carrierBeam(charging)!;
+    expect(b.phase).toBe("charge");
+    expect(b.x).toBe(c.x);
+    expect(b.y).toBe(c.y + c.height / 2);
+    expect(b.progress).toBeCloseTo(0.5, 5);
+  });
+
+  it("a firing beam costs a life in its column, misses beside it; shield holds; invincibility ignores", () => {
+    const base = quiet();
+    const c = carrierOf(base);
+    const firing = (s: StarSwarmState, playerX: number, invincibleTimer = 0) => ({
+      ...s,
+      player: { ...s.player, x: playerX, invincibleTimer },
+      enemies: s.enemies.map((e) =>
+        e.id === c.id ? { ...e, beamPhase: "fire" as const, beamTimer: BEAM_FIRE_MS } : e
+      ),
+    });
+    const inBeam: StarSwarmInput = { playerX: c.x, fire: false };
+    let s = tick(firing(base, c.x), 16, inBeam);
+    expect(s.player.lives).toBe(2);
+
+    const beside: StarSwarmInput = {
+      playerX: c.x + BEAM_HALF_WIDTH + PLAYER_HURT_RADIUS + 6,
+      fire: false,
+    };
+    s = tick(firing(base, beside.playerX), 16, beside);
+    expect(s.player.lives).toBe(3);
+
+    s = tick(firing(applyPowerUp(base, "shield"), c.x), 16, inBeam);
+    expect(s.player.lives).toBe(3);
+
+    s = tick(firing(base, c.x, 5000), 16, inBeam);
+    expect(s.player.lives).toBe(3);
+  });
+
+  it("a shield holds off the beam but never a ship ramming through it (#1033 rule)", () => {
+    const base = applyPowerUp(quiet(), "shield");
+    const c = carrierOf(base);
+    const grunt = base.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
+    const inBeam: StarSwarmInput = { playerX: c.x, fire: false };
+    const ram = { x: c.x, y: base.player.y };
+    // shielded, parked in the firing beam's column, with a Grunt right on top of the ship
+    let s = {
+      ...base,
+      player: { ...base.player, x: c.x },
+      enemies: base.enemies.map((e) =>
+        e.id === c.id
+          ? { ...e, beamPhase: "fire" as const, beamTimer: BEAM_FIRE_MS }
+          : e.id === grunt.id
+            ? {
+                ...e,
+                // circling on a zero-radius loop centred on the player = a ship sitting on it
+                phase: "Circling" as const,
+                x: ram.x,
+                y: ram.y,
+                circleCx: ram.x,
+                circleCy: ram.y,
+                circleRadius: 0,
+                circleAngle: 0,
+              }
+            : e
+      ),
+    };
+    s = tick(s, 16, inBeam);
+    expect(s.player.lives).toBe(2); // the ram still costs a life…
+    expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false); // …and kills the rammer
+    expect(s.activePowerUp?.type).toBe("shield"); // the beam itself was absorbed, shield intact
+  });
+
+  it("stays silent while anything else lives, then fires twin aimed lasers when alone", () => {
+    let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
+    const c = carrierOf(s);
+    const grunt = s.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
+    s = killAllBut(s, (e) => e.id === c.id || e.id === grunt.id);
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === grunt.id ? { ...e, shootTimer: 1e9 } : e.id === c.id ? { ...e, shootTimer: 0 } : e
+      ),
+    };
+    for (let t = 0; t < 3000; t += 16) {
+      s = tick(s, 16, ASIDE);
+      expect(s.enemyBullets).toHaveLength(0);
+    }
+    // now alone
+    s = killAllBut(s, (e) => e.id === c.id);
+    let volleyAt = -1;
+    for (let t = 0; t < LONE_FIRE_INTERVAL + 100 && volleyAt < 0; t += 16) {
+      s = tick(s, 16, ASIDE);
+      if (s.enemyBullets.length > 0) volleyAt = t;
+    }
+    expect(volleyAt).toBeGreaterThanOrEqual(0);
+    expect(s.enemyBullets).toHaveLength(2);
+    const xs = s.enemyBullets.map((b) => b.x).sort((a, b) => a - b);
+    const cx = carrierOf(s).x;
+    expect(xs[1]! - xs[0]!).toBeCloseTo(28, 0);
+    // fired from ±14 px of the Carrier's centre, then one tick of aimed drift toward the player
+    expect(Math.abs((xs[0]! + xs[1]!) / 2 - cx)).toBeLessThan(8);
+    // aimed at the player parked off to the left: both drift left while descending
+    expect(s.enemyBullets.every((b) => b.vx < 0 && b.vy > 0)).toBe(true);
+  });
+
+  it("launches 2–4 reinforcements into empty grunt slots, capped at half the grunt slots", () => {
+    let s = quiet();
+    const gruntSlots = s.enemies.filter((e) => e.tier === "Grunt").length;
+    expect(reinforceCap(1)).toBe(Math.floor(gruntSlots / 2));
+    const killed = s.enemies.filter((e) => e.tier === "Grunt").slice(0, 10);
+    const killedIds = new Set(killed.map((e) => e.id));
+    const killedSlots = new Set(killed.map((e) => `${e.formationX},${e.formationY}`));
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (killedIds.has(e.id) ? { ...e, isAlive: false, hp: 0 } : e)),
+    };
+    const before = s.enemies.length;
+    const prev = { ...s, reinforceTimer: 1 };
+    s = tick(prev, 16, ASIDE);
+    expect(reinforcementsJustLaunched(prev, s)).toBe(true);
+    const launched = s.enemies.slice(before);
+    expect(launched.length).toBeGreaterThanOrEqual(2);
+    expect(launched.length).toBeLessThanOrEqual(4);
+    expect(s.reinforcedThisWave).toBe(launched.length);
+    for (const g of launched) {
+      expect(g.tier).toBe("Grunt");
+      expect(g.phase).toBe("SwoopIn");
+      expect(killedSlots.has(`${g.formationX},${g.formationY}`)).toBe(true);
+    }
+    // keep emptying the grunt rows: total launches stop at the cap
+    for (let round = 0; round < 10; round++) {
+      s = {
+        ...s,
+        reinforceTimer: 1,
+        enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
+      };
+      s = tick(s, 16, ASIDE);
+    }
+    expect(s.reinforcedThisWave).toBe(reinforceCap(1));
+  });
+
+  it("no reinforcements on Ensign, once the Carrier is dead, or outside the Playing phase", () => {
+    const emptied = (s: StarSwarmState) => ({
+      ...s,
+      reinforceTimer: 1,
+      enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
+    });
+    let s = tick(emptied(quiet("Ensign")), 16, ASIDE);
+    expect(s.reinforcedThisWave).toBe(0);
+
+    const base = quiet();
+    s = tick(emptied(killAllBut(base, (e) => e.tier !== "Carrier")), 16, ASIDE);
+    expect(s.reinforcedThisWave).toBe(0);
+
+    s = tick({ ...emptied(base), phase: "SwoopIn" }, 16, ASIDE);
+    expect(s.reinforcedThisWave).toBe(0);
+  });
+
+  it("reinforcements leave the escalation latches alone", () => {
+    let s = quiet();
+    s = {
+      ...s,
+      bossThresholdCrossed: true,
+      reinforceTimer: 1,
+      enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
+    };
+    const startCount = s.startingNonBossCount;
+    s = tick(s, 16, ASIDE);
+    expect(s.reinforcedThisWave).toBeGreaterThan(0);
+    expect(s.bossThresholdCrossed).toBe(true);
+    expect(s.startingNonBossCount).toBe(startCount);
   });
 });

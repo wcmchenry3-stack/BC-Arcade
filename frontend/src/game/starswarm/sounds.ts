@@ -27,6 +27,13 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   // perfectbonus reuses the win fanfare (same file as hearts-moon-shot)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.perfectbonus": require("../../../assets/sounds/hearts-moon-shot.mp3"),
+  // #2485 Carrier actions — reuse existing Kenney CC0 files until dedicated SFX land (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.beamcharge": require("../../../assets/sounds/starswarm-chargeshot.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.beamfire": require("../../../assets/sounds/starswarm-laser.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.reinforce": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
   // Background music tracks
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),

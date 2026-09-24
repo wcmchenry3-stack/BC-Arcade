@@ -187,5 +187,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Carrier is the large top-row enemy ship added in #2484."
+  },
+  "a11y.carrierBeam": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the Carrier starts charging its sweep beam; the player has about 0.6 s to move out of the column below it.",
+    "tone": "urgent",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship (#2484); the beam is #2485."
+  },
+  "a11y.reinforcements": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the Carrier launches replacement grunts into the formation.",
+    "tone": "neutral",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See #2485."
   }
 }

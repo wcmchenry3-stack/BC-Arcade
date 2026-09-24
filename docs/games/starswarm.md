@@ -16,16 +16,33 @@ What is known:
 
 ## Enemy Tiers
 
-| Tier    | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                              |
-| ------- | --------------------- | --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grunt   | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                            |
-| Elite   | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                          |
-| Boss    | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                             |
-| Carrier | 1 (top row, #2484)    | 8   | 1000   | Never dives. **Armored while any Boss lives**: ordinary shots ring off it; piercing shots (lightning, buddy burst) get through. Beam, reinforcements and lone-ship fire land in #2485. |
+| Tier    | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                |
+| ------- | --------------------- | --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grunt   | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                                              |
+| Elite   | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                                            |
+| Boss    | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                                               |
+| Carrier | 1 (top row, #2484)    | 8   | 1000   | Never dives. **Armored while any Boss lives**: ordinary shots ring off it; piercing shots (lightning, buddy burst) get through. Sweep beam, reinforcements and lone-ship twin lasers (#2485), see below. |
 
 Diving enemies score 2×. The Carrier and Bosses are excluded from the "non-boss" thresholds that
 drive Elite/Boss escalation (`isLeaderTier`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
+
+## Carrier Actions (#2485)
+
+- **Sweep beam.** Every 7 s (÷ min(1.6, difficulty paramScale)) the Carrier shudders and glows for
+  600 ms, then fires a 24 px-wide vertical beam below itself for 1.2 s while the formation sway
+  drags it sideways. The beam is not a bullet (no `bulletCap()` slot). In the column it costs a
+  life; the shield holds it off; post-hit invincibility covers the rest of the sweep.
+  `carrierBeam(state)` gives the renderers position and progress; the screen speaks
+  `a11y.carrierBeam` when the telegraph starts.
+- **Reinforcements.** Every 8 s while it lives (Playing phase, not on Ensign) it launches 2–4 grunts
+  that swoop into empty grunt slots, capped per wave at half the wave's grunt slots
+  (`reinforceCap`). They never touch `startingNonBossCount`, so the 35% / ≤3 latches are unaffected
+  once crossed. Killing the Carrier early is the wave's objective.
+- **Lone-ship lasers.** Once nothing else is alive (in-flight reinforcements count as alive) it fires
+  a pair of aimed shots every 1.1 s (÷ the same cadence factor) so the player can't park off to one
+  side and plink it. These do count against `bulletCap()`.
+- Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
 ## Hazards: Errant Asteroids (#2486)
 
