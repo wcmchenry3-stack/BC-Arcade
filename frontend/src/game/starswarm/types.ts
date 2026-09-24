@@ -160,6 +160,30 @@ export interface BuddyShip {
   readonly fromLeft: boolean;
 }
 
+/** #2486: errant asteroid — a neutral hazard both sides can hit and be hit by. */
+export type AsteroidKind = "large" | "small";
+
+export interface Asteroid {
+  readonly id: number;
+  readonly kind: AsteroidKind;
+  readonly x: number;
+  readonly y: number;
+  /** Velocity in px/ms. */
+  readonly vx: number;
+  readonly vy: number;
+  readonly radius: number;
+  readonly hp: number;
+  /** Cosmetic spin: current angle (rad) and rate (rad/ms). */
+  readonly rotation: number;
+  readonly spin: number;
+  /** ms remaining for the hit flash; 0 when not flashing. */
+  readonly hitFlashTimer: number;
+  /** Enemies this rock has already struck — one hit per enemy per rock. */
+  readonly hitEnemyIds: readonly number[];
+  /** Set when destroyed by an impact (hull or force field): it shatters without splitting. */
+  readonly shattered?: boolean;
+}
+
 export interface StarSwarmState {
   readonly phase: GamePhase;
   readonly wave: number;
@@ -171,6 +195,12 @@ export interface StarSwarmState {
   readonly explosions: readonly Explosion[];
   readonly powerUps: readonly PowerUp[];
   readonly buddyShips: readonly BuddyShip[];
+  /** #2486: asteroids in flight (neutral hazard). */
+  readonly asteroids: readonly Asteroid[];
+  /** ms until the next timed asteroid spawn; only counts down in the Playing phase. */
+  readonly nextAsteroidTimer: number;
+  /** Dev: suppress timed asteroid spawns (dev-panel throws still work). */
+  readonly asteroidsDisabled: boolean;
   /** General-purpose countdown timer (WaveClear pause, etc.). */
   readonly phaseTimer: number;
   readonly canvasW: number;

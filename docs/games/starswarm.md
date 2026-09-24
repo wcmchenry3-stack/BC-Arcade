@@ -27,6 +27,27 @@ Diving enemies score 2×. The Carrier and Bosses are excluded from the "non-boss
 drive Elite/Boss escalation (`isLeaderTier`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
+## Hazards: Errant Asteroids (#2486)
+
+From wave 2, a rock drifts in from a top corner every 12–20 s of the Playing phase (never during
+swoop-in or bonus waves; at most 2 in flight from timed spawns). It is a neutral third party:
+
+- **Both sides can hit it.** Any bullet, from either owner and piercing or not, that reaches a rock is
+  spent on it, so a large rock is temporary cover. Large rocks (22 px, 6 HP) split into two small
+  ones (12 px, 2 HP); small ones are removed.
+- **It hits both sides.** A rock deals 1 damage to any ship it touches, once per ship — including
+  ships still swooping in once they are on screen. A small rock shatters on impact; a large one keeps
+  going. The Carrier's force field shatters any rock harmlessly (ring plays). On the player it acts
+  like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
+- **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
+  power-up kill counter (they do count toward wave clear and the Elite/Boss thresholds).
+- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, except
+  into a bonus wave: those start rock-free (a rock there would absorb shots and kill targets the
+  player can't then hit, putting the PERFECT bonus out of reach).
+- Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
+
+Enemy dodging and flak are #2487; salvage drops are #2488.
+
 ## Scoring (Persistence)
 
 `final_score` = points at game over. Leaderboard tracks top scores.

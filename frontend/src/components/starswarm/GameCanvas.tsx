@@ -28,6 +28,8 @@ import {
   FREE_FIRE_ENEMY_COUNT,
   carrierJustExposed,
   isCarrierArmored,
+  asteroidOutline,
+  throwAsteroid,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -55,6 +57,8 @@ export interface DevOptions {
   playerFireDisabled?: boolean;
   /** Suppress enemy bullet spawning (#1311). */
   enemyFireDisabled?: boolean;
+  /** Suppress timed asteroid spawns (#2486). */
+  asteroidsDisabled?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -62,6 +66,8 @@ export interface GameCanvasHandle {
   setFire: (fire: boolean) => void;
   /** Inject a power-up activation mid-game for dev-panel testing (#1039). */
   triggerPowerUp: (type: PowerUpType) => void;
+  /** Throw an asteroid now — dev-panel testing (#2486). */
+  throwAsteroid: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
 }
@@ -190,6 +196,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
+    const throwAsteroidRef = useRef(false); // #2486
     const prevBonusLivesRef = useRef(gameRef.current.bonusLivesAwarded);
     const bonusFlashEndRef = useRef(0); // ms timestamp when 1UP flash expires
 
@@ -252,6 +259,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         triggerPowerUp(type) {
           triggerPowerUpRef.current = type;
         },
+        throwAsteroid() {
+          throwAsteroidRef.current = true;
+        },
         getState() {
           return gameRef.current;
         },
@@ -309,6 +319,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           triggerPowerUpRef.current = null;
           gameRef.current = applyPowerUp(gameRef.current, type);
         }
+        if (throwAsteroidRef.current) {
+          throwAsteroidRef.current = false;
+          gameRef.current = throwAsteroid(gameRef.current); // #2486
+        }
 
         const prev = gameRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
@@ -352,6 +366,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 tickInput = { ...tickInput, playerFireDisabled };
               if (tickInput.enemyFireDisabled !== enemyFireDisabled)
                 tickInput = { ...tickInput, enemyFireDisabled };
+              const asteroidsDisabled = devOptionsRef.current?.asteroidsDisabled ?? false; // #2486
+              if (tickInput.asteroidsDisabled !== asteroidsDisabled)
+                tickInput = { ...tickInput, asteroidsDisabled };
               const next = tick(tickInput, dtMs, {
                 playerX: inputRef.current.playerX,
                 fire: inputRef.current.fire,
@@ -768,6 +785,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 `L${lx + pw * 0.875},${ly + ph * 0.458} ` +
                 `L${lx + pw * 0.542},${ly + ph * 0.458} Z`;
               return <Path key={pu.id} path={boltPath} color="#ffee00" />;
+            })}
+
+            {/* #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it) */}
+            {state.asteroids.map((a) => {
+              const d =
+                asteroidOutline(a)
+                  .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+                  .join(" ") + " Z";
+              return (
+                <Group key={a.id}>
+                  <Path path={d} color={a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47"} />
+                  <Path path={d} color="#c9a27a" style="stroke" strokeWidth={1.5} />
+                </Group>
+              );
             })}
 
             {/* Explosions */}

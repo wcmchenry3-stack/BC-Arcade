@@ -76,6 +76,7 @@ export default function StarSwarmScreen() {
   const [devVolumes, setDevVolumes] = useState<SfxVolumes>(DEFAULT_SFX_VOLUMES);
   const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
   const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
+  const [devAsteroidsOff, setDevAsteroidsOff] = useState(false); // #2486
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
   // Defaults to Ensign for new users; AsyncStorage load below promotes it to the last-played tier.
@@ -188,6 +189,10 @@ export default function StarSwarmScreen() {
 
   const handleTriggerPowerUp = useCallback((type: PowerUpType) => {
     canvasRef.current?.triggerPowerUp(type);
+  }, []);
+
+  const handleThrowAsteroid = useCallback(() => {
+    canvasRef.current?.throwAsteroid(); // #2486
   }, []);
 
   const handleNewGame = useCallback(
@@ -321,6 +326,7 @@ export default function StarSwarmScreen() {
                       pauseStraggler: devPauseStraggler,
                       playerFireDisabled: devPlayerFireOff,
                       enemyFireDisabled: devEnemyFireOff,
+                      asteroidsDisabled: devAsteroidsOff,
                     }
                   : undefined
               }
@@ -450,6 +456,19 @@ export default function StarSwarmScreen() {
                 <Text style={dynamicStyles.devLabel}>Enemy missiles off</Text>
                 <Switch value={devEnemyFireOff} onValueChange={setDevEnemyFireOff} />
               </View>
+
+              <View style={styles.devRow}>
+                <Text style={dynamicStyles.devLabel}>Asteroids off</Text>
+                <Switch value={devAsteroidsOff} onValueChange={setDevAsteroidsOff} />
+              </View>
+
+              <Pressable
+                style={styles.devActionBtn}
+                onPress={handleThrowAsteroid}
+                accessibilityLabel="Throw asteroid"
+              >
+                <Text style={dynamicStyles.devLabel}>Throw asteroid</Text>
+              </Pressable>
 
               <Text style={dynamicStyles.devSectionHeader}>── Difficulty ──</Text>
 

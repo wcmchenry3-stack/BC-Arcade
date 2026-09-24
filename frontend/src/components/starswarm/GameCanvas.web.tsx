@@ -27,6 +27,8 @@ import {
   FREE_FIRE_ENEMY_COUNT,
   carrierJustExposed,
   isCarrierArmored,
+  asteroidOutline,
+  throwAsteroid,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -103,6 +105,9 @@ const C = {
   enemyElite: "#ff88ff",
   enemyBoss: "#ffff44",
   enemyCarrier: "#b06cff",
+  asteroid: "#8b6a47",
+  asteroidFlash: "#e8d3b8",
+  asteroidEdge: "#c9a27a",
   hitFlash: "#ff2200",
   pipFilled: "#ffffff",
   pipEmpty: "rgba(255,255,255,0.2)",
@@ -179,12 +184,16 @@ export interface DevOptions {
   pauseStraggler?: boolean;
   /** Override difficulty tier for this game (#1037). */
   difficulty?: DifficultyTier;
+  /** Suppress timed asteroid spawns (#2486). */
+  asteroidsDisabled?: boolean;
 }
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
+  /** Throw an asteroid now — dev-panel testing (#2486). */
+  throwAsteroid: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
 }
@@ -283,6 +292,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
+    const throwAsteroidRef = useRef(false); // #2486
     const isPausedRef = useRef(isPaused);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(stateRef.current.player.lives);
@@ -454,6 +464,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         triggerPowerUp(type) {
           triggerPowerUpRef.current = type;
         },
+        throwAsteroid() {
+          throwAsteroidRef.current = true;
+        },
         getState() {
           return stateRef.current;
         },
@@ -482,6 +495,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
       triggerPowerUpRef.current = null;
+      throwAsteroidRef.current = false;
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
       celebrationEndsAtRef.current = null;
       setCelebrating(false);
@@ -745,6 +759,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.globalAlpha = 1;
       }
 
+      // #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it)
+      for (const a of state.asteroids) {
+        const pts = asteroidOutline(a);
+        ctx.beginPath();
+        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.fillStyle = a.hitFlashTimer > 0 ? C.asteroidFlash : C.asteroid;
+        ctx.fill();
+        ctx.strokeStyle = C.asteroidEdge;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
       // Explosions
       for (const exp of state.explosions) {
         const frameImg = imgs.explosionFrames[exp.frame] ?? null;
@@ -909,6 +936,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           triggerPowerUpRef.current = null;
           stateRef.current = applyPowerUp(stateRef.current, type);
         }
+        if (throwAsteroidRef.current) {
+          throwAsteroidRef.current = false;
+          stateRef.current = throwAsteroid(stateRef.current); // #2486
+        }
 
         const prev = stateRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
@@ -941,8 +972,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             try {
               const prevCooldown = prev.player.shootCooldown;
               const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
-              const tickInput =
+              let tickInput =
                 prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
+              const asteroidsDisabled = devOptionsRef.current?.asteroidsDisabled ?? false; // #2486
+              if (tickInput.asteroidsDisabled !== asteroidsDisabled)
+                tickInput = { ...tickInput, asteroidsDisabled };
               const next = tick(tickInput, dtMs, {
                 playerX: inputRef.current.playerX,
                 fire: inputRef.current.fire,
