@@ -63,7 +63,33 @@ swoop-in or bonus waves; at most 2 in flight from timed spawns). It is a neutral
   player can't then hit, putting the PERFECT bonus out of reach).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
 
-Enemy dodging and flak are #2487; salvage drops are #2488.
+Salvage drops are #2488.
+
+### Enemy AI: asteroid response (#2487)
+
+When a rock will cross a ship's hitbox within the next 700 ms (sampled at +200/+400/+700 ms
+against where the ship will be — on its path if it is swooping, diving or returning), the ship
+rolls **once per rock** to dodge. Success chance is `base × difficulty paramScale`, capped at 97%:
+
+| Tier    | Dodge base | Flak base | Dodge action                                         |
+| ------- | ---------- | --------- | ---------------------------------------------------- |
+| Grunt   | 25%        | 30%       | formation: 22 px sidestep (600 ms); on a path: nudge |
+| Elite   | 55%        | 70%       | same                                                 |
+| Boss    | 80%        | 90%       | same                                                 |
+| Carrier | never      | 100%      | rocks shatter on its force field                     |
+
+A path nudge shifts the remaining control points 40 px away from the rock and keeps the
+destination, so the ship still arrives where it was going. Ships still off-screen (`pathT < 0`)
+are not threatened; circling ships never dodge. A failed roll takes no action, so the collision
+follows naturally and reads as a botched dodge.
+
+**Flak.** A ship holding formation fires one aimed shot at a rock approaching within 120 px
+(probability `flak base × min(1.3, paramScale)`, 900 ms cooldown per ship). Flak is an enemy
+bullet marked `flak`: it is drawn amber, sits outside `bulletCap()`, is spent on the rock like any
+shot, and can still hit the player if it misses. The dev "Enemy missiles off" toggle silences it.
+
+**Counters.** `state.tierStats` records per tier: rolls, dodged, pathRolls, pathDodged, struck and
+flak. They carry across waves and reset on a new game; the dev panel view is #2491.
 
 ## Scoring (Persistence)
 

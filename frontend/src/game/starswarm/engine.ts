@@ -15,6 +15,7 @@ import type {
   Asteroid,
   AsteroidKind,
   BeamPhase,
+  TierStats,
 } from "./types";
 import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
@@ -218,6 +219,31 @@ const REINFORCE_MAX = 4;
 export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys when the Carrier is alone
 const LONE_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 const BEAM_DIFFICULTY_CAP = 1.6; // paramScale is capped here for beam/lone-fire cadence
+
+// #2487: how enemies respond to asteroids — dodge rolls by tier, and flak at approaching rocks
+export const DODGE_BASE: Record<EnemyTier, number> = {
+  Grunt: 0.25,
+  Elite: 0.55,
+  Boss: 0.8,
+  Carrier: 0,
+};
+export const DODGE_CAP = 0.97;
+const DODGE_LOOKAHEAD_MS = [200, 400, 700] as const; // sampled rock positions for the threat check
+const DODGE_MARGIN = 6; // px of slack around the ship's hitbox
+export const DODGE_SIDESTEP = 22; // px, formation sidestep amplitude
+export const DODGE_SIDESTEP_MS = 600; // sine out-and-back
+export const DODGE_PATH_NUDGE = 40; // px, control-point shift for ships on a path
+export const FLAK_BASE: Record<EnemyTier, number> = {
+  Grunt: 0.3,
+  Elite: 0.7,
+  Boss: 0.9,
+  Carrier: 1,
+};
+const FLAK_SCALE_CAP = 1.3;
+export const FLAK_RANGE = 120; // px
+export const FLAK_COOLDOWN = 900; // ms per ship
+const FLAK_LEAD_MS = 300; // aim at where the rock will be
+const FLAK_SPEED = 0.42; // px/ms
 
 // #2486: errant asteroids — a neutral hazard that damages both sides and absorbs bullets
 export const MAX_ASTEROIDS = 2; // timed spawns stop at this many in flight; a split may briefly exceed it
@@ -721,7 +747,8 @@ function absorbBulletsIntoRocks<B extends Bullet>(
 function rocksStrikeEnemies(
   rocks: readonly Asteroid[],
   enemies: readonly Enemy[],
-  explosions: Explosion[]
+  explosions: Explosion[],
+  struck: EnemyTier[] // #2487: tiers hit, for tierStats
 ): { rocks: Asteroid[]; enemies: Enemy[] } {
   const outRocks = [...rocks];
   const outEnemies = [...enemies];
@@ -738,6 +765,7 @@ function rocksStrikeEnemies(
         break;
       }
       const newHp = e.hp - 1;
+      struck.push(e.tier);
       if (newHp <= 0) {
         explosions.push(spawnExplosion(e.x, e.y));
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
@@ -797,6 +825,174 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
 }
 
 // ---------------------------------------------------------------------------
+// Enemy asteroid response (#2487)
+// ---------------------------------------------------------------------------
+
+const ZERO_TIER_STATS: TierStats = {
+  rolls: 0,
+  dodged: 0,
+  pathRolls: 0,
+  pathDodged: 0,
+  struck: 0,
+  flak: 0,
+};
+
+export function emptyTierStats(): Record<EnemyTier, TierStats> {
+  return {
+    Grunt: ZERO_TIER_STATS,
+    Elite: ZERO_TIER_STATS,
+    Boss: ZERO_TIER_STATS,
+    Carrier: ZERO_TIER_STATS,
+  };
+}
+
+function bumpStat(
+  stats: Record<EnemyTier, TierStats>,
+  tier: EnemyTier,
+  patch: Partial<Record<keyof TierStats, number>>
+): void {
+  const cur = stats[tier];
+  stats[tier] = {
+    rolls: cur.rolls + (patch.rolls ?? 0),
+    dodged: cur.dodged + (patch.dodged ?? 0),
+    pathRolls: cur.pathRolls + (patch.pathRolls ?? 0),
+    pathDodged: cur.pathDodged + (patch.pathDodged ?? 0),
+    struck: cur.struck + (patch.struck ?? 0),
+    flak: cur.flak + (patch.flak ?? 0),
+  };
+}
+
+/** #2487: chance a ship of this tier sidesteps a rock — base × difficulty, capped. Carrier never rolls. */
+export function dodgeChance(tier: EnemyTier, paramScale: number): number {
+  return Math.min(DODGE_CAP, DODGE_BASE[tier] * paramScale);
+}
+
+const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning"]);
+
+/** Where the ship will be `ms` from now: on its path if it has one, else where it is. */
+function predictEnemyPos(e: Enemy, ms: number): Vec2 {
+  if (PATH_PHASES.has(e.phase) && e.path) {
+    return evalCubic(e.path, Math.max(0, Math.min(1, e.pathT + ms / e.pathDuration)));
+  }
+  return { x: e.x, y: e.y };
+}
+
+/** Will this rock cross the ship's hitbox within the lookahead window? */
+function rockThreatens(a: Asteroid, e: Enemy): boolean {
+  for (const ms of DODGE_LOOKAHEAD_MS) {
+    const p = predictEnemyPos(e, ms);
+    if (
+      collideCircleAABB(
+        a.x + a.vx * ms,
+        a.y + a.vy * ms,
+        a.radius + DODGE_MARGIN,
+        p.x,
+        p.y,
+        e.width,
+        e.height
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
+/** Shift the remaining path sideways; the destination (p3) is untouched so the ship still arrives. */
+export function nudgePath(path: CubicBezier, dir: 1 | -1): CubicBezier {
+  return {
+    p0: path.p0,
+    p1: { x: path.p1.x + dir * DODGE_PATH_NUDGE, y: path.p1.y },
+    p2: { x: path.p2.x + dir * DODGE_PATH_NUDGE, y: path.p2.y },
+    p3: path.p3,
+  };
+}
+
+/** Current sidestep offset for a ship holding formation (or wiggling); 0 when not dodging. */
+function dodgeOffset(e: Enemy): number {
+  if (!e.dodge) return 0;
+  return e.dodge.dir * DODGE_SIDESTEP * Math.sin((Math.PI * e.dodge.t) / e.dodge.dur);
+}
+
+/**
+ * #2487: each live ship looks at each live rock once. In formation it may also fire flak at a
+ * rock approaching within range; on screen (pathT ≥ 0), not circling and not the Carrier, it
+ * rolls once per rock to dodge — a sidestep in formation, a path nudge on a path. A failed roll
+ * takes no action; the collision then follows naturally. All rolls use the seeded rng().
+ */
+function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmState {
+  const stats: Record<EnemyTier, TierStats> = { ...state.tierStats };
+  const flakShots: Bullet[] = [];
+  const paramScale = difficultyParamScale(state.difficulty);
+  const flakScale = Math.min(FLAK_SCALE_CAP, paramScale);
+  const rocks = state.asteroids.filter((a) => a.hp > 0);
+
+  const enemies = state.enemies.map((e0) => {
+    if (!e0.isAlive) return e0;
+    let e = e0;
+    if (e.flakCooldown > 0) e = { ...e, flakCooldown: Math.max(0, e.flakCooldown - dtMs) };
+    if (e.dodge) {
+      const t = e.dodge.t + dtMs;
+      e = t >= e.dodge.dur ? { ...e, dodge: null } : { ...e, dodge: { ...e.dodge, t } };
+    }
+    if (rocks.length === 0 || e.pathT < 0) return e;
+
+    for (const a of rocks) {
+      // Flak: a formation ship shoots at a rock coming its way
+      if (e.phase === "Formation" && e.flakCooldown <= 0 && !state.enemyFireDisabled) {
+        const dx = a.x - e.x;
+        const dy = a.y - e.y;
+        const approaching = a.vx * -dx + a.vy * -dy > 0;
+        if (approaching && dx * dx + dy * dy < FLAK_RANGE * FLAK_RANGE) {
+          if (rng() < FLAK_BASE[e.tier] * flakScale) {
+            const tx = a.x + a.vx * FLAK_LEAD_MS;
+            const ty = a.y + a.vy * FLAK_LEAD_MS;
+            const len = Math.hypot(tx - e.x, ty - e.y) || 1;
+            flakShots.push({
+              id: nextId(),
+              x: e.x,
+              y: e.y,
+              vx: ((tx - e.x) / len) * FLAK_SPEED,
+              vy: ((ty - e.y) / len) * FLAK_SPEED,
+              owner: "enemy",
+              width: BULLET_E_W,
+              height: BULLET_E_H,
+              damage: 1,
+              flak: true,
+            });
+            e = { ...e, flakCooldown: FLAK_COOLDOWN };
+            bumpStat(stats, e.tier, { flak: 1 });
+          }
+        }
+      }
+
+      // Dodge: one roll per rock per ship
+      if (e.tier === "Carrier" || e.phase === "Circling" || e.rolledAsteroidIds.includes(a.id)) {
+        continue;
+      }
+      if (!rockThreatens(a, e)) continue;
+      e = { ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] };
+      const onPath = PATH_PHASES.has(e.phase) && e.path !== null;
+      bumpStat(stats, e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
+      if (rng() < dodgeChance(e.tier, paramScale)) {
+        bumpStat(stats, e.tier, { dodged: 1, pathDodged: onPath ? 1 : 0 });
+        const dir: 1 | -1 = e.x < a.x + a.vx * 400 ? -1 : 1;
+        e = onPath
+          ? { ...e, path: nudgePath(e.path!, dir) }
+          : { ...e, dodge: { dir, t: 0, dur: DODGE_SIDESTEP_MS } };
+      }
+    }
+    return e;
+  });
+
+  return {
+    ...state,
+    enemies,
+    enemyBullets: flakShots.length > 0 ? [...state.enemyBullets, ...flakShots] : state.enemyBullets,
+    tierStats: stats,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Enemy factories
 // ---------------------------------------------------------------------------
 
@@ -835,6 +1031,9 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     burstShotsLeft: 0,
     beamPhase: "idle",
     beamTimer: BEAM_INTERVAL_BASE, // #2485: first beam one full interval after the wave settles
+    dodge: null,
+    rolledAsteroidIds: [],
+    flakCooldown: 0,
   };
 }
 
@@ -873,6 +1072,9 @@ function makeFreeFireEnemy(idx: number, total: number, canvasW: number, canvasH:
     burstShotsLeft: 0,
     beamPhase: "idle",
     beamTimer: 0,
+    dodge: null,
+    rolledAsteroidIds: [],
+    flakCooldown: 0,
   };
 }
 
@@ -988,7 +1190,9 @@ function buildWaveState(
   playerBullets: readonly Bullet[] = [],
   enemyBullets: readonly Bullet[] = [],
   // #2486: rocks in flight carry over too — the next wave's swoop-in meets them
-  asteroids: readonly Asteroid[] = []
+  asteroids: readonly Asteroid[] = [],
+  // #2487: counters carry across waves, reset on a new game
+  tierStats: Readonly<Record<EnemyTier, TierStats>> = emptyTierStats()
 ): StarSwarmState {
   let enemies: Enemy[];
   let phase: StarSwarmState["phase"];
@@ -1033,6 +1237,7 @@ function buildWaveState(
     asteroidsDisabled: false,
     reinforceTimer: REINFORCE_INTERVAL,
     reinforcedThisWave: 0,
+    tierStats,
     phaseTimer: 0,
     canvasW,
     canvasH,
@@ -1075,6 +1280,7 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
 
   let s: StarSwarmState = { ...state, bonusLifeSlowMoTimer, missionCompleteTimer };
   s = tickPlayer(s, scaledDt, input);
+  s = tickAsteroidThreats(s, scaledDt); // #2487: before the enemy tick so a nudged path or sidestep applies now
   s = tickEnemies(s, scaledDt);
   s = tickBullets(s, scaledDt);
   s = tickAsteroids(s, scaledDt); // #2486
@@ -1742,7 +1948,8 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // Harmless bullets carried over from a cleared wave (see Bullet.harmless) don't count
   // against bulletCap() — otherwise up to a full cap's worth of leftovers would suppress
   // the new wave's real fire until they drift off-screen.
-  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless).length;
+  // #2487: flak at rocks is outside the cap too
+  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless && !b.flak).length;
   const enemyBulletCap = bulletCap(state.wave, _ps);
   // #2485: the Carrier fires its twin lasers only once nothing else is alive
   const carrierCtx: CarrierCtx = {
@@ -1768,7 +1975,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     // Apply sway offset to enemies holding Formation position
     // #979: Boss sways ±BOSS_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
-      e = { ...e, x: e.formationX + clampSway(e.tier, swayX) };
+      e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
       // #2485: beam telegraph — a quick shudder so the player has time to sidestep
       if (e.beamPhase === "charge") {
         const elapsed = BEAM_CHARGE_MS - e.beamTimer;
@@ -1777,6 +1984,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
           x: e.x + Math.sin((6 * Math.PI * elapsed) / BEAM_CHARGE_MS) * BEAM_WIGGLE_AMPLITUDE,
         };
       }
+    }
+    // #2487: a sidestep also carries through the pre-dive wiggle (which recomputes x each tick)
+    if (e.isAlive && e.phase === "Wiggling" && e.dodge) {
+      e = { ...e, x: e.x + dodgeOffset(e) };
     }
     // Decrement hit-flash timer (#976)
     if (e.isAlive && e.hitFlashTimer > 0) {
@@ -1984,7 +2195,13 @@ function tickBullets(state: StarSwarmState, dtMs: number): StarSwarmState {
 
   const enemyBullets = state.enemyBullets
     .map((b) => ({ ...b, x: b.x + b.vx * dtMs, y: b.y + b.vy * dtMs }))
-    .filter((b) => b.y - b.height / 2 < canvasH && b.x > -10 && b.x < canvasW + 10);
+    .filter(
+      (b) =>
+        b.y - b.height / 2 < canvasH &&
+        b.y + b.height / 2 > -20 && // #2487: flak fired upward at a rock leaves off the top
+        b.x > -10 &&
+        b.x < canvasW + 10
+    );
 
   return { ...state, playerBullets, enemyBullets };
 }
@@ -2009,6 +2226,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   // still shields the Carrier until the next one.
   const carrierArmored = carrierArmoredIn(state.enemies);
   let rocks: Asteroid[] = [...state.asteroids]; // #2486
+  let tierStats: Record<EnemyTier, TierStats> = { ...state.tierStats }; // #2487
 
   // ── Player bullets ↔ enemies ──────────────────────────────────────────────
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
@@ -2060,9 +2278,15 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   {
     const absorbed = absorbBulletsIntoRocks(playerBullets, rocks);
     playerBullets = absorbed.bullets;
-    const struck = rocksStrikeEnemies(absorbed.rocks, enemies, newExplosions);
+    const struckTiers: EnemyTier[] = [];
+    const struck = rocksStrikeEnemies(absorbed.rocks, enemies, newExplosions, struckTiers);
     rocks = struck.rocks;
     enemies = struck.enemies;
+    if (struckTiers.length > 0) {
+      const next = { ...tierStats };
+      for (const tier of struckTiers) bumpStat(next, tier, { struck: 1 });
+      tierStats = next;
+    }
   }
 
   // ── Power-up drop check (Playing only, max 1 on screen) ────────────────────
@@ -2283,6 +2507,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             ...state,
             enemies: finalEnemies,
             asteroids: settleRocks(rocks, newExplosions), // #2486
+            tierStats,
             // #2334: tick() short-circuits on GameOver (see the phase guard near the top
             // of this file), freezing whatever frame is current — including any player
             // bullets mid-flight. Normally we'd clear them here so the frozen frame doesn't
@@ -2311,6 +2536,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           ...state,
           enemies: finalEnemies,
           asteroids: settleRocks(rocks, newExplosions), // #2486
+          tierStats,
           playerBullets,
           enemyBullets: enemyBulletsAfterHit,
           explosions: newExplosions,
@@ -2332,6 +2558,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     ...state,
     enemies,
     asteroids: settleRocks(rocks, newExplosions), // #2486
+    tierStats,
     playerBullets,
     enemyBullets: currentEnemyBullets,
     score,
@@ -2443,7 +2670,8 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     // kill them — it just keeps flying across the screen like a normal spent shot.
     state.playerBullets,
     state.enemyBullets.map((b) => (b.harmless ? b : { ...b, harmless: true })),
-    state.asteroids
+    state.asteroids,
+    state.tierStats
   );
 }
 
