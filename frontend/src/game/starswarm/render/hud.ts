@@ -18,6 +18,7 @@ import {
   fleeingCount,
 } from "../engine";
 import type { DifficultyTier, StarSwarmState } from "../types";
+import type { FrameInputs } from "./publish";
 
 export interface HudState {
   readonly score: number;
@@ -92,4 +93,44 @@ export function hudCues(state: StarSwarmState): HudCues {
       ? Math.max(0, Math.min(1, state.activePowerUp.remainingMs / POWERUP_DURATION))
       : 0,
   };
+}
+
+/** Full width of the power-up bar, in dp; the cue fraction scales it. */
+export const POWERUP_BAR_WIDTH = 60;
+
+/** What `publishHud` writes the per-frame cues to — Reanimated shared values in the app. */
+export interface CueSinks {
+  readonly mission: { value: number };
+  readonly powerUp: { value: number };
+}
+
+/**
+ * Hand the HUD to React only when it changed, and the two per-frame cues to their shared values
+ * only when they moved. Cues go first, so a banner or bar that mounts on this HUD change reads the
+ * current value. Writes through refs, so it is safe from the RAF loop and from effects.
+ */
+export function publishHud(
+  inputs: FrameInputs,
+  hudRef: { current: HudState },
+  setHud: (h: HudState) => void,
+  cuesRef: { current: HudCues },
+  cueSinks: CueSinks
+): void {
+  const cues = hudCues(inputs.game);
+  if (cues.missionOpacity !== cuesRef.current.missionOpacity) {
+    cueSinks.mission.value = cues.missionOpacity;
+  }
+  if (cues.powerUpFraction !== cuesRef.current.powerUpFraction) {
+    cueSinks.powerUp.value = cues.powerUpFraction;
+  }
+  cuesRef.current = cues;
+  const hud = deriveHud(inputs.game, {
+    countdownDigit: inputs.countdownDigit,
+    waveBannerCountdown: inputs.waveBannerCountdown,
+    bonusFlash: inputs.bonusFlash,
+  });
+  if (!sameHud(hudRef.current, hud)) {
+    hudRef.current = hud;
+    setHud(hud);
+  }
 }

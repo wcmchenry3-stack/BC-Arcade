@@ -1,4 +1,11 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -40,7 +47,7 @@ import {
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
-import { deriveHud, sameHud, hudCues } from "../../game/starswarm/render/hud";
+import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
@@ -127,36 +134,6 @@ function publishPicture(
   height: number
 ): void {
   frameSV.value = buildFrame(inputs.game, inputs.sf, { loaded, width, height });
-}
-
-/**
- * #2566: hand the HUD to React only when it changed, and the two per-frame cues to their shared
- * values only when they moved. Writes through refs so it is safe from the RAF loop and effects.
- */
-function publishHud(
-  inputs: FrameInputs,
-  hudRef: { current: HudState },
-  setHud: (h: HudState) => void,
-  cuesRef: { current: HudCues },
-  cueSV: { mission: { value: number }; powerUp: { value: number } }
-): void {
-  const hud = deriveHud(inputs.game, {
-    countdownDigit: inputs.countdownDigit,
-    waveBannerCountdown: inputs.waveBannerCountdown,
-    bonusFlash: inputs.bonusFlash,
-  });
-  if (!sameHud(hudRef.current, hud)) {
-    hudRef.current = hud;
-    setHud(hud);
-  }
-  const cues = hudCues(inputs.game);
-  if (cues.missionOpacity !== cuesRef.current.missionOpacity) {
-    cueSV.mission.value = cues.missionOpacity;
-  }
-  if (cues.powerUpFraction !== cuesRef.current.powerUpFraction) {
-    cueSV.powerUp.value = cues.powerUpFraction;
-  }
-  cuesRef.current = cues;
 }
 
 /** #2564: one Skia element per display-list op. No decisions here — buildFrame made them. */
@@ -425,16 +402,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     );
     const hudRef = useRef<HudState>(hud);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
-    const initialCues = hudCues(renderState.game);
+    const [initialCues] = useState<HudCues>(() => hudCues(renderState.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
     const powerUpSV = useSharedValue(initialCues.powerUpFraction);
     const cueSVRef = useRef({ mission: missionOpacitySV, powerUp: powerUpSV });
     cueSVRef.current = { mission: missionOpacitySV, powerUp: powerUpSV };
     const cuesRef = useRef<HudCues>(initialCues);
     const missionStyle = useAnimatedStyle(() => ({ opacity: missionOpacitySV.value }));
-    const powerUpBarStyle = useAnimatedStyle(() => ({ width: 60 * powerUpSV.value }));
-    // #2563: the frame React last received. The loop publishes only when the next one differs,
-    // so a paused or finished game stops re-rendering instead of reconciling ~60×/s.
+    // translateX, not width: a transform stays off the layout path; the wrap's overflow clips it
+    const powerUpBarStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: -POWERUP_BAR_WIDTH * (1 - powerUpSV.value) }],
+    }));
+    // #2563: the frame last published — to the Picture (#2565) or, under the legacy renderer, to
+    // React. The loop publishes only when the next one differs, so a paused or finished game
+    // stops publishing instead of reconciling ~60×/s.
     const publishedRef = useRef<RenderState>(renderState);
 
     // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
@@ -468,8 +449,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     }, [drawImages, width, height]);
 
     // #2565: republish when sprites finish loading or the dev renderer switch flips — without
-    // this a paused game would keep its fallback shapes until it resumed.
-    useEffect(() => {
+    // this a paused game would keep its fallback shapes until it resumed. A layout effect, so the
+    // legacy path's catch-up render lands before paint instead of flashing a stale frame.
+    useLayoutEffect(() => {
       if (rendererMode !== "picture") {
         // #2566: the legacy path reads the full frame state, which picture mode stops updating
         setRenderState(publishedRef.current);
@@ -541,8 +523,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       publishedRef.current = fresh;
       if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
         publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
+      } else {
+        setRenderState(fresh);
       }
-      setRenderState(fresh);
       publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height]);
 
@@ -914,13 +897,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   powerUpBarWrap: {
-    width: 60,
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: 3,
     overflow: "hidden",
   },
   powerUpBar: {
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     borderRadius: 3,
   },

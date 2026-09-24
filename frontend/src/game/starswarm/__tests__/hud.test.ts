@@ -11,7 +11,16 @@ import {
   MISSION_COMPLETE_FADE_MS,
   applyPowerUp,
 } from "../engine";
-import { deriveHud, sameHud, hudCues, type HudExtras } from "../render/hud";
+import {
+  deriveHud,
+  sameHud,
+  hudCues,
+  publishHud,
+  type HudCues,
+  type HudExtras,
+  type HudState,
+} from "../render/hud";
+import { initStarfield } from "../starfield";
 import type { StarSwarmState } from "../types";
 
 const NONE: HudExtras = { countdownDigit: null, waveBannerCountdown: false, bonusFlash: false };
@@ -90,19 +99,22 @@ describe("deriveHud — the event-driven HUD", () => {
 });
 
 describe("sameHud", () => {
-  it("is true only when every field matches", () => {
+  it("is true only when every field matches — each field flipped on its own is a change", () => {
     const a = deriveHud(quiet(), NONE);
     expect(sameHud(a, { ...a })).toBe(true);
-    for (const [k, v] of Object.entries({
-      score: 1,
-      wave: 9,
-      lives: 1,
-      countdownDigit: 2,
-      bonusFlash: true,
-      rout: true,
-      powerUp: "shield",
-    })) {
-      expect(sameHud(a, { ...a, [k]: v })).toBe(false);
+    const keys = Object.keys(a) as (keyof HudState)[];
+    expect(keys).toHaveLength(14);
+    for (const k of keys) {
+      const v = a[k];
+      const changed =
+        v === null
+          ? 1
+          : typeof v === "number"
+            ? v + 1
+            : typeof v === "boolean"
+              ? !v
+              : `${String(v)}-changed`;
+      expect(sameHud(a, { ...a, [k]: changed } as HudState)).toBe(false);
     }
   });
 });
@@ -177,5 +189,67 @@ describe("steady play — the property that removes per-frame React commits", ()
     expect(after.score).toBeGreaterThan(before.score);
     const later = deriveHud(tick(s, 16, { playerX: 40, fire: false }), NONE);
     expect(sameHud(after, later)).toBe(true);
+  });
+});
+
+/** The canvas's wiring, with fakes for React state and the two shared values. */
+function harness(game: StarSwarmState) {
+  const sf = initStarfield(CANVAS_W, CANVAS_H);
+  const frame = (g: StarSwarmState) => ({ game: g, sf, ...NONE });
+  const hudRef = { current: deriveHud(game, NONE) };
+  const cuesRef: { current: HudCues } = { current: hudCues(game) };
+  const writes = { mission: 0, powerUp: 0 };
+  const sinks = {
+    mission: {
+      v: cuesRef.current.missionOpacity,
+      get value() {
+        return this.v;
+      },
+      set value(x: number) {
+        writes.mission++;
+        this.v = x;
+      },
+    },
+    powerUp: {
+      v: cuesRef.current.powerUpFraction,
+      get value() {
+        return this.v;
+      },
+      set value(x: number) {
+        writes.powerUp++;
+        this.v = x;
+      },
+    },
+  };
+  const commits: { hud: HudState; powerUpAtCommit: number }[] = [];
+  const setHud = (h: HudState) => commits.push({ hud: h, powerUpAtCommit: sinks.powerUp.value });
+  const publish = (g: StarSwarmState) => publishHud(frame(g), hudRef, setHud, cuesRef, sinks);
+  return { publish, commits, writes, sinks };
+}
+
+describe("publishHud — what the loop actually does each published frame", () => {
+  it("steady play: no React commit, the power-up shared value written every frame", () => {
+    let s = applyPowerUp(quiet(), "lightning");
+    const h = harness(s);
+    for (let f = 0; f < 120; f++) {
+      s = tick(s, 16, { playerX: 40, fire: false });
+      h.publish(s);
+    }
+    expect(h.commits).toHaveLength(0);
+    expect(h.writes.powerUp).toBe(120);
+    expect(h.writes.mission).toBe(0); // unchanged cues are not re-written
+    expect(h.sinks.powerUp.value).toBe(hudCues(s).powerUpFraction);
+  });
+
+  it("a HUD change commits once, and the cues are already current when it does", () => {
+    const s0 = quiet();
+    const h = harness(s0);
+    const s1 = applyPowerUp(s0, "shield");
+    h.publish(s1);
+    h.publish(s1);
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0].hud.powerUp).toBe("shield");
+    // the bar that mounts on this commit reads the full fraction, not the stale 0
+    expect(h.commits[0].powerUpAtCommit).toBe(1);
   });
 });
