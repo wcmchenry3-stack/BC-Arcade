@@ -208,7 +208,11 @@ export default function StarSwarmScreen() {
 
   // #2491: the run's counters go to Sentry once per run; the canvas has already stored the
   // game-over state when it calls back, so getState() sees the final tick's counts too.
+  // Re-armed on every new game: both paths (difficulty picker, dev panel) bump resetTick.
   const runStatsReportedRef = useRef(false);
+  useEffect(() => {
+    runStatsReportedRef.current = false;
+  }, [resetTick]);
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
@@ -354,7 +358,6 @@ export default function StarSwarmScreen() {
     (opts?: DevOptions) => {
       if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
       scoreRef.current = 0;
-      runStatsReportedRef.current = false; // #2491: the next run reports again
       stopPerfect(); // a fanfare still playing must not carry on over the new game
       setPhase("SwoopIn");
       setIsPaused(false);
