@@ -403,50 +403,5 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
-  },
-  "gameOver.body": {
-    "component": "GameOverModal",
-    "description": "Body text of the game-over modal.",
-    "tone": "sympathetic, encouraging",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.playAgain": {
-    "component": "GameOverModal",
-    "description": "Button to start a new session from the game-over modal.",
-    "tone": "action",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.playAgainLabel": {
-    "component": "GameOverModal",
-    "description": "Accessibility label for the Play Again button.",
-    "tone": "functional",
-    "characterLimit": 50,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.home": {
-    "component": "GameOverModal",
-    "description": "Button to return to the home screen from the game-over modal.",
-    "tone": "neutral",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.homeLabel": {
-    "component": "GameOverModal",
-    "description": "Accessibility label for the Home button in the game-over modal.",
-    "tone": "functional",
-    "characterLimit": 40,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
   }
 }
