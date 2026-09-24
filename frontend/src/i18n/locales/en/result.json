@@ -46,5 +46,10 @@
   "subtitle.completedIn_other": "Completed in {{count}} moves",
   "subtitle.reachedLimit": "{{name}} reached {{score}} · lowest score wins",
   "standings.label": "Final standings",
-  "standings.row": "{{rank}}. {{name}}, {{score}} points"
+  "standings.row": "{{rank}}. {{name}}, {{score}} points",
+  "action.changeLayout": "Change Layout",
+  "subtitle.pairsCleared_one": "All {{count}} pair cleared",
+  "subtitle.pairsCleared_other": "All {{count}} pairs cleared",
+  "subtitle.noFreePairs": "No free pairs remain",
+  "action.undoLastMove": "Undo last move"
 }

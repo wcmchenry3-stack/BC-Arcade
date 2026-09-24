@@ -71,24 +71,6 @@
     "doNotTranslate": [],
     "notes": "Displayed small and muted. The code after the label is always '#' followed by 4 uppercase hex chars and is never translated."
   },
-  "action.newGame": {
-    "component": "Controls",
-    "description": "Label on the new-game button.",
-    "tone": "action, brief",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.newGameLabel": {
-    "component": "Controls",
-    "description": "Accessibility label for the new-game button.",
-    "tone": "functional",
-    "characterLimit": 25,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "action.shuffle": {
     "component": "Controls",
     "description": "Label on the shuffle button.",
@@ -142,42 +124,6 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
-  },
-  "overlay.deadlocked": {
-    "component": "GameCanvas",
-    "description": "Large heading on the deadlock overlay when no free pairs remain and no shuffles are left.",
-    "tone": "neutral, informative",
-    "characterLimit": 16,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Distinct from overlay.noMoves (shuffle CTA). This fires only when shuffles are exhausted."
-  },
-  "overlay.deadlockedDetail": {
-    "component": "GameCanvas",
-    "description": "Detail line under the deadlock heading explaining the game is over.",
-    "tone": "helpful",
-    "characterLimit": 30,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Do not mention shuffling — there are none left."
-  },
-  "overlay.youWon": {
-    "component": "GameCanvas",
-    "description": "Large heading on the win overlay when all tiles are cleared.",
-    "tone": "celebratory, brief",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "overlay.youWonDetail": {
-    "component": "GameCanvas",
-    "description": "Detail line showing how many pairs were cleared on the win overlay.",
-    "tone": "celebratory",
-    "characterLimit": 30,
-    "placeholders": ["{{count}}"],
-    "doNotTranslate": [],
-    "notes": "{{count}} is the total number of matched pairs (72 for a full Turtle board)."
   },
   "overlay.shuffleButton": {
     "component": "GameCanvas",
@@ -268,15 +214,6 @@
     "placeholders": ["{{name}}"],
     "doNotTranslate": [],
     "notes": "{{name}} is the translated layout name (e.g. 'Turtle'). Screen-reader only — not visible text."
-  },
-  "score.display": {
-    "component": "GameCanvas",
-    "description": "Accessibility label for the score display.",
-    "tone": "functional",
-    "characterLimit": 20,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": null
   },
   "scoreboard.title": {
     "component": "ScoreboardScreen",

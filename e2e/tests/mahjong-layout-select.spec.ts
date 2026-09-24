@@ -118,13 +118,14 @@ test.describe("Mahjong — layout select screen", () => {
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    // The win modal should appear because the loaded game is complete.
-    await page
-      .getByRole("button", { name: "Start a new game" })
-      .waitFor({ timeout: 10_000 });
+    // The win card should appear because the loaded game is complete.
+    const changeLayout = page
+      .getByTestId("mahjong-result")
+      .getByRole("button", { name: "Change Layout" });
+    await changeLayout.waitFor({ timeout: 10_000 });
 
-    // Dismiss the win modal — this triggers the layout select screen.
-    await page.getByRole("button", { name: "Start a new game" }).click();
+    // Change Layout on the card goes to the layout select screen.
+    await changeLayout.click();
 
     await page
       .getByRole("heading", { name: "Choose Layout", exact: true })
