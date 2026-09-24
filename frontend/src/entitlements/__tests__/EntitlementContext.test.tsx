@@ -28,10 +28,10 @@ jest.mock("../../game/_shared/httpClient", () => ({
 }));
 
 const mockClearHearts = jest.fn().mockResolvedValue(undefined);
-const mockClearYacht = jest.fn().mockResolvedValue(undefined);
+const mockClearBlackjack = jest.fn().mockResolvedValue(undefined);
 const mockClearSudoku = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/hearts/storage", () => ({ clearGame: () => mockClearHearts() }));
-jest.mock("../../game/yacht/storage", () => ({ clearGame: () => mockClearYacht() }));
+jest.mock("../../game/blackjack/storage", () => ({ clearGame: () => mockClearBlackjack() }));
 jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku() }));
 // cascade/storage was removed in v2 teardown (#1747); EntitlementContext uses an inline no-op.
 
@@ -117,7 +117,7 @@ beforeEach(async () => {
     expires_at: "2099-01-01T00:00:00Z",
   });
   mockClearHearts.mockResolvedValue(undefined);
-  mockClearYacht.mockResolvedValue(undefined);
+  mockClearBlackjack.mockResolvedValue(undefined);
   mockClearSudoku.mockResolvedValue(undefined);
   mockDropByGameType.mockResolvedValue(undefined);
 });
@@ -459,6 +459,16 @@ describe("revocation flow", () => {
     expect(mockClearHearts).toHaveBeenCalledTimes(1);
   });
 
+  it("clears the saved Blackjack run when Blackjack is revoked", async () => {
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["blackjack"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await triggerForegroundWith([]);
+    expect(mockClearBlackjack).toHaveBeenCalledTimes(1);
+    expect(mockDropByGameType).toHaveBeenCalledWith("blackjack");
+  });
+
   it("drops queue entries for the revoked game", async () => {
     mockRequest.mockResolvedValue({
       token: makeToken(makePayload(["sudoku"])),
@@ -479,7 +489,7 @@ describe("revocation flow", () => {
 
   it("does not clear storage on first load (no prior entitlements)", async () => {
     mockRequest.mockResolvedValue({
-      token: makeToken(makePayload(["hearts", "yacht"])),
+      token: makeToken(makePayload(["hearts", "blackjack"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
     await render(
@@ -490,7 +500,7 @@ describe("revocation flow", () => {
     await flushAsync();
     await flushAsync();
     expect(mockClearHearts).not.toHaveBeenCalled();
-    expect(mockClearYacht).not.toHaveBeenCalled();
+    expect(mockClearBlackjack).not.toHaveBeenCalled();
   });
 
   it("handles starswarm revocation gracefully (no storage clearer)", async () => {
