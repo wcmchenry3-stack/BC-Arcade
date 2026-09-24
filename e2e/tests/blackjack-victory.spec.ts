@@ -5,7 +5,7 @@
  * Tests use injectEngineState to land directly in phase=victory.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { injectEngineState, victoryPhaseState } from "./helpers/blackjack";
 
 // Convenience: high-roller state so "Cash Out" is the primary CTA (no next table).

@@ -26,5 +26,15 @@
   "stat.errors": "Errors",
   "stat.best": "Best",
   "stat.moves": "Moves",
-  "stat.merges": "Merges"
+  "stat.merges": "Merges",
+  "action.changeDifficulty": "Change Difficulty",
+  "name.computer": "Computer",
+  "margin.won_one": "Won by {{count}} point",
+  "margin.won_other": "Won by {{count}} points",
+  "margin.lost_one": "Lost by {{count}} point",
+  "margin.lost_other": "Lost by {{count}} points",
+  "margin.tied": "You both finished on {{score}}",
+  "stat.upper": "Upper",
+  "stat.lower": "Lower",
+  "stat.bonus": "Bonus"
 }

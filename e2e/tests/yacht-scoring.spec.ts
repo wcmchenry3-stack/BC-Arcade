@@ -144,7 +144,7 @@ test.describe("Yacht — scoring verification (#180)", () => {
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
 
-    await expect(page.getByText("Game Over!")).toBeVisible();
-    await expect(page.getByText(/Final Score/i)).toBeVisible();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
+    await expect(page.getByTestId("yacht-final-scorecard")).toBeVisible();
   });
 });

@@ -175,7 +175,23 @@ function makePremiumScreen<P extends object>(
 // PREMIUM_ROUTES (premiumRoutes.ts), so the entitlement guard below and the
 // store-build visibility gate in LobbyStack() can never disagree about it.
 const PREMIUM_SCREEN_BASES: Record<PremiumRouteName, React.ComponentType<object>> = {
-  Game: GameScreen as React.ComponentType<object>,
+  // The Blackjack screens take navigation props; the guard passes them through.
+  BlackjackBetting: withSuspense(
+    LazyScreens.BlackjackBetting,
+    "blackjack_betting"
+  ) as React.ComponentType<object>,
+  BlackjackTable: withSuspense(
+    LazyScreens.BlackjackTable,
+    "blackjack_table"
+  ) as React.ComponentType<object>,
+  BlackjackVictory: withSuspense(
+    LazyScreens.BlackjackVictory,
+    "blackjack_victory"
+  ) as React.ComponentType<object>,
+  BlackjackStats: withSuspense(
+    LazyScreens.BlackjackStats,
+    "blackjack_stats"
+  ) as React.ComponentType<object>,
   Cascade: withSuspense(LazyScreens.Cascade, "cascade"),
   StarSwarm: withSuspense(LazyScreens.StarSwarm, "starswarm"),
   Hearts: withSuspense(LazyScreens.Hearts, "hearts"),
@@ -188,10 +204,6 @@ const PREMIUM_SCREENS = Object.fromEntries(
     makePremiumScreen(slug, PREMIUM_SCREEN_BASES[route]),
   ])
 ) as Record<PremiumRouteName, React.FC<object>>;
-const LazyBlackjackBettingScreen = withSuspense(LazyScreens.BlackjackBetting, "blackjack_betting");
-const LazyBlackjackTableScreen = withSuspense(LazyScreens.BlackjackTable, "blackjack_table");
-const LazyBlackjackVictoryScreen = withSuspense(LazyScreens.BlackjackVictory, "blackjack_victory");
-const LazyBlackjackStatsScreen = withSuspense(LazyScreens.BlackjackStats, "blackjack_stats");
 const LazyTwenty48Screen = withSuspense(LazyScreens.Twenty48, "twenty48");
 const LazySolitaireScreen = withSuspense(LazyScreens.Solitaire, "solitaire");
 const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
@@ -227,10 +239,7 @@ function LobbyStack() {
       {visiblePremiumRoutes().map(({ route }) => (
         <HomeStack.Screen key={route} name={route} component={PREMIUM_SCREENS[route]} />
       ))}
-      <HomeStack.Screen name="BlackjackBetting" component={LazyBlackjackBettingScreen} />
-      <HomeStack.Screen name="BlackjackTable" component={LazyBlackjackTableScreen} />
-      <HomeStack.Screen name="BlackjackVictory" component={LazyBlackjackVictoryScreen} />
-      <HomeStack.Screen name="BlackjackStats" component={LazyBlackjackStatsScreen} />
+      <HomeStack.Screen name="Game" component={GameScreen} />
       <HomeStack.Screen name="Twenty48" component={LazyTwenty48Screen} />
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />

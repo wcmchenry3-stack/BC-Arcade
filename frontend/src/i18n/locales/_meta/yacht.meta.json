@@ -341,33 +341,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "gameOver.title": {
-    "component": "GameScreen modal",
-    "description": "Modal title when the Yacht game ends after 13 rounds.",
-    "tone": "celebratory, punchy",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.finalScore": {
-    "component": "GameScreen modal",
-    "description": "Label above the final score number.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.scoreLabel": {
-    "component": "GameScreen modal",
-    "description": "Accessibility label for the final score.",
-    "tone": "functional",
-    "characterLimit": 30,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "gameOver.upperBonus": {
     "component": "GameScreen modal",
     "description": "Notice shown when the player earned the upper section bonus.",
@@ -376,24 +349,6 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "The +35 is a fixed game value — preserve it."
-  },
-  "gameOver.playAgain": {
-    "component": "GameScreen modal",
-    "description": "Button text to return to home screen.",
-    "tone": "action, inviting",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.playAgainLabel": {
-    "component": "GameScreen modal",
-    "description": "Accessibility label for the play again button.",
-    "tone": "functional",
-    "characterLimit": 40,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
   },
   "difficulty.groupLabel": {
     "component": "AiDifficultySelector",
@@ -472,33 +427,6 @@
     "description": "Turn indicator shown when the AI is taking its turn.",
     "tone": "casual, short",
     "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.youWin": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the human wins VS mode.",
-    "tone": "celebratory, punchy",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.computerWins": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the AI wins VS mode.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.tie": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the game ends in a tie (equal scores) in VS mode.",
-    "tone": "neutral, short",
-    "characterLimit": 15,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

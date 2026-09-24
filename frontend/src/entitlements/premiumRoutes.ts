@@ -8,7 +8,12 @@
 import { isGameVisible } from "./gameVisibility";
 
 export const PREMIUM_ROUTES = [
-  { slug: "yacht", route: "Game" },
+  // Blackjack moved to premium and Yacht to free on 2026-09-23 (owner): Blackjack
+  // is simulated gambling, which would rate the whole app 13+/18+ (PEGI 18).
+  { slug: "blackjack", route: "BlackjackBetting" },
+  { slug: "blackjack", route: "BlackjackTable" },
+  { slug: "blackjack", route: "BlackjackVictory" },
+  { slug: "blackjack", route: "BlackjackStats" },
   { slug: "cascade", route: "Cascade" },
   { slug: "starswarm", route: "StarSwarm" },
   { slug: "hearts", route: "Hearts" },

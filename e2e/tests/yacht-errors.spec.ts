@@ -155,12 +155,14 @@ test.describe("Yacht — error paths and navigation", () => {
     }
 
     // Modal should show final score and both action buttons
-    await expect(page.getByText("Game Over!")).toBeVisible();
-    await expect(page.getByText(/Final Score/i)).toBeVisible();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
+    await expect(page.getByTestId("yacht-final-scorecard")).toBeVisible();
     await expect(
       page.getByRole("button", { name: /play again/i }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: /dismiss/i })).toBeVisible();
+    await expect(
+      page.getByTestId("yacht-result").getByRole("button", { name: "Home" }),
+    ).toBeVisible();
   });
 
   test("scratching a category (scoring 0) is not reversible", async ({
@@ -242,13 +244,13 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
       await page.getByRole("button", { name: /Roll/i }).click();
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
-    await page.getByText("Game Over!").waitFor({ timeout: 10000 });
+    await page.getByTestId("yacht-result-title").waitFor({ timeout: 10000 });
   }
 
-  /** Helper: click Play Again then select Solo to dismiss the mode selector. */
+  /** Helper: Play Again keeps the mode (Solo) — no mode selector (#2505). */
   async function clickPlayAgainAsSolo(page: Page) {
     await page.getByRole("button", { name: /play again/i }).click();
-    await page.getByRole("button", { name: /^Solo$/i }).click();
+    await expect(page.getByRole("button", { name: /^Solo$/i })).toBeHidden();
   }
 
   test("Play Again resets to Round 1 / 13", async ({ page }) => {
@@ -316,12 +318,15 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     }
   });
 
-  test("Dismiss navigates back to HomeScreen", async ({ page }) => {
+  test("Home navigates back to HomeScreen", async ({ page }) => {
     await playFullGame(page);
 
-    await page.getByRole("button", { name: /dismiss/i }).click();
+    await page
+      .getByTestId("yacht-result")
+      .getByRole("button", { name: "Home" })
+      .click();
 
-    // After dismiss the user lands on HomeScreen
+    // Home lands the user on HomeScreen (#2505; replaces "No Thanks")
     await expect(page.getByText("BC Arcade").first()).toBeVisible({
       timeout: 10000,
     });

@@ -142,7 +142,7 @@ export async function installEntitlementsMock(page: Page): Promise<void> {
   const payload = b64url(
     JSON.stringify({
       sub: "e2e-test",
-      entitled_games: ["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"],
+      entitled_games: ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"],
       iat: 1000000000,
       exp: 9999999999,
     }),
