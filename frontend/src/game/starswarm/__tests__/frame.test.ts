@@ -18,6 +18,8 @@ import {
   buildFrame,
   playerVisible,
   hitFlash,
+  polyPath,
+  mirrorAxisX,
   EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
@@ -98,23 +100,88 @@ const byKey = (ops: DrawOp[], key: string) => ops.find((o) => o.key === key);
 const keys = (ops: DrawOp[]) => ops.map((o) => o.key);
 
 describe("buildFrame — scene order and background", () => {
-  it("starts with the background fill, then stars, and draws back to front", () => {
+  it("starts with the background fill, then stars, and draws every layer back to front", () => {
     const sf = initStarfield(CANVAS_W, CANVAS_H);
+    const path = { p0: { x: 0, y: 0 }, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 } };
     const s = blank({
       enemyBullets: [bullet({ id: 1 })],
       playerBullets: [bullet({ id: 2, owner: "player" })],
-      enemies: [enemyOf("Grunt", { id: 3 })],
+      // escorted Carrier mid-flash and firing its beam
+      enemies: [
+        enemyOf("Carrier", { id: 3, hitFlashTimer: 100, beamPhase: "fire", beamTimer: 500 }),
+        enemyOf("Boss", { id: 11 }),
+      ],
+      activePowerUp: { type: "shield", remainingMs: 5000, shieldAbsorbed: 0 },
+      player: { ...blank().player, hullFlashTimer: 100 },
+      buddyShips: [
+        {
+          id: 5,
+          x: 50,
+          y: 50,
+          path,
+          pathT: 0,
+          pathDuration: 1,
+          hasFired: false,
+          targetX: 0,
+          targetY: 0,
+          fromLeft: true,
+        },
+      ],
+      powerUps: [
+        { id: 6, type: "bomb", x: 50, y: 50, vy: 0, width: 24, height: 24, despawnTimer: 1 },
+      ],
+      asteroids: [
+        {
+          id: 7,
+          kind: "large",
+          x: 80,
+          y: 80,
+          vx: 0,
+          vy: 0,
+          radius: 22,
+          hp: 6,
+          rotation: 0,
+          spin: 0,
+          hitFlashTimer: 0,
+          hitEnemyIds: [],
+        },
+      ],
       explosions: [{ id: 4, x: 10, y: 10, frame: 0, frameTimer: 0 }],
       bombFlashTimer: 100,
     });
     const ops = buildFrame(s, sf, OPTS);
     expect(ops[0]).toEqual({ k: "fill", key: "bg", color: "#000010" });
     expect(ops.slice(1, 1 + sf.stars.length).every((o) => o.key.startsWith("star-"))).toBe(true);
-    const order = ["eb-1", "pb-2", "en-3", "player", "ex-4", "bomb-flash"].map((k) =>
-      keys(ops).indexOf(k)
+    expect(keys(ops).filter((k) => !k.startsWith("star-") && k !== "bg")).toEqual([
+      "eb-1",
+      "pb-2",
+      "en-3",
+      "en-3-ring",
+      "en-3-flash",
+      "en-3-flash-ring",
+      "en-11",
+      "beam-glow",
+      "beam-core",
+      "player",
+      "shield",
+      "shield-ring",
+      "hull-flash",
+      "buddy-5",
+      "pu-6",
+      "rock-7",
+      "rock-7-edge",
+      "ex-4",
+      "bomb-flash",
+    ]);
+    // the lightning tint sits between the hull flash and the buddies
+    const lit = buildFrame(
+      { ...s, activePowerUp: { type: "lightning", remainingMs: 5000, shieldAbsorbed: 0 } },
+      sf,
+      OPTS
     );
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const k = keys(lit);
+    expect(k.indexOf("hull-flash")).toBeLessThan(k.indexOf("lightning"));
+    expect(k.indexOf("lightning")).toBeLessThan(k.indexOf("buddy-5"));
   });
 
   it("every key is unique within a frame", () => {
@@ -340,9 +407,17 @@ describe("buildFrame — player", () => {
       expect.arrayContaining(["player", "shield", "shield-ring", "hull-flash"])
     );
     const over = buildFrame({ ...shielded, phase: "GameOver" }, NO_STARS, OPTS);
-    for (const k of ["player", "shield", "shield-ring", "hull-flash", "lightning"]) {
+    for (const k of ["player", "shield", "shield-ring", "hull-flash"]) {
       expect(byKey(over, k)).toBeUndefined();
     }
+    const lit = {
+      ...shielded,
+      activePowerUp: { type: "lightning" as const, remainingMs: 1, shieldAbsorbed: 0 },
+    };
+    expect(byKey(buildFrame(lit, NO_STARS, OPTS), "lightning")).toBeDefined();
+    expect(
+      byKey(buildFrame({ ...lit, phase: "GameOver" }, NO_STARS, OPTS), "lightning")
+    ).toBeUndefined();
     const offTop = { ...shielded, player: { ...shielded.player, y: -shielded.player.height - 1 } };
     expect(byKey(buildFrame(offTop, NO_STARS, OPTS), "player")).toBeUndefined();
   });
@@ -385,6 +460,17 @@ describe("buildFrame — player", () => {
         color: "#00ffcc",
       }
     );
+  });
+});
+
+describe("renderer helpers", () => {
+  it("polyPath closes the polygon: M first, L each other vertex, Z", () => {
+    expect(polyPath([1, 2, 3, 4, 5.5, 6])).toBe("M1,2 L3,4 L5.5,6 Z");
+    expect(polyPath([0, 0])).toBe("M0,0 Z");
+  });
+
+  it("a flipped image mirrors about its own centre — the buddy's x", () => {
+    expect(mirrorAxisX({ x: 300 - BUDDY_SIZE / 2, w: BUDDY_SIZE })).toBe(300);
   });
 });
 
@@ -493,6 +579,10 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
       OPTS
     );
     expect(byKey(flashing, "rock-10")).toMatchObject({ color: "#e8d3b8" });
+    // outline vertices are rounded to 0.1 px, as the path always was
+    const pts = body && body.k === "poly" ? body.points : [];
+    expect(pts.length).toBe(18);
+    expect(pts.every((v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9)).toBe(true);
   });
 
   it("explosions use the frame sprite, or a fading procedural burst while frames load", () => {

@@ -39,7 +39,7 @@ import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import { useStarSwarmImages, loadedSprites } from "../../game/starswarm/assets";
 import type { StarSwarmImages } from "../../game/starswarm/assets";
-import { buildFrame } from "../../game/starswarm/render/frame";
+import { buildFrame, polyPath, mirrorAxisX } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import type {
   StarSwarmState,
@@ -131,7 +131,7 @@ function renderOp(op: DrawOp, images: StarSwarmImages): React.ReactElement | nul
         />
       );
       if (!op.flipX) return el;
-      const cx = op.x + op.w / 2;
+      const cx = mirrorAxisX(op);
       return (
         <Group key={op.key} transform={[{ translateX: cx }, { scaleX: -1 }, { translateX: -cx }]}>
           {el}
@@ -139,15 +139,10 @@ function renderOp(op: DrawOp, images: StarSwarmImages): React.ReactElement | nul
       );
     }
     case "poly": {
-      let d = "";
-      for (let i = 0; i < op.points.length; i += 2) {
-        d += `${i === 0 ? "M" : " L"}${op.points[i]},${op.points[i + 1]}`;
-      }
-      d += " Z";
       return (
         <Path
           key={op.key}
-          path={d}
+          path={polyPath(op.points)}
           color={op.color}
           {...(op.stroke !== undefined ? { style: "stroke", strokeWidth: op.stroke } : {})}
         />
