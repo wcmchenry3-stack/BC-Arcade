@@ -886,7 +886,7 @@ function CascadeGame() {
               )}
             </View>
 
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
               {mergeBursts.map((burst) => (
                 <MergeBurst
                   key={burst.id}

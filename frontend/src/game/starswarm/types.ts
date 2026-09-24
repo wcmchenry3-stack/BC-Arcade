@@ -86,7 +86,17 @@ export interface Enemy {
   readonly wiggleTimer: number;
   /** Shots remaining in the active Boss burst; 0 = start a new burst (#979). */
   readonly burstShotsLeft: number;
+  /** #2485: Carrier sweep-beam state; "idle" for every other tier. */
+  readonly beamPhase: BeamPhase;
+  /** #2485: ms left in the current beam phase (idle = until the next charge). */
+  readonly beamTimer: number;
 }
+
+/** #2485: the Carrier's sweep beam — telegraph, then a vertical beam it drags across the lane. */
+export type BeamPhase = "idle" | "charge" | "fire";
+
+/** #2485: Carrier moments the screen reacts to (sound, haptics, screen-reader announcements). */
+export type CarrierEvent = "beamCharge" | "beamFire" | "reinforce";
 
 export interface Bullet {
   readonly id: number;
@@ -201,6 +211,10 @@ export interface StarSwarmState {
   readonly nextAsteroidTimer: number;
   /** Dev: suppress timed asteroid spawns (dev-panel throws still work). */
   readonly asteroidsDisabled: boolean;
+  /** #2485: ms until the Carrier's next reinforcement launch (Playing phase only). */
+  readonly reinforceTimer: number;
+  /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
+  readonly reinforcedThisWave: number;
   /** General-purpose countdown timer (WaveClear pause, etc.). */
   readonly phaseTimer: number;
   readonly canvasW: number;

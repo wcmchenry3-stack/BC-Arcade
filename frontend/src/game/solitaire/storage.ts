@@ -49,7 +49,7 @@ export async function loadGame(): Promise<SolitaireState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SolitaireState>;
+    const parsed = JSON.parse(raw) as { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
     if (
       parsed._v !== 1 ||
       (parsed.drawMode !== 1 && parsed.drawMode !== 3) ||

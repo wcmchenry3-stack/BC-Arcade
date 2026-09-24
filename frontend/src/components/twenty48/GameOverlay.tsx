@@ -60,7 +60,7 @@ export default function GameOverlay({
             borderTopColor: accentColor,
           },
         ]}
-        accessibilityRole="dialog"
+        role="dialog"
         accessibilityViewIsModal
       >
         <Text
@@ -134,7 +134,7 @@ export default function GameOverlay({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 10,

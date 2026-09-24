@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "jest.setup.ts",
+    "jest.setup-after-env.ts",
+    "e2e/**",
+    "scripts/**",
+    "eslint.config.js",
+    "android",
+    "ios"
+  ]
+}

@@ -1,11 +1,11 @@
 declare module "*.png" {
-  import { ImageSourcePropType } from "react-native";
-  const content: ImageSourcePropType;
+  // Metro resolves static image imports to a numeric asset-registry id.
+  const content: number;
   export default content;
 }
 
 declare module "*.webp" {
-  import { ImageSourcePropType } from "react-native";
-  const content: ImageSourcePropType;
+  // Metro resolves static image imports to a numeric asset-registry id.
+  const content: number;
   export default content;
 }

@@ -35,7 +35,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
         pointerEvents={visible ? "auto" : "none"}
         testID="animation-overlay-static"
       >
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={onDismiss} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
         {children}
       </View>
     );
@@ -47,7 +47,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
       pointerEvents={visible ? "auto" : "none"}
       testID="animation-overlay"
     >
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={onDismiss} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
       {children}
     </Animated.View>
   );
@@ -55,7 +55,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 999,
     justifyContent: "center",
     alignItems: "center",

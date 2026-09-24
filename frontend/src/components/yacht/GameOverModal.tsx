@@ -77,7 +77,7 @@ export default function GameOverModal({
     return (
       <View key={cat} style={styles.scoreRow}>
         <Text style={[styles.rowLabel, { color: colors.textMuted }]} numberOfLines={1}>
-          {t(CATEGORY_I18N_KEY[cat])}
+          {t(CATEGORY_I18N_KEY[cat] ?? cat)}
         </Text>
         <Text style={[styles.rowVal, { color: colors.text }]}>{fmtScore(scores[cat])}</Text>
         {isVs && (

@@ -45,12 +45,12 @@ export function solve(state: SortState): Move[] | null {
   while (head < queue.length) {
     if (visited.size >= BFS_CAP) return null;
 
-    const [cur, moves] = queue[head++];
+    const [cur, moves] = queue[head++]!;
 
     for (let from = 0; from < cur.bottles.length; from++) {
       for (let to = 0; to < cur.bottles.length; to++) {
         if (from === to) continue;
-        if (!isValidPour(cur.bottles[from], cur.bottles[to])) continue;
+        if (!isValidPour(cur.bottles[from]!, cur.bottles[to]!)) continue;
 
         const next = applyPour(cur, from, to);
         const k = key(next);
@@ -74,7 +74,7 @@ export function solve(state: SortState): Move[] | null {
  */
 export function getNextHint(state: SortState): Move | null {
   const path = solve(state);
-  return path && path.length > 0 ? path[0] : null;
+  return path?.[0] ?? null;
 }
 
 /**
@@ -96,13 +96,13 @@ export async function solveAsync(state: SortState): Promise<Move[] | null> {
       await new Promise<void>((r) => setTimeout(r, 0));
     }
 
-    const [cur, moves] = queue[head++];
+    const [cur, moves] = queue[head++]!;
     dequeued++;
 
     for (let from = 0; from < cur.bottles.length; from++) {
       for (let to = 0; to < cur.bottles.length; to++) {
         if (from === to) continue;
-        if (!isValidPour(cur.bottles[from], cur.bottles[to])) continue;
+        if (!isValidPour(cur.bottles[from]!, cur.bottles[to]!)) continue;
 
         const next = applyPour(cur, from, to);
         const k = key(next);
@@ -126,5 +126,5 @@ export async function solveAsync(state: SortState): Promise<Move[] | null> {
  */
 export async function getNextHintAsync(state: SortState): Promise<Move | null> {
   const path = await solveAsync(state);
-  return path && path.length > 0 ? path[0] : null;
+  return path?.[0] ?? null;
 }

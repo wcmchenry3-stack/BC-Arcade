@@ -30,12 +30,22 @@ import {
   isCarrierArmored,
   asteroidOutline,
   throwAsteroid,
+  carrierBeam,
+  carrierBeamJustStarted,
+  carrierBeamJustFired,
+  reinforcementsJustLaunched,
+  BEAM_HALF_WIDTH,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import { useStarSwarmImages } from "../../game/starswarm/assets";
-import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
+import type {
+  StarSwarmState,
+  PowerUpType,
+  DifficultyTier,
+  CarrierEvent,
+} from "../../game/starswarm/types";
 
 const EXPLOSION_DRAW_SIZE = 48;
 const DT_CAP_MS = 33;
@@ -89,6 +99,8 @@ interface Props {
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
+  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  onCarrierEvent?: (kind: CarrierEvent) => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -130,6 +142,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onBonusLife,
       onPowerUpCollect,
       onCarrierExposed,
+      onCarrierEvent,
       isPaused = false,
       width,
       height,
@@ -194,6 +207,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
+    const onCarrierEventRef = useRef(onCarrierEvent);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
     const throwAsteroidRef = useRef(false); // #2486
@@ -238,6 +252,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onCarrierExposedRef.current = onCarrierExposed;
     }, [onCarrierExposed]);
+    useEffect(() => {
+      onCarrierEventRef.current = onCarrierEvent;
+    }, [onCarrierEvent]);
 
     const [renderState, setRenderState] = useState<RenderState>({
       game: gameRef.current,
@@ -416,6 +433,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
               // Judged against the previous tick, and only while the Carrier is still alive.
               if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
+              // #2485
+              if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
+              if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
+              if (reinforcementsJustLaunched(prev, applied))
+                onCarrierEventRef.current?.("reinforce");
               // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
               // the wave counter bumps in the same tick the last enemy dies. Detect that bump
               // directly instead of watching for a phase transition.
@@ -644,6 +666,49 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 </Group>
               );
             })}
+
+            {/* #2485 Carrier sweep beam — telegraph, then the beam */}
+            {(() => {
+              const beam = carrierBeam(state);
+              if (!beam) return null;
+              if (beam.phase === "charge") {
+                return (
+                  <Group>
+                    <Rect
+                      x={beam.x - 2}
+                      y={beam.y}
+                      width={4}
+                      height={state.canvasH}
+                      color={`rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`}
+                    />
+                    <Circle
+                      cx={beam.x}
+                      cy={beam.y + 6}
+                      r={4 + beam.progress * 8}
+                      color={`rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`}
+                    />
+                  </Group>
+                );
+              }
+              return (
+                <Group>
+                  <Rect
+                    x={beam.x - BEAM_HALF_WIDTH - 4}
+                    y={beam.y}
+                    width={BEAM_HALF_WIDTH * 2 + 8}
+                    height={state.canvasH}
+                    color="rgba(176,108,255,0.35)"
+                  />
+                  <Rect
+                    x={beam.x - BEAM_HALF_WIDTH * 0.5}
+                    y={beam.y}
+                    width={BEAM_HALF_WIDTH}
+                    height={state.canvasH}
+                    color="rgba(230,205,255,0.9)"
+                  />
+                </Group>
+              );
+            })()}
 
             {/* Player — hidden once GameOver freezes the frame */}
             {showPlayerShip &&
@@ -990,7 +1055,7 @@ const styles = StyleSheet.create({
     left: 0,
   },
   hud: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 8,
@@ -1040,7 +1105,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   phaseOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },
