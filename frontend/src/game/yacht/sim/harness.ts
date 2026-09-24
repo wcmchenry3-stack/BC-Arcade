@@ -40,8 +40,7 @@ export function difficultyPolicy(difficulty: AiDifficulty): SimPolicy {
   return {
     label: difficulty,
     hold: (state) => holdStrategy(state, difficulty),
-    category: (state, opponentScore, opponentRound) =>
-      scoreStrategy(state, difficulty, opponentScore, opponentRound),
+    category: (state) => scoreStrategy(state, difficulty),
   };
 }
 

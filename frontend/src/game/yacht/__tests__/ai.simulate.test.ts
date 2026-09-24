@@ -3,7 +3,7 @@
  *
  * Role: catch total breakage on every PR (the AI throws, produces invalid
  * scores, the dice mirroring breaks, or Hard stops beating Easy). About 140
- * games at ~1s each under Jest keeps this around two and a half minutes.
+ * games at ~0.1s each under Jest (#2246 tiers) runs in about 15 seconds.
  *
  * Limits: these sample sizes can't detect balance drift, and can't order
  * Medium against Easy or Hard (a 20-game win rate has an SE of ~0.11). That is the job
@@ -60,9 +60,10 @@ describe("Yacht AI simulator smoke tests", () => {
   });
 
   it("Hard beats Easy", () => {
-    // Measured true rate 61.9% (sim/gate.ts). Per-block SD ~0.245, so 25
-    // blocks (100 games) give an SE of ~0.049 and 0.5 sits ~2.4 SE below the
-    // true rate: this only fails if Hard has genuinely stopped beating Easy.
+    // Measured true rate 92.3% (sim/gate.ts). Even at the older AI's 61.9%,
+    // 25 blocks (100 games, per-block SD ≤ 0.245, SE ≤ 0.049) kept 0.5 ~2.4
+    // SE below the true rate: this only fails if Hard has genuinely stopped
+    // beating Easy.
     expect(smoke("hard", "easy", 3, ORDERING_BLOCKS).aWinRate.mean).toBeGreaterThan(0.5);
   });
 });

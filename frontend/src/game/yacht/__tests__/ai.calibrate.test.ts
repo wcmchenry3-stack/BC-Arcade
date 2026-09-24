@@ -14,10 +14,15 @@
  * opponent or with the neighbouring seed.
  */
 
-import { bestHoldMask, holdStrategy, scoreStrategy } from "../ai";
-import { newGame, roll, score, setRng } from "../engine";
-import { buildYachtInfoSet } from "../aiInfoSet";
-import { EASY_HOLD_WEIGHTS, MEDIUM_HOLD_WEIGHTS, type HoldWeights } from "../aiWeights";
+import {
+  TIERS,
+  chooseOption,
+  holdStrategy,
+  scoreCategories,
+  scoreHolds,
+  scoreStrategy,
+} from "../ai";
+import { newGame, roll, score, setRng, type Category } from "../engine";
 import { computeCategoryEvLoss, computeHoldEvLoss } from "../oracle/regret";
 import {
   blundersPer1000,
@@ -86,6 +91,52 @@ const REGRET_N = process.env.YACHT_REGRET_SIM
 
 const REGRET_TEST_TIMEOUT_MS = 1_800_000;
 
+/** How a player decides — the live tiers, or a diagnostic variant. */
+interface Decider {
+  hold(state: GameState): boolean[];
+  category(state: GameState): Category;
+}
+
+const liveTier = (difficulty: AiDifficulty): Decider => ({
+  hold: (s) => holdStrategy(s, difficulty),
+  category: (s) => scoreStrategy(s, difficulty),
+});
+
+/**
+ * The same tier with its noise switched off (temperature 0): it always plays
+ * its own best option, so any EV-loss left comes from its foresight alone.
+ */
+const noiseFreeTier = (difficulty: AiDifficulty): Decider => {
+  const { foresight, maxLoss } = TIERS[difficulty];
+  const params = { temperature: 0, maxLoss };
+  return {
+    hold(s) {
+      const holds = scoreHolds(s, foresight);
+      const pick = chooseOption(
+        holds.map((h) => h.value),
+        params,
+        (i) => holds[i]!.dominated
+      );
+      const kept = [...holds[pick]!.kept];
+      return s.dice.map((d) => {
+        const i = kept.indexOf(d);
+        if (i < 0) return false;
+        kept.splice(i, 1);
+        return true;
+      });
+    },
+    category(s) {
+      const options = scoreCategories(s, foresight);
+      return options[
+        chooseOption(
+          options.map((o) => o.value),
+          params
+        )
+      ]!.category;
+    },
+  };
+};
+
 /**
  * Plays one player's turn while logging an EV-loss record for every hold and
  * category decision made along the way, mirroring the harness's `playTurn`
@@ -97,9 +148,8 @@ const REGRET_TEST_TIMEOUT_MS = 1_800_000;
 async function playTurnWithRegret(
   state: GameState,
   streamSeed: number,
+  decider: Decider,
   difficulty: AiDifficulty,
-  opponentScore: number,
-  opponentRound: number,
   records: RegretRecord[],
   round: number
 ): Promise<GameState> {
@@ -107,14 +157,14 @@ async function playTurnWithRegret(
   let s = roll(state, NO_HOLDS, { dice: table[0]! });
   while (s.rolls_used < 3) {
     const rerollsLeft = (3 - s.rolls_used) as 1 | 2;
-    const holds = holdStrategy(s, difficulty);
+    const holds = decider.hold(s);
     const result = await computeHoldEvLoss(s, s.dice, rerollsLeft, holds);
     records.push({ result, difficulty, round, dice: s.dice });
     if (holds.every((h) => h)) break;
     s = roll(s, holds, { dice: table[s.rolls_used]! });
   }
 
-  const category = scoreStrategy(s, difficulty, opponentScore, opponentRound);
+  const category = decider.category(s);
   const catResult = await computeCategoryEvLoss(s, s.dice, category);
   records.push({ result: catResult, difficulty, round, dice: s.dice });
 
@@ -122,11 +172,15 @@ async function playTurnWithRegret(
 }
 
 /**
- * Plays one full self-play game (both seats at `difficulty`, each on its
- * own stream) and returns every logged
- * decision from BOTH seats — doubling the sample per game for free.
+ * Plays one full self-play game (both seats with the same decider, each on
+ * its own stream) and returns every logged decision from BOTH seats —
+ * doubling the sample per game for free.
  */
-async function playRegretGame(difficulty: AiDifficulty, seed: number): Promise<RegretRecord[]> {
+async function playRegretGame(
+  decider: Decider,
+  difficulty: AiDifficulty,
+  seed: number
+): Promise<RegretRecord[]> {
   const records: RegretRecord[] = [];
   const seed0 = deriveSeed(seed, 0);
   const seed1 = deriveSeed(seed, 1);
@@ -135,17 +189,22 @@ async function playRegretGame(difficulty: AiDifficulty, seed: number): Promise<R
   let p1 = newGame();
 
   for (let round = 1; round <= 13; round++) {
-    p0 = await playTurnWithRegret(p0, seed0, difficulty, p1.total_score, p1.round, records, round);
-    p1 = await playTurnWithRegret(p1, seed1, difficulty, p0.total_score, p0.round, records, round);
+    p0 = await playTurnWithRegret(p0, seed0, decider, difficulty, records, round);
+    p1 = await playTurnWithRegret(p1, seed1, decider, difficulty, records, round);
   }
 
   return records;
 }
 
-async function playRegretBatch(difficulty: AiDifficulty, n: number, seedOffset: number) {
+async function playRegretBatch(
+  difficulty: AiDifficulty,
+  n: number,
+  seedOffset: number,
+  decider: Decider = liveTier(difficulty)
+) {
   const records: RegretRecord[] = [];
   for (let i = 0; i < n; i++) {
-    records.push(...(await playRegretGame(difficulty, seedOffset + i)));
+    records.push(...(await playRegretGame(decider, difficulty, seedOffset + i)));
   }
   return records;
 }
@@ -154,11 +213,15 @@ function evLosses(records: readonly RegretRecord[]): number[] {
   return records.map((r) => r.result.evLoss);
 }
 
+function mean(values: readonly number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
 describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
   afterEach(() => setRng(Math.random));
 
   itFull(
-    "Easy > Medium > Hard mean EV-loss, significant at this sample size",
+    "Easy > Medium > Hard mean EV-loss, each gap significant; Hard never blunders",
     async () => {
       const start = Date.now();
 
@@ -216,17 +279,8 @@ describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
           `(${(elapsedMs / totalDecisions).toFixed(2)}ms/decision average, includes async overhead)`
       );
 
-      // Sanity assertion (acceptance criterion): the ordering is directionally
-      // correct end-to-end, and the largest, most reliable gap (Easy vs Hard —
-      // combines both tiers' noise-rate AND weight differences) is
-      // statistically significant at this sample size, not a one-seed
-      // artifact. Medium sits directionally between the two but is NOT
-      // asserted significant against Hard: aiWeights.ts's own calibration
-      // target puts Hard at only ~47-53% win rate vs Medium (near coin-flip
-      // by design), so a small or noisy Medium-vs-Hard decision-quality gap
-      // is a real epic finding (#2246 — Medium's `upperCategoryEfficiency:
-      // 5.0` swamping its other terms), not a bug in this metric. Both
-      // pairwise results are logged either way.
+      // The ladder is graduated: every adjacent pair differs significantly in
+      // decision quality, not just Easy vs Hard (#2246).
       expect(easySummary.meanEvLoss).toBeGreaterThan(mediumSummary.meanEvLoss);
       expect(mediumSummary.meanEvLoss).toBeGreaterThan(hardSummary.meanEvLoss);
 
@@ -240,7 +294,13 @@ describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
           `(${mediumVsHard.significant}), Easy-vs-Hard t=${easyVsHard.tStat.toFixed(2)} ` +
           `crit=${easyVsHard.tCritical.toFixed(2)} (${easyVsHard.significant})`
       );
+      expect(easyVsMedium.significant).toBe(true);
+      expect(mediumVsHard.significant).toBe(true);
       expect(easyVsHard.significant).toBe(true);
+
+      // Hard's slips are capped at TIERS.hard.maxLoss (3) points below the
+      // oracle's best, under the 5-point blunder threshold.
+      expect(blundersPer1000(hard)).toBe(0);
 
       // Existing simulator outputs are unchanged by this instrumentation
       // (regression check): run a plain harness batch and confirm it's
@@ -260,90 +320,30 @@ describe("Yacht regret metric — EV-loss vs the optimal oracle", () => {
   );
 
   itFull(
-    "Noise-disabled diagnostic: Easy vs Medium hold EV-loss collapses (same weights today) — the ordering above is driven by noise frequency, not structure, for this pair",
+    "Noise-free diagnostic: with temperature 0 the tiers still order Easy > Medium > Hard — separation is structural (foresight), not noise",
     async () => {
-      // EASY_HOLD_WEIGHTS === MEDIUM_HOLD_WEIGHTS by value today (aiWeights.ts).
-      // holdStrategy's 13%-vs-3% noise rate is what separates them in the test
-      // above. bestHoldMask bypasses noise entirely — same infoSet, same
-      // weights, same deterministic weighted-sum argmax — so with the SAME
-      // seed (and thus the same dice sequences), the two runs must be
-      // identical, not merely statistically indistinguishable.
+      // Same seeds (so the same dice streams) for every tier: only the
+      // tier's foresight differs. Hard with noise off is the oracle itself.
       const diagN = Math.min(REGRET_N, 100);
-      const easyLosses = await playHoldOnlyDiagnostic(EASY_HOLD_WEIGHTS, 850000, diagN);
-      const mediumLosses = await playHoldOnlyDiagnostic(MEDIUM_HOLD_WEIGHTS, 850000, diagN);
+      const easy = evLosses(await playRegretBatch("easy", diagN, 850000, noiseFreeTier("easy")));
+      const medium = evLosses(
+        await playRegretBatch("medium", diagN, 850000, noiseFreeTier("medium"))
+      );
+      const hard = evLosses(await playRegretBatch("hard", diagN, 850000, noiseFreeTier("hard")));
 
       console.log(
-        `\nNoise-disabled diagnostic (n=${diagN} games): Easy weights mean=${(
-          easyLosses.reduce((a, b) => a + b, 0) / easyLosses.length
-        ).toFixed(4)}, Medium weights mean=${(
-          mediumLosses.reduce((a, b) => a + b, 0) / mediumLosses.length
-        ).toFixed(4)}`
+        `\nNoise-free diagnostic (n=${diagN} games): mean EV-loss Easy ${mean(easy).toFixed(4)}, ` +
+          `Medium ${mean(medium).toFixed(4)}, Hard ${mean(hard).toFixed(4)}`
       );
 
-      expect(easyLosses).toEqual(mediumLosses);
-      const t = meanDiffSignificant(easyLosses, mediumLosses);
-      expect(t.meanDiff).toBe(0);
-      expect(t.significant).toBe(false);
+      expect(meanDiffSignificant(easy, medium).significant).toBe(true);
+      expect(meanDiffSignificant(medium, hard).significant).toBe(true);
+      expect(mean(easy)).toBeGreaterThan(mean(medium));
+      expect(mean(medium)).toBeGreaterThan(mean(hard));
+      // Noise-free Hard plays the oracle's own choices: what little loss is
+      // left comes from the table's 0.01-point storage precision.
+      expect(mean(hard)).toBeLessThan(0.05);
     },
     REGRET_TEST_TIMEOUT_MS
   );
 });
-
-/**
- * Diagnostic-only: plays one self-play game logging ONLY the raw hold EV-loss
- * value for each hold decision, selected via `bestHoldMask` (no cognitive
- * noise) under a fixed `holdWeights` map. Category decisions use "hard"
- * scoring (0% noise, per NOISE_RATE) so only the hold weight map varies
- * between calls — isolating "does noise explain the gap" from any
- * category-side variation. Two-layer game/batch split mirrors
- * `playRegretGame`/`playRegretBatch` above so a future change to the
- * per-game round structure only needs to be made in one shape, not two.
- */
-async function playDiagnosticGame(holdWeights: HoldWeights, seed: number): Promise<number[]> {
-  const losses: number[] = [];
-  const seed0 = deriveSeed(seed, 0);
-  const seed1 = deriveSeed(seed, 1);
-  let p0 = newGame();
-  let p1 = newGame();
-  for (let round = 1; round <= 13; round++) {
-    p0 = await playDiagnosticTurn(p0, seed0, holdWeights, p1.total_score, p1.round, losses);
-    p1 = await playDiagnosticTurn(p1, seed1, holdWeights, p0.total_score, p0.round, losses);
-  }
-  return losses;
-}
-
-async function playHoldOnlyDiagnostic(
-  holdWeights: HoldWeights,
-  seed: number,
-  n: number
-): Promise<number[]> {
-  const losses: number[] = [];
-  for (let i = 0; i < n; i++) {
-    losses.push(...(await playDiagnosticGame(holdWeights, seed + i)));
-  }
-  return losses;
-}
-
-async function playDiagnosticTurn(
-  state: GameState,
-  streamSeed: number,
-  holdWeights: HoldWeights,
-  opponentScore: number,
-  opponentRound: number,
-  losses: number[]
-): Promise<GameState> {
-  const table = beginTurn(state, streamSeed);
-  let s = roll(state, NO_HOLDS, { dice: table[0]! });
-  while (s.rolls_used < 3) {
-    const rerollsLeft = (3 - s.rolls_used) as 1 | 2;
-    const infoSet = buildYachtInfoSet(s, opponentScore, opponentRound);
-    const holds = bestHoldMask(infoSet, holdWeights);
-    const result = await computeHoldEvLoss(s, s.dice, rerollsLeft, holds);
-    losses.push(result.evLoss);
-    if (holds.every((h) => h)) break;
-    s = roll(s, holds, { dice: table[s.rolls_used]! });
-  }
-
-  const category = scoreStrategy(s, "hard", opponentScore, opponentRound);
-  return score(s, category);
-}

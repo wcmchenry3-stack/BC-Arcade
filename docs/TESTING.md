@@ -155,7 +155,7 @@ All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
   the only place bands are defined.
 
 **Layer 1: PR smoke test.** `__tests__/ai.simulate.test.ts` runs in every PR
-(about 1s per game under Jest, 5 blocks per matchup). It catches total breakage:
+(about 140 games, ~15s under Jest with the #2246 tiers). It catches total breakage:
 the AI throwing, invalid scores, a harder tier no longer beating Easy, or
 mirroring broken (paired self-play must come out at exactly 50%). It is far too
 small to see balance drift.
@@ -186,21 +186,26 @@ whoever moved first, so 50% means turn order doesn't matter. A #2200-style
 artifact shows up as a large order effect. In self-play A's win rate is 50%
 by construction, so the first-mover rate is the number to read.
 
-**Bands are regression bands.** They are centred on the current AI as
-measured on 2026-09-24 (values in `gate.ts` comments), not on the #2157 design
-targets. The current AI misses those targets: Hard and Medium are close to even
-(51.9%), and Hard's bonus rate is 46.6%, not ≥ 65%. The old
-`ai.calibrate.test.ts` bands asserted the targets and would have failed if they
-had ever run. #2246 reshapes the tiers and should re-centre the bands.
+**What the bands encode.** Since #2246 the bands describe the tier design:
+each tier's mean score sits in a ±10-point band around its #2157 target (Easy
+~160, Medium ~215, Hard ~250), the ladder is strictly ordered on score,
+upper-bonus rate and below-par fills, and win-rate and bonus bands are
+centred on the values measured on 2026-09-24 (in `gate.ts` comments). The
+tiers ignore the opponent, so each player's game depends only on their own
+streams: the order effect is exactly 0 and the self-play first-mover rate
+exactly 50%. Those bands stay as a guard against an opponent-aware layer
+reintroducing a #2200-class artifact.
 
-**Sample size and power** (measured, 4 CPU cores, ~0.33s/game under `tsx`):
+**Sample size and power** (measured, 4 CPU cores, ~0.06s/game under `tsx`
+for the #2246 tiers; the first measurements below were taken on the older
+utility AI at ~0.33s/game):
 
 | Quantity                   | Per-block SD | Blocks (games) | 95% CI half-width | Band half-width |
 | -------------------------- | ------------ | -------------- | ----------------- | --------------- |
-| Win rate (A vs B)          | 0.245        | 500 (2,000)    | ±2.2pp            | ±5pp            |
+| Win rate (A vs B)          | ≤ 0.245      | 500 (2,000)    | ±1.6–2.4pp        | ±5pp            |
 | Order effect               | 0.247        | 500 (2,000)    | ±2.2pp            | ±5pp            |
 | Self-play first-mover rate | ~0.18        | 250 (1,000)    | ±2.2pp            | ±5pp            |
-| Mean score (one player)    | ~30          | 500 (2,000)    | ±2.6–3.0          | floor 7–8 below |
+| Mean score (one tier)      | ~30–40       | 250–500        | ±2.4–4.9          | ±10             |
 
 With a CI half-width under half the band's half-width, a run whose true value
 is at the band centre fails less than once in 10⁵ runs (z ≈ 4.5). A real shift
@@ -208,10 +213,10 @@ of 7.5pp is detected ~99% of the time; a shift of exactly 5pp is detected
 50% of the time. Because the seeds are fixed, the gate is deterministic: the
 same code gives the same numbers. It only changes result when the AI changes.
 
-Wall-clock at these sizes: 2,000 games is ~11 min per matchup group and the
-self-play group (3,000 games) is ~17 min on a 4-core dev box. The jobs run in
-parallel, so the whole gate finishes in under ~20 min. Each job has a 90-min
-timeout to absorb slower runners.
+Wall-clock at these sizes: 2,000 games is ~2 min per matchup group and the
+self-play group (3,000 games) is ~3 min on a 4-core dev box with the #2246
+tiers (the older utility AI took ~11 and ~17 min). The jobs run in parallel;
+each has a 90-min timeout to absorb slower runners.
 
 **What pairing buys.** It isn't free variance reduction everywhere. Mirrored
 pairs are negatively correlated (r ≈ −0.35), which cuts the variance of the
@@ -277,7 +282,9 @@ below at N=30, per the measurement above); override independently with
 `YACHT_REGRET_SIM=<N>` for full or custom coverage. This is the documented
 sampling fallback called for by #2244's acceptance criteria — full
 non-sampled 3,000-game coverage was measured and found impractical for
-routine runs, not assumed.
+routine runs, not assumed. With the #2246 tiers the AI itself is much
+cheaper: the default run measures ~4ms/decision (11,550 decisions in 46s),
+so raising `YACHT_REGRET_SIM` is now affordable when needed.
 
 **Timeout caveat if you raise `YACHT_REGRET_SIM`**: the test's own
 `it()` timeout (1,800,000ms) is not a reliable backstop for a large run. Once
@@ -292,19 +299,16 @@ ms/decision rate above, not from the configured timeout.
 
 The gate asserts:
 
-- Mean EV-loss orders Easy > Medium > Hard, with Easy-vs-Hard significant at
-  the run's sample size (the largest, most reliable gap — combines both
-  tiers' noise-rate *and* weight differences). Medium sits directionally
-  between the two, but per `aiWeights.ts`'s own calibration target (Hard wins
-  only ~47–53% vs Medium), Medium-vs-Hard is not asserted significant — that
-  gap being small or noisy is itself a real epic finding (#2246), not a test
-  bug.
-- A noise-disabled diagnostic (`bestHoldMask`, bypassing `holdStrategy`'s
-  cognitive-noise injection) confirms Easy's and Medium's hold decisions are
-  *identical* under the same seed — `EASY_HOLD_WEIGHTS` and
-  `MEDIUM_HOLD_WEIGHTS` are equal-valued today, so with noise removed there's
-  nothing left to separate them. This demonstrates the metric measures
-  decision *structure*, not just how often noise fires.
+- Mean EV-loss orders Easy > Medium > Hard, and every adjacent gap is
+  significant (measured 2026-09-24: 2.40 / 1.01 / 0.14, Welch's t = 22.8,
+  31.0 and 40.9). Hard makes no blunder-band (> 5 EV) decisions: its slips
+  are capped at 3 points below the oracle's best.
+- A noise-free diagnostic plays each tier at temperature 0 on the same dice:
+  the order still holds (0.97 / 0.48 / 0.00), so the ladder comes from each
+  tier's foresight, not from how much noise it adds. Noise-free Hard *is*
+  the oracle, so its EV-loss is ~0. (Before #2246 the equivalent diagnostic
+  showed Easy and Medium making *identical* decisions with noise removed —
+  the problem #2246 fixed.)
 
 Console output (only shown with `--silent=false` or on failure) reports a
 per-difficulty table (mean EV-loss, hold/category split, blunders per 1,000

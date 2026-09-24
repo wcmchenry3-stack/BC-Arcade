@@ -17,6 +17,7 @@ import {
   Category,
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
+import { preloadOracleTable } from "../game/yacht/oracle/oracle";
 import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -95,6 +96,9 @@ export default function GameScreen({ navigation, route }: Props) {
   const aiDifficultyRef = useRef(aiDifficulty);
   useEffect(() => {
     aiDifficultyRef.current = aiDifficulty;
+    // Decode the AI's optimal-play table before its first turn (#2246). If
+    // this fails, the AI decodes it on demand instead, so just record it.
+    if (aiDifficulty) preloadOracleTable().catch((e) => Sentry.captureException(e));
   }, [aiDifficulty]);
 
   const aiGameStateRef = useRef(aiGameState);
@@ -262,12 +266,7 @@ export default function GameScreen({ navigation, route }: Props) {
       // Beat before the AI locks in its category
       await delay(1000);
       if (aiTurnCancelledRef.current) return;
-      const cat = scoreStrategy(
-        s,
-        diff,
-        gameStateRef.current.total_score,
-        gameStateRef.current.round
-      );
+      const cat = scoreStrategy(s, diff);
       s = engineScore(s, cat);
       setAiGameState(s);
       setIsAiTurn(false);
