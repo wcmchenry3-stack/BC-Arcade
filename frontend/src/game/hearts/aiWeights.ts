@@ -13,7 +13,7 @@
  * strongest persona and the all-Cautious table the hardest for the human.
  * The sim gate (sim/gate.ts) showed the weights barely move its strength
  * while noise does, so 35% puts it back at the bottom — the human wins ~28%
- * at the Cautious table vs ~25.5% (Schemer) and ~22% (Daring).
+ * at the Cautious table vs ~25.5% (Schemer) and ~24% (Daring).
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";

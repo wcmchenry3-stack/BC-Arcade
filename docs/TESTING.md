@@ -369,15 +369,15 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
 - **Regression checks** (14) hold a metric at its `baseline.json` value:
   H0 "equals the baseline" against H1 "moved by δ" (3pp for win shares,
   2–4pp for behaviour rates), both directions, each side at α/2.
-- **Separation checks** (5) are signed hypotheses written into `gate.ts`
+- **Separation checks** (4) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
   (H0) against "no difference" (H1). A reversed or vanished separation fails;
   a larger one passes. The report prints the difference with its CI.
 
-All 19 checks are one family, **Bonferroni-corrected**: each runs at
-α = 0.05/19 ≈ 0.0026 with β = 0.05, so a behaviour-neutral change fails the
+All 18 checks are one family, **Bonferroni-corrected**: each runs at
+α = 0.05/18 ≈ 0.0028 with β = 0.05, so a behaviour-neutral change fails the
 gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
-of the time. CIs in the report use the same adjusted level (99.74%).
+of the time. CIs in the report use the same adjusted level (99.72%).
 
 **How a run proceeds.** Each group adds 200 blocks to every matchup, then
 evaluates its undecided checks. A check's decision is final the first time
@@ -475,27 +475,34 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24).** Baseline (`BASELINE_SEED`,
-presets 12,000 blocks, field 6,000; the full numbers with counts are in
-`baseline.json`):
+**What the gate measured (2026-09-24, after #2555).** Baseline
+(`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
+counts are in `baseline.json`):
 
-- The human stand-in wins 21.9% at the all-Cautious table, 25.5% at
-  all-Schemer, 23.9% at all-Daring and 24.0% at the mixed table — the
-  "easiest" persona gives the hardest table.
-- At the mixed table Cautious wins 27.2%, Daring 26.0%, Schemer 22.9%. In the
-  field matchup Cautious beats Schemer by +2.75pp and Daring beats Schemer by
-  +1.5pp. The ladder is Cautious ≳ Daring > Schemer, not the intended
-  Daring > Schemer > Cautious; the gate pins it as it is (rebalancing is
-  #2233's job, and will update the expectations with new evidence).
+- The difficulty ladder holds: the human stand-in wins 28.3% at the
+  all-Cautious table, 25.5% at all-Schemer and 23.9% at all-Daring (25.9%
+  at the mixed table). At the mixed table Daring wins 28.2%, Schemer 24.4%,
+  Cautious 21.5%; in the field matchup Daring beats Schemer by +1.5pp and
+  Schemer beats Cautious by +3.2pp.
+- The Schemer-vs-Daring table gap (+1.5pp ± 0.5) is too small for an SPRT
+  inside the block cap, so it isn't a separation check; `gate.test.ts` pins
+  it on the baseline instead. #2234/#2235 are expected to widen it.
+- Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
+  Cautious was the strongest persona (+2.75pp over Schemer in the field) and
+  the all-Cautious table the hardest for the human (21.9%). Changing
+  Cautious's play weights barely moved that; its noise rate did (30% → still
+  level with Schemer, 35% → the ladder above, 38% → a 30% human win share).
 - Daring: moon attempts in 9.2% of hands, paired success 7.2% of attempts;
   33% of its Q♠ dumps land on the human (Schemer: 34%). Passes that could
-  void a suit do so 21% (Cautious), 65% (Schemer), 83% (Daring) of the time.
+  void a suit do so 20% (Cautious), 65% (Schemer), 83% (Daring) of the time.
 
 **Relation to #2204.** The v2 gate keeps both #2204 fixes: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
-÷ a narrower trigger count — HRT-1), and the Cautious-vs-Schemer direction
-(HRT-3: the human does _better_ against Schemers) is a pre-registered
-separation. `sim/__tests__/metrics.test.ts` and `gate.test.ts` pin both.
+÷ a narrower trigger count — HRT-1), and HRT-3's lesson — that the
+Cautious-vs-Schemer direction was never what the old check assumed — led to
+#2555: the ladder is now tuned so the human does better against Cautious
+players, and that direction is a pre-registered separation.
+`sim/__tests__/metrics.test.ts` and `gate.test.ts` pin both.
 The old six fixed-N batches and their ✓/✗ threshold checks are retired;
 `--count` keeps #2204's meaning (games per matchup), and `--log-games`
 (used by `hearts-analysis`) is unchanged.

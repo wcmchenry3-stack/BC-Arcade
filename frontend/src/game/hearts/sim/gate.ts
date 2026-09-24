@@ -169,8 +169,6 @@ export const REGRESSION_CHECKS: readonly RegressionCheck[] = [
   regression("table-daring", "daring", "void_created", 0.04),
 ];
 
-const EXPECTED_TBD = 0.01;
-
 function winShare(matchup: string, role: string): MetricRef {
   return { matchup, role, metric: "win_share" };
 }
@@ -181,6 +179,12 @@ function winShare(matchup: string, role: string): MetricRef {
  * Cautious table and least at the Daring table. Each `expected` is the
  * value measured on the baseline seed (baseline.json `separations`) before
  * any gate run. A deliberate re-tune updates them here with new evidence.
+ *
+ * Not registered: "the Schemer table is easier than the Daring table".
+ * It holds in the baseline (+1.5pp ± 0.5, pinned by gate.test.ts), but a
+ * gap that small with per-block SD 0.55 needs ~15,000 blocks to decide —
+ * twice the presets cap. Widening it is #2234/#2235's job (Daring's moon
+ * play converts 7% of attempts).
  *
  * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
  * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
@@ -193,7 +197,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Daring outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "daring"),
     right: winShare("field-schemer", "schemer"),
-    expected: EXPECTED_TBD,
+    expected: 0.015,
   },
   {
     kind: "separation",
@@ -201,7 +205,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Schemer outwins Cautious in the same seat, cards and field",
     left: winShare("field-schemer", "schemer"),
     right: winShare("field-schemer", "cautious"),
-    expected: EXPECTED_TBD,
+    expected: 0.032,
   },
   {
     kind: "separation",
@@ -209,7 +213,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Daring outwins Cautious",
     left: winShare("table-mixed", "daring"),
     right: winShare("table-mixed", "cautious"),
-    expected: EXPECTED_TBD,
+    expected: 0.067,
   },
   {
     kind: "separation",
@@ -217,15 +221,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "the human wins more at the Cautious table than at the Schemer table",
     left: winShare("table-cautious", "proxy"),
     right: winShare("table-schemer", "proxy"),
-    expected: EXPECTED_TBD,
-  },
-  {
-    kind: "separation",
-    id: "presets:schemer-table-easier-than-daring",
-    description: "the human wins more at the Schemer table than at the Daring table",
-    left: winShare("table-schemer", "proxy"),
-    right: winShare("table-daring", "proxy"),
-    expected: EXPECTED_TBD,
+    expected: 0.029,
   },
 ];
 
