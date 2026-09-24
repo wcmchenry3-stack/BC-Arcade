@@ -7,6 +7,9 @@ import { createSeededRng, setRng } from "../../game/hearts/engine";
 import * as engine from "../../game/hearts/engine";
 import { loadGame } from "../../game/hearts/storage";
 import type { Card, HeartsState, Suit } from "../../game/hearts/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { heartsApi } from "../../game/hearts/api";
+import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -38,9 +41,11 @@ jest.mock("../../game/_shared/useGameSync", () => ({
 }));
 
 const mockNavigate = jest.fn();
+const mockPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     goBack: jest.fn(),
+    popToTop: mockPopToTop,
     navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
   }),
@@ -395,5 +400,153 @@ describe("HeartsScreen — AI turn loop when an AI leads trick 1 (#2372 CI inves
     // If runAiTurns completed both AI turns, it's now the human's turn and
     // their hand is still 13 cards (they haven't played yet this trick).
     await waitFor(() => expect(getByLabelText("Your hand, 13 cards")).toBeTruthy());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2506 — game over: the shared result card and leaderboard auto-submit
+// ---------------------------------------------------------------------------
+
+describe("HeartsScreen — result card (#2506)", () => {
+  const submitScore = heartsApi.submitScore as jest.Mock;
+
+  /**
+   * The last trick of a hand with West already at 100, so the hand's end ends
+   * the game. The human led ♥5 and wins the trick (+1 point); the AIs follow
+   * with diamonds.
+   */
+  function lastTrickState(cumulativeScores: number[]): HeartsState {
+    return {
+      _v: 3,
+      aiDifficulty: "daring",
+      phase: "playing",
+      handNumber: 7,
+      passDirection: "none",
+      cumulativeScores,
+      handScores: [0, 0, 0, 0],
+      scoreHistory: [],
+      passSelections: [[], [], [], []],
+      passingComplete: true,
+      heartsBroken: true,
+      isComplete: false,
+      winnerIndex: null,
+      events: [],
+      tricksPlayedInHand: 12,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 1,
+      currentTrick: [{ card: { suit: "hearts", rank: 5 }, playerIndex: 0 }],
+      playerHands: [
+        [],
+        [{ suit: "diamonds", rank: 7 }],
+        [{ suit: "diamonds", rank: 8 }],
+        [{ suit: "diamonds", rank: 9 }],
+      ],
+      wonCards: [[], [], [], []],
+    } as unknown as HeartsState;
+  }
+
+  async function finishGame(cumulativeScores: number[]) {
+    (loadGame as jest.Mock).mockResolvedValue(lastTrickState(cumulativeScores));
+    const r = await renderScreen();
+    await waitFor(() => expect(loadGame).toHaveBeenCalled());
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    return r;
+  }
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetDisplayNameCacheForTests();
+    submitScore.mockClear();
+    mockPopToTop.mockClear();
+  });
+
+  afterEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("shows You Win with the standings when the human finishes lowest", async () => {
+    const r = await finishGame([45, 100, 63, 52]);
+    const card = within(await r.findByTestId("hearts-result"));
+    expect(card.getByTestId("hearts-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText("West reached 100 · lowest score wins")).toBeTruthy();
+    // Ranked lowest first: You 46, East 52, North 63, West 100.
+    const rows = card.getAllByTestId(/^hearts-standing-/).map((row) => row.props.testID);
+    expect(rows).toEqual([
+      "hearts-standing-0",
+      "hearts-standing-3",
+      "hearts-standing-2",
+      "hearts-standing-1",
+    ]);
+    expect(card.getByLabelText("1. You, 46 points")).toBeTruthy();
+  });
+
+  it("names the winner on a loss", async () => {
+    const r = await finishGame([70, 100, 38, 52]);
+    const card = within(await r.findByTestId("hearts-result"));
+    expect(card.getByTestId("hearts-result-title")).toHaveTextContent("North Wins");
+  });
+
+  it("shows a tie when the human shares the lowest score", async () => {
+    const r = await finishGame([37, 100, 38, 52]);
+    const card = within(await r.findByTestId("hearts-result"));
+    expect(card.getByTestId("hearts-result-title")).toHaveTextContent("It's a Tie!");
+  });
+
+  it("submits 100 minus the human's points under the display name", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    submitScore.mockResolvedValueOnce({ player_name: "Riley", score: 54, rank: 4 });
+    const r = await finishGame([45, 100, 63, 52]);
+    await waitFor(() => expect(r.getByText("Saved as Riley · #4 on the leaderboard")).toBeTruthy());
+    expect(submitScore).toHaveBeenCalledTimes(1);
+    expect(submitScore).toHaveBeenCalledWith("Riley", 54);
+    expect(r.queryByPlaceholderText("Enter your name")).toBeNull();
+  });
+
+  it("does not resubmit a finished game resumed from storage", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...lastTrickState([46, 100, 63, 52]),
+      phase: "game_over",
+      isComplete: true,
+      winnerIndex: 0,
+      currentTrick: [],
+      playerHands: [[], [], [], []],
+    });
+    const r = await renderScreen();
+    expect(await r.findByTestId("hearts-result")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(submitScore).not.toHaveBeenCalled();
+  });
+
+  it("Play Again deals a new game at the same difficulty", async () => {
+    const r = await finishGame([45, 100, 63, 52]);
+    await r.findByTestId("hearts-result");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(r.queryByTestId("hearts-result")).toBeNull();
+    expect(r.getByLabelText("Your hand, 13 cards")).toBeTruthy();
+  });
+
+  it("Change Difficulty returns to the difficulty picker", async () => {
+    const r = await finishGame([45, 100, 63, 52]);
+    await r.findByTestId("hearts-result");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+    });
+    expect(r.getByTestId("hearts-start-game")).toBeTruthy();
+  });
+
+  it("Home returns to the lobby", async () => {
+    const r = await finishGame([45, 100, 63, 52]);
+    await r.findByTestId("hearts-result");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Home" }));
+    });
+    expect(mockPopToTop).toHaveBeenCalled();
   });
 });

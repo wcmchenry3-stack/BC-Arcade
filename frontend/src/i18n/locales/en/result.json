@@ -43,5 +43,8 @@
   "subtitle.solvedIn_other": "Solved in {{count}} guesses",
   "action.changeMode": "Change Mode",
   "subtitle.completedIn_one": "Completed in {{count}} move",
-  "subtitle.completedIn_other": "Completed in {{count}} moves"
+  "subtitle.completedIn_other": "Completed in {{count}} moves",
+  "subtitle.reachedLimit": "{{name}} reached {{score}} · lowest score wins",
+  "standings.label": "Final standings",
+  "standings.row": "{{rank}}. {{name}}, {{score}} points"
 }
