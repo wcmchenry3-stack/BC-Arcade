@@ -1,6 +1,7 @@
 import { useImage } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
 import type { LoadedSprites } from "./render/frame";
+import type { DrawImages } from "./render/drawFrame";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
@@ -144,4 +145,36 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     puLightning: images.puLightning !== null,
     explosion: images.explosionFrames.map((f) => f !== null),
   };
+}
+
+/** #2565: the sprite set the UI-thread renderer draws with, keyed like the display list. */
+export function drawImagesOf(images: StarSwarmImages): DrawImages {
+  return {
+    playerShip: images.playerShip,
+    buddyShip: images.buddyShip,
+    enemyGrunt: images.enemyGrunt,
+    enemyElite: images.enemyElite,
+    enemyBoss: images.enemyBoss,
+    enemyCarrier: images.enemyCarrier,
+    bulletPlayer: images.bulletPlayer,
+    puShield: images.puShield,
+    puBomb: images.puBomb,
+    puBuddy: images.puBuddy,
+    puLightning: images.puLightning,
+    explosion: images.explosionFrames,
+  };
+}
+
+/** #2565: same images, same slots — so the picture worklet is rebuilt only when one loads. */
+export function sameDrawImages(a: DrawImages, b: DrawImages): boolean {
+  const keys = Object.keys(a) as (keyof DrawImages)[];
+  for (const k of keys) {
+    if (k === "explosion") continue;
+    if (a[k] !== b[k]) return false;
+  }
+  if (a.explosion.length !== b.explosion.length) return false;
+  for (let i = 0; i < a.explosion.length; i++) {
+    if (a.explosion[i] !== b.explosion[i]) return false;
+  }
+  return true;
 }
