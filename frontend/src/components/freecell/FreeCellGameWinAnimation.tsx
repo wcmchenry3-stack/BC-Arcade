@@ -39,7 +39,9 @@ const SUIT_OFFSETS = [
 export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
   const { t } = useTranslation("result");
   const { colors } = useTheme();
-  const [reduceMotion, setReduceMotion] = useState(false);
+  // null until the setting has been read: the animation mounts at the moment of
+  // the win, so it must not start before it knows whether motion is wanted.
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const badgeScale = useSharedValue(0);
@@ -57,7 +59,15 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
   const suits = [suit0, suit1, suit2, suit3, suit4, suit5, suit6, suit7];
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((enabled) => {
+        if (alive) setReduceMotion(enabled);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -76,6 +86,7 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
       return;
     }
 
+    if (reduceMotion === null) return;
     if (reduceMotion) {
       // No motion wanted: go straight to the result card.
       onDismiss();
@@ -115,6 +126,8 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useAnimatedStyle(() => ({ opacity: s.value, transform: [{ scale: s.value }] }))
   );
+
+  if (reduceMotion !== false) return null;
 
   return (
     <AnimationOverlay visible={visible} onDismiss={onDismiss}>
