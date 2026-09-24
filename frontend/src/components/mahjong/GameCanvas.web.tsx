@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
@@ -18,9 +18,7 @@ import {
   MAHJONG_GLOW_SHADOW,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_SHADOW,
-  MAHJONG_OVERLAY_BTN_BG,
   MAHJONG_TILE_FACE_SELECTED,
-  MAHJONG_WIN_OVERLAY_BG,
 } from "../../theme/theme.constants";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -198,7 +196,7 @@ function drawBoard(
     // null instead (images[i] is only set in onload, so non-null means ready).
     const img = tileImages[tile.faceId - 1];
     ctx.globalAlpha = isFree ? 1 : 0.35;
-    if (img !== null) {
+    if (img) {
       ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     } else {
       ctx.fillStyle = suitColor;
@@ -226,7 +224,6 @@ interface Props {
   hintIds?: ReadonlySet<number>;
   debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
-  onNewGamePress: () => void;
 }
 
 const EMPTY_SET: ReadonlySet<number> = new Set();
@@ -237,7 +234,6 @@ export default function GameCanvas({
   hintIds = EMPTY_SET,
   debugShowFree = false,
   onTilePress,
-  onNewGamePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
   const { boardWidth, boardHeight } = camera;
@@ -419,80 +415,6 @@ export default function GameCanvas({
         aria-label={t("game.canvasLabel")}
         role="img"
       />
-
-      {/* Win overlay */}
-      {state.isComplete && (
-        <View style={[styles.overlay, styles.winOverlay]}>
-          <Text style={styles.winTitle}>{t("overlay.youWon")}</Text>
-          <Text style={styles.overlayDetail}>
-            {t("overlay.youWonDetail", { count: state.pairsRemoved })}
-          </Text>
-          <Text style={styles.winScore}>{t("score.display", { score: state.score })}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onNewGamePress}
-            accessibilityLabel={t("action.newGameLabel")}
-          >
-            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  winOverlay: {
-    backgroundColor: MAHJONG_WIN_OVERLAY_BG,
-  },
-  overlayTitle: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  overlayDetail: {
-    color: "#cccccc",
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  winTitle: {
-    color: "#ffd700",
-    fontSize: 30,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  winScore: {
-    color: "#ffffff",
-    fontSize: 18,
-    textAlign: "center",
-    marginBottom: 20,
-    fontVariant: ["tabular-nums"],
-  },
-  btn: {
-    backgroundColor: MAHJONG_OVERLAY_BTN_BG,
-    paddingVertical: 10,
-    paddingHorizontal: 28,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  btnText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-});

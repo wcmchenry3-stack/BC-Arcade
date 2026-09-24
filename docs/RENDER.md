@@ -127,6 +127,10 @@ hung request. It is rate limited to 30/minute per IP.
   Checks Pass** (`autoDeployTrigger: checksPass` in `render.yaml`, pinned by
   `test_deploy_workflow.py`). Production changes only through a `dev` → `main`
   promotion PR, and a commit ships only once its CI is green.
+- **"After CI Checks Pass" means every check on the `main` commit** — not just `ci.yml`.
+  A job that is known to fail must not run on push to `main`, or prod never deploys.
+  The Maestro smoke legs (#2347, #2400) are manual-only for that reason
+  (`test_deploy_workflow.py` pins it).
 - **Post-deploy ZAP scan:** `.github/workflows/post-deploy-scan.yml` runs when CI
   finishes on `main`, waits (up to 30 minutes) for Render to report that commit
   live on each prod service, then runs an OWASP ZAP baseline scan against

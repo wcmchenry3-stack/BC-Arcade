@@ -175,15 +175,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "action.newGame": {
-    "component": "Win modal",
-    "description": "Label for the 'New Puzzle' button (starts a fresh puzzle at the same difficulty).",
-    "tone": "casual",
-    "characterLimit": 18,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "action.quickRestart": {
     "component": "New Game modal",
     "description": "Secondary button in the New Game modal that immediately restarts with the same difficulty and variant, bypassing the selectors.",
@@ -207,15 +198,6 @@
     "description": "Primary CTA to start the chosen puzzle.",
     "tone": "casual, upbeat",
     "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.submitScore": {
-    "component": "Win modal",
-    "description": "Primary CTA to submit the score to the leaderboard.",
-    "tone": "casual",
-    "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -276,42 +258,5 @@
     "placeholders": ["{{time}}"],
     "doNotTranslate": [],
     "notes": "`{{time}}` is a formatted duration like 02:13 or 1:04:27."
-  },
-
-  "win.title": {
-    "component": "Win modal",
-    "description": "Congratulatory headline shown when the puzzle is solved.",
-    "tone": "upbeat, celebratory",
-    "characterLimit": 25,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.score": {
-    "component": "Win modal",
-    "description": "Final score line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.errors": {
-    "component": "Win modal",
-    "description": "Total errors line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{count}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.elapsed": {
-    "component": "Win modal",
-    "description": "Elapsed-time line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{time}}"],
-    "doNotTranslate": [],
-    "notes": null
   }
 }

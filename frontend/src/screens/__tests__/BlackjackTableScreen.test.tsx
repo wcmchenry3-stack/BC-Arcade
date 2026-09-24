@@ -1,5 +1,5 @@
 import React from "react";
-import { render, fireEvent, act, screen, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, screen, waitFor, within } from "@testing-library/react-native";
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -47,6 +47,7 @@ function mockNav() {
     navigate: jest.fn(),
     goBack: jest.fn(),
     replace: jest.fn(),
+    popToTop: jest.fn(),
   } as unknown as Parameters<typeof BlackjackTableScreen>[0]["navigation"];
 }
 
@@ -206,9 +207,46 @@ describe("BlackjackTableScreen — persistent table layout (GH #226)", () => {
   });
 });
 
-// Game-over modal (visible when chips=0 && phase=result) is covered by the
-// blackjack-errors.spec.ts e2e suite; Modal does not render its children
-// reliably in the RNTL test environment.
+// ---------------------------------------------------------------------------
+// #2507 — out of chips: the shared result card
+// ---------------------------------------------------------------------------
+
+describe("BlackjackTableScreen — out of chips (#2507)", () => {
+  beforeEach(() => {
+    // A settled hand that left the player with nothing.
+    (loadGame as jest.Mock).mockResolvedValue({ ...makeResultPhaseState(), chips: 0 });
+  });
+
+  it("shows the Game Over card with the session stats", async () => {
+    await renderScreen();
+    const card = within(await screen.findByTestId("blackjack-result"));
+    expect(card.getByTestId("blackjack-result-title")).toHaveTextContent("Game Over");
+    expect(card.getByText("Out of Chips")).toBeTruthy();
+    expect(card.getByText("Hands")).toBeTruthy();
+    expect(card.getByText("Biggest win")).toBeTruthy();
+    expect(card.getByText("Win rate")).toBeTruthy();
+  });
+
+  it("Play Again starts a fresh session on the betting screen, like New Game", async () => {
+    const nav = mockNav();
+    await renderScreen(nav);
+    const card = within(await screen.findByTestId("blackjack-result"));
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Play Again" }));
+    });
+    expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
+  });
+
+  it("Home returns to the lobby", async () => {
+    const nav = mockNav();
+    await renderScreen(nav);
+    const card = within(await screen.findByTestId("blackjack-result"));
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Home" }));
+    });
+    expect(nav.popToTop).toHaveBeenCalled();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // #498 — New Game mid-session from TableScreen should redirect to Betting

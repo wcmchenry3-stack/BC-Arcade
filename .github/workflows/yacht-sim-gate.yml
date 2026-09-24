@@ -1,0 +1,96 @@
+name: Yacht AI Calibration Gate
+
+# The rigorous layer of Yacht AI testing (#2245). The fast layer is the
+# per-PR smoke test (frontend/src/game/yacht/__tests__/ai.simulate.test.ts,
+# run by ci.yml). This workflow runs the full calibration gate: every
+# matchup in both turn orders on mirrored dice, checked against the bands
+# in frontend/src/game/yacht/sim/gate.ts, plus the per-decision regret
+# gate (#2244). See docs/TESTING.md for sample sizes and the power
+# calculation.
+
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "Games per matchup (blank = the gate's defaults)"
+        required: false
+        default: ""
+  # PRs that change the AI, the engine, or the gate itself.
+  pull_request:
+    paths:
+      - "frontend/src/game/yacht/ai*.ts"
+      - "frontend/src/game/yacht/engine.ts"
+      - "frontend/src/game/yacht/probTables.ts"
+      - "frontend/src/game/yacht/oracle/**"
+      - "frontend/src/game/yacht/sim/**"
+      - "frontend/src/game/_shared/simRandom.ts"
+      - "frontend/src/game/yacht/__tests__/ai.calibrate.test.ts"
+      - "scripts/simulate-yacht.ts"
+      - ".github/workflows/yacht-sim-gate.yml"
+
+concurrency:
+  group: yacht-sim-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bands:
+    name: Bands (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with GATE_GROUPS in frontend/src/game/yacht/sim/gate.ts
+        # (gate.test.ts fails if a group listed there is missing here).
+        group: [hard-vs-easy, hard-vs-medium, self-play]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run gate group
+        shell: bash # explicit shell = pipefail, so tee can't mask a failing gate
+        env:
+          GAMES: ${{ inputs.games }}
+        run: |
+          ARGS=(--gate --group "${{ matrix.group }}" --json "yacht-gate-${{ matrix.group }}.json")
+          if [ -n "$GAMES" ]; then ARGS+=(--games "$GAMES"); fi
+          npx --yes tsx@4.23.15 scripts/simulate-yacht.ts "${ARGS[@]}" | tee "yacht-gate-${{ matrix.group }}.txt"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: yacht-gate-${{ matrix.group }}
+          path: yacht-gate-${{ matrix.group }}.*
+          retention-days: 30
+
+  regret:
+    name: Regret (EV-loss vs oracle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run regret gate
+        env:
+          YACHT_SIM_FULL: "3000"
+        run: npx jest src/game/yacht/__tests__/ai.calibrate.test.ts --silent=false --testTimeout=1800000

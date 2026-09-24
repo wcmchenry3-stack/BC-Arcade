@@ -15,6 +15,10 @@ import { scoreQueue } from "./scoreQueue";
 import { registerCascadeScoreHandler } from "../cascade/scoreSync";
 import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
 import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
+import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
+import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
+import { registerHeartsScoreHandler } from "../hearts/scoreSync";
+import { registerSortScoreHandler } from "../sort/scoreSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -29,6 +33,10 @@ const NetworkContext = createContext<NetworkStatus>({
 registerCascadeScoreHandler();
 registerSudokuScoreHandler();
 registerMahjongScoreHandler();
+registerSolitaireScoreHandler();
+registerFreeCellScoreHandler();
+registerHeartsScoreHandler();
+registerSortScoreHandler();
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const status = useNetworkStatus();

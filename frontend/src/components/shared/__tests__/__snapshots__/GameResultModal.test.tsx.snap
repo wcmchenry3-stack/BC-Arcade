@@ -40,7 +40,6 @@ exports[`GameResultModal — outcomes dark theme renders draw 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -52,6 +51,7 @@ exports[`GameResultModal — outcomes dark theme renders draw 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#d674ff",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -538,7 +538,6 @@ exports[`GameResultModal — outcomes dark theme renders ended 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -550,6 +549,7 @@ exports[`GameResultModal — outcomes dark theme renders ended 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#8ff5ff",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -1036,7 +1036,6 @@ exports[`GameResultModal — outcomes dark theme renders loss 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -1048,6 +1047,7 @@ exports[`GameResultModal — outcomes dark theme renders loss 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#a0a0ac",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -1534,7 +1534,6 @@ exports[`GameResultModal — outcomes dark theme renders win 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -1546,6 +1545,7 @@ exports[`GameResultModal — outcomes dark theme renders win 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -2032,7 +2032,6 @@ exports[`GameResultModal — outcomes light theme renders draw 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -2044,6 +2043,7 @@ exports[`GameResultModal — outcomes light theme renders draw 1`] = `
                 "backgroundColor": "#fff8e8",
                 "borderColor": "#d8c9a6",
                 "borderTopColor": "#8a3fb0",
+                "borderTopWidth": 5,
                 "borderWidth": 1,
               },
             ]
@@ -2530,7 +2530,6 @@ exports[`GameResultModal — outcomes light theme renders ended 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -2542,6 +2541,7 @@ exports[`GameResultModal — outcomes light theme renders ended 1`] = `
                 "backgroundColor": "#fff8e8",
                 "borderColor": "#d8c9a6",
                 "borderTopColor": "#00737e",
+                "borderTopWidth": 5,
                 "borderWidth": 1,
               },
             ]
@@ -3028,7 +3028,6 @@ exports[`GameResultModal — outcomes light theme renders loss 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -3040,6 +3039,7 @@ exports[`GameResultModal — outcomes light theme renders loss 1`] = `
                 "backgroundColor": "#fff8e8",
                 "borderColor": "#d8c9a6",
                 "borderTopColor": "#6b5e4a",
+                "borderTopWidth": 5,
                 "borderWidth": 1,
               },
             ]
@@ -3526,7 +3526,6 @@ exports[`GameResultModal — outcomes light theme renders win 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -3538,6 +3537,7 @@ exports[`GameResultModal — outcomes light theme renders win 1`] = `
                 "backgroundColor": "#fff8e8",
                 "borderColor": "#d8c9a6",
                 "borderTopColor": "#1f7a3c",
+                "borderTopWidth": 5,
                 "borderWidth": 1,
               },
             ]
@@ -4024,7 +4024,6 @@ exports[`GameResultModal — submission line shows the offline state 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -4036,6 +4035,7 @@ exports[`GameResultModal — submission line shows the offline state 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -4331,7 +4331,6 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -4343,6 +4342,7 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -4739,7 +4739,6 @@ exports[`GameResultModal — variations renders a disabled countdown primary 1`]
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -4751,6 +4750,7 @@ exports[`GameResultModal — variations renders a disabled countdown primary 1`]
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]
@@ -5083,7 +5083,6 @@ exports[`GameResultModal — variations renders a versus hero 1`] = `
               {
                 "alignItems": "center",
                 "borderRadius": 22,
-                "borderTopWidth": 5,
                 "gap": 18,
                 "maxWidth": 380,
                 "paddingBottom": 20,
@@ -5095,6 +5094,7 @@ exports[`GameResultModal — variations renders a versus hero 1`] = `
                 "backgroundColor": "#25252c",
                 "borderColor": "#2e2e38",
                 "borderTopColor": "#a0a0ac",
+                "borderTopWidth": 5,
                 "borderWidth": 0,
               },
             ]

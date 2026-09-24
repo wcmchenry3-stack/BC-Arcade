@@ -31,10 +31,12 @@ test.describe("2048 — game-over detection and flow", () => {
     await page.getByText("Game Over").waitFor();
 
     await expect(
-      page.getByRole("button", { name: "Start a new 2048 game" }).first(),
+      page
+        .getByTestId("twenty48-result")
+        .getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Quit and return to home screen" }),
+      page.getByTestId("twenty48-result").getByRole("button", { name: "Home" }),
     ).toBeVisible();
   });
 
@@ -65,8 +67,8 @@ test.describe("2048 — game-over detection and flow", () => {
     await page.getByText("Game Over").waitFor();
 
     await page
-      .getByRole("button", { name: "Start a new 2048 game" })
-      .nth(1)
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Play Again" })
       .click();
 
     await expect(page.getByText("Game Over")).not.toBeVisible({
@@ -123,7 +125,8 @@ test.describe("2048 — game-over detection and flow", () => {
     await page.getByText("Game Over").waitFor();
 
     await page
-      .getByRole("button", { name: "Quit and return to home screen" })
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Home" })
       .click();
 
     await expect(page.getByText("BC Arcade").first()).toBeVisible({

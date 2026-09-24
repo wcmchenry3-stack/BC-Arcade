@@ -171,9 +171,9 @@ export function HeartsMoonShotAnimation({ visible, shooterLabel, onAnimationEnd 
 
   return (
     // Non-interactive wrapper — never blocks touches
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Dark backdrop — separate opacity so it doesn't affect child elements */}
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.backdrop, backdropStyle]} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]} />
       {/* Content: moon icon, staggered stars, shooter label */}
       <View style={styles.content}>
         {starStyles.map((style, i) => (
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 101,

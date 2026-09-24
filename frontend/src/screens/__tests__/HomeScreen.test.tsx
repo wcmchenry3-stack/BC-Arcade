@@ -194,7 +194,7 @@ describe("HomeScreen — game cards", () => {
 
     it("renders exactly the six free games", async () => {
       const { getByLabelText, getAllByRole } = await renderScreen();
-      expect(getByLabelText("Play Blackjack")).toBeTruthy();
+      expect(getByLabelText("Play Yacht")).toBeTruthy();
       expect(getByLabelText("Play 2048")).toBeTruthy();
       expect(getByLabelText("Play Solitaire")).toBeTruthy();
       expect(getByLabelText("Play FreeCell")).toBeTruthy();
@@ -210,7 +210,14 @@ describe("HomeScreen — game cards", () => {
       // still be a rendered card.
       mockCanPlay.mockReturnValue(false);
       const { queryByLabelText, queryByText } = await renderScreen();
-      for (const title of ["Yacht", "Cascade", "Hearts", "Sudoku", "Star Swarm", "Sort Puzzle"]) {
+      for (const title of [
+        "Blackjack",
+        "Cascade",
+        "Hearts",
+        "Sudoku",
+        "Star Swarm",
+        "Sort Puzzle",
+      ]) {
         expect(queryByLabelText(`Play ${title}`)).toBeNull();
         expect(queryByText(title)).toBeNull();
       }
@@ -220,7 +227,7 @@ describe("HomeScreen — game cards", () => {
       await renderScreen();
       await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
       const predicate = mockPrefetch.mock.calls[0][0] as (slug: string) => boolean;
-      expect(predicate("yacht")).toBe(false);
+      expect(predicate("blackjack")).toBe(false);
       expect(predicate("starswarm")).toBe(false);
     });
   });
@@ -275,6 +282,44 @@ describe("HomeScreen — game cards", () => {
           }),
         })
       )
+    );
+  });
+});
+
+describe("HomeScreen — resuming a saved Yacht game (#2203)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock above
+  const storage = require("../../game/yacht/storage") as { loadGame: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- real engine
+  const { newGame } = require("../../game/yacht/engine");
+
+  afterEach(() => storage.loadGame.mockResolvedValue(null));
+
+  it("resumes a VS game where only the computer's final turn is left", async () => {
+    const human = { ...newGame(), round: 13, game_over: true };
+    const ai = { ...newGame(), round: 13, rolls_used: 2 };
+    storage.loadGame.mockResolvedValue({ state: human, aiDifficulty: "hard", aiState: ai });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: human,
+        aiDifficulty: "hard",
+        aiState: ai,
+      })
+    );
+  });
+
+  it("starts a new game once both VS games are over", async () => {
+    const over = { ...newGame(), round: 13, game_over: true };
+    storage.loadGame.mockResolvedValue({ state: over, aiDifficulty: "hard", aiState: over });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: expect.objectContaining({ round: 1, game_over: false }),
+      })
     );
   });
 });
@@ -552,15 +597,15 @@ describe("HomeScreen — locked game UI (#1054)", () => {
 
   it("free games render and navigate normally when a premium game is locked", async () => {
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Play Blackjack")).toBeTruthy();
-    await fireEvent.press(getByLabelText("Play Blackjack"));
-    expect(mockNavigate).toHaveBeenCalledWith("BlackjackBetting");
+    expect(getByLabelText("Play Yacht")).toBeTruthy();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("Game", expect.any(Object)));
   });
 
   it("entitled premium games render and navigate normally", async () => {
-    // Yacht is entitled (mockCanPlay returns true for non-cascade)
+    // Sudoku is entitled (mockCanPlay returns true for non-cascade)
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Play Yacht")).toBeTruthy();
+    expect(getByLabelText("Play Sudoku")).toBeTruthy();
   });
 
   it("all games show play label when all entitled", async () => {

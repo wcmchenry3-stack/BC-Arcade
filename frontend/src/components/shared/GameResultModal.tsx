@@ -80,6 +80,8 @@ export interface GameResultModalProps {
   secondaryAction?: ResultAction;
   /** Required: Home is on every card, and Android back goes Home. */
   onHome: () => void;
+  /** Screen-reader label for Home when it does more than leave (e.g. cashes out). */
+  homeLabel?: string;
   /**
    * A win celebration to play before the card. Render it and call `done` when
    * it ends or is tapped; the card appears then (or after a safety timeout).
@@ -111,41 +113,94 @@ function outcomeColors(colors: Colors, outcome: GameOutcome) {
   }
 }
 
+/** Best-effort: a haptic that fails (sync or async) must never break the card. */
 function fireHaptic(outcome: GameOutcome) {
-  const run =
-    outcome === "win"
-      ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      : outcome === "loss"
-        ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  run.catch(() => undefined);
+  try {
+    const run =
+      outcome === "win"
+        ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        : outcome === "loss"
+          ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+          : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    run?.catch(() => undefined);
+  } catch {
+    // No haptics available (or a partial module): the card still shows.
+  }
 }
 
 function formatValue(value: number | string): string {
   return typeof value === "number" ? value.toLocaleString() : value;
 }
 
-export default function GameResultModal({
-  visible,
+/** The card's title for an outcome ("You Win!", "{{name}} Wins", …). */
+function useResultTitle(outcome: GameOutcome, winnerName?: string): string {
+  const { t } = useTranslation("result");
+  return outcome === "win"
+    ? t("title.win")
+    : outcome === "loss"
+      ? winnerName
+        ? t("title.lossNamed", { name: winnerName })
+        : t("title.loss")
+      : outcome === "draw"
+        ? t("title.draw")
+        : t("title.ended");
+}
+
+/**
+ * The outcome haptic and screen-reader announcement, once each time `active`
+ * turns on. `GameResultModal` runs it when its card appears; a screen that
+ * renders a `ResultCard` inline (Blackjack's Goal Reached) runs it on mount.
+ */
+export function useResultFeedback({
+  active,
   outcome,
   winnerName,
-  eyebrow,
   subtitle,
   hero,
-  stats,
-  isNewBest,
-  detail,
-  submission,
-  primaryAction,
-  onPlayAgain,
-  secondaryAction,
-  onHome,
-  celebration,
-  testID = "game-result",
-}: GameResultModalProps) {
+}: {
+  active: boolean;
+  outcome: GameOutcome;
+  winnerName?: string;
+  subtitle?: string;
+  hero?: ResultHero;
+}) {
   const { t } = useTranslation("result");
-  const { colors, theme } = useTheme();
-  const { fg, tint } = outcomeColors(colors, outcome);
+  const title = useResultTitle(outcome, winnerName);
+  const heroA11y =
+    hero?.kind === "score"
+      ? t("a11y.heroScore", { label: hero.label, value: formatValue(hero.value) })
+      : hero?.kind === "versus"
+        ? t("a11y.heroVs", {
+            you: formatValue(hero.you),
+            opponent: hero.opponentLabel,
+            opponentScore: formatValue(hero.opponent),
+          })
+        : "";
+
+  const announcedRef = useRef(false);
+  useEffect(() => {
+    if (!active) {
+      announcedRef.current = false;
+      return;
+    }
+    if (announcedRef.current) return;
+    announcedRef.current = true;
+    fireHaptic(outcome);
+    const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
+    AccessibilityInfo.announceForAccessibility(
+      detailText ? t("a11y.announce", { title, detail: detailText }) : title
+    );
+  }, [active, outcome, subtitle, heroA11y, title, t]);
+}
+
+export default function GameResultModal({
+  visible,
+  celebration,
+  onHome,
+  testID = "game-result",
+  ...card
+}: GameResultModalProps) {
+  const { colors } = useTheme();
 
   // "celebrating" → the celebration plays in the screen, card hidden;
   // "card" → the Modal is shown. The card only mounts after the celebration
@@ -168,47 +223,14 @@ export default function GameResultModal({
     return () => clearTimeout(timer);
   }, [phase]);
 
-  const title =
-    outcome === "win"
-      ? t("title.win")
-      : outcome === "loss"
-        ? winnerName
-          ? t("title.lossNamed", { name: winnerName })
-          : t("title.loss")
-        : outcome === "draw"
-          ? t("title.draw")
-          : t("title.ended");
-
-  const heroA11y =
-    hero?.kind === "score"
-      ? t("a11y.heroScore", { label: hero.label, value: formatValue(hero.value) })
-      : hero?.kind === "versus"
-        ? t("a11y.heroVs", {
-            you: formatValue(hero.you),
-            opponent: hero.opponentLabel,
-            opponentScore: formatValue(hero.opponent),
-          })
-        : "";
-
   // Announce + haptic once per appearance of the card.
-  const announcedRef = useRef(false);
-  useEffect(() => {
-    if (phase !== "card") {
-      announcedRef.current = false;
-      return;
-    }
-    if (announcedRef.current) return;
-    announcedRef.current = true;
-    fireHaptic(outcome);
-    const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
-    AccessibilityInfo.announceForAccessibility(
-      detailText ? t("a11y.announce", { title, detail: detailText }) : title
-    );
-  }, [phase, outcome, subtitle, heroA11y, title, t]);
-
-  const primary: ResultAction | undefined =
-    primaryAction ??
-    (onPlayAgain ? { label: t("action.playAgain"), onPress: onPlayAgain } : undefined);
+  useResultFeedback({
+    active: phase === "card",
+    outcome: card.outcome,
+    winnerName: card.winnerName,
+    subtitle: card.subtitle,
+    hero: card.hero,
+  });
 
   return (
     <>
@@ -226,90 +248,131 @@ export default function GameResultModal({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <View
-              testID={testID}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: colors.surfaceHigh,
-                  borderColor: colors.border,
-                  borderWidth: theme === "light" ? 1 : 0,
-                  borderTopColor: fg,
-                },
-              ]}
-            >
-              <View style={styles.header}>
-                <View style={[styles.iconDisc, { backgroundColor: tint }]}>
-                  <MaterialCommunityIcons name={OUTCOME_ICON[outcome]} size={26} color={fg} />
-                </View>
-                {eyebrow ? (
-                  <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{eyebrow}</Text>
-                ) : null}
-                <Text
-                  testID={`${testID}-title`}
-                  accessibilityRole="header"
-                  style={[styles.title, { color: fg }]}
-                >
-                  {title}
-                </Text>
-                {subtitle ? (
-                  <Text style={[styles.subtitle, { color: colors.textMuted }]}>{subtitle}</Text>
-                ) : null}
-              </View>
-
-              {hero ? (
-                <Hero
-                  hero={hero}
-                  outcome={outcome}
-                  colors={colors}
-                  youLabel={t("hero.you")}
-                  vsLabel={t("hero.vs")}
-                />
-              ) : null}
-              {isNewBest ? (
-                <View style={[styles.badge, { backgroundColor: colors.outcomeWinTint }]}>
-                  <Text style={[styles.badgeText, { color: colors.outcomeWin }]}>
-                    {t("newBest")}
-                  </Text>
-                </View>
-              ) : null}
-
-              {stats && stats.length > 0 ? (
-                <View style={[styles.stats, { backgroundColor: colors.surfaceAlt }]}>
-                  {stats.slice(0, 4).map((s) => (
-                    <View key={s.label} style={styles.stat}>
-                      <Text style={[styles.statValue, { color: colors.text }]}>
-                        {formatValue(s.value)}
-                      </Text>
-                      <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.label}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-
-              {detail ? <View style={styles.detail}>{detail}</View> : null}
-
-              {submission ? <SubmissionLine submission={submission} colors={colors} /> : null}
-
-              <View style={styles.actions}>
-                {primary ? <PrimaryButton action={primary} colors={colors} /> : null}
-                <View style={styles.secondaryRow}>
-                  {secondaryAction ? (
-                    <OutlineButton action={secondaryAction} colors={colors} grow />
-                  ) : null}
-                  <OutlineButton
-                    action={{ label: t("action.home"), onPress: onHome, icon: "home-outline" }}
-                    colors={colors}
-                    grow={!secondaryAction}
-                    testID={`${testID}-home`}
-                  />
-                </View>
-              </View>
-            </View>
+            <ResultCard {...card} onHome={onHome} testID={testID} />
           </ScrollView>
         </View>
       </Modal>
     </>
+  );
+}
+
+export type ResultCardProps = Omit<GameResultModalProps, "visible" | "celebration">;
+
+/**
+ * The card itself — outcome stripe, icon, title, hero, stats, detail,
+ * submission line and the button row — for a screen that shows a result
+ * inline instead of in the modal (Blackjack's Goal Reached, #2507). Pair it
+ * with `useResultFeedback` for the haptic and announcement.
+ */
+export function ResultCard({
+  outcome,
+  winnerName,
+  eyebrow,
+  subtitle,
+  hero,
+  stats,
+  isNewBest,
+  detail,
+  submission,
+  primaryAction,
+  onPlayAgain,
+  secondaryAction,
+  onHome,
+  homeLabel,
+  testID = "game-result",
+}: ResultCardProps) {
+  const { t } = useTranslation("result");
+  const { colors, theme } = useTheme();
+  const { fg, tint } = outcomeColors(colors, outcome);
+  const title = useResultTitle(outcome, winnerName);
+
+  const primary: ResultAction | undefined =
+    primaryAction ??
+    (onPlayAgain ? { label: t("action.playAgain"), onPress: onPlayAgain } : undefined);
+
+  return (
+    <View
+      testID={testID}
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.surfaceHigh,
+          borderColor: colors.border,
+          borderWidth: theme === "light" ? 1 : 0,
+          // After borderWidth: on web a later borderWidth would
+          // otherwise zero the outcome stripe.
+          borderTopWidth: 5,
+          borderTopColor: fg,
+        },
+      ]}
+    >
+      <View style={styles.header}>
+        <View style={[styles.iconDisc, { backgroundColor: tint }]}>
+          <MaterialCommunityIcons name={OUTCOME_ICON[outcome]} size={26} color={fg} />
+        </View>
+        {eyebrow ? (
+          <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{eyebrow}</Text>
+        ) : null}
+        <Text
+          testID={`${testID}-title`}
+          accessibilityRole="header"
+          style={[styles.title, { color: fg }]}
+        >
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+        ) : null}
+      </View>
+
+      {hero ? (
+        <Hero
+          hero={hero}
+          outcome={outcome}
+          colors={colors}
+          youLabel={t("hero.you")}
+          vsLabel={t("hero.vs")}
+        />
+      ) : null}
+      {isNewBest ? (
+        <View style={[styles.badge, { backgroundColor: colors.outcomeWinTint }]}>
+          <Text style={[styles.badgeText, { color: colors.outcomeWin }]}>{t("newBest")}</Text>
+        </View>
+      ) : null}
+
+      {stats && stats.length > 0 ? (
+        <View style={[styles.stats, { backgroundColor: colors.surfaceAlt }]}>
+          {stats.slice(0, 4).map((s) => (
+            <View key={s.label} style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{formatValue(s.value)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {detail ? <View style={styles.detail}>{detail}</View> : null}
+
+      {submission ? <SubmissionLine submission={submission} colors={colors} /> : null}
+
+      <View style={styles.actions}>
+        {primary ? <PrimaryButton action={primary} colors={colors} /> : null}
+        <View style={styles.secondaryRow}>
+          {secondaryAction ? <OutlineButton action={secondaryAction} colors={colors} grow /> : null}
+          <OutlineButton
+            action={{
+              label: t("action.home"),
+              onPress: onHome,
+              icon: "home-outline",
+              accessibilityLabel: homeLabel,
+            }}
+            colors={colors}
+            grow={!secondaryAction}
+            testID={`${testID}-home`}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -515,7 +578,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 20,
     borderRadius: 22,
-    borderTopWidth: 5,
   },
   header: { alignItems: "center", gap: 10 },
   iconDisc: {

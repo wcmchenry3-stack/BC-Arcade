@@ -19,11 +19,9 @@
 
   "action.undo": "Undo",
   "action.hint": "Hint",
-  "action.newGame": "New Puzzle",
   "action.changeDifficulty": "Change Difficulty",
   "action.start": "Start",
   "action.quickRestart": "Quick Restart",
-  "action.submitScore": "Submit Score",
 
   "newGame.title": "New Game",
 
@@ -38,10 +36,6 @@
   "hud.errorsOne": "1 error",
   "hud.elapsed": "Elapsed time {{time}}",
 
-  "win.title": "You Solved It!",
-  "win.score": "Score: {{score}}",
-  "win.errors": "Errors: {{count}}",
-  "win.elapsed": "Time: {{time}}",
   "scoreboard.heroLabel": "ELAPSED",
   "scoreboard.heroSub": "{{difficulty}} · {{errors}} errors",
   "scoreboard.heroSubEmpty": "No games played yet",

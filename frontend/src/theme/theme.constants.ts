@@ -57,8 +57,5 @@ export const MAHJONG_HINT_GLOW_SHADOW = "rgba(93,188,210,0.9)";
 /** Mahjong "no moves" overlay scrim. */
 export const MAHJONG_NO_MOVES_OVERLAY_BG = "rgba(0,0,0,0.72)";
 
-/** Mahjong win overlay scrim — dark green tint. */
-export const MAHJONG_WIN_OVERLAY_BG = "rgba(0,20,0,0.82)";
-
-/** Mahjong overlay action button — dark green, shared by no-moves and win overlays. */
+/** Mahjong overlay action button — dark green, used by the no-moves prompt. */
 export const MAHJONG_OVERLAY_BTN_BG = "#2a7a2a";

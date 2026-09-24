@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "reason": "Engine-level play tactics after review fixes (#2236)",
+  "generated": "2026-09-24",
+  "seed": 1111577413,
+  "blocks": {
+    "presets": 12000,
+    "field": 6000
+  },
+  "metrics": {
+    "table-cautious/proxy/win_share": {
+      "value": 0.43433333333333335,
+      "num": 5212,
+      "den": 12000,
+      "se": 0.004496781760136087
+    },
+    "table-schemer/proxy/win_share": {
+      "value": 0.25966666666666666,
+      "num": 3116,
+      "den": 12000,
+      "se": 0.003975679832700669
+    },
+    "table-daring/proxy/win_share": {
+      "value": 0.16520833333333335,
+      "num": 1982.5,
+      "den": 12000,
+      "se": 0.003362056924155156
+    },
+    "table-mixed/proxy/win_share": {
+      "value": 0.26093055555556216,
+      "num": 9393.5,
+      "den": 36000,
+      "se": 0.002579494622354605
+    },
+    "table-mixed/cautious/win_share": {
+      "value": 0.09328703703703863,
+      "num": 3358.3333333333335,
+      "den": 36000,
+      "se": 0.001483399706578563
+    },
+    "table-mixed/schemer/win_share": {
+      "value": 0.2531296296296377,
+      "num": 9112.666666666666,
+      "den": 36000,
+      "se": 0.002179923409881671
+    },
+    "table-mixed/daring/win_share": {
+      "value": 0.3926527777777792,
+      "num": 14135.500000000002,
+      "den": 36000,
+      "se": 0.00248206819999456
+    },
+    "table-daring/daring/moon_attempt": {
+      "value": 0.14562694410558763,
+      "num": 56227,
+      "den": 386103,
+      "se": 0.0004673114557151908
+    },
+    "table-daring/daring/moon_success": {
+      "value": 0.09246447436285267,
+      "num": 5199,
+      "den": 56227,
+      "se": 0.0012185346018537889
+    },
+    "table-daring/daring/qs_dump_on_human": {
+      "value": 0.3437409260935571,
+      "num": 20125,
+      "den": 58547,
+      "se": 0.0019119395065228624
+    },
+    "table-schemer/schemer/qs_dump_on_human": {
+      "value": 0.3305709216157095,
+      "num": 15836,
+      "den": 47905,
+      "se": 0.0021412833687824723
+    },
+    "table-cautious/cautious/void_created": {
+      "value": 0.19485664728415591,
+      "num": 60889,
+      "den": 312481,
+      "se": 0.0007160999402241125
+    },
+    "table-schemer/schemer/void_created": {
+      "value": 0.6478771857183881,
+      "num": 203414,
+      "den": 313970,
+      "se": 0.0008371094117143304
+    },
+    "table-daring/daring/void_created": {
+      "value": 0.8371603955893722,
+      "num": 250393,
+      "den": 299098,
+      "se": 0.0006714150564088374
+    }
+  },
+  "separations": {
+    "mixed:daring-over-schemer": {
+      "mean": 0.13952314814814792,
+      "se": 0.003854828272750171
+    },
+    "mixed:schemer-over-cautious": {
+      "mean": 0.15984259259258918,
+      "se": 0.0028002694036688806
+    },
+    "presets:cautious-table-easier-than-schemer": {
+      "mean": 0.17466666666666666,
+      "se": 0.005524209053466353
+    },
+    "presets:schemer-table-easier-than-daring": {
+      "mean": 0.09445833333333335,
+      "se": 0.004658431641025533
+    },
+    "field:daring-over-schemer": {
+      "mean": 0.09382407407407395,
+      "se": 0.0033008867507444326
+    },
+    "field:schemer-over-cautious": {
+      "mean": 0.1379907407407447,
+      "se": 0.0026703018809750884
+    }
+  }
+}

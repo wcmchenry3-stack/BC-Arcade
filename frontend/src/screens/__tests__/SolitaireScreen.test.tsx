@@ -3,19 +3,22 @@
  *
  * The engine itself is pure and well-tested (#593); these tests focus on
  * the screen's selection state machine, HUD wiring, modals, save/resume
- * plumbing, and the POST /solitaire/score submission flow.
+ * plumbing, and the result card with its leaderboard auto-submit.
  */
 
 import React from "react";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AccessibilityInfo } from "react-native";
 
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { SolitaireScoreboardProvider } from "../../game/solitaire/SolitaireScoreboardContext";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
-import { saveStats } from "../../game/solitaire/storage";
+import { loadStats, saveStats } from "../../game/solitaire/storage";
 import { solitaireApi } from "../../game/solitaire/api";
+import { WIN_CASCADE_MS } from "../../game/solitaire/components/SolitaireWinCascade";
+import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // SolitaireScreen's first render pulls in the heaviest module graph in the
 // suite (skia cascade, reanimated, sound, gesture handling); on a
@@ -215,7 +218,7 @@ describe("SolitaireScreen — hint button", () => {
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     const api = await mount();
-    // WinModal uses accessibilityViewIsModal, which hides the header from
+    // The result card uses accessibilityViewIsModal, which hides the header from
     // accessibility queries; includeHiddenElements bypasses that restriction
     const hint = api.getByTestId("solitaire-hint-button", {
       includeHiddenElements: true,
@@ -378,25 +381,23 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
   });
 });
 
-describe("SolitaireScreen — win-modal score submission", () => {
-  // Preload a state that is one tap away from a win so we can drive the
-  // screen into the win modal without simulating hundreds of moves.
-  async function mountAtWinState() {
-    // Build a nearly-complete state: one clubs foundation empty-slot and a
-    // single Ace-of-Clubs tableau column. Tapping the ace → foundation
-    // auto-move via double-tap completes all 52.
-    const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
-    const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
-    const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+describe("SolitaireScreen — result card (#2509)", () => {
+  const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
+  const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+  const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+  const foundation = (suit: (typeof suits)[number]) => full.filter((c) => c.suit === suit);
+
+  /** A saved game that is already won (resumed after the app was killed). */
+  async function mountAtWonState(drawMode: 1 | 3 = 1) {
     const winState = {
       _v: 1,
-      drawMode: 1,
+      drawMode,
       tableau: [[], [], [], [], [], [], []],
       foundations: {
-        spades: full.filter((c) => c.suit === "spades"),
-        hearts: full.filter((c) => c.suit === "hearts"),
-        diamonds: full.filter((c) => c.suit === "diamonds"),
-        clubs: full.filter((c) => c.suit === "clubs"),
+        spades: foundation("spades"),
+        hearts: foundation("hearts"),
+        diamonds: foundation("diamonds"),
+        clubs: foundation("clubs"),
       },
       stock: [],
       waste: [],
@@ -404,54 +405,169 @@ describe("SolitaireScreen — win-modal score submission", () => {
       recycleCount: 0,
       undoStack: [],
       isComplete: true,
+      startedAt: null,
+      accumulatedMs: 95000,
+      // Saved with the winning move's events, as a real save would be.
+      events: ["foundationComplete", "gameWin"],
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     return await mount();
   }
 
-  it("POSTs the score with the entered name on Submit and shows the saved rank", async () => {
-    (solitaireApi.submitScore as jest.Mock).mockResolvedValueOnce({
+  /** A saved game one move from winning: the King of Clubs waits on the waste. */
+  async function mountOneMoveFromWin() {
+    const nearWin = {
+      _v: 1,
+      drawMode: 1,
+      tableau: [[], [], [], [], [], [], []],
+      foundations: {
+        spades: foundation("spades"),
+        hearts: foundation("hearts"),
+        diamonds: foundation("diamonds"),
+        clubs: foundation("clubs").slice(0, 12),
+      },
+      stock: [],
+      waste: [{ suit: "clubs", rank: 13, faceUp: true }],
+      score: 800,
+      recycleCount: 0,
+      undoStack: [],
+      isComplete: false,
+      startedAt: null,
+      accumulatedMs: 61000,
+    };
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(nearWin));
+    return await mount();
+  }
+
+  async function playWinningMove(api: Awaited<ReturnType<typeof mount>>) {
+    const king = api.getByLabelText("K of Clubs");
+    await act(async () => {
+      await fireEvent.press(king); // select
+    });
+    await act(async () => {
+      await fireEvent.press(king); // double-tap → foundation
+    });
+  }
+
+  /** Wins in-session and waits for the card (the cascade is skipped under reduce motion). */
+  async function winNow() {
+    const api = await mountOneMoveFromWin();
+    await playWinningMove(api);
+    await api.findByTestId("solitaire-result");
+    return api;
+  }
+
+  let reduceMotion: jest.SpyInstance;
+
+  afterEach(() => reduceMotion.mockRestore());
+
+  beforeEach(() => {
+    resetDisplayNameCacheForTests();
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    (solitaireApi.submitScore as jest.Mock).mockResolvedValue({
       player_name: "Alice",
       score: 820,
       rank: 3,
     });
-    const api = await mountAtWinState();
+  });
+
+  it("shows the shared card with the score, draw mode and actions", async () => {
+    const api = await mountAtWonState(3);
+    const card = within(await api.findByTestId("solitaire-result"));
+    expect(card.getByTestId("solitaire-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText(/Draw 3/)).toBeTruthy();
+    expect(card.getByText("820")).toBeTruthy();
+    expect(card.getByText("1:35")).toBeTruthy();
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Change Mode" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
+  });
+
+  it("submits the score under the saved display name with no name entry", async () => {
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    const api = await winNow();
+    await waitFor(() => {
+      expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
+    });
+    expect(solitaireApi.submitScore).toHaveBeenCalledTimes(1);
+    expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
+    expect(api.queryByLabelText("Your name")).toBeNull();
+  });
+
+  it("asks for a display name once when none is set, then submits", async () => {
+    const api = await winNow();
+    const input = await api.findByLabelText("Pick a display name for leaderboards");
+    expect(solitaireApi.submitScore).not.toHaveBeenCalled();
+
     await act(async () => {
-      await fireEvent.changeText(api.getByLabelText("Your name"), "Alice");
+      await fireEvent.changeText(input, "Alice");
     });
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("Submit Score"));
+      await fireEvent.press(api.getByRole("button", { name: "Save" }));
     });
     await waitFor(() => {
-      expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", 820);
-    });
-    await waitFor(() => {
-      expect(api.getByText(/#3/)).toBeTruthy();
+      expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
     });
   });
 
-  it("surfaces an error and a Retry button when the POST fails", async () => {
-    (solitaireApi.submitScore as jest.Mock).mockRejectedValueOnce(new Error("network"));
-    const api = await mountAtWinState();
+  // #2556 review: the app closed after a win but before the save was cleared.
+  it("does not resubmit or replay the cascade for a resumed, already-won game", async () => {
+    reduceMotion.mockResolvedValue(false);
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    const api = await mountAtWonState();
+
+    // Straight to the card — no cascade despite the saved gameWin event.
+    expect(api.getByTestId("solitaire-result")).toBeTruthy();
     await act(async () => {
-      await fireEvent.changeText(api.getByLabelText("Your name"), "Bob");
+      await new Promise((r) => setTimeout(r, 50));
     });
+    expect(solitaireApi.submitScore).not.toHaveBeenCalled();
+    expect(api.queryByText(/Saved as/)).toBeNull();
+  });
+
+  it("plays the win cascade, then reveals the card and records the win once", async () => {
+    reduceMotion.mockResolvedValue(false);
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    await saveStats({ bestTimeMs: 90000, bestMoves: 80, gamesPlayed: 3, gamesWon: 1 });
+    const api = await mountOneMoveFromWin();
+    await playWinningMove(api);
+
+    // The cascade plays over the board before the card appears.
+    expect(api.queryByTestId("solitaire-result")).toBeNull();
+    const card = within(
+      await api.findByTestId("solitaire-result", undefined, { timeout: WIN_CASCADE_MS + 2000 })
+    );
+
+    // 61 s beats the 90 s best.
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.getByText("Moves")).toBeTruthy();
+    await waitFor(() => expect(solitaireApi.submitScore).toHaveBeenCalledTimes(1));
+    expect((await loadStats()).gamesWon).toBe(2);
+  });
+
+  it("Play Again deals a new game in the same draw mode, skipping the picker", async () => {
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    const api = await mountAtWonState(3);
+    await api.findByTestId("solitaire-result");
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("Submit Score"));
+      await fireEvent.press(api.getByRole("button", { name: "Play Again" }));
     });
-    await waitFor(() => {
-      expect(api.getByRole("alert")).toBeTruthy();
-      expect(api.getByLabelText("Retry")).toBeTruthy();
+
+    expect(api.queryByTestId("solitaire-result")).toBeNull();
+    expect(api.queryByLabelText("Draw 1")).toBeNull();
+    expect(api.getByLabelText("Moves: 0")).toBeTruthy();
+    await waitFor(async () => {
+      const saved = JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "null");
+      expect(saved).toEqual(expect.objectContaining({ drawMode: 3, isComplete: false }));
     });
   });
 
-  // Regression #741: tapping "New Game" in the WinModal used to throw
-  // `Property 'setShowNewGameConfirm' doesn't exist` because a stray setter
-  // call survived the #711 overflow-menu cleanup.
-  it("returns to the pre-game modal when New Game is tapped in the WinModal", async () => {
-    const api = await mountAtWinState();
+  // Regression #741: starting a new game from the win screen used to throw
+  // `Property 'setShowNewGameConfirm' doesn't exist`.
+  it("Change Mode returns to the draw-mode picker and clears the saved game", async () => {
+    const api = await mountAtWonState();
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("New Game"));
+      await fireEvent.press(await api.findByRole("button", { name: "Change Mode" }));
     });
     expect(api.getByLabelText("Draw 1")).toBeTruthy();
     expect(await AsyncStorage.getItem("solitaire_game")).toBeNull();

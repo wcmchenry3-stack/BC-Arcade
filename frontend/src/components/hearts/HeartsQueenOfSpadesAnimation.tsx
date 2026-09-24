@@ -102,8 +102,8 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
   }));
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.overlay, overlayStyle]} />
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]} />
       <View style={styles.content}>
         <Animated.View
           style={[styles.card, cardStyle]}
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 101,

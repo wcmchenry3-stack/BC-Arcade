@@ -81,8 +81,8 @@ test.describe("Yacht — full 13-round game journey", () => {
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
 
-    await expect(page.getByText("Game Over!")).toBeVisible();
-    await expect(page.getByText(/Final Score/i)).toBeVisible();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
+    await expect(page.getByTestId("yacht-final-scorecard")).toBeVisible();
   });
 
   test("Play Again from game-over modal starts a new game in place", async ({
@@ -96,7 +96,7 @@ test.describe("Yacht — full 13-round game journey", () => {
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
 
-    await expect(page.getByText("Game Over!")).toBeVisible();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
     await page.getByRole("button", { name: /play again/i }).click();
 
     await expect(page.getByText(/Round 1/i)).toBeVisible({ timeout: 10000 });
@@ -114,7 +114,7 @@ test.describe("Yacht — full 13-round game journey", () => {
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
 
-    await expect(page.getByText("Game Over!")).toBeVisible();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
     await page.getByRole("button", { name: /play again/i }).click();
     await expect(page.getByText(/Round 1/i)).toBeVisible({ timeout: 10000 });
 
@@ -146,7 +146,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     await expect(page.getByText("0 / 63")).toBeVisible();
   });
 
-  test("No Thanks navigates back to HomeScreen", async ({ page }) => {
+  test("Home navigates back to HomeScreen", async ({ page }) => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
     await page.getByRole("button", { name: /^Solo$/i }).click();
 
@@ -155,10 +155,13 @@ test.describe("Yacht — full 13-round game journey", () => {
       await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
     }
 
-    await expect(page.getByText("Game Over!")).toBeVisible();
-    await page.getByRole("button", { name: /dismiss/i }).click();
+    await expect(page.getByTestId("yacht-result-title")).toBeVisible();
+    await page
+      .getByTestId("yacht-result")
+      .getByRole("button", { name: "Home" })
+      .click();
 
-    // Dismiss now navigates back to HomeScreen rather than hiding the modal in-place.
+    // Home returns to the lobby (#2505; replaces the old "No Thanks").
     await expect(page.getByText("BC Arcade").first()).toBeVisible({
       timeout: 10000,
     });

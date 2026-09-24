@@ -28,10 +28,10 @@ jest.mock("../../game/_shared/httpClient", () => ({
 }));
 
 const mockClearHearts = jest.fn().mockResolvedValue(undefined);
-const mockClearYacht = jest.fn().mockResolvedValue(undefined);
+const mockClearBlackjack = jest.fn().mockResolvedValue(undefined);
 const mockClearSudoku = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/hearts/storage", () => ({ clearGame: () => mockClearHearts() }));
-jest.mock("../../game/yacht/storage", () => ({ clearGame: () => mockClearYacht() }));
+jest.mock("../../game/blackjack/storage", () => ({ clearGame: () => mockClearBlackjack() }));
 jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku() }));
 // cascade/storage was removed in v2 teardown (#1747); EntitlementContext uses an inline no-op.
 
@@ -117,7 +117,7 @@ beforeEach(async () => {
     expires_at: "2099-01-01T00:00:00Z",
   });
   mockClearHearts.mockResolvedValue(undefined);
-  mockClearYacht.mockResolvedValue(undefined);
+  mockClearBlackjack.mockResolvedValue(undefined);
   mockClearSudoku.mockResolvedValue(undefined);
   mockDropByGameType.mockResolvedValue(undefined);
 });
@@ -135,7 +135,7 @@ describe("EntitlementProvider", () => {
 
     it("returns true for free games regardless of entitlement state", async () => {
       await renderProvider();
-      for (const slug of ["blackjack", "twenty48", "solitaire", "mahjong", "freecell"]) {
+      for (const slug of ["yacht", "twenty48", "solitaire", "mahjong", "freecell"]) {
         expect(ctx.canPlay(slug)).toBe(true);
       }
     });
@@ -153,7 +153,7 @@ describe("EntitlementProvider", () => {
 
     it("covers exactly the premium game slugs", () => {
       expect(PREMIUM_GAMES).toEqual(
-        new Set(["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"])
+        new Set(["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"])
       );
     });
   });
@@ -242,7 +242,7 @@ describe("EntitlementProvider", () => {
       mockRequest.mockRejectedValue(new TypeError("Network request failed"));
       await renderProvider();
       expect(ctx.canPlay("cascade")).toBe(false);
-      expect(ctx.canPlay("blackjack")).toBe(true);
+      expect(ctx.canPlay("yacht")).toBe(true);
     });
   });
 
@@ -275,7 +275,7 @@ describe("EntitlementProvider", () => {
   // ---------------------------------------------------------------------------
 
   describe("dev-override cache persistence (Sentry GAMESAPI-4D9816B4)", () => {
-    const ALL_PREMIUM = ["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"];
+    const ALL_PREMIUM = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"];
 
     it("all-games token from dev-override period still grants access on cold-launch network failure within grace period", async () => {
       // Simulate a device that cached an all-games token while ENTITLEMENT_DEV_OVERRIDE was active
@@ -459,6 +459,16 @@ describe("revocation flow", () => {
     expect(mockClearHearts).toHaveBeenCalledTimes(1);
   });
 
+  it("clears the saved Blackjack run when Blackjack is revoked", async () => {
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["blackjack"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await triggerForegroundWith([]);
+    expect(mockClearBlackjack).toHaveBeenCalledTimes(1);
+    expect(mockDropByGameType).toHaveBeenCalledWith("blackjack");
+  });
+
   it("drops queue entries for the revoked game", async () => {
     mockRequest.mockResolvedValue({
       token: makeToken(makePayload(["sudoku"])),
@@ -479,7 +489,7 @@ describe("revocation flow", () => {
 
   it("does not clear storage on first load (no prior entitlements)", async () => {
     mockRequest.mockResolvedValue({
-      token: makeToken(makePayload(["hearts", "yacht"])),
+      token: makeToken(makePayload(["hearts", "blackjack"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
     await render(
@@ -490,7 +500,7 @@ describe("revocation flow", () => {
     await flushAsync();
     await flushAsync();
     expect(mockClearHearts).not.toHaveBeenCalled();
-    expect(mockClearYacht).not.toHaveBeenCalled();
+    expect(mockClearBlackjack).not.toHaveBeenCalled();
   });
 
   it("handles starswarm revocation gracefully (no storage clearer)", async () => {
@@ -508,7 +518,7 @@ describe("revocation flow", () => {
       expires_at: "2099-01-01T00:00:00Z",
     });
     await triggerForegroundWith([]);
-    expect(mockDropByGameType).not.toHaveBeenCalledWith("blackjack");
+    expect(mockDropByGameType).not.toHaveBeenCalledWith("yacht");
     expect(mockDropByGameType).not.toHaveBeenCalledWith("twenty48");
   });
 });

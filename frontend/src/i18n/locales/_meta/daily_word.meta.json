@@ -26,33 +26,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "result.win.title": {
-    "component": "DailyWordScreen WinModal",
-    "description": "Heading shown when the player wins.",
-    "tone": "celebratory",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Should feel exciting and positive."
-  },
-  "result.win.share": {
-    "component": "DailyWordScreen WinModal",
-    "description": "Button label to share the result grid.",
-    "tone": "functional",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "result.loss.title": {
-    "component": "DailyWordScreen LossModal",
-    "description": "Heading shown when the player uses all 6 guesses without winning.",
-    "tone": "empathetic, encouraging",
-    "characterLimit": 30,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "result.loss.answer": {
     "component": "DailyWordScreen LossModal",
     "description": "Shows the correct answer after a loss.",
@@ -94,6 +67,33 @@
     "description": "Toast shown when the guess submission fails due to a network or server error.",
     "tone": "neutral, apologetic",
     "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.countdown": {
+    "component": "DailyWordScreen result card (disabled primary button)",
+    "description": "Countdown to the next daily puzzle, shown on the disabled primary button of the end-of-game card.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": "{{time}} is hh:mm:ss."
+  },
+  "result.share": {
+    "component": "DailyWordScreen result card",
+    "description": "Button label to share the result grid.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.copied": {
+    "component": "DailyWordScreen result card",
+    "description": "Share button label for two seconds after the result was copied to the clipboard (web).",
+    "tone": "functional",
+    "characterLimit": 15,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

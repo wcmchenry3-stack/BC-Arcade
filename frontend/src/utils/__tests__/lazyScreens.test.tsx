@@ -104,11 +104,12 @@ describe("prefetchLobbyGameScreens", () => {
     }).not.toThrow();
   });
 
-  it("queries canPlay for each of the four premium slugs", () => {
+  it("queries canPlay for each premium slug", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { prefetchLobbyGameScreens } = require("../lazyScreens");
     const canPlay = jest.fn().mockReturnValue(false);
     prefetchLobbyGameScreens(canPlay);
+    expect(canPlay).toHaveBeenCalledWith("blackjack");
     expect(canPlay).toHaveBeenCalledWith("cascade");
     expect(canPlay).toHaveBeenCalledWith("starswarm");
     expect(canPlay).toHaveBeenCalledWith("hearts");
@@ -120,7 +121,6 @@ describe("prefetchLobbyGameScreens", () => {
     const { prefetchLobbyGameScreens } = require("../lazyScreens");
     const canPlay = jest.fn().mockReturnValue(false);
     prefetchLobbyGameScreens(canPlay);
-    expect(canPlay).not.toHaveBeenCalledWith("blackjack");
     expect(canPlay).not.toHaveBeenCalledWith("twenty48");
     expect(canPlay).not.toHaveBeenCalledWith("solitaire");
     expect(canPlay).not.toHaveBeenCalledWith("freecell");

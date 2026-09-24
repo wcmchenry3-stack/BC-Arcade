@@ -266,6 +266,7 @@ export default function BottleView({
     <TouchableOpacity
       onPress={onTap}
       disabled={!onTap}
+      accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       activeOpacity={0.8}
     >

@@ -32,7 +32,7 @@
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
-  "yacht",
+  "blackjack",
   "cascade",
   "hearts",
   "sudoku",

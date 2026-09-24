@@ -9,8 +9,8 @@ import * as path from "path";
 
 import { PREMIUM_GAMES } from "../EntitlementContext";
 
-const PREMIUM_SLUGS = ["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"];
-const FREE_SLUGS = ["blackjack", "solitaire", "freecell", "mahjong", "daily_word", "twenty48"];
+const PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"];
+const FREE_SLUGS = ["yacht", "solitaire", "freecell", "mahjong", "daily_word", "twenty48"];
 
 const PRE_LAUNCH_API_URL = "https://dev-games-api.buffingchi.com";
 const PRODUCTION_API_URL = "https://games-api.buffingchi.com";
@@ -80,7 +80,7 @@ describe("gameVisibility", () => {
           testHooks: value,
           apiUrl: PRODUCTION_API_URL,
         });
-        expect(isGameVisible("yacht")).toBe(false);
+        expect(isGameVisible("blackjack")).toBe(false);
       }
     });
 
@@ -132,14 +132,14 @@ describe("gameVisibility", () => {
   it("the test seam can only hide: it never reveals hidden games in a store build", () => {
     const store = loadWith({ dev: false });
     store.__forceStoreBuildForTests(false);
-    expect(store.isGameVisible("yacht")).toBe(false);
+    expect(store.isGameVisible("blackjack")).toBe(false);
 
     const dev = loadWith({ dev: true });
     dev.__forceStoreBuildForTests(true);
-    expect(dev.isGameVisible("yacht")).toBe(false);
-    expect(dev.isGameVisible("blackjack")).toBe(true);
-    dev.__forceStoreBuildForTests(false);
+    expect(dev.isGameVisible("blackjack")).toBe(false);
     expect(dev.isGameVisible("yacht")).toBe(true);
+    dev.__forceStoreBuildForTests(false);
+    expect(dev.isGameVisible("blackjack")).toBe(true);
   });
 
   // v1.0 hides every premium game. Relax this when IAP (#822) unhides a subset.

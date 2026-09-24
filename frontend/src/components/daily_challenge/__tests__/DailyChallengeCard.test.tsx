@@ -133,6 +133,23 @@ describe("DailyChallengeCard — goals", () => {
     expect(await findByLabelText("Finish today's Daily Word, not completed yet")).toBeTruthy();
   });
 
+  it("words a yacht score-target goal, now that yacht is a free game (#2390 tier swap)", async () => {
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        {
+          id: "y1",
+          gameSlug: "yacht",
+          kind: "final_score_at_least",
+          target: 200,
+          completed: false,
+        },
+      ],
+    });
+    const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Score 200+ in Yacht, not completed yet")).toBeTruthy();
+  });
+
   it("words each goal in its own game's terms, with its target", async () => {
     const goal = (gameSlug: string, kind: string, target: number | null): ChallengeGoal => ({
       id: `${gameSlug}:${kind}`,
@@ -175,6 +192,7 @@ describe("DailyChallengeCard — goals", () => {
   it.each([
     ["daily_word", ["completed", "won", "won_guesses_used_at_most"]],
     ["twenty48", ["final_score_at_least", "highest_tile_at_least"]],
+    ["yacht", ["final_score_at_least"]],
     ["solitaire", ["moves_at_least", "won", "won_moves_at_most"]],
     ["mahjong", ["pairs_at_least", "won", "won_duration_ms_at_most"]],
     ["freecell", ["moves_at_least", "won", "won_moves_at_most"]],
@@ -220,7 +238,7 @@ describe("DailyChallengeCard — goals", () => {
       challengeId: "2026-09-27",
       goals: [
         { id: "v", gameSlug: "solitaire", kind: "won", target: null, completed: true },
-        { id: "h", gameSlug: "yacht", kind: "won", target: null, completed: false },
+        { id: "h", gameSlug: "hearts", kind: "won", target: null, completed: false },
       ],
     });
     const { findByText, queryByTestId, getByTestId } = await renderCard();
@@ -266,7 +284,13 @@ describe("DailyChallengeCard — goals", () => {
     mockGetDailyChallenge.mockResolvedValue({
       challengeId: "2026-09-27",
       goals: [
-        { id: "h1", gameSlug: "yacht", kind: "won", target: null, completed: false },
+        {
+          id: "h1",
+          gameSlug: "blackjack",
+          kind: "hands_played_at_least",
+          target: 1,
+          completed: false,
+        },
         { id: "h2", gameSlug: "hearts", kind: "won", target: null, completed: false },
       ],
     });

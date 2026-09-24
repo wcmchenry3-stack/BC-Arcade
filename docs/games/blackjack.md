@@ -1,7 +1,7 @@
 # Blackjack
 
 **Category:** Card
-**Tier:** TBD
+**Tier:** Premium (hidden in the v1.0 store build — simulated gambling; decision 2026-09-23)
 **Status:** In Development
 
 ## How to Play

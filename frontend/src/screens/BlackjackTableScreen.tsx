@@ -30,7 +30,8 @@ import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
 import ActionButtons from "../components/blackjack/ActionButtons";
 import ResultBanner from "../components/blackjack/ResultBanner";
-import GameOverModal from "../components/blackjack/GameOverModal";
+import GameResultModal from "../components/shared/GameResultModal";
+import { winRatePct } from "../components/scoreboard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { GameShell } from "../components/shared/GameShell";
@@ -57,6 +58,7 @@ type Props = {
 
 export default function BlackjackTableScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -86,16 +88,19 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const bustFlash = useSharedValue(0);
   const winFlash = useSharedValue(0);
 
+  // Theme colours (#2507) at the washes' old strengths (40% / 35%).
+  const bustFlashColor = colors.error;
+  const winFlashColor = colors.outcomeWin;
   const bustFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(220,38,38,0.4)",
-    opacity: bustFlash.value,
+    ...StyleSheet.absoluteFill,
+    backgroundColor: bustFlashColor,
+    opacity: bustFlash.value * 0.4,
     pointerEvents: "none",
   }));
   const winFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(34,197,94,0.35)",
-    opacity: winFlash.value,
+    ...StyleSheet.absoluteFill,
+    backgroundColor: winFlashColor,
+    opacity: winFlash.value * 0.35,
     pointerEvents: "none",
   }));
   const milestoneStyle = useAnimatedStyle(() => ({
@@ -367,10 +372,20 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       </View>
 
       {state && (
-        <GameOverModal
+        <GameResultModal
           visible={state.game_over}
-          onPlayAgain={handlePlayAgain}
-          onHome={() => navigation.goBack()}
+          outcome="ended"
+          eyebrow={`${t("game.title")} · ${t(activeTable.labelKey as Parameters<typeof t>[0])}`}
+          subtitle={t("gameOver.title")}
+          stats={[
+            { label: tResult("stat.hands"), value: sessionStats.handsPlayed },
+            { label: tResult("stat.biggestWin"), value: sessionStats.biggestWin },
+            { label: tResult("stat.winRate"), value: `${winRatePct(sessionStats) ?? 0}%` },
+          ]}
+          // Same as the header's New Game: a fresh session, back to betting.
+          onPlayAgain={handleNewGame}
+          onHome={() => navigation.popToTop()}
+          testID="blackjack-result"
         />
       )}
 

@@ -19,7 +19,10 @@ describe("premiumRoutes", () => {
 
   it("dev build registers every premium route and the Ranks tab", () => {
     expect(visiblePremiumRoutes().map((r) => r.route)).toEqual([
-      "Game",
+      "BlackjackBetting",
+      "BlackjackTable",
+      "BlackjackVictory",
+      "BlackjackStats",
       "Cascade",
       "StarSwarm",
       "Hearts",
@@ -35,9 +38,16 @@ describe("premiumRoutes", () => {
     expect(visiblePremiumTabs()).toEqual([]);
   });
 
-  it("every premium game owns exactly one route, so none can be tile-less but routable", () => {
-    expect(PREMIUM_ROUTES.map((r) => r.slug).sort()).toEqual([...PREMIUM_GAMES].sort());
-    expect(new Set(PREMIUM_ROUTES.map((r) => r.route)).size).toBe(PREMIUM_ROUTES.length);
+  it("every premium route belongs to a premium game, every premium game has at least one route, and route names are unique", () => {
+    for (const { slug } of PREMIUM_ROUTES) {
+      expect(PREMIUM_GAMES.has(slug)).toBe(true);
+    }
+    const routedGames = new Set<string>(PREMIUM_ROUTES.map((r) => r.slug));
+    for (const slug of PREMIUM_GAMES) {
+      expect(routedGames.has(slug)).toBe(true);
+    }
+    const routeNames = PREMIUM_ROUTES.map((r) => r.route);
+    expect(new Set(routeNames).size).toBe(routeNames.length);
   });
 
   it("every premium tab belongs to a premium game", () => {

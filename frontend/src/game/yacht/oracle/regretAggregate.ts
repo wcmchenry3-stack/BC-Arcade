@@ -172,7 +172,7 @@ function welchSatterthwaiteDf(varA: number, nA: number, varB: number, nB: number
  * df≈50) at the low decision counts a manual `YACHT_REGRET_SIM` override
  * can produce.
  */
-function studentTCritical95(df: number): number {
+export function studentTCritical95(df: number): number {
   if (!(df > 0)) return Z_95;
   const z = Z_95;
   const g1 = (z ** 3 + z) / 4;

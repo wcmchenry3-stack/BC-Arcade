@@ -31,15 +31,22 @@ import {
   savePlayerNames,
   validateName,
 } from "../game/hearts/playerNames";
-import { heartsApi } from "../game/hearts/api";
+import { heartsLeaderboard, heartsLeaderboardScore } from "../game/hearts/leaderboard";
+import { heartsResult } from "../game/hearts/result";
+import {
+  clearPendingSubmission,
+  loadPendingSubmission,
+  savePendingSubmission,
+} from "../game/hearts/pendingSubmission";
+import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
+import GameResultModal from "../components/shared/GameResultModal";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useNetwork } from "../game/_shared/NetworkContext";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { HEARTS_SOUNDS } from "../game/hearts/sounds";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
@@ -49,7 +56,6 @@ import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
 import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
 
 const HUMAN = 0;
-const MAX_NAME_LENGTH = 32;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,13 +71,14 @@ function buildDebugTrick(plays: readonly TrickCard[], winnerIndex: number): Debu
 }
 
 type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
-type SubmitState = "idle" | "submitting" | "done" | "error";
 
 export default function HeartsScreen() {
   const { t } = useTranslation("hearts");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const { isOnline, isInitialized } = useNetwork();
+  const leaderboard = useLeaderboardSubmit(heartsLeaderboard);
+  const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<AiPreset>("schemer");
@@ -82,8 +89,6 @@ export default function HeartsScreen() {
   const [showQueenOfSpades, setShowQueenOfSpades] = useState(false);
   const [queenOfSpadesLabel, setQueenOfSpadesLabel] = useState("");
   const [showRename, setShowRename] = useState(false);
-  const [playerName, setPlayerName] = useState("");
-  const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
   const [draftNames, setDraftNames] = useState<string[]>([...DEFAULT_NAMES]);
 
@@ -136,6 +141,15 @@ export default function HeartsScreen() {
   useEffect(() => {
     loadGame().then((saved) => {
       if (!unmountedRef.current && saved) {
+        // A finished game resumed from storage: its game-over sound played when
+        // it ended. Its score goes out only if that submission never completed
+        // (e.g. the app closed while the card asked for a display name).
+        if (saved.phase === "game_over") {
+          gameOverFiredRef.current = true;
+          loadPendingSubmission().then((pending) => {
+            if (!unmountedRef.current && pending) submitScore(pending);
+          });
+        }
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
         if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
@@ -336,8 +350,7 @@ export default function HeartsScreen() {
   useEffect(() => {
     if (gameState?.phase !== "game_over") return;
     if (!syncGetGameId()) return;
-    const humanScore = gameState.cumulativeScores[HUMAN] ?? 0;
-    const finalScore = Math.max(0, 100 - humanScore);
+    const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
     syncComplete({ outcome: "completed", finalScore, durationMs: 0 }, { final_score: finalScore });
   }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId]);
 
@@ -345,9 +358,19 @@ export default function HeartsScreen() {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       playGameOver();
+      const pending = { score: heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0) };
+      void savePendingSubmission(pending);
+      submitScore(pending);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);
+
+  // The owed score is settled once it's saved, or queued for the next flush.
+  useEffect(() => {
+    if (leaderboard.status === "saved" || leaderboard.status === "offline") {
+      void clearPendingSubmission();
+    }
+  }, [leaderboard.status]);
 
   // ─── Human card play ──────────────────────────────────────────────────────
   function handleCardPress(card: Card) {
@@ -456,28 +479,13 @@ export default function HeartsScreen() {
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
-  async function handleSubmitScore() {
-    if (!gameState || !playerName.trim() || submitState === "submitting" || submitState === "done")
-      return;
-    if (isInitialized && !isOnline) return;
-    setSubmitState("submitting");
-    const humanScore = gameState.cumulativeScores[HUMAN] ?? 0;
-    const score = Math.max(0, 100 - humanScore);
-    try {
-      await heartsApi.submitScore(playerName.trim(), score);
-      setSubmitState("done");
-    } catch {
-      setSubmitState("error");
-    }
-  }
-
   function handleStartGame(difficulty: AiPreset) {
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
-    setSubmitState("idle");
-    setPlayerName("");
+    resetSubmission();
+    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
@@ -497,13 +505,14 @@ export default function HeartsScreen() {
     setGameState(fresh);
   }
 
-  function handlePlayAgain() {
+  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
+  function handleChangeDifficulty() {
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
-    setSubmitState("idle");
-    setPlayerName("");
+    resetSubmission();
+    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
@@ -541,6 +550,7 @@ export default function HeartsScreen() {
   const displayTrick = lastTrick !== null ? lastTrick.trick : (gameState?.currentTrick ?? []);
   const trickWinnerIndex = lastTrick !== null ? lastTrick.winnerIndex : null;
   const moonShooter = gameState ? detectMoon(gameState.wonCards) : null;
+  const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
   if (!gameState) {
@@ -577,7 +587,7 @@ export default function HeartsScreen() {
     <GameShell
       title={t("game.title")}
       onBack={() => navigation.goBack()}
-      onNewGame={handlePlayAgain}
+      onNewGame={handleChangeDifficulty}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
       onEditPlayerNames={handleOpenRename}
     >
@@ -728,137 +738,38 @@ export default function HeartsScreen() {
         </Modal>
       )}
 
-      {/* ── Game-over overlay ──────────────────────────────────────── */}
-      {gameState.phase === "game_over" && (
-        <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-          <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
-            <View
-              style={[
-                styles.panel,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              <ScrollView
-                style={styles.panelScroll}
-                contentContainerStyle={styles.panelScrollContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                bounces={false}
-              >
-                <Text style={[styles.panelTitle, { color: colors.text }]}>
-                  {t("game_over.title")}
-                </Text>
-                <Text style={[styles.winnerText, { color: colors.accent }]}>
-                  {gameState.winnerIndex === 0
-                    ? t("game_over.you_win")
-                    : t("game_over.winner", {
-                        label: playerLabels[gameState.winnerIndex ?? 0] ?? "",
-                      })}
-                </Text>
-                <HeartsScoreboard
-                  playerLabels={playerLabels}
-                  cumulativeScores={[...gameState.cumulativeScores]}
-                  scoreHistory={scoreHistory}
-                  compact
-                />
-
-                {submitState !== "done" && (
-                  <>
-                    <TextInput
-                      style={[
-                        styles.nameInput,
-                        {
-                          color: colors.text,
-                          borderColor: colors.border,
-                          backgroundColor: colors.surfaceAlt,
-                        },
-                      ]}
-                      value={playerName}
-                      onChangeText={setPlayerName}
-                      placeholder={t("game_over.name_placeholder")}
-                      placeholderTextColor={colors.textMuted}
-                      maxLength={MAX_NAME_LENGTH}
-                      accessibilityLabel={t("game_over.name_placeholder")}
-                      editable={submitState !== "submitting"}
-                    />
-                    <Pressable
-                      style={[
-                        styles.btn,
-                        {
-                          backgroundColor:
-                            playerName.trim() && submitState !== "submitting"
-                              ? colors.accent
-                              : colors.surfaceAlt,
-                        },
-                      ]}
-                      onPress={() => void handleSubmitScore()}
-                      disabled={!playerName.trim() || submitState === "submitting"}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        submitState === "submitting"
-                          ? t("game_over.submitting")
-                          : submitState === "error"
-                            ? t("game_over.retry")
-                            : t("game_over.submit")
-                      }
-                      accessibilityState={{
-                        disabled: !playerName.trim() || submitState === "submitting",
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.btnText,
-                          {
-                            color:
-                              playerName.trim() && submitState !== "submitting"
-                                ? colors.textOnAccent
-                                : colors.textMuted,
-                          },
-                        ]}
-                      >
-                        {submitState === "submitting"
-                          ? t("game_over.submitting")
-                          : submitState === "error"
-                            ? t("game_over.retry")
-                            : t("game_over.submit")}
-                      </Text>
-                    </Pressable>
-                    {isInitialized && !isOnline ? (
-                      <OfflineBanner />
-                    ) : (
-                      submitState === "error" && (
-                        <Text style={[styles.errorText, { color: colors.error }]}>
-                          {t("game_over.submit_error")}
-                        </Text>
-                      )
-                    )}
-                  </>
-                )}
-                {submitState === "done" && (
-                  <Text style={[styles.successText, { color: colors.accent }]}>
-                    {t("game_over.submitted")}
-                  </Text>
-                )}
-
-                <HeartsAiDifficultySelector
-                  value={selectedDifficulty}
-                  onChange={setSelectedDifficulty}
-                />
-                <Pressable
-                  style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
-                  onPress={handlePlayAgain}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("game_over.again")}
-                >
-                  <Text style={[styles.btnText, { color: colors.text }]}>
-                    {t("game_over.again")}
-                  </Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      )}
+      {/* ── Game over: the shared result card (#2506) ─────────────── */}
+      <GameResultModal
+        visible={gameState.phase === "game_over"}
+        outcome={result.outcome}
+        winnerName={playerLabels[result.winnerIndex] ?? ""}
+        eyebrow={t("game.title")}
+        subtitle={tResult("subtitle.reachedLimit", {
+          name: playerLabels[result.limitIndex] ?? "",
+          score: gameState.cumulativeScores[result.limitIndex] ?? 0,
+        })}
+        detail={
+          <HeartsFinalStandings
+            playerLabels={playerLabels}
+            cumulativeScores={gameState.cumulativeScores}
+            humanIndex={HUMAN}
+          />
+        }
+        submission={{
+          status: leaderboard.status,
+          rank: leaderboard.rank,
+          playerName: leaderboard.playerName,
+          onProvideName: leaderboard.provideName,
+          onRetry: leaderboard.retry,
+        }}
+        onPlayAgain={() => handleStartGame(gameState.aiDifficulty)}
+        secondaryAction={{
+          label: tResult("action.changeDifficulty"),
+          onPress: handleChangeDifficulty,
+        }}
+        onHome={() => navigation.popToTop()}
+        testID="hearts-result"
+      />
 
       {/* ── Hearts debug panel (__DEV__ only) ────────────────────── */}
       {__DEV__ && (
@@ -1009,11 +920,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
-  winnerText: {
-    fontSize: 24,
-    fontWeight: "800",
-    textAlign: "center",
-  },
   btn: {
     paddingVertical: 12,
     paddingHorizontal: 32,
@@ -1024,23 +930,6 @@ const styles = StyleSheet.create({
   btnText: {
     fontSize: 16,
     fontWeight: "700",
-  },
-  nameInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  errorText: {
-    fontSize: 13,
-    textAlign: "center",
-  },
-  successText: {
-    fontSize: 15,
-    fontWeight: "600",
-    textAlign: "center",
   },
   headerBtn: {
     paddingHorizontal: 8,

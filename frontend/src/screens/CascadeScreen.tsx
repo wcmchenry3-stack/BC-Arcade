@@ -40,7 +40,7 @@ import {
   DEV_SURFACE_SUBTLE,
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
-import { AnimationOverlay } from "../components/shared/AnimationOverlay";
+import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
 import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
@@ -59,14 +59,17 @@ import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/piec
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
-import GameOverOverlay from "../components/cascade/GameOverOverlay";
 import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
+import { cascadeLeaderboard } from "../game/cascade/leaderboard";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
   clearGame as clearCascadeGame,
+  loadBestScore,
+  saveBestScore,
   type SavedState,
 } from "../game/cascade/storage2";
 
@@ -281,6 +284,7 @@ function PieceRenderer({
 
 function CascadeGame() {
   const { t } = useTranslation(["cascade", "common"]);
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
@@ -292,6 +296,17 @@ function CascadeGame() {
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
+  // What the result card shows, captured at game over (#2515).
+  const [result, setResult] = useState<{
+    score: number;
+    bestScore: number;
+    isNewBest: boolean;
+    merges: number;
+    /** False when the game had no sync id, so nothing could be submitted. */
+    submittable: boolean;
+  } | null>(null);
+  const leaderboard = useLeaderboardSubmit(cascadeLeaderboard);
+  const { submit: submitScore, reset: resetScore } = leaderboard;
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [, setQueueVersion] = useState(0);
@@ -345,6 +360,17 @@ function CascadeGame() {
   const gamesPlayedRef = useRef(0);
 
   const completedGameIdRef = useRef<string | null>(null);
+
+  // The best score persists across app launches (#2515).
+  useEffect(() => {
+    let active = true;
+    loadBestScore().then((best) => {
+      if (active && best > bestScoreRef.current) bestScoreRef.current = best;
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
 
@@ -478,6 +504,9 @@ function CascadeGame() {
       dropCountRef.current = 0;
       setScore(0);
       setGameOver(false);
+      // A new game: the next game over must be able to submit again.
+      setResult(null);
+      resetScore();
       setPieces([]);
       setQueueVersion((v) => v + 1);
       clearCascadeGame().catch(() => {});
@@ -485,7 +514,7 @@ function CascadeGame() {
       setGameKey((k) => k + 1);
       startInstrumentedSession(activeFruitSet.id);
     }
-  }, [activeFruitSet.id, endInstrumentedSession, startInstrumentedSession]);
+  }, [activeFruitSet.id, endInstrumentedSession, startInstrumentedSession, resetScore]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -524,19 +553,42 @@ function CascadeGame() {
     [activeFruitSet, t, saveGameThrottled, syncEnqueue, pushScoreboardSnapshot]
   );
 
+  /**
+   * Captures what the result card shows and sends the leaderboard entry.
+   * The card itself announces the result, so there is no separate
+   * screen-reader announcement here.
+   */
+  const showResult = useCallback(
+    (gameId: string | null) => {
+      const finalScore = scoreRef.current;
+      const previousBest = bestScoreRef.current;
+      if (finalScore > previousBest) {
+        bestScoreRef.current = finalScore;
+        saveBestScore(finalScore).catch(() => {});
+      }
+      setResult({
+        score: finalScore,
+        bestScore: bestScoreRef.current,
+        // Only a beaten previous best counts — not the first game.
+        isNewBest: previousBest > 0 && finalScore > previousBest,
+        merges: mergeCountRef.current,
+        submittable: gameId !== null,
+      });
+      if (gameId) submitScore({ gameId }).catch(() => {});
+    },
+    [submitScore]
+  );
+
   const handleGameOver = useCallback(() => {
-    AccessibilityInfo.announceForAccessibility(t("cascade:event.gameOver"));
     gameOverRef.current = true;
     setGameOver(true);
     completedGameIdRef.current = getGameId();
     endInstrumentedSession("completed");
     clearCascadeGame().catch(() => {});
     gamesPlayedRef.current += 1;
-    if (scoreRef.current > bestScoreRef.current) {
-      bestScoreRef.current = scoreRef.current;
-    }
+    showResult(completedGameIdRef.current);
     pushScoreboardSnapshot();
-  }, [t, endInstrumentedSession, getGameId, pushScoreboardSnapshot]);
+  }, [endInstrumentedSession, getGameId, pushScoreboardSnapshot, showResult]);
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
   // never captures stale closures for merge/gameOver handling.
@@ -561,6 +613,9 @@ function CascadeGame() {
     playGameOver();
     handleGameOver();
   };
+  // Lets the (mount-once) e2e test hook reach the latest showResult.
+  const showResultRef = useRef(showResult);
+  showResultRef.current = showResult;
 
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
@@ -724,6 +779,7 @@ function CascadeGame() {
       completedGameIdRef.current = getGameId();
       gameOverRef.current = true;
       setGameOver(true);
+      showResultRef.current(completedGameIdRef.current);
     };
     g.__cascade_isReady = () => engineRef.current !== null;
     g.__cascade_spawnTierAt = (tier: number, x: number) => {
@@ -743,6 +799,8 @@ function CascadeGame() {
 
   function handleRestart() {
     endInstrumentedSession(gameOverRef.current ? "completed" : "abandoned");
+    setResult(null);
+    resetScore();
     queueRngRef.current = undefined;
     const restarted = makeQueue();
     queueRef.current = restarted.queue;
@@ -831,7 +889,7 @@ function CascadeGame() {
               )}
             </View>
 
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
               {mergeBursts.map((burst) => (
                 <MergeBurst
                   key={burst.id}
@@ -842,14 +900,41 @@ function CascadeGame() {
             </View>
           </View>
 
-          <AnimationOverlay visible={gameOver} onDismiss={() => {}} />
-          {gameOver && (
-            <GameOverOverlay
-              score={score}
-              gameId={completedGameIdRef.current}
-              onRestart={handleRestart}
-            />
-          )}
+          <GameResultModal
+            visible={gameOver}
+            outcome="ended"
+            eyebrow={t("cascade:game.title")}
+            hero={{
+              kind: "score",
+              label: tResult("stat.score"),
+              value: result?.score ?? score,
+            }}
+            isNewBest={result?.isNewBest ?? false}
+            stats={
+              result
+                ? [
+                    { label: tResult("stat.best"), value: result.bestScore },
+                    { label: tResult("stat.merges"), value: result.merges },
+                  ]
+                : []
+            }
+            submission={
+              result && !result.submittable
+                ? // No game id: nothing can reach the leaderboard, and there is
+                  // nothing to retry — say so instead of showing no line.
+                  { status: "error" }
+                : {
+                    status: leaderboard.status,
+                    rank: leaderboard.rank,
+                    playerName: leaderboard.playerName,
+                    onProvideName: leaderboard.provideName,
+                    onRetry: leaderboard.retry,
+                  }
+            }
+            onPlayAgain={handleRestart}
+            onHome={() => navigation.popToTop()}
+            testID="cascade-result"
+          />
         </>
       )}
 

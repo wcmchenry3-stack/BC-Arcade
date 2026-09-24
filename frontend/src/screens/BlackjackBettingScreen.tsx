@@ -117,7 +117,6 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
               playerHands={state.player_hands}
               activeHandIndex={state.active_hand_index}
               handBets={state.hand_bets}
-              handOutcomes={state.hand_outcomes}
             />
           </View>
         </View>

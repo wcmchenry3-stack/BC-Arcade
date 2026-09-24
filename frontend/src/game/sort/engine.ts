@@ -18,7 +18,7 @@ import { BOTTLE_DEPTH } from "./types";
 // ---------------------------------------------------------------------------
 
 function topColor(bottle: Bottle): Color | null {
-  return bottle.length > 0 ? bottle[bottle.length - 1] : null;
+  return bottle[bottle.length - 1] ?? null;
 }
 
 /** Length of the matching-color run at the top of a bottle. */
@@ -62,8 +62,8 @@ export function isValidPour(from: Bottle, to: Bottle): boolean {
  * call `isValidPour` first. Pours as many units of the top run as fit.
  */
 export function applyPour(state: SortState, fromIdx: number, toIdx: number): SortState {
-  const src = [...state.bottles[fromIdx]] as Color[];
-  const dst = [...state.bottles[toIdx]] as Color[];
+  const src = [...state.bottles[fromIdx]!] as Color[];
+  const dst = [...state.bottles[toIdx]!] as Color[];
   const run = topRun(src);
   const space = BOTTLE_DEPTH - dst.length;
   const n = Math.min(run, space);
@@ -99,7 +99,7 @@ export function undo(
   history: readonly SortState[]
 ): { state: SortState; history: readonly SortState[] } {
   if (history.length === 0) return { state, history };
-  const prev = history[history.length - 1];
+  const prev = history[history.length - 1]!;
   return {
     state: { ...prev, undosUsed: state.undosUsed + 1, selectedBottleIndex: null },
     history: history.slice(0, -1),

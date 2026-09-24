@@ -52,17 +52,6 @@
   "hand_end.moon": "{{label}} shot the moon! +26 to all others.",
   "hand_end.next": "Next Hand",
 
-  "game_over.title": "Game Over",
-  "game_over.winner": "{{label}} wins!",
-  "game_over.you_win": "You win!",
-  "game_over.submit": "Submit Score",
-  "game_over.name_placeholder": "Enter your name",
-  "game_over.submitting": "Submitting…",
-  "game_over.submitted": "Score submitted!",
-  "game_over.submit_error": "Submission failed.",
-  "game_over.retry": "Retry",
-  "game_over.again": "Play Again",
-
   "score.close": "Close",
 
   "settings.rename": "Edit Names",

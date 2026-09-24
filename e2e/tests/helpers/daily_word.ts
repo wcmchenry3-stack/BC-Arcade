@@ -102,13 +102,19 @@ export const WIN_STATE: DailyWordState = {
   rows: FRESH_STATE.rows.map((row, i) => {
     if (i === 0) {
       return {
-        tiles: Array.from("store", (letter) => ({ letter, status: "absent" as const })),
+        tiles: Array.from("store", (letter) => ({
+          letter,
+          status: "absent" as const,
+        })),
         submitted: true,
       };
     }
     if (i === 1) {
       return {
-        tiles: Array.from("brain", (letter) => ({ letter, status: "absent" as const })),
+        tiles: Array.from("brain", (letter) => ({
+          letter,
+          status: "absent" as const,
+        })),
         submitted: true,
       };
     }
@@ -170,7 +176,7 @@ export interface MockDailyWordApiOptions {
 
 export async function mockDailyWordApi(
   page: Page,
-  options: MockDailyWordApiOptions = {}
+  options: MockDailyWordApiOptions = {},
 ): Promise<void> {
   await page.route("**/daily-word/**", async (route) => {
     const url = route.request().url();
@@ -214,19 +220,22 @@ export async function gotoDailyWord(page: Page): Promise<void> {
   await page.goto("/");
   await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
   await page.getByRole("button", { name: "Play Daily Word" }).click();
-  await page.getByRole("heading", { name: "Daily Word" }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Daily Word", exact: true })
+    .waitFor({ timeout: 10_000 });
 }
 
 export async function injectDailyWordState(
   page: Page,
-  state: Partial<DailyWordState>
+  state: Partial<DailyWordState>,
 ): Promise<void> {
   await installEntitlementsMock(page);
   await mockDailyWordApi(page);
   await page.goto("/");
   await page.evaluate(
-    ([key, value]) => localStorage.setItem(key as string, JSON.stringify(value)),
-    [STORAGE_KEY, state] as const
+    ([key, value]) =>
+      localStorage.setItem(key as string, JSON.stringify(value)),
+    [STORAGE_KEY, state] as const,
   );
   await page.goto("/");
 }

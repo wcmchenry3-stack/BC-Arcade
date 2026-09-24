@@ -5,8 +5,18 @@
  * variant applies when the old `isMoonAttempt` thresholds fire — rateMoonAttemptProgress
  * dominates at 100.0 (calibration-drift guard) while card selection stays utility-driven.
  *
- * Noise rates: Cautious 25% / Schemer 10% / Daring 0%.
+ * Noise rates: Cautious 38% / Schemer 10% / Daring 0%.
  * Daring noise is 0 because even a small random deviation can derail moon attempts.
+ *
+ * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
+ * weights are strong Hearts play on their own: at 25% noise Cautious was the
+ * strongest persona and the all-Cautious table the hardest for the human.
+ * The sim gate (sim/gate.ts) showed the weights barely move its strength
+ * while noise does, so 35% put it back at the bottom. #2235's moon defense
+ * helped Cautious a little more than Schemer and thinned that step to under
+ * 1pp on the gate seed, so it is now 38%: the human wins ~2-3pp more at the
+ * Cautious table than at the Schemer table, and ~5pp more there than at the
+ * Daring table.
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
@@ -18,7 +28,8 @@ export type PlayWeightKey =
   | "minimizePoints" // rateMinimizeImmediatePoints
   | "queenSpadesRisk" // rateQueenSpadesRisk
   | "moonThreat" // rateMoonThreat
-  | "moonProgress"; // rateMoonAttemptProgress
+  | "moonProgress" // rateMoonAttemptProgress
+  | "tactics"; // rateTactics (#2236): 1.0 everywhere, 0 in moon-attempt mode
 
 export type PassWeightKey =
   | "passingQuality" // ratePassingQuality
@@ -35,6 +46,7 @@ export const CAUTIOUS_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 2.0,
   moonThreat: 1.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Schemer: balanced risk/blocking; no moon progress
@@ -43,6 +55,7 @@ export const SCHEMER_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 1.5,
   moonThreat: 1.5,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring (standard). moonProgress stays 0: rateQueenSpadesRisk already sorts Q♠ first
@@ -54,16 +67,18 @@ export const DARING_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 3.0,
   moonThreat: 1.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring moon-attempt mode: rateMoonAttemptProgress dominates (100.0) so the
-// old earlyMoon/midMoon activation threshold is effectively hardcoded while
+// moon-attempt trigger (detectMoonAttempt → moonHand.ts, #2234) is effectively hardcoded while
 // card selection within the mode remains utility-driven (calibration-drift guard).
 export const DARING_MOON_PLAY_WEIGHTS: PlayWeights = {
   minimizePoints: 0.05,
   queenSpadesRisk: 0.2,
   moonThreat: 0.0,
   moonProgress: 100.0,
+  tactics: 0.0,
 };
 
 // Daring endgame mode: any player ≥ 65 cumulative pts, no moon attempt.
@@ -74,6 +89,7 @@ export const DARING_ENDGAME_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 2.5,
   moonThreat: 2.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring adversarial mode: void in led suit + seat 0 winning the current trick.
@@ -84,6 +100,7 @@ export const DARING_ADVERSARIAL_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 5.0,
   moonThreat: 2.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // ─── Pass weight maps ─────────────────────────────────────────────────────────
@@ -110,7 +127,7 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
 
 /** Probability of ignoring the best-scoring action and picking a random legal one. */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.25,
+  cautious: 0.38,
   schemer: 0.1,
   daring: 0.0,
 };

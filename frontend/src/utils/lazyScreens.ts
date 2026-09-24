@@ -51,6 +51,7 @@ export const LazyScreens = {
 
 // Slugs for premium games that have lazy screens.
 const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
+  ["BlackjackBetting", "blackjack"],
   ["Cascade", "cascade"],
   ["StarSwarm", "starswarm"],
   ["Hearts", "hearts"],
@@ -70,7 +71,7 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
   function next(): void {
     while (running < PREFETCH_CONCURRENCY && index < tasks.length) {
       running++;
-      const task = tasks[index++];
+      const task = tasks[index++]!;
       task().then(
         () => {
           running--;
@@ -104,7 +105,6 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
  */
 export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): void {
   const tasks: Array<() => Promise<unknown>> = [
-    factories.BlackjackBetting,
     factories.Twenty48,
     factories.Solitaire,
     factories.FreeCell,

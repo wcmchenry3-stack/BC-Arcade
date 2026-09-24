@@ -71,41 +71,23 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "phase.freeFireZone": {
+  "phase.bossWave": {
     "component": "GameCanvas",
-    "description": "Overlay text shown at the start of a bonus Free Fire Zone wave.",
+    "description": "Overlay banner while a boss wave's ships swoop in: the Carrier and its four Boss escorts, nothing else (#2490).",
     "tone": "dramatic, arcade",
     "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Carrier is the large top-row enemy ship (#2484). All caps in English to match the other phase banners."
   },
-  "phase.hits": {
+  "phase.rout": {
     "component": "GameCanvas",
-    "description": "Sub-line during Free Fire Zone showing how many enemies the player has hit.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": ["{{count}}"],
+    "description": "Overlay banner while the wave's surviving grunts flee for the top edge after every Elite, Boss and Carrier is destroyed (#2489).",
+    "tone": "dramatic, arcade",
+    "characterLimit": 12,
+    "placeholders": [],
     "doNotTranslate": [],
-    "notes": "{{count}} is an integer hit count."
-  },
-  "phase.perfectBonus": {
-    "component": "GameCanvas",
-    "description": "Line under PERFECT! during the celebration pause after a perfect Free Fire Zone clear, showing the bonus points awarded.",
-    "tone": "celebratory, classic arcade",
-    "characterLimit": 20,
-    "placeholders": ["{{points}}"],
-    "doNotTranslate": [],
-    "notes": "{{points}} is a pre-formatted number (e.g. 10,000)."
-  },
-  "phase.perfectAnnouncement": {
-    "component": "GameCanvas",
-    "description": "Screen-reader announcement when the player hits every ship in a Free Fire Zone.",
-    "tone": "neutral, clear",
-    "characterLimit": 80,
-    "placeholders": ["{{count}}", "{{points}}"],
-    "doNotTranslate": [],
-    "notes": "{{count}} is the number of ships in the Free Fire Zone (an integer, currently 40). {{points}} is a pre-formatted number (e.g. 10,000)."
+    "notes": "A rout is a panicked retreat. All caps in English to match the other phase banners."
   },
   "phase.gameOver": {
     "component": "GameCanvas",
@@ -187,5 +169,95 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Carrier is the large top-row enemy ship added in #2484."
+  },
+  "a11y.carrierBeam": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the Carrier starts charging its sweep beam; the player has about 0.6 s to move out of the column below it.",
+    "tone": "urgent",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship (#2484); the beam is #2485."
+  },
+  "a11y.reinforcements": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the Carrier launches replacement grunts into the formation.",
+    "tone": "neutral",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See #2485."
+  },
+  "a11y.bossWave": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when a boss wave begins (#2490).",
+    "tone": "neutral, urgent",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship (#2484); escorts are its four Bosses."
+  },
+  "a11y.rout": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the grunts rout, with how many are fleeing (#2489).",
+    "tone": "neutral, urgent",
+    "characterLimit": 70,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "{{count}} is an integer (1–40). Phrased so the number can sit after a colon and avoid plural forms."
+  },
+  "hud.guns": {
+    "component": "GameCanvas",
+    "description": "HUD label before the gun level number (1–3). Rendered as e.g. 'GUNS L2'.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488. Keep very short; canvas HUD."
+  },
+  "hud.hull": {
+    "component": "GameCanvas",
+    "description": "HUD label before the hull plating pips.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.gunsUp": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue after collecting a salvage crate.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.gunsDown": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue when a lost life drops the gun level.",
+    "tone": "neutral",
+    "characterLimit": 35,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.hullUp": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue after collecting hull plating.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["level"],
+    "doNotTranslate": [],
+    "notes": "#2488."
+  },
+  "a11y.hullHit": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader cue when hull plating absorbs a hit instead of a life.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2488."
   }
 }

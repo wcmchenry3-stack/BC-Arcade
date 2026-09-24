@@ -1,133 +1,69 @@
 /**
- * Smoke tests for the Yacht AI simulator (#1601).
+ * Yacht AI simulator smoke tests — the fast PR layer (#1601, #2245).
  *
- * Runs a small number of games per matchup to verify:
- * - No exceptions are thrown
- * - Difficulty separation goes in the right direction
- * - Easy vs Easy is approximately symmetric
+ * Role: catch total breakage on every PR (the AI throws, produces invalid
+ * scores, the dice mirroring breaks, or Hard stops beating Easy). About 140
+ * games at ~0.1s each under Jest (#2246 tiers) runs in about 15 seconds.
  *
- * Full batch runs (3,000 games) live in scripts/simulate-yacht.ts.
+ * Limits: these sample sizes can't detect balance drift, and can't order
+ * Medium against Easy or Hard (a 20-game win rate has an SE of ~0.11). That is the job
+ * of the scheduled calibration gate (sim/gate.ts, run nightly by
+ * .github/workflows/yacht-sim-gate.yml and locally with
+ * `npx tsx scripts/simulate-yacht.ts --gate`). See docs/TESTING.md.
+ *
+ * Both layers use the same harness (sim/harness.ts): per-player dice
+ * streams, mirrored dice, and every matchup played in both turn orders.
  */
 
-import { createSeededRng, newGame, roll, score, setRng } from "../engine";
-import { holdStrategy, scoreStrategy } from "../ai";
+import { difficultyPolicy, runMatchup } from "../sim/harness";
+import { summarize, type MatchupReport } from "../sim/stats";
 import type { AiDifficulty } from "../types";
 
-// ---------------------------------------------------------------------------
-// Minimal simulator (mirrors scripts/simulate-yacht.ts)
-// ---------------------------------------------------------------------------
+// Override via YACHT_SMOKE_BLOCKS for deeper local validation (4 games each).
+const SMOKE_BLOCKS = process.env.YACHT_SMOKE_BLOCKS
+  ? parseInt(process.env.YACHT_SMOKE_BLOCKS, 10)
+  : 5;
 
-function simulateGame(
-  humanDiff: AiDifficulty,
-  aiDiff: AiDifficulty,
-  seed: number
-): { humanScore: number; aiScore: number; winner: 0 | 1 } {
-  setRng(createSeededRng(seed));
+// Hard vs Easy needs more games than the self-play checks to clear its
+// threshold with margin — see the test below.
+const ORDERING_BLOCKS = Math.max(SMOKE_BLOCKS, 25);
 
-  let humanState = newGame();
-  let aiState = newGame();
-
-  for (let _round = 0; _round < 13; _round++) {
-    humanState = roll(humanState, [false, false, false, false, false]);
-    while (humanState.rolls_used < 3) {
-      const holds = holdStrategy(humanState, humanDiff);
-      if (holds.every((h) => h)) break;
-      humanState = roll(humanState, holds);
-    }
-    humanState = score(
-      humanState,
-      scoreStrategy(humanState, humanDiff, aiState.total_score, aiState.round)
-    );
-
-    aiState = roll(aiState, [false, false, false, false, false]);
-    while (aiState.rolls_used < 3) {
-      const holds = holdStrategy(aiState, aiDiff);
-      if (holds.every((h) => h)) break;
-      aiState = roll(aiState, holds);
-    }
-    aiState = score(
-      aiState,
-      scoreStrategy(aiState, aiDiff, humanState.total_score, humanState.round)
-    );
-  }
-
-  const humanScore = humanState.total_score;
-  const aiScore = aiState.total_score;
-  return { humanScore, aiScore, winner: humanScore >= aiScore ? 0 : 1 };
+function smoke(a: AiDifficulty, b: AiDifficulty, seed: number, blocks: number): MatchupReport {
+  return summarize(
+    runMatchup({ a: difficultyPolicy(a), b: difficultyPolicy(b), blocks, mode: "paired", seed })
+  );
 }
-
-function runBatch(humanDiff: AiDifficulty, aiDiff: AiDifficulty, n: number, seedOffset: number) {
-  let humanWins = 0;
-  for (let i = 0; i < n; i++) {
-    const r = simulateGame(humanDiff, aiDiff, seedOffset + i);
-    if (r.winner === 0) humanWins++;
-  }
-  return humanWins / n;
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-// Override via YACHT_SMOKE_GAMES env var for deeper local validation.
-const SMOKE_GAMES = process.env.YACHT_SMOKE_GAMES
-  ? parseInt(process.env.YACHT_SMOKE_GAMES, 10)
-  : 20;
-
-afterEach(() => {
-  setRng(Math.random);
-});
 
 describe("Yacht AI simulator smoke tests", () => {
-  it("completes 200 Easy vs Easy games without throwing", () => {
-    expect(() => runBatch("easy", "easy", SMOKE_GAMES, 0)).not.toThrow();
-  });
-
-  it("completes 200 Hard vs Hard games without throwing", () => {
-    expect(() => runBatch("hard", "hard", SMOKE_GAMES, 10000)).not.toThrow();
-  });
-
-  it("Easy vs Easy win rate is near 50%", () => {
-    const wr = runBatch("easy", "easy", SMOKE_GAMES, 0);
-    // Bounds are wide because n=20 gives high variance (95% CI ≈ ±0.22).
-    expect(wr).toBeGreaterThan(0.2);
-    expect(wr).toBeLessThan(0.8);
-  });
-
-  it("Medium beats Easy more than half the time", () => {
-    // Assert against a fixed 0.50 baseline rather than a second noisy sample.
-    // Seed 25000 — recalibrated in #2028 (old seed 20000 lands exactly at the
-    // boundary after noise-rate recalibration, failing the strict > 0.5 check).
-    const medVsEasy = runBatch("medium", "easy", SMOKE_GAMES, 25000);
-    expect(medVsEasy).toBeGreaterThan(0.5);
-  });
-
-  it("Hard beats Easy more than Medium beats Easy", () => {
-    // Comparing two n=20 samples is too noisy (±22% CI each). Assert Hard against a
-    // fixed 0.55 baseline instead — true rate is ~0.80, so this is ~3 sigma from the
-    // threshold and essentially never flukes. Medium's 0.50 floor is tested separately.
-    const hardVsEasy = runBatch("hard", "easy", SMOKE_GAMES, 30000);
-    expect(hardVsEasy).toBeGreaterThan(0.55);
-  });
-
-  it("Hard vs Hard win rate is near 50%", () => {
-    const wr = runBatch("hard", "hard", SMOKE_GAMES, 40000);
-    // Bounds are wide because n=20 gives high variance (95% CI ≈ ±0.22).
-    // First-player asymmetry in the adversarial-variance weight can skew a
-    // small batch; 0.1/0.9 still catches catastrophically unbalanced weights.
-    expect(wr).toBeGreaterThan(0.1);
-    expect(wr).toBeLessThan(0.9);
-  });
-
-  it("produces valid final scores (non-negative, plausible ceiling)", () => {
-    for (let i = 0; i < 20; i++) {
-      const r = simulateGame("hard", "hard", i * 777);
-      expect(r.humanScore).toBeGreaterThanOrEqual(0);
-      expect(r.aiScore).toBeGreaterThanOrEqual(0);
-      // Theoretical max: 13*50 (yacht every round) + 35 bonus + 12*100 joker bonus = 1935.
-      // Realistically < 700 for a strong game.
-      expect(r.humanScore).toBeLessThan(2000);
-      expect(r.aiScore).toBeLessThan(2000);
+  it("self-play completes with valid scores, and paired self-play is exactly symmetric", () => {
+    for (const d of ["easy", "hard"] as const) {
+      const run = runMatchup({
+        a: difficultyPolicy(d),
+        b: difficultyPolicy(d),
+        blocks: SMOKE_BLOCKS,
+        mode: "paired",
+        seed: 1,
+      });
+      for (const g of run.blocks.flatMap((blk) => blk.games)) {
+        for (const p of [g.a, g.b]) {
+          expect(p.score).toBeGreaterThanOrEqual(0);
+          // Max possible is 1,575 (every box maxed plus 12 joker bonuses);
+          // a strong real game is well under 500.
+          expect(p.score).toBeLessThan(1600);
+        }
+      }
+      // With the same policy on both sides, game 3 of each paired block is
+      // game 0 with the seats relabelled, so A's win rate is exactly 0.5.
+      // Anything else means the mirroring or order swap is broken.
+      expect(summarize(run).aWinRate.mean).toBe(0.5);
     }
+  });
+
+  it("Hard beats Easy", () => {
+    // Measured true rate 92.3% (sim/gate.ts). Even at the older AI's 61.9%,
+    // 25 blocks (100 games, per-block SD ≤ 0.245, SE ≤ 0.049) kept 0.5 ~2.4
+    // SE below the true rate: this only fails if Hard has genuinely stopped
+    // beating Easy.
+    expect(smoke("hard", "easy", 3, ORDERING_BLOCKS).aWinRate.mean).toBeGreaterThan(0.5);
   });
 });

@@ -10,7 +10,9 @@ import { gotoDailyWord } from "./helpers/daily_word";
 test.describe("Daily Word — smoke", () => {
   test("navigates from Home to Daily Word screen", async ({ page }) => {
     await gotoDailyWord(page);
-    await expect(page.getByRole("heading", { name: "Daily Word" })).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("heading", { name: "Daily Word", exact: true }),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("tile grid renders 6 rows", async ({ page }) => {
@@ -21,8 +23,20 @@ test.describe("Daily Word — smoke", () => {
 
   test("keyboard renders letter keys and action buttons", async ({ page }) => {
     await gotoDailyWord(page);
-    await expect(page.getByRole("button", { name: "A" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Delete" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Enter" })).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("button", { name: "A", exact: true }),
+    ).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(
+      page.getByRole("button", { name: "Delete", exact: true }),
+    ).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(
+      page.getByRole("button", { name: "Enter", exact: true }),
+    ).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

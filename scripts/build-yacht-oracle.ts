@@ -15,6 +15,7 @@
 
 import { writeFileSync } from "node:fs";
 import { solveOracle } from "../frontend/src/game/yacht/oracleBuild/solver";
+import { renderTableModule } from "../frontend/src/game/yacht/oracleBuild/renderTableModule";
 import {
   TABLE_SIZE,
   INITIAL_KEY,
@@ -44,30 +45,12 @@ console.log(
   `Published reference (Verhoeff / Glenn 2006, joker+bonus rule): 254.5896`,
 );
 
-const float32 = Float32Array.from(vtg);
-const base64 = Buffer.from(float32.buffer).toString("base64");
-
-const content = `/**
- * GENERATED FILE — do not edit by hand.
- * Produced by scripts/build-yacht-oracle.ts (#2243). Re-run that script to
- * regenerate after any change to stateKey.ts's scoring/transition rules —
- * a rule change here without a regenerate silently stales the oracle.
- *
- * Format: a Float32Array of ORACLE_TABLE_SIZE entries, base64-encoded.
- * Index i is VTG(i) — expected additional score ("value to go") for
- * scorecard-state key i. See frontend/src/game/yacht/oracle/stateKey.ts for
- * the key encoding (mask, yachtStatus, upperCapped).
- *
- * Built:            ${new Date().toISOString()}
- * States computed:  ${stats.statesComputed}
- * Build time:       ${(stats.buildMs / 1000).toFixed(1)}s
- * Optimal EV (game start): ${optimalStartEV.toFixed(4)}
- */
-
-export const ORACLE_TABLE_SIZE = ${TABLE_SIZE};
-export const ORACLE_TABLE_BASE64 =
-  "${base64}";
-`;
+const content = renderTableModule(vtg, {
+  builtAt: new Date().toISOString(),
+  statesComputed: stats.statesComputed,
+  buildSeconds: stats.buildMs / 1000,
+  optimalStartEV,
+});
 
 writeFileSync(OUTPUT_PATH, content);
 
