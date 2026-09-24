@@ -41,6 +41,7 @@ import {
   dealGame,
   dealNextHand,
   detectMoon,
+  getRng,
   isQueenOfSpades,
   playCard,
   selectPassCard,
@@ -48,6 +49,7 @@ import {
 } from "../engine";
 import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "../types";
 import { createStream, deriveSeed } from "../../_shared/simRandom";
+import { DEFAULT_PIMC_CONFIG, pimcChooseCard, type PimcConfig } from "../pimc/engine";
 
 const DEAL_TAG = 0x4445414c; // "DEAL"
 const NOISE_TAG = 0x4e4f4953; // "NOIS"
@@ -71,6 +73,24 @@ export function personaPolicy(persona: AiPersona): HeartsPolicy {
     persona,
     pass: (hand, direction, _state, seat) => selectCardsToPass(hand, direction, persona, seat),
     play: (hand, trick, state, seat) => selectCardToPlay(hand, trick, state, seat, persona),
+  };
+}
+
+/**
+ * The PIMC engine (#2587) as a sim player: it plays with `pimcChooseCard`
+ * and passes like `passAs`. Its sampling draws from a stream seeded by one
+ * draw of the seat's noise stream, so games replay exactly.
+ */
+export function pimcPolicy(
+  label = "pimc",
+  config: PimcConfig = DEFAULT_PIMC_CONFIG,
+  passAs: AiPersona = "schemer"
+): HeartsPolicy {
+  return {
+    label,
+    pass: (hand, direction, _state, seat) => selectCardsToPass(hand, direction, passAs, seat),
+    play: (_hand, _trick, state) =>
+      pimcChooseCard(state, config, createStream(Math.floor(getRng()() * 2 ** 32))),
   };
 }
 

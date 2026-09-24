@@ -14,6 +14,7 @@
  *   npx tsx scripts/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
  *   npx tsx scripts/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
  *   npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
+ *   npx tsx scripts/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
  *   npx tsx scripts/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
  *   npx tsx scripts/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
  *
@@ -41,7 +42,8 @@ import type {
   Card,
   HeartsState,
 } from "../frontend/src/game/hearts/types";
-import { runBlocks } from "../frontend/src/game/hearts/sim/harness";
+import { pimcPolicy, runBlocks } from "../frontend/src/game/hearts/sim/harness";
+import { DEFAULT_PIMC_CONFIG } from "../frontend/src/game/hearts/pimc/engine";
 import {
   REGRET_PERSONAS,
   formatRegretReport,
@@ -303,13 +305,32 @@ if (argv.includes("--regret")) {
   if (blocks < 1 || sampleEvery < 1)
     fail("--blocks and --sample-every must be positive integers");
   const withOracle = argv.includes("--oracle-player");
+  const pimcSamples = parseCount(argv, "--pimc");
+  if (argv.includes("--pimc") && !(pimcSamples !== null && pimcSamples >= 1))
+    fail("--pimc needs a positive number of deals per move");
+  const pimc =
+    pimcSamples !== null
+      ? pimcPolicy("pimc", {
+          ...DEFAULT_PIMC_CONFIG,
+          samples: pimcSamples,
+          horizon: "hand",
+        })
+      : undefined;
   const seed = seedArg ?? GATE_SEED;
   const t0 = Date.now();
-  const results = runRegretBlocks(regretMatchup(withOracle), seed, 0, blocks, {
-    sampleEvery,
-  });
+  const results = runRegretBlocks(
+    regretMatchup(withOracle, pimc),
+    seed,
+    0,
+    blocks,
+    { sampleEvery },
+  );
   const secs = (Date.now() - t0) / 1000;
-  const roles = [...REGRET_PERSONAS, ...(withOracle ? ["oracle"] : [])];
+  const roles = [
+    ...REGRET_PERSONAS,
+    ...(pimc ? ["pimc"] : []),
+    ...(withOracle ? ["oracle"] : []),
+  ];
   console.log(
     `Hearts regret report — test seat vs a Schemer field, seed ${seed}, ${blocks} blocks, every ${sampleEvery === 1 ? "" : `${sampleEvery}th `}play graded (${secs.toFixed(0)}s)\n`,
   );
