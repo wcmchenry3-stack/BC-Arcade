@@ -1,561 +1,185 @@
 /**
- * Yacht AI difficulty simulation (#1601).
+ * Yacht AI simulation CLI — a thin wrapper over the shared harness in
+ * frontend/src/game/yacht/sim/ (#2245). It has no bands of its own: the
+ * calibration bands live in sim/gate.ts, and this script and
+ * ai.calibrate.test.ts both read them from there (#2213 disposition — the
+ * old stale bands table was retired).
  *
- * Runs batches of 3,000 games per matchup. Two players (human-equivalent and
- * AI) alternate rounds using independent GameState instances. Player 0's stats
- * are tracked and reported.
+ * Usage (from the repo root):
+ *   npx tsx scripts/simulate-yacht.ts --a hard --b medium            # ad-hoc matchup
+ *   npx tsx scripts/simulate-yacht.ts --a hard --b hard --blocks 500 --mode independent
+ *   npx tsx scripts/simulate-yacht.ts --gate                         # every gate matchup + bands
+ *   npx tsx scripts/simulate-yacht.ts --gate --matchup hard-vs-medium --games 800
+ *   npx tsx scripts/simulate-yacht.ts --a easy --b easy --json out.json   # raw per-game records
  *
- * Usage:
- *   npx tsx scripts/simulate-yacht.ts                       # aggregate stats
- *   npx tsx scripts/simulate-yacht.ts --count 500           # 500 games per batch
- *   npx tsx scripts/simulate-yacht.ts --ai-difficulty hard  # only Hard-AI matchups
- *   npx tsx scripts/simulate-yacht.ts --log-games 10        # 10 NDJSON game logs (medium vs medium)
- *   npx tsx scripts/simulate-yacht.ts --log-games 10 --difficulty hard  # hard vs hard logs
+ * Flags:
+ *   --a, --b      easy | medium | hard (ad-hoc mode; default hard vs medium)
+ *   --blocks N    four-game blocks to play (ad-hoc default 250 = 1,000 games)
+ *   --games N     games instead of blocks (rounded up to a multiple of 4)
+ *   --mode M      paired (default) | independent
+ *   --seed N      base seed (default 1)
+ *   --gate        run the calibration gate matchups and check their bands
+ *   --matchup ID  with --gate: only this matchup (repeatable)
+ *   --group NAME  with --gate: only this CI group's matchups (repeatable)
+ *   --json PATH   write the raw run (and the report) as JSON
+ *
+ * One game takes about a second (the AI's two-roll EV search dominates),
+ * so a full gate run takes a while — see docs/TESTING.md.
  */
 
+import { writeFileSync } from "node:fs";
 import {
-  createSeededRng,
-  newGame,
-  roll,
-  score,
-  setRng,
-} from "../frontend/src/game/yacht/engine";
-import { holdStrategy, scoreStrategy } from "../frontend/src/game/yacht/ai";
-import type { AiDifficulty } from "../frontend/src/game/yacht/types";
-import type { GameState } from "../frontend/src/game/yacht/types";
+  difficultyPolicy,
+  runMatchup,
+  type DiceMode,
+  type MatchupRun,
+} from "../frontend/src/game/yacht/sim/harness";
+import {
+  formatReport,
+  summarize,
+  type MatchupReport,
+} from "../frontend/src/game/yacht/sim/stats";
+import {
+  GATE_BANDS,
+  GATE_GROUPS,
+  GATE_MATCHUPS,
+  checkBands,
+  formatBandResults,
+  gateBlocks,
+} from "../frontend/src/game/yacht/sim/gate";
+import {
+  AI_DIFFICULTIES,
+  type AiDifficulty,
+} from "../frontend/src/game/yacht/types";
 
-// ---------------------------------------------------------------------------
-// Core game runner
-// ---------------------------------------------------------------------------
-
-interface TwoPlayerStates {
-  humanState: GameState;
-  aiState: GameState;
+function flag(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/**
- * Play one complete 13-round game between two AI-driven players.
- *
- * Both players draw from a single shared RNG seeded at `seed`. Outcomes are
- * fully deterministic for a given seed, but the two players' rolls are not
- * statistically independent — a favorable roll for the human consumes RNG
- * state that shifts the AI's rolls. This is acceptable for a validation tool
- * where we only care about aggregate win rates across many seeds.
- */
-function playGame(
-  humanDiff: AiDifficulty,
-  aiDiff: AiDifficulty,
-  seed: number,
-): TwoPlayerStates {
-  setRng(createSeededRng(seed));
-
-  let humanState = newGame();
-  let aiState = newGame();
-
-  // Human goes first each round, matching production (GameScreen.tsx). Each
-  // scoreStrategy call passes the opponent's round alongside their score so
-  // rateAdversarialVariance can tell a "moving first" turn (opponent hasn't
-  // played this round yet — fair) from a "moving second" one (opponent's
-  // score already includes their this-round turn) instead of always
-  // comparing against a stale snapshot (GH #2200).
-  for (let _round = 0; _round < 13; _round++) {
-    humanState = roll(humanState, [false, false, false, false, false]);
-    while (humanState.rolls_used < 3) {
-      humanState = roll(humanState, holdStrategy(humanState, humanDiff));
-    }
-    humanState = score(
-      humanState,
-      scoreStrategy(humanState, humanDiff, aiState.total_score, aiState.round),
-    );
-
-    aiState = roll(aiState, [false, false, false, false, false]);
-    while (aiState.rolls_used < 3) {
-      aiState = roll(aiState, holdStrategy(aiState, aiDiff));
-    }
-    aiState = score(
-      aiState,
-      scoreStrategy(aiState, aiDiff, humanState.total_score, humanState.round),
-    );
-  }
-
-  return { humanState, aiState };
-}
-
-// ---------------------------------------------------------------------------
-// Simulation
-// ---------------------------------------------------------------------------
-
-// Lower-section categories tracked for per-category hit rates.
-const LOWER_CATS = [
-  "three_of_a_kind",
-  "four_of_a_kind",
-  "full_house",
-  "small_straight",
-  "large_straight",
-  "yacht",
-  "chance",
-] as const;
-type LowerCat = (typeof LOWER_CATS)[number];
-
-interface GameResult {
-  humanScore: number;
-  aiScore: number;
-  winner: 0 | 1;
-  upperBonusHuman: boolean;
-  upperBonusAi: boolean;
-  yachtCountHuman: number;
-  yachtCountAi: number;
-  chanceHuman: number;
-  /** Whether the AI scored > 0 in each lower-section category */
-  lowerHitAi: Record<LowerCat, boolean>;
-}
-
-function simulateGame(
-  humanDiff: AiDifficulty,
-  aiDiff: AiDifficulty,
-  seed: number,
-): GameResult {
-  const { humanState, aiState } = playGame(humanDiff, aiDiff, seed);
-
-  const humanScore = humanState.total_score;
-  const aiScore = aiState.total_score;
-
-  const lowerHitAi = {} as Record<LowerCat, boolean>;
-  for (const cat of LOWER_CATS) {
-    lowerHitAi[cat] = (aiState.scores[cat] ?? 0) > 0;
-  }
-
-  return {
-    humanScore,
-    aiScore,
-    winner: humanScore >= aiScore ? 0 : 1,
-    upperBonusHuman: humanState.upper_bonus === 35,
-    upperBonusAi: aiState.upper_bonus === 35,
-    // yacht_bonus_count counts bonus Yachts only (2nd, 3rd, …).
-    // Adding 1 when scores["yacht"] === 50 includes the first Yacht.
-    yachtCountHuman:
-      humanState.yacht_bonus_count +
-      (humanState.scores["yacht"] === 50 ? 1 : 0),
-    yachtCountAi:
-      aiState.yacht_bonus_count + (aiState.scores["yacht"] === 50 ? 1 : 0),
-    chanceHuman: humanState.scores["chance"] ?? 0,
-    lowerHitAi,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// NDJSON game logging
-// ---------------------------------------------------------------------------
-
-interface GameLog {
-  seed: number;
-  humanDifficulty: AiDifficulty;
-  aiDifficulty: AiDifficulty;
-  humanScore: number;
-  aiScore: number;
-  winner: 0 | 1;
-  upperBonusHuman: boolean;
-  upperBonusAi: boolean;
-  humanScorecard: Record<string, number | null>;
-  aiScorecard: Record<string, number | null>;
-}
-
-function simulateGameLogged(
-  humanDiff: AiDifficulty,
-  aiDiff: AiDifficulty,
-  seed: number,
-): GameLog {
-  const { humanState, aiState } = playGame(humanDiff, aiDiff, seed);
-
-  return {
-    seed,
-    humanDifficulty: humanDiff,
-    aiDifficulty: aiDiff,
-    humanScore: humanState.total_score,
-    aiScore: aiState.total_score,
-    winner: humanState.total_score >= aiState.total_score ? 0 : 1,
-    upperBonusHuman: humanState.upper_bonus === 35,
-    upperBonusAi: aiState.upper_bonus === 35,
-    humanScorecard: humanState.scores,
-    aiScorecard: aiState.scores,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Stats helpers
-// ---------------------------------------------------------------------------
-
-function mean(values: number[]): number {
-  return values.reduce((s, v) => s + v, 0) / values.length;
-}
-
-function stdDev(values: number[], avg: number): number {
-  const variance =
-    values.reduce((s, v) => s + (v - avg) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
-}
-
-function binomialCI(p: number, n: number): [number, number] {
-  const margin = 1.96 * Math.sqrt((p * (1 - p)) / n);
-  return [Math.max(0, p - margin), Math.min(1, p + margin)];
-}
-
-function zTest(p1: number, p2: number, n: number): number {
-  const p = (p1 + p2) / 2;
-  return Math.abs(p1 - p2) / Math.sqrt((2 * p * (1 - p)) / n);
-}
-
-function sigLabel(z: number): string {
-  if (z > 3.29) return "p < 0.001";
-  if (z > 2.58) return "p < 0.01";
-  if (z > 1.96) return "p < 0.05";
-  return "n.s.";
-}
-
-// ---------------------------------------------------------------------------
-// CLI dispatch
-// ---------------------------------------------------------------------------
-
-const VALID_DIFFICULTIES = new Set<AiDifficulty>(["easy", "medium", "hard"]);
-
-function parseCount(args: string[], flag: string): number | null {
-  const idx = args.indexOf(flag);
-  if (idx === -1) return null;
-  const n = parseInt(args[idx + 1] ?? "", 10);
-  return isNaN(n) ? null : n;
-}
-
-function parseDifficulty(args: string[], flag: string): AiDifficulty | null {
-  const idx = args.indexOf(flag);
-  if (idx === -1) return null;
-  const val = args[idx + 1] ?? "";
-  if (!VALID_DIFFICULTIES.has(val as AiDifficulty)) return null;
-  return val as AiDifficulty;
-}
-
-// --log-games N: emit N NDJSON game logs and exit.
-// --difficulty sets both players to the same tier (default: medium).
-const logCount = parseCount(process.argv, "--log-games");
-if (logCount !== null) {
-  if (logCount < 1) {
-    process.stderr.write(
-      "Error: --log-games count must be a positive integer\n",
-    );
-    process.exit(1);
-  }
-  const diff = parseDifficulty(process.argv, "--difficulty") ?? "medium";
-  for (let i = 0; i < logCount; i++) {
-    const log = simulateGameLogged(diff, diff, i);
-    process.stdout.write(JSON.stringify(log) + "\n");
-  }
-  process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// Batch definitions
-// ---------------------------------------------------------------------------
-
-const GAMES_PER_BATCH = parseCount(process.argv, "--count") ?? 3000;
-
-if (GAMES_PER_BATCH < 1) {
-  process.stderr.write("Error: --count must be a positive integer\n");
-  process.exit(1);
-}
-
-// --ai-difficulty filters which matchups to run (by the AI player's tier).
-const filterAiDiff = parseDifficulty(process.argv, "--ai-difficulty");
-
-interface Batch {
-  label: string;
-  humanDiff: AiDifficulty;
-  aiDiff: AiDifficulty;
-  /** Expected human win rate band [lo, hi] for acceptance check */
-  expectedBand: [number, number];
-  /** Expected AI upper-bonus hit rate band [lo, hi] */
-  expectedBonusBandAi: [number, number];
-  /** Expected AI hit rate band [lo, hi] for each lower-section category */
-  expectedLowerBandsAi: Record<LowerCat, [number, number]>;
-}
-
-// ---------------------------------------------------------------------------
-// Per-difficulty lower-section acceptance bands (derived from n=500 baselines,
-// bands set at ±12pp — roughly 2.8σ — to catch real regressions without
-// producing frequent false positives at n=500).
-// ---------------------------------------------------------------------------
-
-const EASY_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
-  three_of_a_kind: [0.93, 1.0],
-  four_of_a_kind: [0.77, 1.0],
-  full_house: [0.55, 0.79],
-  small_straight: [0.1, 0.34],
-  large_straight: [0.01, 0.14],
-  yacht: [0.32, 0.57],
-  chance: [0.95, 1.0],
-};
-
-const MEDIUM_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
-  three_of_a_kind: [0.87, 1.0],
-  four_of_a_kind: [0.6, 0.84],
-  full_house: [0.79, 0.98],
-  small_straight: [0.82, 0.99],
-  large_straight: [0.58, 0.82],
-  yacht: [0.23, 0.47],
-  chance: [0.95, 1.0],
-};
-
-// Hard bands derived post-#1882 (full_house fix) + #1881 (bonus proximity).
-const HARD_AI_LOWER_BANDS: Record<LowerCat, [number, number]> = {
-  three_of_a_kind: [0.75, 0.98],
-  four_of_a_kind: [0.55, 0.8],
-  full_house: [0.76, 0.98],
-  small_straight: [0.92, 1.0],
-  large_straight: [0.66, 0.9],
-  yacht: [0.2, 0.43],
-  chance: [0.95, 1.0],
-};
-
-const ALL_BATCHES: Batch[] = [
-  {
-    label: "Easy (human) vs Easy (AI) — baseline",
-    humanDiff: "easy",
-    aiDiff: "easy",
-    expectedBand: [0.45, 0.55],
-    // Easy has no bonus logic; incidental upper accumulation
-    expectedBonusBandAi: [0.01, 0.06],
-    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
-  },
-  {
-    label: "Medium (human) vs Easy (AI)",
-    humanDiff: "medium",
-    aiDiff: "easy",
-    // Band widened post-#1866 bonus fixes: Medium improved significantly against Easy (~77%).
-    expectedBand: [0.68, 0.85],
-    expectedBonusBandAi: [0.01, 0.06],
-    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
-  },
-  {
-    label: "Hard (human) vs Easy (AI)",
-    humanDiff: "hard",
-    aiDiff: "easy",
-    expectedBand: [0.72, 0.88],
-    expectedBonusBandAi: [0.01, 0.06],
-    expectedLowerBandsAi: EASY_AI_LOWER_BANDS,
-  },
-  {
-    label: "Medium (human) vs Medium (AI) — baseline",
-    humanDiff: "medium",
-    aiDiff: "medium",
-    expectedBand: [0.45, 0.55],
-    // Medium heuristic pursuit; single-step EV limits how high this can go
-    expectedBonusBandAi: [0.07, 0.18],
-    expectedLowerBandsAi: MEDIUM_AI_LOWER_BANDS,
-  },
-  {
-    label: "Hard (human) vs Medium (AI)",
-    humanDiff: "hard",
-    aiDiff: "medium",
-    // Band updated post-#1866/#1882/#1881: Medium's bonus improvements closed the
-    // Hard/Medium gap. Hard wins ~53–55% of games against Medium at n=500.
-    expectedBand: [0.48, 0.63],
-    expectedBonusBandAi: [0.07, 0.18],
-    expectedLowerBandsAi: MEDIUM_AI_LOWER_BANDS,
-  },
-  {
-    label: "Hard (human) vs Hard (AI) — baseline",
-    humanDiff: "hard",
-    aiDiff: "hard",
-    expectedBand: [0.45, 0.55],
-    // Hard EV optimises for straights; bonus proximity fix (#1881) raises Hard bonus
-    // rate to ~4% — still below Medium's ~10% but no longer structurally near zero.
-    expectedBonusBandAi: [0.02, 0.1],
-    expectedLowerBandsAi: HARD_AI_LOWER_BANDS,
-  },
-];
-
-const batches = filterAiDiff
-  ? ALL_BATCHES.filter((b) => b.aiDiff === filterAiDiff)
-  : ALL_BATCHES;
-
-// ---------------------------------------------------------------------------
-// Run batches
-// ---------------------------------------------------------------------------
-
-console.log("Yacht AI Difficulty Simulation Results");
-console.log("======================================\n");
-console.log(`Games per batch: ${GAMES_PER_BATCH}`);
-if (filterAiDiff) console.log(`Filtering to AI difficulty: ${filterAiDiff}`);
-console.log();
-
-const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
-const check = (cond: boolean) => (cond ? "✓" : "✗");
-
-const batchResults: Array<{
-  batch: Batch;
-  winRate: number;
-  avgHumanScore: number;
-  avgAiScore: number;
-  upperBonusRateHuman: number;
-  upperBonusRateAi: number;
-  avgYachtHuman: number;
-  avgYachtAi: number;
-  avgChanceHuman: number;
-  lowerHitRateAi: Record<LowerCat, number>;
-  lowerBandPassCount: number;
-}> = [];
-
-for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-  const batch = batches[batchIndex]!;
-  const results: GameResult[] = [];
-
-  for (let gameIndex = 0; gameIndex < GAMES_PER_BATCH; gameIndex++) {
-    results.push(
-      simulateGame(
-        batch.humanDiff,
-        batch.aiDiff,
-        batchIndex * 100000 + gameIndex,
-      ),
-    );
-  }
-
-  const n = results.length;
-  const wins = results.map((r) => (r.winner === 0 ? 1 : 0));
-  const humanScores = results.map((r) => r.humanScore);
-  const aiScores = results.map((r) => r.aiScore);
-  const upperHuman = results.map((r) => (r.upperBonusHuman ? 1 : 0));
-  const upperAi = results.map((r) => (r.upperBonusAi ? 1 : 0));
-  const yachtHuman = results.map((r) => r.yachtCountHuman);
-  const yachtAi = results.map((r) => r.yachtCountAi);
-  const chanceHuman = results.map((r) => r.chanceHuman);
-
-  const winRate = mean(wins);
-  const [ciLow, ciHigh] = binomialCI(winRate, n);
-  const avgHumanScore = mean(humanScores);
-  const sdHumanScore = stdDev(humanScores, avgHumanScore);
-  const avgAiScore = mean(aiScores);
-  const sdAiScore = stdDev(aiScores, avgAiScore);
-  const upperBonusRateHuman = mean(upperHuman);
-  const upperBonusRateAi = mean(upperAi);
-  const avgYachtHuman = mean(yachtHuman);
-  const avgYachtAi = mean(yachtAi);
-  const avgChanceHuman = mean(chanceHuman);
-
-  const lowerHitRateAi = {} as Record<LowerCat, number>;
-  for (const cat of LOWER_CATS) {
-    lowerHitRateAi[cat] = mean(results.map((r) => (r.lowerHitAi[cat] ? 1 : 0)));
-  }
-
-  const lowerBandPassCount = LOWER_CATS.filter((cat) => {
-    const [lo, hi] = batch.expectedLowerBandsAi[cat];
-    return lowerHitRateAi[cat] >= lo && lowerHitRateAi[cat] <= hi;
-  }).length;
-
-  batchResults.push({
-    batch,
-    winRate,
-    avgHumanScore,
-    avgAiScore,
-    upperBonusRateHuman,
-    upperBonusRateAi,
-    avgYachtHuman,
-    avgYachtAi,
-    avgChanceHuman,
-    lowerHitRateAi,
-    lowerBandPassCount,
+function flags(name: string): string[] {
+  const out: string[] = [];
+  process.argv.forEach((arg, i) => {
+    if (arg === name && process.argv[i + 1]) out.push(process.argv[i + 1]!);
   });
+  return out;
+}
 
-  const inBand =
-    winRate >= batch.expectedBand[0] && winRate <= batch.expectedBand[1];
-  const inBonusBandAi =
-    upperBonusRateAi >= batch.expectedBonusBandAi[0] &&
-    upperBonusRateAi <= batch.expectedBonusBandAi[1];
-
-  console.log(batch.label);
-  console.log(`  Games: ${n}`);
-  console.log(
-    `  Human Win Rate: ${pct(winRate)} (95% CI: [${pct(ciLow)}, ${pct(ciHigh)}])  ${check(inBand)} expected [${pct(batch.expectedBand[0])}, ${pct(batch.expectedBand[1])}]`,
-  );
-  console.log(
-    `  Avg Human Score: ${avgHumanScore.toFixed(1)} ± ${sdHumanScore.toFixed(1)}`,
-  );
-  console.log(
-    `  Avg AI Score:    ${avgAiScore.toFixed(1)} ± ${sdAiScore.toFixed(1)}`,
-  );
-  console.log(
-    `  Upper Bonus Rate: human ${pct(upperBonusRateHuman)}, AI ${pct(upperBonusRateAi)}  ${check(inBonusBandAi)} expected AI [${pct(batch.expectedBonusBandAi[0])}, ${pct(batch.expectedBonusBandAi[1])}]`,
-  );
-  console.log(
-    `  Avg Yachts/game: human ${avgYachtHuman.toFixed(2)}, AI ${avgYachtAi.toFixed(2)}`,
-  );
-  console.log(`  Avg Chance score (human): ${avgChanceHuman.toFixed(1)}`);
-  console.log(`  AI lower-section hit rates (% of games scored > 0):`);
-  for (const cat of LOWER_CATS) {
-    const [lo, hi] = batch.expectedLowerBandsAi[cat];
-    const inLowerBand = lowerHitRateAi[cat] >= lo && lowerHitRateAi[cat] <= hi;
-    console.log(
-      `    ${cat.padEnd(18)}: ${pct(lowerHitRateAi[cat])}  ${check(inLowerBand)} expected [${pct(lo)}, ${pct(hi)}]`,
-    );
+function intFlag(name: string): number | undefined {
+  const raw = flag(name);
+  if (raw === undefined) return undefined;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    console.error(`${name} must be a positive integer (got "${raw}")`);
+    process.exit(2);
   }
-  console.log();
+  return n;
 }
 
-// ---------------------------------------------------------------------------
-// Interpretation
-// ---------------------------------------------------------------------------
-
-console.log("Interpretation:");
-
-for (const r of batchResults) {
-  const inBand =
-    r.winRate >= r.batch.expectedBand[0] &&
-    r.winRate <= r.batch.expectedBand[1];
-  const inBonusBandAi =
-    r.upperBonusRateAi >= r.batch.expectedBonusBandAi[0] &&
-    r.upperBonusRateAi <= r.batch.expectedBonusBandAi[1];
-  const lowerPassCount = r.lowerBandPassCount;
-  const allLowerPass = lowerPassCount === LOWER_CATS.length;
-  console.log(
-    `  ${check(inBand)} ${r.batch.label}: human win rate ${pct(r.winRate)}`,
-  );
-  console.log(
-    `  ${check(inBonusBandAi)} ${r.batch.label} — AI bonus rate ${pct(r.upperBonusRateAi)} (expected [${pct(r.batch.expectedBonusBandAi[0])}, ${pct(r.batch.expectedBonusBandAi[1])}])`,
-  );
-  console.log(
-    `  ${check(allLowerPass)} ${r.batch.label} — AI lower section: ${lowerPassCount}/${LOWER_CATS.length} bands pass`,
-  );
+function difficultyFlag(name: string, fallback: AiDifficulty): AiDifficulty {
+  const raw = flag(name) ?? fallback;
+  if (!(AI_DIFFICULTIES as readonly string[]).includes(raw)) {
+    console.error(
+      `${name} must be one of ${AI_DIFFICULTIES.join(", ")} (got "${raw}")`,
+    );
+    process.exit(2);
+  }
+  return raw as AiDifficulty;
 }
 
-// Verify difficulty separation: higher-skill player should win more
-const easyVsEasy = batchResults.find(
-  (r) => r.batch.humanDiff === "easy" && r.batch.aiDiff === "easy",
-);
-const medVsEasy = batchResults.find(
-  (r) => r.batch.humanDiff === "medium" && r.batch.aiDiff === "easy",
-);
-const hardVsEasy = batchResults.find(
-  (r) => r.batch.humanDiff === "hard" && r.batch.aiDiff === "easy",
-);
-const medVsMed = batchResults.find(
-  (r) => r.batch.humanDiff === "medium" && r.batch.aiDiff === "medium",
-);
-const hardVsMed = batchResults.find(
-  (r) => r.batch.humanDiff === "hard" && r.batch.aiDiff === "medium",
-);
+const mode = (flag("--mode") ?? "paired") as DiceMode;
+if (mode !== "paired" && mode !== "independent") {
+  console.error(`--mode must be paired or independent (got "${mode}")`);
+  process.exit(2);
+}
+const games = intFlag("--games");
+const blocksFlag = intFlag("--blocks");
+const jsonPath = flag("--json");
 
-if (easyVsEasy && medVsEasy) {
-  const z = zTest(medVsEasy.winRate, easyVsEasy.winRate, GAMES_PER_BATCH);
+function timed(label: string, fn: () => MatchupRun): MatchupRun {
+  const start = Date.now();
+  const run = fn();
+  const secs = (Date.now() - start) / 1000;
+  const n = run.blocks.length * 4;
   console.log(
-    `  ${check(medVsEasy.winRate > easyVsEasy.winRate)} Medium beats Easy more than Easy beats Easy (${sigLabel(z)})`,
+    `${label}: ${n} games in ${secs.toFixed(0)}s (${((secs * 1000) / n).toFixed(0)}ms/game)`,
   );
+  return run;
 }
-if (medVsEasy && hardVsEasy) {
-  const z = zTest(hardVsEasy.winRate, medVsEasy.winRate, GAMES_PER_BATCH);
-  console.log(
-    `  ${check(hardVsEasy.winRate > medVsEasy.winRate)} Hard beats Easy more than Medium beats Easy (${sigLabel(z)})`,
+
+const output: { runs: MatchupRun[]; reports: MatchupReport[] } = {
+  runs: [],
+  reports: [],
+};
+
+if (process.argv.includes("--gate")) {
+  const groups = flags("--group");
+  const unknownGroups = groups.filter((g) => !GATE_GROUPS[g]);
+  if (unknownGroups.length) {
+    console.error(
+      `unknown --group ${unknownGroups.join(", ")}; known: ${Object.keys(GATE_GROUPS).join(", ")}`,
+    );
+    process.exit(2);
+  }
+  const only = [
+    ...flags("--matchup"),
+    ...groups.flatMap((g) => GATE_GROUPS[g]!),
+  ];
+  const unknown = only.filter((id) => !GATE_MATCHUPS.some((m) => m.id === id));
+  if (unknown.length) {
+    console.error(
+      `unknown --matchup ${unknown.join(", ")}; known: ${GATE_MATCHUPS.map((m) => m.id).join(", ")}`,
+    );
+    process.exit(2);
+  }
+  const reports: Record<string, MatchupReport> = {};
+  for (const m of GATE_MATCHUPS) {
+    if (only.length && !only.includes(m.id)) continue;
+    const blocks = games ? Math.ceil(games / 4) : (blocksFlag ?? gateBlocks(m));
+    const run = timed(m.id, () =>
+      runMatchup({
+        a: difficultyPolicy(m.a),
+        b: difficultyPolicy(m.b),
+        blocks,
+        mode,
+        seed: m.seed,
+      }),
+    );
+    const report = summarize(run);
+    reports[m.id] = report;
+    output.runs.push(run);
+    output.reports.push(report);
+    console.log(formatReport(report) + "\n");
+  }
+  // Only the bands this run can evaluate: a --group/--matchup subset leaves
+  // the other groups' bands to their own jobs rather than listing them as skipped.
+  const ran = Object.keys(reports);
+  const results = checkBands(
+    reports,
+    GATE_BANDS.filter((band) => band.matchups.every((id) => ran.includes(id))),
   );
+  console.log(formatBandResults(results));
+  if (jsonPath) writeFileSync(jsonPath, JSON.stringify(output));
+  process.exit(results.some((r) => r.status === "fail") ? 1 : 0);
 }
-if (medVsMed && hardVsMed) {
-  const z = zTest(hardVsMed.winRate, medVsMed.winRate, GAMES_PER_BATCH);
-  console.log(
-    `  ${check(hardVsMed.winRate > medVsMed.winRate)} Hard beats Medium more than Medium beats Medium (${sigLabel(z)})`,
-  );
+
+const a = difficultyFlag("--a", "hard");
+const b = difficultyFlag("--b", "medium");
+const blocks = games ? Math.ceil(games / 4) : (blocksFlag ?? 250);
+const seed = intFlag("--seed") ?? 1;
+const run = timed(`${a} vs ${b}`, () =>
+  runMatchup({
+    a: difficultyPolicy(a),
+    b: difficultyPolicy(b),
+    blocks,
+    mode,
+    seed,
+  }),
+);
+const report = summarize(run);
+console.log(formatReport(report));
+if (jsonPath) {
+  output.runs.push(run);
+  output.reports.push(report);
+  writeFileSync(jsonPath, JSON.stringify(output));
 }
