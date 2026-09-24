@@ -10,10 +10,11 @@
  * that touch the AI and nightly (`npx tsx scripts/simulate-hearts.ts
  * --gate`); see docs/TESTING.md.
  *
- * The #2204 fixes are guarded structurally: moon success is gated as the
- * paired rate (sim/__tests__/metrics.test.ts), and the corrected
- * Cautious-vs-Schemer direction (HRT-3) is a pre-registered separation
- * (sim/__tests__/gate.test.ts).
+ * Moon success is gated as the paired rate (#2204 HRT-1,
+ * sim/__tests__/metrics.test.ts), and the persona difficulty ladder is a set
+ * of pre-registered separations (#2555, sim/__tests__/gate.test.ts). HRT-3's
+ * "the human does better against Schemers" held only while the ladder was
+ * inverted; #2555 fixed the ladder, so the direction is now the opposite.
  */
 
 import { setRng } from "../engine";

@@ -52,7 +52,8 @@ const daring = personaPolicy("daring");
 
 /**
  * The human stand-in at seat 0 of every preset table. Schemer is the app's
- * default persona and the middle of the three noise levels (25/10/0%).
+ * default persona and the middle of the three noise levels (35/10/0%). Its settings are left
+ * alone by persona tuning (#2555) so the stand-in never moves.
  */
 const PROXY = schemer;
 
@@ -180,11 +181,16 @@ function winShare(matchup: string, role: string): MetricRef {
  * value measured on the baseline seed (baseline.json `separations`) before
  * any gate run. A deliberate re-tune updates them here with new evidence.
  *
- * Not registered: "the Schemer table is easier than the Daring table".
- * It holds in the baseline (+1.5pp ± 0.5, pinned by gate.test.ts), but a
- * gap that small with per-block SD 0.55 needs ~15,000 blocks to decide —
- * twice the presets cap. Widening it is #2234/#2235's job (Daring's moon
- * play converts 7% of attempts).
+ * Both adjacent steps are checked twice: head to head in the field matchup,
+ * and at the mixed table the app actually deals.
+ *
+ * Not registered: "the Schemer table is easier than the Daring table" for
+ * the human. It holds in the baseline (+1.5pp ± 0.5), but a gap that small
+ * with per-block SD 0.55 needs ~15,000 blocks to decide — twice the presets
+ * cap — and a truncated test would false-fail ~10% of the time. Daring >
+ * Schemer is still gated (field and mixed above); the table-level gap is
+ * only checked when the baseline is re-measured (gate.test.ts). Widening it
+ * is #2234/#2235's job (Daring's moon play converts 7% of attempts).
  *
  * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
  * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
@@ -209,11 +215,19 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
   },
   {
     kind: "separation",
-    id: "mixed:daring-over-cautious",
-    description: "at the mixed table, Daring outwins Cautious",
+    id: "mixed:daring-over-schemer",
+    description: "at the mixed table, Daring outwins Schemer",
     left: winShare("table-mixed", "daring"),
+    right: winShare("table-mixed", "schemer"),
+    expected: 0.037,
+  },
+  {
+    kind: "separation",
+    id: "mixed:schemer-over-cautious",
+    description: "at the mixed table, Schemer outwins Cautious",
+    left: winShare("table-mixed", "schemer"),
     right: winShare("table-mixed", "cautious"),
-    expected: 0.067,
+    expected: 0.03,
   },
   {
     kind: "separation",

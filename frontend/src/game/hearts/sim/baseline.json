@@ -94,14 +94,6 @@
     }
   },
   "separations": {
-    "mixed:daring-over-cautious": {
-      "mean": 0.06708796296296328,
-      "se": 0.0034952244513138052
-    },
-    "presets:cautious-table-easier-than-schemer": {
-      "mean": 0.02863888888888889,
-      "se": 0.005300423209953557
-    },
     "field:daring-over-schemer": {
       "mean": 0.014861111111111205,
       "se": 0.00316855017215573
@@ -109,6 +101,18 @@
     "field:schemer-over-cautious": {
       "mean": 0.031888888888889064,
       "se": 0.0032336094939525916
+    },
+    "mixed:daring-over-schemer": {
+      "mean": 0.037458333333333246,
+      "se": 0.003541628573236511
+    },
+    "mixed:schemer-over-cautious": {
+      "mean": 0.029629629629629547,
+      "se": 0.0033281522635937237
+    },
+    "presets:cautious-table-easier-than-schemer": {
+      "mean": 0.02863888888888889,
+      "se": 0.005300423209953557
     }
   }
 }

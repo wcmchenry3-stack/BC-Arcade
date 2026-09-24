@@ -369,15 +369,15 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
 - **Regression checks** (14) hold a metric at its `baseline.json` value:
   H0 "equals the baseline" against H1 "moved by δ" (3pp for win shares,
   2–4pp for behaviour rates), both directions, each side at α/2.
-- **Separation checks** (4) are signed hypotheses written into `gate.ts`
+- **Separation checks** (5) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
   (H0) against "no difference" (H1). A reversed or vanished separation fails;
   a larger one passes. The report prints the difference with its CI.
 
-All 18 checks are one family, **Bonferroni-corrected**: each runs at
-α = 0.05/18 ≈ 0.0028 with β = 0.05, so a behaviour-neutral change fails the
+All 19 checks are one family, **Bonferroni-corrected**: each runs at
+α = 0.05/19 ≈ 0.0026 with β = 0.05, so a behaviour-neutral change fails the
 gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
-of the time. CIs in the report use the same adjusted level (99.72%).
+of the time. CIs in the report use the same adjusted level (99.74%).
 
 **How a run proceeds.** Each group adds 200 blocks to every matchup, then
 evaluates its undecided checks. A check's decision is final the first time
@@ -484,9 +484,13 @@ counts are in `baseline.json`):
   at the mixed table). At the mixed table Daring wins 28.2%, Schemer 24.4%,
   Cautious 21.5%; in the field matchup Daring beats Schemer by +1.5pp and
   Schemer beats Cautious by +3.2pp.
-- The Schemer-vs-Daring table gap (+1.5pp ± 0.5) is too small for an SPRT
-  inside the block cap, so it isn't a separation check; `gate.test.ts` pins
-  it on the baseline instead. #2234/#2235 are expected to widen it.
+- The separation checks pin both adjacent steps of the ladder twice: head
+  to head in the field matchup and at the mixed table (Daring − Schemer
+  +3.7pp, Schemer − Cautious +3.0pp there), plus the Cautious-vs-Schemer
+  table gap for the human. The Schemer-vs-Daring _table_ gap for the human
+  (+1.5pp ± 0.5) is too small for an SPRT inside the block cap, so it is
+  only checked on the baseline when it is re-measured (`gate.test.ts`).
+  #2234/#2235 are expected to widen it.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
@@ -496,16 +500,16 @@ counts are in `baseline.json`):
   33% of its Q♠ dumps land on the human (Schemer: 34%). Passes that could
   void a suit do so 20% (Cautious), 65% (Schemer), 83% (Daring) of the time.
 
-**Relation to #2204.** The v2 gate keeps both #2204 fixes: `moon_success`
+**Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
-÷ a narrower trigger count — HRT-1), and HRT-3's lesson — that the
-Cautious-vs-Schemer direction was never what the old check assumed — led to
-#2555: the ladder is now tuned so the human does better against Cautious
-players, and that direction is a pre-registered separation.
-`sim/__tests__/metrics.test.ts` and `gate.test.ts` pin both.
-The old six fixed-N batches and their ✓/✗ threshold checks are retired;
-`--count` keeps #2204's meaning (games per matchup), and `--log-games`
-(used by `hearts-analysis`) is unchanged.
+÷ a narrower trigger count), pinned by `sim/__tests__/metrics.test.ts`.
+HRT-3 corrected the old Cautious-vs-Schemer check to "the human does better
+against Schemers" — true only because the ladder was inverted. #2555 fixed
+the ladder, so the gate now pre-registers the opposite direction (the human
+does better against Cautious players), pinned by `gate.test.ts`. The old six
+fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
+#2204's meaning (games per matchup), and `--log-games` (used by
+`hearts-analysis`) is unchanged.
 
 ## Manual repros
 
