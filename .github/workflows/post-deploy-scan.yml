@@ -59,10 +59,16 @@ jobs:
         id: wait
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          SERVICE_ID: ${{ secrets[matrix.id_secret] }}
+          # Static references only: a dynamic `secrets[...]` index makes GitHub
+          # hand every repo and org secret to the runner (CodeQL
+          # excessive-secrets-exposure). The run script picks this entry's ID.
+          RENDER_PROD_API_SERVICE_ID: ${{ secrets.RENDER_PROD_API_SERVICE_ID }}
+          RENDER_PROD_FRONTEND_SERVICE_ID: ${{ secrets.RENDER_PROD_FRONTEND_SERVICE_ID }}
+          ID_SECRET: ${{ matrix.id_secret }}
           SHA: ${{ github.event.workflow_run.head_sha }}
           CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
+          SERVICE_ID="${!ID_SECRET}"
           if [ -z "$SHA" ]; then
             echo "Manual run: scanning whatever is live now."
             echo "scan=true" >> "$GITHUB_OUTPUT"
@@ -108,7 +114,8 @@ jobs:
             echo "scan=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "::error::$SHA was not live on ${{ matrix.service }} after 30 minutes. If Render's auto-deploy is off, nothing deploys main."          exit 1
+          echo "::error::$SHA was not live on ${{ matrix.service }} after 30 minutes. If Render's auto-deploy is off, nothing deploys main."
+          exit 1
 
       - name: OWASP ZAP baseline scan
         if: steps.wait.outputs.scan == 'true'
