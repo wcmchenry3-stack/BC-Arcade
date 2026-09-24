@@ -3,11 +3,11 @@
  */
 
 import React from "react";
-import { render, act, waitFor, fireEvent } from "@testing-library/react-native";
+import { render, act, waitFor, fireEvent, within } from "@testing-library/react-native";
 import Twenty48Screen from "../Twenty48Screen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { Twenty48ScoreboardProvider } from "../../game/twenty48/Twenty48ScoreboardContext";
-import { saveGame, clearGame, loadGame } from "../../game/twenty48/storage";
+import { saveGame, clearGame, loadGame, loadBestScore } from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
 
 // Force web platform so the keyboard-listener useEffect runs.
@@ -71,6 +71,7 @@ function mockNav() {
     setOptions: jest.fn(),
     navigate: jest.fn(),
     goBack: jest.fn(),
+    popToTop: jest.fn(),
   } as unknown as Parameters<typeof Twenty48Screen>[0]["navigation"];
 }
 
@@ -425,15 +426,13 @@ describe("Twenty48Screen — new game", () => {
     expect(savedState.has_won).toBe(false);
   });
 
-  it("New Game dismisses the win overlay", async () => {
+  it("Play Again on the win card starts a new game and closes the card", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
-    const { getByText, getAllByLabelText, queryByText } = await mountAndSettle();
+    const { getByText, getByRole, queryByText } = await mountAndSettle();
     await waitFor(() => expect(getByText("You Win!")).toBeTruthy());
 
-    // Both the header button and the overlay button share the same label.
-    // Press any one of them — they both call handleNewGame.
     await act(async () => {
-      await fireEvent.press(getAllByLabelText("Start a new 2048 game")[0]);
+      await fireEvent.press(getByRole("button", { name: "Play Again" }));
     });
 
     // New state has has_won=false so overlay should be gone.
@@ -705,6 +704,89 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     });
     // Screen still renders the new-game button.
     expect(r.getByLabelText("Start a new 2048 game")).toBeTruthy();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2513 — shared result card
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — result card (#2513)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("win card leads with Keep Playing, then Play Again and Home", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
+    const { getByTestId } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    const card = within(getByTestId("twenty48-result"));
+    expect(card.getByTestId("game-result-primary")).toHaveTextContent("Keep Playing");
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(
+      card.getByText("You reached 2048! You can keep playing for a higher score.")
+    ).toBeTruthy();
+  });
+
+  it("game-over card says no more moves and shows best and highest tile", async () => {
+    (loadBestScore as jest.Mock).mockResolvedValueOnce(9000);
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
+    const { getByTestId } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    const card = within(getByTestId("twenty48-result"));
+    expect(card.getByText("Game Over")).toBeTruthy();
+    expect(card.getByText("No more moves")).toBeTruthy();
+    expect(card.getByText("1,234")).toBeTruthy();
+    expect(card.getByText("9,000")).toBeTruthy();
+    expect(card.getByText("Highest Tile")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
+  });
+
+  it("marks New Best against the best from before this game", async () => {
+    (loadBestScore as jest.Mock).mockResolvedValueOnce(1000);
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
+    const { getByTestId } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    expect(within(getByTestId("twenty48-result")).getByText("New best")).toBeTruthy();
+  });
+
+  it("Home returns to the lobby", async () => {
+    const nav = mockNav();
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await renderScreen(nav);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(r.getByTestId("twenty48-result-home")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("twenty48-result-home"));
+    });
+    expect(nav.popToTop).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
+    const { getByTestId, getByLabelText } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    mockedEngineMove.mockClear();
+
+    await act(() => {
+      dispatchKey("ArrowRight");
+      dispatchKey("ArrowDown");
+    });
+    expect(mockedEngineMove).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    });
+    await act(() => {
+      dispatchKey("ArrowRight");
+    });
+    expect(mockedEngineMove).toHaveBeenCalled();
+
+    // Flush the move lock so it doesn't leak into the next test.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 200));
     });

@@ -41,7 +41,9 @@ test.describe("2048 — win-state + keep-playing flow", () => {
       }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Start a new 2048 game" }).first(),
+      page
+        .getByTestId("twenty48-result")
+        .getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
   });
 
@@ -100,8 +102,8 @@ test.describe("2048 — win-state + keep-playing flow", () => {
 
     // Click New Game inside the overlay (nth(1) = overlay button, first() is header)
     await page
-      .getByRole("button", { name: "Start a new 2048 game" })
-      .nth(1)
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Play Again" })
       .click();
 
     // Overlay gone, score reset to 0
@@ -133,8 +135,8 @@ test.describe("2048 — win-state + keep-playing flow", () => {
     await page.keyboard.press("ArrowLeft");
     await page.getByText("You Win!").waitFor();
     await page
-      .getByRole("button", { name: "Start a new 2048 game" })
-      .nth(1)
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Play Again" })
       .click();
     await expect(page.locator('[aria-label="Current score: 0"]')).toBeVisible({
       timeout: 3000,
@@ -162,8 +164,8 @@ test.describe("2048 — win-state + keep-playing flow", () => {
     await page.getByText("You Win!").waitFor();
 
     await page
-      .getByRole("button", { name: "Quit and return to home screen" })
-      .first()
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Home" })
       .click();
 
     await expect(page.getByText("BC Arcade").first()).toBeVisible({
