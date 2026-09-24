@@ -6,8 +6,9 @@
  *
  * StarSwarm has no localStorage hook, so game-over requires real gameplay.
  * These tests verify the API contract (correct POST body including
- * difficulty_tier, GET returns mock data) and that the game-over overlay is
- * absent in initial play state.
+ * difficulty_tier, GET returns mock data) and that the result card is
+ * absent in initial play state. The game-over flow itself is covered by
+ * starswarm-game-over.spec.ts (#2516).
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -94,14 +95,12 @@ test.describe("Star Swarm — leaderboard", () => {
     }
   });
 
-  test("game-over overlay is absent in initial play state", async ({ page }) => {
+  test("the result card is absent in initial play state", async ({ page }) => {
     await gotoStarswarm(page);
     await expect(
       page.getByRole("img", { name: /Star Swarm game/i }),
     ).toBeVisible({ timeout: 10_000 });
 
-    await expect(
-      page.getByRole("button", { name: /Start a new game/i }),
-    ).not.toBeVisible({ timeout: 2_000 });
+    await expect(page.getByTestId("starswarm-result")).not.toBeVisible({ timeout: 2_000 });
   });
 });

@@ -705,9 +705,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         {/* HUD overlay — React Native Text over the Skia canvas */}
         <View style={styles.hud} pointerEvents="none">
           <View style={styles.hudTop}>
-            <Text style={styles.hudText}>{`${t("hud.score")} ${state.score}`}</Text>
-            <Text style={styles.hudText}>{`${t("hud.best")} ${hs}`}</Text>
-            <Text style={styles.hudText}>{`${t("hud.wave")} ${state.wave}`}</Text>
+            <Text style={styles.hudText}>{t("hud.scoreValue", { score: state.score })}</Text>
+            <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
+            <Text style={styles.hudText}>{t("hud.waveValue", { wave: state.wave })}</Text>
           </View>
           <View style={styles.hudDifficulty}>
             <Text style={styles.hudDifficultyText}>
@@ -728,7 +728,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               {waveBannerCountdown && (
-                <Text style={styles.waveIncomingText}>{`— ${t("hud.wave")} ${state.wave} —`}</Text>
+                <Text
+                  style={styles.waveIncomingText}
+                >{`— ${t("hud.waveValue", { wave: state.wave })} —`}</Text>
               )}
               <Text style={styles.countdownText}>{countdownDigit}</Text>
             </View>
@@ -766,12 +768,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </View>
           )}
 
-          {state.phase === "GameOver" && (
-            <View style={[styles.phaseOverlay, styles.gameOverOverlay]}>
-              <Text style={styles.gameOverTitle}>{t("phase.gameOver")}</Text>
-              <Text style={styles.gameOverScore}>{`${t("hud.score")} ${state.score}`}</Text>
-            </View>
-          )}
+          {/* Game over is the shared result card in StarSwarmScreen (#2516); the
+              canvas keeps its final frame behind it. */}
         </View>
 
         {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
@@ -898,22 +896,6 @@ const styles = StyleSheet.create({
     textShadowColor: "#00ffcc",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 24,
-  },
-  gameOverOverlay: {
-    backgroundColor: "rgba(0,0,0,0.65)",
-  },
-  gameOverTitle: {
-    color: "#ff4422",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  gameOverScore: {
-    color: "#ffffff",
-    fontSize: 18,
-    textAlign: "center",
-    marginTop: 16,
-    fontVariant: ["tabular-nums"],
   },
   bonusLifeOverlay: {
     position: "absolute",
