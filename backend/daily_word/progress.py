@@ -141,5 +141,12 @@ async def _get_or_create(
 
     row = DailyWordProgress(session_id=session_id, puzzle_id=puzzle_id, guesses=[], solved=False)
     session.add(row)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # Guarded like the first attempt: the whole point of this block is to
+        # keep a recoverable race off the player's 500 path, so it must not
+        # itself raise. If this loses too, the winner has committed by now.
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     return row

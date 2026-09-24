@@ -992,19 +992,29 @@ export default function DailyWordScreen() {
           const wonIt = err.message === "already_solved";
           const finished = markComplete(current, wonIt);
 
-          // The session must be completed here too. Without this the game
-          // stays open and the unmount cleanup reports outcome:"abandoned" —
-          // and abandoned games earn no daily-challenge credit, no streak day
-          // and no XP (#2468/#2472), so finishing this way would silently cost
-          // the player their day.
-          if (!syncGetGameId()) {
-            syncStart(
-              { puzzle_id: current.puzzle_id },
-              { puzzle_id: current.puzzle_id, language: current.language }
-            );
+          // Only report a session this visit actually played. `already_solved`
+          // is returned for *any* guess on a puzzle this session finished at
+          // any earlier time, and the board can be missing independently of
+          // the session id — they are separate AsyncStorage keys
+          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
+          // only the board on a corrupt payload. Without this guard, opening a
+          // wiped board and typing one word would fabricate a completed game
+          // for a puzzle finished hours ago, with a guesses_used taken from an
+          // empty board — free XP and a free "win in N guesses" goal credit.
+          const playedThisVisit = current.rows.some((r) => r.submitted);
+          if (playedThisVisit) {
+            // The session must be completed, or the unmount cleanup reports
+            // outcome:"abandoned" — and abandoned games earn no
+            // daily-challenge credit, no streak day and no XP (#2468/#2472).
+            if (!syncGetGameId()) {
+              syncStart(
+                { puzzle_id: current.puzzle_id },
+                { puzzle_id: current.puzzle_id, language: current.language }
+              );
+            }
+            syncMarkStarted();
+            syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finished));
           }
-          syncMarkStarted();
-          syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finished));
 
           setState(finished);
           saveState(finished).catch(() => {});

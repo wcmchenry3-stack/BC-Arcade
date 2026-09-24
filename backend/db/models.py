@@ -228,8 +228,9 @@ class DailyWordProgress(Base):
 
     __tablename__ = "daily_word_progress"
     __table_args__ = (
+        # No separate session_id index: this unique constraint's btree leads
+        # with session_id, and every query filters on both columns.
         UniqueConstraint("session_id", "puzzle_id", name="uq_daily_word_progress_session_puzzle"),
-        Index("daily_word_progress_session_id_idx", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

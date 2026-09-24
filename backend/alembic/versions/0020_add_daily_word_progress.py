@@ -51,11 +51,7 @@ def upgrade() -> None:
             "session_id", "puzzle_id", name="uq_daily_word_progress_session_puzzle"
         ),
     )
-    op.create_index(
-        "daily_word_progress_session_id_idx", "daily_word_progress", ["session_id"], unique=False
-    )
 
 
 def downgrade() -> None:
-    op.drop_index("daily_word_progress_session_id_idx", table_name="daily_word_progress")
     op.drop_table("daily_word_progress")
