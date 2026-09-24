@@ -8,6 +8,7 @@ import {
   oraclePolicy,
   pointsLostPer100,
   runRegretBlock,
+  sampled,
   summarizeRole,
   type RegretBlock,
   type RegretTally,
@@ -48,12 +49,29 @@ describe("runRegretBlock", () => {
     expect(graded.regret.daring!.noiseRegret).toBe(0);
   });
 
-  it("grades one play in sampleEvery", () => {
+  it("grades about one play in sampleEvery", () => {
     const all = runRegretBlock(matchup, 11, 0, { ...FAST, sampleEvery: 1 });
-    const third = graded.regret.cautious!.decisions;
     const every = all.regret.cautious!.decisions;
-    expect(third).toBeGreaterThanOrEqual(Math.floor(every / 3));
-    expect(third).toBeLessThanOrEqual(Math.ceil(every / 3) + 3);
+    const third = graded.regret.cautious!.decisions;
+    expect(third).toBeGreaterThan(every / 3 / 1.5);
+    expect(third).toBeLessThan((every / 3) * 1.5);
+  });
+});
+
+describe("sampled", () => {
+  it("picks about one play in `every` and grades everything at 1", () => {
+    let picked = 0;
+    for (let play = 0; play < 13000; play++) if (sampled(4, 1, 2, 0, 1, play)) picked++;
+    expect(picked / 13000).toBeGreaterThan(0.23);
+    expect(picked / 13000).toBeLessThan(0.27);
+    expect(sampled(1, 1, 2, 0, 1, 5)).toBe(true);
+  });
+
+  it("doesn't lock onto one trick of every hand when `every` divides 13", () => {
+    const tricks = new Set<number>();
+    for (let play = 0; play < 13 * 40; play++)
+      if (sampled(13, 1, 2, 0, 1, play)) tricks.add(play % 13);
+    expect(tricks.size).toBeGreaterThan(8);
   });
 });
 

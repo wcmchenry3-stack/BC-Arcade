@@ -18,11 +18,14 @@
  * a heuristic, weight or bug with the policies it grades. It is deliberately
  * simple (a greedy one-card lookahead over a greedy rollout, not a search):
  * #2239 asks for a reference meaningfully stronger than the AI, which perfect
- * information plus lookahead gives, not an optimal one. Its values are
- * single deterministic rollouts, so an individual decision's regret is an
- * estimate; averages over thousands of decisions are what the report reads.
+ * information plus lookahead gives, not an optimal one. Each card's value is
+ * an average of sampled rollouts (`DEFAULT_ORACLE_CONFIG`), so an individual
+ * decision's regret is an estimate; averages over thousands of decisions are
+ * what the report reads.
  *
- * Pure and deterministic: no RNG, no clock.
+ * Pure and repeatable: the randomized rollouts draw from a private generator
+ * seeded by the cards in play — never the engine's RNG — and there is no
+ * clock, so the same decision always gets the same values.
  */
 
 import { getValidPlays, isQueenOfSpades, playCard } from "../engine";
@@ -57,8 +60,9 @@ export interface OracleConfig {
 
 /**
  * 16 rollouts at ε 0.2: a player that plays this reference's best card wins
- * 80% of games against a Schemer field (Daring: 44%) — see docs/TESTING.md.
- * One greedy rollout alone managed 49%, 8 rollouts at ε 0.15 72.5%.
+ * 73% of games against a Schemer field, where Daring wins 34% (seed 2238,
+ * 100 blocks; docs/TESTING.md). In a 20-block pilot on the same field, one
+ * greedy rollout alone managed 49% and 8 rollouts at ε 0.15 72.5%.
  */
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = { moonCommit: 10, rollouts: 16, epsilon: 0.2 };
 

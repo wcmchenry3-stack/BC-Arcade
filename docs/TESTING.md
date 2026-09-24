@@ -601,8 +601,9 @@ so per-block differences are paired as in the gate.
 - **Cost:** grading takes ~3.5 ms per play. 100 blocks grade ~130,000 plays
   (~7.5 min), or ~10 min with `--oracle-player`, which runs the reference for
   its own plays too.
-- **Sampling:** `--sample-every K` grades one play in K per seat and scales
-  points lost back up by K.
+- **Sampling:** `--sample-every K` grades about one play in K, picked
+  pseudo-randomly per play so a K that divides 13 can't lock onto one trick
+  of every hand, and scales points lost back up by K.
 
 Unit tests: `sim/__tests__/oracle.test.ts` covers a known four-hand endgame
 where the reference must find the 13-point difference, rollout rules, hand

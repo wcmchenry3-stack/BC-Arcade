@@ -19,6 +19,7 @@
 import { selectCardsToPass } from "../ai";
 import { NOISE_RATE } from "../aiWeights";
 import { getRng, setRng } from "../engine";
+import { deriveSeed } from "../../_shared/simRandom";
 import type { AiPersona, Card } from "../types";
 import {
   addCounters,
@@ -43,6 +44,8 @@ import {
   type RegretBand,
   type RegretBands,
 } from "./oracle";
+
+const SAMPLE_TAG = 0x53414d50; // "SAMP"
 
 export interface RegretTally {
   /** Card plays graded. */
@@ -82,8 +85,10 @@ export interface RegretOptions {
   /** Roles whose plays are graded (default: every role but `field`). */
   readonly graded?: ReadonlySet<string>;
   /**
-   * Grade one play in `sampleEvery` per seat (default 1 = every play).
-   * Points lost per 100 hands is scaled back up by the same factor.
+   * Grade about one play in `sampleEvery` (default 1 = every play), picked
+   * pseudo-randomly per play — a fixed stride would lock onto the same trick
+   * of every hand when it divides 13. Points lost per 100 hands is scaled
+   * back up by the same factor.
    */
   readonly sampleEvery?: number;
   readonly bands?: RegretBands;
@@ -119,6 +124,21 @@ function tagNoise(policy: HeartsPolicy, onTag: (noise: boolean) => void): Hearts
   };
 }
 
+/**
+ * Whether a seat's `play`-th card play of a game is graded: about one in
+ * `every`, picked by hash rather than a fixed stride (see `sampleEvery`).
+ */
+export function sampled(
+  every: number,
+  seed: number,
+  block: number,
+  lineup: number,
+  seat: number,
+  play: number
+): boolean {
+  return every <= 1 || deriveSeed(SAMPLE_TAG, seed, block, lineup, seat, play) % every === 0;
+}
+
 export interface RegretBlock extends BlockRecord {
   readonly regret: Readonly<Record<string, RegretTally>>;
 }
@@ -135,7 +155,7 @@ export function runRegretBlock(
   const oracle = options.oracle ?? DEFAULT_ORACLE_CONFIG;
   const roles: Record<string, SeatCounters> = {};
   const regret: Record<string, RegretTally> = {};
-  for (const lineup of matchup.lineups) {
+  matchup.lineups.forEach((lineup, lineupIndex) => {
     const graded = lineup.roles.map((r) =>
       options.graded ? options.graded.has(r) : r !== "field"
     );
@@ -148,7 +168,9 @@ export function runRegretBlock(
       onPlay: (state, seat, card) => {
         const wasNoise = noise;
         noise = false;
-        if (!graded[seat] || seen[seat]!++ % every !== 0) return;
+        if (!graded[seat]) return;
+        const play = seen[seat]!++;
+        if (!sampled(every, seed, block, lineupIndex, seat, play)) return;
         const r = decisionRegret(state, card, bands, oracle);
         const t = (regret[lineup.roles[seat]!] ??= emptyTally());
         t.decisions++;
@@ -165,7 +187,7 @@ export function runRegretBlock(
       if (graded[seat])
         (regret[lineup.roles[seat]!] ??= emptyTally()).hands += counters.handsPlayed;
     });
-  }
+  });
   return { index: block, roles, regret };
 }
 
