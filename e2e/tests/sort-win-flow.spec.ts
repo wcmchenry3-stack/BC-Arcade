@@ -1,9 +1,10 @@
 /**
- * sort-win-flow.spec.ts — GH #1255
+ * sort-win-flow.spec.ts — GH #1255, #2512
  *
- * Win flow: inject a near-solved state, complete the last pour, verify the
- * win modal, score submission to POST /sort/score, rank display, next-level
- * unlock, and the Next Level / Back to Levels actions.
+ * Win flow: inject a near-solved state, complete the last pour, and verify
+ * the shared result card — its stats, the automatic POST /sort/score under
+ * the player's display name, the next-level unlock, and the Next Level /
+ * Change Level actions (available at once, with no score entry).
  *
  * Near-solved layout (injected via localStorage):
  *   Bottle 1 (idx 0): ["blue","blue","blue","blue"]  solved
@@ -34,13 +35,50 @@ const NEAR_SOLVED = {
   },
 };
 
-async function loadNearSolvedLevel(page: Page): Promise<void> {
+const DISPLAY_NAME_KEY = "player_display_name";
+
+/** Captures POST /sort/score bodies; register after mockSortApi so it wins. */
+async function capturePosts(page: Page): Promise<Record<string, unknown>[]> {
+  const posts: Record<string, unknown>[] = [];
+  await page.route("**/sort/score", async (route) => {
+    if (route.request().method() === "POST") {
+      posts.push(JSON.parse(route.request().postData() ?? "{}"));
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        player_name: "Tester",
+        level_reached: 1,
+        rank: 3,
+      }),
+    });
+  });
+  return posts;
+}
+
+async function loadNearSolvedLevel(
+  page: Page,
+  displayName?: string,
+): Promise<Record<string, unknown>[]> {
   await mockSortApi(page);
+  // Registered after mockSortApi so it takes priority (routes match LIFO).
+  const posts = await capturePosts(page);
   await injectSortProgress(page, NEAR_SOLVED);
+  if (displayName) {
+    await page.evaluate(([key, name]) => localStorage.setItem(key, name), [
+      DISPLAY_NAME_KEY,
+      displayName,
+    ] as const);
+    await page.goto("/");
+  }
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
   await page.getByRole("button", { name: "Continue Level 1" }).click();
-  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+    timeout: 5_000,
+  });
+  return posts;
 }
 
 async function makeWinningPour(page: Page): Promise<void> {
@@ -51,78 +89,70 @@ async function makeWinningPour(page: Page): Promise<void> {
     }),
   ).toBeVisible({ timeout: 3_000 });
   await page.getByRole("button", { name: "Bottle 2, 3 of 4 filled" }).click();
-  await expect(page.getByText("Solved!")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("sort-result")).toBeVisible({ timeout: 5_000 });
 }
 
 test.describe("Sort Puzzle — win flow", () => {
-  test("completing the last pour shows the win modal", async ({ page }) => {
-    await loadNearSolvedLevel(page);
-    await makeWinningPour(page);
-  });
-
-  test("win modal shows move and undo stats", async ({ page }) => {
-    await loadNearSolvedLevel(page);
-    await makeWinningPour(page);
-
-    // moveCount was 5 + 1 winning pour = 6
-    await expect(page.getByText(/Moves:\s*6/)).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/Undos used:\s*0/)).toBeVisible({ timeout: 3_000 });
-  });
-
-  test("score is submitted to POST /sort/score with player name", async ({ page }) => {
-    await loadNearSolvedLevel(page);
-    await makeWinningPour(page);
-
-    // Override the score route (registered after mockSortApi so LIFO gives it priority)
-    let submittedBody: Record<string, unknown> | null = null;
-    await page.route("**/sort/score", async (route) => {
-      if (route.request().method() === "POST") {
-        const raw = route.request().postData() ?? "{}";
-        submittedBody = JSON.parse(raw) as Record<string, unknown>;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ player_name: "Alice", level_reached: 1, rank: 3 }),
-      });
-    });
-
-    await page.getByPlaceholder("Your name").fill("Alice");
-    await page.getByRole("button", { name: "Submit Score" }).click();
-
-    await expect(page.getByText(/Rank #3/)).toBeVisible({ timeout: 5_000 });
-    expect(submittedBody).not.toBeNull();
-    expect(submittedBody).toMatchObject({ player_name: "Alice", level_reached: 1 });
-  });
-
-  test("Next Level button appears after score submission when a next level exists", async ({
+  test("completing the last pour shows the result card with its stats", async ({
     page,
   }) => {
     await loadNearSolvedLevel(page);
     await makeWinningPour(page);
 
-    await page.getByPlaceholder("Your name").fill("Tester");
-    await page.getByRole("button", { name: "Submit Score" }).click();
-    await expect(page.getByRole("button", { name: "Next Level" })).toBeVisible({
+    const card = page.getByTestId("sort-result");
+    await expect(card.getByText("You Win!")).toBeVisible();
+    await expect(card.getByText("Sort Puzzle · Level 1")).toBeVisible();
+    // moveCount was 5 + 1 winning pour = 6.
+    await expect(card.getByText("6", { exact: true }).first()).toBeVisible();
+    await expect(card.getByText("Undos")).toBeVisible();
+  });
+
+  test("submits the level to POST /sort/score under the display name", async ({
+    page,
+  }) => {
+    const posts = await loadNearSolvedLevel(page, "Tester");
+    await makeWinningPour(page);
+
+    await expect(
+      page.getByText("Saved as Tester · #3 on the leaderboard"),
+    ).toBeVisible({ timeout: 10_000 });
+    expect(posts).toEqual([{ player_name: "Tester", level_reached: 1 }]);
+  });
+
+  test("Next Level is available at once, with no score entry", async ({
+    page,
+  }) => {
+    await loadNearSolvedLevel(page);
+    await makeWinningPour(page);
+
+    const next = page
+      .getByTestId("sort-result")
+      .getByRole("button", { name: "Next Level" });
+    await expect(next).toBeVisible();
+    await next.click();
+    await expect(page.getByTestId("sort-result")).not.toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(page.getByText("Level 2").first()).toBeVisible({
       timeout: 5_000,
     });
   });
 
-  test("Back to Levels returns to level select with next level unlocked", async ({ page }) => {
+  test("Change Level returns to level select with the next level unlocked", async ({
+    page,
+  }) => {
     await loadNearSolvedLevel(page);
     await makeWinningPour(page);
 
-    await page.getByPlaceholder("Your name").fill("Tester");
-    await page.getByRole("button", { name: "Submit Score" }).click();
-    await expect(page.getByRole("button", { name: "Next Level" })).toBeVisible({
-      timeout: 5_000,
-    });
+    await page
+      .getByTestId("sort-result")
+      .getByRole("button", { name: "Change Level" })
+      .click();
 
-    await page.getByRole("button", { name: "Back to Levels" }).click();
-
-    // After score submission unlockedLevel advanced to 2
     await expect(
       page.getByRole("button", { name: "Level 2" }),
-    ).not.toBeDisabled({ timeout: 5_000 });
+    ).not.toBeDisabled({
+      timeout: 5_000,
+    });
   });
 });

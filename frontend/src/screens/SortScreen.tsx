@@ -7,11 +7,9 @@ import {
   AppStateStatus,
   FlatList,
   LayoutChangeEvent,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -42,20 +40,24 @@ import {
   loadProgress,
   saveProgress,
   loadLevelsCache,
+  recordLevelSolve,
   saveLevelsCache,
   type SortProgress,
 } from "../game/sort/storage";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { OfflineBanner } from "../components/shared/OfflineBanner";
 import { useSortAudio } from "../game/sort/useSortAudio";
-
-const MAX_NAME_LENGTH = 32;
+import GameResultModal from "../components/shared/GameResultModal";
+import { useGameSync } from "../game/_shared/useGameSync";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sortLeaderboard } from "../game/sort/leaderboard";
 
 type ScreenView = "loading" | "select" | "play";
 type SelectTab = "levels" | "leaderboard";
 
 export default function SortScreen() {
   const { t } = useTranslation("sort");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
@@ -94,12 +96,28 @@ export default function SortScreen() {
   const pendingPourRef = useRef<{ snapshot: SortState; from: number; to: number } | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
 
-  // Win modal
+  // Result card (#2512)
   const [showWinModal, setShowWinModal] = useState(false);
-  const [playerName, setPlayerName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
-  const [winEntry, setWinEntry] = useState<ScoreEntry | null>(null);
+  /** The solved level's best (fewest) moves, including this solve. */
+  const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
+  const leaderboardSubmit = useLeaderboardSubmit(sortLeaderboard);
+  const { submit: submitScore, reset: resetSubmission } = leaderboardSubmit;
+
+  // Per-session `games` row (#2512), like every other game: XP, Profile history
+  // and SyncWorker. It never carries a score — Sort's leaderboard ranks every
+  // Sort row with a `final_score`, so a scored session would duplicate each
+  // solve there. The leaderboard entry is `sortLeaderboard`'s job.
+  const {
+    start: syncStart,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+  } = useGameSync("sort");
+  const gameStateRef = useRef<SortState | null>(null);
+  gameStateRef.current = gameState;
+  const currentLevelIdRef = useRef<number | null>(null);
+  currentLevelIdRef.current = currentLevelId;
 
   const [isHinting, setIsHinting] = useState(false);
 
@@ -107,6 +125,30 @@ export default function SortScreen() {
   progressRef.current = progress;
 
   const audio = useSortAudio();
+
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: {
+        won: false,
+        level: currentLevelIdRef.current,
+        moves: gameStateRef.current?.moveCount ?? 0,
+      },
+    }));
+  }, [syncSetProgressSnapshot]);
+
+  /** Closes an open, unfinished session as abandoned (a no-op otherwise). */
+  const abandonSession = useCallback(() => {
+    if (!syncGetGameId()) return;
+    syncComplete(
+      { outcome: "abandoned" },
+      {
+        outcome: "abandoned",
+        won: false,
+        level: currentLevelIdRef.current,
+        moves: gameStateRef.current?.moveCount ?? 0,
+      }
+    );
+  }, [syncGetGameId, syncComplete]);
 
   useEffect(() => {
     return () => {
@@ -196,6 +238,18 @@ export default function SortScreen() {
     if (!gameState?.isComplete || showWinModal) return;
     setShowWinModal(true);
     if (currentLevelId !== null) {
+      syncComplete(
+        { outcome: "completed" },
+        {
+          outcome: "completed",
+          won: true,
+          level: currentLevelId,
+          moves: gameState.moveCount,
+          undos: gameState.undosUsed,
+        }
+      );
+      submitScore({ level: currentLevelId });
+      void recordLevelSolve(currentLevelId, gameState.moveCount).then(setWinSummary);
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
@@ -209,7 +263,16 @@ export default function SortScreen() {
       setProgress(updated);
       void saveProgress(updated);
     }
-  }, [gameState?.isComplete, showWinModal, currentLevelId, levels]);
+  }, [
+    gameState?.isComplete,
+    gameState?.moveCount,
+    gameState?.undosUsed,
+    showWinModal,
+    currentLevelId,
+    levels,
+    syncComplete,
+    submitScore,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Game handlers
@@ -249,6 +312,10 @@ export default function SortScreen() {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       const holdMs = POUR_PER_UNIT_MS * units;
+      if (!syncGetGameId()) {
+        syncStart({ level: currentLevelId });
+        syncMarkStarted();
+      }
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
       setPouringFrom(selectedBottleIndex);
@@ -306,13 +373,13 @@ export default function SortScreen() {
   function handleSelectLevel(levelId: number) {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
+    abandonSession();
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
     setShowWinModal(false);
-    setWinEntry(null);
-    setSubmitError(false);
-    setPlayerName("");
+    setWinSummary(null);
+    resetSubmission();
     setView("play");
   }
 
@@ -323,9 +390,8 @@ export default function SortScreen() {
     setGameState(prog.currentState);
     setHistory([]);
     setShowWinModal(false);
-    setWinEntry(null);
-    setSubmitError(false);
-    setPlayerName("");
+    setWinSummary(null);
+    resetSubmission();
     setView("play");
   }
 
@@ -337,6 +403,7 @@ export default function SortScreen() {
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
+    abandonSession();
     setView("select");
     setShowWinModal(false);
     // Silently refresh levels in the background so the next session gets new mixtures
@@ -368,20 +435,6 @@ export default function SortScreen() {
     [handleLoadLeaderboard]
   );
 
-  async function handleSubmitScore() {
-    if (!playerName.trim() || currentLevelId === null || submitting) return;
-    setSubmitting(true);
-    setSubmitError(false);
-    try {
-      const entry = await sortApi.submitScore(playerName.trim(), currentLevelId);
-      setWinEntry(entry);
-    } catch {
-      setSubmitError(true);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   function handleResetLevel() {
     if (!currentLevelId) return;
     const level = levels.find((l) => l.id === currentLevelId);
@@ -393,6 +446,7 @@ export default function SortScreen() {
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
+    abandonSession();
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
   }
@@ -420,109 +474,6 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
-
-  function renderWinModal() {
-    if (!gameState || !showWinModal) return null;
-    const submitted = winEntry !== null;
-
-    return (
-      <Modal
-        visible={showWinModal}
-        transparent
-        animationType="fade"
-        onRequestClose={handleBackToSelect}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surfaceHigh }]}>
-            <Text style={[styles.winTitle, { color: colors.text }]}>{t("win.title")}</Text>
-            <Text style={[styles.winStat, { color: colors.textMuted }]}>
-              {t("win.movesUsed", { moves: gameState.moveCount })}
-            </Text>
-            <Text style={[styles.winStat, { color: colors.textMuted }]}>
-              {t("win.undosUsed", { undos: gameState.undosUsed })}
-            </Text>
-
-            {!submitted && (
-              <>
-                <TextInput
-                  style={[
-                    styles.nameInput,
-                    {
-                      color: colors.text,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surface,
-                    },
-                  ]}
-                  value={playerName}
-                  onChangeText={setPlayerName}
-                  placeholder={t("win.enterName")}
-                  placeholderTextColor={colors.textMuted}
-                  maxLength={MAX_NAME_LENGTH}
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                  onSubmitEditing={() => void handleSubmitScore()}
-                />
-
-                {submitError && (
-                  <Text style={[styles.errorText, { color: colors.error }]}>
-                    {t("error.submitFailed")}
-                  </Text>
-                )}
-
-                <Pressable
-                  style={[
-                    styles.modalBtn,
-                    { backgroundColor: colors.accent },
-                    (!playerName.trim() || submitting) && styles.modalBtnDisabled,
-                  ]}
-                  onPress={() => void handleSubmitScore()}
-                  disabled={!playerName.trim() || submitting}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("win.submitScore")}
-                >
-                  <Text style={[styles.modalBtnText, { color: colors.textOnAccent }]}>
-                    {submitting ? t("win.submitting") : t("win.submitScore")}
-                  </Text>
-                </Pressable>
-              </>
-            )}
-
-            {submitted && winEntry && (
-              <Text style={[styles.rankText, { color: colors.accent }]}>
-                {t("win.rank", { rank: winEntry.rank })}
-              </Text>
-            )}
-
-            <View style={styles.modalActions}>
-              {submitted && (currentLevelId ?? 0) < levels.length && (
-                <Pressable
-                  style={[styles.modalBtn, { backgroundColor: colors.accent }]}
-                  onPress={handleNextLevel}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("win.nextLevel")}
-                >
-                  <Text style={[styles.modalBtnText, { color: colors.textOnAccent }]}>
-                    {t("win.nextLevel")}
-                  </Text>
-                </Pressable>
-              )}
-
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnSecondary, { borderColor: colors.border }]}
-                onPress={handleBackToSelect}
-                accessibilityRole="button"
-                accessibilityLabel={t("win.backToLevels")}
-              >
-                <Text style={[styles.modalBtnText, { color: colors.text }]}>
-                  {t("win.backToLevels")}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
 
   function renderLeaderboard() {
     if (leaderboardLoading) {
@@ -762,7 +713,36 @@ export default function SortScreen() {
         </Text>
       </Pressable>
 
-      {renderWinModal()}
+      {gameState !== null && currentLevelId !== null ? (
+        <GameResultModal
+          visible={showWinModal}
+          outcome="win"
+          eyebrow={`${t("game.title")} · ${t("hud.level", { level: currentLevelId })}`}
+          hero={{ kind: "score", label: tResult("stat.moves"), value: gameState.moveCount }}
+          isNewBest={winSummary?.isNewBest ?? false}
+          stats={[
+            { label: tResult("stat.undos"), value: gameState.undosUsed },
+            ...(winSummary ? [{ label: tResult("stat.best"), value: winSummary.best }] : []),
+          ]}
+          submission={{
+            status: leaderboardSubmit.status,
+            rank: leaderboardSubmit.rank,
+            playerName: leaderboardSubmit.playerName,
+            onProvideName: leaderboardSubmit.provideName,
+            onRetry: leaderboardSubmit.retry,
+          }}
+          // The next level when there is one; the last level replays.
+          primaryAction={
+            levels.some((l) => l.id === currentLevelId + 1)
+              ? { label: tResult("action.nextLevel"), onPress: handleNextLevel }
+              : undefined
+          }
+          onPlayAgain={() => handleSelectLevel(currentLevelId)}
+          secondaryAction={{ label: tResult("action.changeLevel"), onPress: handleBackToSelect }}
+          onHome={() => navigation.popToTop()}
+          testID="sort-result"
+        />
+      ) : null}
     </View>
   );
 }
@@ -868,40 +848,4 @@ const styles = StyleSheet.create({
   colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
 
   // Win modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 360,
-    borderRadius: 20,
-    padding: 24,
-    gap: 12,
-    alignItems: "stretch",
-  },
-  winTitle: { fontFamily: typography.heading, fontSize: 28, textAlign: "center" },
-  winStat: { fontFamily: typography.body, fontSize: 14, textAlign: "center" },
-  nameInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: typography.body,
-    fontSize: 16,
-  },
-  errorText: { fontFamily: typography.body, fontSize: 12, textAlign: "center" },
-  rankText: { fontFamily: typography.heading, fontSize: 24, textAlign: "center" },
-  modalActions: { gap: 8 },
-  modalBtn: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnSecondary: { borderWidth: 1 },
-  modalBtnDisabled: { opacity: 0.5 },
-  modalBtnText: { fontFamily: typography.label, fontSize: 14, fontWeight: "600" },
 });

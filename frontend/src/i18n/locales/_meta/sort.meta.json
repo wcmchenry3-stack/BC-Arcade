@@ -125,33 +125,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "win.title": {
-    "component": "SortScreen win overlay",
-    "description": "Header shown when the puzzle is solved.",
-    "tone": "celebratory",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.movesUsed": {
-    "component": "SortScreen win overlay",
-    "description": "Total moves used, shown on the win screen.",
-    "tone": "neutral",
-    "characterLimit": 30,
-    "placeholders": ["{{moves}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.undosUsed": {
-    "component": "SortScreen win overlay",
-    "description": "Total undos used, shown on the win screen.",
-    "tone": "neutral",
-    "characterLimit": 30,
-    "placeholders": ["{{undos}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "color.red": {
     "component": "BallView (accessibilityLabel)",
     "description": "Name of the red color used in a ball.",
@@ -290,15 +263,6 @@
   "error.loadFailed": {
     "component": "SortScreen",
     "description": "Error message when a level fails to load.",
-    "tone": "apologetic, clear",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "error.submitFailed": {
-    "component": "SortScreen win overlay",
-    "description": "Error message when submitting the score to the leaderboard fails.",
     "tone": "apologetic, clear",
     "characterLimit": 60,
     "placeholders": [],

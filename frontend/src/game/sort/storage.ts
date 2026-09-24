@@ -43,3 +43,41 @@ export async function loadLevelsCache(): Promise<LevelsResponse | null> {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Best moves per level (#2512) — shown as "Best" on the result card.
+// ---------------------------------------------------------------------------
+
+const BEST_MOVES_KEY = "@sort/best_moves";
+
+type BestMoves = Record<string, number>;
+
+async function loadBestMoves(): Promise<BestMoves> {
+  try {
+    const raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as BestMoves) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Records a solve of `levelId` in `moves` and returns the level's best (fewest
+ * moves) including this solve, and whether this solve set it.
+ */
+export async function recordLevelSolve(
+  levelId: number,
+  moves: number
+): Promise<{ best: number; isNewBest: boolean }> {
+  const all = await loadBestMoves();
+  const previous = all[String(levelId)];
+  const isNewBest = typeof previous !== "number" || moves < previous;
+  if (!isNewBest) return { best: previous, isNewBest };
+  try {
+    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify({ ...all, [levelId]: moves }));
+  } catch {
+    // Best-effort: the card still shows this solve as the best.
+  }
+  return { best: moves, isNewBest };
+}
