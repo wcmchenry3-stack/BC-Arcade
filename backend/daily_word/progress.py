@@ -126,5 +126,20 @@ async def _get_or_create(
         await session.flush()
     except IntegrityError:
         await session.rollback()
-        return (await session.execute(stmt)).scalar_one()
+    else:
+        return row
+
+    # The insert lost the race. Normally the winner's row is now visible — but
+    # it is not guaranteed: the transaction that took the constraint can still
+    # roll back (an error between flush and commit, a dropped connection, a
+    # statement timeout), leaving nothing to read. Falling back to a second
+    # insert keeps a recoverable race from surfacing as a 500 on a legitimate
+    # guess.
+    existing = (await session.execute(stmt)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    row = DailyWordProgress(session_id=session_id, puzzle_id=puzzle_id, guesses=[], solved=False)
+    session.add(row)
+    await session.flush()
     return row

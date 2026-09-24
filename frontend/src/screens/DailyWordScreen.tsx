@@ -980,21 +980,48 @@ export default function DailyWordScreen() {
         // never arrived. Trust the server: close the game out and reveal the
         // answer it will now release, rather than stranding the player on a
         // board that can never complete.
+        // Same guard as the success path: the player may have left while the
+        // guess was in flight, in which case useGameSync's unmount cleanup has
+        // already run and there is nothing left to close out.
         const current = stateRef.current;
-        if (current) {
-          const finished = markComplete(current, false);
+        if (mountedRef.current && current) {
+          // `already_solved` means the server recorded a winning guess — the
+          // player won, and only the response was lost. Marking that a loss
+          // would persist won:false and show them the word they had already
+          // found.
+          const wonIt = err.message === "already_solved";
+          const finished = markComplete(current, wonIt);
+
+          // The session must be completed here too. Without this the game
+          // stays open and the unmount cleanup reports outcome:"abandoned" —
+          // and abandoned games earn no daily-challenge credit, no streak day
+          // and no XP (#2468/#2472), so finishing this way would silently cost
+          // the player their day.
+          if (!syncGetGameId()) {
+            syncStart(
+              { puzzle_id: current.puzzle_id },
+              { puzzle_id: current.puzzle_id, language: current.language }
+            );
+          }
+          syncMarkStarted();
+          syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finished));
+
           setState(finished);
           saveState(finished).catch(() => {});
-          try {
-            const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-            setAnswer(answerData.answer.toUpperCase());
-          } catch {
-            // Modal still opens; it just won't reveal the word.
+
+          if (wonIt) {
+            setWinModalVisible(true);
+          } else {
+            try {
+              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
+              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
+            } catch {
+              // Modal still opens; it just won't reveal the word.
+            }
+            if (!mountedRef.current) return;
+            setLossModalVisible(true);
           }
-          setLossModalVisible(true);
           startCountdown();
-        } else {
-          showToast(t("error.couldNotSubmit"));
         }
       } else {
         showToast(t("error.couldNotSubmit"));

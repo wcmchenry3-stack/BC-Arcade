@@ -329,6 +329,31 @@ _SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
 _SEVENTH = "vozhd"
 
 
+def test_guess_and_answer_keep_both_rate_limits() -> None:
+    """The session-keyed limit and the IP backstop must both stay registered.
+
+    `limiter` has no default_limits, so a route limit with a custom key_func
+    *replaces* the IP key rather than adding to it — which is how minting
+    session ids bought unbounded guesses in the first place. A silently dropped
+    decorator would restore that hole with every test still green, so the pair
+    is asserted directly (#2197 review).
+    """
+    import main  # noqa: F401  — importing the app registers the routes
+    from limiter import limiter
+
+    by_route = {
+        name: {(str(lim.limit), getattr(lim.key_func, "__name__", "")) for lim in lims}
+        for name, lims in limiter._route_limits.items()
+    }
+
+    guess = by_route["daily_word.router.post_guess"]
+    assert any(k == "_guess_key" for _, k in guess), "session-keyed guess limit is missing"
+    assert any(k == "_real_ip" for _, k in guess), "IP backstop on /guess is missing"
+
+    answer = by_route["daily_word.router.get_answer_route"]
+    assert any(k == "_real_ip" for _, k in answer), "IP limit on /answer is missing"
+
+
 def test_guess_words_are_never_answers() -> None:
     """Guards the fixture above against a word-list change (#2197 review)."""
     from daily_word.puzzle import _ANSWERS_EN, is_valid_guess

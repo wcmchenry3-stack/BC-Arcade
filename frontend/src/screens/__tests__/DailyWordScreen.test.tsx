@@ -492,8 +492,39 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     await expect(api.findByText(/The word was CRANE/i)).resolves.toBeTruthy();
   });
 
-  it("still closes the game out when the answer cannot be fetched", async () => {
+  // #2535 review — `already_solved` means the server recorded a winning guess
+  // and only the response was lost. Treating it as a loss persisted won:false
+  // and showed the player the word they had already found.
+  it("treats already_solved as the win it is, not a loss", async () => {
     dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(await api.findByText("Brilliant!")).toBeTruthy();
+    expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ outcome: "completed", result: { won: true } });
+  });
+
+  // #2535 review — without syncComplete the session stays open and the unmount
+  // cleanup reports it abandoned. Abandoned games earn no daily-challenge
+  // credit, no streak day and no XP (#2468/#2472), so recovering this way
+  // would have silently cost the player their day.
+  it("completes the session so the recovery is not recorded as an abandon", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ outcome: "completed", result: { won: false } });
+  });
+
+  it("still closes the game out when the answer cannot be fetched", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
     dailyWordApi.getAnswer.mockRejectedValue(new ApiError("guesses_remaining", 403));
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");

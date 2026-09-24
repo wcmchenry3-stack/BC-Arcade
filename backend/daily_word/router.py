@@ -126,7 +126,14 @@ async def get_today(
 
 @router.post("/guess")
 @limiter.limit("20/hour", key_func=_guess_key)
-@limiter.limit("120/hour")
+# An IP-keyed backstop *in addition to* the session key, because the session id
+# is self-asserted: without one, minting a fresh UUID bought another six
+# guesses and unbounded row insertion. Deliberately generous — `_real_ip`
+# resolves to a carrier NAT address that many subscribers share, and locking
+# real players out of a shipping free game is a worse outcome than the abuse it
+# prevents. This is a volume backstop, not a security boundary; it does not
+# stop a determined caller, which needs server-issued sessions (#1047).
+@limiter.limit("1200/hour")
 async def post_guess(request: Request, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
@@ -196,7 +203,6 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
 
 @router.get("/answer")
 @limiter.limit("20/minute")
-@limiter.limit("60/hour")
 async def get_answer_route(
     request: Request,
     puzzle_id: str = Query(...),
