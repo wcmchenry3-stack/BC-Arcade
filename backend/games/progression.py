@@ -9,10 +9,11 @@ XP rule: BASE_XP_PER_GAME for every completed game played, plus
 VARIETY_BONUS_PER_GAME_TYPE for each distinct game type with at least one
 completed game played (breadth bonus — supports the "not just a container of
 mini-games" App Store 4.2 narrative). "Completed game played" is each game
-type's ``GameTypeStats.played`` count, which ``get_stats_for_session`` already
-restricts to games with ``completed_at IS NOT NULL`` — not
-``StatsSummary.total_games`` directly, though summing ``played`` across
-``by_game`` and ``total_games`` are equal in practice.
+type's ``GameTypeStats.completed_played`` count, which
+``get_stats_for_session`` restricts to games with ``completed_at IS NOT NULL``
+*and* an outcome other than ``abandoned`` (#2472) — not
+``StatsSummary.total_games`` or ``GameTypeStats.played``, both of which still
+count abandons as lifecycle facts.
 
 Levels: ``LEVEL_THRESHOLDS[i]`` is the cumulative XP required to reach level
 ``i + 1`` (level 1 at 0 XP). The sequence must be strictly increasing.
@@ -70,12 +71,16 @@ class Progression:
 def compute_progression(summary: StatsSummary) -> Progression:
     """Derive Arcade XP and level from a games stats summary.
 
-    ``summary.by_game[name].played`` is used as each game type's completed-game
-    count (the query behind ``StatsSummary`` already excludes in-progress
-    games), rather than ``summary.total_games``.
+    ``summary.by_game[name].completed_played`` is used as each game type's
+    completed-game count, rather than ``summary.total_games`` or ``played``.
+    The query behind ``StatsSummary`` excludes in-progress games from both, and
+    ``completed_played`` additionally excludes abandoned ones (#2472) — quitting
+    a game must earn nothing, or a player can farm XP by starting games and
+    backing out. ``played`` deliberately still counts abandons: it is the
+    lifecycle "games played" figure Profile shows, not an XP input.
     """
-    completed_games = sum(stats.played for stats in summary.by_game.values())
-    distinct_game_types = sum(1 for stats in summary.by_game.values() if stats.played > 0)
+    completed_games = sum(stats.completed_played for stats in summary.by_game.values())
+    distinct_game_types = sum(1 for stats in summary.by_game.values() if stats.completed_played > 0)
 
     arcade_xp = (
         completed_games * BASE_XP_PER_GAME + distinct_game_types * VARIETY_BONUS_PER_GAME_TYPE

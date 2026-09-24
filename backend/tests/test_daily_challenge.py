@@ -599,9 +599,13 @@ def test_abandoned_and_unfinished_games_do_not_count(
 
 
 @needs_db
-def test_score_reached_then_abandoned_counts_but_abandoned_mahjong_does_not(
-    client: TestClient, fixed_template: Template
-) -> None:
+def test_an_abandoned_game_satisfies_no_goal(client: TestClient, fixed_template: Template) -> None:
+    """The challenge is an accomplishment, so quitting earns nothing (#2468/#2472).
+
+    Both rows carry genuine progress — a 9,000-point Twenty48 run and 30 Mahjong
+    pairs. The score goal used to clear on the abandoned run; `won`-style goals
+    were already safe because the abandon result block reports `won: false`.
+    """
     sid = str(uuid.uuid4())
     _play(client, sid, game_type="twenty48", final_score=9000, outcome="abandoned")
     _play(
@@ -613,9 +617,21 @@ def test_score_reached_then_abandoned_counts_but_abandoned_mahjong_does_not(
         result={"won": False, "pairs": 30},
     )
     goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_SCORE_2500.id]["completed"] is False
+    assert goals[_SCORE_2500.id]["best_score"] is None
+    assert goals[_WIN_MAHJONG.id]["completed"] is False
+
+
+@needs_db
+def test_the_same_score_counts_when_the_game_is_finished(
+    client: TestClient, fixed_template: Template
+) -> None:
+    """Mirror of the test above — the filter keys on outcome, not on the score."""
+    sid = str(uuid.uuid4())
+    _play(client, sid, game_type="twenty48", final_score=9000, outcome="completed")
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
     assert goals[_SCORE_2500.id]["completed"] is True
     assert goals[_SCORE_2500.id]["best_score"] == 9000
-    assert goals[_WIN_MAHJONG.id]["completed"] is False
 
 
 @needs_db

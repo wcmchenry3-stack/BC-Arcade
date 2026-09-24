@@ -5,7 +5,14 @@ rows are the ones ``PATCH /games/{id}/complete`` already wrote, so offline
 plays count as soon as the client's queue uploads them (``completed_at`` is
 the client's timestamp, validated on write). Each goal is evaluated against
 one row's measures (``game_facts``: the result block in ``games.metadata``
-plus the score/duration columns) — never ``outcome``.
+plus the score/duration columns).
+
+Abandoned games never satisfy a goal (#2468 / #2472): the challenge and the
+streak it feeds are accomplishments, and an abandon carries a real score on
+most paths — a 9,000-point Twenty48 run ended with "New Game" used to clear a
+"score 2,500+" goal. ``won``-style goals were already safe because the abandon
+result block reports ``won: false``; threshold goals were not, so the rows are
+filtered here instead of relying on each goal kind to notice.
 
 The only write here is indirect: ``schedule.get_or_create_template`` (#2493)
 freezes today's assignment into ``daily_challenge_days`` the first time it is
@@ -35,6 +42,7 @@ from daily_challenge.definitions import (
 )
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
+from games.filters import not_abandoned
 
 
 @dataclass(frozen=True)
@@ -171,6 +179,7 @@ async def get_status_for_session(
                 GameType.name.in_(game_types),
                 Game.completed_at >= day.start_utc,
                 Game.completed_at < day.end_utc,
+                not_abandoned(),
             )
         )
     ).all()

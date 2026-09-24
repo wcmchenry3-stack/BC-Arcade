@@ -156,14 +156,32 @@ async def test_a_missed_yesterday_ends_the_streak_at_zero() -> None:
 
 
 @needs_db
-async def test_progress_goals_credit_an_abandoned_game() -> None:
+async def test_progress_goals_do_not_credit_an_abandoned_game() -> None:
+    """A streak day has to be earned by games the player finished (#2468/#2472).
+
+    These abandons do report real progress — pairs >= 10, moves >= 10 — and
+    used to earn the day. They no longer do: the streak is an accomplishment,
+    so quitting must not advance it.
+    """
     sid = str(uuid.uuid4())
-    # Abandoned games report progress: pairs >= 10 and moves >= 10 without a win.
     await _add(
         sid, "mahjong", _at(_ago(1)), outcome="abandoned", metadata={"won": False, "pairs": 10}
     )
     await _add(
         sid, "solitaire", _at(_ago(1)), outcome="abandoned", metadata={"won": False, "moves": 10}
+    )
+    assert await _streak(sid) == 0
+
+
+@needs_db
+async def test_the_same_progress_credits_the_day_when_the_games_are_finished() -> None:
+    """The mirror of the test above — proves the filter keys on outcome alone."""
+    sid = str(uuid.uuid4())
+    await _add(
+        sid, "mahjong", _at(_ago(1)), outcome="completed", metadata={"won": False, "pairs": 10}
+    )
+    await _add(
+        sid, "solitaire", _at(_ago(1)), outcome="completed", metadata={"won": False, "moves": 10}
     )
     assert await _streak(sid) == 1
 

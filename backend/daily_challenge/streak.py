@@ -57,6 +57,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import EndedGame, evaluate_template, slate_for_games
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
+from games.filters import not_abandoned
 
 # A day counts if at least this many of its goals are met.
 GOALS_TO_QUALIFY = 2
@@ -100,6 +101,9 @@ async def compute_streak(
                 GameType.name.in_(spec_games),
                 Game.completed_at >= oldest.start_utc,
                 Game.completed_at < today.end_utc,
+                # Same rule as service.py — an abandoned game never earns a
+                # streak day (#2468 / #2472).
+                not_abandoned(),
             )
         )
     ).all()
