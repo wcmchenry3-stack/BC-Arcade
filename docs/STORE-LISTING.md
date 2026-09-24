@@ -9,14 +9,15 @@ sitting. Privacy forms (Apple App Privacy, Play Data safety, #2014) are already 
 > checked against Apple's and IARC's published definitions on that date; **confirm the result in
 > each console's rating preview before saving.**
 
-**What the rating covers:** the v1.0 store build, which ships six games — Blackjack, Solitaire,
+**What the rating covers:** the v1.0 store build, which ships six games — Yacht, Solitaire,
 FreeCell, Mahjong, Daily Word, 2048. The six premium games are compiled out of store builds
 (`gameVisibility.ts`), so they are not rated now. **When a premium game ships (IAP, #822), redo both
-questionnaires** — Star Swarm adds cartoon/fantasy violence, and Hearts/Yacht need a fresh look.
+questionnaires** — Blackjack adds simulated gambling (§1), Star Swarm cartoon/fantasy violence, and
+Hearts needs a fresh look.
 
 ---
 
-## 1. Decision needed first: Blackjack and the age rating
+## 1. Decided 2026-09-23: Blackjack is premium, Yacht is free
 
 Blackjack is standard casino Blackjack played for chips: bets with a min/max per table, 3:2
 payouts, double down and split, and a chip-run progression across three tables. No real money, no
@@ -37,24 +38,19 @@ is one of six games but is gambling for its entire duration, so "Frequent/Intens
 conservative answer, and "Infrequent/Mild" is the argument a reviewer could reject. Under-declaring
 risks rejection or later removal; over-declaring only costs audience.
 
-**Options — pick one before screenshots (Sat Oct 3):**
+**Decision (owner, 2026-09-23):** Blackjack moved to the premium tier —
+hidden in store builds until IAP (#822), like the other premium games — and **Yacht** (dice, no
+gambling, no betting) moved to free, so v1.0 still ships six games. Implemented in #2531
+(visibility + entitlement lists, migration `0020_swap_yacht_blackjack`, Yacht score goals in the daily
+challenge, Blackjack's goals parked for #2458). **The v1.0 rating is therefore 4+ / Everyone / PEGI 3,
+and every answer below is the no-gambling answer.**
 
-1. **Ship Blackjack, declare it Frequent** → Apple 18+, PEGI 18, ESRB Teen, Korea needs an RCN (or
-   exclude Korea). Honest, safest with review, smallest audience. An 18+ label on a "calm arcade"
-   is also a weaker listing.
-2. **Ship Blackjack, declare it Infrequent** → Apple 13+, PEGI 18 anyway (PEGI has no frequency
-   tier). Defensible only if you are comfortable arguing prevalence to App Review.
-3. **Hide Blackjack in v1.0 (recommended)** → **4+ / Everyone / PEGI 3** everywhere. One entry in the
-   existing visibility gate (`gameVisibility.ts` + `premiumRoutes.ts`), same mechanism as the six
-   premium games; five free games ship. **It also needs a backend change:** the daily challenge's
-   free goal pool is server-side and includes Blackjack, and the card only _drops_ goals for hidden
-   games (#2475) — so some days would show two goals while a streak day still needs two of three.
-   Remove Blackjack from `FREE_GOAL_POOL` (days already frozen by #2498 keep theirs; nothing real is
-   frozen yet). Bring Blackjack back in an update with the rating raised on purpose, once the app
-   is live.
+Options that were considered, for when Blackjack returns in a paid update:
 
-The answer sheets below give **both** variants where Blackjack matters: _(with Blackjack)_ /
-_(without)_.
+1. Declare it Frequent → Apple 18+, PEGI 18, ESRB Teen, Korea needs an RCN. Honest, safest with
+   review.
+2. Declare it Infrequent → Apple 13+, PEGI 18 anyway. Defensible only if you are comfortable arguing
+   prevalence to App Review.
 
 ---
 
@@ -72,9 +68,9 @@ Play Console → Policy → App content → **Content rating** → Start questio
 | Sexuality, nudity                                                    | **No**                                                       |
 | Language (profanity, crude humour)                                   | **No**                                                       |
 | Controlled substances (drugs, alcohol, tobacco)                      | **No**                                                       |
-| **Gambling — simulated gambling (casino games, no real money)**      | _(with Blackjack)_ **Yes** · _(without)_ **No**              |
+| **Gambling — simulated gambling (casino games, no real money)**      | **No** (Blackjack is premium, hidden in v1.0)                |
 | Gambling — real money, or anything of value can be won               | **No**                                                       |
-| Gambling themes / references only                                    | _(with)_ covered by the Yes above · _(without)_ **No**       |
+| Gambling themes / references only                                    | **No**                                                       |
 | Users can interact or exchange content (chat, UGC visible to others) | **No** — feedback goes privately to the developer (Sentry)   |
 | Shares the user's location with other users                          | **No**                                                       |
 | Digital purchases                                                    | **No** (no IAP in v1.0)                                      |
@@ -82,13 +78,12 @@ Play Console → Policy → App content → **Content rating** → Start questio
 | Loot boxes / random paid items                                       | **No**                                                       |
 | Miscellaneous (e.g. user-generated content, personal info sharing)   | **No**                                                       |
 
-Expected result: _(with)_ ESRB Teen · PEGI 18 · USK/others per region · _(without)_ ESRB Everyone ·
-PEGI 3 · USK 0. Check the preview screen before submitting — IARC assigns all regional ratings at once.
+Expected result: ESRB Everyone · PEGI 3 · USK 0 (IARC may add a mild descriptor for the Yacht
+computer opponent — none expected). Check the preview screen before submitting — IARC assigns all regional ratings at once.
 
 Also in App content (same page, separate cards):
 
-- **Target audience:** 13–15, 16–17, 18+ _(with Blackjack: 18+ only if you take the PEGI view
-  seriously; Google blocks simulated-casino apps targeting children)_. Do **not** select under-13
+- **Target audience:** 13–15, 16–17, 18+. Do **not** select under-13
   groups — the privacy policy says the app is not directed at children under 13, and selecting
   them pulls in the Families policy.
 - **Ads:** "No, my app does not contain ads."
@@ -102,24 +97,24 @@ Also in App content (same page, separate cards):
 App Store Connect → the app → App Information → **Age Rating** → Edit. (The 2025 questionnaire —
 the 4+ / 9+ / 13+ / 16+ / 18+ system.)
 
-| Section                                                                               | Answer                                                                  |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **In-app controls** — parental controls                                               | No                                                                      |
-| **In-app controls** — age assurance                                                   | No                                                                      |
-| **Capabilities** — unrestricted web access                                            | No                                                                      |
-| **Capabilities** — user-generated content                                             | No (feedback is private to the developer, never shown to other users)   |
-| **Capabilities** — messaging / chat                                                   | No                                                                      |
-| **Capabilities** — advertising                                                        | No                                                                      |
-| **Mature themes** — profanity or crude humour; horror / fear; alcohol, tobacco, drugs | None                                                                    |
-| **Medical or wellness** — medical info; health / wellness topics                      | None / No                                                               |
-| **Sexuality or nudity** — all items                                                   | None                                                                    |
-| **Violence** — cartoon / fantasy; realistic; prolonged graphic; guns / weapons        | None                                                                    |
-| **Chance-based** — gambling (real money)                                              | No                                                                      |
-| **Chance-based — simulated gambling**                                                 | _(with Blackjack)_ **Frequent/Intense** (see §1) · _(without)_ **None** |
-| **Chance-based** — contests                                                           | No                                                                      |
-| **Chance-based** — loot boxes                                                         | No                                                                      |
+| Section                                                                               | Answer                                                                |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **In-app controls** — parental controls                                               | No                                                                    |
+| **In-app controls** — age assurance                                                   | No                                                                    |
+| **Capabilities** — unrestricted web access                                            | No                                                                    |
+| **Capabilities** — user-generated content                                             | No (feedback is private to the developer, never shown to other users) |
+| **Capabilities** — messaging / chat                                                   | No                                                                    |
+| **Capabilities** — advertising                                                        | No                                                                    |
+| **Mature themes** — profanity or crude humour; horror / fear; alcohol, tobacco, drugs | None                                                                  |
+| **Medical or wellness** — medical info; health / wellness topics                      | None / No                                                             |
+| **Sexuality or nudity** — all items                                                   | None                                                                  |
+| **Violence** — cartoon / fantasy; realistic; prolonged graphic; guns / weapons        | None                                                                  |
+| **Chance-based** — gambling (real money)                                              | No                                                                    |
+| **Chance-based — simulated gambling**                                                 | **None** (Blackjack is premium, hidden in v1.0)                       |
+| **Chance-based** — contests                                                           | No                                                                    |
+| **Chance-based** — loot boxes                                                         | No                                                                    |
 
-Expected result: _(with, Frequent)_ **18+** · _(with, Infrequent)_ **13+** · _(without)_ **4+**.
+Expected result: **4+**.
 Apps in the Games category also show an additional regional rating on the product page.
 
 ---
@@ -128,7 +123,7 @@ Apps in the Games category also show an additional regional rating on the produc
 
 Written to the product principles in [`PRODUCT.md`](PRODUCT.md) (calm, short sessions, no forced
 login, no ads) and only claiming what the v1.0 store build does. Name is always **BC Arcade**
-(`BRANDING.md`). Where Blackjack is named, drop it if you choose option 3.
+(`BRANDING.md`).
 
 ### Shared facts (both stores)
 
@@ -161,7 +156,7 @@ SIX GAMES
 • Mahjong — classic tile-matching solitaire on the Turtle layout
 • Daily Word — one word puzzle a day, six guesses, the same word for everyone (English and Hindi)
 • 2048 — slide and merge tiles to reach 2048 and beyond
-• Blackjack — play for chips against the dealer across three tables (no real money)
+• Yacht — roll five dice, fill 13 scoring boxes, and try to beat the computer
 
 A DAILY CHALLENGE
 Every day brings three goals: today's Daily Word plus one goal in each of two other games. Finish two of the three to keep your streak going.
@@ -197,10 +192,10 @@ Three new goals every day across six classic games. Keep your streak alive — n
 **Keywords** (100 max, comma-separated, no spaces after commas, don't repeat the name or category):
 
 ```
-solitaire,freecell,mahjong,word,2048,daily,klondike,cards,tiles,brain,offline,streak,classic,casual
+solitaire,freecell,mahjong,dice,word,2048,daily,klondike,cards,tiles,offline,streak,classic,casual
 ```
 
-_(If Blackjack ships, it can replace `brain` — but avoid `casino`: it invites gambling-app scrutiny.)_
+_(Avoid `casino` and `poker`, even when Blackjack returns: they invite gambling-app scrutiny.)_
 
 **What's New** (v1.0): `First release.`
 
@@ -216,13 +211,12 @@ Points to cover for Guideline 4.2 (minimum functionality) — expand into prose 
    shows level and per-game history.
 3. No login, no demo account needed. No IAP in this version. No tracking (no ATT prompt; see the
    privacy manifest).
-4. _(If Blackjack ships)_ Blackjack uses play chips only; they cannot be bought, sold or cashed out.
 
 ---
 
 ## 5. Before you save each form
 
-1. The Blackjack decision in §1 matches every Blackjack answer in §2 and §3 and the listing text.
+1. The build being rated is the store build (no Blackjack), so every gambling answer is No / None.
 2. The privacy-policy URL resolves (#828).
 3. Rating previews show the expected result; screenshot them into #825 / #823.
 4. Screenshots (Sat Oct 3) come from a **store-configuration** build — the prod-API build from Wed 30
