@@ -450,7 +450,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 
 | Group     | Games per block | Stopped at (cap)      | Wall-clock |
 | --------- | --------------- | --------------------- | ---------- |
-| `presets` | 6               | 6,400 blocks (12,000) | ~4.5 min   |
+| `presets` | 6               | 4,200 blocks (12,000) | ~3.5 min   |
 | `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 12,000 blocks ×
@@ -482,16 +482,18 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24, after #2555, #2234 and #2235).** Baseline
+**What the gate measured (2026-09-24, after #2555, #2234, #2235 and #2236).** Baseline
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 29.0%
-  at the all-Cautious table, 25.4% at all-Schemer and 20.5% at all-Daring
-  (25.4% at the mixed table). At the mixed table Daring wins 31.6%, Schemer
-  23.7%, Cautious 19.3%; in the field matchup Daring beats Schemer by
-  +5.1pp and Schemer beats Cautious by +4.6pp. All six steps are
-  separation checks.
+- The difficulty ladder holds at every step: the human stand-in wins 42.2%
+  at the all-Cautious table, 25.6% at all-Schemer and 17.2% at all-Daring
+  (26.1% at the mixed table). At the mixed table Daring wins 38.4%, Schemer
+  25.2%, Cautious 10.2%; in the field matchup Daring beats Schemer by
+  +8.3pp and Schemer beats Cautious by +13.6pp. All six steps are
+  separation checks. #2236's tactics widened the ladder: better play on
+  every non-random move makes each persona's noise rate (Cautious 38%,
+  Schemer 10%, Daring 0%) cost more.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
@@ -513,7 +515,17 @@ counts are in `baseline.json`):
   already in the trick, pass memory and known voids; the threat is graded
   from 2 points instead of switching on at 4. Against a Schemer field,
   Daring's paired moon success fell from 10.1% to 5.3% (moons per hand
-  1.47% → 0.76%). At the all-Daring table paired success is now 5.4%.
+  1.47% → 0.76%).
+- #2236 added engine-level tactics (`rateTactics`), validated one at a time
+  head to head (a seat with the tactic against the same seat without it,
+  same cards, Schemer field): duck high (play the highest card that already
+  loses — #1500's rule) +28.4pp win share with its moon guard; forced/free
+  win with the highest card +4.3pp; low-spade flush leads +3.3pp. Keeping
+  low "exit" cards for the endgame cost 1.2-2.2pp in every variant and was
+  left out. Duck-high stands aside while a lone opponent holds every
+  point: unguarded, defenders shed their stoppers and Daring's moon
+  success rose from 5% to 21%. At the all-Daring table paired moon success
+  is now 8.0%.
 - 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.
