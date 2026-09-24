@@ -46,7 +46,7 @@ export async function loadGame(): Promise<MahjongState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<MahjongState>;
+    const parsed = JSON.parse(raw) as { -readonly [K in keyof MahjongState]?: MahjongState[K] };
     if (
       parsed._v !== 1 ||
       !Array.isArray(parsed.tiles) ||

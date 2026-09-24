@@ -87,13 +87,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const winFlash = useSharedValue(0);
 
   const bustFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(220,38,38,0.4)",
     opacity: bustFlash.value,
     pointerEvents: "none",
   }));
   const winFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(34,197,94,0.35)",
     opacity: winFlash.value,
     pointerEvents: "none",

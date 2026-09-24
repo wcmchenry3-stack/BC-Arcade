@@ -5,7 +5,9 @@
  * these in sync when the backend contract changes.
  */
 
-export type { GameOutcome, GameType } from "./vocab";
+import type { GameOutcome, GameType } from "./vocab";
+
+export type { GameOutcome, GameType };
 
 /** A player participating in a game (#543). Mirrors backend PlayerRef. */
 export interface PlayerRef {

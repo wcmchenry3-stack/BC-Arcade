@@ -51,7 +51,7 @@ import { useSortAudio } from "../game/sort/useSortAudio";
 
 const MAX_NAME_LENGTH = 32;
 
-type View = "loading" | "select" | "play";
+type ScreenView = "loading" | "select" | "play";
 type SelectTab = "levels" | "leaderboard";
 
 export default function SortScreen() {
@@ -64,7 +64,7 @@ export default function SortScreen() {
   const offline = isInitialized && !isOnline;
 
   // Top-level view
-  const [view, setView] = useState<View>("loading");
+  const [view, setView] = useState<ScreenView>("loading");
   const [levels, setLevels] = useState<LevelData[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [progress, setProgress] = useState<SortProgress>({
@@ -234,7 +234,7 @@ export default function SortScreen() {
     const { selectedBottleIndex } = gameState;
 
     if (selectedBottleIndex === null) {
-      if (gameState.bottles[index].length > 0) {
+      if ((gameState.bottles[index]?.length ?? 0) > 0) {
         setGameState({ ...gameState, selectedBottleIndex: index });
       }
       return;
@@ -245,7 +245,7 @@ export default function SortScreen() {
       return;
     }
 
-    if (isValidPour(gameState.bottles[selectedBottleIndex], gameState.bottles[index])) {
+    if (isValidPour(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!)) {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       const holdMs = POUR_PER_UNIT_MS * units;

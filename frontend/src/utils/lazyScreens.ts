@@ -70,7 +70,7 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
   function next(): void {
     while (running < PREFETCH_CONCURRENCY && index < tasks.length) {
       running++;
-      const task = tasks[index++];
+      const task = tasks[index++]!;
       task().then(
         () => {
           running--;

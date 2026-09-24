@@ -462,8 +462,8 @@ export default function SudokuScreen() {
   const handleHint = useCallback(() => {
     setState((s) => {
       if (!s || s.selectedRow === null || s.selectedCol === null) return s;
-      const cell = s.grid[s.selectedRow][s.selectedCol];
-      if (cell.given || cell.value !== 0) return s;
+      const cell = s.grid[s.selectedRow]?.[s.selectedCol];
+      if (!cell || cell.given || cell.value !== 0) return s;
       const { size } = variantConfig(s.variant);
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;

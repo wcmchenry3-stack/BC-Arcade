@@ -1270,7 +1270,9 @@ exports[`SudokuCell matches snapshot — given value 1`] = `
       [
         {
           "fontSize": 18,
-          "fontVariantNumeric": "tabular-nums",
+          "fontVariant": [
+            "tabular-nums",
+          ],
           "lineHeight": 18,
         },
         {
@@ -1337,7 +1339,9 @@ exports[`SudokuCell matches snapshot — peer cell 1`] = `
       [
         {
           "fontSize": 18,
-          "fontVariantNumeric": "tabular-nums",
+          "fontVariant": [
+            "tabular-nums",
+          ],
           "lineHeight": 18,
         },
         {
@@ -1404,7 +1408,9 @@ exports[`SudokuCell matches snapshot — selected error cell 1`] = `
       [
         {
           "fontSize": 18,
-          "fontVariantNumeric": "tabular-nums",
+          "fontVariant": [
+            "tabular-nums",
+          ],
           "lineHeight": 18,
         },
         {
@@ -1512,7 +1518,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
             [
               {
                 "fontSize": 18,
-                "fontVariantNumeric": "tabular-nums",
+                "fontVariant": [
+                  "tabular-nums",
+                ],
                 "lineHeight": 18,
               },
               {
@@ -4046,7 +4054,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
             [
               {
                 "fontSize": 18,
-                "fontVariantNumeric": "tabular-nums",
+                "fontVariant": [
+                  "tabular-nums",
+                ],
                 "lineHeight": 18,
               },
               {
@@ -6580,7 +6590,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
             [
               {
                 "fontSize": 18,
-                "fontVariantNumeric": "tabular-nums",
+                "fontVariant": [
+                  "tabular-nums",
+                ],
                 "lineHeight": 18,
               },
               {

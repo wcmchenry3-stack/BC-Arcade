@@ -1055,7 +1055,7 @@ const styles = StyleSheet.create({
     left: 0,
   },
   hud: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 8,
@@ -1105,7 +1105,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   phaseOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

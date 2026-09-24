@@ -330,6 +330,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       enemyGrunt: null,
       enemyElite: null,
       enemyBoss: null,
+      enemyCarrier: null,
       bulletPlayer: null,
       bulletEnemy: null,
       bulletCharge: null,

@@ -77,7 +77,22 @@ cd frontend && npm install
 
 ```bash
 npm test
+npm run typecheck
 ```
+
+### Type-checking (#2211)
+
+`npm run typecheck` runs `tsc --noEmit -p tsconfig.typecheck.json` and must report zero errors.
+CI runs it in the dedicated `typecheck-frontend` job on every PR and fails on any error.
+
+`tsconfig.typecheck.json` extends the main `tsconfig.json` but covers **production sources
+only**: test files (`__tests__/`, `*.test.ts(x)`), jest setup files, `scripts/`, `e2e/` and
+`eslint.config.js` are excluded. Editors keep using `tsconfig.json`, so tests still get
+in-editor type hints; they just aren't gated in CI yet.
+
+Don't suppress new errors with `@ts-ignore`/`@ts-expect-error` to get the job green. If one
+genuinely needs a larger refactor, suppress that single line with a comment linking a tracking
+issue.
 
 ### Structure
 
