@@ -80,74 +80,11 @@
     "doNotTranslate": ["2048"],
     "notes": ""
   },
-  "actions.quit": {
-    "component": "Twenty48Screen",
-    "description": "Button text to quit and return home.",
-    "tone": "neutral",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "actions.quitLabel": {
-    "component": "Twenty48Screen",
-    "description": "Accessibility label for the quit button.",
-    "tone": "neutral",
-    "characterLimit": 50,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
   "swipe.hint": {
     "component": "Twenty48Screen",
     "description": "Hint text shown below the score to guide the player.",
     "tone": "instructional",
     "characterLimit": 30,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "gameOver.title": {
-    "component": "GameOverlay",
-    "description": "Title shown when the game is over.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "gameOver.body": {
-    "component": "GameOverlay",
-    "description": "Message shown when the game is over with the final score.",
-    "tone": "neutral",
-    "characterLimit": 60,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "gameOver.newGame": {
-    "component": "GameOverlay",
-    "description": "Button text in game over overlay to start a new game.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "gameOver.home": {
-    "component": "GameOverlay",
-    "description": "Button text in game over overlay to return home.",
-    "tone": "neutral",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": ""
-  },
-  "win.title": {
-    "component": "GameOverlay",
-    "description": "Title shown when the player reaches 2048.",
-    "tone": "celebratory",
-    "characterLimit": 15,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": ""

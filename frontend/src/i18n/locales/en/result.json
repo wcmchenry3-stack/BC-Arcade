@@ -36,5 +36,6 @@
   "margin.tied": "You both finished on {{score}}",
   "stat.upper": "Upper",
   "stat.lower": "Lower",
-  "stat.bonus": "Bonus"
+  "stat.bonus": "Bonus",
+  "subtitle.noMoves": "No more moves"
 }

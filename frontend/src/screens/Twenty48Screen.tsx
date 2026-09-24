@@ -21,10 +21,9 @@ import {
 } from "../game/twenty48/storage";
 import Grid from "../components/twenty48/Grid";
 import ScoreBoard from "../components/twenty48/ScoreBoard";
-import GameOverlay from "../components/twenty48/GameOverlay";
+import GameResultModal from "../components/shared/GameResultModal";
 import StatsBento from "../components/twenty48/StatsBento";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
-import { AnimationOverlay } from "../components/shared/AnimationOverlay";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useTwenty48Scoreboard } from "../game/twenty48/Twenty48ScoreboardContext";
 import { useSound } from "../game/_shared/useSound";
@@ -52,6 +51,7 @@ type Props = {
 
 export default function Twenty48Screen({ navigation }: Props) {
   const { t } = useTranslation(["twenty48", "common", "errors"]);
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -59,6 +59,9 @@ export default function Twenty48Screen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [winDismissed, setWinDismissed] = useState(false);
   const [bestScore, setBestScore] = useState(0);
+  // Best score before the current game began: bestScore rises live with the
+  // score, so "New Best" compares against this instead (#2513).
+  const [bestAtGameStart, setBestAtGameStart] = useState(0);
   const [stats, setStats] = useState<Twenty48Stats>({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 });
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
 
@@ -139,6 +142,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       setState(next);
       if (!saved) saveGame(next);
       setBestScore(best);
+      setBestAtGameStart(best);
       setLoading(false);
       if (!next.game_over) {
         moveCountRef.current = 0;
@@ -293,6 +297,7 @@ export default function Twenty48Screen({ navigation }: Props) {
     pendingMove.current = null;
     winRecordedRef.current = false;
     setWinDismissed(false);
+    setBestAtGameStart((prevBest) => Math.max(prevBest, stateRef.current?.score ?? 0));
     // Close out the previous session with proper payload (if still open).
     const prev = stateRef.current;
     if (prev) {
@@ -386,6 +391,21 @@ export default function Twenty48Screen({ navigation }: Props) {
     })
     .runOnJS(true);
 
+  const handleKeepPlaying = useCallback(() => {
+    setWinDismissed(true);
+    const s = stateRef.current;
+    if (s) {
+      syncComplete(
+        {
+          finalScore: s.score,
+          outcome: "kept_playing",
+          durationMs: computeDurationMs(s),
+        },
+        endedPayload(s, "kept_playing")
+      );
+    }
+  }, [endedPayload, syncComplete]);
+
   const showWinOverlay = state?.has_won && !winDismissed && !state.game_over;
   const showGameOverOverlay = state?.game_over;
 
@@ -454,41 +474,42 @@ export default function Twenty48Screen({ navigation }: Props) {
       {/* Stats bento — Highest Tile + Time Played */}
       {state && <StatsBento state={state} />}
 
-      {/* Overlays */}
-      <AnimationOverlay visible={!!showWinOverlay} onDismiss={() => setWinDismissed(true)}>
-        {showWinOverlay && (
-          <GameOverlay
-            type="win"
-            score={state!.score}
-            onNewGame={resetGame}
-            onKeepPlaying={() => {
-              setWinDismissed(true);
-              const s = stateRef.current;
-              if (s) {
-                syncComplete(
-                  {
-                    finalScore: s.score,
-                    outcome: "kept_playing",
-                    durationMs: computeDurationMs(s),
-                  },
-                  endedPayload(s, "kept_playing")
-                );
+      {/* End-of-game result card (#2513): the 2048 win (Keep Playing) or no moves. */}
+      <GameResultModal
+        visible={!!showWinOverlay || !!showGameOverOverlay}
+        outcome={showGameOverOverlay ? "ended" : "win"}
+        eyebrow={t("twenty48:game.title")}
+        subtitle={showGameOverOverlay ? tResult("subtitle.noMoves") : t("twenty48:win.body")}
+        hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
+        isNewBest={
+          !!showGameOverOverlay && bestAtGameStart > 0 && (state?.score ?? 0) > bestAtGameStart
+        }
+        stats={
+          state
+            ? [
+                { label: t("twenty48:score.best"), value: Math.max(bestScore, state.score) },
+                { label: t("twenty48:stats.highestTile"), value: highestTile(state.board) },
+              ]
+            : []
+        }
+        primaryAction={
+          showGameOverOverlay
+            ? undefined
+            : {
+                label: t("twenty48:actions.keepPlaying"),
+                accessibilityLabel: t("twenty48:actions.keepPlayingLabel"),
+                onPress: handleKeepPlaying,
               }
-            }}
-            onHome={() => navigation.goBack()}
-          />
-        )}
-      </AnimationOverlay>
-      <AnimationOverlay visible={!!showGameOverOverlay} onDismiss={() => {}}>
-        {showGameOverOverlay && (
-          <GameOverlay
-            type="game_over"
-            score={state!.score}
-            onNewGame={resetGame}
-            onHome={() => navigation.goBack()}
-          />
-        )}
-      </AnimationOverlay>
+        }
+        onPlayAgain={resetGame}
+        secondaryAction={
+          showGameOverOverlay
+            ? undefined
+            : { label: tResult("action.playAgain"), onPress: resetGame }
+        }
+        onHome={() => navigation.popToTop()}
+        testID="twenty48-result"
+      />
 
       <NewGameConfirmModal
         visible={confirmNewGameVisible}
