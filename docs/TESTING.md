@@ -343,21 +343,22 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
   two per-seat counters, and every report prints both counts. No metric can
   be declared without its denominator (the type requires one):
 
-  | Metric             | Numerator \| denominator                                   |
-  | ------------------ | ---------------------------------------------------------- |
-  | `win_share`        | games won (ties split) \| games played                     |
-  | `points_per_hand`  | points taken (moon-adjusted) \| hands played               |
-  | `qs_taken`         | hands taking Q♠ \| hands played                            |
-  | `moon_attempt`     | hands the earlyMoon/midMoon trigger fired \| hands played  |
-  | `moon_success`     | moons shot in attempted hands \| hands attempted (paired)  |
-  | `moon_shot`        | moons shot \| hands played                                 |
-  | `qs_dump_on_human` | Q♠ dumps won by the human seat \| Q♠ dumps                 |
-  | `void_created`     | passes that emptied a suit \| passes that could have       |
+  | Metric             | Numerator \| denominator                                  |
+  | ------------------ | --------------------------------------------------------- |
+  | `win_share`        | games won (ties split) \| games played                    |
+  | `points_per_hand`  | points taken (moon-adjusted) \| hands played              |
+  | `qs_taken`         | hands taking Q♠ \| hands played                           |
+  | `moon_attempt`     | hands the earlyMoon/midMoon trigger fired \| hands played |
+  | `moon_success`     | moons shot in attempted hands \| hands attempted (paired) |
+  | `moon_shot`        | moons shot \| hands played                                |
+  | `qs_dump_on_human` | Q♠ dumps won by the human seat \| Q♠ dumps                |
+  | `void_created`     | passes that emptied a suit \| passes that could have      |
 
   Estimates are ratio estimators over blocks (Σ numerators ÷ Σ
   denominators, delta-method SE), so games sharing deals are never counted
   as independent. A rate whose denominator never occurred is reported as
   `n/a`, never as 0.
+
 - `sprt.ts` — Wald sequential probability ratio tests on per-block series
   (Gaussian, plug-in variance, as chess-engine CI does for game pairs).
 - `gate.ts` — the matchups, the checks, and the pre-registered hypotheses;
@@ -396,8 +397,8 @@ npx tsx scripts/simulate-hearts.ts --count 3000               # descriptive repo
 **Reading a failure.**
 
 - `FAIL table-daring/daring/moon_success: 3.10% [2.2%, 4.0%] vs baseline
-  7.23% ± δ 2.50% — moons shot in attempted hands | hands attempted =
-  402/12967 — LLR low/high 6.21 / -40.3` — a regression check accepted H1:
+7.23% ± δ 2.50% — moons shot in attempted hands | hands attempted =
+402/12967 — LLR low/high 6.21 / -40.3` — a regression check accepted H1:
   the rate moved by about δ or more from the baseline, with the stated
   error rates. The logged counts show what the rate was computed from.
   Unlike a fixed-N band failure, this is a decision, not a borderline
@@ -435,9 +436,16 @@ runs the two groups as parallel matrix jobs on every PR that touches
 `frontend/src/game/hearts/ai*.ts` (which covers `aiConsiderations.ts`,
 `aiWeights.ts` and `aiInfoSet.ts`), `engine.ts`, `types.ts`, the sim
 directory or the script, plus nightly and on demand. Measured on a 4-core
-dev box (~7 ms per game under `tsx`): RUNTIME_TABLE
+dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
+(seed 2238) decided every check early:
+
+| Group     | Games per block | Stopped at (cap)     | Wall-clock |
+| --------- | --------------- | -------------------- | ---------- |
+| `presets` | 6               | 3,400 blocks (8,000) | ~2 min     |
+| `field`   | 9               | 1,800 blocks (6,000) | ~1.5 min   |
+
 Worst case, with every check running to its cap (presets 8,000 blocks ×
-6 games, field 6,000 × 9), is about 6 min per group; the job timeout is
+6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 
@@ -451,12 +459,12 @@ duplicate-deal invariants and the gate config are in
 
 **What duplicate deals buy.** Measured on 1,500 blocks:
 
-| Comparison                                        | Variance vs unpaired blocks |
-| ------------------------------------------------- | --------------------------- |
-| Field: persona win-share difference               | 0.80–0.88×                  |
-| Field: persona points-per-hand difference         | 0.52–0.65×                  |
-| Presets: stand-in win share, table vs table       | 0.76–0.82×                  |
-| Mixed table: two personas at the _same_ table     | 1.26–1.29× (worse)          |
+| Comparison                                    | Variance vs unpaired blocks |
+| --------------------------------------------- | --------------------------- |
+| Field: persona win-share difference           | 0.80–0.88×                  |
+| Field: persona points-per-hand difference     | 0.52–0.65×                  |
+| Presets: stand-in win share, table vs table   | 0.76–0.82×                  |
+| Mixed table: two personas at the _same_ table | 1.26–1.29× (worse)          |
 
 Hearts diverges fast (a different pass changes every later trick), so the
 reduction is modest. Comparing personas that sit at the same table
@@ -464,7 +472,21 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24).** BASELINE_SUMMARY
+**What the gate measured (2026-09-24).** Baseline (`BASELINE_SEED`,
+presets 12,000 blocks, field 6,000; the full numbers with counts are in
+`baseline.json`):
+
+- The human stand-in wins 21.9% at the all-Cautious table, 25.5% at
+  all-Schemer, 23.9% at all-Daring and 24.0% at the mixed table — the
+  "easiest" persona gives the hardest table.
+- At the mixed table Cautious wins 27.2%, Daring 26.0%, Schemer 22.9%. In the
+  field matchup Cautious beats Schemer by +2.75pp and Daring beats Schemer by
+  +1.5pp. The ladder is Cautious ≳ Daring > Schemer, not the intended
+  Daring > Schemer > Cautious; the gate pins it as it is (rebalancing is
+  #2233's job, and will update the expectations with new evidence).
+- Daring: moon attempts in 9.2% of hands, paired success 7.2% of attempts;
+  33% of its Q♠ dumps land on the human (Schemer: 34%). Passes that could
+  void a suit do so 21% (Cautious), 65% (Schemer), 83% (Daring) of the time.
 
 **Relation to #2204.** The v2 gate keeps both #2204 fixes: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
