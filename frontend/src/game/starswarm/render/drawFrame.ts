@@ -7,7 +7,7 @@
  * on the JS thread and is tested there. This is a straight port of `renderOp` in GameCanvas.tsx,
  * the declarative path kept behind the "Legacy renderer" dev switch until phase 5.
  */
-import { Skia, PaintStyle } from "@shopify/react-native-skia";
+import { Skia, PaintStyle, FilterMode, MipmapMode } from "@shopify/react-native-skia";
 import type { SkCanvas, SkImage, SkPaint } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
 
@@ -96,10 +96,15 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
           canvas.scale(-1, 1);
           canvas.translate(-cx, 0);
         }
-        canvas.drawImageRect(
+        // Linear filtering, no mipmaps — what the declarative <Image> uses by default. Plain
+        // drawImageRect would sample nearest-neighbour, and every sprite here is drawn smaller
+        // than its source, so it would look jagged and shimmer in motion.
+        canvas.drawImageRectOptions(
           img,
           Skia.XYWHRect(0, 0, iw, ih),
           Skia.XYWHRect(dst.x, dst.y, dst.w, dst.h),
+          FilterMode.Linear,
+          MipmapMode.None,
           imagePaint
         );
         if (op.flipX) canvas.restore();

@@ -33,6 +33,8 @@ jest.mock("@shopify/react-native-skia", () => {
   };
   return {
     PaintStyle: { Fill: 0, Stroke: 1 },
+    FilterMode: { Nearest: 0, Linear: 1 },
+    MipmapMode: { None: 0, Nearest: 1, Linear: 2 },
     Skia: {
       Paint,
       Color: (str: string) => ({ str }),
@@ -61,7 +63,12 @@ import { initStarSwarm, CANVAS_W, CANVAS_H } from "../engine";
 import { initStarfield } from "../starfield";
 import type { SkCanvas } from "@shopify/react-native-skia";
 
-type Call = { fn: string; args: unknown[]; paint?: Record<string, unknown> };
+type Call = {
+  fn: string;
+  args: unknown[];
+  paint?: Record<string, unknown>;
+  sampling?: { fm: number; mm: number };
+};
 
 function recorder() {
   const calls: Call[] = [];
@@ -73,8 +80,13 @@ function recorder() {
       calls.push({ fn: "drawCircle", args: [cx, cy, r], paint: snap(p) }),
     drawPath: (path: { cmds: unknown[] }, p: unknown) =>
       calls.push({ fn: "drawPath", args: [path.cmds], paint: snap(p) }),
-    drawImageRect: (img: { id: string }, src: unknown, dst: unknown) =>
-      calls.push({ fn: "drawImageRect", args: [img.id, src, dst] }),
+    drawImageRectOptions: (
+      img: { id: string },
+      src: unknown,
+      dst: unknown,
+      fm: number,
+      mm: number
+    ) => calls.push({ fn: "drawImageRect", args: [img.id, src, dst], sampling: { fm, mm } }),
     save: () => calls.push({ fn: "save", args: [] }),
     restore: () => calls.push({ fn: "restore", args: [] }),
     translate: (x: number, y: number) => calls.push({ fn: "translate", args: [x, y] }),
@@ -203,7 +215,10 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
         { x: 0, y: 0, width: 100, height: 50 },
         { x: 10, y: 20, width: 30, height: 40 },
       ],
+      // linear, no mipmaps — the declarative <Image> default; nearest would shimmer when scaled
+      sampling: { fm: 1, mm: 0 },
     });
+    expect(calls.every((c) => c.sampling?.fm === 1 && c.sampling?.mm === 0)).toBe(true);
     // 40×20 sprite contained in 24×24 → 24×12, centred vertically
     expect(calls[1]!.args[2]).toEqual({ x: 0, y: 6, width: 24, height: 12 });
     expect(calls[2]!.args[0]).toBe("ex7");

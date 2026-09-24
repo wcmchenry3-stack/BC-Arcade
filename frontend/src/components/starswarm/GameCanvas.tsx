@@ -385,7 +385,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
     // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
     // derived value re-records only when the list, the image set or the canvas size changes.
-    const frameSV = useSharedValue<readonly DrawOp[]>([]);
+    // Seeded with the first frame so the Picture is never blank before the first publish.
+    const [initialOps] = useState(() =>
+      buildFrame(renderState.game, renderState.sf, { loaded: loadedRef.current, width, height })
+    );
+    const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
+    // Effects and the loop write through a ref: the shared value's identity is stable in the app,
+    // and a ref keeps them correct (and out of dependency lists) even where it isn't.
+    const frameSVRef = useRef(frameSV);
+    frameSVRef.current = frameSV;
     const drawErrorReported = useSharedValue(false);
     const picture = useDerivedValue(() => {
       const ops = frameSV.value;
@@ -410,8 +418,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       if (rendererMode !== "picture") return;
       const { width: w, height: h } = sizeRef.current;
-      publishPicture(frameSV, publishedRef.current, loadedRef.current, w, h);
-    }, [drawImages, rendererMode, frameSV]);
+      publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
+    }, [drawImages, rendererMode]);
 
     useImperativeHandle(
       ref,
@@ -474,10 +482,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       };
       publishedRef.current = fresh;
       if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
-        publishPicture(frameSV, fresh, loadedRef.current, width, height);
+        publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
       }
       setRenderState(fresh);
-    }, [resetTick, width, height, frameSV]);
+    }, [resetTick, width, height]);
 
     // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
     // something drawn changed (#2563)
@@ -651,7 +659,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           // until phase 4 (#2566), but no longer reconciles the scene's hundreds of elements
           if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
             const { width: w, height: h } = sizeRef.current;
-            publishPicture(frameSV, next, loadedRef.current, w, h);
+            publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
           }
           setRenderState(next);
         }
@@ -660,7 +668,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       id = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(id);
-    }, [frameSV]); // frameSV is stable — the loop lives for the component's lifetime
+    }, []); // intentionally empty — loop lives for component lifetime
 
     const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
     // #2564: every drawing decision (sprites vs fallbacks, rings, flashes, the beam, the #2334
