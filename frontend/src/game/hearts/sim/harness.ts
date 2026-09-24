@@ -156,6 +156,12 @@ export type Policies = readonly [HeartsPolicy, HeartsPolicy, HeartsPolicy, Heart
 export interface PlayOptions {
   /** Keep every hand's opening deal on the record (tests only). */
   readonly recordDeals?: boolean;
+  /**
+   * Observe each card play before it is applied: the state the seat chose
+   * from, and its choice (the regret metric's hook, #2239). Must not touch
+   * the engine's RNG — the next seat's noise stream is switched in after it.
+   */
+  readonly onPlay?: (state: HeartsState, seat: number, card: Card) => void;
 }
 
 /** Final-score win shares: the lowest score wins; a tie splits the win. */
@@ -258,6 +264,7 @@ export function playGame(
       const trick = [...state.currentTrick];
       setRng(noise[seat]!);
       const card = policy.play(hand, [...trick], state, seat);
+      options.onPlay?.(state, seat, card);
       const tricksBefore = state.tricksPlayedInHand;
       state = playCard(state, seat, card);
       if (state.tricksPlayedInHand > tricksBefore) {
