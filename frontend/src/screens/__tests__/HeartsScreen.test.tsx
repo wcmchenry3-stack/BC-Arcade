@@ -504,22 +504,58 @@ describe("HeartsScreen — result card (#2506)", () => {
     expect(r.queryByPlaceholderText("Enter your name")).toBeNull();
   });
 
-  it("does not resubmit a finished game resumed from storage", async () => {
-    await AsyncStorage.setItem("player_display_name", "Riley");
-    (loadGame as jest.Mock).mockResolvedValue({
+  function gameOverState(): HeartsState {
+    return {
       ...lastTrickState([46, 100, 63, 52]),
       phase: "game_over",
       isComplete: true,
       winnerIndex: 0,
       currentTrick: [],
       playerHands: [[], [], [], []],
-    });
+    } as unknown as HeartsState;
+  }
+
+  it("does not resubmit a finished game resumed from storage", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    (loadGame as jest.Mock).mockResolvedValue(gameOverState());
     const r = await renderScreen();
     expect(await r.findByTestId("hearts-result")).toBeTruthy();
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
     expect(submitScore).not.toHaveBeenCalled();
+  });
+
+  it("clears the owed score once it is saved, so reopening sends nothing", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    const r = await finishGame([45, 100, 63, 52]);
+    await waitFor(() => expect(r.getByText(/Saved as Riley/)).toBeTruthy());
+    await waitFor(async () =>
+      expect(await AsyncStorage.getItem("hearts_pending_submission")).toBeNull()
+    );
+  });
+
+  // #2560 review: the app closed while the card still owed the score.
+  it("resumes an interrupted submission when the finished game is reopened", async () => {
+    // First visit: no display name, so the card asks for one — and the
+    // player leaves without answering.
+    const first = await finishGame([45, 100, 63, 52]);
+    expect(await first.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    await first.unmount();
+    expect(submitScore).not.toHaveBeenCalled();
+
+    // Reopened: the saved game-over state loads and the prompt is back.
+    (loadGame as jest.Mock).mockResolvedValue(gameOverState());
+    const again = await renderScreen();
+    const input = await again.findByLabelText("Pick a display name for leaderboards");
+    await act(async () => {
+      await fireEvent.changeText(input, "Riley");
+    });
+    await act(async () => {
+      await fireEvent.press(again.getByRole("button", { name: "Save" }));
+    });
+    await waitFor(() => expect(submitScore).toHaveBeenCalledWith("Riley", 54));
+    expect(submitScore).toHaveBeenCalledTimes(1);
   });
 
   it("Play Again deals a new game at the same difficulty", async () => {

@@ -33,6 +33,11 @@ import {
 } from "../game/hearts/playerNames";
 import { heartsLeaderboard, heartsLeaderboardScore } from "../game/hearts/leaderboard";
 import { heartsResult } from "../game/hearts/result";
+import {
+  clearPendingSubmission,
+  loadPendingSubmission,
+  savePendingSubmission,
+} from "../game/hearts/pendingSubmission";
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -136,9 +141,15 @@ export default function HeartsScreen() {
   useEffect(() => {
     loadGame().then((saved) => {
       if (!unmountedRef.current && saved) {
-        // A finished game resumed from storage: its game-over sound played and
-        // its score was submitted when it ended — don't do either again.
-        if (saved.phase === "game_over") gameOverFiredRef.current = true;
+        // A finished game resumed from storage: its game-over sound played when
+        // it ended. Its score goes out only if that submission never completed
+        // (e.g. the app closed while the card asked for a display name).
+        if (saved.phase === "game_over") {
+          gameOverFiredRef.current = true;
+          loadPendingSubmission().then((pending) => {
+            if (!unmountedRef.current && pending) submitScore(pending);
+          });
+        }
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
         if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
@@ -347,10 +358,19 @@ export default function HeartsScreen() {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       playGameOver();
-      submitScore({ score: heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0) });
+      const pending = { score: heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0) };
+      void savePendingSubmission(pending);
+      submitScore(pending);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);
+
+  // The owed score is settled once it's saved, or queued for the next flush.
+  useEffect(() => {
+    if (leaderboard.status === "saved" || leaderboard.status === "offline") {
+      void clearPendingSubmission();
+    }
+  }, [leaderboard.status]);
 
   // ─── Human card play ──────────────────────────────────────────────────────
   function handleCardPress(card: Card) {
@@ -465,6 +485,7 @@ export default function HeartsScreen() {
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     resetSubmission();
+    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
@@ -491,6 +512,7 @@ export default function HeartsScreen() {
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     resetSubmission();
+    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
