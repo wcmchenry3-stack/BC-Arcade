@@ -17,9 +17,19 @@ from games.progression import (
 from games.service import GameTypeStats, StatsSummary
 
 
-def _game_stats(played: int) -> GameTypeStats:
-    """Minimal GameTypeStats fixture — only `played` matters to progression."""
-    return GameTypeStats(played=played, best=None, avg=None, last_played_at=None)
+def _game_stats(played: int, completed_played: int | None = None) -> GameTypeStats:
+    """Minimal GameTypeStats fixture — only the two counts matter to progression.
+
+    `completed_played` defaults to `played`, i.e. nothing was abandoned. Pass it
+    explicitly to model a game type with abandoned sessions (#2472).
+    """
+    return GameTypeStats(
+        played=played,
+        best=None,
+        avg=None,
+        last_played_at=None,
+        completed_played=played if completed_played is None else completed_played,
+    )
 
 
 def _summary(by_game: dict[str, int]) -> StatsSummary:
@@ -189,3 +199,72 @@ def test_invariants_hold_across_many_summaries():
             assert span == expected_span
         else:
             assert result.xp_for_next_level == 0
+
+
+# ---------------------------------------------------------------------------
+# Abandoned games earn nothing (#2472)
+# ---------------------------------------------------------------------------
+
+
+def test_abandoned_game_earns_no_base_xp():
+    """One played, zero completed → no base XP and no variety bonus."""
+    summary = StatsSummary(
+        total_games=1,
+        by_game={"twenty48": _game_stats(played=1, completed_played=0)},
+        favorite_game="twenty48",
+    )
+    assert compute_progression(summary).arcade_xp == 0
+
+
+def test_abandoned_game_alone_does_not_earn_the_variety_bonus():
+    """A game type reached only by quitting must not unlock its breadth bonus."""
+    summary = StatsSummary(
+        total_games=4,
+        by_game={
+            "twenty48": _game_stats(played=3, completed_played=3),
+            # Opened once and backed out of — should be invisible to XP.
+            "sudoku": _game_stats(played=1, completed_played=0),
+        },
+        favorite_game="twenty48",
+    )
+    expected = 3 * BASE_XP_PER_GAME + 1 * VARIETY_BONUS_PER_GAME_TYPE
+    assert compute_progression(summary).arcade_xp == expected
+
+
+def test_only_completed_games_count_when_a_type_has_both():
+    summary = StatsSummary(
+        total_games=10,
+        by_game={"solitaire": _game_stats(played=10, completed_played=4)},
+        favorite_game="solitaire",
+    )
+    expected = 4 * BASE_XP_PER_GAME + 1 * VARIETY_BONUS_PER_GAME_TYPE
+    assert compute_progression(summary).arcade_xp == expected
+
+
+def test_daily_word_puzzle_with_several_abandons_earns_one_game_of_xp():
+    """#2472's worked example.
+
+    Daily Word opens a session per screen *visit*: the first accepted guess
+    opens one, leaving abandons it, the next guess opens another. One solved
+    puzzle can therefore write several abandoned rows plus a single completed
+    one, per puzzle, per language, per day — and used to pay full XP for each.
+    """
+    summary = StatsSummary(
+        total_games=5,
+        by_game={"daily_word": _game_stats(played=5, completed_played=1)},
+        favorite_game="daily_word",
+    )
+    expected = 1 * BASE_XP_PER_GAME + 1 * VARIETY_BONUS_PER_GAME_TYPE
+    assert compute_progression(summary).arcade_xp == expected
+
+
+def test_farming_abandons_cannot_raise_the_level():
+    """Backing out of games repeatedly must not move the player off level 1."""
+    farmed = StatsSummary(
+        total_games=500,
+        by_game={"solitaire": _game_stats(played=500, completed_played=0)},
+        favorite_game="solitaire",
+    )
+    result = compute_progression(farmed)
+    assert result.arcade_xp == 0
+    assert result.arcade_level == 1

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.base import get_session_factory
 from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
+from games.filters import not_abandoned
 from games.ranking import compute_rank, ensure_scored
 from limiter import limiter, session_key
 from session import get_session_id
@@ -53,6 +54,7 @@ async def _top_scores(db: AsyncSession) -> list[ScoreEntry]:
                 .where(
                     Game.game_type_id == gt_id,
                     Game.final_score.is_not(None),
+                    not_abandoned(),
                 )
                 .order_by(desc(Game.final_score), Game.completed_at.asc())
                 .limit(LEADERBOARD_LIMIT)

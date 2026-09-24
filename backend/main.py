@@ -86,7 +86,17 @@ if _sentry_dsn:
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="BC Arcade API")
+# The interactive docs (/docs, /redoc) and raw spec (/openapi.json) expose the
+# whole API surface publicly; a consumer game backend doesn't need them live in
+# prod, and they were unthrottled (#2464's route audit exempts FastAPI's own
+# doc routes, so this doesn't need a rate limit added).
+_is_production = os.environ.get("ENVIRONMENT") == "production"
+app = FastAPI(
+    title="BC Arcade API",
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
+)
 app.include_router(entitlements_router, prefix="/entitlements")
 app.include_router(cascade_router, prefix="/cascade")
 app.include_router(daily_challenge_router, prefix="/daily-challenge")
@@ -211,6 +221,9 @@ async def security_headers(request: Request, call_next) -> Response:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # HTTPS-only for a year. Browsers ignore it on plain-HTTP responses, so local
+    # dev is unaffected. No `preload`: that is a hard-to-undo list submission.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = (
         "default-src 'none'; "
         "connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; "

@@ -1,28 +1,28 @@
 """App-wide streak — consecutive days with at least 2 of 3 daily goals met (#2456).
 
-No table. The challenge for any past day is reproducible from its date
-(``template_for``), so the streak is *replayed*: for each day walked back, recompute
-that day's template and evaluate it against the session's own ``games`` rows in that
-day's local window — the same ``local_day_of`` / ``evaluate_goal`` the live challenge
-uses, so there is no second definition of a day or of a goal.
+The challenge for any past day is *replayed*: for each day walked back, look up that
+day's frozen template (``schedule.get_or_create_templates``, #2493) and evaluate it
+against the session's own ``games`` rows in that day's local window — the same
+``local_day_of`` / ``evaluate_goal`` the live challenge uses, so there is no second
+definition of a day or of a goal. A day nobody has ever requested before (rare — only
+possible for a day with no games at all, since scoring it is the only way to reach it)
+is frozen on this same call, from the current pool/salt; once frozen, it never changes.
 
 Rule (owner decision, 2026-09-20): count consecutive qualifying days ending **today**
 if today already has 2 of 3 goals met; otherwise ending **yesterday** — today is not
 failed, just not finished yet. It stops at the first day with fewer than 2.
 
-Cost: the lookback is capped at ``LOOKBACK_DAYS`` and read with ONE windowed query,
-grouped by local day in Python, rather than a query per day. The session's
-entitlements are read (one more query) only when some day's free and premium templates
-differ — until #2458 they never do, so today it is one query. The streak never exceeds
-``LOOKBACK_DAYS``: a value equal to it means "at least that many", so a client renders
-it as "60+" (a true 60 and a true 200 look the same — that is the cap, not a bug).
+Cost: the lookback is capped at ``LOOKBACK_DAYS`` and the player's games are read with
+ONE windowed query, grouped by local day in Python, rather than a query per day. Each
+slate's frozen templates for the window come from one more query each (schedule.py's
+batch form) — a second only when some day's free and premium templates differ, which
+until #2458 they never do — plus the session's entitlements (one more) in that same
+case. The query count is fixed regardless of ``LOOKBACK_DAYS``, not one per day. The
+streak never exceeds ``LOOKBACK_DAYS``: a value equal to it means "at least that many",
+so a client renders it as "60+" (a true 60 and a true 200 look the same — that is the
+cap, not a bug).
 
 Accepted approximations (documented, not silent):
-- **Replay means retroactive re-scoring.** History is not stored, so anything that
-  changes what a past day's challenge *was* changes the streak: tuning a goal target,
-  adding premium goal specs (#2458), or changing ``DAILY_CHALLENGE_SALT`` (which
-  reshuffles every day). Treat the salt as permanent once players have streaks, and
-  expect a target change to shift streaks — it is not a bug in the replay.
 - **Current entitlements are used for every past day**, not the ones the session had
   then. Invisible while the two pools are identical; once #2458 gives the premium pool
   games of its own, buying (or losing) a premium game re-scores the whole window under
@@ -45,8 +45,10 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from daily_challenge import schedule
 from daily_challenge.definitions import (
     GOAL_POOLS,
+    Template,
     game_facts,
     local_day,
     local_day_of,
@@ -55,6 +57,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import EndedGame, evaluate_template, slate_for_games
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
+from games.filters import not_abandoned
 
 # A day counts if at least this many of its goals are met.
 GOALS_TO_QUALIFY = 2
@@ -98,6 +101,9 @@ async def compute_streak(
                 GameType.name.in_(spec_games),
                 Game.completed_at >= oldest.start_utc,
                 Game.completed_at < today.end_utc,
+                # Same rule as service.py — an abandoned game never earns a
+                # streak day (#2468 / #2472).
+                not_abandoned(),
             )
         )
     ).all()
@@ -109,18 +115,32 @@ async def compute_streak(
 
     # Which slate each day uses needs the session's entitlements — but only if some day's
     # premium template differs from its free one. Until #2458 none do, so skip the query.
+    # This is a structural check on the current *policy*, not on history, so it uses the
+    # pure template_for rather than a frozen day — nothing here is being scored yet.
     days = [today.date - timedelta(days=n) for n in range(LOOKBACK_DAYS + 1)]  # today first
-    if any(template_for(d, "premium") != template_for(d, "free") for d in days):
+    slates_differ = any(template_for(d, "premium") != template_for(d, "free") for d in days)
+
+    # Frozen templates (#2493) for the whole window — one SELECT (+ an INSERT only for
+    # days nobody has ever requested before) per slate actually needed, however long
+    # LOOKBACK_DAYS is.
+    free_templates = await schedule.get_or_create_templates(
+        session, days, "free", lambda d: template_for(d, "free")
+    )
+    if slates_differ:
+        premium_templates = await schedule.get_or_create_templates(
+            session, days, "premium", lambda d: template_for(d, "premium")
+        )
         premium_all, owned = await _premium_and_owned(session, session_id)
     else:
+        premium_templates = free_templates
         premium_all, owned = set(), set()
     override = is_dev_override_active()
 
     def qualifies(day: date) -> bool:
-        free = template_for(day, "free")
-        premium = template_for(day, "premium")
+        free = free_templates[day]
+        premium = premium_templates[day]
         if premium == free:
-            template = free  # the slate is moot
+            template: Template = free  # the slate is moot
         else:
             named = {goal.game_type for goal in premium.goals} & premium_all
             slate = slate_for_games(named, named & owned, override)

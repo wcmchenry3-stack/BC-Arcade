@@ -101,7 +101,7 @@ The `perf.yml` workflow runs:
 
 - **Nightly at 06:00 UTC** against the production Render URLs
 - **On demand** via GitHub Actions → "Run workflow" (configurable URL, users, duration)
-- **Post-deploy** when called from `deploy.yml` (1-user smoke check)
+- **From another workflow** via `workflow_call` (no caller today)
 
 To trigger manually:
 

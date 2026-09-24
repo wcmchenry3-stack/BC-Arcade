@@ -1,0 +1,148 @@
+name: Post-deploy ZAP scan
+
+# Production deploys are Render's own auto-deploy of `main` (owner decision
+# 2026-09-23), with the trigger set to "After CI Checks Pass" so a commit ships
+# only once its CI is green. This workflow is the post-deploy half: after CI
+# finishes on a `main` push, it waits for Render to report that commit live on
+# each prod service, then runs an OWASP ZAP baseline scan against it.
+#
+# Why `workflow_run` and not `push`: a push-triggered run is a check on the
+# `main` commit, and Render's "After CI Checks Pass" waits for every check on
+# that commit — so a job that waits for the deploy would deadlock against a
+# deploy that waits for the job. A `workflow_run` run is attached to the default
+# branch instead, so it is not one of the checks Render waits for.
+#
+# Service IDs come from the RENDER_PROD_API_SERVICE_ID /
+# RENDER_PROD_FRONTEND_SERVICE_ID secrets; RENDER_API_KEY reads deploy status.
+# Nothing here deploys or checks out code.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Scan whatever is live now, without waiting for a particular commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-scan-${{ github.event.workflow_run.head_sha || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: ZAP (${{ matrix.service }})
+    # A cancelled or skipped CI run means no deploy to wait for.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: bc-arcade-api
+            id_secret: RENDER_PROD_API_SERVICE_ID
+            url: https://games-api.buffingchi.com
+            # The API has no `/` route; any response carries the headers.
+            header_path: /health
+          - service: bc-arcade-frontend
+            id_secret: RENDER_PROD_FRONTEND_SERVICE_ID
+            url: https://games.buffingchi.com
+            header_path: /
+    steps:
+      - name: Wait for Render to report the commit live
+        id: wait
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ secrets[matrix.id_secret] }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          if [ -z "$SHA" ]; then
+            echo "Manual run: scanning whatever is live now."
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$SERVICE_ID" ] || [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::${{ matrix.id_secret }} or RENDER_API_KEY is not set."
+            exit 1
+          fi
+
+          # Up to 30 minutes: Render only starts after CI, and a build takes ~2.
+          # After a red CI run there is normally no deploy, so give up sooner.
+          tries=60
+          if [ "$CI_CONCLUSION" = "failure" ]; then tries=10; fi
+          for i in $(seq 1 "$tries"); do
+            state=$(curl -sf "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=20" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              | python3 -c '
+          import json, os, sys
+          deploys = [d.get("deploy", d) for d in json.load(sys.stdin)]
+          mine = [d for d in deploys if (d.get("commit") or {}).get("id") == os.environ["SHA"]]
+          print(mine[0].get("status", "unknown") if mine else "not_started")
+          ') || state="api_error"
+            echo "  [$i] $SHA: $state"
+            case "$state" in
+              live)
+                echo "scan=true" >> "$GITHUB_OUTPUT"
+                exit 0 ;;
+              deactivated)
+                # A later commit replaced it; that commit's own run scans it.
+                echo "::notice::$SHA was superseded by a newer deploy; skipping its scan."
+                echo "scan=false" >> "$GITHUB_OUTPUT"
+                exit 0 ;;
+              build_failed|update_failed|canceled|pre_deploy_failed)
+                echo "::error::Render deploy of $SHA ended as $state."
+                exit 1 ;;
+            esac
+            sleep 30
+          done
+
+          if [ "$CI_CONCLUSION" = "failure" ]; then
+            echo "::notice::CI failed on $SHA and Render did not deploy it (expected with 'After CI Checks Pass')."
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::$SHA was not live on ${{ matrix.service }} after 30 minutes. If Render's auto-deploy is off, nothing deploys main."          exit 1
+
+      - name: OWASP ZAP baseline scan
+        if: steps.wait.outputs.scan == 'true'
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: ${{ matrix.url }}
+          # Findings are reported as an artifact; a scan never rolls back a deploy.
+          fail_action: false
+          # The default files findings as a public GitHub issue on this public repo.
+          allow_issue_writing: false
+          artifact_name: zap-post-deploy-${{ matrix.service }}-${{ github.run_id }}
+
+      # The prod services were created by hand, so their headers live in the
+      # Render dashboard, not render.yaml; this catches the two ways they have
+      # drifted (a CSP pasted with its YAML quotes, which browsers then ignore;
+      # a missing HSTS header).
+      - name: Check security headers
+        if: steps.wait.outputs.scan == 'true'
+        env:
+          URL: ${{ matrix.url }}${{ matrix.header_path }}
+        run: |
+          # GET, not HEAD: FastAPI does not answer HEAD on GET routes.
+          if ! raw=$(curl -sS -o /dev/null -D - "$URL"); then
+            echo "::error::Could not reach $URL to check its headers."
+            exit 1
+          fi
+          headers=$(printf '%s' "$raw" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
+          ok=true
+          if ! echo "$headers" | grep -q '^strict-transport-security: max-age='; then
+            echo "::error::$URL sends no Strict-Transport-Security header."
+            ok=false
+          fi
+          if echo "$headers" | grep -Eq "^content-security-policy: [\"']"; then
+            echo "::error::$URL's Content-Security-Policy starts with a quote, so browsers ignore it - remove the quotes in the Render dashboard (Headers)."
+            ok=false
+          fi
+          $ok
