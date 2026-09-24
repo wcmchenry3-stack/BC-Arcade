@@ -11,6 +11,8 @@ export interface LeaderboardEntry {
 
 export interface LeaderboardResponse {
   scores: LeaderboardEntry[];
+  /** POST /score only: the submitted run's rank, or null outside the top 10 (#2516). */
+  rank?: number | null;
 }
 
 const request = createGameClient({ apiTag: "starswarm" });

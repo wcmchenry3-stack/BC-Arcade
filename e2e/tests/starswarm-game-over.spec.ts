@@ -32,6 +32,7 @@ async function routeStarswarmApi(
         contentType: "application/json",
         body: JSON.stringify({
           scores: [{ ...body, timestamp: "", rank: 3 }],
+          rank: 3,
         }),
       });
     } else {

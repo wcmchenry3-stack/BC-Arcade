@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { rankInTopTen, starSwarmLeaderboard } from "../leaderboard";
+import { starSwarmLeaderboard } from "../leaderboard";
 import { registerStarSwarmScoreHandler } from "../scoreSync";
 import { loadBestScore, saveBestScore } from "../bestScore";
 import { starSwarmApi, type LeaderboardEntry } from "../api";
@@ -31,29 +31,16 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
-describe("rankInTopTen (#2516)", () => {
-  it("finds this run's row in the returned top 10", () => {
-    const scores = [
-      entry({ player_id: "Ace", score: 9000, rank: 1 }),
-      entry({
-        player_id: "Riley",
-        score: 4200,
-        wave_reached: 7,
-        difficulty_tier: "Commander",
-        rank: 2,
-      }),
-    ];
-    expect(rankInTopTen(scores, "Riley", RUN)).toBe(2);
-  });
-
-  it("is null when the run didn't place (another run with the same name doesn't count)", () => {
-    const scores = [entry({ player_id: "Riley", score: 9000, rank: 1 })];
-    expect(rankInTopTen(scores, "Riley", RUN)).toBeNull();
-  });
-});
-
 describe("starSwarmLeaderboard", () => {
-  it("submits under the display name and resolves to the run's rank", async () => {
+  it("submits under the display name and resolves to the server's rank for this run", async () => {
+    submitScore.mockResolvedValue({ scores: [], rank: 3 });
+    await expect(starSwarmLeaderboard.submit("Riley", RUN)).resolves.toBe(3);
+    expect(submitScore).toHaveBeenCalledWith("Riley", 4200, 7, "Commander");
+  });
+
+  // #2580 review: an identical earlier run sits in `scores` too — only the
+  // server's rank says where this run landed.
+  it("ignores a matching row in the list and trusts the server's rank", async () => {
     submitScore.mockResolvedValue({
       scores: [
         entry({
@@ -61,12 +48,12 @@ describe("starSwarmLeaderboard", () => {
           score: 4200,
           wave_reached: 7,
           difficulty_tier: "Commander",
-          rank: 3,
+          rank: 10,
         }),
       ],
+      rank: null,
     });
-    await expect(starSwarmLeaderboard.submit("Riley", RUN)).resolves.toBe(3);
-    expect(submitScore).toHaveBeenCalledWith("Riley", 4200, 7, "Commander");
+    await expect(starSwarmLeaderboard.submit("Riley", RUN)).resolves.toBeNull();
   });
 
   it("queues the payload shape the Star Swarm queue handler reads", () => {

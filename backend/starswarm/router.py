@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
@@ -44,6 +44,10 @@ class LeaderboardEntry(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     scores: list[LeaderboardEntry]
+    # POST /score only: the submitted run's own rank, or None outside the top 10
+    # (#2516). Clients can't find it in `scores` reliably — an identical earlier
+    # run (same name, score, wave, tier) is indistinguishable from it there.
+    rank: int | None = None
 
 
 async def _starswarm_game_type_id(db: AsyncSession) -> int:
@@ -113,7 +117,26 @@ async def submit_score(request: Request, body: ScoreRequest) -> LeaderboardRespo
         db.add(game)
         await db.commit()
         top = await _top10(db)
-    return LeaderboardResponse(scores=top)
+        # Same ordering as _top10: higher score first, earlier run first on a tie.
+        ahead = await db.scalar(
+            select(func.count())
+            .select_from(Game)
+            .where(
+                Game.game_type_id == gt_id,
+                Game.final_score.is_not(None),
+                not_abandoned(),
+                Game.id != game.id,
+                or_(
+                    Game.final_score > game.final_score,
+                    and_(
+                        Game.final_score == game.final_score,
+                        Game.completed_at <= game.completed_at,
+                    ),
+                ),
+            )
+        )
+    rank = int(ahead or 0) + 1
+    return LeaderboardResponse(scores=top, rank=rank if rank <= LEADERBOARD_LIMIT else None)
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)

@@ -142,18 +142,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
 
   it("submits the run under the display name", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
-    submitScore.mockResolvedValue({
-      scores: [
-        {
-          player_id: "Riley",
-          score: 4200,
-          wave_reached: 7,
-          difficulty_tier: "Commander",
-          timestamp: "",
-          rank: 4,
-        },
-      ],
-    });
+    submitScore.mockResolvedValue({ scores: [], rank: 4 });
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
