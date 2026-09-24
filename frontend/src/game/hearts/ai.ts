@@ -32,7 +32,6 @@ import {
   SCHEMER_PASS_WEIGHTS,
   DARING_PASS_WEIGHTS,
   NOISE_RATE,
-  TACTICS_WEIGHT,
 } from "./aiWeights";
 import type { PlayWeights } from "./aiWeights";
 
@@ -175,7 +174,7 @@ export function selectCardsToPassUtility(
 
 /**
  * Utility-AI play selection. Scores every legal card by a weighted sum of
- * the four play considerations and returns the argmax (with optional noise).
+ * the five play considerations and returns the argmax (with optional noise).
  *
  * Moon-attempt activation: when detectMoonAttempt fires (a hand-quality
  * check, moonHand.ts — #2234), DARING_MOON_PLAY_WEIGHTS (moonProgress: 100.0)
@@ -296,7 +295,7 @@ export function selectCardToPlayUtility(
         weights.queenSpadesRisk * rateQueenSpadesRisk(infoSet, card) +
         weights.moonThreat * rateMoonThreat(infoSet, card) +
         weights.moonProgress * rateMoonAttemptProgress(infoSet, card) +
-        (isMoonAttempt ? 0 : TACTICS_WEIGHT * rateTactics(infoSet, card)),
+        weights.tactics * rateTactics(infoSet, card),
     }))
     .sort((a, b) => b.score - a.score);
 

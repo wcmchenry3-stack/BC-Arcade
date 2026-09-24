@@ -616,6 +616,25 @@ describe("rateTactics (#2236)", () => {
       for (const card of hand) expect(rateTactics(info, card)).toBe(0.5);
     });
 
+    it("duck high stays on while the lone point-holder has under minThreatPoints", () => {
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, handScores: [0, 1, 0, 0] }, 2);
+      expect(rateTactics(info, c("diamonds", 13))).toBeGreaterThan(
+        rateTactics(info, c("diamonds", 3))
+      );
+    });
+
+    it("gives an off-suit point card the full shed bonus", () => {
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("hearts", 2), c("diamonds", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 2);
+      expect(rateTactics(info, c("hearts", 2))).toBeCloseTo(0.8, 5);
+      expect(rateTactics(info, c("hearts", 2))).toBeGreaterThan(
+        rateTactics(info, c("diamonds", 13))
+      );
+    });
+
     it("sheds the highest off-suit card when void", () => {
       const trick = [tc("clubs", 5, 1)];
       const hand = [c("diamonds", 3), c("diamonds", 13)];
@@ -640,6 +659,20 @@ describe("rateTactics (#2236)", () => {
       const hand = [c("clubs", 1), c("clubs", 9), c("clubs", 4)];
       const info = mkInfo(hand, trick, { currentTrick: trick }, 0);
       expect(rateTactics(info, c("clubs", 1))).toBeGreaterThan(rateTactics(info, c("clubs", 9)));
+    });
+
+    it("never gives Q♠ the forced-win bonus", () => {
+      const trick = [tc("spades", 2, 1), tc("spades", 3, 2), tc("spades", 4, 3)];
+      const hand = [c("spades", 9), c("spades", 12)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 0);
+      expect(rateTactics(info, c("spades", 12))).toBe(0.5);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(0.5);
+    });
+
+    it("computePWin is 1 for a card that wins as last to play", () => {
+      const trick = [tc("clubs", 2, 1), tc("clubs", 7, 2), tc("clubs", 11, 3)];
+      const info = mkInfo([c("clubs", 12)], trick, { currentTrick: trick }, 0);
+      expect(computePWin(c("clubs", 12), info)).toBe(1);
     });
 
     it("ducks instead when the trick holds points and a card can lose", () => {
