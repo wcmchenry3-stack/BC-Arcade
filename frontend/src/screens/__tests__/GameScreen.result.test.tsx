@@ -1,5 +1,6 @@
 import React from "react";
 import { render, fireEvent, act, within } from "@testing-library/react-native";
+import { AppState } from "react-native";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -236,5 +237,52 @@ describe("Yacht result card — actions (#2505)", () => {
     });
 
     expect(r.getByTestId("yacht-mode-solo")).toBeTruthy();
+  });
+});
+
+describe("Yacht vs mode — app backgrounded during the CPU's last turn (#2543 review)", () => {
+  let appStateListeners: Array<(state: string) => void>;
+
+  beforeEach(() => {
+    appStateListeners = [];
+    (AppState.addEventListener as jest.Mock).mockImplementation(
+      (_event: string, handler: (state: string) => void) => {
+        appStateListeners.push(handler);
+        return { remove: jest.fn() };
+      }
+    );
+  });
+
+  async function fireAppState(state: string) {
+    await act(async () => {
+      appStateListeners.forEach((h) => h(state));
+    });
+  }
+
+  it.each(["background", "inactive"])(
+    "records the finished game when the app goes %s, since a kill runs no cleanup",
+    async (state) => {
+      const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+      await playLastTurn(r, /^Yacht/i);
+      expect(completedCalls()).toHaveLength(0);
+
+      await fireAppState(state);
+
+      expect(completedCalls()).toHaveLength(1);
+      expect(completedCalls()[0]![2]).toEqual(
+        expect.objectContaining({ final_score: 50, outcome: "completed" })
+      );
+
+      // The CPU finishing later doesn't record the game a second time.
+      await fireAppState("active");
+      await finishCpuTurn();
+      expect(completeGame).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("does not complete a game still in progress when backgrounded", async () => {
+    await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await fireAppState("background");
+    expect(completeGame).not.toHaveBeenCalled();
   });
 });

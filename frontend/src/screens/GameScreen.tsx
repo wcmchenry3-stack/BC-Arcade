@@ -123,12 +123,16 @@ export default function GameScreen({ navigation, route }: Props) {
   }, []);
 
   // #2505: in vs mode the session completes only once the CPU has finished
-  // (so the result can be reported). If the player leaves during the CPU's
-  // last turn, complete it now rather than let useGameSync's unmount handler
-  // record a finished game as abandoned. Declared before useGameSync so this
-  // cleanup runs first.
-  const completeOnUnmountRef = useRef<() => void>(() => {});
-  useEffect(() => () => completeOnUnmountRef.current(), []);
+  // (so the result can be reported). While the CPU is still playing its last
+  // turn, the player's finished game is recorded without the result instead:
+  //  - on unmount, so useGameSync's unmount handler doesn't record it as
+  //    abandoned (this effect is declared before useGameSync so its cleanup
+  //    runs first), and
+  //  - when the app is backgrounded, because a swipe-away or OS kill runs no
+  //    cleanup and a relaunched finished game never resumes the CPU turn.
+  // syncComplete is idempotent, so the later full completion is a no-op.
+  const completeIfCpuStillPlayingRef = useRef<() => void>(() => {});
+  useEffect(() => () => completeIfCpuStillPlayingRef.current(), []);
 
   // Game event instrumentation (#368 / #549).
   const {
@@ -233,8 +237,12 @@ export default function GameScreen({ navigation, route }: Props) {
   // The async AI turn keeps running; no cancellation or replay needed.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if ((next === "background" || next === "inactive") && isAiTurnRef.current) {
-        setAiRollingIndices([]);
+      if (next === "background" || next === "inactive") {
+        if (isAiTurnRef.current) setAiRollingIndices([]);
+        // The process may be killed from here (#2505). "inactive" too: iOS's
+        // app switcher only makes the app inactive, and a swipe-away there
+        // kills it without it ever reaching "background".
+        completeIfCpuStillPlayingRef.current();
       }
     });
     return () => sub.remove();
@@ -483,7 +491,7 @@ export default function GameScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameReallyOver, aiDifficulty]);
 
-  completeOnUnmountRef.current = () => {
+  completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.
     if (aiDifficulty && gameState.game_over && !aiGameState?.game_over) {
       syncComplete(
