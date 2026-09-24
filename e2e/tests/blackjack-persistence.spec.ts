@@ -7,7 +7,7 @@
  * under the key "blackjack_game_v2" after every action.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   BlackjackPage,
   gotoBlackjack,
