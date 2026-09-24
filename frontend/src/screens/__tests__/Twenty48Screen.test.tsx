@@ -645,30 +645,50 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
   });
 
   it("capture ordering: move events are emitted in direction sequence", async () => {
-    (loadGame as jest.Mock).mockResolvedValueOnce(null);
-    await mountAndSettle();
+    // A lone tile in the top-right corner: Left always slides it, and Down is
+    // then always a valid move too (a column can't fill with two tiles), so
+    // neither key is a no-op that would enqueue nothing.
+    const board = [
+      [0, 0, 0, 2],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ];
+    (loadGame as jest.Mock).mockResolvedValueOnce({
+      ...NOOP_LEFT_STATE,
+      board,
+      tiles: tilesFor(board),
+    });
+    const r = await mountAndSettle();
+    // The grid renders only once the saved state has loaded; a key dispatched
+    // before that is dropped by handleMove (no state yet).
+    await waitFor(() => expect(r.getByLabelText("Game board")).toBeTruthy());
     mockEnqueueEvent.mockClear();
 
-    // First settled move
+    const moveEvents = () =>
+      mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "move");
+    // Waits past the screen's 120 ms MOVE_LOCK_MS. Timers fire in order, so a
+    // longer timer started after the move always runs after the lock releases.
+    const releaseMoveLock = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+
     await act(() => {
       dispatchKey("ArrowLeft");
     });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 200));
-    });
-    // Second settled move
+    await waitFor(() => expect(moveEvents().length).toBeGreaterThanOrEqual(1));
+    await releaseMoveLock();
+
     await act(() => {
       dispatchKey("ArrowDown");
     });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 200));
-    });
+    await waitFor(() => expect(moveEvents().length).toBeGreaterThanOrEqual(2));
 
-    const moveEvents = mockEnqueueEvent.mock.calls
-      .map((c) => c[1])
-      .filter((e) => e?.type === "move");
-    // Assert the first emitted move is before the second — validates ordering.
-    expect(moveEvents.length).toBeGreaterThan(0);
+    expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
+
+    // Flush the move lock so it doesn't leak into the next test.
+    await releaseMoveLock();
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {
