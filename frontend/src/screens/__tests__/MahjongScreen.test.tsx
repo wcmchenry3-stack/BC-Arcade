@@ -566,7 +566,51 @@ describe("MahjongScreen — no-moves overlays", () => {
     expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
     expect(card.getByRole("button", { name: "Change Layout" })).toBeTruthy();
     expect(card.queryByText(/Saved as/)).toBeNull();
+    // Nothing to undo in this deal, so the card offers no Undo.
+    expect(card.queryByTestId("mahjong-result-undo")).toBeNull();
     expect(mahjongApi.submitScore).not.toHaveBeenCalled();
+  });
+
+  // #2569 review: the full-screen card must not take away the undo the header
+  // offered — a deadlock one undo away from a live board isn't final.
+  it("offers Undo on the deadlock card and returns to the board", async () => {
+    const beforeLastMatch = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      shufflesLeft: 0,
+      pairsRemoved: 39,
+      score: 600,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeNoMovesState({
+          shufflesLeft: 0,
+          isDeadlocked: true,
+          pairsRemoved: 40,
+          score: 640,
+          undoStack: [beforeLastMatch],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    const card = await waitFor(() => api.getByTestId("mahjong-result"), {
+      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+    });
+    await act(async () => {
+      await fireEvent.press(within(card).getByRole("button", { name: "Undo last move" }));
+    });
+
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    expect(api.getByLabelText("mock-tile-0")).toBeTruthy();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, DEADLOCK_OVERLAY_DELAY_MS + 100));
+    });
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
   });
 });
 

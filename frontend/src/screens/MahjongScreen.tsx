@@ -1199,6 +1199,23 @@ export default function MahjongScreen() {
           }
           hero={{ kind: "score", label: tResult("stat.score"), value: state.score }}
           isNewBest={state.isComplete && (winSummary?.isNewBest ?? false)}
+          // A deadlock one undo away from a live board isn't final: offer the
+          // undo the header had before the card covered it.
+          detail={
+            !state.isComplete && state.undoStack.length > 0 ? (
+              <Pressable
+                testID="mahjong-result-undo"
+                style={styles.resultUndoBtn}
+                onPress={handleUndo}
+                accessibilityRole="button"
+                accessibilityLabel={tResult("action.undoLastMove")}
+              >
+                <Text style={[styles.resultUndoText, { color: colors.accent }]}>
+                  {tResult("action.undoLastMove")}
+                </Text>
+              </Pressable>
+            ) : undefined
+          }
           stats={[
             { label: tResult("stat.time"), value: formatMs(state.accumulatedMs) },
             ...(state.isComplete && winSummary && winSummary.bestScore > 0
@@ -1231,6 +1248,17 @@ export default function MahjongScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  resultUndoBtn: {
+    alignSelf: "center",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  resultUndoText: {
+    fontSize: 15,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
   headerBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
