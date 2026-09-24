@@ -2,7 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import HeroStatScoreboard from "./HeroStatScoreboard";
 import type { SolitaireScoreboardSnapshot } from "../../game/solitaire/SolitaireScoreboardContext";
-import { formatMs } from "../../game/solitaire/formatMs";
+import { formatMs } from "../../game/_shared/formatMs";
 
 interface Props {
   snapshot: SolitaireScoreboardSnapshot;

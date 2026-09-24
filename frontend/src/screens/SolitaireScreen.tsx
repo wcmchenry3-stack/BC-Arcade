@@ -74,7 +74,7 @@ import {
 } from "../game/solitaire/storage";
 import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
 import { solitaireLeaderboard } from "../game/solitaire/leaderboard";
-import { formatMs } from "../game/solitaire/formatMs";
+import { formatMs } from "../game/_shared/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useCardSelection } from "../game/_shared/useCardSelection";

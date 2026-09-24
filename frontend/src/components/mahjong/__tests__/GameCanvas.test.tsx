@@ -66,28 +66,21 @@ describe("GameCanvas (web)", () => {
           camera={testCamera}
           onTilePress={noop}
           onShufflePress={noop}
-          onNewGamePress={noop}
         />
       );
     });
   });
 
-  it("shows the win overlay when isComplete", async () => {
+  it("does not render a win overlay (the screen's result card owns it, #2510)", async () => {
     const state = makeState({ isComplete: true, tiles: [], pairsRemoved: 72, score: 1220 });
     let tree: ReturnType<typeof create>;
     await act(() => {
       tree = create(
-        <GameCanvas
-          state={state}
-          camera={testCamera}
-          onTilePress={noop}
-          onShufflePress={noop}
-          onNewGamePress={noop}
-        />
+        <GameCanvas state={state} camera={testCamera} onTilePress={noop} onShufflePress={noop} />
       );
     });
     // i18n returns keys in tests — check for the key, not the translated string.
-    expect(JSON.stringify(tree!.toJSON())).toContain("overlay.youWon");
+    expect(JSON.stringify(tree!.toJSON())).not.toContain("overlay.youWon");
   });
 
   it("does not render the deadlock overlay locally (delegate to MahjongScreen)", async () => {
@@ -99,13 +92,7 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     await act(() => {
       tree = create(
-        <GameCanvas
-          state={state}
-          camera={testCamera}
-          onTilePress={noop}
-          onShufflePress={noop}
-          onNewGamePress={noop}
-        />
+        <GameCanvas state={state} camera={testCamera} onTilePress={noop} onShufflePress={noop} />
       );
     });
     expect(JSON.stringify(tree!.toJSON())).not.toContain("overlay.deadlocked");
@@ -128,13 +115,7 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     await act(() => {
       tree = create(
-        <GameCanvas
-          state={state}
-          camera={testCamera}
-          onTilePress={noop}
-          onShufflePress={noop}
-          onNewGamePress={noop}
-        />
+        <GameCanvas state={state} camera={testCamera} onTilePress={noop} onShufflePress={noop} />
       );
     });
     const str = JSON.stringify(tree!.toJSON());
@@ -147,13 +128,7 @@ describe("GameCanvas (web)", () => {
     let tree: ReturnType<typeof create>;
     await act(() => {
       tree = create(
-        <GameCanvas
-          state={state}
-          camera={testCamera}
-          onTilePress={noop}
-          onShufflePress={noop}
-          onNewGamePress={noop}
-        />
+        <GameCanvas state={state} camera={testCamera} onTilePress={noop} onShufflePress={noop} />
       );
     });
     const str = JSON.stringify(tree!.toJSON());
