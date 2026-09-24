@@ -720,6 +720,21 @@ export default function DailyWordScreen() {
       return;
     }
 
+    // #2197 — a word already on the board must not be submitted again. The
+    // server treats a repeat of a recorded guess as a replay (so a re-send
+    // after a lost response cannot rob a turn), which means a *deliberate*
+    // repeat would advance the board without spending a server-side guess.
+    // Six rows and five recorded guesses would then leave the player short of
+    // the answer they earned.
+    const alreadyGuessed = s.rows
+      .slice(0, s.current_row)
+      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
+    if (alreadyGuessed) {
+      showToast(t("error.alreadyGuessed"));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      return;
+    }
+
     const _devTs = __DEV__ ? Date.now() : 0;
     const _devBody = __DEV__
       ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
@@ -807,6 +822,69 @@ export default function DailyWordScreen() {
         }
       } else if (err instanceof ApiError && err.status === 429) {
         showToast(t("error.rateLimited"));
+      } else if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        (err.message === "no_guesses_remaining" || err.message === "already_solved")
+      ) {
+        // #2197 — the server says this puzzle is finished and the local board
+        // disagrees, which happens when a guess was recorded but its response
+        // never arrived. Trust the server: close the game out and reveal the
+        // answer it will now release, rather than stranding the player on a
+        // board that can never complete.
+        // Same guard as the success path: the player may have left while the
+        // guess was in flight, in which case useGameSync's unmount cleanup has
+        // already run and there is nothing left to close out.
+        const current = stateRef.current;
+        if (mountedRef.current && current) {
+          // `already_solved` means the server recorded a winning guess — the
+          // player won, and only the response was lost. Marking that a loss
+          // would persist won:false and show them the word they had already
+          // found.
+          const wonIt = err.message === "already_solved";
+          const finished = markComplete(current, wonIt);
+
+          // Only report a session this visit actually played. `already_solved`
+          // is returned for *any* guess on a puzzle this session finished at
+          // any earlier time, and the board can be missing independently of
+          // the session id — they are separate AsyncStorage keys
+          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
+          // only the board on a corrupt payload. Without this guard, opening a
+          // wiped board and typing one word would fabricate a completed game
+          // for a puzzle finished hours ago, with a guesses_used taken from an
+          // empty board — free XP and a free "win in N guesses" goal credit.
+          const playedThisVisit = current.rows.some((r) => r.submitted);
+          if (playedThisVisit) {
+            // The session must be completed, or the unmount cleanup reports
+            // outcome:"abandoned" — and abandoned games earn no
+            // daily-challenge credit, no streak day and no XP (#2468/#2472).
+            if (!syncGetGameId()) {
+              syncStart(
+                { puzzle_id: current.puzzle_id },
+                { puzzle_id: current.puzzle_id, language: current.language }
+              );
+            }
+            syncMarkStarted();
+            syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finished));
+          }
+
+          setState(finished);
+          saveState(finished).catch(() => {});
+
+          if (wonIt) {
+            setWinModalVisible(true);
+          } else {
+            try {
+              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
+              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
+            } catch {
+              // Modal still opens; it just won't reveal the word.
+            }
+            if (!mountedRef.current) return;
+            setLossModalVisible(true);
+          }
+          startCountdown();
+        }
       } else {
         showToast(t("error.couldNotSubmit"));
       }

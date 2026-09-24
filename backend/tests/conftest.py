@@ -109,6 +109,7 @@ async def _clean_db_tables():
         for table in (
             "game_events",
             "games",
+            "daily_word_progress",
             "game_entitlements",
             "bug_logs",
             "daily_challenge_days",
