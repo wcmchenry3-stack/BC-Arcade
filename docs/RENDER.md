@@ -112,7 +112,7 @@ the Data API.
 | Path             | Touches the DB | Used by                                                        |
 | ---------------- | -------------- | -------------------------------------------------------------- |
 | `GET /health`    | no             | Render's `healthCheckPath` — a DB outage must not restart-loop |
-| `GET /health/db` | `SELECT 1`     | External uptime monitor (5-minute poll)                        |
+| `GET /health/db` | `SELECT 1`     | UptimeRobot (prod API, 5-minute poll, email alert; set up Sep 23 2026) |
 
 `/health/db` returns `200 {"status":"ok"}`, or `503` with `unavailable` /
 `unconfigured`; the failure detail goes to the service log only. The query is
@@ -133,6 +133,13 @@ hung request. It is rate limited to 30/minute per IP.
   `games-api.buffingchi.com` and `games.buffingchi.com`. Reports are run
   artifacts; findings never file public issues. It can also be run by hand
   (Actions → "Post-deploy ZAP scan" → Run workflow) to scan what is live now.
+- After the ZAP scan, a **header check** fails the run if a prod host sends no
+  `Strict-Transport-Security` or a `Content-Security-Policy` that starts with a
+  quote. Prod headers are set in the Render dashboard (the services were created
+  by hand, so `render.yaml` does not apply to them). A value pasted from
+  `render.yaml` with its quotes still gets sent, but browsers ignore it. When you
+  change a header in `render.yaml`, make the same change in the dashboard,
+  without the quotes. The API sets its own headers in `main.py`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
 - It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of

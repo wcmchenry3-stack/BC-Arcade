@@ -63,6 +63,7 @@ def test_security_headers_present(client_default):
     assert res.headers.get("x-content-type-options") == "nosniff"
     assert res.headers.get("x-frame-options") == "DENY"
     assert res.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+    assert res.headers.get("strict-transport-security") == "max-age=31536000; includeSubDomains"
 
 
 @pytest.mark.security
