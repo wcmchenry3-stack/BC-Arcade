@@ -314,7 +314,7 @@ const TIER_SIZE: Record<EnemyTier, { w: number; h: number }> = {
   Grunt: { w: 24, h: 24 },
   Elite: { w: 28, h: 28 },
   Boss: { w: 36, h: 32 },
-  Carrier: { w: 56, h: 40 }, // #2484
+  Carrier: { w: 54, h: 48 }, // #2484 — matches the 172×151 sprite's aspect so it isn't squashed
 };
 
 // ---------------------------------------------------------------------------
