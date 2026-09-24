@@ -32,12 +32,36 @@ import {
   SCHEMER_PASS_WEIGHTS,
   DARING_PASS_WEIGHTS,
   NOISE_RATE,
+  MISTAKE_SPREAD,
 } from "./aiWeights";
 import type { PlayWeights } from "./aiWeights";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Weighted pick for a plausible mistake (#2283): each option is weighted
+ * exp(−(best − score) / spread), so cards scoring close to the best one are
+ * likely and clear blunders are rare. `spread` is in utility-score units;
+ * Infinity makes every option equally likely (the old uniform noise).
+ */
+function pickNearBest<T>(
+  options: readonly { item: T; score: number }[],
+  best: number,
+  spread: number,
+  rng: () => number
+): number {
+  const weights = options.map((o) =>
+    Number.isFinite(spread) ? Math.exp(-(best - o.score) / spread) : 1
+  );
+  let r = rng() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]!;
+    if (r < 0) return i;
+  }
+  return weights.length - 1;
+}
 
 function isQueenOfSpades(c: Card): boolean {
   return c.suit === "spades" && c.rank === 12;
@@ -68,8 +92,8 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
  * #2234): passes the lowest cards it doesn't need for control, keeping
  * hearts, Q♠, aces, K♠ and the strong side suit.
  *
- * Noise (Cautious 38 %, Schemer 10 %, Daring 0 %): applied once per decision
- * before picking — a noise hit draws 3 random valid cards instead of top-3.
+ * Noise (NOISE_RATE): drawn once per decision; a hit makes a sloppy pass —
+ * 3 cards weighted towards the top of the ranking (MISTAKE_SPREAD), not top-3.
  */
 export function selectCardsToPassUtility(
   hand: Card[],
@@ -81,19 +105,12 @@ export function selectCardsToPassUtility(
   const eligible = hand.filter((c) => !(c.suit === "clubs" && c.rank >= 2 && c.rank <= 5));
 
   // ── Noise gate ───────────────────────────────────────────────────────────
-  // Checked before any mode override so noise fires regardless of persona or
+  // Drawn before any mode override so noise fires regardless of persona or
   // mode. For Daring, NOISE_RATE === 0 → short-circuits without consuming RNG.
+  // A hit makes a plausible mistake, picked below once the cards are scored.
   const rng = getRng();
   const noiseRate = NOISE_RATE[difficulty];
-  if (noiseRate > 0 && rng() < noiseRate) {
-    const pool = [...eligible];
-    const result: Card[] = [];
-    for (let i = 0; i < 3 && pool.length > 0; i++) {
-      const idx = Math.floor(rng() * pool.length);
-      result.push(pool.splice(idx, 1)[0]!);
-    }
-    return result;
-  }
+  const sloppy = noiseRate > 0 && rng() < noiseRate;
 
   // ── Moon-viable override (Daring only) ───────────────────────────────────
   // A hand that rates viable for a moon (moonHand.ts, #2234) passes away the
@@ -103,7 +120,7 @@ export function selectCardsToPassUtility(
   // would keep no longer rates viable, it passes normally instead. When the
   // pass goes to the human, only a strong hand keeps Q♠; otherwise the normal
   // targeting pass below applies (#1637, #1647).
-  if (difficulty === "daring") {
+  if (difficulty === "daring" && !sloppy) {
     const moon = assessMoonHand(hand);
     const targetingHuman = passingToSeat0(playerIndex, direction);
     const strongMoon = moon.viable && moon.topHearts >= MOON_HAND_RULES.strongPassTopHearts;
@@ -165,6 +182,20 @@ export function selectCardsToPassUtility(
     }))
     .sort((a, b) => b.score - a.score);
 
+  if (sloppy) {
+    // A sloppy pass: three cards drawn without replacement, weighted towards
+    // the top of the ranking rather than uniformly (#2283).
+    const pool = scored.map((s) => ({ item: s.card, score: s.score }));
+    const best = pool[0]?.score ?? 0;
+    const result: Card[] = [];
+    for (let i = 0; i < 3 && pool.length > 0; i++) {
+      result.push(
+        pool.splice(pickNearBest(pool, best, MISTAKE_SPREAD[difficulty], rng), 1)[0]!.item
+      );
+    }
+    return result;
+  }
+
   return scored.slice(0, 3).map((s) => s.card);
 }
 
@@ -181,7 +212,8 @@ export function selectCardsToPassUtility(
  * dominates, hardcoding moon behavior at the activation boundary while
  * keeping card selection utility-driven (calibration-drift guard).
  *
- * Noise: Cautious 38 %, Schemer 10 %, Daring 0 % (seeded RNG via getRng()).
+ * Noise (NOISE_RATE, seeded RNG via getRng()): a hit plays a plausible
+ * mistake — another card, weighted towards near-best scores (MISTAKE_SPREAD).
  */
 /**
  * Returns true when `playerIndex` is in an active moon attempt this trick.
@@ -299,11 +331,15 @@ export function selectCardToPlayUtility(
     }))
     .sort((a, b) => b.score - a.score);
 
-  // ── Noise ─────────────────────────────────────────────────────────────────
+  // ── Noise: a plausible mistake ────────────────────────────────────────────
+  // A hit plays another card than the best one, weighted towards cards that
+  // score nearly as well (#2283) — a near-miss a weaker player would make,
+  // not a uniformly random card. No draw when there is no alternative.
   const rng = getRng();
   const noiseRate = NOISE_RATE[difficulty];
-  if (noiseRate > 0 && rng() < noiseRate) {
-    return valid[Math.floor(rng() * valid.length)]!;
+  if (noiseRate > 0 && scored.length > 1 && rng() < noiseRate) {
+    const others = scored.slice(1).map((s) => ({ item: s.card, score: s.score }));
+    return others[pickNearBest(others, scored[0]!.score, MISTAKE_SPREAD[difficulty], rng)]!.item;
   }
 
   return scored[0]!.card;
