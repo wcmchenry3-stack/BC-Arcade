@@ -9,9 +9,16 @@ Two rules, both previously client-only:
 * a session gets ``MAX_GUESSES`` scored guesses on a puzzle, and no more;
 * the answer is released only once those are spent, or the puzzle is solved.
 
-Retries are idempotent on the guess text. ``httpClient``'s ``withRetry`` can
-replay a guess that actually reached the server, and a replay must never cost
-the player a turn.
+A re-sent guess is idempotent on the guess text: if a guess reaches the server
+but its response is lost, the player re-types the same word and must not be
+charged twice for it. Note this is *manual* re-entry — ``submitGuess`` is not
+wrapped in ``withRetry`` (only ``getToday`` is), so nothing replays the request
+automatically.
+
+The client pairs this with a duplicate-word guard, and the two belong together:
+because a repeat costs no server-side turn, a *deliberate* repeat would advance
+the board past the recorded count and leave the player short of the answer they
+earned. Do not remove one without the other.
 """
 
 from __future__ import annotations

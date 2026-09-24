@@ -355,6 +355,35 @@ def test_guess_degrades_open_when_the_record_is_unreachable(
     assert "guesses_remaining" not in body
 
 
+def test_degraded_guesses_report_once_per_window(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2542 review — an outage must not ship one Sentry event per guess.
+
+    The IP backstop still allows 1200 guesses/hour/IP, so an unthrottled report
+    would flood on exactly the failure it exists to announce. Same class of bug
+    as #513 and #2430.
+    """
+    import daily_word.router as router_mod
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    sent: list[str] = []
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    monkeypatch.setattr(router_mod, "_last_degrade_report", None)
+    monkeypatch.setattr(
+        router_mod.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg)
+    )
+
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    assert len(sent) == 1, f"expected one report for the window, got {len(sent)}"
+
+
 def test_answer_stays_closed_when_the_record_is_unreachable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -520,7 +549,11 @@ def test_no_further_guesses_once_solved(client: TestClient) -> None:
 
 
 def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:
-    """withRetry can replay a guess that already reached the server."""
+    """A guess re-typed after a lost response must not cost a second turn.
+
+    Manual re-entry, not an automatic retry: submitGuess is not wrapped in
+    withRetry. Paired with the client's duplicate-word guard — see progress.py.
+    """
     headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
     first = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()

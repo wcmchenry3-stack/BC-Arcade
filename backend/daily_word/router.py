@@ -19,13 +19,25 @@ Rate limits:
 Availability posture (#2542): ``/guess`` degrades *open* if the guess record is
 unreachable — it scores the guess and skips the cap rather than failing, because
 ``/today`` needs no DB and has already handed the player a board. ``/answer``
-stays closed: with no record there is nothing to check entitlement against.
+stays closed: with no record there is nothing to check entitlement against, so
+it surfaces the DB failure (a 500) rather than releasing the word.
+
+Two accepted consequences of that pairing, both bounded by the outage:
+
+* Guesses spent while the record is unreachable leave no rows, so once the DB
+  recovers ``/answer`` refuses that puzzle for that session permanently — the
+  loss modal renders without the word. Both client call sites already handle a
+  missing answer, so this degrades quietly rather than breaking.
+* ``/answer`` failing as a 500 is sampled by the client's own error reporting.
+  ``/guess`` failures are throttled here (``_report_degraded_guess``); this path
+  is not, because it is only reached by players who already finished.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
@@ -40,6 +52,39 @@ from limiter import _real_ip, limiter
 from session import get_session_id
 
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
+
+# Degrade-open reporting is throttled (#2542 review). The expected trigger is a
+# Postgres blip, and the IP backstop still allows 1200 guesses/hour/IP, so an
+# unsampled report per failing guess would ship thousands of events for one
+# outage — the same flood this repo already fixed twice on the client (#513's
+# 476-event issue, #2430's network-warning window). One Sentry event per window
+# is enough to tell us the cap has stopped applying; every failure is still
+# logged, just without a stack after the first.
+_DEGRADE_REPORT_WINDOW_S = 600.0
+_last_degrade_report: float | None = None
+
+
+def _report_degraded_guess(exc: BaseException) -> None:
+    """Report that the guess cap is not being enforced — at most once per window."""
+    global _last_degrade_report
+
+    now = time.monotonic()
+    first_in_window = (
+        _last_degrade_report is None or now - _last_degrade_report >= _DEGRADE_REPORT_WINDOW_S
+    )
+    if not first_in_window:
+        logger.warning("daily_word: guess state still unavailable (%s)", type(exc).__name__)
+        return
+
+    _last_degrade_report = now
+    logger.exception("daily_word: guess state unavailable, scoring without the cap")
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("subsystem", "daily_word.progress")
+        scope.fingerprint = ["daily-word-guess-state-unavailable"]
+        sentry_sdk.capture_message(
+            "daily_word guess state unavailable — cap not enforced", level="warning"
+        )
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -207,11 +252,8 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
             outcome = await record_guess(
                 db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
             )
-    except Exception:
-        logger.exception("daily_word: guess state unavailable, scoring without the cap")
-        sentry_sdk.capture_message(
-            "daily_word guess state unavailable — cap not enforced", level="warning"
-        )
+    except Exception as exc:  # noqa: BLE001 — degrade open on *any* failure to reach the record
+        _report_degraded_guess(exc)
 
     if outcome is not None and not outcome.allowed:
         raise HTTPException(
