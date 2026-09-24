@@ -1,5 +1,6 @@
 import { useImage } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
+import type { LoadedSprites } from "./render/frame";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
@@ -124,5 +125,23 @@ export function useStarSwarmImages(): StarSwarmImages {
       f18,
       f19,
     ],
+  };
+}
+
+/** #2564: which sprites have loaded — the frame builder draws a fallback for any that haven't. */
+export function loadedSprites(images: StarSwarmImages): LoadedSprites {
+  return {
+    playerShip: images.playerShip !== null,
+    buddyShip: images.buddyShip !== null,
+    enemyGrunt: images.enemyGrunt !== null,
+    enemyElite: images.enemyElite !== null,
+    enemyBoss: images.enemyBoss !== null,
+    enemyCarrier: images.enemyCarrier !== null,
+    bulletPlayer: images.bulletPlayer !== null,
+    puShield: images.puShield !== null,
+    puBomb: images.puBomb !== null,
+    puBuddy: images.puBuddy !== null,
+    puLightning: images.puLightning !== null,
+    explosion: images.explosionFrames.map((f) => f !== null),
   };
 }

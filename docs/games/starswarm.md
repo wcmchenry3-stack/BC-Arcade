@@ -185,7 +185,22 @@ identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also e
 ## Client-Side Engine
 
 - Location: `frontend/src/game/starswarm/` — check this directory for current engine structure
-- Rendering: `@shopify/react-native-skia`
+- Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
+
+### Native rendering pipeline (epic #2562)
+
+The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF loop. Every
+drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, starfield,
+{ loaded, width, height })` returns a flat, back-to-front display list of primitive ops (`fill`,
+`rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
+Carrier's armor ring, hit-flash bursts, the beam, harmless-bullet dimming, the invincibility
+blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
+`__tests__/frame.test.ts`. `GameCanvas.tsx` maps each op to one Skia element and decides nothing.
+
+`render/publish.ts` gates when a frame reaches React at all (#2563): only when something drawn
+changed, so a paused or finished game does not re-render. Phase 3 (#2565) replays the same
+display list on the UI thread as a Skia `Picture`. The web renderer (unmaintained) still derives
+the same rules itself.
 
 ## Backend
 

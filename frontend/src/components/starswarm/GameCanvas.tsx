@@ -15,8 +15,6 @@ import {
   initStarSwarm,
   tick,
   applyPowerUp,
-  BULLET_C_W,
-  HIT_FLASH_DURATION,
   POWERUP_DURATION,
   difficultyLabel,
   difficultyMultiplier,
@@ -27,23 +25,22 @@ import {
   routJustStarted,
   fleeingCount,
   carrierJustExposed,
-  isCarrierArmored,
-  asteroidOutline,
   throwAsteroid,
   killEscorts,
-  carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
   reinforcementsJustLaunched,
-  BEAM_HALF_WIDTH,
   upgradeEvents,
 } from "../../game/starswarm/engine";
-import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
-import { useStarSwarmImages } from "../../game/starswarm/assets";
+import { useStarSwarmImages, loadedSprites } from "../../game/starswarm/assets";
+import type { StarSwarmImages } from "../../game/starswarm/assets";
+import { buildFrame } from "../../game/starswarm/render/frame";
+import type { DrawOp } from "../../game/starswarm/render/frame";
 import type {
   StarSwarmState,
   PowerUpType,
@@ -52,13 +49,7 @@ import type {
   UpgradeEvent,
 } from "../../game/starswarm/types";
 
-const EXPLOSION_DRAW_SIZE = 48;
 const DT_CAP_MS = 33;
-const INVINCIBLE_BLINK_INTERVAL = 120; // ms
-
-const C = {
-  buddyShip: "rgba(0,120,255,0.8)",
-} as const;
 
 export interface DevOptions {
   wave?: number;
@@ -93,6 +84,76 @@ export interface GameCanvasHandle {
   killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
+}
+
+/** #2564: one Skia element per display-list op. No decisions here — buildFrame made them. */
+function renderOp(op: DrawOp, images: StarSwarmImages): React.ReactElement | null {
+  switch (op.k) {
+    case "fill":
+      return <Fill key={op.key} color={op.color} />;
+    case "rect":
+      return (
+        <Rect
+          key={op.key}
+          x={op.x}
+          y={op.y}
+          width={op.w}
+          height={op.h}
+          color={op.color}
+          {...(op.opacity !== undefined ? { opacity: op.opacity } : {})}
+        />
+      );
+    case "circle":
+      return (
+        <Circle
+          key={op.key}
+          cx={op.cx}
+          cy={op.cy}
+          r={op.r}
+          color={op.color}
+          {...(op.opacity !== undefined ? { opacity: op.opacity } : {})}
+          {...(op.stroke !== undefined ? { style: "stroke", strokeWidth: op.stroke } : {})}
+        />
+      );
+    case "image": {
+      const image =
+        op.sprite === "explosion" ? images.explosionFrames[op.frame ?? 0] : images[op.sprite];
+      if (!image) return null; // buildFrame only emits loaded sprites; belt and braces
+      const el = (
+        <SkiaImage
+          key={op.key}
+          image={image}
+          x={op.x}
+          y={op.y}
+          width={op.w}
+          height={op.h}
+          fit={op.fit}
+        />
+      );
+      if (!op.flipX) return el;
+      const cx = op.x + op.w / 2;
+      return (
+        <Group key={op.key} transform={[{ translateX: cx }, { scaleX: -1 }, { translateX: -cx }]}>
+          {el}
+        </Group>
+      );
+    }
+    case "poly": {
+      let d = "";
+      for (let i = 0; i < op.points.length; i += 2) {
+        d += `${i === 0 ? "M" : " L"}${op.points[i]},${op.points[i + 1]}`;
+      }
+      d += " Z";
+      return (
+        <Path
+          key={op.key}
+          path={d}
+          color={op.color}
+          {...(op.stroke !== undefined ? { style: "stroke", strokeWidth: op.stroke } : {})}
+        />
+      );
+    }
+  }
 }
 
 interface Props {
@@ -516,24 +577,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     }, []); // intentionally empty — loop lives for component lifetime
 
     const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
-    const { player } = state;
-    const playerDisplayY = player.y;
-    const shipVisible = playerDisplayY + player.height > 0;
-    // #2334: tick() freezes the instant phase becomes GameOver, so the ship would
-    // otherwise render frozen mid-frame (looking like it's still flying/firing) instead
-    // of appearing destroyed. Hide it once the death explosion has taken over.
-    const showShip = shipVisible && state.phase !== "GameOver";
+    // #2564: every drawing decision (sprites vs fallbacks, rings, flashes, the beam, the #2334
+    // hidden-ship-at-game-over rule, the invincibility blink) lives in buildFrame — tested there.
+    const frame = buildFrame(state, sf, { loaded: loadedSprites(images), width, height });
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, state.score);
     const showBonusFlash = bonusFlash; // #2563: decided in the loop so its expiry publishes
-
-    const blink =
-      player.invincibleTimer > 0 &&
-      Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
-    // Shared visibility guard for the player ship and its overlays (shield aura, lightning
-    // tint) — hoisted so the GameOver/blink rule only has to be updated in one place.
-    const showPlayerShip = !blink && showShip;
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -543,424 +593,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="none"
         >
           <Group transform={[{ scale }]}>
-            <Fill color="#000010" />
-
-            {/* Starfield */}
-            {sf.stars.map((star) => (
-              <Circle
-                key={`star-${star.id}`}
-                cx={star.x}
-                cy={star.y}
-                r={star.r}
-                color={`rgba(255,255,255,${star.opacity})`}
-              />
-            ))}
-
-            {/* Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless)
-                are dimmed so the player can tell they no longer need dodging. */}
-            {state.enemyBullets.map((b) => (
-              <Rect
-                key={b.id}
-                x={b.x - b.width / 2}
-                y={b.y - b.height / 2}
-                width={b.width}
-                height={b.height}
-                color={b.flak ? "#ffd27a" : "#ff4422"} // #2487: flak at rocks reads as amber
-                opacity={b.harmless ? HARMLESS_BULLET_OPACITY : 1}
-              />
-            ))}
-
-            {/* Player bullets — charge bullets (wider) rendered as a distinct cyan beam */}
-            {state.playerBullets.map((b) =>
-              b.width >= BULLET_C_W ? (
-                <Rect
-                  key={b.id}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  color="#00f0ff"
-                />
-              ) : images.bulletPlayer ? (
-                <SkiaImage
-                  key={b.id}
-                  image={images.bulletPlayer}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  fit="fill"
-                />
-              ) : (
-                <Rect
-                  key={b.id}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  color="#00ffcc"
-                />
-              )
-            )}
-
-            {/* Enemies */}
-            {state.enemies.map((enemy) => {
-              if (!enemy.isAlive) return null;
-              const img =
-                enemy.tier === "Grunt"
-                  ? images.enemyGrunt
-                  : enemy.tier === "Elite"
-                    ? images.enemyElite
-                    : enemy.tier === "Carrier"
-                      ? images.enemyCarrier
-                      : images.enemyBoss;
-              const fallbackColor =
-                enemy.tier === "Grunt"
-                  ? "#8888ff"
-                  : enemy.tier === "Elite"
-                    ? "#ff88ff"
-                    : enemy.tier === "Carrier"
-                      ? "#b06cff"
-                      : "#ffff44";
-              // #2484: steady force-field ring while the Carrier's escorts still shield it
-              const carrierArmored = enemy.tier === "Carrier" && isCarrierArmored(state);
-              return (
-                <Group key={enemy.id}>
-                  {img ? (
-                    <SkiaImage
-                      image={img}
-                      x={enemy.x - enemy.width / 2}
-                      y={enemy.y - enemy.height / 2}
-                      width={enemy.width}
-                      height={enemy.height}
-                      fit="fill"
-                    />
-                  ) : (
-                    <Rect
-                      x={enemy.x - enemy.width / 2}
-                      y={enemy.y - enemy.height / 2}
-                      width={enemy.width}
-                      height={enemy.height}
-                      color={fallbackColor}
-                    />
-                  )}
-                  {carrierArmored && (
-                    <Circle
-                      cx={enemy.x}
-                      cy={enemy.y}
-                      r={Math.max(enemy.width, enemy.height) * 0.62}
-                      color="rgba(0,170,255,0.45)"
-                      style="stroke"
-                      strokeWidth={2}
-                    />
-                  )}
-                  {enemy.hitFlashTimer > 0 &&
-                    (() => {
-                      const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
-                      const refR = Math.max(enemy.width, enemy.height) * 1.2;
-                      const r = refR * (0.6 + 0.5 * progress);
-                      const a = enemy.hitFlashTimer / HIT_FLASH_DURATION; // 1→0 as burst plays
-                      return (
-                        <Group>
-                          <Circle
-                            cx={enemy.x}
-                            cy={enemy.y}
-                            r={r}
-                            color={`rgba(0,170,255,${(a * 0.25).toFixed(3)})`}
-                            style="fill"
-                          />
-                          <Circle
-                            cx={enemy.x}
-                            cy={enemy.y}
-                            r={r}
-                            color={`rgba(0,170,255,${(a * 0.75).toFixed(3)})`}
-                            style="stroke"
-                            strokeWidth={3}
-                          />
-                        </Group>
-                      );
-                    })()}
-                </Group>
-              );
-            })}
-
-            {/* #2485 Carrier sweep beam — telegraph, then the beam */}
-            {(() => {
-              const beam = carrierBeam(state);
-              if (!beam) return null;
-              if (beam.phase === "charge") {
-                return (
-                  <Group>
-                    <Rect
-                      x={beam.x - 2}
-                      y={beam.y}
-                      width={4}
-                      height={state.canvasH}
-                      color={`rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`}
-                    />
-                    <Circle
-                      cx={beam.x}
-                      cy={beam.y + 6}
-                      r={4 + beam.progress * 8}
-                      color={`rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`}
-                    />
-                  </Group>
-                );
-              }
-              return (
-                <Group>
-                  <Rect
-                    x={beam.x - BEAM_HALF_WIDTH - 4}
-                    y={beam.y}
-                    width={BEAM_HALF_WIDTH * 2 + 8}
-                    height={state.canvasH}
-                    color="rgba(176,108,255,0.35)"
-                  />
-                  <Rect
-                    x={beam.x - BEAM_HALF_WIDTH * 0.5}
-                    y={beam.y}
-                    width={BEAM_HALF_WIDTH}
-                    height={state.canvasH}
-                    color="rgba(230,205,255,0.9)"
-                  />
-                </Group>
-              );
-            })()}
-
-            {/* Player — hidden once GameOver freezes the frame */}
-            {showPlayerShip &&
-              (images.playerShip ? (
-                <SkiaImage
-                  image={images.playerShip}
-                  x={player.x - player.width / 2}
-                  y={playerDisplayY - player.height / 2}
-                  width={player.width}
-                  height={player.height}
-                  fit="fill"
-                />
-              ) : (
-                <Rect
-                  x={player.x - player.width / 2}
-                  y={playerDisplayY - player.height / 2}
-                  width={player.width}
-                  height={player.height}
-                  color="#00ffcc"
-                />
-              ))}
-
-            {/* #1033 Shield aura — glowing ring when shield is active */}
-            {showPlayerShip && state.activePowerUp?.type === "shield" && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * 0.8}
-                color="rgba(0,170,255,0.25)"
-                style="fill"
-              />
-            )}
-            {showPlayerShip && state.activePowerUp?.type === "shield" && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * 0.8}
-                color="rgba(0,170,255,0.75)"
-                style="stroke"
-                strokeWidth={2}
-              />
-            )}
-
-            {/* #2488 Hull plating flash — the plating that just took a hit */}
-            {showPlayerShip && player.hullFlashTimer > 0 && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * (0.6 + 0.4 * (1 - player.hullFlashTimer / HIT_FLASH_DURATION))}
-                color={`rgba(0,170,255,${((0.75 * player.hullFlashTimer) / HIT_FLASH_DURATION).toFixed(3)})`}
-                style="stroke"
-                strokeWidth={3}
-              />
-            )}
-
-            {/* Lightning super-state electric tint on player ship */}
-            {showPlayerShip && state.activePowerUp?.type === "lightning" && (
-              <Rect
-                x={player.x - player.width / 2}
-                y={playerDisplayY - player.height / 2}
-                width={player.width}
-                height={player.height}
-                color="rgba(255,238,0,0.45)"
-              />
-            )}
-
-            {/* #1035 Buddy ships */}
-            {state.buddyShips.map((buddy) =>
-              images.buddyShip ? (
-                <Group
-                  key={buddy.id}
-                  transform={
-                    buddy.fromLeft
-                      ? []
-                      : [{ translateX: buddy.x }, { scaleX: -1 }, { translateX: -buddy.x }]
-                  }
-                >
-                  <SkiaImage
-                    image={images.buddyShip}
-                    x={buddy.x - 17}
-                    y={buddy.y - 17}
-                    width={34}
-                    height={34}
-                    fit="fill"
-                  />
-                </Group>
-              ) : (
-                <Rect
-                  key={buddy.id}
-                  x={buddy.x - 17}
-                  y={buddy.y - 17}
-                  width={34}
-                  height={34}
-                  color={C.buddyShip}
-                />
-              )
-            )}
-
-            {/* Power-ups — Kenney CC0 sprites with procedural fallback */}
-            {state.powerUps.map((pu) => {
-              const lx = pu.x - pu.width / 2;
-              const ly = pu.y - pu.height / 2;
-              const pw = pu.width;
-              const ph = pu.height;
-              const spriteMap: Partial<Record<PowerUpType, typeof images.puShield>> = {
-                shield: images.puShield,
-                bomb: images.puBomb,
-                buddy: images.puBuddy,
-                lightning: images.puLightning,
-              };
-              const sprite = spriteMap[pu.type] ?? null;
-              if (sprite) {
-                return (
-                  <SkiaImage key={pu.id} image={sprite} x={lx} y={ly} width={pw} height={ph} />
-                );
-              }
-              // #2488 salvage crate (gold) and hull plating (cyan hexagon) — procedural for now
-              if (pu.type === "salvage") {
-                return (
-                  <Group key={pu.id}>
-                    <Rect
-                      x={lx + pw * 0.15}
-                      y={ly + ph * 0.15}
-                      width={pw * 0.7}
-                      height={ph * 0.7}
-                      color="#ffb020"
-                    />
-                    <Rect
-                      x={lx + pw * 0.15}
-                      y={ly + ph * 0.45}
-                      width={pw * 0.7}
-                      height={ph * 0.1}
-                      color="#7a4d08"
-                    />
-                  </Group>
-                );
-              }
-              if (pu.type === "hull") {
-                const hex =
-                  `M${pu.x},${ly} L${lx + pw},${ly + ph * 0.25} L${lx + pw},${ly + ph * 0.75} ` +
-                  `L${pu.x},${ly + ph} L${lx},${ly + ph * 0.75} L${lx},${ly + ph * 0.25} Z`;
-                return <Path key={pu.id} path={hex} color="#00aaff" />;
-              }
-              // fallback procedural shapes when sprite not yet loaded
-              if (pu.type === "shield") {
-                return (
-                  <Circle
-                    key={pu.id}
-                    cx={pu.x}
-                    cy={pu.y}
-                    r={pw * 0.4}
-                    color="rgba(0,170,255,0.9)"
-                  />
-                );
-              }
-              if (pu.type === "bomb") {
-                return (
-                  <Circle key={pu.id} cx={pu.x} cy={pu.y} r={pw * 0.4} color="rgba(255,80,0,0.9)" />
-                );
-              }
-              if (pu.type === "buddy") {
-                return (
-                  <Rect
-                    key={pu.id}
-                    x={lx + pw * 0.2}
-                    y={ly + ph * 0.2}
-                    width={pw * 0.6}
-                    height={ph * 0.6}
-                    color="rgba(0,255,200,0.9)"
-                  />
-                );
-              }
-              const boltPath =
-                `M${lx + pw * 0.625},${ly} ` +
-                `L${lx + pw * 0.125},${ly + ph * 0.542} ` +
-                `L${lx + pw * 0.458},${ly + ph * 0.542} ` +
-                `L${lx + pw * 0.375},${ly + ph} ` +
-                `L${lx + pw * 0.875},${ly + ph * 0.458} ` +
-                `L${lx + pw * 0.542},${ly + ph * 0.458} Z`;
-              return <Path key={pu.id} path={boltPath} color="#ffee00" />;
-            })}
-
-            {/* #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it) */}
-            {state.asteroids.map((a) => {
-              const d =
-                asteroidOutline(a)
-                  .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-                  .join(" ") + " Z";
-              return (
-                <Group key={a.id}>
-                  <Path path={d} color={a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47"} />
-                  <Path path={d} color="#c9a27a" style="stroke" strokeWidth={1.5} />
-                </Group>
-              );
-            })}
-
-            {/* Explosions */}
-            {state.explosions.map((exp) => {
-              const frameImg = images.explosionFrames[exp.frame] ?? null;
-              const half = EXPLOSION_DRAW_SIZE / 2;
-              if (frameImg) {
-                return (
-                  <SkiaImage
-                    key={exp.id}
-                    image={frameImg}
-                    x={exp.x - half}
-                    y={exp.y - half}
-                    width={EXPLOSION_DRAW_SIZE}
-                    height={EXPLOSION_DRAW_SIZE}
-                    fit="fill"
-                  />
-                );
-              }
-              const progress = exp.frame / 20;
-              return (
-                <Circle
-                  key={exp.id}
-                  cx={exp.x}
-                  cy={exp.y}
-                  r={6 + progress * 18}
-                  color={progress < 0.4 ? "#ffcc00" : "#ff4400"}
-                  opacity={1 - progress}
-                />
-              );
-            })}
-            {/* #1034 Bomb flash — full-screen white overlay fading out */}
-            {state.bombFlashTimer > 0 && (
-              <Rect
-                x={0}
-                y={0}
-                width={width}
-                height={height}
-                color={`rgba(255,255,255,${(state.bombFlashTimer / 300) * 0.75})`}
-              />
-            )}
+            {/* #2564: the whole scene, back to front, from the pure frame builder */}
+            {frame.map((op) => renderOp(op, images))}
           </Group>
         </Canvas>
 
@@ -1038,7 +672,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
         <View style={styles.hudBottom} pointerEvents="none">
-          {Array.from({ length: player.lives }, (_, i) => (
+          {Array.from({ length: state.player.lives }, (_, i) => (
             <View key={i} style={styles.lifeIndicator} />
           ))}
         </View>
