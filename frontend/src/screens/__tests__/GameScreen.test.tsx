@@ -75,9 +75,11 @@ function makeState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const mockNavigation = { navigate: jest.fn(), goBack: jest.fn() } as unknown as Parameters<
-  typeof GameScreen
->[0]["navigation"];
+const mockNavigation = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  popToTop: jest.fn(),
+} as unknown as Parameters<typeof GameScreen>[0]["navigation"];
 
 async function renderScreen(stateOverrides: Record<string, unknown> = {}) {
   const initialState = makeState(stateOverrides);
@@ -165,12 +167,13 @@ describe("GameScreen", () => {
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
 
-  it("dismiss button navigates back to HomeScreen", async () => {
-    const { getByRole } = await renderScreen({ game_over: true, total_score: 200 });
+  it("the result card's Home button returns to the lobby (#2505)", async () => {
+    (mockNavigation.popToTop as jest.Mock).mockClear();
+    const { getByTestId } = await renderScreen({ game_over: true, total_score: 200 });
     await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /dismiss/i }));
+      await fireEvent.press(getByTestId("yacht-result-home"));
     });
-    expect(mockNavigation.goBack).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.popToTop).toHaveBeenCalledTimes(1);
   });
 
   it("⋯ menu Scoreboard item navigates to ScoreboardScreen with yacht gameKey", async () => {
