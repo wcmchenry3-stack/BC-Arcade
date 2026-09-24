@@ -1,11 +1,20 @@
-"""Daily Word REST endpoints — GET /today, POST /guess (#1190).
+"""Daily Word REST endpoints — GET /today, POST /guess, GET /answer (#1190).
+
+Guess state is server-side (#2197, ``daily_word.progress``). It has to be: the
+puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``, so
+nothing about the request itself can prove the caller has played. The rate
+limits below throttle volume only — they were never an integrity control, and
+before #2197 they were the *only* thing standing between a caller and both
+today's answer and an unlimited supply of scored guesses.
 
 Rate limits:
   GET /today   — 60/minute (IP-keyed, no auth)
   POST /guess  — 20/hour keyed by f"{session_id}:{puzzle_id}" (compound key
                  isolates by puzzle so the limit resets naturally each new day;
-                 20/hour gives 6 real guesses + room for invalid-word attempts
-                 and network retries without blocking a legitimate game)
+                 20/hour leaves room for invalid-word attempts and network
+                 retries on top of the 6 scored guesses, which are now capped
+                 by ``progress.MAX_GUESSES`` rather than by this limit)
+  GET /answer  — 20/minute, and gated on the caller's own guess record
 """
 
 from __future__ import annotations
@@ -17,7 +26,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from daily_word.progress import MAX_GUESSES, may_see_answer, record_guess
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
+from db.base import get_session_factory
 from limiter import _real_ip, limiter
 from session import get_session_id
 
@@ -116,7 +127,7 @@ async def get_today(
 @router.post("/guess")
 @limiter.limit("20/hour", key_func=_guess_key)
 async def post_guess(request: Request, body: GuessRequest) -> dict:
-    get_session_id(request)
+    sid = get_session_id(request)
 
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
@@ -149,7 +160,26 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
     if not is_valid_guess(guess, lang):
         raise HTTPException(status_code=422, detail="not_a_word")
 
-    result: dict = {"tiles": _score_guess(answer, guess)}
+    # #2197 — spend a guess server-side. Deliberately after the length and
+    # dictionary checks, so a typo or a non-word costs nothing, exactly as the
+    # client behaves. A guess already on record is re-scored without spending a
+    # turn, so a retried request cannot rob the player.
+    tiles = _score_guess(answer, guess)
+    won = all(t["status"] == "correct" for t in tiles)
+    factory = get_session_factory()
+    async with factory() as db:
+        outcome = await record_guess(
+            db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
+        )
+    if not outcome.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="already_solved" if outcome.solved else "no_guesses_remaining",
+        )
+
+    result: dict = {"tiles": tiles}
+    result["guesses_used"] = outcome.guesses_used
+    result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
     if lang == "hi":
         # clusters describe how to split the guess's code points into displayable tile units (not the answer)
         result["grapheme_clusters"] = _grapheme_clusters(guess)
@@ -162,9 +192,25 @@ async def get_answer_route(
     request: Request,
     puzzle_id: str = Query(...),
 ) -> dict:
-    """Return the answer for a puzzle — only called client-side after all guesses are exhausted."""
+    """Return the answer, but only to a session that has earned it (#2197).
+
+    ``puzzle_id`` is ``YYYY-MM-DD:{lang}`` and needs no discovery, so this used
+    to hand today's word to anyone who asked before making a single guess. The
+    gate is the caller's own guess record: solved, or all
+    ``MAX_GUESSES`` spent. A session that never played gets 403, which also
+    means past puzzles are not browsable.
+    """
+    # puzzle_id is validated before the session so a malformed id still answers
+    # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+
+    sid = get_session_id(request)
+    factory = get_session_factory()
+    async with factory() as db:
+        earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
+    if not earned:
+        raise HTTPException(status_code=403, detail="guesses_remaining")
     return {"answer": answer}

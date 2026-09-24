@@ -309,15 +309,155 @@ def test_answer_not_in_post_guess_response(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_answer_returns_answer_for_valid_puzzle_id(client: TestClient) -> None:
-    """GET /answer returns {"answer": <word>} for today's valid puzzle_id."""
+def _guess(client: TestClient, headers: dict, puzzle_id: str, word: str):
+    return client.post(
+        "/daily-word/guess",
+        headers=headers,
+        json={"puzzle_id": puzzle_id, "guess": word, "tz_offset_minutes": 0},
+    )
+
+
+# Six valid five-letter words, none of them the answer for any puzzle we test.
+_SIX_WRONG = ["crane", "slate", "mound", "pilot", "brick", "fudge"]
+
+
+def test_get_answer_refuses_a_session_that_has_not_played(client: TestClient) -> None:
+    """#2197 — this used to hand out today's word to anyone who asked.
+
+    `puzzle_id` is just "YYYY-MM-DD:{lang}", so there was nothing to discover
+    and nothing to authenticate against.
+    """
+    r = client.get(f"/daily-word/answer?puzzle_id={_today_puzzle_id()}", headers=_sid_headers())
+    assert r.status_code == 403
+    assert r.json()["detail"] == "guesses_remaining"
+
+
+def test_get_answer_refuses_a_session_partway_through(client: TestClient) -> None:
+    headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
-    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}")
+    for word in _SIX_WRONG[:3]:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+    assert r.status_code == 403
+
+
+def test_get_answer_released_once_every_guess_is_spent(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
     assert r.status_code == 200
-    data = r.json()
-    assert "answer" in data
-    assert isinstance(data["answer"], str)
-    assert len(data["answer"]) > 0
+    assert isinstance(r.json()["answer"], str)
+    assert len(r.json()["answer"]) > 0
+
+
+def test_get_answer_released_once_the_puzzle_is_solved(client: TestClient) -> None:
+    """A winner gets the answer without burning all six guesses."""
+    from daily_word.puzzle import get_answer
+
+    puzzle_id = _today_puzzle_id()
+    headers = _sid_headers()
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+    assert r.status_code == 200
+
+
+def test_get_answer_is_scoped_to_the_asking_session(client: TestClient) -> None:
+    """One player finishing must not unlock the answer for everyone else."""
+    puzzle_id = _today_puzzle_id()
+    played = _sid_headers()
+    for word in _SIX_WRONG:
+        _guess(client, played, puzzle_id, word)
+    assert (
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=played).status_code == 200
+    )
+
+    bystander = _sid_headers()
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=bystander)
+    assert r.status_code == 403
+
+
+def test_get_answer_requires_a_session(client: TestClient) -> None:
+    r = client.get(f"/daily-word/answer?puzzle_id={_today_puzzle_id()}")
+    assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Server-side guess cap (#2197)
+# ---------------------------------------------------------------------------
+
+
+def test_a_seventh_guess_is_refused(client: TestClient) -> None:
+    """The cap lived only in the client; the real ceiling was the 20/hour rate
+    limit, i.e. enough scored guesses to brute-force a five-letter word."""
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = _guess(client, headers, puzzle_id, "whisk")
+    assert r.status_code == 403
+    assert r.json()["detail"] == "no_guesses_remaining"
+
+
+def test_guesses_remaining_counts_down(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for i, word in enumerate(_SIX_WRONG, start=1):
+        body = _guess(client, headers, puzzle_id, word).json()
+        assert body["guesses_used"] == i
+        assert body["guesses_remaining"] == 6 - i
+
+
+def test_no_further_guesses_once_solved(client: TestClient) -> None:
+    from daily_word.puzzle import get_answer
+
+    puzzle_id = _today_puzzle_id()
+    headers = _sid_headers()
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    r = _guess(client, headers, puzzle_id, "crane")
+    assert r.status_code == 403
+    assert r.json()["detail"] == "already_solved"
+
+
+def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:
+    """withRetry can replay a guess that already reached the server."""
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    first = _guess(client, headers, puzzle_id, "crane").json()
+    again = _guess(client, headers, puzzle_id, "crane").json()
+
+    assert first["tiles"] == again["tiles"]
+    assert again["guesses_used"] == 1, "a replay must not spend a second guess"
+
+
+def test_an_invalid_word_costs_nothing(client: TestClient) -> None:
+    """Rejected before the guess is recorded, matching the client's behaviour."""
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    assert _guess(client, headers, puzzle_id, "zzzzz").status_code == 422
+
+    body = _guess(client, headers, puzzle_id, "crane").json()
+    assert body["guesses_used"] == 1
+
+
+def test_guess_state_is_per_puzzle(client: TestClient) -> None:
+    """Spending today's guesses must not affect another puzzle."""
+    headers = _sid_headers()
+    today = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        _guess(client, headers, today, word)
+    assert _guess(client, headers, today, "whisk").status_code == 403
+
+    # A different language is a different puzzle_id, and a separate budget.
+    other = _today_puzzle_id(lang="hi")
+    r = client.get(f"/daily-word/answer?puzzle_id={other}", headers=headers)
+    assert r.status_code == 403, "the hi puzzle was never played"
 
 
 def test_get_answer_returns_422_for_invalid_puzzle_id(client: TestClient) -> None:

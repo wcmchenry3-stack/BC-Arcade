@@ -23,6 +23,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -202,6 +203,47 @@ class BugLog(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+
+
+class DailyWordProgress(Base):
+    """Server-side record of a session's guesses on one Daily Word puzzle (#2197).
+
+    Daily Word was fully client-authoritative: ``POST /guess`` scored a guess and
+    returned tiles but persisted nothing, so the server could not tell how many
+    guesses a player had used. Two consequences, both live:
+
+    * ``GET /answer`` handed today's word to anyone who asked, with no session and
+      no guesses made — the ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``.
+    * The 6-guess limit existed only in the client, so the real ceiling was the
+      20/hour rate limit — enough scored guesses to brute-force a 5-letter word.
+
+    ``guesses`` holds the distinct guesses in order, which both gives the count
+    and makes a retried guess idempotent: the network layer retries, and a
+    replayed request must not cost the player a turn.
+
+    Not a cache — this is the authority for "has this session earned the answer".
+    Rows are per (session_id, puzzle_id) and are never rewritten for a past
+    puzzle, so a day already played keeps its history.
+    """
+
+    __tablename__ = "daily_word_progress"
+    __table_args__ = (
+        UniqueConstraint("session_id", "puzzle_id", name="uq_daily_word_progress_session_puzzle"),
+        Index("daily_word_progress_session_id_idx", "session_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # "YYYY-MM-DD:{lang}" — the same id the client sends on every guess.
+    puzzle_id: Mapped[str] = mapped_column(Text, nullable=False)
+    guesses: Mapped[list] = mapped_column(_JSONB, nullable=False, default=list)
+    solved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class DailyChallengeDay(Base):
