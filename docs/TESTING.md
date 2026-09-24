@@ -606,6 +606,7 @@ anything it didn't have.
 npx tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
 npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
 npx tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+npx tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
 ```
 
 Each persona takes the test seat against a Schemer field on the same deals,

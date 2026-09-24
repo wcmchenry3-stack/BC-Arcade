@@ -329,8 +329,9 @@ export const REGRET_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "da
  * cheating reference player) takes the test seat against a Schemer field,
  * on the same deals.
  */
-export function regretMatchup(withOracle = false): Matchup {
+export function regretMatchup(withOracle = false, pimc?: HeartsPolicy): Matchup {
   const tests: HeartsPolicy[] = REGRET_PERSONAS.map((p) => personaPolicy(p));
+  if (pimc) tests.push(pimc);
   if (withOracle) tests.push(oraclePolicy());
   return fieldMatchup("regret", personaPolicy("schemer"), tests);
 }

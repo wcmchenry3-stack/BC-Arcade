@@ -54,6 +54,7 @@ import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/type
 import { resolvePersona } from "../game/hearts/types";
 import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
 import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
+import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
 
@@ -97,6 +98,10 @@ export default function HeartsScreen() {
 
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
   const debugMode = __DEV__;
+  // The debug panel also opens in internal test builds (never store builds),
+  // for its on-device PIMC timing (#2587); card reveals and hand logs stay
+  // __DEV__-only.
+  const showDebugPanel = __DEV__ || isPreLaunchApiBuild();
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -677,7 +682,7 @@ export default function HeartsScreen() {
           takerLabel={queenOfSpadesLabel}
           onAnimationEnd={() => setShowQueenOfSpades(false)}
         />
-        {__DEV__ && (
+        {showDebugPanel && (
           <Pressable
             style={[styles.devButton, { backgroundColor: colors.accent }]}
             onPress={() => setDebugPanelOpen((prev) => !prev)}
@@ -771,8 +776,8 @@ export default function HeartsScreen() {
         testID="hearts-result"
       />
 
-      {/* ── Hearts debug panel (__DEV__ only) ────────────────────── */}
-      {__DEV__ && (
+      {/* ── Hearts debug panel (dev + internal test builds) ──────── */}
+      {showDebugPanel && (
         <HeartsDebugPanel
           visible={debugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}
