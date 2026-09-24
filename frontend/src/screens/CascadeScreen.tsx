@@ -302,6 +302,8 @@ function CascadeGame() {
     bestScore: number;
     isNewBest: boolean;
     merges: number;
+    /** False when the game had no sync id, so nothing could be submitted. */
+    submittable: boolean;
   } | null>(null);
   const leaderboard = useLeaderboardSubmit(cascadeLeaderboard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
@@ -570,6 +572,7 @@ function CascadeGame() {
         // Only a beaten previous best counts — not the first game.
         isNewBest: previousBest > 0 && finalScore > previousBest,
         merges: mergeCountRef.current,
+        submittable: gameId !== null,
       });
       if (gameId) submitScore({ gameId }).catch(() => {});
     },
@@ -915,13 +918,19 @@ function CascadeGame() {
                   ]
                 : []
             }
-            submission={{
-              status: leaderboard.status,
-              rank: leaderboard.rank,
-              playerName: leaderboard.playerName,
-              onProvideName: leaderboard.provideName,
-              onRetry: leaderboard.retry,
-            }}
+            submission={
+              result && !result.submittable
+                ? // No game id: nothing can reach the leaderboard, and there is
+                  // nothing to retry — say so instead of showing no line.
+                  { status: "error" }
+                : {
+                    status: leaderboard.status,
+                    rank: leaderboard.rank,
+                    playerName: leaderboard.playerName,
+                    onProvideName: leaderboard.provideName,
+                    onRetry: leaderboard.retry,
+                  }
+            }
             onPlayAgain={handleRestart}
             onHome={() => navigation.popToTop()}
             testID="cascade-result"

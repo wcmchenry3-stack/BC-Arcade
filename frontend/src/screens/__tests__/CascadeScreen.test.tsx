@@ -623,4 +623,14 @@ describe("CascadeScreen — result card (#2515)", () => {
 
     expect(submitPlayerName).toHaveBeenCalledTimes(2);
   });
+
+  it("shows a save error, with no retry, when the game has no sync id", async () => {
+    await saveDisplayName("Riley");
+    mockStartGame.mockReturnValue(null as unknown as string);
+    const renderer = await playToGameOver(1234);
+    expect(submitPlayerName).not.toHaveBeenCalled();
+    const submission = findCard(renderer)?.props.submission;
+    expect(submission.status).toBe("error");
+    expect(submission.onRetry).toBeUndefined();
+  });
 });
