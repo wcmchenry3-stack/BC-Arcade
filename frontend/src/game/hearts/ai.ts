@@ -197,7 +197,7 @@ export function selectCardsToPassUtility(
  * Returns true when `playerIndex` is in an active moon attempt this trick,
  * per the Daring earlyMoon/midMoon thresholds (exact thresholds carried over
  * from the legacy Hard AI). Exported so simulation/calibration tooling
- * (scripts/simulate-hearts.ts, ai.calibrate.test.ts) can instrument real
+ * (the sim gate harness, sim/harness.ts) can instrument real
  * trigger activations instead of re-implementing — and drifting from —
  * these thresholds (#2204).
  */

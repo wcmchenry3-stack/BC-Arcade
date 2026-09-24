@@ -23,44 +23,15 @@
  */
 
 import type { RandomSource } from "../engine";
-
-const GOLDEN = 0x9e3779b9;
+import { createStream, deriveSeed } from "../../_shared/simRandom";
 
 /** Stream tags so dice and noise sub-streams never share a seed. */
 export const DICE_TAG = 0x44494345; // "DICE"
 export const NOISE_TAG = 0x4e4f4953; // "NOIS"
 
-/** MurmurHash3 32-bit finalizer — a cheap, well-mixed bijection on uint32. */
-export function mix32(x: number): number {
-  x = x >>> 0;
-  x ^= x >>> 16;
-  x = Math.imul(x, 0x85ebca6b);
-  x ^= x >>> 13;
-  x = Math.imul(x, 0xc2b2ae35);
-  x ^= x >>> 16;
-  return x >>> 0;
-}
-
-/** Hash an ordered list of integers into one uint32 seed. */
-export function deriveSeed(...parts: readonly number[]): number {
-  let h = GOLDEN;
-  for (const part of parts) {
-    h = mix32((h ^ mix32(part)) + GOLDEN);
-  }
-  return h;
-}
-
-/** Mulberry32: small, fast, full-period 32-bit generator. Testing only. */
-export function createStream(seed: number): RandomSource {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// The generic hashing and generator helpers are shared with the Hearts
+// harness (#2238); re-exported so existing imports keep working.
+export { createStream, deriveSeed, mix32 } from "../../_shared/simRandom";
 
 /**
  * The 3 × 5 dice table for one player's turn: row k is used for roll k

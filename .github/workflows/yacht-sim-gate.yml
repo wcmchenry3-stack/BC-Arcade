@@ -25,6 +25,7 @@ on:
       - "frontend/src/game/yacht/probTables.ts"
       - "frontend/src/game/yacht/oracle/**"
       - "frontend/src/game/yacht/sim/**"
+      - "frontend/src/game/_shared/simRandom.ts"
       - "frontend/src/game/yacht/__tests__/ai.calibrate.test.ts"
       - "scripts/simulate-yacht.ts"
       - ".github/workflows/yacht-sim-gate.yml"
