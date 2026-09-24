@@ -16,9 +16,8 @@ export interface SfxVolumes {
   playerhit: number;
   waveclear: number;
   gameover: number;
-  freefirezone: number;
+  bosswave: number;
   bonuslife: number;
-  perfectbonus: number;
   beamcharge: number;
   beamfire: number;
   reinforce: number;
@@ -37,9 +36,8 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   playerhit: 0.7,
   waveclear: 0.8,
   gameover: 0.8,
-  freefirezone: 0.8,
+  bosswave: 0.8,
   bonuslife: 0.9,
-  perfectbonus: 1.0,
   beamcharge: 0.7,
   beamfire: 0.5,
   reinforce: 0.6,
@@ -85,17 +83,8 @@ export function useStarSwarmAudio(
   const { play: playPlayerHit } = useSound("starswarm.playerhit", STARSWARM_SOUNDS, v.playerhit);
   const { play: playWaveClear } = useSound("starswarm.waveclear", STARSWARM_SOUNDS, v.waveclear);
   const { play: playGameOver } = useSound("starswarm.gameover", STARSWARM_SOUNDS, v.gameover);
-  const { play: playFreeFireZone } = useSound(
-    "starswarm.freefirezone",
-    STARSWARM_SOUNDS,
-    v.freefirezone
-  );
+  const { play: playBossWave } = useSound("starswarm.bosswave", STARSWARM_SOUNDS, v.bosswave); // #2490
   const { play: playBonusLife } = useSound("starswarm.bonuslife", STARSWARM_SOUNDS, v.bonuslife);
-  const { play: playPerfect, stop: stopPerfect } = useSound(
-    "starswarm.perfectbonus",
-    STARSWARM_SOUNDS,
-    v.perfectbonus
-  );
 
   const { play: playBeamCharge } = useSound("starswarm.beamcharge", STARSWARM_SOUNDS, v.beamcharge);
   const { play: playBeamFire } = useSound("starswarm.beamfire", STARSWARM_SOUNDS, v.beamfire);
@@ -143,10 +132,8 @@ export function useStarSwarmAudio(
     playPlayerHit,
     playWaveClear,
     playGameOver,
-    playFreeFireZone,
+    playBossWave,
     playBonusLife,
-    playPerfect,
-    stopPerfect,
     playCarrierEvent,
     playUpgrade,
   };

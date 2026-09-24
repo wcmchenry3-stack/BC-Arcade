@@ -21,7 +21,6 @@ import type {
   HullLevel,
   UpgradeEvent,
 } from "./types";
-import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -98,7 +97,7 @@ const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 
 // #2352: wave clear no longer freezes gameplay or hands the ship to an AI autopilot —
 // the wave advances the instant the last enemy dies. This just times the purely-cosmetic
-// "MISSION COMPLETE" / "PERFECT" banner fade so it doesn't block or slow anything down.
+// "MISSION COMPLETE" banner fade so it doesn't block or slow anything down.
 export const MISSION_COMPLETE_BANNER_MS = 1200;
 // ms the banner takes to fade out at the end of its life — shared by both renderers so
 // native/web can't drift out of sync with each other or with MISSION_COMPLETE_BANNER_MS.
@@ -113,51 +112,18 @@ export function decayMissionCompleteTimer(timer: number, dtMs: number): number {
   return Math.max(0, timer - dtMs);
 }
 
-/** Whether the cosmetic "MISSION COMPLETE" / "PERFECT" banner should render this frame.
- * Suppressed during GameOver (would ghost under the game-over overlay) and FreeFireZone
- * (would garble with that phase's own banner text) — both are real phases this timer can
- * still be counting down through. Also suppressed while the pre-wave countdown overlay is
- * showing (the countdown starts in the same tick as a normal wave clear, and both overlays
- * render full-screen and centered) — countdownActive is passed in since the countdown lives
- * in the renderer's ref state, not the engine state. */
+/** Whether the cosmetic "MISSION COMPLETE" banner should render this frame. Suppressed during
+ * GameOver (would ghost under the game-over overlay) — a real phase this timer can still be
+ * counting down through. Also suppressed while the pre-wave countdown overlay is showing (the
+ * countdown starts in the same tick as a wave clear, and both overlays render full-screen and
+ * centered) — countdownActive is passed in since the countdown lives in the renderer's ref
+ * state, not the engine state. */
 export function showMissionCompleteBanner(
   state: StarSwarmState,
   countdownActive: boolean
 ): boolean {
-  return (
-    state.missionCompleteTimer > 0 &&
-    state.phase !== "GameOver" &&
-    state.phase !== "FreeFireZone" &&
-    !countdownActive
-  );
+  return state.missionCompleteTimer > 0 && state.phase !== "GameOver" && !countdownActive;
 }
-export const FREE_FIRE_ENEMY_COUNT = 40; // classic 40-enemy Free Fire Zone (#1022)
-const PERFECT_BONUS = 10_000; // flat bonus for hitting all challenge enemies (#1022)
-
-/** Points awarded for a PERFECT Free Fire Zone clear at the given difficulty. Shared by the
- * engine's scoring and the celebration banner so the number shown is the number awarded. */
-export function perfectBonusPoints(difficulty: DifficultyTier): number {
-  return Math.round(PERFECT_BONUS * difficultyMultiplier(difficulty));
-}
-
-/** #2422: how long gameplay holds after a PERFECT Free Fire Zone clear — the length of the
- * fanfare when it is playing, a short silent beat when it isn't. Shared so the native and web
- * canvases can't drift apart. The hold itself is measured against the frame clock (a deadline),
- * not by summing frame deltas: those are capped per frame, so on a slow device they would run
- * slower than the audio they are meant to match. */
-export function perfectHoldMs(fanfarePlaying: boolean): number {
-  return fanfarePlaying ? PERFECT_FANFARE_MS : PERFECT_SILENT_HOLD_MS;
-}
-// #1463: reduced HP — free fire zone is a shooting gallery; multi-hit enemies are unkillable at speed
-const FREE_FIRE_TIER_HP: Record<EnemyTier, number> = {
-  Grunt: 1,
-  Elite: 1,
-  Boss: 2,
-  Carrier: 2, // #2484: free fire never spawns a Carrier; listed only to keep the Record total
-};
-// #1463: slower swarm — 5 s arc, 400 ms stagger → ~20.6 s total stage
-const FREE_FIRE_PATH_DURATION = 5000; // ms each enemy traverses its arc
-const FREE_FIRE_STAGGER_MS = 400; // ms between successive enemy entries
 
 const SHOOT_INTERVAL_BASE = 2600; // ms base
 const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
@@ -165,7 +131,15 @@ const SHOOT_INTERVAL_JITTER = 1400; // ms random addend
 const EXPLOSION_FRAME_MS = 28;
 const EXPLOSION_FRAMES = 20;
 
-const WAVE_CLEAR_BONUS_BASE = 500;
+export const WAVE_CLEAR_BONUS_BASE = 500;
+/** #2490: a boss wave's clear bonus is doubled — the stage's whole payout, no perfect bonus. */
+export const BOSS_WAVE_CLEAR_MULT = 2;
+
+/** Points for clearing `wave` at `difficulty`: base × wave (× 2 on a boss wave) × multiplier. */
+export function waveClearBonusPoints(wave: number, difficulty: DifficultyTier): number {
+  const mult = isBossWave(wave) ? BOSS_WAVE_CLEAR_MULT : 1;
+  return Math.round(wave * WAVE_CLEAR_BONUS_BASE * mult * difficultyMultiplier(difficulty));
+}
 
 // Score diving enemies get a 2× multiplier.
 const DIVE_SCORE_MULT = 2;
@@ -219,6 +193,7 @@ export const HIT_FLASH_DURATION = 250; // ms
 
 // #2485: Carrier actions — sweep beam, reinforcements, lone-ship lasers
 export const BEAM_INTERVAL_BASE = 7000; // ms between beams (÷ min(1.6, paramScale))
+export const BOSS_WAVE_BEAM_SCALE = 1.5; // #2490: beams come this much faster on a boss wave
 export const BEAM_CHARGE_MS = 600; // telegraph: wiggle + glow
 export const BEAM_FIRE_MS = 1200; // beam on, dragged sideways by the formation sway
 export const BEAM_HALF_WIDTH = 12; // px either side of the Carrier's x
@@ -524,6 +499,14 @@ function waveSlots(wave: number): SlotDef[] {
   return slots;
 }
 
+/** #2490: a boss wave is the Carrier and its four escorts, nothing else. Carrier last, as above. */
+function bossWaveSlots(): SlotDef[] {
+  const slots: SlotDef[] = [];
+  for (let c = 0; c < 4; c++) slots.push({ tier: "Boss", row: 1, col: c, rowCols: 4 });
+  slots.push({ tier: "Carrier", row: 0, col: 0, rowCols: 1 });
+  return slots;
+}
+
 function slotToWorld(slot: SlotDef, canvasW: number): { fx: number; fy: number } {
   const rowWidth = slot.rowCols * FORMATION_COL_W;
   const left = (canvasW - rowWidth) / 2 + FORMATION_COL_W / 2;
@@ -616,19 +599,6 @@ function buddyShipPath(
   };
 }
 
-function challengePath(idx: number, total: number, canvasW: number, canvasH: number): CubicBezier {
-  const col = idx % FORMATION_COLS;
-  const startX = (canvasW / FORMATION_COLS) * col + canvasW / (FORMATION_COLS * 2);
-  const amp = canvasW * 0.28;
-  const sign = idx % 2 === 0 ? 1 : -1;
-  return {
-    p0: { x: startX, y: -60 - Math.floor(idx / FORMATION_COLS) * 55 },
-    p1: { x: Math.min(canvasW - 20, Math.max(20, startX + sign * amp)), y: canvasH * 0.28 },
-    p2: { x: Math.min(canvasW - 20, Math.max(20, startX - sign * amp)), y: canvasH * 0.62 },
-    p3: { x: startX, y: canvasH + 80 },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Asteroids (#2486)
 // ---------------------------------------------------------------------------
@@ -675,6 +645,7 @@ function canSpawnAsteroid(state: StarSwarmState): boolean {
   return (
     state.phase === "Playing" &&
     state.wave >= ASTEROID_MIN_WAVE &&
+    !isBossWave(state.wave) && // #2490: no timed rocks on a boss wave — the Carrier is the show
     !state.asteroidsDisabled &&
     state.asteroids.length < MAX_ASTEROIDS
   );
@@ -685,12 +656,7 @@ function canSpawnAsteroid(state: StarSwarmState): boolean {
  * minimum and the dev "disabled" toggle, so a tester can always summon one.
  */
 export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarSwarmState {
-  if (
-    state.phase === "GameOver" ||
-    state.phase === "FreeFireZone" || // bonus waves are rock-free, dev throws included
-    state.asteroids.length >= MAX_ASTEROIDS
-  )
-    return state;
+  if (state.phase === "GameOver" || state.asteroids.length >= MAX_ASTEROIDS) return state;
   return {
     ...state,
     asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)],
@@ -1255,47 +1221,6 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
   };
 }
 
-function makeFreeFireEnemy(idx: number, total: number, canvasW: number, canvasH: number): Enemy {
-  const tier: EnemyTier = idx % 6 === 0 ? "Boss" : idx % 3 === 0 ? "Elite" : "Grunt";
-  const size = TIER_SIZE[tier];
-  const path = challengePath(idx, total, canvasW, canvasH);
-  const p0 = evalCubic(path, 0);
-  const delay = (idx * FREE_FIRE_STAGGER_MS) / FREE_FIRE_PATH_DURATION;
-
-  return {
-    id: nextId(),
-    tier,
-    phase: "SwoopIn",
-    x: p0.x,
-    y: p0.y,
-    width: size.w,
-    height: size.h,
-    formationX: path.p3.x,
-    formationY: path.p3.y,
-    path,
-    pathT: -delay,
-    pathDuration: FREE_FIRE_PATH_DURATION,
-    vel: { x: 0, y: 0 },
-    circleCx: 0,
-    circleCy: 0,
-    circleRadius: CIRCLE_RADIUS,
-    circleAngle: 0,
-    circleSpeed: CIRCLE_SPEED,
-    shootTimer: 9_999_999, // never shoots
-    diveTargetX: 0,
-    hp: FREE_FIRE_TIER_HP[tier],
-    isAlive: true,
-    hitFlashTimer: 0,
-    wiggleTimer: 0,
-    burstShotsLeft: 0,
-    beamPhase: "idle",
-    beamTimer: 0,
-    dodge: null,
-    rolledAsteroidIds: [],
-    flakCooldown: 0,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Wave helpers
 // ---------------------------------------------------------------------------
@@ -1307,11 +1232,9 @@ function diveInterval(wave: number, paramScale = 1): number {
   return Math.max(floor, base);
 }
 
-// Free Fire Zone cadence: wave 3, then every 4th wave (3, 7, 11, 15 …) (#1022)
-function isFreeFireWave(wave: number): boolean {
-  if (wave === 3) return true;
-  if (wave < 3) return false;
-  return (wave - 3) % 4 === 0;
+/** #2490: boss-wave cadence — wave 5, then every 4th (5, 9, 13, …). */
+export function isBossWave(wave: number): boolean {
+  return wave >= 5 && (wave - 5) % 4 === 0;
 }
 
 // #980: kills needed to trigger a power-up drop (before jitter is applied)
@@ -1417,19 +1340,18 @@ function buildWaveState(
   // #2491: likewise
   runStats: RunStats = emptyRunStats()
 ): StarSwarmState {
-  let enemies: Enemy[];
-  let phase: StarSwarmState["phase"];
-
-  if (isFreeFireWave(wave)) {
-    enemies = Array.from({ length: FREE_FIRE_ENEMY_COUNT }, (_, i) =>
-      makeFreeFireEnemy(i, FREE_FIRE_ENEMY_COUNT, canvasW, canvasH)
-    );
-    phase = "FreeFireZone";
-  } else {
-    const slots = waveSlots(wave);
-    enemies = slots.map((slot, idx) => makeEnemy(idx, slot, canvasW));
-    phase = "SwoopIn";
-  }
+  // #2490: a boss wave is the Carrier and its four escorts, nothing else — a short, hostile
+  // stage of its own in the slot the old bonus wave held. It swoops in and plays like any wave.
+  const bossWave = isBossWave(wave);
+  const slots = bossWave ? bossWaveSlots() : waveSlots(wave);
+  const enemies: Enemy[] = slots.map((slot, idx) => {
+    const e = makeEnemy(idx, slot, canvasW);
+    // the Carrier beams more often here, from the first one on
+    return bossWave && slot.tier === "Carrier"
+      ? { ...e, beamTimer: e.beamTimer / BOSS_WAVE_BEAM_SCALE }
+      : e;
+  });
+  const phase: StarSwarmState["phase"] = "SwoopIn";
 
   const startingNonBossCount = enemies.filter((e) => !isLeaderTier(e.tier)).length;
 
@@ -1453,9 +1375,7 @@ function buildWaveState(
     explosions: [],
     powerUps,
     buddyShips: [],
-    // A rock can never enter a bonus wave: it would absorb the player's shots and kill targets
-    // the player then can't hit, making the PERFECT bonus unreachable. Carried rocks are dropped.
-    asteroids: phase === "FreeFireZone" ? [] : asteroids,
+    asteroids,
     nextAsteroidTimer: asteroidInterval(),
     asteroidsDisabled: false,
     reinforceTimer: REINFORCE_INTERVAL,
@@ -1467,7 +1387,6 @@ function buildWaveState(
     phaseTimer: 0,
     canvasW,
     canvasH,
-    freeFireHits: 0,
     nextDiveTimer: diveInterval(wave, paramScale),
     formationSwayX: 0,
     formationSwayDir: 1,
@@ -1477,13 +1396,13 @@ function buildWaveState(
     killsSinceLastDrop: 0,
     dropJitterTarget,
     activePowerUp: null,
-    bossThresholdCrossed: false,
+    // #2490: on a boss wave the Bosses are active from the first tick — bursts and dives
+    bossThresholdCrossed: bossWave,
     bossDeepThresholdCrossed: false,
     stragglerEnabled,
     pauseStraggler: false,
     bombFlashTimer: 0,
     difficulty,
-    freeFirePerfect: false,
     playerFireDisabled: false,
     enemyFireDisabled: false,
     missionCompleteTimer: 0,
@@ -1611,8 +1530,10 @@ interface CarrierCtx {
   playing: boolean;
   /** No other live enemy on the field (in-flight reinforcements count as alive). */
   alone: boolean;
+  /** #2490: boss wave — the beam cadence is BOSS_WAVE_BEAM_SCALE× faster. */
+  bossWave: boolean;
 }
-const NO_CARRIER_CTX: CarrierCtx = { playing: false, alone: false };
+const NO_CARRIER_CTX: CarrierCtx = { playing: false, alone: false, bossWave: false };
 
 /**
  * #2485: the Carrier's own tick while holding station. Beam: idle → charge (telegraph) → fire →
@@ -1642,7 +1563,7 @@ function tickCarrier(
       beamTimer = BEAM_FIRE_MS;
     } else {
       beamPhase = "idle";
-      beamTimer = BEAM_INTERVAL_BASE / cadence;
+      beamTimer = BEAM_INTERVAL_BASE / cadence / (ctx.bossWave ? BOSS_WAVE_BEAM_SCALE : 1);
     }
   }
 
@@ -2173,6 +2094,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   const carrierCtx: CarrierCtx = {
     playing: state.phase === "Playing",
     alone: !state.enemies.some((e) => e.isAlive && e.tier !== "Carrier"),
+    bossWave: isBossWave(state.wave), // #2490
   };
   let enemies = state.enemies.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
@@ -2227,7 +2149,13 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   let reinforcedThisWave = state.reinforcedThisWave;
   let runStats = state.runStats;
   const carrierAlive = enemies.some((e) => e.isAlive && e.tier === "Carrier");
-  if (state.phase === "Playing" && carrierAlive && state.difficulty !== "Ensign") {
+  // #2490: never on a boss wave — there are no grunt slots to refill, and it's meant to be short.
+  if (
+    state.phase === "Playing" &&
+    carrierAlive &&
+    state.difficulty !== "Ensign" &&
+    !isBossWave(state.wave)
+  ) {
     reinforceTimer -= dtMs;
     if (reinforceTimer <= 0) {
       reinforceTimer = REINFORCE_INTERVAL;
@@ -2256,14 +2184,6 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
         runStats = bumpRun(runStats, { reinforced: launched.length }); // #2491
       }
     }
-  }
-
-  // #934: challenge enemies follow a path that exits off the bottom; once they
-  // cross canvasH they can't be shot, so mark them dead to unblock WaveClear.
-  if (state.phase === "FreeFireZone") {
-    enemies = enemies.map((e) =>
-      e.isAlive && e.y > state.canvasH + 60 ? { ...e, isAlive: false } : e
-    );
   }
 
   // #1031: straggler aggression — when ≤3 enemies survive in a Playing wave,
@@ -2437,7 +2357,7 @@ function spawnExplosion(x: number, y: number): Explosion {
 
 function tickCollisions(state: StarSwarmState): StarSwarmState {
   const { player } = state;
-  let { score, freeFireHits } = state;
+  let score = state.score;
   const newExplosions: Explosion[] = [...state.explosions];
   let killsSinceLastDrop = state.killsSinceLastDrop;
   let dropJitterTarget = state.dropJitterTarget;
@@ -2490,9 +2410,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
         const base = TIER_SCORE[enemy.tier];
         const mult = enemy.phase === "Diving" || enemy.phase === "Circling" ? DIVE_SCORE_MULT : 1;
-        const bonus = state.phase === "FreeFireZone" ? 1 : mult;
-        score += Math.round(base * bonus * scoreMult);
-        if (state.phase === "FreeFireZone") freeFireHits += 1;
+        score += Math.round(base * mult * scoreMult);
         if (state.phase === "Playing") killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
@@ -2768,7 +2686,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,
             score,
-            freeFireHits,
             powerUps: [...powerUps, ...newDrops],
             buddyShips,
             killsSinceLastDrop,
@@ -2815,7 +2732,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             enemyBullets: enemyBulletsAfterHit,
             explosions: newExplosions,
             score,
-            freeFireHits,
             powerUps: [...powerUps, ...newDrops],
             buddyShips,
             killsSinceLastDrop,
@@ -2838,7 +2754,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           enemyBullets: enemyBulletsAfterHit,
           explosions: newExplosions,
           score,
-          freeFireHits,
           powerUps: [...powerUps, ...newDrops],
           buddyShips,
           killsSinceLastDrop,
@@ -2869,7 +2784,6 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     playerBullets,
     enemyBullets: currentEnemyBullets,
     score,
-    freeFireHits,
     explosions: newExplosions,
     powerUps: [...powerUps, ...newDrops],
     buddyShips,
@@ -2905,48 +2819,20 @@ function tickExplosions(state: StarSwarmState, dtMs: number): StarSwarmState {
 function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
   const liveEnemies = state.enemies.filter((e) => e.isAlive);
 
-  // SwoopIn → Playing once all enemies are in Formation (or Challenging started)
+  // SwoopIn → Playing once all enemies are in Formation
   if (state.phase === "SwoopIn") {
     const allArrived = liveEnemies.every((e) => e.phase !== "SwoopIn");
     if (allArrived) return { ...state, phase: "Playing" };
     return state;
   }
 
-  // FreeFireZone → next wave once all challenge enemies have exited.
-  // #2352: the next wave starts immediately — no freeze, no AI autopilot lockout.
-  // The wave-clear sound/haptic (fired by the caller off the `wave` bump) and the
-  // brief, non-blocking missionCompleteTimer banner are the only acknowledgment now.
-  if (state.phase === "FreeFireZone") {
-    // Enemies exit when their path completes (they reach formationY which is off-screen bottom)
-    const anyAlive = liveEnemies.length > 0;
-    if (!anyAlive) {
-      const sm = difficultyMultiplier(state.difficulty);
-      // #1463: wave-clear bonus scales with hit ratio — zero kills = zero bonus
-      const hitFraction = Math.min(1, state.freeFireHits / FREE_FIRE_ENEMY_COUNT);
-      const waveClearBonus = Math.round(hitFraction * state.wave * WAVE_CLEAR_BONUS_BASE * sm);
-      const perfect = state.freeFireHits === FREE_FIRE_ENEMY_COUNT;
-      const perfectBonus = perfect ? perfectBonusPoints(state.difficulty) : 0;
-      // Note: invincibleTimer and bombFlashTimer don't need resetting here —
-      // startNextWave() → buildWaveState() unconditionally resets both on every wave.
-      const next = startNextWave({
-        ...state,
-        score:
-          state.score + waveClearBonus + Math.round(state.freeFireHits * 50 * sm) + perfectBonus,
-      });
-      return {
-        ...next,
-        missionCompleteTimer: MISSION_COMPLETE_BANNER_MS,
-        freeFirePerfect: perfect,
-      };
-    }
-    return state;
-  }
-
-  // Playing → next wave once all enemies dead. Same instant hand-off as FreeFireZone above.
+  // Playing → next wave once all enemies dead. #2352: the next wave starts immediately — no
+  // freeze, no AI autopilot lockout. The wave-clear sound/haptic (fired by the caller off the
+  // `wave` bump) and the brief, non-blocking missionCompleteTimer banner are the only
+  // acknowledgment. #2490: a boss wave pays double (see waveClearBonusPoints).
   if (state.phase === "Playing") {
     if (liveEnemies.length === 0) {
-      const sm = difficultyMultiplier(state.difficulty);
-      const waveClearBonus = Math.round(state.wave * WAVE_CLEAR_BONUS_BASE * sm);
+      const waveClearBonus = waveClearBonusPoints(state.wave, state.difficulty);
       // Note: invincibleTimer and bombFlashTimer don't need resetting here —
       // startNextWave() → buildWaveState() unconditionally resets both on every wave.
       const next = startNextWave({
