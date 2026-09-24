@@ -149,9 +149,9 @@ _(Previously placed — provenance to be confirmed)_
 - **Download date:** 2026-04-26
 - **Notes:** Force-field deflection sound. Signals a shield/hull hit without sounding like a full explosion.
 
-### starswarm-challengingstage.ogg
+### starswarm-freefirezone.ogg (`starswarm.bosswave`)
 
-- **Event:** Challenging Stage phase begins
+- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); also reused by `starswarm.reinforce`
 - **Original filename:** `phaserUp5.ogg`
 - **Source:** Kenney Digital Audio (www.kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -159,7 +159,7 @@ _(Previously placed — provenance to be confirmed)_
 - **Attribution required:** No
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
-- **Notes:** Rising phaser sting. Signals the start of the bonus Challenging Stage wave.
+- **Notes:** Rising phaser sting. Originally the bonus-wave opener; that wave was replaced by the boss wave in #2490 and the file kept for it.
 
 ### starswarm.beamcharge / starswarm.beamfire / starswarm.reinforce (#2485, reuse)
 

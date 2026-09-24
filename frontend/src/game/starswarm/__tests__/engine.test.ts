@@ -61,6 +61,11 @@ import {
   emptyRunStats,
   dodgeRateByTier,
   killEscorts,
+  isBossWave,
+  waveClearBonusPoints,
+  WAVE_CLEAR_BONUS_BASE,
+  BOSS_WAVE_CLEAR_MULT,
+  BOSS_WAVE_BEAM_SCALE,
 } from "../engine";
 import type {
   Asteroid,
@@ -99,9 +104,9 @@ describe("initStarSwarm", () => {
     expect(s.phase).toBe("SwoopIn");
   });
 
-  it("returns FreeFireZone phase on wave 3", () => {
-    const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
+  it("every wave opens on SwoopIn — wave 3 is ordinary, wave 5 is a boss wave (#2490)", () => {
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 3).phase).toBe("SwoopIn");
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 5).phase).toBe("SwoopIn");
   });
 
   it("spawns enemies on init", () => {
@@ -527,15 +532,14 @@ describe("Wave progression", () => {
     expect(s.wave).toBe(2);
   });
 
-  it("wave 3 is a FreeFireZone", () => {
-    // Fast-forward to wave 3
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+  it("clearing wave 4 leads into the wave-5 boss wave (#2490)", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 4);
     s = advanceMs(s, 8000);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT); // WaveClear
-    s = advanceMs(s, 3000);
-    expect(s.wave).toBe(3);
-    expect(s.phase).toBe("FreeFireZone");
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(5);
+    expect(s.phase).toBe("SwoopIn");
+    expect(s.enemies.every((e) => e.tier === "Boss" || e.tier === "Carrier")).toBe(true);
   });
 
   it("score is carried over between waves", () => {
@@ -808,48 +812,167 @@ describe("#2409 bullets survive wave clear", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Free Fire Zone
+// Boss wave (#2490)
 // ---------------------------------------------------------------------------
 
-describe("FreeFireZone", () => {
-  it("enemies in FreeFireZone do not fire", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    // FreeFireZone lasts ~5s before enemies exit; stay well within it
-    s = advanceMs(s, 3000);
-    expect(s.phase).toBe("FreeFireZone");
-    expect(s.enemyBullets.length).toBe(0);
-  });
-
-  it("hitting enemies in FreeFireZone increments freeFireHits", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    // Advance until at least one enemy is on-screen
-    s = advanceMs(s, 1000);
-
-    const target = s.enemies.find((e) => e.isAlive && e.tier === "Grunt" && e.y > 0);
-    if (!target) return; // no grunt on-screen yet — skip rather than fail
-
-    // Inject a bullet directly at the enemy's current position
-    const bullet: Bullet = {
-      id: 77777,
-      x: target.x,
-      y: target.y,
-      vx: 0,
-      vy: -0.5,
-      owner: "player",
-      width: 5,
-      height: 14,
-      damage: 1,
+describe("Boss wave (#2490)", () => {
+  const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
+  /** A boss wave settled into formation: no enemy fire, beam parked, rocks off, player parked
+   * left — all applied before the swoop-in so four active Bosses can't end the game first. */
+  function settled(difficulty: DifficultyTier = "LieutenantJG", wave = 5): StarSwarmState {
+    const init = initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, difficulty);
+    const s = advanceMs(
+      {
+        ...init,
+        enemyFireDisabled: true,
+        asteroidsDisabled: true,
+        player: { ...init.player, x: 40 },
+        enemies: init.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
+      },
+      8000,
+      ASIDE
+    );
+    expect(s.phase).toBe("Playing");
+    return {
+      ...s,
+      enemyBullets: [],
+      asteroids: [],
+      player: { ...s.player, lives: 3, invincibleTimer: 0 },
     };
-    s = { ...s, playerBullets: [bullet] };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.freeFireHits).toBe(1);
+  }
+  const carrierOf = (s: StarSwarmState) => s.enemies.find((e) => e.tier === "Carrier")!;
+  function rockAt(x: number, y: number): Asteroid {
+    return {
+      id: 95_000,
+      kind: "large",
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: ASTEROID_STATS.large.radius,
+      hp: ASTEROID_STATS.large.hp,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+  }
+
+  it("isBossWave: wave 5, then every 4th — deliberately not the old 3/7/11 cadence", () => {
+    const boss: number[] = [];
+    for (let w = 1; w <= 40; w++) if (isBossWave(w)) boss.push(w);
+    expect(boss).toEqual([5, 9, 13, 17, 21, 25, 29, 33, 37]);
+    expect(isBossWave(3)).toBe(false);
+    expect(isBossWave(7)).toBe(false);
   });
 
-  it("advances to the next wave when all challenge enemies exit", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
+  it("no wave from 1 to 40 opens on anything but SwoopIn, and none is a shooting gallery", () => {
+    for (let w = 1; w <= 40; w++) {
+      const s = initStarSwarm(CANVAS_W, CANVAS_H, w);
+      expect(s.phase).toBe("SwoopIn");
+      expect((s.phase as string) === "FreeFireZone").toBe(false);
+      // every ship can shoot back (the old challenge targets carried a never-fires timer)
+      expect(s.enemies.every((e) => e.shootTimer < 1_000_000)).toBe(true);
+    }
+  });
+
+  it("a boss wave is exactly one Carrier and four Bosses, the Carrier last to swoop in", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 5);
+    expect(s.enemies.map((e) => e.tier)).toEqual(["Boss", "Boss", "Boss", "Boss", "Carrier"]);
+    expect(s.startingNonBossCount).toBe(0);
+    const normal = initStarSwarm(CANVAS_W, CANVAS_H, 4);
+    expect(normal.enemies.some((e) => e.tier === "Grunt")).toBe(true);
+    expect(normal.enemies.some((e) => e.tier === "Elite")).toBe(true);
+  });
+
+  it("the Bosses are active from the first tick: threshold latched, dives on the normal timer, bursts", () => {
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 5).bossThresholdCrossed).toBe(true);
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 4).bossThresholdCrossed).toBe(false);
+    // a dive trigger sends a Boss out of formation straight away
+    let s = { ...settled(), nextDiveTimer: 1 };
+    s = tick(s, 16, ASIDE);
+    expect(s.enemies.some((e) => e.tier === "Boss" && e.phase !== "Formation")).toBe(true);
+    // and a Boss whose shot timer is up fires its burst without waiting for anything
+    let firing = { ...settled(), enemyFireDisabled: false };
+    firing = {
+      ...firing,
+      enemies: firing.enemies.map((e) => (e.tier === "Boss" ? { ...e, shootTimer: 1 } : e)),
+    };
+    firing = tick(firing, 16, ASIDE);
+    expect(firing.enemyBullets.length).toBeGreaterThan(0);
+  });
+
+  it("the Carrier beams 1.5× as often on a boss wave, from the first beam on", () => {
+    expect(carrierOf(initStarSwarm(CANVAS_W, CANVAS_H, 4)).beamTimer).toBe(BEAM_INTERVAL_BASE);
+    expect(carrierOf(initStarSwarm(CANVAS_W, CANVAS_H, 5)).beamTimer).toBeCloseTo(
+      BEAM_INTERVAL_BASE / BOSS_WAVE_BEAM_SCALE
+    );
+    // the interval after a beam finishes is scaled the same way
+    const afterBeam = (wave: number) => {
+      let s = settled("Ensign", wave);
+      s = {
+        ...s,
+        enemies: s.enemies.map((e) =>
+          e.tier === "Carrier" ? { ...e, beamPhase: "fire" as const, beamTimer: 1 } : e
+        ),
+      };
+      return carrierOf(tick(s, 16, ASIDE));
+    };
+    const normal = afterBeam(4);
+    const boss = afterBeam(5);
+    expect(normal.beamPhase).toBe("idle");
+    expect(boss.beamPhase).toBe("idle");
+    expect(boss.beamTimer).toBeCloseTo(normal.beamTimer / BOSS_WAVE_BEAM_SCALE, 0);
+  });
+
+  it("no reinforcements on a boss wave, however long the Carrier lives", () => {
+    let s = { ...settled("Commander"), reinforceTimer: 1 };
+    const before = s.enemies.length;
+    s = advanceMs(s, 20_000, ASIDE);
+    expect(s.enemies.length).toBe(before);
+    expect(s.reinforcedThisWave).toBe(0);
+    expect(s.runStats.reinforced).toBe(0);
+  });
+
+  it("clearing a boss wave pays double: base × wave × 2 × difficulty, and nothing else", () => {
+    expect(waveClearBonusPoints(4, "Ensign")).toBe(4 * WAVE_CLEAR_BONUS_BASE);
+    expect(waveClearBonusPoints(5, "Ensign")).toBe(
+      5 * WAVE_CLEAR_BONUS_BASE * BOSS_WAVE_CLEAR_MULT
+    );
+    expect(waveClearBonusPoints(9, "Commander")).toBe(
+      Math.round(
+        9 * WAVE_CLEAR_BONUS_BASE * BOSS_WAVE_CLEAR_MULT * difficultyMultiplier("Commander")
+      )
+    );
+    let s = { ...settled("Commander"), score: 1000 };
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(4);
+    s = tick(s, 16, ASIDE);
+    expect(s.wave).toBe(6);
+    expect(s.score).toBe(1000 + waveClearBonusPoints(5, "Commander"));
+    expect(s.missionCompleteTimer).toBe(MISSION_COMPLETE_BANNER_MS);
+    // an ordinary wave is unchanged
+    let n = { ...settled("Commander", 4), score: 1000 };
+    n = { ...n, enemies: n.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    n = tick(n, 16, ASIDE);
+    expect(n.score).toBe(
+      1000 + Math.round(4 * WAVE_CLEAR_BONUS_BASE * difficultyMultiplier("Commander"))
+    );
+  });
+
+  it("no timed rocks on a boss wave; a carried rock and a dev throw still work", () => {
+    let s = { ...settled(), asteroidsDisabled: false, nextAsteroidTimer: 1 };
+    s = tick(s, 16, ASIDE);
+    expect(s.asteroids).toHaveLength(0);
+    expect(throwAsteroid(s).asteroids).toHaveLength(1);
+    let prev = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, 4, 42), 8000);
+    prev = {
+      ...prev,
+      asteroids: [rockAt(CANVAS_W / 2, 460)],
+      enemies: prev.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    prev = tick(prev, 16, ASIDE);
+    expect(prev.wave).toBe(5);
+    expect(prev.asteroids).toHaveLength(1);
   });
 });
 
@@ -1100,34 +1223,6 @@ describe("GameOver terminal state", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FreeFireZone — off-screen enemy cleanup (#934)
-// ---------------------------------------------------------------------------
-
-describe("FreeFireZone off-screen cleanup", () => {
-  it("advances to the next wave after enemies exit without being shot", () => {
-    // Wave 3 starts as FreeFireZone; enemies follow a path to canvasH + 80
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
-
-    // With 40 enemies, last enemy (idx 39) has delay = 39*400/5000 = 3.12 (×pathDuration).
-    // It exits the canvas after 39*400 + 5000 = 20600 ms.
-    // Advance past that with no firing so enemies scroll off instead of being shot.
-    s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.wave).toBe(4);
-  });
-
-  it("transitions immediately if player shoots all enemies early", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    // Advance briefly so enemies are on screen and reachable
-    s = advanceMs(s, 500, NO_INPUT);
-    // Force all enemies dead to simulate shooting them all
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false })) };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(4);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Dive/circle shooting (#944)
 // ---------------------------------------------------------------------------
 
@@ -1170,13 +1265,6 @@ describe("Dive/circle shooting", () => {
     const divingBullet = s.enemyBullets.find((b) => b.vx !== 0);
     expect(divingBullet).toBeDefined();
     expect(divingBullet?.vy).toBeGreaterThan(0); // moving downward
-  });
-
-  it("challenge stage enemies do not fire while attacking", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
-    s = advanceMs(s, 5000, NO_INPUT);
-    expect(s.enemyBullets).toHaveLength(0);
   });
 });
 
@@ -1822,11 +1910,11 @@ describe("Power-up engine (#980)", () => {
   });
 
   it("kill counter only increments during Playing phase", () => {
-    // FreeFireZone wave — kills should NOT increment counter
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
-    const target = s.enemies.find((e) => e.isAlive);
-    if (!target) throw new Error("no enemy");
+    // SwoopIn — a kill on a ship still flying in should NOT increment the counter
+    let s = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, 1), 600);
+    expect(s.phase).toBe("SwoopIn");
+    const target = s.enemies.find((e) => e.isAlive && e.phase === "SwoopIn" && e.y > 40);
+    if (!target) throw new Error("no enemy on screen yet");
     const bullet: Bullet = {
       id: 88001,
       x: target.x,
@@ -1981,12 +2069,6 @@ describe("Power-up engine (#980)", () => {
     };
     s = advanceMs(s, 200, NO_INPUT);
     expect(s.activePowerUp).toBeNull();
-  });
-
-  it("Free Fire Zone spawns no power-ups (#1463 — power-ups trivialise the perfect-clear)", () => {
-    const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
-    expect(s.powerUps.length).toBe(0);
   });
 });
 
@@ -2431,26 +2513,6 @@ describe("#1031 Straggler aggression", () => {
     expect(wiggling.length).toBe(0);
   });
 
-  it("straggler does not apply during FreeFireZone", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "LieutenantJG");
-    expect(s.phase).toBe("FreeFireZone");
-    s = advanceMs(s, 500, NO_INPUT);
-    // Kill all but 2
-    const alive = s.enemies.filter((e) => e.isAlive);
-    const toKill = alive.slice(2);
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) =>
-        toKill.some((k) => k.id === e.id) ? { ...e, isAlive: false, hp: 0 } : e
-      ),
-    };
-    s = tick(s, 16, NO_INPUT);
-    // Phase should move to WaveClear (all dead or exited), not get stuck
-    // Key assertion: no straggler-forced Wiggling in challenge stage
-    const wiggling = s.enemies.filter((e) => e.isAlive && e.phase === "Wiggling");
-    expect(wiggling.length).toBe(0);
-  });
-
   it("stragglerEnabled carries over to next wave", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "LieutenantJG");
     s = advanceMs(s, 8000);
@@ -2818,93 +2880,6 @@ describe("#1037 Difficulty tiers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #1022 — Free Fire Zone cadence (3, 7, 11, 15), 40 enemies, PERFECT bonus
-// ---------------------------------------------------------------------------
-
-describe("#1022 Free Fire Zone cadence & PERFECT bonus", () => {
-  it("waves 3, 7, 11, 15 start as FreeFireZone", () => {
-    for (const wave of [3, 7, 11, 15]) {
-      const s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
-      expect(s.phase).toBe("FreeFireZone");
-    }
-  });
-
-  it("waves 4, 5, 6, 8, 9, 10 do NOT start as FreeFireZone", () => {
-    for (const wave of [4, 5, 6, 8, 9, 10]) {
-      const s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
-      expect(s.phase).not.toBe("FreeFireZone");
-    }
-  });
-
-  it("FreeFireZone spawns exactly 40 enemies", () => {
-    const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.phase).toBe("FreeFireZone");
-    expect(s.enemies.length).toBe(40);
-  });
-
-  it("freeFirePerfect is false at FreeFireZone start", () => {
-    const s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
-    expect(s.freeFirePerfect).toBe(false);
-  });
-
-  it("freeFirePerfect is true after wave clear when all 40 enemies were hit", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    // Force all 40 hits and kill every enemy in one tick
-    s = {
-      ...s,
-      freeFireHits: 40,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-    };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(4);
-    expect(s.freeFirePerfect).toBe(true);
-  });
-
-  it("freeFirePerfect is false after wave clear when enemies scroll off without being shot", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    // 40 enemies; last one (idx 39) exits at 39*400 + 5000 = 20600 ms — advance past with no firing
-    s = advanceMs(s, 22000, NO_INPUT);
-    expect(s.wave).toBe(4);
-    expect(s.freeFirePerfect).toBe(false);
-  });
-
-  it("PERFECT clears add 10,000 pts bonus at Ensign ×1 (plus 40×50 hit bonus)", () => {
-    // Zero-hit path: enemies scroll off — wave-clear bonus is 0 (conditional on hits, #1463)
-    let noPerfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    noPerfect = advanceMs(noPerfect, 22000, NO_INPUT);
-    expect(noPerfect.wave).toBe(4);
-    expect(noPerfect.score).toBe(0); // zero kills → zero wave-clear bonus
-
-    // Full-hit path: all 40 hit + perfect → waveClear(1500) + hits(2000) + perfect(10000) = 13500
-    let perfect = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    perfect = {
-      ...perfect,
-      freeFireHits: 40,
-      enemies: perfect.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-    };
-    perfect = tick(perfect, 16, NO_INPUT);
-    expect(perfect.wave).toBe(4);
-
-    // Δ = waveClear(3×500×1) + 40×50 + 10,000 perfect bonus = 13,500
-    expect(perfect.score - noPerfect.score).toBe(3 * 500 + 40 * 50 + 10_000);
-  });
-
-  it("partial hit fraction (20/40 kills) gives proportional wave-clear bonus at Ensign ×1 (#1463)", () => {
-    // 20/40 = 50% hit fraction → waveClear = round(0.5 × 3 × 500 × 1) = 750
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Ensign");
-    s = {
-      ...s,
-      freeFireHits: 20,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-    };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(4);
-    // waveClear(750) + hits(20×50=1000) + no perfect bonus = 1750
-    expect(s.score).toBe(750 + 20 * 50);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Laser sound gating — only fires during lightning power-up
 // The canvas checks: shootCooldown > prevCooldown && activePowerUp?.type === "lightning"
 // ---------------------------------------------------------------------------
@@ -3268,23 +3243,21 @@ describe("Errant asteroids (#2486)", () => {
     expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
   });
 
-  it("never enters a bonus wave: carried rocks are dropped and dev throws refused", () => {
-    let s = quiet(2);
+  it("rides into a boss wave like any other wave, but the timer spawns nothing there (#2490)", () => {
+    let s = quiet(4);
+    const a = rock("large", CANVAS_W / 2, SAFE_Y);
     s = {
       ...s,
-      asteroids: [rock("large", CANVAS_W / 2, SAFE_Y)],
+      asteroids: [a],
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(3);
-    expect(s.phase).toBe("FreeFireZone");
+    expect(s.wave).toBe(5);
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    s = { ...s, asteroids: [], asteroidsDisabled: false, nextAsteroidTimer: 1 };
+    s = advanceMs(s, 8000, NO_INPUT); // swoop-in, then Playing
+    expect(s.phase).toBe("Playing");
     expect(s.asteroids).toHaveLength(0);
-    expect(throwAsteroid(s).asteroids).toHaveLength(0);
-    // and the timer can't spawn one either while the bonus wave runs
-    for (let t = 0; t < 25_000 && s.phase === "FreeFireZone"; t += 16) {
-      s = tick(s, 16, NO_INPUT);
-      expect(s.asteroids).toHaveLength(0);
-    }
   });
 
   it("a player shot is spent on a rock and chips it — no points, piercing or not", () => {

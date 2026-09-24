@@ -27,6 +27,28 @@ Diving enemies score 2×. The Carrier and Bosses are excluded from the "non-boss
 drive Elite/Boss escalation (`isLeaderTier`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
+## Wave Structure (#2490)
+
+Every wave opens on a swoop-in, a 3-second countdown, then combat; the next wave starts the
+instant the last enemy dies (the "MISSION COMPLETE" banner is cosmetic). Clearing wave _n_ pays
+`500 × n × difficultyMultiplier`.
+
+**Boss waves** — wave 5, then every 4th (5, 9, 13, …; `isBossWave`) — are the Carrier and its four
+Boss escorts and nothing else: a short, hostile stage of its own.
+
+- The Bosses are active from the first tick: the ≤35% threshold is latched at wave start, so they
+  burst-fire and dive on the normal dive timer.
+- The Carrier's beam interval is ÷1.5 (`BOSS_WAVE_BEAM_SCALE`), first beam included; its armor
+  rules are unchanged (kill the escorts, or pierce with lightning / the buddy burst).
+- No reinforcements (there are no grunt slots) and no timed asteroid spawns; a rock already in
+  flight rides in like any other wave, and the dev-panel throw still works.
+- The clear bonus is doubled (`BOSS_WAVE_CLEAR_MULT`): `500 × n × 2 × difficultyMultiplier`.
+- The "CARRIER SIGHTED" banner (`phase.bossWave`) shows during the swoop-in, with the
+  `starswarm.bosswave` sting and an `a11y.bossWave` announcement.
+
+There is no longer a shooting-gallery bonus wave or a flat perfect bonus; #2490 removed the Free
+Fire Zone and everything that hung off it.
+
 ## Carrier Actions (#2485)
 
 - **Sweep beam.** Every 7 s (÷ min(1.6, difficulty paramScale)) the Carrier shudders and glows for
@@ -66,7 +88,7 @@ the leaderboard stays fair.
 ## Hazards: Errant Asteroids (#2486)
 
 From wave 2, a rock drifts in from a top corner every 12–20 s of the Playing phase (never during
-swoop-in or bonus waves; at most 2 in flight from timed spawns). It is a neutral third party:
+swoop-in or a boss wave; at most 2 in flight from timed spawns). It is a neutral third party:
 
 - **Both sides can hit it.** Any bullet, from either owner and piercing or not, that reaches a rock is
   spent on it, so a large rock is temporary cover. Large rocks (22 px, 6 HP) split into two small
@@ -77,9 +99,8 @@ swoop-in or bonus waves; at most 2 in flight from timed spawns). It is a neutral
   like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
 - **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
   power-up kill counter (they do count toward wave clear and the Elite/Boss thresholds).
-- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, except
-  into a bonus wave: those start rock-free (a rock there would absorb shots and kill targets the
-  player can't then hit, putting the PERFECT bonus out of reach).
+- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, boss
+  waves included (only the timed spawner sits out there, #2490).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
 
 Salvage drops are #2488.

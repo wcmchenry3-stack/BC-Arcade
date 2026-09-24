@@ -34,8 +34,6 @@ import {
   DIFFICULTY_TIERS,
   difficultyLabel,
   difficultyMultiplier,
-  perfectBonusPoints,
-  FREE_FIRE_ENEMY_COUNT,
   dodgeRateByTier,
 } from "../game/starswarm/engine";
 import type { TierDodgeRow } from "../game/starswarm/engine";
@@ -185,10 +183,8 @@ export default function StarSwarmScreen() {
     playPlayerHit,
     playWaveClear,
     playGameOver,
-    playFreeFireZone,
+    playBossWave,
     playBonusLife,
-    playPerfect,
-    stopPerfect,
     playCarrierEvent,
     playUpgrade,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
@@ -235,22 +231,11 @@ export default function StarSwarmScreen() {
     [playGameOver, difficulty]
   );
 
-  // #2422: a PERFECT Free Fire Zone clear plays the fanfare *instead of* the wave-clear jingle
-  // (GameCanvas calls this rather than onWaveClear) and holds the game while it plays. Returns
-  // whether the fanfare actually started, so a muted player gets a short silent beat instead of
-  // a ten-second freeze with nothing to wait for.
-  const handleFreeFirePerfect = useCallback((): boolean => {
-    setPhase("WaveClear");
-    hapticWaveClear();
-    // A live region on the overlay is Android-only, so speak the announcement explicitly.
-    AccessibilityInfo.announceForAccessibility(
-      t("phase.perfectAnnouncement", {
-        count: FREE_FIRE_ENEMY_COUNT,
-        points: perfectBonusPoints(difficulty).toLocaleString(),
-      })
-    );
-    return playPerfect();
-  }, [playPerfect, t, difficulty]);
+  // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
+  const handleBossWave = useCallback(() => {
+    playBossWave();
+    AccessibilityInfo.announceForAccessibility(t("a11y.bossWave"));
+  }, [playBossWave, t]);
 
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
@@ -354,17 +339,13 @@ export default function StarSwarmScreen() {
     };
   }, []);
 
-  const handleNewGame = useCallback(
-    (opts?: DevOptions) => {
-      if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
-      scoreRef.current = 0;
-      stopPerfect(); // a fanfare still playing must not carry on over the new game
-      setPhase("SwoopIn");
-      setIsPaused(false);
-      setResetTick((t) => t + 1);
-    },
-    [stopPerfect]
-  );
+  const handleNewGame = useCallback((opts?: DevOptions) => {
+    if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
+    scoreRef.current = 0;
+    setPhase("SwoopIn");
+    setIsPaused(false);
+    setResetTick((t) => t + 1);
+  }, []);
 
   // Show difficulty picker — triggered by header "New Game" and Controls "New Game"
   const handleRequestNewGame = useCallback(() => {
@@ -378,11 +359,10 @@ export default function StarSwarmScreen() {
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
     scoreRef.current = 0;
-    stopPerfect(); // a fanfare still playing must not carry on over the new game
     setPhase("SwoopIn");
     setIsPaused(false);
     setResetTick((t) => t + 1);
-  }, [difficulty, stopPerfect]);
+  }, [difficulty]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);
@@ -462,8 +442,7 @@ export default function StarSwarmScreen() {
               onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
-              onFreeFireZone={playFreeFireZone}
-              onFreeFirePerfect={handleFreeFirePerfect}
+              onBossWave={handleBossWave}
               onCarrierExposed={handleCarrierExposed}
               onCarrierEvent={handleCarrierEvent}
               onUpgrade={handleUpgrade}
@@ -732,8 +711,7 @@ export default function StarSwarmScreen() {
                   ["Player hit", "playerhit"],
                   ["Wave clear", "waveclear"],
                   ["Game over", "gameover"],
-                  ["Free Fire", "freefirezone"],
-                  ["Perfect bonus", "perfectbonus"],
+                  ["Boss wave", "bosswave"],
                   ["Beam charge", "beamcharge"],
                   ["Beam fire", "beamfire"],
                   ["Reinforce", "reinforce"],
