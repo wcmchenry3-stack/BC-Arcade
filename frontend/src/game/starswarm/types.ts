@@ -90,6 +90,28 @@ export interface Enemy {
   readonly beamPhase: BeamPhase;
   /** #2485: ms left in the current beam phase (idle = until the next charge). */
   readonly beamTimer: number;
+  /** #2487: an in-progress formation sidestep away from an asteroid; null when not dodging. */
+  readonly dodge: { readonly dir: 1 | -1; readonly t: number; readonly dur: number } | null;
+  /** #2487: asteroids this ship has already rolled against — one roll per rock per ship. */
+  readonly rolledAsteroidIds: readonly number[];
+  /** #2487: ms until this ship may fire flak at an asteroid again. */
+  readonly flakCooldown: number;
+}
+
+/** #2487: per-tier asteroid-response counters (carried across waves, reset on a new game). */
+export interface TierStats {
+  /** Dodge rolls taken. */
+  readonly rolls: number;
+  /** Rolls that succeeded. */
+  readonly dodged: number;
+  /** Rolls taken while on a path (swoop-in, dive, return), a subset of `rolls`. */
+  readonly pathRolls: number;
+  /** Path rolls that succeeded, a subset of `dodged`. */
+  readonly pathDodged: number;
+  /** Times a rock actually hit a ship of this tier. */
+  readonly struck: number;
+  /** Flak shots fired at rocks. */
+  readonly flak: number;
 }
 
 /** #2485: the Carrier's sweep beam — telegraph, then a vertical beam it drags across the lane. */
@@ -114,6 +136,8 @@ export interface Bullet {
    * rendering normally until it exits the screen, but can no longer hit the player (see #2352
    * follow-up: the wave-clear autopilot dodge was removed, this replaces it non-blockingly). */
   readonly harmless?: boolean;
+  /** #2487: an enemy shot fired at an asteroid — outside bulletCap(), drawn in a distinct colour. */
+  readonly flak?: boolean;
 }
 
 export interface Player {
@@ -215,6 +239,8 @@ export interface StarSwarmState {
   readonly reinforceTimer: number;
   /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
   readonly reinforcedThisWave: number;
+  /** #2487: asteroid-response counters per tier (see TierStats). */
+  readonly tierStats: Readonly<Record<EnemyTier, TierStats>>;
   /** General-purpose countdown timer (WaveClear pause, etc.). */
   readonly phaseTimer: number;
   readonly canvasW: number;

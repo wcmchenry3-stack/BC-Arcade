@@ -44,6 +44,14 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   reinforceCap,
+  dodgeChance,
+  nudgePath,
+  splitRemaining,
+  emptyTierStats,
+  DODGE_SIDESTEP,
+  DODGE_SIDESTEP_MS,
+  DODGE_PATH_NUDGE,
+  FLAK_COOLDOWN,
 } from "../engine";
 import type {
   Asteroid,
@@ -3631,5 +3639,318 @@ describe("Carrier actions (#2485)", () => {
     expect(s.reinforcedThisWave).toBeGreaterThan(0);
     expect(s.bossThresholdCrossed).toBe(true);
     expect(s.startingNonBossCount).toBe(startCount);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enemy asteroid response (#2487)
+// ---------------------------------------------------------------------------
+
+describe("Enemy asteroid response (#2487)", () => {
+  let nextId = 80_000;
+  function rock(kind: AsteroidKind, x: number, y: number, extra: Partial<Asteroid> = {}): Asteroid {
+    return {
+      id: nextId++,
+      kind,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: ASTEROID_STATS[kind].radius,
+      hp: ASTEROID_STATS[kind].hp,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+      ...extra,
+    };
+  }
+  /** Mid-wave, no enemy fire, beam parked, timed rocks off, player parked left. */
+  function quiet(difficulty: DifficultyTier = "LieutenantJG", wave = 2): StarSwarmState {
+    const s = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, difficulty), 8000);
+    return {
+      ...s,
+      enemyFireDisabled: true,
+      enemyBullets: [],
+      asteroids: [],
+      asteroidsDisabled: true,
+      nextDiveTimer: 1e9,
+      pauseStraggler: true,
+      player: { ...s.player, x: 40, lives: 3, invincibleTimer: 0 },
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
+    };
+  }
+  const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
+  /** The highest ship of a tier holding formation — so a rock dropped from above it crosses no
+   * other ship of the same tier (the row above belongs to the next tier up). */
+  const formation = (s: StarSwarmState, tier: string) =>
+    s.enemies
+      .filter((e) => e.isAlive && e.tier === tier && e.phase === "Formation")
+      .sort((a, b) => a.formationY - b.formationY)[0]!;
+
+  it("dodgeChance is base × difficulty, capped at 97%; the Carrier never rolls", () => {
+    expect(dodgeChance("Grunt", 1)).toBeCloseTo(0.25);
+    expect(dodgeChance("Elite", 1)).toBeCloseTo(0.55);
+    expect(dodgeChance("Boss", 1)).toBeCloseTo(0.8);
+    expect(dodgeChance("Grunt", difficultyParamScale("Ensign"))).toBeCloseTo(0.175);
+    expect(dodgeChance("Grunt", difficultyParamScale("FleetAdmiral"))).toBeCloseTo(0.75); // 0.25 × 3
+    expect(dodgeChance("Elite", difficultyParamScale("FleetAdmiral"))).toBe(0.97); // 1.65 → cap
+    expect(dodgeChance("Boss", difficultyParamScale("FleetAdmiral"))).toBe(0.97);
+    expect(dodgeChance("Carrier", 3)).toBe(0);
+  });
+
+  it("rolls exactly once per rock per ship, and records it", () => {
+    let s = quiet();
+    const elite = formation(s, "Elite");
+    // slow enough that the 700 ms lookahead reaches this row but not the same-tier row below it
+    const a = rock("large", elite.x, elite.y - 100, { vy: 0.12 });
+    s = { ...s, asteroids: [a] };
+    s = tick(s, 16, ASIDE);
+    expect(s.enemies.find((e) => e.id === elite.id)!.rolledAsteroidIds).toContain(a.id);
+    expect(s.tierStats.Elite.rolls).toBe(1);
+    s = tick(s, 16, ASIDE);
+    s = tick(s, 16, ASIDE);
+    expect(s.tierStats.Elite.rolls).toBe(1);
+  });
+
+  it("a successful roll rate matches the base chance over many rolls", () => {
+    // 400 independent rolls of a fresh Grunt against a fresh rock: expect ~25% ± 8%
+    let dodged = 0;
+    const N = 400;
+    for (let i = 0; i < N; i++) {
+      let s = quiet(); // seeds the engine itself (42) while building the wave…
+      seedRng(1000 + i); // …so the per-iteration seed must come after it
+      const g = formation(s, "Grunt");
+      s = { ...s, asteroids: [rock("large", g.x, g.y - 100, { vy: 0.12 })] };
+      s = tick(s, 16, ASIDE);
+      dodged += s.tierStats.Grunt.dodged;
+      expect(s.tierStats.Grunt.rolls).toBe(1);
+    }
+    expect(dodged / N).toBeGreaterThan(0.17);
+    expect(dodged / N).toBeLessThan(0.33);
+  });
+
+  it("a formation sidestep moves 22 px away and returns to the slot", () => {
+    let s = quiet();
+    const g = formation(s, "Grunt");
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === g.id ? { ...e, dodge: { dir: -1 as const, t: 0, dur: DODGE_SIDESTEP_MS } } : e
+      ),
+    };
+    for (let t = 0; t < DODGE_SIDESTEP_MS / 2; t += 16) s = tick(s, 16, ASIDE);
+    let now = s.enemies.find((e) => e.id === g.id)!;
+    // grunts take the full sway; the sidestep sits on top of it
+    expect(now.x - (now.formationX + s.formationSwayX)).toBeCloseTo(-DODGE_SIDESTEP, 0);
+    for (let t = 0; t < DODGE_SIDESTEP_MS; t += 16) s = tick(s, 16, ASIDE);
+    now = s.enemies.find((e) => e.id === g.id)!;
+    expect(now.dodge).toBeNull();
+    expect(now.x).toBeCloseTo(now.formationX + s.formationSwayX, 5);
+  });
+
+  it("nudgePath shifts the control points sideways and leaves the destination alone", () => {
+    const path = {
+      p0: { x: 0, y: 0 },
+      p1: { x: 10, y: 50 },
+      p2: { x: 20, y: 100 },
+      p3: { x: 30, y: 150 },
+    };
+    const left = nudgePath(path, -1);
+    expect(left.p1.x).toBe(10 - DODGE_PATH_NUDGE);
+    expect(left.p2.x).toBe(20 - DODGE_PATH_NUDGE);
+    expect(left.p3).toEqual(path.p3);
+    expect(left.p0).toEqual(path.p0);
+    expect(nudgePath(path, 1).p1.x).toBe(10 + DODGE_PATH_NUDGE);
+  });
+
+  it("splitRemaining is the tail of the curve: same points, re-parameterised from 0", () => {
+    const path = {
+      p0: { x: 0, y: 0 },
+      p1: { x: 100, y: 200 },
+      p2: { x: 300, y: -50 },
+      p3: { x: 360, y: 400 },
+    };
+    const evalAt = (p: typeof path, t: number) => {
+      const u = 1 - t;
+      return {
+        x:
+          u * u * u * p.p0.x + 3 * u * u * t * p.p1.x + 3 * u * t * t * p.p2.x + t * t * t * p.p3.x,
+        y:
+          u * u * u * p.p0.y + 3 * u * u * t * p.p1.y + 3 * u * t * t * p.p2.y + t * t * t * p.p3.y,
+      };
+    };
+    const t0 = 0.35;
+    const tail = splitRemaining(path, t0);
+    for (const u of [0, 0.25, 0.5, 0.8, 1]) {
+      const a = evalAt(tail, u);
+      const b = evalAt(path, t0 + u * (1 - t0));
+      expect(a.x).toBeCloseTo(b.x, 6);
+      expect(a.y).toBeCloseTo(b.y, 6);
+    }
+    expect(splitRemaining(path, 0)).toBe(path);
+  });
+
+  it("a swooping ship on screen rolls, and a successful roll bends the rest of its path without moving it", () => {
+    let found = false;
+    for (let seed = 1; seed < 80 && !found; seed++) {
+      seedRng(seed);
+      _resetIds();
+      let s = initStarSwarm(CANVAS_W, CANVAS_H, 2, seed);
+      s = { ...s, enemyFireDisabled: true, asteroidsDisabled: true };
+      s = advanceMs(s, 600);
+      const flyer = s.enemies.find(
+        (e) => e.phase === "SwoopIn" && e.pathT >= 0 && e.path && e.y > 0
+      );
+      if (!flyer) continue;
+      // where it will be 200 ms from now (the first threat sample)
+      const ahead = advanceMs(s, 200).enemies.find((e) => e.id === flyer.id)!;
+      const a = rock("large", ahead.x, ahead.y);
+      const before = s.tierStats[flyer.tier];
+      s = tick({ ...s, asteroids: [a] }, 16, ASIDE);
+      const after = s.enemies.find((e) => e.id === flyer.id)!;
+      expect(after.rolledAsteroidIds).toContain(a.id);
+      expect(s.tierStats[flyer.tier].pathRolls).toBe(before.pathRolls + 1);
+      if (s.tierStats[flyer.tier].pathDodged > before.pathDodged) {
+        found = true;
+        // destination kept; path restarted from where the ship was, with the time it had left
+        expect(after.path!.p3).toEqual(flyer.path!.p3);
+        expect(after.pathT).toBeLessThan(0.05);
+        expect(after.pathDuration).toBeCloseTo(flyer.pathDuration * (1 - flyer.pathT), 3);
+        expect(after.path!.p0.x).toBeCloseTo(flyer.x, 0);
+        expect(after.path!.p0.y).toBeCloseTo(flyer.y, 0);
+        // no sideways jump: this tick moved it about as far as any other 16 ms tick would
+        expect(Math.hypot(after.x - flyer.x, after.y - flyer.y)).toBeLessThan(16);
+        // and the bend is there: the nudged tail's middle points sit off the un-nudged tail's
+        const tail = splitRemaining(flyer.path!, flyer.pathT);
+        expect(Math.abs(after.path!.p1.x - tail.p1.x)).toBe(DODGE_PATH_NUDGE);
+        expect(Math.abs(after.path!.p2.x - tail.p2.x)).toBe(DODGE_PATH_NUDGE);
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it("does not roll while still off-screen (pathT < 0), nor as the Carrier, nor while circling", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+    const waiting = s.enemies.find((e) => e.pathT < 0)!;
+    s = tick({ ...s, asteroids: [rock("large", waiting.x, waiting.y)] }, 16, NO_INPUT);
+    expect(s.enemies.find((e) => e.id === waiting.id)!.rolledAsteroidIds).toHaveLength(0);
+
+    let q = quiet();
+    const c = q.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+    q = tick({ ...q, asteroids: [rock("large", c.x, c.y - 100, { vy: 0.25 })] }, 16, ASIDE);
+    expect(q.tierStats.Carrier.rolls).toBe(0);
+
+    q = quiet();
+    const elite = formation(q, "Elite");
+    const pos = { x: 200, y: 400 };
+    q = {
+      ...q,
+      enemies: q.enemies.map((e) =>
+        e.id === elite.id
+          ? {
+              ...e,
+              phase: "Circling" as const,
+              x: pos.x,
+              y: pos.y,
+              circleCx: pos.x,
+              circleCy: pos.y,
+              circleRadius: 0,
+              circleAngle: 0,
+            }
+          : e
+      ),
+      asteroids: [rock("large", pos.x, pos.y)],
+    };
+    q = tick(q, 16, ASIDE);
+    expect(q.tierStats.Elite.rolls).toBe(0);
+  });
+
+  it("a formation ship fires flak at a rock approaching within range — outside the bullet cap", () => {
+    let s = { ...quiet(), enemyFireDisabled: false };
+    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!; // flak chance 1.0
+    // cap already full with ordinary shots parked far away
+    const filler: Bullet[] = [0, 1, 2].map((i) => ({
+      id: 85_000 + i,
+      x: 5,
+      y: 600,
+      vx: 0,
+      vy: 0,
+      owner: "enemy",
+      width: 5,
+      height: 10,
+      damage: 1,
+    }));
+    expect(filler.length).toBe(bulletCap(2));
+    s = { ...s, enemyBullets: filler, asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })] };
+    s = tick(s, 16, ASIDE);
+    const flak = s.enemyBullets.filter((b) => b.flak);
+    const fromCarrier = flak.find((b) => Math.abs(b.x - c.x) < 6);
+    expect(fromCarrier).toBeDefined();
+    expect(fromCarrier!.vy).toBeLessThan(0); // aimed up at the rock
+    expect(s.enemies.find((e) => e.id === c.id)!.flakCooldown).toBeGreaterThan(0);
+    expect(s.tierStats.Carrier.flak).toBe(1);
+    // cooldown: no second Carrier shot for FLAK_COOLDOWN
+    const shotsAfter = (st: StarSwarmState) =>
+      st.enemyBullets.filter((b) => b.flak && Math.abs(b.x - c.x) < 6).length;
+    for (let t = 16; t < FLAK_COOLDOWN - 100; t += 16) s = tick(s, 16, ASIDE);
+    expect(s.tierStats.Carrier.flak).toBe(1);
+    expect(shotsAfter(s)).toBeLessThanOrEqual(1);
+  });
+
+  it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {
+    let s = { ...quiet(), enemyFireDisabled: false };
+    // far right, drifting right — away from everyone
+    s = tick({ ...s, asteroids: [rock("large", 330, 30, { vx: 0.2 })] }, 16, ASIDE);
+    expect(s.enemyBullets.some((b) => b.flak)).toBe(false);
+    // approaching but 200+ px away from the top row
+    s = tick({ ...s, asteroids: [rock("large", CANVAS_W / 2, -220, { vy: 0.2 })] }, 16, ASIDE);
+    expect(s.enemyBullets.some((b) => b.flak)).toBe(false);
+    // in range but the dev toggle is on
+    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+    s = tick(
+      { ...s, enemyFireDisabled: true, asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })] },
+      16,
+      ASIDE
+    );
+    expect(s.enemyBullets.some((b) => b.flak)).toBe(false);
+  });
+
+  it("flak in flight does not block ordinary enemy fire (bullet cap excludes it)", () => {
+    let s = { ...quiet(), enemyFireDisabled: false };
+    const flak: Bullet[] = [0, 1, 2].map((i) => ({
+      id: 86_000 + i,
+      x: 5,
+      y: 300,
+      vx: 0,
+      vy: 0,
+      owner: "enemy",
+      width: 5,
+      height: 10,
+      damage: 1,
+      flak: true,
+    }));
+    const elite = formation(s, "Elite");
+    s = {
+      ...s,
+      enemyBullets: flak,
+      enemies: s.enemies.map((e) => (e.id === elite.id ? { ...e, shootTimer: 0 } : e)),
+    };
+    s = tick(s, 16, ASIDE);
+    expect(s.enemyBullets.some((b) => !b.flak)).toBe(true);
+  });
+
+  it("counts strikes per tier, carries counters across waves, and resets them on a new game", () => {
+    let s = quiet();
+    const g = formation(s, "Grunt");
+    s = tick({ ...s, asteroids: [rock("large", g.x, g.y)] }, 16, ASIDE);
+    expect(s.tierStats.Grunt.struck).toBe(1);
+
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, ASIDE);
+    expect(s.wave).toBe(3);
+    expect(s.tierStats.Grunt.struck).toBe(1);
+
+    expect(initStarSwarm(CANVAS_W, CANVAS_H).tierStats).toEqual(emptyTierStats());
   });
 });

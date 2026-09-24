@@ -110,6 +110,7 @@ const C = {
   bg: "#000010",
   star: "#ffffff",
   bulletEnemy: "#ff4422",
+  bulletFlak: "#ffd27a", // #2487
   bulletPlayer: "#00ffcc",
   enemyGrunt: "#8888ff",
   enemyElite: "#ff88ff",
@@ -560,8 +561,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       // Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless) are
       // dimmed so the player can tell they no longer need dodging.
-      ctx.fillStyle = C.bulletEnemy;
       for (const b of state.enemyBullets) {
+        ctx.fillStyle = b.flak ? C.bulletFlak : C.bulletEnemy; // #2487: flak at rocks reads as amber
         ctx.globalAlpha = b.harmless ? HARMLESS_BULLET_OPACITY : 1;
         ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
       }

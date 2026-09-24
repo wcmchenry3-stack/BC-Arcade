@@ -548,7 +548,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 y={b.y - b.height / 2}
                 width={b.width}
                 height={b.height}
-                color="#ff4422"
+                color={b.flak ? "#ffd27a" : "#ff4422"} // #2487: flak at rocks reads as amber
                 opacity={b.harmless ? HARMLESS_BULLET_OPACITY : 1}
               />
             ))}
