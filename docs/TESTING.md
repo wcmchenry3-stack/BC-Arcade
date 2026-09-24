@@ -541,6 +541,99 @@ fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
 #2204's meaning (games per matchup), and `--log-games` (used by
 `hearts-analysis`) is unchanged.
 
+### Hearts AI regret metric — points lost vs a perfect-information reference (#2239)
+
+Win share mixes a persona's own play with its opponents'. The regret metric
+grades each card play instead, like chess's average centipawn loss: how many
+points worse the chosen card was than the best card, by a reference that
+sees all four hands. The AI only ever sees its own hand; the harness deals
+every hand, so it can grade a decision afterwards without giving the AI
+anything it didn't have.
+
+- **Reference (`sim/oracle.ts`).** For each graded play, every legal card is
+  tried on the true state and the hand is finished by a perfect-information
+  rollout for all four seats. The rollout is greedy and moon-aware: a lone
+  point-holder with 10+ points plays the moon out and the others try to take
+  a point off it. Each card's value is the average of 16 rollouts, one greedy
+  and 15 with ε = 0.2 random plays. Every card sees the same random streams,
+  and the seed comes from the cards in play, so results are repeatable.
+  - A card's cost is the acting seat's moon-adjusted hand score minus the
+    table mean. Without a moon, that is its own points − 6.5, so regret is in
+    plain points: Q♠ is 13, a heart 1. A moon counts −19.5 for the shooter
+    and +6.5 for everyone else.
+  - `oracle.ts` imports only the engine's rules, never `ai.ts`,
+    `aiConsiderations.ts` or `aiWeights.ts`, so it shares no heuristic or bug
+    with what it grades. A test pins this.
+- **Is it stronger than the AI?** A player that cheats with this reference
+  (`oraclePolicy`) wins 73% of games against a Schemer field, against
+  Daring's 34% on the same cards. A single greedy rollout managed only 49%,
+  and 8 rollouts at ε = 0.15 72.5%.
+- **What regret includes.** It is measured against a player that can see
+  every hand, so its absolute level (~10 points per hand) is mostly the value
+  of hidden information. Read the differences between personas on the same
+  cards, not the level. Each value is a sampled rollout average, so a single
+  decision's regret is an estimate; the report averages tens of thousands.
+- **Blunder bands** (`DEFAULT_REGRET_BANDS`, adjustable):
+
+  | Band      | Regret (points) | Roughly                   |
+  | --------- | --------------- | ------------------------- |
+  | `optimal` | `0`             | the reference's best card |
+  | `minor`   | `0 < r < 3`     | a stray heart or two      |
+  | `mistake` | `3 <= r < 10`   | several hearts            |
+  | `blunder` | `r >= 10`       | Q♠-sized, or a moon       |
+
+- **Noise split.** ai.ts's noise is one `rng() < NOISE_RATE` draw per play.
+  `sim/regret.ts` tags each graded play as noise or deliberate from that
+  draw, passing the RNG through unchanged; a test pins that grading and
+  tagging leave every game identical.
+
+**Run it.** It is a report, not a gate, and always exits 0:
+
+```bash
+npx tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
+npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
+npx tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+```
+
+Each persona takes the test seat against a Schemer field on the same deals,
+so per-block differences are paired as in the gate.
+
+- **Cost:** grading takes ~3.5 ms per play. 100 blocks grade ~130,000 plays
+  (~7.5 min), or ~10 min with `--oracle-player`, which runs the reference for
+  its own plays too.
+- **Sampling:** `--sample-every K` grades about one play in K, picked
+  pseudo-randomly per play so a K that divides 13 can't lock onto one trick
+  of every hand, and scales points lost back up by K.
+
+Unit tests: `sim/__tests__/oracle.test.ts` covers a known four-hand endgame
+where the reference must find the 13-point difference, rollout rules, hand
+cost and bands. `regret.test.ts` covers the tallies, the noise split, win
+share reported independently of regret, and the ladder check.
+
+**What it measured (2026-09-24, seed 2238, 100 blocks, every play graded):**
+
+| Persona         | Points lost / 100 hands | Per noise play | Per deliberate play | Blunders | Win share |
+| --------------- | ----------------------- | -------------- | ------------------- | -------- | --------- |
+| Cautious        | 1,095                   | 1.33           | 0.636               | 1.5%     | 10.7%     |
+| Schemer         | 966                     | 1.30           | 0.696               | 1.2%     | 24.8%     |
+| Daring          | 1,010                   | —              | 0.777               | 1.3%     | 33.8%     |
+| Oracle (cheats) | 0                       | —              | 0                   | 0%       | 73.0%     |
+
+- **The noise ladder holds.** On noise plays alone, Cautious loses 384 more
+  points per 100 hands than Schemer [359, 410], and Schemer 131 more than
+  Daring [120, 142].
+- **Noise varies in how often it fires, not in how bad each mistake is.** A
+  noise play costs ~1.3 points for both Cautious and Schemer, because it is a
+  uniform random card either way.
+- **Win share and regret disagree, as the metric allows.** In total,
+  Cautious loses more than Schemer (+131 [90, 171]). But Daring loses _more_
+  than Schemer (+55 [14, 95]) while winning 34% of games to Schemer's 25%.
+  Daring's deliberate plays are the least reference-like of the three
+  (0.777 points per play). Its moon attempts and aggressive dumps cost
+  expected hand points, and they pay off in games won. Cautious's deliberate
+  play is actually the closest to the reference; its weakness is almost all
+  noise.
+
 ## Manual repros
 
 ### Hearts: tab-switch state preservation (#745)
