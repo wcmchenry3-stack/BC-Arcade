@@ -6,6 +6,7 @@ import {
   aiRotations,
   fieldMatchup,
   personaPolicy,
+  pimcPolicy,
   playGame,
   presetMatchup,
   runBlock,
@@ -19,6 +20,21 @@ const S = personaPolicy("schemer");
 const D = personaPolicy("daring");
 
 afterEach(() => setRng(Math.random));
+
+describe("pimcPolicy", () => {
+  it("replays a game exactly: its sampling is seeded from the seat's stream", () => {
+    const P = pimcPolicy("pimc", {
+      samples: 2,
+      horizon: "trick",
+      inference: true,
+      rolloutPersona: "schemer",
+    });
+    const a = playGame([S, P, S, S], 7, 1);
+    const b = playGame([S, P, S, S], 7, 1);
+    expect(b).toEqual(a);
+    expect(a.labels[1]).toBe("pimc");
+  });
+});
 
 describe("duplicate-deal replay", () => {
   it("replays a game exactly from (seed, block)", () => {
