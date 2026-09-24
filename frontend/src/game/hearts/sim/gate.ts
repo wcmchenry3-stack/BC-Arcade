@@ -52,7 +52,8 @@ const daring = personaPolicy("daring");
 
 /**
  * The human stand-in at seat 0 of every preset table. Schemer is the app's
- * default persona and the middle of the three noise levels (25/10/0%).
+ * default persona and the middle of the three noise levels (35/10/0%). Its settings are left
+ * alone by persona tuning (#2555) so the stand-in never moves.
  */
 const PROXY = schemer;
 
@@ -174,16 +175,26 @@ function winShare(matchup: string, role: string): MetricRef {
 }
 
 /**
- * Pre-registered persona separations: each `expected` is the value measured
- * on the baseline seed (baseline.json `separations`, 2026-09-24: field 6,000
- * blocks, presets 12,000), before any gate run. The persona ladder is NOT
- * "Daring > Schemer > Cautious": Cautious wins most, and the all-Cautious
- * table is the hardest for the human. These checks pin the ladder as it is;
- * a deliberate re-tune updates the expectations here with new evidence.
+ * Pre-registered persona separations: the difficulty ladder (#2555).
+ * Strength runs Daring > Schemer > Cautious, so the human wins most at the
+ * Cautious table and least at the Daring table. Each `expected` is the
+ * value measured on the baseline seed (baseline.json `separations`) before
+ * any gate run. A deliberate re-tune updates them here with new evidence.
  *
- * Not registered: "the Schemer table is easier than the Daring table"
- * (measured +1.5pp ± 0.5): per-block SD 0.55 would need ~15,000 blocks to
- * decide, twice the presets cap.
+ * Both adjacent steps are checked twice: head to head in the field matchup,
+ * and at the mixed table the app actually deals.
+ *
+ * Not registered: "the Schemer table is easier than the Daring table" for
+ * the human. It holds in the baseline (+1.5pp ± 0.5), but a gap that small
+ * with per-block SD 0.55 needs ~15,000 blocks to decide — twice the presets
+ * cap — and a truncated test would false-fail ~10% of the time. Daring >
+ * Schemer is still gated (field and mixed above); the table-level gap is
+ * only checked when the baseline is re-measured (gate.test.ts). Widening it
+ * is #2234/#2235's job (Daring's moon play converts 7% of attempts).
+ *
+ * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
+ * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
+ * and the all-Cautious table the hardest for the human (21.9% vs 25.5%).
  */
 export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
   {
@@ -196,19 +207,11 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
   },
   {
     kind: "separation",
-    id: "field:cautious-over-schemer",
-    description: "Cautious outwins Schemer in the same seat, cards and field",
-    left: winShare("field-schemer", "cautious"),
-    right: winShare("field-schemer", "schemer"),
-    expected: 0.027,
-  },
-  {
-    kind: "separation",
-    id: "mixed:cautious-over-schemer",
-    description: "at the mixed table, Cautious outwins Schemer",
-    left: winShare("table-mixed", "cautious"),
-    right: winShare("table-mixed", "schemer"),
-    expected: 0.043,
+    id: "field:schemer-over-cautious",
+    description: "Schemer outwins Cautious in the same seat, cards and field",
+    left: winShare("field-schemer", "schemer"),
+    right: winShare("field-schemer", "cautious"),
+    expected: 0.032,
   },
   {
     kind: "separation",
@@ -216,17 +219,23 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Daring outwins Schemer",
     left: winShare("table-mixed", "daring"),
     right: winShare("table-mixed", "schemer"),
-    expected: 0.031,
+    expected: 0.037,
   },
   {
-    // HRT-3 (#2204): the human does BETTER against three Schemers than
-    // against three Cautious players — the old check had this backwards.
     kind: "separation",
-    id: "presets:schemer-table-easier-than-cautious",
-    description: "the human wins more at the Schemer table than at the Cautious table (HRT-3)",
-    left: winShare("table-schemer", "proxy"),
-    right: winShare("table-cautious", "proxy"),
-    expected: 0.036,
+    id: "mixed:schemer-over-cautious",
+    description: "at the mixed table, Schemer outwins Cautious",
+    left: winShare("table-mixed", "schemer"),
+    right: winShare("table-mixed", "cautious"),
+    expected: 0.03,
+  },
+  {
+    kind: "separation",
+    id: "presets:cautious-table-easier-than-schemer",
+    description: "the human wins more at the Cautious table than at the Schemer table",
+    left: winShare("table-cautious", "proxy"),
+    right: winShare("table-schemer", "proxy"),
+    expected: 0.029,
   },
 ];
 

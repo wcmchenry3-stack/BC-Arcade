@@ -71,15 +71,36 @@ describe("gate definition", () => {
     for (const check of SEPARATION_CHECKS) expect(check.expected).not.toBe(0);
   });
 
-  it("keeps HRT-3's corrected direction: the human does better against Schemers than Cautious players", () => {
-    const hrt3 = SEPARATION_CHECKS.find(
-      (c) =>
-        c.left.matchup === "table-schemer" &&
-        c.right.matchup === "table-cautious" &&
-        c.left.role === "proxy" &&
-        c.right.role === "proxy"
-    );
-    expect(hrt3?.expected).toBeGreaterThan(0);
+  it("pre-registers the difficulty ladder (#2555)", () => {
+    // Positive `expected` = left beats right, so each tuple reads "left > right".
+    const holds = (left: [string, string], right: [string, string]) =>
+      SEPARATION_CHECKS.some(
+        (c) =>
+          c.expected > 0 &&
+          c.left.matchup === left[0] &&
+          c.left.role === left[1] &&
+          c.right.matchup === right[0] &&
+          c.right.role === right[1]
+      );
+    // Persona strength, Daring > Schemer > Cautious: head to head in the
+    // field matchup and at the mixed table the app deals.
+    for (const m of ["field-schemer", "table-mixed"]) {
+      expect(holds([m, "daring"], [m, "schemer"])).toBe(true);
+      expect(holds([m, "schemer"], [m, "cautious"])).toBe(true);
+    }
+    // The human wins more at the Cautious table than at the Schemer table.
+    expect(holds(["table-cautious", "proxy"], ["table-schemer", "proxy"])).toBe(true);
+  });
+
+  it("measured the human doing worse at the Daring table than the Schemer table", () => {
+    // Not a gate check (+1.5pp is too small for an SPRT within the block cap;
+    // see SEPARATION_CHECKS in gate.ts). This only guards the checked-in
+    // baseline: re-measuring it after a change that inverts the top of the
+    // ladder fails here.
+    const human = (table: string) => BASELINE.metrics[`${table}/proxy/win_share`]!;
+    const gap = human("table-schemer").value - human("table-daring").value;
+    const se = Math.hypot(human("table-schemer").se, human("table-daring").se);
+    expect(gap / se).toBeGreaterThan(2);
   });
 
   it("gates the paired moon success rate (HRT-1)", () => {
@@ -223,7 +244,7 @@ describe("evaluateCheck — separation", () => {
   it("reports a Bonferroni-adjusted CI", () => {
     const r = evaluateCheck(separation, pairRuns(0.3, 0.25, 2000, 18), baseline, true);
     const half = r.estimate.ciHigh - r.estimate.mean;
-    expect(half / r.estimate.se).toBeGreaterThan(2.5); // z at 1 − 0.05/19 two-sided ≈ 3.01
+    expect(half / r.estimate.se).toBeGreaterThan(2.5); // z at 1 − 0.05/K two-sided, K = GATE_CHECKS.length (≈ 3.0)
   });
 });
 

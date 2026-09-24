@@ -445,7 +445,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 | Group     | Games per block | Stopped at (cap)     | Wall-clock |
 | --------- | --------------- | -------------------- | ---------- |
 | `presets` | 6               | 3,400 blocks (8,000) | ~2 min     |
-| `field`   | 9               | 1,800 blocks (6,000) | ~1.5 min   |
+| `field`   | 9               | 1,600 blocks (6,000) | ~1.5 min   |
 
 Worst case, with every check running to its cap (presets 8,000 blocks ×
 6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
@@ -475,30 +475,41 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24).** Baseline (`BASELINE_SEED`,
-presets 12,000 blocks, field 6,000; the full numbers with counts are in
-`baseline.json`):
+**What the gate measured (2026-09-24, after #2555).** Baseline
+(`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
+counts are in `baseline.json`):
 
-- The human stand-in wins 21.9% at the all-Cautious table, 25.5% at
-  all-Schemer, 23.9% at all-Daring and 24.0% at the mixed table — the
-  "easiest" persona gives the hardest table.
-- At the mixed table Cautious wins 27.2%, Daring 26.0%, Schemer 22.9%. In the
-  field matchup Cautious beats Schemer by +2.75pp and Daring beats Schemer by
-  +1.5pp. The ladder is Cautious ≳ Daring > Schemer, not the intended
-  Daring > Schemer > Cautious; the gate pins it as it is (rebalancing is
-  #2233's job, and will update the expectations with new evidence).
+- The difficulty ladder holds: the human stand-in wins 28.3% at the
+  all-Cautious table, 25.5% at all-Schemer and 23.9% at all-Daring (25.9%
+  at the mixed table). At the mixed table Daring wins 28.2%, Schemer 24.4%,
+  Cautious 21.5%; in the field matchup Daring beats Schemer by +1.5pp and
+  Schemer beats Cautious by +3.2pp.
+- The separation checks pin both adjacent steps of the ladder twice: head
+  to head in the field matchup and at the mixed table (Daring − Schemer
+  +3.7pp, Schemer − Cautious +3.0pp there), plus the Cautious-vs-Schemer
+  table gap for the human. The Schemer-vs-Daring _table_ gap for the human
+  (+1.5pp ± 0.5) is too small for an SPRT inside the block cap, so it is
+  only checked on the baseline when it is re-measured (`gate.test.ts`).
+  #2234/#2235 are expected to widen it.
+- Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
+  Cautious was the strongest persona (+2.75pp over Schemer in the field) and
+  the all-Cautious table the hardest for the human (21.9%). Changing
+  Cautious's play weights barely moved that; its noise rate did (30% → still
+  level with Schemer, 35% → the ladder above, 38% → a 30% human win share).
 - Daring: moon attempts in 9.2% of hands, paired success 7.2% of attempts;
   33% of its Q♠ dumps land on the human (Schemer: 34%). Passes that could
-  void a suit do so 21% (Cautious), 65% (Schemer), 83% (Daring) of the time.
+  void a suit do so 20% (Cautious), 65% (Schemer), 83% (Daring) of the time.
 
-**Relation to #2204.** The v2 gate keeps both #2204 fixes: `moon_success`
+**Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
-÷ a narrower trigger count — HRT-1), and the Cautious-vs-Schemer direction
-(HRT-3: the human does _better_ against Schemers) is a pre-registered
-separation. `sim/__tests__/metrics.test.ts` and `gate.test.ts` pin both.
-The old six fixed-N batches and their ✓/✗ threshold checks are retired;
-`--count` keeps #2204's meaning (games per matchup), and `--log-games`
-(used by `hearts-analysis`) is unchanged.
+÷ a narrower trigger count), pinned by `sim/__tests__/metrics.test.ts`.
+HRT-3 corrected the old Cautious-vs-Schemer check to "the human does better
+against Schemers" — true only because the ladder was inverted. #2555 fixed
+the ladder, so the gate now pre-registers the opposite direction (the human
+does better against Cautious players), pinned by `gate.test.ts`. The old six
+fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
+#2204's meaning (games per matchup), and `--log-games` (used by
+`hearts-analysis`) is unchanged.
 
 ## Manual repros
 
