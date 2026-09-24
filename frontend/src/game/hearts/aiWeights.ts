@@ -5,18 +5,23 @@
  * variant applies when the old `isMoonAttempt` thresholds fire — rateMoonAttemptProgress
  * dominates at 100.0 (calibration-drift guard) while card selection stays utility-driven.
  *
- * Noise rates: Cautious 38% / Schemer 10% / Daring 0%.
- * Daring noise is 0 because even a small random deviation can derail moon attempts.
+ * Noise rates: Cautious 55% / Schemer 19% / Daring 0%.
+ * Daring noise is 0 because even a small deviation can derail moon attempts.
  *
  * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
  * weights are strong Hearts play on their own: at 25% noise Cautious was the
  * strongest persona and the all-Cautious table the hardest for the human.
  * The sim gate (sim/gate.ts) showed the weights barely move its strength
- * while noise does, so 35% put it back at the bottom. #2235's moon defense
- * helped Cautious a little more than Schemer and thinned that step to under
- * 1pp on the gate seed, so it is now 38%: the human wins ~2-3pp more at the
- * Cautious table than at the Schemer table, and ~5pp more there than at the
- * Daring table.
+ * while noise does, so 35% put it back at the bottom, and #2235's moon
+ * defense took it to 38%.
+ *
+ * #2283 made the mistakes plausible: a noise hit used to play a uniformly
+ * random card, so every slip cost the same ~1.3 points whoever made it (the
+ * regret report, #2239) and could look like a broken bot. It now picks a
+ * near-best card (MISTAKE_SPREAD 0.1). Near-best mistakes cost fewer games,
+ * so the personas err more often for the same ladder — the chosen targets
+ * being a competent player (the sim's Schemer stand-in) winning ~40% at the
+ * Cautious table, ~25% at Schemer's, ~16% at Daring's.
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
@@ -123,11 +128,26 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
   suitVoiding: 2.5,
 };
 
-// ─── Cognitive noise rates ─────────────────────────────────────────────────────
+// ─── Cognitive noise ───────────────────────────────────────────────────────────
 
-/** Probability of ignoring the best-scoring action and picking a random legal one. */
+/**
+ * How often each persona makes a mistake: the chance, per decision with an
+ * alternative, of not playing (or passing) its best-scoring choice.
+ */
 export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
-  cautious: 0.38,
-  schemer: 0.1,
+  cautious: 0.55,
+  schemer: 0.19,
   daring: 0.0,
+};
+
+/**
+ * How far from the best a mistake strays (#2283), in utility-score units: a
+ * mistake picks card c with weight exp(−(best − score(c)) / spread), so
+ * near-best cards are likely and clear blunders rare — the slips of a weaker
+ * player, not a random card. Infinity would be the old uniform noise.
+ */
+export const MISTAKE_SPREAD: Readonly<Record<AiPersona, number>> = {
+  cautious: 0.1,
+  schemer: 0.1,
+  daring: 0.1,
 };

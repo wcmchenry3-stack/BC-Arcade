@@ -59,6 +59,8 @@ export interface RegretTally {
   noiseDecisions: number;
   /** Summed regret over the noise plays. */
   noiseRegret: number;
+  /** Of the noise plays, those in the "blunder" band. */
+  noiseBlunders: number;
 }
 
 export function emptyTally(): RegretTally {
@@ -69,6 +71,7 @@ export function emptyTally(): RegretTally {
     bands: { optimal: 0, minor: 0, mistake: 0, blunder: 0 },
     noiseDecisions: 0,
     noiseRegret: 0,
+    noiseBlunders: 0,
   };
 }
 
@@ -78,6 +81,7 @@ export function addTally(into: RegretTally, from: RegretTally): void {
   into.hands += from.hands;
   into.noiseDecisions += from.noiseDecisions;
   into.noiseRegret += from.noiseRegret;
+  into.noiseBlunders += from.noiseBlunders;
   for (const b of REGRET_BANDS) into.bands[b] += from.bands[b];
 }
 
@@ -179,6 +183,7 @@ export function runRegretBlock(
         if (wasNoise) {
           t.noiseDecisions++;
           t.noiseRegret += r.regret;
+          if (r.band === "blunder") t.noiseBlunders++;
         }
       },
     });
@@ -234,6 +239,8 @@ export interface RoleRegret {
   /** Mean regret of a noise play, and of a deliberate (non-noise) play. */
   readonly perNoiseDecision: number;
   readonly perDeliberateDecision: number;
+  /** Share of noise plays in the "blunder" band. */
+  readonly noiseBlunderShare: number;
   /** Points lost per 100 hands to noise plays alone. */
   readonly noisePer100Hands: number;
   /** Outcome, from the harness's own counters: share of games won. */
@@ -263,6 +270,7 @@ export function summarizeRole(
     bandShares: shares,
     noiseShare: t.decisions > 0 ? t.noiseDecisions / t.decisions : 0,
     perNoiseDecision: t.noiseDecisions > 0 ? t.noiseRegret / t.noiseDecisions : 0,
+    noiseBlunderShare: t.noiseDecisions > 0 ? t.noiseBlunders / t.noiseDecisions : 0,
     perDeliberateDecision:
       t.decisions > t.noiseDecisions
         ? (t.regret - t.noiseRegret) / (t.decisions - t.noiseDecisions)
@@ -338,8 +346,8 @@ export interface LadderStep {
 }
 
 /**
- * The noise-ladder sanity check (#2239): Cautious (38% noise) should lose
- * more points than Schemer (10%), and Schemer more than Daring (0%) — both
+ * The noise-ladder sanity check (#2239): Cautious (the noisiest persona, NOISE_RATE) should lose
+ * more points than Schemer, and Schemer more than Daring (0%) — both
  * in total and on noise plays alone.
  */
 export function noiseLadder(blocks: readonly RegretBlock[], sampleEvery = 1): LadderStep[] {
@@ -363,7 +371,7 @@ export function formatRegretReport(
   sampleEvery = 1
 ): string {
   const lines = [
-    `role      plays   lost/100 hands   per play   noise plays (mean)   deliberate   optimal / minor / mistake / blunder   win share`,
+    `role      plays   lost/100 hands   per play   noise plays (mean, blunders)   deliberate   optimal / minor / mistake / blunder   win share`,
   ];
   for (const role of roles) {
     const r = summarizeRole(blocks, role, sampleEvery);
@@ -374,7 +382,9 @@ export function formatRegretReport(
         String(r.decisions).padStart(6),
         r.per100Hands.toFixed(0).padStart(16),
         r.perDecision.toFixed(3).padStart(10),
-        `${pct(r.noiseShare)} (${r.perNoiseDecision.toFixed(2)})`.padStart(20),
+        `${pct(r.noiseShare)} (${r.perNoiseDecision.toFixed(2)}, ${pct(r.noiseBlunderShare)})`.padStart(
+          29
+        ),
         r.perDeliberateDecision.toFixed(3).padStart(12),
         `${pct(b.optimal)} / ${pct(b.minor)} / ${pct(b.mistake)} / ${pct(b.blunder)}`.padStart(38),
         pct(r.winShare).padStart(11),

@@ -47,6 +47,8 @@ describe("runRegretBlock", () => {
     expect(graded.regret.cautious!.noiseDecisions).toBeGreaterThan(0);
     expect(graded.regret.daring!.noiseDecisions).toBe(0);
     expect(graded.regret.daring!.noiseRegret).toBe(0);
+    const c = graded.regret.cautious!;
+    expect(c.noiseBlunders).toBeLessThanOrEqual(Math.min(c.noiseDecisions, c.bands.blunder));
   });
 
   it("grades about one play in sampleEvery", () => {
@@ -88,6 +90,7 @@ describe("tallies and points lost", () => {
       hands: 2,
       noiseDecisions: 1,
       noiseRegret: 2,
+      noiseBlunders: 0,
       bands: { optimal: 0, minor: 2, mistake: 0, blunder: 1 },
     });
   });
@@ -130,12 +133,20 @@ describe("summaries", () => {
   });
 
   it("splits a role's regret into noise and deliberate plays", () => {
-    const t = tally({ decisions: 10, regret: 8, hands: 5, noiseDecisions: 4, noiseRegret: 6 });
+    const t = tally({
+      decisions: 10,
+      regret: 8,
+      hands: 5,
+      noiseDecisions: 4,
+      noiseRegret: 6,
+      noiseBlunders: 1,
+    });
     const r = summarizeRole([block(0, { cautious: [t, 1] })], "cautious");
     expect(r.noiseShare).toBeCloseTo(0.4);
     expect(r.perNoiseDecision).toBeCloseTo(1.5);
     expect(r.perDeliberateDecision).toBeCloseTo(2 / 6);
     expect(r.noisePer100Hands).toBeCloseTo(120);
+    expect(r.noiseBlunderShare).toBeCloseTo(0.25);
   });
 
   it("checks the noise ladder step by step, paired by block", () => {

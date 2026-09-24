@@ -206,7 +206,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Daring outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "daring"),
     right: winShare("field-schemer", "schemer"),
-    expected: 0.087,
+    expected: 0.098,
   },
   {
     kind: "separation",
@@ -214,7 +214,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Schemer outwins Cautious in the same seat, cards and field",
     left: winShare("field-schemer", "schemer"),
     right: winShare("field-schemer", "cautious"),
-    expected: 0.133,
+    expected: 0.113,
   },
   {
     kind: "separation",
@@ -222,7 +222,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Daring outwins Schemer",
     left: winShare("table-mixed", "daring"),
     right: winShare("table-mixed", "schemer"),
-    expected: 0.132,
+    expected: 0.157,
   },
   {
     kind: "separation",
@@ -230,7 +230,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Schemer outwins Cautious",
     left: winShare("table-mixed", "schemer"),
     right: winShare("table-mixed", "cautious"),
-    expected: 0.154,
+    expected: 0.116,
   },
   {
     kind: "separation",
@@ -238,7 +238,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "the human wins more at the Cautious table than at the Schemer table",
     left: winShare("table-cautious", "proxy"),
     right: winShare("table-schemer", "proxy"),
-    expected: 0.164,
+    expected: 0.136,
   },
   {
     kind: "separation",
@@ -246,7 +246,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "the human wins more at the Schemer table than at the Daring table",
     left: winShare("table-schemer", "proxy"),
     right: winShare("table-daring", "proxy"),
-    expected: 0.085,
+    expected: 0.081,
   },
 ];
 
