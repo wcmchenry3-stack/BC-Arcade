@@ -197,10 +197,23 @@ Carrier's armor ring, hit-flash bursts, the beam, harmless-bullet dimming, the i
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
 `__tests__/frame.test.ts`. `GameCanvas.tsx` maps each op to one Skia element and decides nothing.
 
-`render/publish.ts` gates when a frame reaches React at all (#2563): only when something drawn
-changed, so a paused or finished game does not re-render. Phase 3 (#2565) replays the same
-display list on the UI thread as a Skia `Picture`. The web renderer (unmaintained) still derives
-the same rules itself.
+`render/publish.ts` gates when a frame is published at all (#2563): only when something drawn
+changed, so a paused or finished game does not re-render.
+
+Since #2565 the display list is drawn on the UI thread. Each published frame, the RAF loop builds
+the list and writes it into one Reanimated shared value; a `useDerivedValue` worklet replays it
+with `render/drawFrame.ts` into a Skia `Picture` (`createPicture`), and the canvas renders a single
+`<Picture>`. So the pipeline is engine → `buildFrame` (JS thread) → shared value → `drawFrame`
+(UI thread) → Picture. `drawFrame` decides nothing; it is a straight port of the declarative
+`renderOp` and is tested against a recording fake of the Skia API in
+`__tests__/drawFrame.test.ts`. A throw inside it is reported to Sentry once
+(`starswarm.drawFrame`) and never takes down the UI thread. Sprite images reach the worklet as a
+stable set that changes only when an image finishes loading.
+
+Until phase 4 (#2566) React still re-renders once per published frame for the HUD text; the
+scene's hundreds of Skia elements are no longer part of that. Dev builds keep the phase-2
+declarative path behind the dev-panel "Legacy renderer" switch for side-by-side comparison until
+phase 5 (#2567) deletes it. The web renderer (unmaintained) still derives the same rules itself.
 
 ## Backend
 

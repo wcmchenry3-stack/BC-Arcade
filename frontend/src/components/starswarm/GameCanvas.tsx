@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { runOnJS, useDerivedValue, useSharedValue } from "react-native-reanimated";
 import { StyleSheet, Text, View } from "react-native";
 import {
   Canvas,
@@ -7,7 +8,9 @@ import {
   Group,
   Image as SkiaImage,
   Path,
+  Picture,
   Rect,
+  createPicture,
 } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -37,7 +40,14 @@ import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
-import { useStarSwarmImages, loadedSprites } from "../../game/starswarm/assets";
+import {
+  useStarSwarmImages,
+  loadedSprites,
+  drawImagesOf,
+  sameDrawImages,
+} from "../../game/starswarm/assets";
+import { drawFrame } from "../../game/starswarm/render/drawFrame";
+import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import type { StarSwarmImages } from "../../game/starswarm/assets";
 import { buildFrame, polyPath, mirrorAxisX } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
@@ -71,7 +81,14 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
+  /**
+   * #2565: "picture" (default) draws the frame on the UI thread as one Skia Picture; "react" is
+   * the phase-2 declarative path, kept for side-by-side comparison until phase 5 (#2567).
+   */
+  rendererMode?: RendererMode;
 }
+
+export type RendererMode = "picture" | "react";
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
@@ -84,6 +101,28 @@ export interface GameCanvasHandle {
   killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
+}
+
+/** #2565: a throw inside the UI-thread renderer is reported once, on the JS thread. */
+function reportDrawError(message: string): void {
+  Sentry.captureMessage(`starswarm.drawFrame: ${message}`, {
+    level: "error",
+    tags: { subsystem: "starswarm.render" },
+  });
+}
+
+/**
+ * #2565: hand the latest display list to the UI-thread renderer. Built on the JS thread (where
+ * every drawing decision is made and tested) and copied across once per published frame.
+ */
+function publishPicture(
+  frameSV: { value: readonly DrawOp[] },
+  inputs: FrameInputs,
+  loaded: ReturnType<typeof loadedSprites>,
+  width: number,
+  height: number
+): void {
+  frameSV.value = buildFrame(inputs.game, inputs.sf, { loaded, width, height });
 }
 
 /** #2564: one Skia element per display-list op. No decisions here — buildFrame made them. */
@@ -220,6 +259,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   ) => {
     const { t } = useTranslation("starswarm");
     const images = useStarSwarmImages();
+    // #2565: a stable image set for the UI thread — a new object only when an image loads, so
+    // the picture worklet (which captures it) is rebuilt only when there is something to add.
+    const drawImagesRef = useRef<DrawImages>(drawImagesOf(images));
+    const nextDrawImages = drawImagesOf(images);
+    if (!sameDrawImages(drawImagesRef.current, nextDrawImages)) {
+      drawImagesRef.current = nextDrawImages;
+    }
+    const drawImages = drawImagesRef.current;
+    const loadedRef = useRef(loadedSprites(images));
+    loadedRef.current = loadedSprites(images);
+    const sizeRef = useRef({ width, height });
+    sizeRef.current = { width, height };
+    const rendererMode: RendererMode = devOptions?.rendererMode ?? "picture";
 
     const gameRef = useRef<StarSwarmState>(
       initialState ??
@@ -331,6 +383,36 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // so a paused or finished game stops re-rendering instead of reconciling ~60×/s.
     const publishedRef = useRef<RenderState>(renderState);
 
+    // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
+    // derived value re-records only when the list, the image set or the canvas size changes.
+    const frameSV = useSharedValue<readonly DrawOp[]>([]);
+    const drawErrorReported = useSharedValue(false);
+    const picture = useDerivedValue(() => {
+      const ops = frameSV.value;
+      return createPicture(
+        (canvas) => {
+          try {
+            drawFrame(canvas, ops, drawImages);
+          } catch (e) {
+            // whatever drew before the throw stays; report once, never take down the UI thread
+            if (!drawErrorReported.value) {
+              drawErrorReported.value = true;
+              runOnJS(reportDrawError)(String(e));
+            }
+          }
+        },
+        { width, height }
+      );
+    }, [drawImages, width, height]);
+
+    // #2565: republish when sprites finish loading or the dev renderer switch flips — without
+    // this a paused game would keep its fallback shapes until it resumed.
+    useEffect(() => {
+      if (rendererMode !== "picture") return;
+      const { width: w, height: h } = sizeRef.current;
+      publishPicture(frameSV, publishedRef.current, loadedRef.current, w, h);
+    }, [drawImages, rendererMode, frameSV]);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -391,8 +473,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         bonusFlash: false,
       };
       publishedRef.current = fresh;
+      if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
+        publishPicture(frameSV, fresh, loadedRef.current, width, height);
+      }
       setRenderState(fresh);
-    }, [resetTick, width, height]);
+    }, [resetTick, width, height, frameSV]);
 
     // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
     // something drawn changed (#2563)
@@ -562,6 +647,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         // frame after game over. Live play still publishes each frame: the starfield moves.
         if (!sameFrame(publishedRef.current, next)) {
           publishedRef.current = next;
+          // #2565: the scene goes to the UI thread as data; React still re-renders for the HUD
+          // until phase 4 (#2566), but no longer reconciles the scene's hundreds of elements
+          if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
+            const { width: w, height: h } = sizeRef.current;
+            publishPicture(frameSV, next, loadedRef.current, w, h);
+          }
           setRenderState(next);
         }
         id = requestAnimationFrame(loop);
@@ -569,12 +660,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       id = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(id);
-    }, []); // intentionally empty — loop lives for component lifetime
+    }, [frameSV]); // frameSV is stable — the loop lives for the component's lifetime
 
     const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
     // #2564: every drawing decision (sprites vs fallbacks, rings, flashes, the beam, the #2334
     // hidden-ship-at-game-over rule, the invincibility blink) lives in buildFrame — tested there.
-    const frame = buildFrame(state, sf, { loaded: loadedSprites(images), width, height });
+    // #2565: only the legacy declarative renderer builds it here; the Picture path builds it in
+    // the loop and draws it on the UI thread.
+    const legacyFrame =
+      rendererMode === "react"
+        ? buildFrame(state, sf, { loaded: loadedRef.current, width, height })
+        : null;
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, state.score);
@@ -588,8 +684,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="none"
         >
           <Group transform={[{ scale }]}>
-            {/* #2564: the whole scene, back to front, from the pure frame builder */}
-            {frame.map((op) => renderOp(op, images))}
+            {/* #2565: the whole scene as one UI-thread Picture; the phase-2 declarative path is
+                kept behind the "Legacy renderer" dev switch until phase 5 (#2567) */}
+            {legacyFrame ? (
+              legacyFrame.map((op) => renderOp(op, images))
+            ) : (
+              <Picture picture={picture} />
+            )}
           </Group>
         </Canvas>
 
