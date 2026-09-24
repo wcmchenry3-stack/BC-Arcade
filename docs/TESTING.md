@@ -450,7 +450,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 
 | Group     | Games per block | Stopped at (cap)      | Wall-clock |
 | --------- | --------------- | --------------------- | ---------- |
-| `presets` | 6               | 6,200 blocks (12,000) | ~4.5 min   |
+| `presets` | 6               | 3,000 blocks (12,000) | ~2.5 min   |
 | `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
 Worst case, with every check running to its cap (presets 12,000 blocks ×
