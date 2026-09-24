@@ -91,3 +91,25 @@ def test_no_workflow_deploys_prod_itself() -> None:
         if "called-deploy-render" in p.read_text(encoding="utf-8")
     ]
     assert callers == []
+
+
+def test_scan_checks_the_headers_the_dashboard_can_drift() -> None:
+    """Prod headers are set in the Render dashboard, not from render.yaml; the
+    Sep 23 scan found the frontend CSP pasted with its quotes and no HSTS."""
+    steps = _load(SCAN)["jobs"]["scan"]["steps"]
+    check = next(s for s in steps if s.get("name") == "Check security headers")
+    assert check["if"] == "steps.wait.outputs.scan == 'true'"
+    assert "strict-transport-security" in check["run"]
+    assert "content-security-policy" in check["run"]
+
+
+def test_every_static_site_sends_hsts() -> None:
+    config = yaml.safe_load((REPO_ROOT / "render.yaml").read_text(encoding="utf-8"))
+    static = [s for s in config["services"] if s.get("runtime") == "static"]
+    assert static
+    missing = [
+        s["name"]
+        for s in static
+        if not any(h["name"] == "Strict-Transport-Security" for h in s.get("headers", []))
+    ]
+    assert missing == []

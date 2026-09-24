@@ -221,6 +221,9 @@ async def security_headers(request: Request, call_next) -> Response:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # HTTPS-only for a year. Browsers ignore it on plain-HTTP responses, so local
+    # dev is unaffected. No `preload`: that is a hard-to-undo list submission.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = (
         "default-src 'none'; "
         "connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; "

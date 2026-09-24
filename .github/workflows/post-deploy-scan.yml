@@ -117,3 +117,24 @@ jobs:
           # The default files findings as a public GitHub issue on this public repo.
           allow_issue_writing: false
           artifact_name: zap-post-deploy-${{ matrix.service }}-${{ github.run_id }}
+
+      # The prod services were created by hand, so their headers live in the
+      # Render dashboard, not render.yaml; this catches the two ways they have
+      # drifted (a CSP pasted with its YAML quotes, which browsers then ignore;
+      # a missing HSTS header).
+      - name: Check security headers
+        if: steps.wait.outputs.scan == 'true'
+        env:
+          URL: ${{ matrix.url }}
+        run: |
+          headers=$(curl -sfI "$URL/" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
+          ok=true
+          if ! echo "$headers" | grep -q '^strict-transport-security: max-age='; then
+            echo "::error::$URL sends no Strict-Transport-Security header."
+            ok=false
+          fi
+          if echo "$headers" | grep -Eq "^content-security-policy: [\"']"; then
+            echo "::error::$URL's Content-Security-Policy starts with a quote, so browsers ignore it - remove the quotes in the Render dashboard (Headers)."
+            ok=false
+          fi
+          $ok
