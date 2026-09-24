@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useSound } from "../game/_shared/useSound";
 import { useBackgroundMusic } from "../game/_shared/useBackgroundMusic";
 import { STARSWARM_SOUNDS } from "../game/starswarm/sounds";
-import type { PowerUpType } from "../game/starswarm/types";
+import type { CarrierEvent, PowerUpType } from "../game/starswarm/types";
 
 const BG_KEYS = ["starswarm.bg1", "starswarm.bg2", "starswarm.bg3", "starswarm.bg4"] as const;
 
@@ -19,6 +19,9 @@ export interface SfxVolumes {
   freefirezone: number;
   bonuslife: number;
   perfectbonus: number;
+  beamcharge: number;
+  beamfire: number;
+  reinforce: number;
 }
 
 export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
@@ -34,6 +37,9 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   freefirezone: 0.8,
   bonuslife: 0.9,
   perfectbonus: 1.0,
+  beamcharge: 0.7,
+  beamfire: 0.5,
+  reinforce: 0.6,
 };
 
 // bgMusicActive should be false when the game is over so the track stops.
@@ -85,6 +91,20 @@ export function useStarSwarmAudio(
     v.perfectbonus
   );
 
+  const { play: playBeamCharge } = useSound("starswarm.beamcharge", STARSWARM_SOUNDS, v.beamcharge);
+  const { play: playBeamFire } = useSound("starswarm.beamfire", STARSWARM_SOUNDS, v.beamfire);
+  const { play: playReinforce } = useSound("starswarm.reinforce", STARSWARM_SOUNDS, v.reinforce);
+
+  // #2485: one entry point for the Carrier's moments
+  const playCarrierEvent = useCallback(
+    (kind: CarrierEvent) => {
+      if (kind === "beamCharge") playBeamCharge();
+      else if (kind === "beamFire") playBeamFire();
+      else playReinforce();
+    },
+    [playBeamCharge, playBeamFire, playReinforce]
+  );
+
   const playPowerUpCollect = useCallback(
     (type: PowerUpType) => {
       if (type === "lightning") playPowerUpLightning();
@@ -106,5 +126,6 @@ export function useStarSwarmAudio(
     playBonusLife,
     playPerfect,
     stopPerfect,
+    playCarrierEvent,
   };
 }

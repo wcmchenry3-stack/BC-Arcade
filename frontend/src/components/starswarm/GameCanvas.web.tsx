@@ -29,11 +29,21 @@ import {
   isCarrierArmored,
   asteroidOutline,
   throwAsteroid,
+  carrierBeam,
+  carrierBeamJustStarted,
+  carrierBeamJustFired,
+  reinforcementsJustLaunched,
+  BEAM_HALF_WIDTH,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
-import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
+import type {
+  StarSwarmState,
+  PowerUpType,
+  DifficultyTier,
+  CarrierEvent,
+} from "../../game/starswarm/types";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
@@ -214,6 +224,8 @@ interface Props {
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
+  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  onCarrierEvent?: (kind: CarrierEvent) => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -241,6 +253,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onFreeFirePerfect,
       onPowerUpCollect,
       onCarrierExposed,
+      onCarrierEvent,
       isPaused = false,
       onPause,
       width,
@@ -289,6 +302,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
+    const onCarrierEventRef = useRef(onCarrierEvent);
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
@@ -356,6 +370,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onCarrierExposedRef.current = onCarrierExposed;
     }, [onCarrierExposed]);
+    useEffect(() => {
+      onCarrierEventRef.current = onCarrierEvent;
+    }, [onCarrierEvent]);
     useEffect(() => {
       onPauseRef.current = onPause;
     }, [onPause]);
@@ -634,6 +651,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             ctx.fillStyle = p < enemy.hp ? C.pipFilled : C.pipEmpty;
             ctx.fillRect(rowX + p * (pipW + pipGap), rowY, pipW, pipH);
           }
+        }
+      }
+
+      // #2485 Carrier sweep beam — telegraph, then the beam
+      const beam = carrierBeam(state);
+      if (beam) {
+        if (beam.phase === "charge") {
+          ctx.fillStyle = `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`;
+          ctx.fillRect(beam.x - 2, beam.y, 4, height);
+          ctx.beginPath();
+          ctx.arc(beam.x, beam.y + 6, 4 + beam.progress * 8, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "rgba(176,108,255,0.35)";
+          ctx.fillRect(beam.x - BEAM_HALF_WIDTH - 4, beam.y, BEAM_HALF_WIDTH * 2 + 8, height);
+          ctx.fillStyle = "rgba(230,205,255,0.9)";
+          ctx.fillRect(beam.x - BEAM_HALF_WIDTH * 0.5, beam.y, BEAM_HALF_WIDTH, height);
         }
       }
 
@@ -1008,6 +1043,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
               // Judged against the previous tick, and only while the Carrier is still alive.
               if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
+              // #2485
+              if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
+              if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
+              if (reinforcementsJustLaunched(prev, applied))
+                onCarrierEventRef.current?.("reinforce");
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

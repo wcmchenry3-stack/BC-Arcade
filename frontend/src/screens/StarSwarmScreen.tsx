@@ -36,7 +36,7 @@ import {
   perfectBonusPoints,
   FREE_FIRE_ENEMY_COUNT,
 } from "../game/starswarm/engine";
-import type { GamePhase, PowerUpType, DifficultyTier } from "../game/starswarm/types";
+import type { GamePhase, PowerUpType, DifficultyTier, CarrierEvent } from "../game/starswarm/types";
 import { starSwarmApi } from "../game/starswarm/api";
 import {
   getSavedPausedState,
@@ -121,6 +121,7 @@ export default function StarSwarmScreen() {
     playBonusLife,
     playPerfect,
     stopPerfect,
+    playCarrierEvent,
   } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
@@ -171,6 +172,20 @@ export default function StarSwarmScreen() {
   const handleCarrierExposed = useCallback(() => {
     AccessibilityInfo.announceForAccessibility(t("a11y.carrierExposed"));
   }, [t]);
+
+  // #2485: beam telegraph and reinforcement launches — sound plus a spoken cue, since neither
+  // has on-screen text and the beam gives the player only ~0.6 s to react.
+  const handleCarrierEvent = useCallback(
+    (kind: CarrierEvent) => {
+      playCarrierEvent(kind);
+      if (kind === "beamCharge") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.carrierBeam"));
+      } else if (kind === "reinforce") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.reinforcements"));
+      }
+    },
+    [playCarrierEvent, t]
+  );
 
   const handlePlayerHit = useCallback(() => {
     playPlayerHit();
@@ -306,6 +321,7 @@ export default function StarSwarmScreen() {
               onFreeFireZone={playFreeFireZone}
               onFreeFirePerfect={handleFreeFirePerfect}
               onCarrierExposed={handleCarrierExposed}
+              onCarrierEvent={handleCarrierEvent}
               onBonusLife={handleBonusLife}
               isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
@@ -527,6 +543,9 @@ export default function StarSwarmScreen() {
                   ["Game over", "gameover"],
                   ["Free Fire", "freefirezone"],
                   ["Perfect bonus", "perfectbonus"],
+                  ["Beam charge", "beamcharge"],
+                  ["Beam fire", "beamfire"],
+                  ["Reinforce", "reinforce"],
                 ] as [string, keyof SfxVolumes][]
               ).map(([label, key]) => (
                 <View key={key} style={styles.devRow}>

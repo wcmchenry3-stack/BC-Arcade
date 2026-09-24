@@ -14,6 +14,7 @@ import type {
   DifficultyTier,
   Asteroid,
   AsteroidKind,
+  BeamPhase,
 } from "./types";
 import { PERFECT_FANFARE_MS, PERFECT_SILENT_HOLD_MS } from "./constants";
 
@@ -204,6 +205,19 @@ export const PLAYER_HURT_RADIUS = 7; // px
 
 // #1310: duration of the shield-ring hit flash on non-lethal Elite/Boss hits
 export const HIT_FLASH_DURATION = 250; // ms
+
+// #2485: Carrier actions — sweep beam, reinforcements, lone-ship lasers
+export const BEAM_INTERVAL_BASE = 7000; // ms between beams (÷ min(1.6, paramScale))
+export const BEAM_CHARGE_MS = 600; // telegraph: wiggle + glow
+export const BEAM_FIRE_MS = 1200; // beam on, dragged sideways by the formation sway
+export const BEAM_HALF_WIDTH = 12; // px either side of the Carrier's x
+const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
+export const REINFORCE_INTERVAL = 8000; // ms between launches while the Carrier lives
+const REINFORCE_MIN = 2;
+const REINFORCE_MAX = 4;
+export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys when the Carrier is alone
+const LONE_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
+const BEAM_DIFFICULTY_CAP = 1.6; // paramScale is capped here for beam/lone-fire cadence
 
 // #2486: errant asteroids — a neutral hazard that damages both sides and absorbs bullets
 export const MAX_ASTEROIDS = 2; // timed spawns stop at this many in flight; a split may briefly exceed it
@@ -819,6 +833,8 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     hitFlashTimer: 0,
     wiggleTimer: 0,
     burstShotsLeft: 0,
+    beamPhase: "idle",
+    beamTimer: BEAM_INTERVAL_BASE, // #2485: first beam one full interval after the wave settles
   };
 }
 
@@ -855,6 +871,8 @@ function makeFreeFireEnemy(idx: number, total: number, canvasW: number, canvasH:
     hitFlashTimer: 0,
     wiggleTimer: 0,
     burstShotsLeft: 0,
+    beamPhase: "idle",
+    beamTimer: 0,
   };
 }
 
@@ -1013,6 +1031,8 @@ function buildWaveState(
     asteroids: phase === "FreeFireZone" ? [] : asteroids,
     nextAsteroidTimer: asteroidInterval(),
     asteroidsDisabled: false,
+    reinforceTimer: REINFORCE_INTERVAL,
+    reinforcedThisWave: 0,
     phaseTimer: 0,
     canvasW,
     canvasH,
@@ -1157,6 +1177,110 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
 interface EnemyTickResult {
   enemy: Enemy;
   bullet: Bullet | null;
+  /** #2485: a volley (the lone Carrier's twin lasers) — each still counts against bulletCap(). */
+  bullets?: Bullet[];
+}
+
+/** #2485: what the Carrier needs to know that the per-enemy tick otherwise doesn't see. */
+interface CarrierCtx {
+  /** Playing phase — beams and lone fire only happen mid-wave. */
+  playing: boolean;
+  /** No other live enemy on the field (in-flight reinforcements count as alive). */
+  alone: boolean;
+}
+const NO_CARRIER_CTX: CarrierCtx = { playing: false, alone: false };
+
+/**
+ * #2485: the Carrier's own tick while holding station. Beam: idle → charge (telegraph) → fire →
+ * idle on a difficulty-scaled cadence. Lone-ship lasers: once nothing else is alive it fires a
+ * pair of aimed shots every LONE_FIRE_INTERVAL, so the player can't park off to one side and
+ * plink it to death. Reinforcements live in tickEnemies (they need the whole roster).
+ */
+function tickCarrier(
+  enemy: Enemy,
+  dtMs: number,
+  playerX: number,
+  playerY: number,
+  paramScale: number,
+  ctx: CarrierCtx
+): EnemyTickResult {
+  if (!ctx.playing) return { enemy, bullet: null };
+  const cadence = Math.min(BEAM_DIFFICULTY_CAP, paramScale);
+
+  let beamPhase: BeamPhase = enemy.beamPhase;
+  let beamTimer = enemy.beamTimer - dtMs;
+  if (beamTimer <= 0) {
+    if (beamPhase === "idle") {
+      beamPhase = "charge";
+      beamTimer = BEAM_CHARGE_MS;
+    } else if (beamPhase === "charge") {
+      beamPhase = "fire";
+      beamTimer = BEAM_FIRE_MS;
+    } else {
+      beamPhase = "idle";
+      beamTimer = BEAM_INTERVAL_BASE / cadence;
+    }
+  }
+
+  let shootTimer = enemy.shootTimer;
+  let bullets: Bullet[] | undefined;
+  if (ctx.alone) {
+    shootTimer -= dtMs;
+    if (shootTimer <= 0) {
+      shootTimer = LONE_FIRE_INTERVAL / cadence;
+      bullets = [-LONE_FIRE_OFFSET, LONE_FIRE_OFFSET].map((dx) => {
+        const vel = aimVelocity(enemy.x + dx, enemy.y, playerX, playerY, BOSS_BULLET_VY);
+        return {
+          id: nextId(),
+          x: enemy.x + dx,
+          y: enemy.y + enemy.height / 2,
+          vx: vel.vx,
+          vy: vel.vy,
+          owner: "enemy" as const,
+          width: BULLET_E_W,
+          height: BULLET_E_H,
+          damage: 1,
+        };
+      });
+    }
+  }
+
+  return { enemy: { ...enemy, beamPhase, beamTimer, shootTimer }, bullet: null, bullets };
+}
+
+/** #2485: where the Carrier's beam is, for collisions and both renderers; null when no beam. */
+export function carrierBeam(
+  state: StarSwarmState
+): { x: number; y: number; phase: Exclude<BeamPhase, "idle">; progress: number } | null {
+  const c = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  if (!c || c.beamPhase === "idle") return null;
+  const total = c.beamPhase === "charge" ? BEAM_CHARGE_MS : BEAM_FIRE_MS;
+  return {
+    x: c.x,
+    y: c.y + c.height / 2,
+    phase: c.beamPhase,
+    progress: 1 - Math.max(0, c.beamTimer) / total,
+  };
+}
+
+/** #2485: true on the tick the Carrier starts charging its beam (telegraph sound + a11y). */
+export function carrierBeamJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return carrierBeam(prev)?.phase !== "charge" && carrierBeam(next)?.phase === "charge";
+}
+
+/** #2485: true on the tick the beam switches from telegraph to firing. */
+export function carrierBeamJustFired(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return carrierBeam(prev)?.phase !== "fire" && carrierBeam(next)?.phase === "fire";
+}
+
+/** #2485: true on the tick a reinforcement batch launches (same wave, counter went up). */
+export function reinforcementsJustLaunched(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.wave === prev.wave && next.reinforcedThisWave > prev.reinforcedThisWave;
+}
+
+/** #2485: reinforcements are capped at half the wave's grunt slots. */
+export function reinforceCap(wave: number): number {
+  return Math.floor(waveSlots(wave).filter((s) => s.tier === "Grunt").length / 2);
 }
 
 function tickSingleEnemy(
@@ -1169,9 +1293,14 @@ function tickSingleEnemy(
   wave: number,
   bossThresholdCrossed: boolean,
   bossDeepThresholdCrossed: boolean,
-  paramScale = 1
+  paramScale = 1,
+  carrierCtx: CarrierCtx = NO_CARRIER_CTX
 ): EnemyTickResult {
   if (!enemy.isAlive) return { enemy, bullet: null };
+  // #2485: the Carrier has its own station-keeping tick
+  if (enemy.tier === "Carrier" && enemy.phase === "Formation") {
+    return tickCarrier(enemy, dtMs, playerX, playerY, paramScale, carrierCtx);
+  }
 
   switch (enemy.phase) {
     case "SwoopIn":
@@ -1243,7 +1372,7 @@ function tickFormation(
   bossThresholdCrossed: boolean,
   paramScale = 1
 ): EnemyTickResult {
-  // #2484: the Carrier holds station — no dives, and (until #2485 lands) no fire
+  // #2484/#2485: a Carrier in Formation is routed to tickCarrier before reaching here
   if (enemy.tier === "Carrier") {
     return { enemy, bullet: null };
   }
@@ -1615,6 +1744,11 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // the new wave's real fire until they drift off-screen.
   let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless).length;
   const enemyBulletCap = bulletCap(state.wave, _ps);
+  // #2485: the Carrier fires its twin lasers only once nothing else is alive
+  const carrierCtx: CarrierCtx = {
+    playing: state.phase === "Playing",
+    alone: !state.enemies.some((e) => e.isAlive && e.tier !== "Carrier"),
+  };
   let enemies = state.enemies.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
     const result = tickSingleEnemy(
@@ -1627,24 +1761,71 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       state.wave,
       bossThresholdCrossed,
       bossDeepThresholdCrossed,
-      _ps
+      _ps,
+      carrierCtx
     );
     let e = result.enemy;
     // Apply sway offset to enemies holding Formation position
     // #979: Boss sways ±BOSS_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
       e = { ...e, x: e.formationX + clampSway(e.tier, swayX) };
+      // #2485: beam telegraph — a quick shudder so the player has time to sidestep
+      if (e.beamPhase === "charge") {
+        const elapsed = BEAM_CHARGE_MS - e.beamTimer;
+        e = {
+          ...e,
+          x: e.x + Math.sin((6 * Math.PI * elapsed) / BEAM_CHARGE_MS) * BEAM_WIGGLE_AMPLITUDE,
+        };
+      }
     }
     // Decrement hit-flash timer (#976)
     if (e.isAlive && e.hitFlashTimer > 0) {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
-    if (result.bullet && liveEnemyBulletCount < enemyBulletCap && !state.enemyFireDisabled) {
-      newEnemyBullets.push(result.bullet);
-      liveEnemyBulletCount++;
+    for (const b of [result.bullet, ...(result.bullets ?? [])]) {
+      if (b && liveEnemyBulletCount < enemyBulletCap && !state.enemyFireDisabled) {
+        newEnemyBullets.push(b);
+        liveEnemyBulletCount++;
+      }
     }
     return e;
   });
+
+  // #2485: Carrier reinforcements — refill empty grunt slots while it lives, capped per wave.
+  // Not on Ensign. Reinforcements don't touch startingNonBossCount, so the 35% / ≤3 latches
+  // are unaffected once crossed; until then they delay the escalation, which is the point.
+  let reinforceTimer = state.reinforceTimer;
+  let reinforcedThisWave = state.reinforcedThisWave;
+  const carrierAlive = enemies.some((e) => e.isAlive && e.tier === "Carrier");
+  if (state.phase === "Playing" && carrierAlive && state.difficulty !== "Ensign") {
+    reinforceTimer -= dtMs;
+    if (reinforceTimer <= 0) {
+      reinforceTimer = REINFORCE_INTERVAL;
+      const occupied = new Set(
+        enemies.filter((e) => e.isAlive).map((e) => `${e.formationX},${e.formationY}`)
+      );
+      const empty = waveSlots(state.wave).filter((slot) => {
+        if (slot.tier !== "Grunt") return false;
+        const { fx, fy } = slotToWorld(slot, state.canvasW);
+        return !occupied.has(`${fx},${fy}`);
+      });
+      const n = Math.min(
+        empty.length,
+        REINFORCE_MIN + Math.floor(rng() * (REINFORCE_MAX - REINFORCE_MIN + 1)),
+        reinforceCap(state.wave) - reinforcedThisWave
+      );
+      const launched: Enemy[] = [];
+      for (let i = 0; i < n; i++) {
+        const slot = empty.splice(Math.floor(rng() * empty.length), 1)[0]!;
+        const g = makeEnemy(i, slot, state.canvasW);
+        launched.push({ ...g, pathT: -(i * 200) / SWOOP_DURATION });
+      }
+      if (launched.length > 0) {
+        enemies = [...enemies, ...launched];
+        reinforcedThisWave += launched.length;
+      }
+    }
+  }
 
   // #934: challenge enemies follow a path that exits off the bottom; once they
   // cross canvasH they can't be shot, so mark them dead to unblock WaveClear.
@@ -1682,6 +1863,8 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     formationSwayDir: swayDir,
     bossThresholdCrossed,
     bossDeepThresholdCrossed,
+    reinforceTimer,
+    reinforcedThisWave,
   };
 }
 
@@ -2012,8 +2195,18 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     );
     const hitByRock = rockHitIdx !== -1;
     if (hitByRock) rocks[rockHitIdx] = { ...rocks[rockHitIdx]!, hp: 0, shattered: true };
+    // #2485: the Carrier's beam — a vertical band below it; the shield holds it off, otherwise it
+    // costs a life (post-hit invincibility then covers the rest of the sweep)
+    const hitByBeam = enemies.some(
+      (e) =>
+        e.isAlive &&
+        e.tier === "Carrier" &&
+        e.beamPhase === "fire" &&
+        player.y > e.y &&
+        Math.abs(player.x - e.x) < BEAM_HALF_WIDTH + PLAYER_HURT_RADIUS
+    );
 
-    if ((hitByBullet || hitByRock) && shieldActive) {
+    if ((hitByBullet || hitByRock || hitByBeam) && shieldActive) {
       // Shield absorbs the bullets — no damage. Harmless bullets aren't absorbed (they were
       // never counted in bulletHits), so they fly on through instead of popping mid-screen.
       currentEnemyBullets = currentEnemyBullets.filter(
@@ -2032,6 +2225,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       const hitByShip =
         !hitByBullet &&
         !hitByRock &&
+        !hitByBeam &&
         enemies.some((e) => {
           if (!e.isAlive) return false;
           if (e.tier === "Carrier") return false; // #2484: never leaves formation
@@ -2046,7 +2240,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           return true;
         });
 
-      if (hitByBullet || hitByShip || hitByRock) {
+      if (hitByBullet || hitByShip || hitByRock || hitByBeam) {
         const newLives = player.lives - 1;
         newExplosions.push(spawnExplosion(player.x, player.y));
 

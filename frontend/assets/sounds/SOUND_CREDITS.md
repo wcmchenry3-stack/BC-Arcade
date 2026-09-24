@@ -161,6 +161,13 @@ _(Previously placed — provenance to be confirmed)_
 - **Download date:** 2026-04-26
 - **Notes:** Rising phaser sting. Signals the start of the bonus Challenging Stage wave.
 
+### starswarm.beamcharge / starswarm.beamfire / starswarm.reinforce (#2485, reuse)
+
+- **Event:** Carrier sweep-beam telegraph, beam firing, reinforcement launch
+- **Files:** reuse `starswarm-chargeshot.ogg`, `starswarm-laser.ogg`, `starswarm-freefirezone.ogg` (see their entries)
+- **Notes:** No new files — kenney.nl is unreachable from the build container. Dedicated Kenney CC0
+  stings are tracked in #2492; swap the keys in `sounds.ts` when they land.
+
 ### starswarm-bg-1.mp3 — starswarm-bg-4.mp3
 
 - **Event:** Background music (looping ambient track, one chosen at random per game)
