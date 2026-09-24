@@ -23,11 +23,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
-import Controls, {
-  hapticPlayerHit,
-  hapticPlayerDeath,
-  hapticWaveClear,
-} from "../components/starswarm/Controls";
+import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
 import {
   CANVAS_W,
   CANVAS_H,
@@ -48,7 +44,11 @@ import type {
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
-import { starSwarmApi } from "../game/starswarm/api";
+import { starSwarmLeaderboard } from "../game/starswarm/leaderboard";
+import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
+import GameResultModal from "../components/shared/GameResultModal";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { useGameSync } from "../game/_shared/useGameSync";
 import {
   getSavedPausedState,
   savePausedState,
@@ -115,6 +115,7 @@ const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
@@ -125,6 +126,24 @@ export default function StarSwarmScreen() {
   const savedPauseRef = useRef(getSavedPausedState());
 
   const [highScore, setHighScore] = useState(0);
+  /** The finished run the result card shows (#2516); null while playing. */
+  const [result, setResult] = useState<{
+    score: number;
+    wave: number;
+    best: number;
+    isNewBest: boolean;
+  } | null>(null);
+  const leaderboard = useLeaderboardSubmit(starSwarmLeaderboard);
+  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+
+  // Per-session `games` row (#2516), like every other game: XP, Profile history
+  // and SyncWorker. It never carries a score — Star Swarm's leaderboard ranks
+  // every scored Star Swarm row, so a scored session would list each run twice.
+  const {
+    restart: syncRestart,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+  } = useGameSync("starswarm");
   const [phase, setPhase] = useState<GamePhase>("SwoopIn");
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
   const [containerW, setContainerW] = useState(0);
@@ -177,6 +196,19 @@ export default function StarSwarmScreen() {
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
+
+  // The best score survives restarts (#2516); it was session-only before.
+  useEffect(() => {
+    let alive = true;
+    loadBestScore().then((best) => {
+      if (!alive || best <= highScoreRef.current) return;
+      highScoreRef.current = best;
+      setHighScore(best);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
   const [resetTick, setResetTick] = useState(0);
 
@@ -219,12 +251,20 @@ export default function StarSwarmScreen() {
     (finalScore: number, wave: number) => {
       setPhase("GameOver");
       playGameOver();
-      hapticPlayerDeath();
-      if (finalScore > highScoreRef.current) {
+      // The result card's haptic marks the end of the run (#2516).
+      const priorBest = highScoreRef.current;
+      const isNewBest = finalScore > priorBest;
+      if (isNewBest) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
+        void saveBestScore(finalScore);
       }
-      starSwarmApi.submitScore(finalScore, wave, difficulty).catch(() => {});
+      setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
+      syncComplete(
+        { outcome: "completed" },
+        { outcome: "completed", wave_reached: wave, difficulty_tier: difficulty }
+      );
+      submitScore({ score: finalScore, wave, difficulty });
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();
         if (state) {
@@ -233,7 +273,7 @@ export default function StarSwarmScreen() {
         }
       }
     },
-    [playGameOver, difficulty]
+    [playGameOver, difficulty, syncComplete, submitScore]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -329,12 +369,23 @@ export default function StarSwarmScreen() {
     return () => clearInterval(id);
   }, [devPanelOpen]);
 
+  const handleGameOverRef = useRef(handleGameOver);
+  handleGameOverRef.current = handleGameOver;
+
   // #2491: test-hook seam (EXPO_PUBLIC_TEST_HOOKS=1 builds only) so an E2E driver can read the
   // counters without the panel: `__starswarm_getRunStats()` → counts + wave/difficulty/score.
+  // #2516: `__starswarm_endRun(score, wave)` ends the run through the real game-over path
+  // (result card, leaderboard submit, game sync) with the canvas frozen behind the card —
+  // reaching game over by real play isn't practical in an E2E run.
   useEffect(() => {
     if (!areTestHooksEnabled()) return;
     const g = globalThis as typeof globalThis & {
       __starswarm_getRunStats?: () => RunStatsHook | null;
+      __starswarm_endRun?: (score: number, wave: number) => void;
+    };
+    g.__starswarm_endRun = (score, wave) => {
+      setIsPaused(true);
+      handleGameOverRef.current(score, wave);
     };
     g.__starswarm_getRunStats = () => {
       const s = canvasRef.current?.getState();
@@ -350,19 +401,44 @@ export default function StarSwarmScreen() {
     };
     return () => {
       delete g.__starswarm_getRunStats;
+      delete g.__starswarm_endRun;
     };
   }, []);
 
-  const handleNewGame = useCallback((opts?: DevOptions) => {
-    if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
-    scoreRef.current = 0;
-    setPhase("SwoopIn");
-    setIsPaused(false);
-    setResetTick((t) => t + 1);
+  /** Opens the new run's sync session (abandoning any open one) and clears the last result. */
+  const beginRun = useCallback(
+    (tier: DifficultyTier) => {
+      syncRestart({ difficulty_tier: tier }, { difficulty_tier: tier });
+      syncMarkStarted();
+      setResult(null);
+      resetSubmission();
+    },
+    [syncRestart, syncMarkStarted, resetSubmission]
+  );
+
+  // A run restored from a saved pause is a run in progress: give it a session.
+  useEffect(() => {
+    if (savedPauseRef.current !== null) beginRun(savedPauseRef.current.difficulty);
+    // Mount-only: the saved pause is read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Show difficulty picker — triggered by header "New Game" and Controls "New Game"
+  const handleNewGame = useCallback(
+    (opts?: DevOptions) => {
+      if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
+      beginRun(opts?.difficulty ?? difficulty);
+      scoreRef.current = 0;
+      setPhase("SwoopIn");
+      setIsPaused(false);
+      setResetTick((t) => t + 1);
+    },
+    [beginRun, difficulty]
+  );
+
+  // Show difficulty picker — header "New Game", the pause overlay, and the
+  // result card's Change Difficulty. The card steps aside for the picker.
   const handleRequestNewGame = useCallback(() => {
+    setResult(null);
     setShowDifficultyPicker(true);
   }, []);
 
@@ -372,11 +448,12 @@ export default function StarSwarmScreen() {
     clearSavedPausedState();
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
+    beginRun(difficulty);
     scoreRef.current = 0;
     setPhase("SwoopIn");
     setIsPaused(false);
     setResetTick((t) => t + 1);
-  }, [difficulty]);
+  }, [difficulty, beginRun]);
 
   const handlePause = useCallback(() => {
     setIsPaused(true);
@@ -558,6 +635,38 @@ export default function StarSwarmScreen() {
             </View>
           </Modal>
         )}
+
+        <GameResultModal
+          visible={result !== null && !showDifficultyPicker}
+          outcome="ended"
+          eyebrow={`${t("game.title")} · ${difficultyLabel(difficulty)}`}
+          subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
+          hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
+          isNewBest={result?.isNewBest ?? false}
+          stats={
+            result
+              ? [
+                  { label: t("result.wave"), value: result.wave },
+                  { label: tResult("stat.best"), value: result.best },
+                ]
+              : []
+          }
+          submission={{
+            status: leaderboard.status,
+            rank: leaderboard.rank,
+            playerName: leaderboard.playerName,
+            onProvideName: leaderboard.provideName,
+            onRetry: leaderboard.retry,
+          }}
+          // Same difficulty, straight into a new run.
+          onPlayAgain={handleConfirmDifficulty}
+          secondaryAction={{
+            label: tResult("action.changeDifficulty"),
+            onPress: handleRequestNewGame,
+          }}
+          onHome={() => navigation.popToTop()}
+          testID="starswarm-result"
+        />
 
         {__DEV__ && devPanelOpen && (
           <View

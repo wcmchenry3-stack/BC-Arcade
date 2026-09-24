@@ -165,6 +165,42 @@ class TestTieBreak:
 
 
 # ---------------------------------------------------------------------------
+# The submitted run's own rank (#2516)
+# ---------------------------------------------------------------------------
+
+
+class TestSubmittedRank:
+    def test_rank_of_the_submitted_run(self):
+        from limiter import limiter
+
+        _submit("alice", 500)
+        limiter.reset()
+        assert _submit("bob", 300).json()["rank"] == 2
+        limiter.reset()
+        assert _submit("carol", 900).json()["rank"] == 1
+
+    def test_identical_repeat_run_gets_its_own_rank(self):
+        # The same name, score, wave and tier as an earlier run: the new run
+        # ranks behind it (earlier wins ties), and the response says so.
+        from limiter import limiter
+
+        assert _submit("riley", 5000, 7).json()["rank"] == 1
+        limiter.reset()
+        assert _submit("riley", 5000, 7).json()["rank"] == 2
+
+    def test_rank_is_null_outside_the_top_ten(self):
+        from limiter import limiter
+
+        for i in range(10):
+            limiter.reset()
+            _submit(f"p{i}", 1000 + i)
+        limiter.reset()
+        body = _submit("late", 1).json()
+        assert body["rank"] is None
+        assert len(body["scores"]) == 10
+
+
+# ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
 

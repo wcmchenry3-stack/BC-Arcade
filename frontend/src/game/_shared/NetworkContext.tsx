@@ -19,6 +19,7 @@ import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
 import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
 import { registerSortScoreHandler } from "../sort/scoreSync";
+import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -37,6 +38,7 @@ registerSolitaireScoreHandler();
 registerFreeCellScoreHandler();
 registerHeartsScoreHandler();
 registerSortScoreHandler();
+registerStarSwarmScoreHandler();
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const status = useNetworkStatus();

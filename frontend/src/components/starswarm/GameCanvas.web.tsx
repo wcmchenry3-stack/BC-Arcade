@@ -138,8 +138,6 @@ const C = {
   powerBarFill: "#ffee00",
   waveClear: "#00ffcc",
   bossWave: "#ffdd00",
-  gameOverText: "#ff4422",
-  gameOverOverlay: "rgba(0,0,0,0.65)",
 } as const;
 
 /** The fading MISSION COMPLETE wave-clear banner. */
@@ -863,11 +861,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.textBaseline = "top";
       ctx.fillStyle = C.hudText;
       ctx.textAlign = "left";
-      ctx.fillText(`${t("hud.score")} ${state.score}`, 10, 8);
+      ctx.fillText(t("hud.scoreValue", { score: state.score }), 10, 8);
       ctx.textAlign = "center";
-      ctx.fillText(`${t("hud.best")} ${hs}`, width / 2, 8);
+      ctx.fillText(t("hud.bestValue", { best: hs }), width / 2, 8);
       ctx.textAlign = "right";
-      ctx.fillText(`${t("hud.wave")} ${state.wave}`, width - 10, 8);
+      ctx.fillText(t("hud.waveValue", { wave: state.wave }), width - 10, 8);
 
       // Difficulty tier — centered below score row
       ctx.font = "bold 10px 'Courier New', monospace";
@@ -917,23 +915,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillText(t("phase.bossWave"), width / 2, height / 2 - 18);
       }
 
-      if (state.phase === "GameOver") {
-        ctx.fillStyle = C.gameOverOverlay;
-        ctx.fillRect(0, 0, width, height);
-        ctx.font = "bold 28px 'Courier New', monospace";
-        ctx.fillStyle = C.gameOverText;
-        ctx.fillText(t("phase.gameOver"), width / 2, height / 2 - 22);
-        ctx.font = "16px 'Courier New', monospace";
-        ctx.fillStyle = C.hudText;
-        ctx.fillText(`${t("hud.score")} ${state.score}`, width / 2, height / 2 + 18);
-      }
+      // Game over is the shared result card in StarSwarmScreen (#2516); the
+      // canvas keeps drawing its final frame behind it.
 
       // Pre-wave countdown (starts as soon as the wave clears)
       if (countdownDigit !== null) {
         // Wave incoming banner above the digit
         ctx.font = "bold 16px 'Courier New', monospace";
         ctx.fillStyle = C.waveClear;
-        ctx.fillText(`— ${t("hud.wave")} ${state.wave} —`, width / 2, height / 2 - 64);
+        ctx.fillText(`— ${t("hud.waveValue", { wave: state.wave })} —`, width / 2, height / 2 - 64);
         // Large countdown digit
         ctx.font = "bold 96px 'Courier New', monospace";
         ctx.fillStyle = C.waveClear;

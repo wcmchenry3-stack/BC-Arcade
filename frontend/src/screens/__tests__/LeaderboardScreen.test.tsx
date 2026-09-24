@@ -46,7 +46,7 @@ describe("LeaderboardScreen", () => {
   it("shows empty-state text when there are no scores", async () => {
     await renderScreen();
     await waitFor(() => {
-      expect(screen.getByText("leaderboard.empty")).toBeTruthy();
+      expect(screen.getByText("No scores yet — be the first!")).toBeTruthy();
     });
   });
 });
@@ -67,7 +67,7 @@ describe("LeaderboardScreen — TypeError auto-retry (#1874)", () => {
       await jest.runAllTimersAsync();
     });
 
-    expect(screen.queryByText("leaderboard.error")).toBeNull();
+    expect(screen.queryByText("Could not load scores")).toBeNull();
     expect(mockGetLeaderboard).toHaveBeenCalledTimes(2);
   });
 
@@ -80,7 +80,7 @@ describe("LeaderboardScreen — TypeError auto-retry (#1874)", () => {
       await jest.runAllTimersAsync();
     });
 
-    await screen.findByText("leaderboard.error");
+    await screen.findByText("Could not load scores");
     // 1 initial + 3 retries = 4 total calls
     expect(mockGetLeaderboard).toHaveBeenCalledTimes(4);
   });
