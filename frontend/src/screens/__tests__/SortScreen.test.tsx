@@ -132,7 +132,7 @@ beforeEach(async () => {
   storage.saveProgress.mockResolvedValue(undefined);
   storage.saveLevelsCache.mockResolvedValue(undefined);
   storage.loadLevelsCache.mockResolvedValue(null); // cold cache by default
-  storage.recordLevelSolve.mockResolvedValue({ best: 1, isNewBest: true });
+  storage.recordLevelSolve.mockResolvedValue({ best: 1, isNewBest: true, firstSolve: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -543,6 +543,12 @@ describe("SortScreen — result card (#2512)", () => {
 
   beforeEach(() => {
     sortApi.getLevels.mockResolvedValue({ levels: LEVELS });
+    // Level 1 is the player's frontier: solving it raises "level reached".
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: null,
+      currentState: null,
+    });
   });
 
   it("shows the card with moves, undos, best and Next Level", async () => {
@@ -572,7 +578,77 @@ describe("SortScreen — result card (#2512)", () => {
     expect(sortApi.submitScore).toHaveBeenCalledWith("Riley", 1);
   });
 
+  // #2576 review: POST /sort/score adds a row every time, and the top 10
+  // counts rows — so only the solve that raises "level reached" goes out.
+  it("does not submit a replay of a level below the frontier", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    await waitFor(() => expect(storage.recordLevelSolve).toHaveBeenCalled());
+    await act(async () => {});
+    expect(sortApi.submitScore).not.toHaveBeenCalled();
+    expect(card.queryByText(/Saved as/)).toBeNull();
+  });
+
+  it("does not submit replays of the last level", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.recordLevelSolve
+      .mockResolvedValueOnce({ best: 1, isNewBest: true, firstSolve: true })
+      .mockResolvedValue({ best: 1, isNewBest: false, firstSolve: false });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 2);
+    await waitFor(() => expect(sortApi.submitScore).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Play Again" }));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    await r.findByTestId("sort-result");
+    await waitFor(() => expect(storage.recordLevelSolve).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(sortApi.submitScore).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a solve result that lands after the player moved to the next level", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    let resolveSolve: (v: unknown) => void = () => {};
+    storage.recordLevelSolve.mockReturnValueOnce(new Promise((res) => (resolveSolve = res)));
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Next Level" }));
+    });
+    await act(async () => {
+      resolveSolve({ best: 1, isNewBest: true, firstSolve: true });
+    });
+    expect(sortApi.submitScore).not.toHaveBeenCalled();
+  });
+
   it("replays the last level with Play Again", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
     const r = await renderScreen();
     const card = await solveLevel(r, 2);
     expect(card.queryByRole("button", { name: "Next Level" })).toBeNull();

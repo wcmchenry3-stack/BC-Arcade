@@ -118,6 +118,8 @@ export default function SortScreen() {
   gameStateRef.current = gameState;
   const currentLevelIdRef = useRef<number | null>(null);
   currentLevelIdRef.current = currentLevelId;
+  /** Bumped whenever the played level changes, so a late solve result is dropped. */
+  const levelGenRef = useRef(0);
 
   const [isHinting, setIsHinting] = useState(false);
 
@@ -238,6 +240,8 @@ export default function SortScreen() {
     if (!gameState?.isComplete || showWinModal) return;
     setShowWinModal(true);
     if (currentLevelId !== null) {
+      // Read before the unlock below moves it on.
+      const atFrontier = currentLevelId >= progressRef.current.unlockedLevel;
       syncComplete(
         { outcome: "completed" },
         {
@@ -248,8 +252,18 @@ export default function SortScreen() {
           undos: gameState.undosUsed,
         }
       );
-      submitScore({ level: currentLevelId });
-      void recordLevelSolve(currentLevelId, gameState.moveCount).then(setWinSummary);
+      const solvedLevel = currentLevelId;
+      const gen = levelGenRef.current;
+      void recordLevelSolve(solvedLevel, gameState.moveCount).then((solve) => {
+        // The player already moved on (Next Level / Change Level): don't let
+        // this solve land on the next level's card or submission.
+        if (gen !== levelGenRef.current) return;
+        setWinSummary(solve);
+        // The leaderboard is "highest level reached", and every POST adds a
+        // row — so only the first solve of the player's frontier level can
+        // raise it. Replays (incl. the last level's Play Again) submit nothing.
+        if (atFrontier && solve.firstSolve) submitScore({ level: solvedLevel });
+      });
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
@@ -374,6 +388,7 @@ export default function SortScreen() {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
     abandonSession();
+    levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
@@ -386,6 +401,7 @@ export default function SortScreen() {
   function handleContinue() {
     const prog = progressRef.current;
     if (!prog.currentLevelId || !prog.currentState) return;
+    levelGenRef.current += 1;
     setCurrentLevelId(prog.currentLevelId);
     setGameState(prog.currentState);
     setHistory([]);
@@ -404,6 +420,7 @@ export default function SortScreen() {
     setPouringFrom(null);
     setPouringTo(null);
     abandonSession();
+    levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
     // Silently refresh levels in the background so the next session gets new mixtures

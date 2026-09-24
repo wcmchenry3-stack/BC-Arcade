@@ -62,22 +62,26 @@ async function loadBestMoves(): Promise<BestMoves> {
   }
 }
 
-/**
- * Records a solve of `levelId` in `moves` and returns the level's best (fewest
- * moves) including this solve, and whether this solve set it.
- */
-export async function recordLevelSolve(
-  levelId: number,
-  moves: number
-): Promise<{ best: number; isNewBest: boolean }> {
+export interface LevelSolve {
+  /** The level's best (fewest) moves, including this solve. */
+  readonly best: number;
+  /** This solve set the best. */
+  readonly isNewBest: boolean;
+  /** No earlier solve of this level is on record. */
+  readonly firstSolve: boolean;
+}
+
+/** Records a solve of `levelId` in `moves`. */
+export async function recordLevelSolve(levelId: number, moves: number): Promise<LevelSolve> {
   const all = await loadBestMoves();
   const previous = all[String(levelId)];
-  const isNewBest = typeof previous !== "number" || moves < previous;
-  if (!isNewBest) return { best: previous, isNewBest };
+  const firstSolve = typeof previous !== "number";
+  const isNewBest = firstSolve || moves < previous;
+  if (!isNewBest) return { best: previous, isNewBest, firstSolve };
   try {
     await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify({ ...all, [levelId]: moves }));
   } catch {
     // Best-effort: the card still shows this solve as the best.
   }
-  return { best: moves, isNewBest };
+  return { best: moves, isNewBest, firstSolve };
 }
