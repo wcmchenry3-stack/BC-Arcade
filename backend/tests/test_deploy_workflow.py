@@ -113,3 +113,11 @@ def test_every_static_site_sends_hsts() -> None:
         if not any(h["name"] == "Strict-Transport-Security" for h in s.get("headers", []))
     ]
     assert missing == []
+
+
+def test_header_check_targets_a_real_route() -> None:
+    """The API has no `/` route; checking `/` there gets a 404 (review of #2521)."""
+    entries = _load(SCAN)["jobs"]["scan"]["strategy"]["matrix"]["include"]
+    api = next(e for e in entries if e["service"] == "bc-arcade-api")
+    assert api["header_path"] == "/health"
+    assert all(e["header_path"].startswith("/") for e in entries)

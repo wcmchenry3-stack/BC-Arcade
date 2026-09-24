@@ -48,9 +48,12 @@ jobs:
           - service: bc-arcade-api
             id_secret: RENDER_PROD_API_SERVICE_ID
             url: https://games-api.buffingchi.com
+            # The API has no `/` route; any response carries the headers.
+            header_path: /health
           - service: bc-arcade-frontend
             id_secret: RENDER_PROD_FRONTEND_SERVICE_ID
             url: https://games.buffingchi.com
+            header_path: /
     steps:
       - name: Wait for Render to report the commit live
         id: wait
@@ -125,9 +128,14 @@ jobs:
       - name: Check security headers
         if: steps.wait.outputs.scan == 'true'
         env:
-          URL: ${{ matrix.url }}
+          URL: ${{ matrix.url }}${{ matrix.header_path }}
         run: |
-          headers=$(curl -sfI "$URL/" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
+          # GET, not HEAD: FastAPI does not answer HEAD on GET routes.
+          if ! raw=$(curl -sS -o /dev/null -D - "$URL"); then
+            echo "::error::Could not reach $URL to check its headers."
+            exit 1
+          fi
+          headers=$(printf '%s' "$raw" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
           ok=true
           if ! echo "$headers" | grep -q '^strict-transport-security: max-age='; then
             echo "::error::$URL sends no Strict-Transport-Security header."
