@@ -119,6 +119,104 @@ frontend/src/
 - Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.
 - Only pure logic modules are tested (no React components, no canvas).
 
+### Yacht AI simulation — two-layer model (#2245)
+
+All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
+
+- `streams.ts` gives each player their own seeded dice and AI-noise streams.
+  Dice for roll _k_ of round _r_ come from a per-(stream, round) table, so one
+  player's rerolls never shift the other player's dice. The old simulators
+  shared one LCG seeded with `seed + i`; adjacent seeds of that LCG produce the
+  same first die ~99.8% of the time, so their games weren't independent.
+- `harness.ts` plays matchups in **blocks of four games**: A first and B first,
+  each with the two dice streams mirrored between the players. Every matchup
+  is therefore always order-swapped.
+- `stats.ts` reports both players symmetrically: win rate (ties count half),
+  win rate moving first and second, the order effect, the first-mover win
+  rate, and per-player score, bonus rate, upper subtotal, below-par fills and
+  per-category mean/hit rate. Every value has a 95% CI computed **over blocks**
+  (games in a block share dice, so blocks are the independent unit).
+- `gate.ts` holds the calibration gate: matchups, game counts and bands. It is
+  the only place bands are defined.
+
+**Layer 1: PR smoke test.** `__tests__/ai.simulate.test.ts` runs in every PR
+(about 1s per game under Jest, 5 blocks per matchup). It catches total breakage:
+the AI throwing, invalid scores, a harder tier no longer beating Easy, or
+mirroring broken (paired self-play must come out at exactly 50%). It is far too
+small to see balance drift.
+
+**Layer 2: scheduled calibration gate.** `.github/workflows/yacht-sim-gate.yml`
+runs nightly, on demand (`workflow_dispatch`, with an optional games
+override), and on PRs that touch the AI, engine, oracle or gate. Its
+`bands` job runs the three `GATE_GROUPS` in parallel; its `regret` job runs
+`ai.calibrate.test.ts` (#2244, below). Run it locally from the repo root:
+
+```bash
+npx tsx scripts/simulate-yacht.ts --gate                       # everything (~40 min)
+npx tsx scripts/simulate-yacht.ts --gate --group self-play     # one CI group
+npx tsx scripts/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
+npx tsx scripts/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
+npx tsx scripts/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
+```
+
+A failing band prints the band, the observed value and its CI, e.g.
+`FAIL hard-vs-easy:win-rate: observed 55.1% [52.9%, 57.3%] (95% CI), band ≥ 57.0% and ≤ 67.0% — …`.
+`[CI crosses the bound: inconclusive …]` means the run can't separate pass from
+fail at that sample size; rerun that group with more `--games` before acting.
+
+**Reading order-swap output.** For an A-vs-B matchup: `A moving first` and
+`A moving second` are A's win rates in each seat; `order effect` is their
+difference, paired within blocks. `First-mover win rate` is the result for
+whoever moved first, so 50% means turn order doesn't matter. A #2200-style
+artifact shows up as a large order effect. In self-play A's win rate is 50%
+by construction, so the first-mover rate is the number to read.
+
+**Bands are regression bands.** They are centred on the current AI as
+measured on 2026-09-24 (values in `gate.ts` comments), not on the #2157 design
+targets. The current AI misses those targets: Hard and Medium are close to even
+(51.9%), and Hard's bonus rate is 46.6%, not ≥ 65%. The old
+`ai.calibrate.test.ts` bands asserted the targets and would have failed if they
+had ever run. #2246 reshapes the tiers and should re-centre the bands.
+
+**Sample size and power** (measured, 4 CPU cores, ~0.33s/game under `tsx`):
+
+| Quantity                   | Per-block SD | Blocks (games) | 95% CI half-width | Band half-width |
+| -------------------------- | ------------ | -------------- | ----------------- | --------------- |
+| Win rate (A vs B)          | 0.245        | 500 (2,000)    | ±2.2pp            | ±5pp            |
+| Order effect               | 0.247        | 500 (2,000)    | ±2.2pp            | ±5pp            |
+| Self-play first-mover rate | ~0.18        | 250 (1,000)    | ±2.2pp            | ±5pp            |
+| Mean score (one player)    | ~30          | 500 (2,000)    | ±2.6–3.0          | floor 7–8 below |
+
+With a CI half-width under half the band's half-width, a run whose true value
+is at the band centre fails less than once in 10⁵ runs (z ≈ 4.5). A real shift
+of 7.5pp is detected ~99% of the time; a shift of exactly 5pp is detected
+50% of the time. Because the seeds are fixed, the gate is deterministic: the
+same code gives the same numbers. It only changes result when the AI changes.
+
+Wall-clock at these sizes: 2,000 games is ~11 min per matchup group and the
+self-play group (3,000 games) is ~17 min on a 4-core dev box. The jobs run in
+parallel, so the whole gate finishes in under ~20 min. Each job has a 90-min
+timeout to absorb slower runners.
+
+**What pairing buys.** It isn't free variance reduction everywhere. Mirrored
+pairs are negatively correlated (r ≈ −0.35), which cuts the variance of the
+A−B score difference ~23% and halves the order-effect CI versus independent
+dice (per-block SD 0.25 vs 0.51). But the order-swapped games in a block
+replay the same dice, so for a plain win rate paired and independent CIs come
+out about equal at the same game count. For one player's absolute score,
+paired is slightly wider. `--mode independent` is there for unpaired runs.
+
+**#2200 check.** Hard-vs-Hard over 4,000 paired games (seeds 15, 21–23) gives
+a first-mover win rate of 48.8% ± 1.1: no first-mover handicap remains after
+#2317. The old shared-LCG method on the same code gives 50.8% ± 3.1 over 1,000
+games. The 57.3/42.7 split reported on #2317 came from 150 games per side, where
+the CI is about ±8pp.
+
+`scripts/simulate-yacht.ts` (#2213) is now a thin CLI over this harness. Its
+old bands table (stale since the utility-AI rewrite) and the separate
+`ai.baseline.test.ts` metrics printer were retired; `--gate` and the ad-hoc
+report replace both.
+
 ### Yacht AI regret metric — EV-loss vs the optimal oracle (#2244)
 
 Win rate says who won; it says nothing about *how well* either side played — a
@@ -143,8 +241,9 @@ real committed table) `regretOracle.test.ts`.
 | `mistake`  | `1 <= loss <= 5`    |
 | `blunder`  | `> 5`               |
 
-**Run it** — wired into `ai.calibrate.test.ts`, gated behind the same
-`YACHT_SIM_FULL` env var as the win-rate calibration tests:
+**Run it** — lives in `ai.calibrate.test.ts`, gated behind `YACHT_SIM_FULL`,
+and runs nightly as the `regret` job of `yacht-sim-gate.yml`. Its games use
+the harness's per-player streams (`sim/streams.ts`):
 
 ```bash
 YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --silent=false

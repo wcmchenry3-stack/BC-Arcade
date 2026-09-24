@@ -4,8 +4,9 @@
  * One `WeightMap` pair (hold + score) per difficulty level.  A higher weight
  * amplifies the corresponding consideration's influence on the weighted-sum
  * decision score.  Difficulty: Easy 13% / Medium 3% / Hard 0% cognitive noise.
- * Recalibrated in #2129: Hard wins ~62–68% vs Easy, ~47–53% vs Medium
- * (200-game baseline; see ai.baseline.test.ts).
+ * Recalibrated in #2129 (200-game baseline). Measured on the #2245 harness
+ * (both turn orders, 2,000 games): Hard wins 61.9% vs Easy, 51.9% vs
+ * Medium — see sim/gate.ts, which guards these as regression bands.
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
