@@ -523,9 +523,9 @@ counts are in `baseline.json`):
   win with the highest card +4.1pp; low-spade flush leads +3.0pp. Keeping
   low "exit" cards for the endgame cost 1.2-2.2pp in every variant and was
   left out. Duck-high stands aside while a lone opponent holds every
-  point taken, and at least 2 of them: unguarded, defenders shed their stoppers and Daring's moon
-  success rose from 5% to 21%. At the all-Daring table paired moon success
-  is now 9.3%.
+  point taken, and at least 2 of them: unguarded, defenders shed their
+  stoppers and Daring's moon success rose from 5% to 21%. At the
+  all-Daring table paired moon success is now 9.3%.
 - 34% of Daring's Q♠ dumps land on the human (Schemer: 33%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.
