@@ -31,8 +31,18 @@ import {
   isCarrierArmored,
   carrierJustExposed,
   isLeaderTier,
+  throwAsteroid,
+  MAX_ASTEROIDS,
+  ASTEROID_STATS,
 } from "../engine";
-import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
+import type {
+  Asteroid,
+  AsteroidKind,
+  Bullet,
+  DifficultyTier,
+  StarSwarmInput,
+  StarSwarmState,
+} from "../types";
 
 const NO_INPUT: StarSwarmInput = { playerX: CANVAS_W / 2, fire: false };
 const FIRE_INPUT: StarSwarmInput = { playerX: CANVAS_W / 2, fire: true };
@@ -439,8 +449,9 @@ describe("Scoring", () => {
   it("Elite is worth 200 points (Ensign ×1 baseline)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
     s = advanceMs(s, 8000);
-    // Elite has 2 HP — need to hit twice
-    const elite = s.enemies.find((e) => e.isAlive && e.tier === "Elite");
+    // Elite has 2 HP — need to hit twice. Pick one holding formation: a diving Elite would
+    // score the 2× dive bonus, and which Elite is diving at 8 s depends on the RNG sequence.
+    const elite = s.enemies.find((e) => e.isAlive && e.tier === "Elite" && e.phase === "Formation");
     if (!elite) return;
 
     const makeBullet = (id: number) => ({
@@ -3115,5 +3126,234 @@ describe("Carrier tier (#2484)", () => {
     for (let t = 0; t < 15_000; t += 16) s = tick(s, 16, NO_INPUT);
     expect(s.player.lives).toBe(livesBefore);
     expect(carrierOf(s)!.phase).toBe("Formation");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Errant asteroids (#2486)
+// ---------------------------------------------------------------------------
+
+describe("Errant asteroids (#2486)", () => {
+  let nextId = 70_000;
+  function rock(kind: AsteroidKind, x: number, y: number, extra: Partial<Asteroid> = {}): Asteroid {
+    return {
+      id: nextId++,
+      kind,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: ASTEROID_STATS[kind].radius,
+      hp: ASTEROID_STATS[kind].hp,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+      ...extra,
+    };
+  }
+  function shot(x: number, y: number, extra: Partial<Bullet> = {}): Bullet {
+    return {
+      id: nextId++,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+      ...extra,
+    };
+  }
+  /** A quiet mid-wave state: nobody shooting, player unkillable, no rocks yet. */
+  function quiet(wave: number): StarSwarmState {
+    const s = advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, wave), 8000);
+    return {
+      ...s,
+      enemyFireDisabled: true,
+      enemyBullets: [],
+      asteroids: [],
+      player: { ...s.player, lives: 3, invincibleTimer: 0 },
+    };
+  }
+  const SAFE_Y = 460; // below the deepest formation row, above the player lane
+
+  it("never spawns on a timer during wave 1", () => {
+    let s = quiet(1);
+    for (let t = 0; t < 45_000; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      expect(s.asteroids).toHaveLength(0);
+    }
+  });
+
+  it("spawns on a timer from wave 2 and never exceeds the cap by itself", () => {
+    let s = quiet(2);
+    let seen = 0;
+    for (let t = 0; t < 45_000; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      seen = Math.max(seen, s.asteroids.length);
+      expect(s.asteroids.length).toBeLessThanOrEqual(MAX_ASTEROIDS);
+    }
+    expect(seen).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not spawn while the wave is still swooping in", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+    while (s.phase === "SwoopIn") {
+      s = tick(s, 16, NO_INPUT);
+      expect(s.asteroids).toHaveLength(0);
+    }
+  });
+
+  it("asteroidsDisabled stops timed spawns; throwAsteroid still works and honours the cap", () => {
+    let s = { ...quiet(2), asteroidsDisabled: true };
+    for (let t = 0; t < 45_000; t += 16) s = tick(s, 16, NO_INPUT);
+    expect(s.asteroids).toHaveLength(0);
+    s = throwAsteroid(s);
+    expect(s.asteroids).toHaveLength(1);
+    s = throwAsteroid(throwAsteroid(s));
+    expect(s.asteroids).toHaveLength(MAX_ASTEROIDS);
+  });
+
+  it("rocks in flight carry across a wave clear", () => {
+    let s = quiet(2);
+    const a = rock("large", CANVAS_W / 2, SAFE_Y);
+    s = {
+      ...s,
+      asteroids: [a],
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(3);
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+  });
+
+  it("a player shot is spent on a rock and chips it — no points, piercing or not", () => {
+    let s = { ...quiet(2), score: 12_345 };
+    const a = rock("large", CANVAS_W / 2, SAFE_Y);
+    s = {
+      ...s,
+      asteroids: [a],
+      playerBullets: [shot(a.x, a.y), shot(a.x, a.y, { piercing: true })],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.playerBullets).toHaveLength(0);
+    expect(s.asteroids[0]!.hp).toBe(ASTEROID_STATS.large.hp - 2);
+    expect(s.asteroids[0]!.hitFlashTimer).toBeGreaterThan(0);
+    expect(s.score).toBe(12_345);
+  });
+
+  it("an enemy shot is spent on a rock too", () => {
+    let s = quiet(2);
+    const a = rock("large", CANVAS_W / 2, SAFE_Y);
+    const eb = shot(a.x, a.y, { owner: "enemy", height: 10 });
+    s = { ...s, asteroids: [a], enemyBullets: [eb] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemyBullets.some((b) => b.id === eb.id)).toBe(false);
+    expect(s.asteroids[0]!.hp).toBe(ASTEROID_STATS.large.hp - 1);
+  });
+
+  it("a broken large rock splits into two small ones; a broken small rock is gone", () => {
+    let s = quiet(2);
+    const big = rock("large", CANVAS_W / 2, SAFE_Y, { hp: 1 });
+    s = { ...s, asteroids: [big], playerBullets: [shot(big.x, big.y)] };
+    const explosionsBefore = s.explosions.length;
+    s = tick(s, 16, NO_INPUT);
+    expect(s.asteroids).toHaveLength(2);
+    expect(s.asteroids.every((r) => r.kind === "small")).toBe(true);
+    expect(s.explosions.length).toBe(explosionsBefore + 1);
+
+    const small = rock("small", CANVAS_W / 2, SAFE_Y, { hp: 1 });
+    s = { ...s, asteroids: [small], playerBullets: [shot(small.x, small.y)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.asteroids).toHaveLength(0);
+  });
+
+  it("a rock strikes each enemy once and kills for no points; small rocks shatter on impact", () => {
+    let s = { ...quiet(2), score: 500 };
+    const elite = s.enemies.find(
+      (e) => e.isAlive && e.tier === "Elite" && e.phase === "Formation"
+    )!;
+    const big = rock("large", elite.x, elite.y);
+    s = { ...s, asteroids: [big] };
+    s = tick(s, 16, NO_INPUT);
+    s = tick(s, 16, NO_INPUT); // a second tick must not hit the same Elite again
+    const after = s.enemies.find((e) => e.id === elite.id)!;
+    expect(after.hp).toBe(1);
+    expect(after.isAlive).toBe(true);
+    expect(s.asteroids.find((r) => r.id === big.id)?.hitEnemyIds).toContain(elite.id);
+
+    const grunt = s.enemies.find(
+      (e) => e.isAlive && e.tier === "Grunt" && e.phase === "Formation"
+    )!;
+    const small = rock("small", grunt.x, grunt.y);
+    s = { ...s, asteroids: [small] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false);
+    expect(s.asteroids.some((r) => r.id === small.id)).toBe(false); // shattered, no split
+    expect(s.score).toBe(500);
+  });
+
+  it("strikes a swooping ship once it is on screen, but not one still waiting off-screen", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+    const waiting = s.enemies.find((e) => e.pathT < 0)!;
+    s = { ...s, asteroids: [rock("large", waiting.x, waiting.y)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemies.find((e) => e.id === waiting.id)!.hp).toBe(waiting.hp);
+
+    s = advanceMs(s, 700);
+    const flying = s.enemies.find((e) => e.phase === "SwoopIn" && e.pathT >= 0 && e.y > 0)!;
+    s = { ...s, asteroids: [rock("large", flying.x, flying.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const hit = s.enemies.find((e) => e.id === flying.id)!;
+    expect(hit.hp < flying.hp || !hit.isAlive).toBe(true);
+  });
+
+  it("shatters harmlessly on the Carrier's force field", () => {
+    let s = quiet(2);
+    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+    const explosionsBefore = s.explosions.length;
+    s = { ...s, asteroids: [rock("large", c.x, c.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const after = s.enemies.find((e) => e.id === c.id)!;
+    expect(after.hp).toBe(c.hp);
+    expect(after.hitFlashTimer).toBeGreaterThan(0);
+    expect(s.asteroids).toHaveLength(0); // shattered, not split
+    expect(s.explosions.length).toBe(explosionsBefore + 1);
+  });
+
+  it("on the player: costs a life and shatters; invincibility ignores it; the shield absorbs it", () => {
+    const base = quiet(2);
+    let s = { ...base, asteroids: [rock("small", base.player.x, base.player.y)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(2);
+    expect(s.asteroids).toHaveLength(0);
+
+    s = {
+      ...base,
+      asteroids: [rock("small", base.player.x, base.player.y)],
+      player: { ...base.player, invincibleTimer: 5000 },
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(3);
+    expect(s.asteroids).toHaveLength(1);
+
+    s = applyPowerUp(base, "shield");
+    s = { ...s, asteroids: [rock("small", s.player.x, s.player.y)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(3);
+    expect(s.asteroids).toHaveLength(0);
+    expect(s.activePowerUp?.shieldAbsorbed).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the smart bomb clears every rock", () => {
+    const s0 = quiet(2);
+    const s = applyPowerUp(
+      { ...s0, asteroids: [rock("large", 100, SAFE_Y), rock("small", 260, SAFE_Y)] },
+      "bomb"
+    );
+    expect(s.asteroids).toHaveLength(0);
+    expect(s.explosions.length).toBeGreaterThanOrEqual(s0.explosions.length + 2);
   });
 });
