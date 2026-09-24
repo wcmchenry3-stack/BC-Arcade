@@ -210,10 +210,17 @@ with `render/drawFrame.ts` into a Skia `Picture` (`createPicture`), and the canv
 (`starswarm.drawFrame`) and never takes down the UI thread. Sprite images reach the worklet as a
 stable set that changes only when an image finishes loading.
 
-Until phase 4 (#2566) React still re-renders once per published frame for the HUD text; the
-scene's hundreds of Skia elements are no longer part of that. Dev builds keep the phase-2
-declarative path behind the dev-panel "Legacy renderer" switch for side-by-side comparison until
-phase 5 (#2567) deletes it. The web renderer (unmaintained) still derives the same rules itself.
+Since #2566 the HUD and overlays are the only React state the loop touches, and only on change.
+`render/hud.ts` derives a small `HudState` (score, wave, difficulty, guns and hull, lives, the
+countdown digit and each banner's visibility, the active power-up) from each published frame and
+the loop calls `setHud` only when `sameHud` says a field moved, so steady play with nothing
+scored re-renders React zero times. The two cues that do move every frame, the mission-complete
+fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
+thread. Gameplay is the Picture; the HUD is on-change React.
+
+Dev builds keep the phase-2 declarative path behind the dev-panel "Legacy renderer" switch for
+side-by-side comparison until phase 5 (#2567) deletes it; only that path still pushes the whole
+frame through React state. The web renderer (unmaintained) still derives the same rules itself.
 
 ## Backend
 
