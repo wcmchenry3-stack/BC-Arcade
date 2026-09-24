@@ -11,7 +11,7 @@
  *   - Clear Bet resets to 0
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   BlackjackPage,
   gotoBlackjack,

@@ -88,10 +88,10 @@ def test_create_game_premium_hearts_no_entitlement_returns_403(
 def test_create_game_free_no_entitlement_proceeds(client: TestClient, session_id: str) -> None:
     r = client.post(
         "/games",
-        json={"game_type": "blackjack"},
+        json={"game_type": "yacht"},
         headers=_headers(session_id),
     )
-    # blackjack is free — should not be gated (201 or 200, not 403)
+    # yacht is free (since 2026-09-23) — should not be gated (201 or 200, not 403)
     assert r.status_code != 403
 
 

@@ -8,7 +8,7 @@
  * transitions, not specific card values.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   BlackjackPage,
   gotoBlackjack,

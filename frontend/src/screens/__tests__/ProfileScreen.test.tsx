@@ -330,8 +330,8 @@ describe("ProfileScreen — store build hides premium-game history (#2390)", () 
     await waitFor(() => {
       expect(screen.getByText("Games Played")).toBeTruthy();
     });
-    // 2 twenty48 + 2 blackjack; the 3 Yacht games are not counted.
-    expect(screen.getByText("4")).toBeTruthy();
+    // 3 yacht + 2 twenty48; the 2 Blackjack games are not counted.
+    expect(screen.getByText("5")).toBeTruthy();
     expect(screen.queryByText("7")).toBeNull();
     // Game types tried = 2, not 3.
     expect(screen.getByText("2")).toBeTruthy();
@@ -341,14 +341,15 @@ describe("ProfileScreen — store build hides premium-game history (#2390)", () 
   });
 
   it("never names a hidden game, even when the server says it is the favourite", async () => {
+    mockGetMyStats.mockResolvedValue({ ...SAMPLE_STATS, favorite_game: "blackjack" });
     await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Favorite Game")).toBeTruthy();
     });
-    expect(screen.queryByText("Yacht")).toBeNull();
-    expect(screen.queryByText("280")).toBeNull();
-    // Falls back to the most-played visible game (first of the tied pair).
-    expect(screen.getAllByText("2048").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("Blackjack")).toBeNull();
+    expect(screen.queryByText("1,450")).toBeNull();
+    // Falls back to the most-played visible game (yacht, played 3 vs twenty48's 2).
+    expect(screen.getAllByText("Yacht").length).toBeGreaterThanOrEqual(1);
   });
 
   it("drops hidden-game rows from the recent games list", async () => {
@@ -356,19 +357,19 @@ describe("ProfileScreen — store build hides premium-game history (#2390)", () 
     await waitFor(() => {
       expect(screen.getByText("Recent Games")).toBeTruthy();
     });
-    expect(screen.getByText("Blackjack")).toBeTruthy();
-    expect(screen.queryByLabelText(/^Yacht/)).toBeNull();
+    expect(screen.getByLabelText(/^Yacht/)).toBeTruthy();
+    expect(screen.queryByText("Blackjack")).toBeNull();
   });
 
   it("shows the empty state when every recent game is hidden", async () => {
     mockGetMyGames.mockResolvedValue({
-      items: SAMPLE_GAMES.items.filter((g) => g.game_type === "yacht"),
+      items: SAMPLE_GAMES.items.filter((g) => g.game_type === "blackjack"),
       next_cursor: null,
     });
     await renderScreen();
     await waitFor(() => {
       expect(screen.getByText("Recent Games")).toBeTruthy();
     });
-    expect(screen.queryByLabelText(/^Yacht/)).toBeNull();
+    expect(screen.queryByLabelText(/^Blackjack/)).toBeNull();
   });
 });

@@ -9,7 +9,7 @@
  *   - chips >= bet * 2
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { injectEngineState, playerPhaseState } from "./helpers/blackjack";
 
 test.describe("Blackjack — double-down", () => {

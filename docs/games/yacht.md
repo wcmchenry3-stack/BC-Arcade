@@ -1,7 +1,7 @@
 # Yacht
 
 **Category:** Dice
-**Tier:** TBD
+**Tier:** Free (v1.0 store build; swapped with Blackjack 2026-09-23)
 **Status:** In Development
 
 ## How to Play

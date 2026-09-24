@@ -104,8 +104,10 @@ async def test_stats_me_aggregates_per_game(client: TestClient) -> None:
     assert body["favorite_game"] == "yacht"
 
 
-def test_stats_me_blackjack_uses_chip_shape(client: TestClient) -> None:
+@pytest.mark.asyncio
+async def test_stats_me_blackjack_uses_chip_shape(client: TestClient) -> None:
     sid = str(uuid.uuid4())
+    await _grant(sid, "blackjack")  # premium since 2026-09-23
     _create_and_complete(client, sid, game_type="blackjack", final_score=1500)
     _create_and_complete(client, sid, game_type="blackjack", final_score=2400)
 
@@ -140,7 +142,7 @@ def test_stats_me_reports_arcade_xp_and_level(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     for _ in range(3):
         _create_and_complete(client, sid, game_type="twenty48", final_score=2048)
-    _create_and_complete(client, sid, game_type="blackjack", final_score=1500)
+    _create_and_complete(client, sid, game_type="mahjong", final_score=1500)
     # Started but never completed — must not earn XP.
     r = client.post("/games", headers=_headers(sid), json={"game_type": "solitaire"})
     assert r.status_code == 200, r.text
@@ -247,6 +249,7 @@ async def test_abandoned_session_does_not_blank_blackjack_current_chips(
     chip balance, so the latest-score subquery has to skip abandons too.
     """
     sid = str(uuid.uuid4())
+    await _grant(sid, "blackjack")
     _create_and_complete(client, sid, game_type="blackjack", final_score=2400, outcome="completed")
     _create_and_complete(client, sid, game_type="blackjack", final_score=50, outcome="abandoned")
 
@@ -268,6 +271,7 @@ async def test_abandoned_session_still_supplies_blackjack_run_metadata(
     history from Profile.
     """
     sid = str(uuid.uuid4())
+    await _grant(sid, "blackjack")
     # Cash-out: older row, stale aggregates.
     _create_and_complete(
         client,

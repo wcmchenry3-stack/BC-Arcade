@@ -29,7 +29,9 @@ Fields the evaluators read, per game (the result each game must send):
     solitaire   won, moves                             (SolitaireResult)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
     freecell    won, moves                             (#2452)
+    yacht       final_score                            (already sent)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
+                — premium since 2026-09-23, so not in the free pool (see below)
 
 Slates
 ------
@@ -250,6 +252,20 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _won("freecell", "medium"),
         _won_within("freecell", "moves", 100, "hard"),
     ),
+    # Score only (Yacht sends no result block). A full solo game typically
+    # lands 150-250; abandoned games count with their score so far.
+    "yacht": (
+        _at_least("yacht", "final_score", 100, "easy"),
+        _at_least("yacht", "final_score", 175, "medium"),
+        _at_least("yacht", "final_score", 250, "hard"),
+    ),
+}
+
+# Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
+# app's age rating). Its goals are kept here, outside every live pool, so they
+# join PREMIUM_GOAL_POOL with the other premium games in #2458. Days frozen
+# before the move still rebuild through ``goal_from_spec``.
+PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     "blackjack": (
         _at_least("blackjack", "hands_played", 3, "easy"),
         _chips_gained("blackjack", "medium"),

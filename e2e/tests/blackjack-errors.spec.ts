@@ -11,7 +11,7 @@
  *   - Malformed / shape-drift localStorage state falls back to fresh game
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import {
   BlackjackPage,
   gotoBlackjack,
