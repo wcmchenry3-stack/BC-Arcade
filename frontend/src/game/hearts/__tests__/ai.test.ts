@@ -627,10 +627,22 @@ describe("selectCardToPlay — Cautious difficulty", () => {
 // ---------------------------------------------------------------------------
 
 describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
-  it("discards non-hearts when void in led suit and holding 8+ hearts + Q♠ with no points taken", () => {
-    // AI player 1 holds 8 hearts + Q♠ + two diamonds (void in clubs); no points taken
-    const hearts8 = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
-    const hand = [...hearts8, c("spades", 12), c("diamonds", 7), c("diamonds", 8)];
+  it("discards non-hearts when void in led suit with a viable moon hand and no points taken", () => {
+    // AI player 1 holds 7 hearts (5 top) + Q♠ + A♦-led diamonds (void in
+    // clubs); no points taken → viable moon hand (#2234).
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 7),
+      c("diamonds", 8),
+    ];
     const trick: TrickCard[] = [{ card: c("clubs", 3), playerIndex: 0 }];
     const state = mkState({
       playerHands: [[], hand, [], []],
@@ -704,18 +716,19 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     expect(pick).not.toEqual(c("spades", 12));
   });
 
-  it("wins point trick with lowest winning card (10♥) in earlyMoon", () => {
-    // earlyMoon: 7 hearts + Q♠ in hand, no hearts won, 10 cards remaining (trick 3)
+  it("wins point trick with lowest winning card (10♥) in a moon attempt", () => {
+    // Viable moon hand (#2234): 4 top hearts (10/J/Q/K♥), Q♠, A♦-led
+    // diamonds; no points taken, 10 cards remaining (trick 3).
     const hand = [
       c("hearts", 10),
-      c("hearts", 8),
-      c("hearts", 6),
+      c("hearts", 13),
+      c("hearts", 11),
       c("hearts", 4),
-      c("hearts", 2),
       c("hearts", 12),
-      c("hearts", 3),
       c("spades", 12),
       c("diamonds", 1),
+      c("diamonds", 5),
+      c("diamonds", 6),
       c("clubs", 13),
     ];
     const trick: TrickCard[] = [
@@ -733,7 +746,7 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
     // Moon attempt: play lowest card that beats current winner (9♥) → 10♥.
-    // Normal Daring would play highest loser (8♥) to avoid winning points.
+    // Normal Daring would play its loser (4♥) to avoid winning points.
     expect(pick).toEqual(c("hearts", 10));
   });
 });
@@ -1050,21 +1063,22 @@ describe("selectCardsToPass — #1636 void creation (Schemer)", () => {
 // ---------------------------------------------------------------------------
 
 describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
-  it("keeps Q♠ and all hearts when dealt 6+ hearts + Q♠", () => {
-    // 6 hearts + Q♠ → moon-viable (threshold raised from 5 to 6). Daring passes LOWEST
-    // non-hearts (3♠, 5♠, 7♣) to keep Aces and Kings for trick control (#1647).
+  it("keeps Q♠ and all hearts when dealt a viable moon hand", () => {
+    // Viable moon hand (#2234): 4 top hearts, Q♠, A♣-led clubs, no weak suit.
+    // Daring passes the LOWEST non-hearts (3♠, 5♠, 6♣) to keep Aces for trick
+    // control (#1647).
     const hand = [
       c("spades", 12), // Q♠ — kept for moon attempt
       c("hearts", 1), // A♥ — kept
       c("hearts", 13), // K♥ — kept
+      c("hearts", 12), // Q♥ — kept
       c("hearts", 11), // J♥ — kept
-      c("hearts", 9),
       c("hearts", 7),
-      c("hearts", 5), // 6th heart — triggers the 6+ threshold
+      c("hearts", 5),
       c("diamonds", 1), // A♦ — kept for trick control
-      c("diamonds", 13), // K♦ — kept for trick control
       c("clubs", 1), // A♣ — kept for trick control
       c("clubs", 7),
+      c("clubs", 6),
       c("spades", 3),
       c("spades", 5),
     ];
@@ -1073,11 +1087,10 @@ describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
     expect(passed).not.toContainEqual(c("hearts", 1)); // A♥ kept
     expect(passed).not.toContainEqual(c("hearts", 13)); // K♥ kept
     expect(passed).not.toContainEqual(c("diamonds", 1)); // A♦ kept (trick control)
-    expect(passed).not.toContainEqual(c("diamonds", 13)); // K♦ kept (trick control)
     expect(passed).not.toContainEqual(c("clubs", 1)); // A♣ kept (trick control)
     expect(passed).toContainEqual(c("spades", 3)); // 3♠ passed (lowest)
     expect(passed).toContainEqual(c("spades", 5)); // 5♠ passed
-    expect(passed).toContainEqual(c("clubs", 7)); // 7♣ passed
+    expect(passed).toContainEqual(c("clubs", 6)); // 6♣ passed
   });
 
   it("uses standard passing when fewer than 6 hearts (no moon-viable)", () => {
@@ -1102,15 +1115,15 @@ describe("selectCardsToPass — #1637 moon-viable passing (Daring)", () => {
   });
 
   it("falls back to lowest hearts when not enough safe non-hearts to fill 3 slots", () => {
-    // 8 hearts + Q♠ → moon-viable. Only 2 safe non-hearts available (A♣, 2♣ excluded).
-    // Must pass lowest hearts to fill the 3rd slot.
+    // Viable moon hand (#2234): 4 top hearts, Q♠, A♣-led clubs. Only one safe
+    // non-heart is passable (A♣; 2♣-4♣ excluded), so the lowest hearts fill the rest.
     const hand = [
       c("spades", 12), // Q♠
       c("hearts", 1),
       c("hearts", 13),
+      c("hearts", 12),
       c("hearts", 11),
       c("hearts", 9),
-      c("hearts", 7),
       c("hearts", 5),
       c("hearts", 3),
       c("hearts", 2),
@@ -1503,10 +1516,21 @@ describe("chooseFollow — last to play, covering card (#1525)", () => {
   });
 
   it("hard AI in moon-attempt mode does not dump Q♠ even when covering card present", () => {
-    // Daring AI holds 8 hearts + Q♠ with 0 pts taken → isMoonAttempt = true.
+    // Daring holds a viable moon hand (#2234: 5 top hearts, Q♠, A♦-led
+    // diamonds) with 0 pts taken → isMoonAttempt = true.
     // A♠ is covering; Q♠ should be held to complete the moon shot.
-    const hearts8 = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
-    const hand = [...hearts8, c("spades", 12), c("spades", 7)];
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("spades", 12),
+      c("spades", 7),
+      c("diamonds", 1),
+      c("diamonds", 3),
+      c("diamonds", 2),
+    ];
     const trick: TrickCard[] = [
       { card: c("spades", 1), playerIndex: 0 },
       { card: c("spades", 13), playerIndex: 1 },
@@ -1687,24 +1711,26 @@ describe("selectCardToPlay — Cautious AI moon blocking (#1592)", () => {
 // ---------------------------------------------------------------------------
 
 describe("selectCardToPlay — Daring AI moonshot guard (#1593)", () => {
-  it("stays in moon-attempt mode when AI has collected all points so far (5+ tricks left)", () => {
-    // AI (player 1) has already won 2 hearts; still holds 8 hearts + Q♠ + 1 club.
-    // aiHasAllPoints: handScores[1]=2 === totalPointsTaken=2. hand.length=10 >= 5.
+  it("stays in moon-attempt mode once committed: holds all points and ≥ 13 of them (#2234)", () => {
+    // AI (player 1) has already captured Q♠ + 10♥ + J♥ (15 pts) and nobody else
+    // has points. Its remaining hand (low hearts, two clubs) no longer rates
+    // viable, but it is committed (MOON_HAND_RULES.commitPoints = 13).
     const heartsInHand = Array.from({ length: 8 }, (_, i) => c("hearts", (i + 2) as Rank));
-    const heartsAlreadyWon = [c("hearts", 10), c("hearts", 11)];
-    const hand = [...heartsInHand, c("spades", 12), c("clubs", 7)]; // 10 cards
+    const heartsAlreadyWon = [c("spades", 12), c("hearts", 10), c("hearts", 11)];
+    const hand = [...heartsInHand, c("clubs", 8), c("clubs", 7)]; // 10 cards
     const trick: TrickCard[] = [{ card: c("diamonds", 3), playerIndex: 0 }]; // AI void in diamonds
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: trick,
       tricksPlayedInHand: 3,
       currentPlayerIndex: 1,
-      handScores: [0, 2, 0, 0],
+      handScores: [0, 15, 0, 0],
       wonCards: [[], heartsAlreadyWon, [], []],
     });
     const pick = selectCardToPlay(hand, trick, state, 1, "daring");
-    // Moon attempt active: discard highest non-hearts/non-Q♠ = clubs 7
-    expect(pick).toEqual(c("clubs", 7));
+    // Moon attempt active: keep the hearts, discard the highest junk = 8♣.
+    // (Outside moon mode a void Daring dumps a heart instead.)
+    expect(pick).toEqual(c("clubs", 8));
   });
 
   it("does not enter moon-attempt mode when fewer than 5 tricks remain", () => {
@@ -2200,14 +2226,15 @@ describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
     expect(passed).toContainEqual(c("spades", 12)); // Q♠ passed — moon-viable requires 6+ hearts
   });
 
-  it("keeps Q♠ in moon-viable mode when NOT passing to seat 0 (6+ hearts, left from seat 1)", () => {
-    // 6 hearts + Q♠ → moon-viable activates. Seat 1 passes left to seat 2 (not seat 0).
-    // Moon-viable keeps Q♠ and all hearts; passes lowest non-hearts.
+  it("keeps Q♠ in moon-viable mode when NOT passing to seat 0 (left from seat 1)", () => {
+    // Viable moon hand (#2234: 4 top hearts, Q♠, A♦-led diamonds). Seat 1
+    // passes left to seat 2 (not seat 0), so moon-viable keeps Q♠ and all
+    // hearts and passes the lowest non-hearts.
     const hand = [
       c("hearts", 1),
       c("hearts", 10),
-      c("hearts", 9),
-      c("hearts", 8),
+      c("hearts", 13),
+      c("hearts", 12),
       c("hearts", 7),
       c("hearts", 5), // 6th heart
       c("spades", 12),
@@ -2247,24 +2274,24 @@ describe("selectCardsToPass — #1638 adversarial targeting (Daring)", () => {
     expect(passed).toContainEqual(c("spades", 12));
   });
 
-  it("keeps Q♠ when targeting seat 0 with strongMoon (7+ hearts)", () => {
+  it("keeps Q♠ when targeting seat 0 with a strong moon hand (all 5 top hearts)", () => {
     // Seat 3 passes left → targeting seat 0. Normally Q♠ is passed adversarially.
-    // But 7+ hearts + Q♠ (strongMoon) → bypasses suppression → moon-viable keeps Q♠.
-    // Moon attempt is impossible without Q♠, so passing it away is self-defeating.
+    // But a strong moon hand (viable + all five top hearts, #2234) bypasses the
+    // suppression → moon-viable keeps Q♠. Passing it away is self-defeating.
     const hand = [
       c("hearts", 1),
       c("hearts", 13),
+      c("hearts", 12),
       c("hearts", 11),
-      c("hearts", 9),
-      c("hearts", 7),
+      c("hearts", 10),
       c("hearts", 5),
-      c("hearts", 3), // 7 hearts → strongMoon threshold
+      c("hearts", 3),
       c("spades", 12), // Q♠ — must be kept
       c("diamonds", 1),
       c("diamonds", 8),
+      c("diamonds", 6),
       c("clubs", 8),
       c("clubs", 7),
-      c("clubs", 6),
     ];
     // playerIndex=3, direction="left" → (3+1)%4=0 → targeting seat 0
     const passed = selectCardsToPass(hand, "left", "daring", 3);

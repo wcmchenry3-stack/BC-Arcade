@@ -88,7 +88,7 @@ export interface SeatCounters {
   handsPlayed: number;
   /** Hands in which this seat took Q♠. */
   qsTaken: number;
-  /** Hands in which this seat's earlyMoon/midMoon trigger fired (#2204). */
+  /** Hands in which this seat's moon-attempt trigger fired (#2204, #2234). */
   moonAttempts: number;
   /** Of those hands, how many this seat went on to shoot the moon in. */
   moonAttemptSuccesses: number;

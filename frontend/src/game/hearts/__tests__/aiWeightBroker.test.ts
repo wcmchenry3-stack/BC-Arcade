@@ -262,8 +262,9 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     expect(card).toEqual(c("clubs", 1));
   });
 
-  it("earlyMoon: discards junk non-point card when void in led suit (keeps Q♠)", () => {
-    // 7 hearts + Q♠ + 2♦ in hand, void in clubs (led suit)
+  it("moon attempt: discards junk non-point card when void in led suit (keeps Q♠)", () => {
+    // Viable moon hand (moonHand.ts, #2234): 5 top hearts, Q♠, A♦-led
+    // diamonds; void in clubs (led suit).
     const hand = [
       c("hearts", 1),
       c("hearts", 13),
@@ -273,6 +274,8 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("hearts", 9),
       c("hearts", 8),
       c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 3),
       c("diamonds", 2),
     ];
     const state = mkState({
@@ -293,8 +296,8 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       1,
       "daring"
     );
-    // Moon-attempt mode with void: dump 2♦ (junk), NOT Q♠ or any heart
-    expect(card).toEqual(c("diamonds", 2));
+    // Moon-attempt mode with void: dump a diamond (junk), NOT Q♠ or any heart
+    expect(card.suit).toBe("diamonds");
     expect(card).not.toEqual(c("spades", 12));
   });
 
@@ -407,8 +410,9 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     expect(card).toEqual(c("spades", 12));
   });
 
-  it("moon-viable pass: does not pass Q♠ or A♥ when 6+ hearts in hand", () => {
-    // moonViable = heartsInHand ≥ 6 && hasQSpades. Use direction "across" for player 1
+  it("moon-viable pass: does not pass Q♠ or A♥ with a viable moon hand", () => {
+    // Viable moon hand (#2234): 5 top hearts, Q♠, A♣-led clubs, one weak suit
+    // (diamonds). Use direction "across" for player 1
     // so that passingToSeat0(1, "across") → (1+2)%4=3 ≠ 0 → not targeting human,
     // ensuring moon-viable mode activates.
     const hand = [
@@ -422,7 +426,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("diamonds", 3),
       c("diamonds", 4),
       c("diamonds", 5),
-      c("clubs", 8),
+      c("clubs", 1),
       c("clubs", 9),
       c("clubs", 10),
     ];
@@ -451,7 +455,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("diamonds", 3),
       c("diamonds", 4),
       c("diamonds", 5),
-      c("clubs", 8),
+      c("clubs", 1),
       c("clubs", 9),
       c("clubs", 10),
     ];

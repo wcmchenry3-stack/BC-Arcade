@@ -348,7 +348,7 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
   | `win_share`        | games won (ties split) \| games played                    |
   | `points_per_hand`  | points taken (moon-adjusted) \| hands played              |
   | `qs_taken`         | hands taking Q♠ \| hands played                           |
-  | `moon_attempt`     | hands the earlyMoon/midMoon trigger fired \| hands played |
+  | `moon_attempt`     | hands the moon-attempt trigger fired \| hands played      |
   | `moon_success`     | moons shot in attempted hands \| hands attempted (paired) |
   | `moon_shot`        | moons shot \| hands played                                |
   | `qs_dump_on_human` | Q♠ dumps won by the human seat \| Q♠ dumps                |

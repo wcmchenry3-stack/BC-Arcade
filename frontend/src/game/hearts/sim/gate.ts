@@ -184,14 +184,6 @@ function winShare(matchup: string, role: string): MetricRef {
  * Both adjacent steps are checked twice: head to head in the field matchup,
  * and at the mixed table the app actually deals.
  *
- * Not registered: "the Schemer table is easier than the Daring table" for
- * the human. It holds in the baseline (+1.5pp ± 0.5), but a gap that small
- * with per-block SD 0.55 needs ~15,000 blocks to decide — twice the presets
- * cap — and a truncated test would false-fail ~10% of the time. Daring >
- * Schemer is still gated (field and mixed above); the table-level gap is
- * only checked when the baseline is re-measured (gate.test.ts). Widening it
- * is #2234/#2235's job (Daring's moon play converts 7% of attempts).
- *
  * History: before #2555 (Cautious noise 25%) the ladder was inverted at the
  * bottom — Cautious was the strongest persona (field +2.75pp over Schemer)
  * and the all-Cautious table the hardest for the human (21.9% vs 25.5%).
@@ -236,6 +228,14 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     left: winShare("table-cautious", "proxy"),
     right: winShare("table-schemer", "proxy"),
     expected: 0.029,
+  },
+  {
+    kind: "separation",
+    id: "presets:schemer-table-easier-than-daring",
+    description: "the human wins more at the Schemer table than at the Daring table",
+    left: winShare("table-schemer", "proxy"),
+    right: winShare("table-daring", "proxy"),
+    expected: 0.01,
   },
 ];
 
