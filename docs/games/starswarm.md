@@ -41,7 +41,9 @@ swoop-in or bonus waves; at most 2 in flight from timed spawns). It is a neutral
   like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
 - **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
   power-up kill counter (they do count toward wave clear and the Elite/Boss thresholds).
-- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do.
+- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, except
+  into a bonus wave: those start rock-free (a rock there would absorb shots and kill targets the
+  player can't then hit, putting the PERFECT bonus out of reach).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
 
 Enemy dodging and flak are #2487; salvage drops are #2488.

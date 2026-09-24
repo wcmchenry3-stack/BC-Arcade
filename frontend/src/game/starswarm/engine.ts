@@ -626,7 +626,12 @@ function canSpawnAsteroid(state: StarSwarmState): boolean {
  * minimum and the dev "disabled" toggle, so a tester can always summon one.
  */
 export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarSwarmState {
-  if (state.phase === "GameOver" || state.asteroids.length >= MAX_ASTEROIDS) return state;
+  if (
+    state.phase === "GameOver" ||
+    state.phase === "FreeFireZone" || // bonus waves are rock-free, dev throws included
+    state.asteroids.length >= MAX_ASTEROIDS
+  )
+    return state;
   return { ...state, asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)] };
 }
 
@@ -1003,7 +1008,9 @@ function buildWaveState(
     explosions: [],
     powerUps,
     buddyShips: [],
-    asteroids,
+    // A rock can never enter a bonus wave: it would absorb the player's shots and kill targets
+    // the player then can't hit, making the PERFECT bonus unreachable. Carried rocks are dropped.
+    asteroids: phase === "FreeFireZone" ? [] : asteroids,
     nextAsteroidTimer: asteroidInterval(),
     asteroidsDisabled: false,
     phaseTimer: 0,

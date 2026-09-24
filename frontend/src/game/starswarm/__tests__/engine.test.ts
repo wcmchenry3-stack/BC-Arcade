@@ -3216,8 +3216,8 @@ describe("Errant asteroids (#2486)", () => {
     expect(s.asteroids).toHaveLength(MAX_ASTEROIDS);
   });
 
-  it("rocks in flight carry across a wave clear", () => {
-    let s = quiet(2);
+  it("rocks in flight carry across a wave clear into a normal wave", () => {
+    let s = quiet(1);
     const a = rock("large", CANVAS_W / 2, SAFE_Y);
     s = {
       ...s,
@@ -3225,8 +3225,28 @@ describe("Errant asteroids (#2486)", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(3);
+    expect(s.wave).toBe(2);
+    expect(s.phase).toBe("SwoopIn");
     expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+  });
+
+  it("never enters a bonus wave: carried rocks are dropped and dev throws refused", () => {
+    let s = quiet(2);
+    s = {
+      ...s,
+      asteroids: [rock("large", CANVAS_W / 2, SAFE_Y)],
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(3);
+    expect(s.phase).toBe("FreeFireZone");
+    expect(s.asteroids).toHaveLength(0);
+    expect(throwAsteroid(s).asteroids).toHaveLength(0);
+    // and the timer can't spawn one either while the bonus wave runs
+    for (let t = 0; t < 25_000 && s.phase === "FreeFireZone"; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      expect(s.asteroids).toHaveLength(0);
+    }
   });
 
   it("a player shot is spent on a rock and chips it — no points, piercing or not", () => {
