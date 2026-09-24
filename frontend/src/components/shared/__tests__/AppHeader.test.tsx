@@ -15,6 +15,7 @@ jest.mock("react-i18next", () => ({
         "common:overflow.menu.label": "More options",
         "common:overflow.menu.scoreboard": "Scoreboard",
         "common:overflow.menu.newGame": "New Game",
+        title: "Send Feedback",
         "common:overflow.abandon.title": "Abandon current game?",
         "common:overflow.abandon.body":
           "Starting a new game will discard your progress in this round. Your lifetime stats won't be affected.",
@@ -191,6 +192,31 @@ describe("AppHeader", () => {
       expect(screen.queryByText("New Game")).toBeNull();
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));
       expect(screen.getByText("New Game")).toBeTruthy();
+    });
+
+    // #2481 — the ⋯ menu replaces the "?" outright, so on every gameplay
+    // screen there was no way to send feedback at all.
+    it("always offers Send Feedback in the dropdown, whatever the screen passes", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      expect(screen.getByText("Send Feedback")).toBeTruthy();
+    });
+
+    it("offers Send Feedback even on a screen with only a scoreboard", async () => {
+      await render(<AppHeader title="Hearts" onOpenScoreboard={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      expect(screen.getByText("Send Feedback")).toBeTruthy();
+    });
+
+    it("closes the dropdown and opens the feedback widget when Send Feedback is tapped", async () => {
+      await render(<AppHeader title="Mahjong" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("Send Feedback"));
+
+      // Dropdown is closed — its other item is gone.
+      expect(screen.queryByText("New Game")).toBeNull();
+      // ...and the widget is open (the mock renders only when `visible`).
+      expect(screen.getByText("FeedbackWidgetMock")).toBeTruthy();
     });
 
     it("shows Scoreboard item only when onOpenScoreboard is provided", async () => {
