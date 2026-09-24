@@ -286,6 +286,44 @@ describe("HomeScreen — game cards", () => {
   });
 });
 
+describe("HomeScreen — resuming a saved Yacht game (#2203)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock above
+  const storage = require("../../game/yacht/storage") as { loadGame: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- real engine
+  const { newGame } = require("../../game/yacht/engine");
+
+  afterEach(() => storage.loadGame.mockResolvedValue(null));
+
+  it("resumes a VS game where only the computer's final turn is left", async () => {
+    const human = { ...newGame(), round: 13, game_over: true };
+    const ai = { ...newGame(), round: 13, rolls_used: 2 };
+    storage.loadGame.mockResolvedValue({ state: human, aiDifficulty: "hard", aiState: ai });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: human,
+        aiDifficulty: "hard",
+        aiState: ai,
+      })
+    );
+  });
+
+  it("starts a new game once both VS games are over", async () => {
+    const over = { ...newGame(), round: 13, game_over: true };
+    storage.loadGame.mockResolvedValue({ state: over, aiDifficulty: "hard", aiState: over });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: expect.objectContaining({ round: 1, game_over: false }),
+      })
+    );
+  });
+});
+
 describe("HomeScreen — AppHeader", () => {
   it("renders AppHeader with app title", async () => {
     const { getByRole } = await renderScreen();

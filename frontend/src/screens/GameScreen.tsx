@@ -18,6 +18,7 @@ import {
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
 import { preloadOracleTable } from "../game/yacht/oracle/oracle";
+import { finishTurnFallback, isAiTurnPending } from "../game/yacht/vsTurn";
 import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -82,7 +83,13 @@ export default function GameScreen({ navigation, route }: Props) {
     route.params.aiDifficulty ?? null
   );
   const [aiGameState, setAiGameState] = useState<GameState | null>(route.params.aiState ?? null);
-  const [isAiTurn, setIsAiTurn] = useState(false);
+  // A restored game may have been killed mid-AI-turn: resume it (#2203).
+  const [isAiTurn, setIsAiTurn] = useState(
+    () =>
+      !!route.params.aiDifficulty &&
+      !!route.params.aiState &&
+      isAiTurnPending(route.params.initialState, route.params.aiState)
+  );
   const [aiRollingIndices, setAiRollingIndices] = useState<readonly number[]>([]);
   const isAiTurnRef = useRef(isAiTurn);
   const aiTurnCancelledRef = useRef(false);
@@ -225,17 +232,25 @@ export default function GameScreen({ navigation, route }: Props) {
 
     aiTurnCancelledRef.current = false;
 
+    // The AI's state as of its last completed step, so a failure part-way
+    // through can finish the turn from there.
+    let s = aiGameStateRef.current!;
+
     async function runAiTurn() {
       const diff = aiDifficultyRef.current!;
-      let s = aiGameStateRef.current!;
 
-      // Initial roll (all dice free) — compute result first so animation plays over final values.
-      s = engineRoll(s, [false, false, false, false, false]);
-      setAiGameState(s);
-      setAiRollingIndices([0, 1, 2, 3, 4]);
-      await delay(1000);
-      if (aiTurnCancelledRef.current) return;
-      setAiRollingIndices([]);
+      if (s.rolls_used === 0) {
+        // Initial roll (all dice free) — compute result first so animation plays over final values.
+        s = engineRoll(s, [false, false, false, false, false]);
+        setAiGameState(s);
+        setAiRollingIndices([0, 1, 2, 3, 4]);
+        await delay(1000);
+        if (aiTurnCancelledRef.current) return;
+        setAiRollingIndices([]);
+      }
+      // Resuming a turn interrupted after it had rolled (app killed, or the
+      // effect re-ran) keeps the dice it already has rather than re-rolling
+      // them — and with all three rolls used, re-rolling would throw (#2203).
       // Settle pause: let the player read the dice values
       await delay(800);
       if (aiTurnCancelledRef.current) return;
@@ -272,7 +287,24 @@ export default function GameScreen({ navigation, route }: Props) {
       setIsAiTurn(false);
     }
 
-    void runAiTurn();
+    // If the turn fails, report it and finish the computer's turn with a
+    // plain fallback before handing back control. Just unlocking would leave
+    // the computer a round behind for good, so its game could never end and
+    // the VS result screen would never show (#2203).
+    runAiTurn().catch((e: unknown) => {
+      Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "runAiTurn" } });
+      if (aiTurnCancelledRef.current) return;
+      setAiRollingIndices([]);
+      try {
+        setAiGameState(finishTurnFallback(s));
+      } catch (fallbackError: unknown) {
+        // Last resort: unlock the board rather than freeze it.
+        Sentry.captureException(fallbackError, {
+          tags: { subsystem: "yacht.ai", op: "finishTurnFallback" },
+        });
+      }
+      setIsAiTurn(false);
+    });
     return () => {
       aiTurnCancelledRef.current = true;
     };
