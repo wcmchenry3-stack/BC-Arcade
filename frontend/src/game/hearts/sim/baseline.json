@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "reason": "smoke",
+  "generated": "2026-09-24",
+  "seed": 1111577413,
+  "blocks": {
+    "presets": 60,
+    "field": 60
+  },
+  "metrics": {
+    "table-cautious/proxy/win_share": {
+      "value": 0.14166666666666666,
+      "num": 8.5,
+      "den": 60,
+      "se": 0.04300122627778881
+    },
+    "table-schemer/proxy/win_share": {
+      "value": 0.3,
+      "num": 18,
+      "den": 60,
+      "se": 0.059660053921349286
+    },
+    "table-daring/proxy/win_share": {
+      "value": 0.3,
+      "num": 18,
+      "den": 60,
+      "se": 0.059660053921349286
+    },
+    "table-mixed/proxy/win_share": {
+      "value": 0.2694444444444446,
+      "num": 48.5,
+      "den": 180,
+      "se": 0.033636023669616356
+    },
+    "table-mixed/cautious/win_share": {
+      "value": 0.2527777777777778,
+      "num": 45.5,
+      "den": 180,
+      "se": 0.028426971298697843
+    },
+    "table-mixed/schemer/win_share": {
+      "value": 0.24444444444444452,
+      "num": 44,
+      "den": 180,
+      "se": 0.02896701011920055
+    },
+    "table-mixed/daring/win_share": {
+      "value": 0.2333333333333334,
+      "num": 42,
+      "den": 180,
+      "se": 0.03223228623924173
+    },
+    "table-daring/daring/moon_attempt": {
+      "value": 0.08878968253968253,
+      "num": 179,
+      "den": 2016,
+      "se": 0.005625818342120252
+    },
+    "table-daring/daring/moon_success": {
+      "value": 0.07262569832402234,
+      "num": 13,
+      "den": 179,
+      "se": 0.021267770899859584
+    },
+    "table-daring/daring/qs_dump_on_human": {
+      "value": 0.32631578947368417,
+      "num": 124,
+      "den": 380,
+      "se": 0.021167753422426397
+    },
+    "table-schemer/schemer/qs_dump_on_human": {
+      "value": 0.32792207792207784,
+      "num": 101,
+      "den": 308,
+      "se": 0.025786742005126324
+    },
+    "table-cautious/cautious/void_created": {
+      "value": 0.20495356037151702,
+      "num": 331,
+      "den": 1615,
+      "se": 0.010507264993738885
+    },
+    "table-schemer/schemer/void_created": {
+      "value": 0.6299019607843138,
+      "num": 1028,
+      "den": 1632,
+      "se": 0.011107399374710846
+    },
+    "table-daring/daring/void_created": {
+      "value": 0.8251928020565553,
+      "num": 1284,
+      "den": 1556,
+      "se": 0.01079512889590246
+    }
+  },
+  "separations": {
+    "mixed:cautious-over-schemer": {
+      "mean": 0.008333333333333321,
+      "se": 0.046101126593557654
+    },
+    "mixed:daring-over-schemer": {
+      "mean": -0.011111111111111098,
+      "se": 0.04897996994215728
+    },
+    "presets:schemer-table-easier-than-cautious": {
+      "mean": 0.15833333333333333,
+      "se": 0.06979759545607636
+    },
+    "presets:schemer-table-easier-than-daring": {
+      "mean": 0,
+      "se": 0.08233869695926183
+    },
+    "field:daring-over-schemer": {
+      "mean": 0.019444444444444417,
+      "se": 0.031216109473930748
+    },
+    "field:cautious-over-schemer": {
+      "mean": 0.02499999999999997,
+      "se": 0.03262548809321905
+    }
+  }
+}

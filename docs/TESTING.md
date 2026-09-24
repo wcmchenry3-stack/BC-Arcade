@@ -320,6 +320,161 @@ aggregate win-rate can't surface.
 
 ---
 
+### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
+
+All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
+`scripts/simulate-hearts.ts` is the CLI around it.
+
+- `harness.ts` — **duplicate-deal replay.** A _block_ replays one sequence
+  of deals once per line-up of a matchup. Hand _h_ of block _b_ is always
+  dealt from its own (seed, block, h) stream, whatever happened earlier, and
+  each seat's AI noise comes from its own (seed, block, hand, seat) stream,
+  so play never shifts the deals and one seat's noise never moves another's.
+  Seat 0 always holds the **human stand-in** (Schemer): the AI treats seat 0
+  as the human (Daring aims its passes and Q♠ dumps there, and `ai.ts` turns
+  that targeting off for an AI in seat 0), so AIs under test only ever sit
+  in seats 1–3.
+  - _Preset matchups_ are the tables the app deals (all-Cautious,
+    all-Schemer, all-Daring, mixed), with the AIs rotated across seats 1–3.
+  - The _field matchup_ is the duplicate-bridge comparison: one test seat
+    takes each persona in turn, in each of seats 1–3, against an
+    all-Schemer field on the same deals.
+- `metrics.ts` — **every metric is `numerator | denominator`**, a ratio of
+  two per-seat counters, and every report prints both counts. No metric can
+  be declared without its denominator (the type requires one):
+
+  | Metric             | Numerator \| denominator                                   |
+  | ------------------ | ---------------------------------------------------------- |
+  | `win_share`        | games won (ties split) \| games played                     |
+  | `points_per_hand`  | points taken (moon-adjusted) \| hands played               |
+  | `qs_taken`         | hands taking Q♠ \| hands played                            |
+  | `moon_attempt`     | hands the earlyMoon/midMoon trigger fired \| hands played  |
+  | `moon_success`     | moons shot in attempted hands \| hands attempted (paired)  |
+  | `moon_shot`        | moons shot \| hands played                                 |
+  | `qs_dump_on_human` | Q♠ dumps won by the human seat \| Q♠ dumps                 |
+  | `void_created`     | passes that emptied a suit \| passes that could have       |
+
+  Estimates are ratio estimators over blocks (Σ numerators ÷ Σ
+  denominators, delta-method SE), so games sharing deals are never counted
+  as independent. A rate whose denominator never occurred is reported as
+  `n/a`, never as 0.
+- `sprt.ts` — Wald sequential probability ratio tests on per-block series
+  (Gaussian, plug-in variance, as chess-engine CI does for game pairs).
+- `gate.ts` — the matchups, the checks, and the pre-registered hypotheses;
+  `baseline.json` holds the last-known-good values.
+
+**Two kinds of check**, all sequential:
+
+- **Regression checks** (14) hold a metric at its `baseline.json` value:
+  H0 "equals the baseline" against H1 "moved by δ" (3pp for win shares,
+  2–4pp for behaviour rates), both directions, each side at α/2.
+- **Separation checks** (6) are signed hypotheses written into `gate.ts`
+  _before_ a run, with the measurements behind them: "left − right ≈ +m"
+  (H0) against "no difference" (H1). A reversed or vanished separation fails;
+  a larger one passes. The report prints the difference with its CI.
+
+All 20 checks are one family, **Bonferroni-corrected**: each runs at
+α = 0.05/20 = 0.0025 with β = 0.05, so a behaviour-neutral change fails the
+gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
+of the time. CIs in the report use the same adjusted level (99.75%).
+
+**How a run proceeds.** Each group adds 200 blocks to every matchup, then
+evaluates all its checks, and stops as soon as every check has crossed an
+SPRT boundary (so a clear pass or fail stops early, unlike a fixed-N run).
+A check still undecided at the block cap is **truncated**: it takes the
+side its likelihood ratio favours, i.e. it fails exactly when the estimate
+is past the midpoint between H0 and H1. The report marks it
+`(truncated at the block cap)`.
+
+```bash
+npx tsx scripts/simulate-hearts.ts --gate                     # both groups
+npx tsx scripts/simulate-hearts.ts --gate --group field       # one CI group
+npx tsx scripts/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
+npx tsx scripts/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
+```
+
+**Reading a failure.**
+
+- `FAIL table-daring/daring/moon_success: 3.10% [2.2%, 4.0%] vs baseline
+  7.19% ± δ 2.50% — moons shot in attempted hands | hands attempted =
+  402/12967 — LLR low/high 6.21 / -40.3` — a regression check accepted H1:
+  the rate moved by about δ or more from the baseline, with the stated
+  error rates. The logged counts show what the rate was computed from.
+  Unlike a fixed-N band failure, this is a decision, not a borderline
+  sample: the SPRT only stops when the evidence reaches its boundary. If
+  the change was intended, update the baseline (below); if not, it is a
+  regression.
+- A **separation** `FAIL` means the pre-registered ordering reversed or
+  collapsed (e.g. the human now does as well at the Cautious table as at
+  the Schemer table). If a deliberate re-tune changed the ladder, update the
+  expectation in `gate.ts` in the same PR, citing the new measurement.
+- `(truncated at the block cap)` means the effect sits between H0 and H1 —
+  smaller than δ, but not clearly zero. Treat a truncated fail as "moved by
+  about half of δ": look at the CI, and rerun with `--max-blocks` raised or
+  another `--seed` before acting.
+- `denominator is 0 — the conditioning event never occurred` fails a check
+  outright: the behaviour the rate is conditioned on (e.g. Daring moon
+  attempts) disappeared.
+
+**Updating the baseline.** Only a PR that deliberately changes Hearts AI
+behaviour updates `baseline.json`, and it does so in the same PR as the
+change:
+
+```bash
+npx tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
+```
+
+This re-measures every regression metric at a fixed sample size on a seed
+disjoint from the gate's (`BASELINE_SEED`), and records the reason, date,
+logged counts and SEs. The PR description must say which metrics moved and
+why; reviewers read the JSON diff. Never regenerate the baseline to make an
+unexplained failure go away.
+
+**CI wiring and runtime budget.** `.github/workflows/hearts-sim-gate.yml`
+runs the two groups as parallel matrix jobs on every PR that touches
+`frontend/src/game/hearts/ai*.ts` (which covers `aiConsiderations.ts`,
+`aiWeights.ts` and `aiInfoSet.ts`), `engine.ts`, `types.ts`, the sim
+directory or the script, plus nightly and on demand. Measured on a 4-core
+dev box (~7 ms per game under `tsx`): RUNTIME_TABLE
+Worst case, with every check running to its cap (presets 8,000 blocks ×
+6 games, field 6,000 × 9), is about 6 min per group; the job timeout is
+45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
+variant — the smoke layer below only proves the pipeline runs.
+
+**Per-PR smoke layer.** `frontend/src/game/hearts/__tests__/ai.calibrate.test.ts`
+(run by `ci.yml` with the rest of Jest, ~5 s) runs every group at a 12-block
+cap: each check must evaluate, find its denominator and produce finite
+estimates. Its verdicts at that size mean nothing. Unit tests for the SPRT
+on synthetic sequences (including its error rates over 300 runs), the
+duplicate-deal invariants and the gate config are in
+`frontend/src/game/hearts/sim/__tests__/`.
+
+**What duplicate deals buy.** Measured on 1,500 blocks:
+
+| Comparison                                        | Variance vs unpaired blocks |
+| ------------------------------------------------- | --------------------------- |
+| Field: persona win-share difference               | 0.80–0.88×                  |
+| Field: persona points-per-hand difference         | 0.52–0.65×                  |
+| Presets: stand-in win share, table vs table       | 0.76–0.82×                  |
+| Mixed table: two personas at the _same_ table     | 1.26–1.29× (worse)          |
+
+Hearts diverges fast (a different pass changes every later trick), so the
+reduction is modest. Comparing personas that sit at the same table
+_increases_ variance, because they compete in the same zero-sum games —
+which is why persona-vs-persona separations come from the field matchup,
+not the mixed table.
+
+**What the gate measured (2026-09-24).** BASELINE_SUMMARY
+
+**Relation to #2204.** The v2 gate keeps both #2204 fixes: `moon_success`
+is the paired rate (completions in attempted hands ÷ attempted hands, never
+÷ a narrower trigger count — HRT-1), and the Cautious-vs-Schemer direction
+(HRT-3: the human does _better_ against Schemers) is a pre-registered
+separation. `sim/__tests__/metrics.test.ts` and `gate.test.ts` pin both.
+The old six fixed-N batches and their ✓/✗ threshold checks are retired;
+`--count` keeps #2204's meaning (games per matchup), and `--log-games`
+(used by `hearts-analysis`) is unchanged.
+
 ## Manual repros
 
 ### Hearts: tab-switch state preservation (#745)
