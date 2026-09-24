@@ -19,22 +19,30 @@ async function loadLossState(page: Page): Promise<void> {
     });
   });
   await page.getByRole("button", { name: "Play Daily Word" }).click();
-  await page.getByRole("heading", { name: "Daily Word" }).waitFor({ timeout: 10_000 });
+  await page
+    .getByRole("heading", { name: "Daily Word", exact: true })
+    .waitFor({ timeout: 10_000 });
 }
 
 test.describe("Daily Word — game over", () => {
   test("loss modal is visible after loading a lost state", async ({ page }) => {
     await loadLossState(page);
-    await expect(page.getByText("Better luck tomorrow")).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByTestId("daily-word-result-title").getByText("You Lose"),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("loss modal shows the answer word", async ({ page }) => {
     await loadLossState(page);
-    await expect(page.getByText(/The word was CRANE/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/The word was CRANE/i)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("loss modal shows next-word countdown", async ({ page }) => {
     await loadLossState(page);
-    await expect(page.getByText("Next word in")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Next word in \d{2}:\d{2}:\d{2}/)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

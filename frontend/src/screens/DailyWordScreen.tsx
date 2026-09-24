@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Share,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -38,6 +39,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import GameResultModal from "../components/shared/GameResultModal";
 import {
   initialState,
   setCurrentRowLetter,
@@ -124,10 +126,21 @@ function formatCountdown(ms: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-async function copyToClipboard(text: string): Promise<void> {
-  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-    await navigator.clipboard.writeText(text);
+/**
+ * Shares the result: the clipboard on web, the system share sheet on iOS and
+ * Android (#2514 — previously a silent no-op on native that still said
+ * "Copied!"). Resolves to "copied" only when text was actually copied.
+ */
+async function shareResult(text: string): Promise<"copied" | "shared" | "none"> {
+  if (Platform.OS === "web") {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return "copied";
+    }
+    return "none";
   }
+  await Share.share({ message: text });
+  return "shared";
 }
 
 // ---------------------------------------------------------------------------
@@ -417,223 +430,12 @@ const toastStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
-// Win modal
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  state,
-  countdown,
-  onClose,
-}: {
-  readonly state: DailyWordState;
-  readonly countdown: string;
-  readonly onClose: () => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-  const [copied, setCopied] = useState(false);
-
-  const guessCount = state.rows.filter((r) => r.submitted).length;
-
-  async function handleShare() {
-    const text = buildShareText(state, DEEP_LINK);
-    try {
-      await copyToClipboard(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
-    }
-  }
-
-  return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      accessibilityViewIsModal
-      onRequestClose={onClose}
-    >
-      <Pressable style={modalStyles.overlay} onPress={onClose}>
-        <Pressable onPress={() => {}}>
-          <View
-            style={[
-              modalStyles.card,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Pressable
-              style={modalStyles.closeBtn}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t("modal.close")}
-            >
-              <Text style={[modalStyles.closeBtnText, { color: colors.textMuted }]}>✕</Text>
-            </Pressable>
-            <Text style={[modalStyles.title, { color: colors.text }]} accessibilityRole="header">
-              {t("result.win.title")}
-            </Text>
-            <Text style={[modalStyles.body, { color: colors.textMuted }]}>
-              {t("result.win.guesses", { count: guessCount })}
-            </Text>
-            <Pressable
-              onPress={handleShare}
-              style={[modalStyles.primaryBtn, { backgroundColor: colors.accent }]}
-              accessibilityRole="button"
-              accessibilityLabel={t("result.win.share")}
-            >
-              <Text style={[modalStyles.primaryBtnText, { color: "#ffffff" }]}>
-                {copied ? t("result.win.copied") : t("result.win.share")}
-              </Text>
-            </Pressable>
-            <Text style={[modalStyles.countdown, { color: colors.textMuted }]}>
-              {t("result.win.countdown", { time: countdown })}
-            </Text>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Loss modal
-// ---------------------------------------------------------------------------
-
-function LossModal({
-  answer,
-  countdown,
-  onClose,
-}: {
-  readonly answer: string | null;
-  readonly countdown: string;
-  readonly onClose: () => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-
-  return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      accessibilityViewIsModal
-      onRequestClose={onClose}
-    >
-      <Pressable style={modalStyles.overlay} onPress={onClose}>
-        <Pressable onPress={() => {}}>
-          <View
-            style={[
-              modalStyles.card,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Pressable
-              style={modalStyles.closeBtn}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t("modal.close")}
-            >
-              <Text style={[modalStyles.closeBtnText, { color: colors.textMuted }]}>✕</Text>
-            </Pressable>
-            <Text style={[modalStyles.title, { color: colors.text }]} accessibilityRole="header">
-              {t("result.loss.title")}
-            </Text>
-            {answer !== null && (
-              <Text style={[modalStyles.body, { color: colors.text }]}>
-                {t("result.loss.answer", { answer })}
-              </Text>
-            )}
-            <Text style={[modalStyles.body, { color: colors.textMuted }]}>
-              {t("result.loss.countdown", { time: countdown })}
-            </Text>
-            <Text style={[modalStyles.nextWordLabel, { color: colors.textMuted }]}>
-              {"Next word in "}
-              <Text style={{ color: colors.text }}>{countdown}</Text>
-            </Text>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 28,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 340,
-    gap: 10,
-  },
-  title: {
-    fontFamily: typography.heading,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  body: {
-    fontFamily: typography.body,
-    fontSize: 15,
-    textAlign: "center",
-  },
-  primaryBtn: {
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginTop: 4,
-    alignItems: "center",
-    minWidth: 160,
-  },
-  primaryBtnText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  countdown: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  nextWordLabel: {
-    fontFamily: typography.body,
-    fontSize: 14,
-    textAlign: "center",
-  },
-  closeBtn: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  closeBtnText: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -651,6 +453,14 @@ export default function DailyWordScreen() {
   const [lossModalVisible, setLossModalVisible] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [countdown, setCountdown] = useState("");
+  // The next puzzle's release time, fixed when the result appears (#2514).
+  // msUntilMidnight() jumps to the following midnight once one passes, so a
+  // countdown recomputed from it would never reach zero.
+  const nextWordAtRef = useRef<number | null>(null);
+  const [nextWordReady, setNextWordReady] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // Play Again couldn't load the next puzzle (offline, server error).
+  const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
 
   // Dev panel (#1293) — all gated by __DEV__; Metro eliminates in production
@@ -689,33 +499,75 @@ export default function DailyWordScreen() {
   // Countdown timer
   // ---------------------------------------------------------------------------
 
-  const startCountdown = useCallback(() => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    const tick = () => setCountdown(formatCountdown(msUntilMidnight(tzOffset)));
-    tick();
-    countdownRef.current = setInterval(tick, 1000);
-  }, [tzOffset]);
+  const startCountdown = useCallback(
+    (untilMs?: number) => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      nextWordAtRef.current = untilMs ?? Date.now() + msUntilMidnight(tzOffset);
+      setNextWordReady(false);
+      const tick = () => {
+        const remaining = Math.max(0, (nextWordAtRef.current ?? 0) - Date.now());
+        setCountdown(formatCountdown(remaining));
+        if (remaining === 0) {
+          setNextWordReady(true);
+          if (countdownRef.current) clearInterval(countdownRef.current);
+        }
+      };
+      tick();
+      countdownRef.current = setInterval(tick, 1000);
+    },
+    [tzOffset]
+  );
 
-  const resetToToday = useCallback(async (): Promise<boolean> => {
-    try {
-      await clearState();
-      const todayMeta = await dailyWordApi.getToday(tzOffset, language);
-      // The old puzzle's session must close now: left open, the next guess would
-      // skip start() and be reported against the old puzzle_id.
-      if (syncGetGameId()) {
-        syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+  /**
+   * Loads today's puzzle in place of the current one. Fetches before clearing
+   * the saved game, so a failure leaves the finished result intact (#2553
+   * review). With `requireNewPuzzle`, a server still serving the current
+   * puzzle (device clock ahead of the server's) changes nothing: "same".
+   */
+  const resetToToday = useCallback(
+    async ({ requireNewPuzzle = false } = {}): Promise<"ok" | "same" | "failed"> => {
+      try {
+        const todayMeta = await dailyWordApi.getToday(tzOffset, language);
+        if (requireNewPuzzle && todayMeta.puzzle_id === stateRef.current?.puzzle_id) {
+          return "same";
+        }
+        await clearState();
+        // The old puzzle's session must close now: left open, the next guess would
+        // skip start() and be reported against the old puzzle_id.
+        if (syncGetGameId()) {
+          syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+        }
+        const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+        setState(fresh);
+        setAnswer(null);
+        setWinModalVisible(false);
+        setLossModalVisible(false);
+        setFlippingRowIndex(null);
+        setNextWordReady(false);
+        setCopied(false);
+        setPlayAgainFailed(false);
+        return "ok";
+      } catch {
+        return "failed";
       }
-      const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
-      setState(fresh);
-      setAnswer(null);
-      setWinModalVisible(false);
-      setLossModalVisible(false);
-      setFlippingRowIndex(null);
-      return true;
-    } catch {
-      return false;
+    },
+    [tzOffset, language, syncGetGameId, syncComplete]
+  );
+
+  /** How long to wait before retrying when the server hasn't rolled over yet. */
+  const NEXT_WORD_RETRY_MS = 60_000;
+
+  const handlePlayAgain = useCallback(async () => {
+    setPlayAgainFailed(false);
+    const result = await resetToToday({ requireNewPuzzle: true });
+    if (!mountedRef.current) return;
+    if (result === "same") {
+      // The server hasn't moved on yet: count down briefly and try again.
+      startCountdown(Date.now() + NEXT_WORD_RETRY_MS);
+    } else if (result === "failed") {
+      setPlayAgainFailed(true);
     }
-  }, [tzOffset, language, syncGetGameId, syncComplete]);
+  }, [resetToToday, startCountdown]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -946,7 +798,7 @@ export default function DailyWordScreen() {
         if (err.message === "not_a_word") {
           showToast(t("error.notAWord"));
         } else if (err.message === "stale_puzzle_id") {
-          const recovered = await resetToToday();
+          const recovered = (await resetToToday()) === "ok";
           showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
         } else if (err.message === "wrong_guess_length") {
           showToast(t("error.wrongLength"));
@@ -991,6 +843,22 @@ export default function DailyWordScreen() {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  const guessCount = state ? state.rows.filter((r) => r.submitted).length : 0;
+
+  async function handleShare() {
+    if (!state) return;
+    try {
+      const outcome = await shareResult(buildShareText(state, DEEP_LINK));
+      if (outcome !== "copied") return;
+      setCopied(true);
+      setTimeout(() => {
+        if (mountedRef.current) setCopied(false);
+      }, 2000);
+    } catch {
+      // Share dismissed or clipboard unavailable — nothing to report.
+    }
+  }
 
   if (loading) {
     return (
@@ -1053,17 +921,42 @@ export default function DailyWordScreen() {
         )}
       </View>
 
-      {/* Win modal */}
-      {state !== null && winModalVisible && (
-        <WinModal state={state} countdown={countdown} onClose={() => setWinModalVisible(false)} />
-      )}
-
-      {/* Loss modal */}
-      {lossModalVisible && (
-        <LossModal
-          answer={answer}
-          countdown={countdown}
-          onClose={() => setLossModalVisible(false)}
+      {/* End-of-game result card (#2514) */}
+      {state !== null && (
+        <GameResultModal
+          visible={winModalVisible || lossModalVisible}
+          outcome={state.won ? "win" : "loss"}
+          eyebrow={t("game.title")}
+          subtitle={
+            playAgainFailed
+              ? t("error.couldNotLoad")
+              : state.won
+                ? tResult("subtitle.solvedIn", { count: guessCount })
+                : answer !== null
+                  ? t("result.loss.answer", { answer })
+                  : undefined
+          }
+          hero={{
+            kind: "score",
+            label: tResult("stat.guesses"),
+            value: state.won ? `${guessCount}/6` : "X/6",
+          }}
+          primaryAction={
+            nextWordReady
+              ? { label: tResult("action.playAgain"), onPress: () => void handlePlayAgain() }
+              : {
+                  label: t("result.countdown", { time: countdown }),
+                  onPress: () => {},
+                  disabled: true,
+                }
+          }
+          secondaryAction={{
+            label: copied ? t("result.copied") : t("result.share"),
+            accessibilityLabel: t("result.share"),
+            onPress: () => void handleShare(),
+          }}
+          onHome={() => navigation.popToTop()}
+          testID="daily-word-result"
         />
       )}
 

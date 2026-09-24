@@ -111,14 +111,19 @@ function outcomeColors(colors: Colors, outcome: GameOutcome) {
   }
 }
 
+/** Best-effort: a haptic that fails (sync or async) must never break the card. */
 function fireHaptic(outcome: GameOutcome) {
-  const run =
-    outcome === "win"
-      ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      : outcome === "loss"
-        ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  run.catch(() => undefined);
+  try {
+    const run =
+      outcome === "win"
+        ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        : outcome === "loss"
+          ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+          : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    run?.catch(() => undefined);
+  } catch {
+    // No haptics available (or a partial module): the card still shows.
+  }
 }
 
 function formatValue(value: number | string): string {

@@ -37,5 +37,8 @@
   "stat.upper": "Upper",
   "stat.lower": "Lower",
   "stat.bonus": "Bonus",
-  "subtitle.noMoves": "No more moves"
+  "subtitle.noMoves": "No more moves",
+  "stat.guesses": "Guesses",
+  "subtitle.solvedIn_one": "Solved in {{count}} guess",
+  "subtitle.solvedIn_other": "Solved in {{count}} guesses"
 }

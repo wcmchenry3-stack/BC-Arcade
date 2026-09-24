@@ -14,25 +14,33 @@ test.describe("Daily Word — gameplay", () => {
   });
 
   test("typing a letter populates the first tile", async ({ page }) => {
-    await page.getByRole("button", { name: "A" }).click();
+    await page.getByRole("button", { name: "A", exact: true }).click();
     // The tile should show the letter "A" (screen uppercases letters)
-    await expect(page.getByTestId("tile-0-0")).toContainText("A", { timeout: 3_000 });
+    await expect(page.getByTestId("tile-0-0")).toContainText("A", {
+      timeout: 3_000,
+    });
   });
 
   test("Delete removes the last typed letter", async ({ page }) => {
-    await page.getByRole("button", { name: "A" }).click();
-    await expect(page.getByTestId("tile-0-0")).toContainText("A", { timeout: 3_000 });
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await expect(page.getByTestId("tile-0-0")).toContainText("A", {
+      timeout: 3_000,
+    });
 
-    await page.getByRole("button", { name: "Delete" }).click();
-    await expect(page.getByTestId("tile-0-0")).toContainText("", { timeout: 3_000 });
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByTestId("tile-0-0")).toContainText("", {
+      timeout: 3_000,
+    });
   });
 
   test("Enter with fewer than word_length letters shows Not enough letters toast", async ({
     page,
   }) => {
-    await page.getByRole("button", { name: "A" }).click();
-    await page.getByRole("button", { name: "Enter" }).click();
-    await expect(page.getByText("Not enough letters")).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
+    await expect(page.getByText("Not enough letters")).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   test("submitting a valid guess renders colored tiles", async ({ page }) => {
@@ -55,9 +63,9 @@ test.describe("Daily Word — gameplay", () => {
 
     // Type CRANE
     for (const letter of ["C", "R", "A", "N", "E"]) {
-      await page.getByRole("button", { name: letter }).click();
+      await page.getByRole("button", { name: letter, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Enter" }).click();
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
 
     // Wait for the flip animation to complete and tiles to show colored state
     await expect(page.getByTestId("tile-0-0")).toBeVisible({ timeout: 5_000 });
@@ -65,11 +73,13 @@ test.describe("Daily Word — gameplay", () => {
     await expect(page.getByTestId("tile-0-0")).toHaveAttribute(
       "aria-label",
       /correct/i,
-      { timeout: 3_000 }
+      { timeout: 3_000 },
     );
   });
 
-  test("submitting an invalid word shows Not in word list toast", async ({ page }) => {
+  test("submitting an invalid word shows Not in word list toast", async ({
+    page,
+  }) => {
     // Override guess route to return 422 not_a_word
     await page.route("**/daily-word/guess", async (route) => {
       await route.fulfill({
@@ -80,9 +90,11 @@ test.describe("Daily Word — gameplay", () => {
     });
 
     for (const letter of ["Z", "Z", "Z", "Z", "Z"]) {
-      await page.getByRole("button", { name: letter }).click();
+      await page.getByRole("button", { name: letter, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Enter" }).click();
-    await expect(page.getByText("Not in word list")).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
+    await expect(page.getByText("Not in word list")).toBeVisible({
+      timeout: 3_000,
+    });
   });
 });
