@@ -394,10 +394,28 @@ export interface RunOptions {
 }
 
 /**
+ * The results after one more look: a check that has already reached a
+ * decision keeps it (a sequential test stops at its boundary — testing it
+ * again at later looks would inflate its error rates), and only undecided
+ * checks are evaluated again.
+ */
+export function nextResults(
+  checks: readonly GateCheck[],
+  previous: readonly CheckResult[],
+  evaluate: (check: GateCheck) => CheckResult
+): CheckResult[] {
+  return checks.map((check, i) => {
+    const prior = previous[i];
+    return prior && prior.status !== "continue" ? prior : evaluate(check);
+  });
+}
+
+/**
  * Run one group sequentially: add `lookEvery` blocks to each matchup, then
- * evaluate every check of the group; stop once none is still undecided, or
- * at the block cap (truncating the rest). All matchups use the same seed, so
- * block b of every matchup replays the same deals.
+ * evaluate every still-undecided check of the group; stop once all have
+ * decided, or at the block cap (truncating the rest). Each check's decision
+ * is final when reached. All matchups use the same seed, so block b of
+ * every matchup replays the same deals.
  */
 export function runGroup(groupId: string, options: RunOptions = {}): GroupRun {
   const group = GATE_GROUPS[groupId];
@@ -407,6 +425,10 @@ export function runGroup(groupId: string, options: RunOptions = {}): GroupRun {
   const maxBlocks = options.maxBlocks ?? group.maxBlocks;
   const minBlocks = Math.min(options.minBlocks ?? group.minBlocks, maxBlocks);
   const lookEvery = options.lookEvery ?? group.lookEvery;
+  // A cap below 1 would run no blocks and report an empty, passing gate.
+  if (!(maxBlocks >= 1) || !(lookEvery >= 1)) {
+    throw new RangeError(`runGroup: maxBlocks and lookEvery must be >= 1`);
+  }
   const checks = GATE_CHECKS.filter((c) => groupOf(c) === groupId);
 
   const runs: Record<string, BlockRecord[]> = {};
@@ -420,7 +442,7 @@ export function runGroup(groupId: string, options: RunOptions = {}): GroupRun {
     blocks += step;
     if (blocks < minBlocks) continue;
     const final = blocks >= maxBlocks;
-    results = checks.map((c) => evaluateCheck(c, runs, baseline, final));
+    results = nextResults(checks, results, (c) => evaluateCheck(c, runs, baseline, final));
     options.onLook?.(blocks, results);
     if (results.every((r) => r.status !== "continue")) break;
   }
@@ -489,7 +511,7 @@ export function formatCheck(r: CheckResult): string {
   const e = r.estimate;
   const ci = `${fmt(e.mean, pct)} [${fmt(e.ciLow, pct)}, ${fmt(e.ciHigh, pct)}]`;
   const verdict = r.status === "pass" ? "PASS" : r.status === "fail" ? "FAIL" : "UNDECIDED";
-  const trunc = r.truncated ? " (truncated at the block cap)" : "";
+  const trunc = r.truncated ? " (truncated at the block cap)" : ` (decided at ${e.blocks} blocks)`;
   const llr = r.sprt.map((s) => s.llr.toFixed(2)).join(" / ");
   if (r.check.kind === "regression") {
     const m = METRICS[r.check.ref.metric];

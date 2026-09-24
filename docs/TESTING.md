@@ -380,12 +380,15 @@ gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
 of the time. CIs in the report use the same adjusted level (99.74%).
 
 **How a run proceeds.** Each group adds 200 blocks to every matchup, then
-evaluates all its checks, and stops as soon as every check has crossed an
-SPRT boundary (so a clear pass or fail stops early, unlike a fixed-N run).
-A check still undecided at the block cap is **truncated**: it takes the
-side its likelihood ratio favours, i.e. it fails exactly when the estimate
-is past the midpoint between H0 and H1. The report marks it
-`(truncated at the block cap)`.
+evaluates its undecided checks. A check's decision is final the first time
+it crosses an SPRT boundary: it is not tested again at later looks (doing
+so would inflate both error rates), and the report says
+`(decided at N blocks)`. The group stops once every check has decided, so a
+clear pass or fail stops early, unlike a fixed-N run. A check still
+undecided at the block cap is **truncated**: it takes the side its
+likelihood ratio favours, i.e. it fails exactly when the estimate is past
+the midpoint between H0 and H1. The report marks it
+`(truncated at the block cap)`. `--max-blocks` must be at least 1.
 
 ```bash
 npx tsx scripts/simulate-hearts.ts --gate                     # both groups

@@ -15,8 +15,12 @@ import {
   evaluateCheck,
   formatCheck,
   groupOf,
+  nextResults,
   refKey,
+  runGroup,
   type Baseline,
+  type CheckResult,
+  type GateCheck,
   type RegressionCheck,
   type Runs,
   type SeparationCheck,
@@ -220,5 +224,40 @@ describe("evaluateCheck — separation", () => {
     const r = evaluateCheck(separation, pairRuns(0.3, 0.25, 2000, 18), baseline, true);
     const half = r.estimate.ciHigh - r.estimate.mean;
     expect(half / r.estimate.se).toBeGreaterThan(2.5); // z at 1 − 0.05/19 two-sided ≈ 3.01
+  });
+});
+
+describe("sequential looks", () => {
+  const checks = SEPARATION_CHECKS.slice(0, 3);
+  const result = (check: GateCheck, status: CheckResult["status"], look: number): CheckResult => ({
+    check,
+    status,
+    truncated: false,
+    estimate: { mean: look, se: 0, ciLow: look, ciHigh: look, blocks: look },
+    target: 0,
+    sprt: [],
+  });
+
+  it("keeps a check's first decision and re-tests only undecided checks", () => {
+    const look1 = nextResults(checks, [], (c) =>
+      result(c, c === checks[0] ? "pass" : c === checks[1] ? "fail" : "continue", 1)
+    );
+    const evaluated: GateCheck[] = [];
+    // At the next look every check would now come out the other way.
+    const look2 = nextResults(checks, look1, (c) => {
+      evaluated.push(c);
+      return result(c, "fail", 2);
+    });
+    expect(evaluated).toEqual([checks[2]]);
+    expect(look2.map((r) => r.status)).toEqual(["pass", "fail", "fail"]);
+    // The frozen results are the ones from the look that decided them.
+    expect(look2[0]!.estimate.blocks).toBe(1);
+    expect(look2[1]!.estimate.blocks).toBe(1);
+  });
+
+  it("refuses a block cap or look size below 1 (it would pass with no checks run)", () => {
+    expect(() => runGroup("field", { maxBlocks: 0 })).toThrow(RangeError);
+    expect(() => runGroup("field", { maxBlocks: -5 })).toThrow(RangeError);
+    expect(() => runGroup("field", { maxBlocks: 10, lookEvery: 0 })).toThrow(RangeError);
   });
 });

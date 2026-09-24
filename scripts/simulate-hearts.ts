@@ -296,6 +296,12 @@ if (argv.includes("--gate")) {
   }
   const groups = only ? [only] : Object.keys(GATE_GROUPS);
   const maxBlocks = parseCount(argv, "--max-blocks") ?? undefined;
+  if (
+    argv.includes("--max-blocks") &&
+    !(maxBlocks !== undefined && maxBlocks >= 1)
+  ) {
+    fail("--max-blocks must be a positive integer");
+  }
   const runs: GroupRun[] = [];
   for (const group of groups) {
     const t0 = Date.now();
