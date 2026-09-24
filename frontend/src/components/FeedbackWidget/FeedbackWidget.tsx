@@ -78,12 +78,18 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
       accessibilityViewIsModal
     >
       {/* #2482 — the description field sits at the bottom of the sheet, so
-          without this the keyboard covers what the player is typing. "padding"
-          on iOS; Android resizes the window itself, so "height" is a no-op
-          there and the default adjustResize handles it. */}
+          without this the keyboard covers what the player is typing.
+
+          Android needs a behavior too, despite `adjustResize` on MainActivity:
+          the app is edge-to-edge (`edgeToEdgeEnabled=true`, mandatory on SDK
+          57 / RN 0.86), and under `setDecorFitsSystemWindows(false)`
+          adjustResize no longer resizes the window — and a RN Modal is a
+          separate Dialog window that would not inherit the Activity's IME
+          insets in any case. Both platforms are unverified on a device; see
+          the checklist on #2482. */}
       <KeyboardAvoidingView
         style={s.overlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={s.sheet}>
           {/* Header */}
@@ -101,11 +107,16 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
             </Pressable>
           </View>
 
-          <ScrollView
-            style={s.body}
-            contentContainerStyle={s.bodyContent}
-            keyboardShouldPersistTaps="handled"
-          >
+          {/* #2482 — deliberately no `style` here. ScrollView already composes
+              its own `baseVertical` ({ flexGrow: 1, flexShrink: 1 }) underneath
+              any style prop, so the only thing the old `flex: 1` added was
+              `flexBasis: 0` — and a child with a zero flex basis inside a
+              parent whose main size is indefinite (this sheet is sized by its
+              content, capped at 90%) has a hypothetical main size of zero and
+              no free space to grow into. It measured to nothing and the sheet
+              collapsed to its header: the reported sliver. Leaving flexBasis
+              at `auto` lets it measure its content. Do not re-add `flex: 1`. */}
+          <ScrollView contentContainerStyle={s.bodyContent} keyboardShouldPersistTaps="handled">
             {status === "success" ? (
               /* ── Success state ── */
               <View style={s.successContainer} accessibilityLiveRegion="polite">
@@ -285,9 +296,6 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       maxHeight: "90%",
-      // #2482 — the sheet has no fixed height, so it must be allowed to shrink
-      // inside the 90% cap rather than being sized purely by its content.
-      flexShrink: 1,
     },
     header: {
       flexDirection: "row",
@@ -310,15 +318,6 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     closeBtnText: {
       fontSize: 16,
       color: colors.textMuted,
-    },
-    body: {
-      // #2482 — NOT `flex: 1`. The sheet's own height is content-derived, and a
-      // flex-grow child inside a container with an indefinite main size has no
-      // remaining space to grow into: on iOS the ScrollView measured to nothing
-      // and the sheet collapsed to its header, which is the reported "only a
-      // sliver peeking out". flexShrink lets it take its content height and
-      // give way once the sheet hits maxHeight, which is when scrolling starts.
-      flexShrink: 1,
     },
     bodyContent: {
       padding: 20,
