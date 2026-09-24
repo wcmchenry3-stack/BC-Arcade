@@ -64,7 +64,7 @@ export const DARING_PLAY_WEIGHTS: PlayWeights = {
 };
 
 // Daring moon-attempt mode: rateMoonAttemptProgress dominates (100.0) so the
-// old earlyMoon/midMoon activation threshold is effectively hardcoded while
+// moon-attempt trigger (detectMoonAttempt → moonHand.ts, #2234) is effectively hardcoded while
 // card selection within the mode remains utility-driven (calibration-drift guard).
 export const DARING_MOON_PLAY_WEIGHTS: PlayWeights = {
   minimizePoints: 0.05,

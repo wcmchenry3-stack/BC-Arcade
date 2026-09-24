@@ -10,6 +10,7 @@ import { getValidPlays, getRng } from "./engine";
 import { passOffset } from "./types";
 import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
+import { MOON_HAND_RULES, assessMoonHand } from "./moonHand";
 import {
   rateMinimizeImmediatePoints,
   rateQueenSpadesRisk,
@@ -80,9 +81,9 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
  * Utility-AI pass selection. Scores every card by a weighted sum of
  * ratePassingQuality + rateSuitVoidingUtility and greedily picks the top 3.
  *
- * Daring moon-viable override (heartsInHand ≥ 6 + Q♠): keeps the old
- * threshold exactly and selects by inverse-rank utility (lowest non-hearts
- * pass first), which is equivalent to the rule-based moon-viable logic.
+ * Daring moon-viable override (a hand that rates viable in moonHand.ts,
+ * #2234): passes the lowest cards it doesn't need for control, keeping
+ * hearts, Q♠, aces, K♠ and the strong side suit.
  *
  * Noise (Cautious 35 %, Schemer 10 %, Daring 0 %): applied once per decision
  * before picking — a noise hit draws 3 random valid cards instead of top-3.
@@ -112,39 +113,42 @@ export function selectCardsToPassUtility(
   }
 
   // ── Moon-viable override (Daring only) ───────────────────────────────────
-  // Threshold mirrors selectCardsToPassHard: 6+ hearts + Q♠ → keep both,
-  // pass lowest eligible non-hearts for trick control (#1637, #1647).
+  // A hand that rates viable for a moon (moonHand.ts, #2234) passes away the
+  // lowest cards it doesn't need and keeps its control: hearts, Q♠, aces,
+  // K♠ (with A♠, spade control without Q♠), and the whole strong side suit.
+  // Low hearts fill the pass only when nothing else is left. If what it
+  // would keep no longer rates viable, it passes normally instead. When the
+  // pass goes to the human, only a strong hand keeps Q♠; otherwise the normal
+  // targeting pass below applies (#1637, #1647).
   if (difficulty === "daring") {
-    const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
-    const hasQSpades = hand.some(isQueenOfSpades);
+    const moon = assessMoonHand(hand);
     const targetingHuman = passingToSeat0(playerIndex, direction);
-    const moonViable = heartsInHand >= 6 && hasQSpades;
-    const strongMoon = heartsInHand >= 7 && hasQSpades;
+    const strongMoon = moon.viable && moon.topHearts >= MOON_HAND_RULES.strongPassTopHearts;
 
-    if (moonViable && (!targetingHuman || strongMoon)) {
-      // moonPassScore: 1.0 for rank-2, 0.0 for Ace. Sorted descending so lowest-rank
-      // cards appear first — matches the rule-based "pass lowest non-hearts" (#1647).
-      const moonPassScore = (c: Card): number => 1.0 - (aceHigh(c.rank) - 2) / 12;
-
+    if (moon.viable && (!targetingHuman || strongMoon)) {
+      const isControl = (c: Card): boolean =>
+        c.suit === "hearts" ||
+        isQueenOfSpades(c) ||
+        c.rank === 1 ||
+        (c.suit === "spades" && c.rank === 13) ||
+        c.suit === moon.strongSuit;
       // `rank >= 3 && rank <= 5` combined with the 2♣ exclusion above is equivalent
       // to the rule-based `rank > 1 && rank < 6` filter (clubs 2–5 excluded total).
       const candidates = hand
         .filter(
           (c) =>
-            c.suit !== "hearts" &&
-            !isQueenOfSpades(c) &&
+            !isControl(c) &&
             !(c.suit === "clubs" && c.rank === 2) &&
             !(c.suit === "clubs" && c.rank >= 3 && c.rank <= 5)
         )
-        .sort((a, b) => moonPassScore(b) - moonPassScore(a));
+        .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank)); // lowest first (#1647)
 
       const selected = candidates.slice(0, 3);
 
       // Last resort: lowest hearts fill any remaining slots.
       if (selected.length < 3) {
-        const selectedKeys = new Set(selected.map((c) => `${c.suit}:${c.rank}`));
         const lowestHearts = hand
-          .filter((c) => c.suit === "hearts" && !selectedKeys.has(`${c.suit}:${c.rank}`))
+          .filter((c) => c.suit === "hearts")
           .sort((a, b) => aceHigh(a.rank) - aceHigh(b.rank));
         for (const c of lowestHearts) {
           if (selected.length >= 3) break;
@@ -152,7 +156,10 @@ export function selectCardsToPassUtility(
         }
       }
 
-      return selected.slice(0, 3);
+      const kept = hand.filter(
+        (c) => !selected.some((p) => p.suit === c.suit && p.rank === c.rank)
+      );
+      if (selected.length === 3 && assessMoonHand(kept).viable) return selected;
     }
   }
 
@@ -186,20 +193,23 @@ export function selectCardsToPassUtility(
  * Utility-AI play selection. Scores every legal card by a weighted sum of
  * the four play considerations and returns the argmax (with optional noise).
  *
- * Moon-attempt activation: preserves the exact earlyMoon / midMoon thresholds
- * from the rule-based Daring play logic — when either fires, DARING_MOON_PLAY_WEIGHTS
- * (moonProgress: 100.0) dominates, hardcoding moon behavior at the activation
- * boundary while keeping card selection utility-driven (calibration-drift guard).
+ * Moon-attempt activation: when detectMoonAttempt fires (a hand-quality
+ * check, moonHand.ts — #2234), DARING_MOON_PLAY_WEIGHTS (moonProgress: 100.0)
+ * dominates, hardcoding moon behavior at the activation boundary while
+ * keeping card selection utility-driven (calibration-drift guard).
  *
  * Noise: Cautious 35 %, Schemer 10 %, Daring 0 % (seeded RNG via getRng()).
  */
 /**
- * Returns true when `playerIndex` is in an active moon attempt this trick,
- * per the Daring earlyMoon/midMoon thresholds (exact thresholds carried over
- * from the legacy Hard AI). Exported so simulation/calibration tooling
- * (the sim gate harness, sim/harness.ts) can instrument real
- * trigger activations instead of re-implementing — and drifting from —
- * these thresholds (#2204).
+ * Returns true when `playerIndex` is in an active moon attempt this trick.
+ * Daring only. A moon is possible only while this player holds every point
+ * taken so far; within that, the hand must rate viable (moonHand.ts: top
+ * hearts and spade control, plus — on the full opening hand — a strong side
+ * suit and at most one weak suit, #2234),
+ * or the player must already be committed (`commitPoints`: it has captured
+ * enough points that shooting is the way to recover them). Exported so the
+ * sim gate harness (sim/harness.ts) instruments the real trigger instead of
+ * re-implementing it (#2204).
  */
 export function detectMoonAttempt(
   hand: Card[],
@@ -208,21 +218,14 @@ export function detectMoonAttempt(
   difficulty: AiPersona
 ): boolean {
   if (difficulty !== "daring") return false;
-  const heartsInHand = hand.filter((c) => c.suit === "hearts").length;
-  const heartsWon = (state.wonCards[playerIndex] ?? []).filter((c) => c.suit === "hearts").length;
-  const totalHearts = heartsInHand + heartsWon;
-  const myHasQ =
-    hand.some(isQueenOfSpades) || (state.wonCards[playerIndex] ?? []).some(isQueenOfSpades);
   const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
   const myPoints = state.handScores[playerIndex] ?? 0;
-  // earlyMoon: 7+ hearts + Q♠ at trick start (hand.length ≥ 8)
-  const earlyMoon = heartsInHand >= 7 && myHasQ && heartsWon === 0 && hand.length >= 8;
-  // midMoon: 6+ hearts total + Q♠ + we hold all points taken so far.
-  // NOTE: fires trivially when totalPointsTaken === 0 — myPoints(0) === 0 always.
-  // This is intentional (matching the legacy Hard AI): a player with 6+ hearts + Q♠
-  // should play moon-attempt mode from trick 1, even before earlyMoon's 7+ threshold.
-  const midMoon = totalHearts >= 6 && myHasQ && myPoints === totalPointsTaken && hand.length >= 5;
-  return earlyMoon || midMoon;
+  if (myPoints !== totalPointsTaken) return false; // someone else has points
+  if (MOON_HAND_RULES.commitPoints > 0 && myPoints >= MOON_HAND_RULES.commitPoints) return true;
+  // Side-suit shape only counts on the full hand (before this player's first
+  // card): it changes with every card played. See MOON_HAND_RULES.
+  const fullHand = hand.length === 13;
+  return assessMoonHand(hand, state.wonCards[playerIndex] ?? [], fullHand).viable;
 }
 
 export function selectCardToPlayUtility(
@@ -237,7 +240,7 @@ export function selectCardToPlayUtility(
 
   const infoSet = buildHeartsInfoSet(hand, trick, state, playerIndex);
 
-  // ── Moon-attempt detection (exact thresholds from the legacy Hard AI) ──
+  // ── Moon-attempt detection (moonHand.ts, #2234) ──
   const isMoonAttempt = detectMoonAttempt(hand, state, playerIndex, difficulty);
 
   // ── Endgame detection (Daring only) ──────────────────────────────────────

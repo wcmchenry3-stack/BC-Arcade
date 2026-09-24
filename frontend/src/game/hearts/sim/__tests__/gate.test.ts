@@ -88,19 +88,9 @@ describe("gate definition", () => {
       expect(holds([m, "daring"], [m, "schemer"])).toBe(true);
       expect(holds([m, "schemer"], [m, "cautious"])).toBe(true);
     }
-    // The human wins more at the Cautious table than at the Schemer table.
+    // The human wins most at the Cautious table and least at the Daring table.
     expect(holds(["table-cautious", "proxy"], ["table-schemer", "proxy"])).toBe(true);
-  });
-
-  it("measured the human doing worse at the Daring table than the Schemer table", () => {
-    // Not a gate check (+1.5pp is too small for an SPRT within the block cap;
-    // see SEPARATION_CHECKS in gate.ts). This only guards the checked-in
-    // baseline: re-measuring it after a change that inverts the top of the
-    // ladder fails here.
-    const human = (table: string) => BASELINE.metrics[`${table}/proxy/win_share`]!;
-    const gap = human("table-schemer").value - human("table-daring").value;
-    const se = Math.hypot(human("table-schemer").se, human("table-daring").se);
-    expect(gap / se).toBeGreaterThan(2);
+    expect(holds(["table-schemer", "proxy"], ["table-daring", "proxy"])).toBe(true);
   });
 
   it("gates the paired moon success rate (HRT-1)", () => {

@@ -52,7 +52,7 @@ export const METRICS = {
     id: "moon_attempt",
     numerator: "moonAttempts",
     denominator: "handsPlayed",
-    description: "hands the earlyMoon/midMoon trigger fired | hands played",
+    description: "hands the moon-attempt trigger fired | hands played",
     percent: true,
   },
   moon_success: {
