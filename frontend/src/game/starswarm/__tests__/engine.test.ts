@@ -4214,6 +4214,95 @@ describe("In-run ship upgrades (#2488)", () => {
     expect(kinds(a)).toEqual([]);
   });
 
+  it("one beam costs at most one plate: the grace covers the rest of the sweep", () => {
+    let s = withPlayer(quiet(), { hull: 2, x: CANVAS_W / 2 });
+    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === c.id ? { ...e, beamPhase: "fire" as const, beamTimer: BEAM_FIRE_MS } : e
+      ),
+    };
+    const inBeam: StarSwarmInput = { playerX: c.x, fire: false };
+    for (let t = 0; t < BEAM_FIRE_MS + 200; t += 16) s = tick(s, 16, inBeam);
+    expect(s.player.hull).toBe(1);
+    expect(s.player.lives).toBe(3);
+  });
+
+  it("a rock that shatters on the ship never pays salvage", () => {
+    for (let i = 0; i < 30; i++) {
+      const base = quiet();
+      seedRng(Math.imul(9000 + i, 2654435761) >>> 0);
+      const rock: Asteroid = {
+        id: nextId++,
+        kind: "large",
+        x: base.player.x,
+        y: base.player.y,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS.large.radius,
+        hp: ASTEROID_STATS.large.hp,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+      };
+      const s = tick({ ...base, asteroids: [rock] }, 16, ASIDE);
+      expect(s.asteroids).toHaveLength(0); // shattered on the hull
+      expect(s.powerUps.some((p) => p.type === "salvage")).toBe(false);
+    }
+  });
+
+  it("the Carrier drops plating when a bomb kills it — pickup and dev-panel paths", () => {
+    const exposedAtOneHp = (s: StarSwarmState) => ({
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.tier === "Boss"
+          ? { ...e, isAlive: false, hp: 0 }
+          : e.tier === "Carrier"
+            ? { ...e, hp: 1 }
+            : e
+      ),
+    });
+    let s = exposedAtOneHp(quiet());
+    s = tick({ ...s, powerUps: [pickupOn(s, "bomb")] }, 16, ASIDE);
+    expect(s.enemies.find((e) => e.tier === "Carrier")!.isAlive).toBe(false);
+    expect(s.powerUps.some((p) => p.type === "hull")).toBe(true);
+
+    const dev = applyPowerUp(exposedAtOneHp(quiet()), "bomb");
+    expect(dev.enemies.find((e) => e.tier === "Carrier")!.isAlive).toBe(false);
+    expect(dev.powerUps.some((p) => p.type === "hull")).toBe(true);
+  });
+
+  it("a falling salvage crate does not block the next power-up drop", () => {
+    let s = quiet();
+    const crate = { ...pickupOn(s, "salvage"), x: 300, y: 100 }; // falling, nowhere near the ship
+    const target = s.enemies.find(
+      (e) => e.isAlive && e.tier === "Grunt" && e.phase === "Formation"
+    )!;
+    s = {
+      ...s,
+      powerUps: [crate],
+      killsSinceLastDrop: s.dropJitterTarget - 1,
+      playerBullets: [
+        {
+          id: nextId++,
+          x: target.x,
+          y: target.y,
+          vx: 0,
+          vy: 0,
+          owner: "player",
+          width: 24,
+          height: 24,
+          damage: 10,
+        },
+      ],
+    };
+    s = tick(s, 16, ASIDE);
+    expect(s.powerUps.some((p) => p.id === crate.id)).toBe(true);
+    expect(s.powerUps.some((p) => p.type !== "salvage" && p.type !== "hull")).toBe(true);
+  });
+
   it("the ladders survive a wave clear but reset on a new game", () => {
     let s = withPlayer(quiet(), { guns: 3, hull: 2 });
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };

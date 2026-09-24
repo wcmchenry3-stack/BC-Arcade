@@ -822,7 +822,9 @@ function settleRocks(
       continue;
     }
     explosions.push(spawnExplosion(a.x, a.y));
-    if (a.kind === "large" && rng() < SALVAGE_DROP_CHANCE) {
+    // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
+    // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
+    if (a.kind === "large" && !a.shattered && rng() < SALVAGE_DROP_CHANCE) {
       drops.push(makePickup("salvage", a.x, a.y, canvasH));
     }
     if (a.kind === "large" && !a.shattered) {
@@ -2414,14 +2416,18 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   }
 
   // ── Power-up drop check (Playing only, max 1 on screen) ────────────────────
+  // #2488: salvage crates and plating are upgrade pickups, not power-ups — they don't hold
+  // the slot (#2540 review), or frequent rock salvage would starve shields and bombs.
+  const isPowerUpDrop = (p: PowerUp) => p.type !== "salvage" && p.type !== "hull";
   if (
     state.phase === "Playing" &&
     killsSinceLastDrop >= dropJitterTarget &&
-    powerUps.length === 0
+    !powerUps.some(isPowerUpDrop)
   ) {
     // #1032: X uses Math.random() — cosmetic, non-deterministic
     const spawnX = POWERUP_W / 2 + Math.random() * (state.canvasW - POWERUP_W);
     powerUps = [
+      ...powerUps, // #2488: keep any upgrade pickups already falling
       {
         id: nextId(),
         type: pickPowerUpType(state.player.lives),
@@ -2476,6 +2482,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         const newHp = e.hp - 1;
         if (newHp <= 0) {
           newExplosions.push(spawnExplosion(e.x, e.y));
+          // #2488: the Carrier drops plating however it dies
+          if (e.tier === "Carrier") newDrops.push(makePickup("hull", e.x, e.y, state.canvasH));
           score += Math.round(TIER_SCORE[e.tier] * scoreMult); // no dive multiplier for bomb kills
           if (state.phase === "Playing") killsSinceLastDrop++;
           return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
@@ -2550,7 +2558,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
     if (hitByRock) rocks[rockHitIdx] = { ...rocks[rockHitIdx]!, hp: 0, shattered: true };
     // #2485: the Carrier's beam — a vertical band below it; the shield holds it off, otherwise it
     // costs a life (post-hit invincibility then covers the rest of the sweep)
-    const hitByBeam = enemies.some(
+    const firingBeamOn = enemies.find(
       (e) =>
         e.isAlive &&
         e.tier === "Carrier" &&
@@ -2558,6 +2566,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         player.y > e.y &&
         Math.abs(player.x - e.x) < BEAM_HALF_WIDTH + PLAYER_HURT_RADIUS
     );
+    const hitByBeam = firingBeamOn !== undefined;
+    const beamRemainingMs = firingBeamOn ? Math.max(0, firingBeamOn.beamTimer) : 0;
 
     // #1033: the shield absorbs projectiles (bullets, a rock, the beam) but never a ship
     // collision, so the ram check below runs whether or not something was absorbed this tick.
@@ -2655,7 +2665,13 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
               guns,
               hull,
               hullFlashTimer,
-              invincibleTimer: Math.max(player.invincibleTimer, HULL_INVINCIBLE_MS),
+              // A beam lasts longer than the plating's grace, so the grace stretches to the end
+              // of the sweep — one plate per beam, never two and a life (#2540 review).
+              invincibleTimer: Math.max(
+                player.invincibleTimer,
+                HULL_INVINCIBLE_MS,
+                hitByBeam ? beamRemainingMs + 50 : 0
+              ),
             },
           };
         }
@@ -2871,6 +2887,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
     let score = state.score;
     let killsSinceLastDrop = state.killsSinceLastDrop;
     const armoredNow = carrierArmoredIn(state.enemies); // #2484
+    const drops: PowerUp[] = []; // #2488
     const enemies = state.enemies.map((e) => {
       if (!e.isAlive) return e;
       if (e.tier === "Carrier" && armoredNow) return { ...e, hitFlashTimer: HIT_FLASH_DURATION };
@@ -2885,6 +2902,8 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
         });
         score += Math.round(TIER_SCORE[e.tier] * sm);
         killsSinceLastDrop++;
+        // #2488: the Carrier drops plating however it dies
+        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, state.canvasH));
         return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
       return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
@@ -2895,6 +2914,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
       enemies,
       asteroids: [],
       enemyBullets: [],
+      powerUps: [...state.powerUps, ...drops],
       explosions: newExplosions,
       score,
       killsSinceLastDrop,
