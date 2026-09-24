@@ -18,7 +18,7 @@ import {
 } from "../game/yacht/engine";
 import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
 import { preloadOracleTable } from "../game/yacht/oracle/oracle";
-import { isAiTurnPending } from "../game/yacht/vsTurn";
+import { finishTurnFallback, isAiTurnPending } from "../game/yacht/vsTurn";
 import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -232,9 +232,12 @@ export default function GameScreen({ navigation, route }: Props) {
 
     aiTurnCancelledRef.current = false;
 
+    // The AI's state as of its last completed step, so a failure part-way
+    // through can finish the turn from there.
+    let s = aiGameStateRef.current!;
+
     async function runAiTurn() {
       const diff = aiDifficultyRef.current!;
-      let s = aiGameStateRef.current!;
 
       if (s.rolls_used === 0) {
         // Initial roll (all dice free) — compute result first so animation plays over final values.
@@ -284,12 +287,22 @@ export default function GameScreen({ navigation, route }: Props) {
       setIsAiTurn(false);
     }
 
-    // Never leave the board locked: if the turn fails, report it and hand
-    // control back to the player rather than leaving isAiTurn stuck (#2203).
+    // If the turn fails, report it and finish the computer's turn with a
+    // plain fallback before handing back control. Just unlocking would leave
+    // the computer a round behind for good, so its game could never end and
+    // the VS result screen would never show (#2203).
     runAiTurn().catch((e: unknown) => {
       Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "runAiTurn" } });
       if (aiTurnCancelledRef.current) return;
       setAiRollingIndices([]);
+      try {
+        setAiGameState(finishTurnFallback(s));
+      } catch (fallbackError: unknown) {
+        // Last resort: unlock the board rather than freeze it.
+        Sentry.captureException(fallbackError, {
+          tags: { subsystem: "yacht.ai", op: "finishTurnFallback" },
+        });
+      }
       setIsAiTurn(false);
     });
     return () => {

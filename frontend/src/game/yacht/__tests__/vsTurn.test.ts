@@ -1,6 +1,6 @@
-import { newGame } from "../engine";
+import { createSeededRng, newGame, setRng } from "../engine";
 import type { GameState } from "../types";
-import { isAiTurnPending } from "../vsTurn";
+import { finishTurnFallback, isAiTurnPending } from "../vsTurn";
 
 const at = (round: number, extra: Partial<GameState> = {}): GameState => ({
   ...newGame(),
@@ -30,5 +30,33 @@ describe("isAiTurnPending (#2203)", () => {
 
   it("is false once the AI's game is over", () => {
     expect(isAiTurnPending(at(13, { game_over: true }), at(13, { game_over: true }))).toBe(false);
+  });
+});
+
+describe("finishTurnFallback (#2203)", () => {
+  afterEach(() => setRng(Math.random));
+
+  it("rolls if the turn hasn't started, then scores and advances the round", () => {
+    setRng(createSeededRng(4));
+    const next = finishTurnFallback(at(3));
+    expect(next.round).toBe(4);
+    expect(next.rolls_used).toBe(0);
+    expect(Object.values(next.scores).filter((v) => v !== null)).toHaveLength(1);
+  });
+
+  it("scores the dice it already has in the best legal category", () => {
+    const next = finishTurnFallback(at(1, { dice: [6, 6, 6, 6, 6], rolls_used: 3 }));
+    expect(next.scores.yacht).toBe(50);
+    expect(next.round).toBe(2);
+  });
+
+  it("finishes the computer's game on its last round", () => {
+    const scores = Object.fromEntries(
+      Object.keys(newGame().scores).map((c) => [c, c === "chance" ? null : 0])
+    );
+    const last = at(13, { dice: [1, 2, 3, 4, 6], rolls_used: 2, scores });
+    const next = finishTurnFallback(last);
+    expect(next.scores.chance).toBe(16);
+    expect(next.game_over).toBe(true);
   });
 });

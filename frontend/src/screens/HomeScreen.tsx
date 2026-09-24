@@ -18,6 +18,7 @@ import * as Sentry from "@sentry/react-native";
 import type { HomeStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
+import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
@@ -148,7 +149,13 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    if (saved && !saved.state.game_over) {
+    // Resume an unfinished game, including a VS game where only the
+    // computer's last turn is left (#2203).
+    const resumable =
+      saved &&
+      (!saved.state.game_over ||
+        (!!saved.aiDifficulty && !!saved.aiState && isAiTurnPending(saved.state, saved.aiState)));
+    if (saved && resumable) {
       navigation.navigate("Game", {
         initialState: saved.state,
         aiDifficulty: saved.aiDifficulty ?? undefined,

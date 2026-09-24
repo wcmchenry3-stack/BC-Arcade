@@ -340,7 +340,42 @@ describe("GameScreen VS mode — resuming an interrupted AI turn (#2203)", () =>
     expect(getByText("Your Turn")).toBeTruthy();
   });
 
-  it("reports a failing AI turn and unlocks the board instead of soft-locking", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock at the top of this file
+  const storage = require("../../game/yacht/storage") as { saveGame: jest.Mock };
+  const lastSavedAi = (): GameState =>
+    storage.saveGame.mock.calls[storage.saveGame.mock.calls.length - 1]![2] as GameState;
+
+  it("finishes the computer's round with a fallback when its turn fails, so it never falls behind", async () => {
+    mockRoll.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { getByText } = await resumed({ rolls_used: 0 });
+
+    await finishAiTurn();
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(lastSavedAi().round).toBe(2); // caught up with the player
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  it("still ends the game when the computer's final turn fails", async () => {
+    mockRoll.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const scores = { ...ALL_NULL_SCORES } as GameState["scores"];
+    for (const c of Object.keys(scores)) if (c !== "chance") scores[c] = 0;
+    await renderVsGame(
+      { round: 13, game_over: true, rolls_used: 0, scores: { ...scores, chance: 20 } },
+      { round: 13, rolls_used: 0, scores }
+    );
+
+    await finishAiTurn();
+
+    // The VS result screen waits on both games being over.
+    expect(lastSavedAi().game_over).toBe(true);
+  });
+
+  it("unlocks the board as a last resort when even the fallback fails", async () => {
     mockRoll.mockImplementation(() => {
       throw new Error("No rolls remaining this turn.");
     });
