@@ -10,9 +10,11 @@ name: Mobile Smoke — Android
 # all-checks-green merge rule. Run it on demand via workflow_dispatch (always
 # the full suite — see detect-maestro-scope.yml). Re-add `pull_request`
 # (branches: [dev, main]) once #2400 is fixed.
+# Not on push to main either (2026-09-23): prod auto-deploys `main` with Render's
+# "After CI Checks Pass" trigger, which waits for EVERY check on the commit, so a
+# permanently-red smoke check here blocks every prod deploy (it blocked #2522).
+# Re-add the push trigger together with pull_request once the leg is fixed.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
