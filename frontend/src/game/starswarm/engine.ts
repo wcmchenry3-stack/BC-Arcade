@@ -2206,7 +2206,13 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         Math.abs(player.x - e.x) < BEAM_HALF_WIDTH + PLAYER_HURT_RADIUS
     );
 
-    if ((hitByBullet || hitByRock || hitByBeam) && shieldActive) {
+    // #1033: the shield absorbs projectiles (bullets, a rock, the beam) but never a ship
+    // collision, so the ram check below runs whether or not something was absorbed this tick.
+    // (Before #2533 an absorbed hit skipped it; harmless for a one-frame bullet, but the beam
+    // lasts 1.2 s and left a shielded player parked in its column unrammable.)
+    const projectileHit = hitByBullet || hitByRock || hitByBeam;
+    const absorbed = projectileHit && shieldActive;
+    if (absorbed) {
       // Shield absorbs the bullets — no damage. Harmless bullets aren't absorbed (they were
       // never counted in bulletHits), so they fly on through instead of popping mid-screen.
       currentEnemyBullets = currentEnemyBullets.filter(
@@ -2218,14 +2224,14 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         ...activePowerUp!,
         shieldAbsorbed: activePowerUp!.shieldAbsorbed + bulletHits.length + (hitByRock ? 1 : 0),
       };
-    } else {
+    }
+    {
       // #956/#1029/#1030/#1077: capture the ramming enemy so we can destroy it on collision
       // Bosses collidable only in Stage 3 (bossDeepThresholdCrossed); Elite Phase 1 always exempt
+      // A projectile that already costs the life makes the ram check moot; an absorbed one doesn't.
       let rammingEnemyId: number | null = null;
       const hitByShip =
-        !hitByBullet &&
-        !hitByRock &&
-        !hitByBeam &&
+        (absorbed || !projectileHit) &&
         enemies.some((e) => {
           if (!e.isAlive) return false;
           if (e.tier === "Carrier") return false; // #2484: never leaves formation
@@ -2240,7 +2246,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           return true;
         });
 
-      if (hitByBullet || hitByShip || hitByRock || hitByBeam) {
+      if (hitByShip || (projectileHit && !absorbed)) {
         const newLives = player.lives - 1;
         newExplosions.push(spawnExplosion(player.x, player.y));
 

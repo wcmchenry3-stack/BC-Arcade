@@ -3498,6 +3498,40 @@ describe("Carrier actions (#2485)", () => {
     expect(s.player.lives).toBe(3);
   });
 
+  it("a shield holds off the beam but never a ship ramming through it (#1033 rule)", () => {
+    const base = applyPowerUp(quiet(), "shield");
+    const c = carrierOf(base);
+    const grunt = base.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
+    const inBeam: StarSwarmInput = { playerX: c.x, fire: false };
+    const ram = { x: c.x, y: base.player.y };
+    // shielded, parked in the firing beam's column, with a Grunt right on top of the ship
+    let s = {
+      ...base,
+      player: { ...base.player, x: c.x },
+      enemies: base.enemies.map((e) =>
+        e.id === c.id
+          ? { ...e, beamPhase: "fire" as const, beamTimer: BEAM_FIRE_MS }
+          : e.id === grunt.id
+            ? {
+                ...e,
+                // circling on a zero-radius loop centred on the player = a ship sitting on it
+                phase: "Circling" as const,
+                x: ram.x,
+                y: ram.y,
+                circleCx: ram.x,
+                circleCy: ram.y,
+                circleRadius: 0,
+                circleAngle: 0,
+              }
+            : e
+      ),
+    };
+    s = tick(s, 16, inBeam);
+    expect(s.player.lives).toBe(2); // the ram still costs a life…
+    expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false); // …and kills the rammer
+    expect(s.activePowerUp?.type).toBe("shield"); // the beam itself was absorbed, shield intact
+  });
+
   it("stays silent while anything else lives, then fires twin aimed lasers when alone", () => {
     let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
     const c = carrierOf(s);
