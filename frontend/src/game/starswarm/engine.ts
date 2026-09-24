@@ -227,6 +227,17 @@ export function isCarrierArmored(state: StarSwarmState): boolean {
   );
 }
 
+/**
+ * #2484: true on the exact tick the Carrier's armor drops — its last Boss escort died while the
+ * Carrier itself is still alive. A Carrier killed *through* its armor (piercing shots) also stops
+ * reading as armored, but nothing was exposed, so that edge is excluded. Shared by both renderers
+ * so the announcement can't drift between native and web.
+ */
+export function carrierJustExposed(prev: StarSwarmState, next: StarSwarmState): boolean {
+  const carrierAlive = next.enemies.some((e) => e.isAlive && e.tier === "Carrier");
+  return carrierAlive && isCarrierArmored(prev) && !isCarrierArmored(next);
+}
+
 // #979/#2484: heavier tiers drift less with the formation sway
 function clampSway(tier: EnemyTier, swayX: number): number {
   const limit = tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Boss" ? BOSS_MAX_SWAY : MAX_SWAY;

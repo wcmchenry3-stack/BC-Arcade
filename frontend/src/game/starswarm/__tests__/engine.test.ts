@@ -29,6 +29,7 @@ import {
   MAX_PLAYER_BULLETS,
   MISSION_COMPLETE_BANNER_MS,
   isCarrierArmored,
+  carrierJustExposed,
   isLeaderTier,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
@@ -3032,6 +3033,25 @@ describe("Carrier tier (#2484)", () => {
       enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, isAlive: false, hp: 0 } : e)),
     };
     expect(isCarrierArmored(deadCarrier)).toBe(false);
+  });
+
+  it("carrierJustExposed fires only when the last escort dies with the Carrier still alive", () => {
+    const armored = settled();
+    const killCarrier = (st: StarSwarmState): StarSwarmState => ({
+      ...st,
+      enemies: st.enemies.map((e) => (e.tier === "Carrier" ? { ...e, isAlive: false, hp: 0 } : e)),
+    });
+    // escorts die, Carrier lives → the real "exposed" moment
+    expect(carrierJustExposed(armored, withoutEscorts(armored))).toBe(true);
+    // Carrier killed through its armor (piercing) while escorts live → not an exposure
+    expect(carrierJustExposed(armored, killCarrier(armored))).toBe(false);
+    // already exposed, then the Carrier dies → nothing new to announce
+    expect(carrierJustExposed(withoutEscorts(armored), killCarrier(withoutEscorts(armored)))).toBe(
+      false
+    );
+    // no change → false
+    expect(carrierJustExposed(armored, armored)).toBe(false);
+    expect(carrierJustExposed(withoutEscorts(armored), withoutEscorts(armored))).toBe(false);
   });
 
   it("escorted: an ordinary shot is spent on the force field — ring plays, no damage", () => {

@@ -25,6 +25,7 @@ import {
   perfectBonusPoints,
   perfectHoldMs,
   FREE_FIRE_ENEMY_COUNT,
+  carrierJustExposed,
   isCarrierArmored,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
@@ -279,7 +280,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
-    const prevCarrierArmoredRef = useRef(false); // #2484
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
@@ -971,12 +971,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
-              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event
-              const carrierArmoredNow = isCarrierArmored(applied);
-              if (prevCarrierArmoredRef.current && !carrierArmoredNow) {
-                onCarrierExposedRef.current?.();
-              }
-              prevCarrierArmoredRef.current = carrierArmoredNow;
+              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
+              // Judged against the previous tick, and only while the Carrier is still alive.
+              if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

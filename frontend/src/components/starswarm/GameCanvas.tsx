@@ -26,6 +26,7 @@ import {
   perfectBonusPoints,
   perfectHoldMs,
   FREE_FIRE_ENEMY_COUNT,
+  carrierJustExposed,
   isCarrierArmored,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
@@ -187,7 +188,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
-    const prevCarrierArmoredRef = useRef(false); // #2484
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
     const prevBonusLivesRef = useRef(gameRef.current.bonusLivesAwarded);
@@ -396,12 +396,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
-              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event
-              const carrierArmoredNow = isCarrierArmored(applied);
-              if (prevCarrierArmoredRef.current && !carrierArmoredNow) {
-                onCarrierExposedRef.current?.();
-              }
-              prevCarrierArmoredRef.current = carrierArmoredNow;
+              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
+              // Judged against the previous tick, and only while the Carrier is still alive.
+              if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
               // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
               // the wave counter bumps in the same tick the last enemy dies. Detect that bump
               // directly instead of watching for a phase transition.
