@@ -25,8 +25,11 @@ jest.mock(
     // Encoded with the real codec, the same one the build script uses.
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories can't use top-level imports
     ORACLE_TABLE_BASE64: require("../tableCodec").encodeOracleTable(new Float32Array(786_432)),
-  }),
-  { virtual: true }
+  })
+  // Not `{ virtual: true }`: the generated file exists, and a virtual mock is
+  // keyed on the unresolved path, so once another test file in the same Jest
+  // worker has resolved the real module (the live AI now loads it), the
+  // virtual mock stops matching and the real table leaks in.
 );
 
 // Imported AFTER the mock is registered so oracle.ts's dynamic import resolves to it.

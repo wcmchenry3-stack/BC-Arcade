@@ -21,9 +21,10 @@
  *   rerolling one die of a made large straight); together with the cap, no
  *   tier ever breaks a made yacht or large straight it can score.
  *
- * Measured in the #2245 harness (mean final score): Easy ~161, Medium ~219,
- * Hard ~252 (pure optimal play is ~254.5). See sim/gate.ts for the bands
- * that guard these and docs/ARCHITECTURE.md for the design.
+ * Measured in the #2245 harness (mean final score, 2026-09-24 gate runs):
+ * Easy 161.6–163.9, Medium 211.8–215.6, Hard 245.2–251.6 (pure optimal play
+ * is ~254.5). See sim/gate.ts for the bands that guard these and
+ * docs/ARCHITECTURE.md for the design.
  */
 
 import { getRng, type Category } from "./engine";
