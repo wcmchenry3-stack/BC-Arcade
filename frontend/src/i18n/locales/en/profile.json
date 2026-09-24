@@ -27,5 +27,11 @@
   "level.xpTotal": "{{xp}} XP",
   "level.xpToNext": "{{xp}} XP to level {{level}}",
   "level.max": "Max level reached",
-  "level.progressA11y": "Progress to level {{level}}"
+  "level.progressA11y": "Progress to level {{level}}",
+  "displayName.label": "Display name",
+  "displayName.placeholder": "Your name",
+  "displayName.helper": "Shown on leaderboards when your scores are submitted. 1–32 characters.",
+  "displayName.save": "Save",
+  "displayName.saved": "Saved. Your scores will use this name.",
+  "displayName.saveError": "Couldn't save your name. Try again."
 }

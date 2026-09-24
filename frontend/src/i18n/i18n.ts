@@ -21,7 +21,8 @@ type Namespace =
   | "mahjong"
   | "sort"
   | "daily_word"
-  | "daily_challenge";
+  | "daily_challenge"
+  | "result";
 type TranslationModule = Promise<{ default: Record<string, string> }>;
 
 // Resolve the best supported locale from the device's preference list
@@ -57,6 +58,7 @@ const localeLoaders: Record<string, Partial<Record<Namespace, () => TranslationM
     sort: () => import("./locales/en/sort.json") as TranslationModule,
     daily_word: () => import("./locales/en/daily_word.json") as TranslationModule,
     daily_challenge: () => import("./locales/en/daily_challenge.json") as TranslationModule,
+    result: () => import("./locales/en/result.json") as TranslationModule,
   },
   "fr-CA": {
     common: () => import("./locales/fr-CA/common.json") as TranslationModule,
@@ -219,6 +221,7 @@ i18n
       "sort",
       "daily_word",
       "daily_challenge",
+      "result",
     ],
     defaultNS: "common",
     interpolation: { escapeValue: false },

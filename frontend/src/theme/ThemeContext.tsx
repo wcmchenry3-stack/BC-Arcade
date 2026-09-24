@@ -44,6 +44,21 @@ export interface Colors {
   chromeShadowOpacity: number;
   error: string;
   bonus: string;
+  /**
+   * End-of-game outcome colours (#2501). Each foreground reaches WCAG AA
+   * (≥ 4.5:1) on `surfaceHigh` in its theme; the matching `*Tint` is a
+   * low-alpha wash of the same hue for icon discs and badges.
+   */
+  outcomeWin: string;
+  outcomeWinTint: string;
+  outcomeLoss: string;
+  outcomeLossTint: string;
+  outcomeDraw: string;
+  outcomeDrawTint: string;
+  outcomeEnded: string;
+  outcomeEndedTint: string;
+  /** Gold used by win celebrations (badges, confetti accents). */
+  celebration: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -78,6 +93,13 @@ const TOKENS = {
   errorLight: "#d94a42",
   bonusDark: "#4ade80",
   bonusLight: "#2da557",
+  // Outcome — light variants darkened to clear 4.5:1 on cream surfaceHigh
+  outcomeWinLight: "#1f7a3c",
+  outcomeDrawDark: "#d674ff",
+  outcomeDrawLight: "#8a3fb0",
+  outcomeEndedLight: "#00737e",
+  celebrationDark: "#ffd700",
+  celebrationLight: "#8a6100",
   white: "#ffffff",
 } as const;
 
@@ -116,6 +138,15 @@ export const dark: Colors = {
   chromeShadowOpacity: 0.08,
   error: TOKENS.errorDark,
   bonus: TOKENS.bonusDark,
+  outcomeWin: TOKENS.bonusDark,
+  outcomeWinTint: "rgba(74,222,128,0.14)",
+  outcomeLoss: "#a0a0ac",
+  outcomeLossTint: "rgba(160,160,172,0.14)",
+  outcomeDraw: TOKENS.outcomeDrawDark,
+  outcomeDrawTint: "rgba(214,116,255,0.14)",
+  outcomeEnded: TOKENS.accentDark,
+  outcomeEndedTint: "rgba(143,245,255,0.12)",
+  celebration: TOKENS.celebrationDark,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -147,13 +178,23 @@ export const light: Colors = {
   bonusBg: TOKENS.lightSurfaceAlt,
   totalBg: "#25252c",
   modalBg: TOKENS.lightSurface,
-  overlay: "rgba(0,0,0,0.75)",
+  // Lighter than dark: a 75% black scrim over cream reads as an error state.
+  overlay: "rgba(0,0,0,0.5)",
   chromeBg: "rgba(245,236,215,0.82)",
   chromeShadow: "0 4px 20px rgba(0,0,0,0.06)",
   chromeShadowColor: "#000000",
   chromeShadowOpacity: 0.06,
   error: TOKENS.errorLight,
   bonus: TOKENS.bonusLight,
+  outcomeWin: TOKENS.outcomeWinLight,
+  outcomeWinTint: "rgba(31,122,60,0.12)",
+  outcomeLoss: "#6b5e4a",
+  outcomeLossTint: "rgba(107,94,74,0.12)",
+  outcomeDraw: TOKENS.outcomeDrawLight,
+  outcomeDrawTint: "rgba(138,63,176,0.10)",
+  outcomeEnded: TOKENS.outcomeEndedLight,
+  outcomeEndedTint: "rgba(0,115,126,0.10)",
+  celebration: TOKENS.celebrationLight,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };
