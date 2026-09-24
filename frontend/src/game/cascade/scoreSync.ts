@@ -7,6 +7,7 @@
 
 import { cascadeApi } from "./api";
 import { scoreQueue } from "../_shared/scoreQueue";
+import { flushQueuedGames } from "../_shared/flushQueuedGames";
 import { PendingSubmission } from "../_shared/types";
 
 export function registerCascadeScoreHandler(): void {
@@ -16,6 +17,9 @@ export function registerCascadeScoreHandler(): void {
       // Malformed payload — drop by "succeeding" (throwing would keep retrying forever).
       return;
     }
+    // On reconnect NetworkContext flushes this queue and SyncWorker together;
+    // make sure the game itself has been uploaded before naming it.
+    await flushQueuedGames();
     await cascadeApi.submitPlayerName(game_id, player_name);
   });
 }
