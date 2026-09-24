@@ -249,3 +249,108 @@ describe("GameScreen VS mode — AppState interruption + replay", () => {
     expect(queryByText("Computer's Turn")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Resuming a saved game that was killed mid-AI-turn (GH #2203)
+// ---------------------------------------------------------------------------
+
+describe("GameScreen VS mode — resuming an interrupted AI turn (#2203)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the global Sentry mock from jest.setup.ts
+  const Sentry = require("@sentry/react-native") as { captureException: jest.Mock };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockRoll.mockImplementation((state: GameState) => ({
+      ...state,
+      dice: [...ROLLED_DICE],
+      rolls_used: state.rolls_used + 1,
+      held: [false, false, false, false, false],
+    }));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /**
+   * Run the AI turn to completion. Each `await delay()` schedules its timer
+   * only after the previous one resolves, so time has to advance in steps
+   * with the promise queue flushed in between.
+   */
+  async function finishAiTurn() {
+    for (let i = 0; i < 20; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+    }
+  }
+
+  /** Player has scored round 1 (now on round 2); the AI's round-1 turn is still open. */
+  function resumed(ai: Partial<GameState>) {
+    return renderVsGame(
+      { round: 2, rolls_used: 0, dice: [0, 0, 0, 0, 0], scores: { ...ALL_NULL_SCORES, ones: 3 } },
+      { round: 1, ...ai }
+    );
+  }
+
+  it("resumes the AI's turn on mount instead of handing the player an extra turn", async () => {
+    const { getByText } = await resumed({ rolls_used: 0 });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+  });
+
+  it("with all three rolls used, scores without rolling again and returns control", async () => {
+    // The real engine roll, which throws "No rolls remaining" at rolls_used 3 —
+    // the exact failure that left isAiTurn stuck true before the fix.
+    const actual = jest.requireActual("../../game/yacht/engine");
+    mockRoll.mockImplementation((...args: unknown[]) => actual.roll(...args));
+
+    const { getByText } = await resumed({ rolls_used: 3, dice: [2, 2, 3, 3, 3] });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+
+    await finishAiTurn();
+
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  it("with rolls left, keeps the dice it already rolled", async () => {
+    const saved: [number, number, number, number, number] = [2, 3, 4, 5, 1];
+    const { getAllByTestId } = await resumed({ rolls_used: 1, dice: saved });
+
+    // Before any timer fires the AI shows its saved dice, not a fresh roll.
+    const shown = getAllByTestId(/^yacht-die-[0-4]$/).map((d) => d.props.accessibilityLabel);
+    saved.forEach((v, i) => expect(shown[i]).toMatch(new RegExp(`showing ${v}`)));
+
+    await finishAiTurn();
+    // Whatever it rerolled, it never re-did the opening roll of all five dice.
+    for (const [state] of mockRoll.mock.calls as [GameState][]) {
+      expect(state.rolls_used).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not start an AI turn when the round is the player's", async () => {
+    const { getByText } = await renderVsGame(
+      { round: 2, rolls_used: 0 },
+      { round: 2, rolls_used: 0 }
+    );
+    await finishAiTurn();
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  it("reports a failing AI turn and unlocks the board instead of soft-locking", async () => {
+    mockRoll.mockImplementation(() => {
+      throw new Error("No rolls remaining this turn.");
+    });
+    const { getByText } = await resumed({ rolls_used: 0 });
+
+    await finishAiTurn();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "yacht.ai", op: "runAiTurn" },
+    });
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+});
