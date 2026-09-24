@@ -34,5 +34,6 @@
   "leaderboard.colDate": "Date",
   "leaderboard.empty": "No scores yet — be the first!",
   "leaderboard.error": "Could not load scores",
-  "leaderboard.retry": "Retry"
+  "leaderboard.retry": "Retry",
+  "a11y.carrierExposed": "Carrier armor down. It can be damaged now."
 }

@@ -26,6 +26,8 @@ import {
   perfectBonusPoints,
   perfectHoldMs,
   FREE_FIRE_ENEMY_COUNT,
+  carrierJustExposed,
+  isCarrierArmored,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -79,6 +81,8 @@ interface Props {
   onFreeFirePerfect?: () => boolean;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
+  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  onCarrierExposed?: () => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -119,6 +123,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onFreeFirePerfect,
       onBonusLife,
       onPowerUpCollect,
+      onCarrierExposed,
       isPaused = false,
       width,
       height,
@@ -182,6 +187,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
+    const onCarrierExposedRef = useRef(onCarrierExposed);
     const prevActivePowerUpRef = useRef<string | null>(null); // type of active power-up last frame
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
     const prevBonusLivesRef = useRef(gameRef.current.bonusLivesAwarded);
@@ -222,6 +228,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onPowerUpCollectRef.current = onPowerUpCollect;
     }, [onPowerUpCollect]);
+    useEffect(() => {
+      onCarrierExposedRef.current = onCarrierExposed;
+    }, [onCarrierExposed]);
 
     const [renderState, setRenderState] = useState<RenderState>({
       game: gameRef.current,
@@ -387,6 +396,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
+              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
+              // Judged against the previous tick, and only while the Carrier is still alive.
+              if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
               // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
               // the wave counter bumps in the same tick the last enemy dies. Detect that bump
               // directly instead of watching for a phase transition.
@@ -543,9 +555,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                   ? images.enemyGrunt
                   : enemy.tier === "Elite"
                     ? images.enemyElite
-                    : images.enemyBoss;
+                    : enemy.tier === "Carrier"
+                      ? images.enemyCarrier
+                      : images.enemyBoss;
               const fallbackColor =
-                enemy.tier === "Grunt" ? "#8888ff" : enemy.tier === "Elite" ? "#ff88ff" : "#ffff44";
+                enemy.tier === "Grunt"
+                  ? "#8888ff"
+                  : enemy.tier === "Elite"
+                    ? "#ff88ff"
+                    : enemy.tier === "Carrier"
+                      ? "#b06cff"
+                      : "#ffff44";
+              // #2484: steady force-field ring while the Carrier's escorts still shield it
+              const carrierArmored = enemy.tier === "Carrier" && isCarrierArmored(state);
               return (
                 <Group key={enemy.id}>
                   {img ? (
@@ -564,6 +586,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                       width={enemy.width}
                       height={enemy.height}
                       color={fallbackColor}
+                    />
+                  )}
+                  {carrierArmored && (
+                    <Circle
+                      cx={enemy.x}
+                      cy={enemy.y}
+                      r={Math.max(enemy.width, enemy.height) * 0.62}
+                      color="rgba(0,170,255,0.45)"
+                      style="stroke"
+                      strokeWidth={2}
                     />
                   )}
                   {enemy.hitFlashTimer > 0 &&

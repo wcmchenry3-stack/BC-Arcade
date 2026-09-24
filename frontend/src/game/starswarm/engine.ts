@@ -53,7 +53,7 @@ export const BULLET_E_VY = 0.35; // px/ms downward
 
 const FORMATION_COLS = 8;
 const FORMATION_COL_W = 44; // #950: was 38 — Boss (36 px) had only 1 px margin/side
-const FORMATION_ROW_H = 46;
+const FORMATION_ROW_H = 42; // #2484: was 46 — the Carrier row has to fit above the player lane
 const FORMATION_TOP = 90;
 
 const SWOOP_DURATION = 1400; // ms per enemy traversal
@@ -81,6 +81,8 @@ export const BURST_PAUSE_BASE = 2000; // ms cooldown after burst completes
 const BURST_PAUSE_JITTER = 1000; // ms random addend to pause
 export const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
 const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
+// #2484: the Carrier is the heaviest hull in the formation and barely drifts.
+const CARRIER_MAX_SWAY = 12; // px
 
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
 const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
@@ -201,8 +203,46 @@ export const PLAYER_HURT_RADIUS = 7; // px
 // #1310: duration of the shield-ring hit flash on non-lethal Elite/Boss hits
 export const HIT_FLASH_DURATION = 250; // ms
 
-const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Boss: 400 };
-const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Boss: 4 };
+// #2484: Carrier — one per wave, never dives, armored while its four Boss escorts live.
+const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Boss: 400, Carrier: 1000 };
+const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Boss: 4, Carrier: 8 };
+
+/** #2484: Boss and Carrier sit out the Grunt/Elite "non-boss" thresholds (35% / ≤3 remaining). */
+export function isLeaderTier(tier: EnemyTier): boolean {
+  return tier === "Boss" || tier === "Carrier";
+}
+
+function carrierArmoredIn(enemies: readonly Enemy[]): boolean {
+  return enemies.some((e) => e.isAlive && e.tier === "Boss");
+}
+
+/**
+ * #2484: the Carrier is armored while any of its four Boss escorts is alive. Ordinary player
+ * shots are spent on the force field (ring plays, no damage); piercing shots go through.
+ * False when there is no live Carrier, so renderers can key an indicator off this alone.
+ */
+export function isCarrierArmored(state: StarSwarmState): boolean {
+  return (
+    state.enemies.some((e) => e.isAlive && e.tier === "Carrier") && carrierArmoredIn(state.enemies)
+  );
+}
+
+/**
+ * #2484: true on the exact tick the Carrier's armor drops — its last Boss escort died while the
+ * Carrier itself is still alive. A Carrier killed *through* its armor (piercing shots) also stops
+ * reading as armored, but nothing was exposed, so that edge is excluded. Shared by both renderers
+ * so the announcement can't drift between native and web.
+ */
+export function carrierJustExposed(prev: StarSwarmState, next: StarSwarmState): boolean {
+  const carrierAlive = next.enemies.some((e) => e.isAlive && e.tier === "Carrier");
+  return carrierAlive && isCarrierArmored(prev) && !isCarrierArmored(next);
+}
+
+// #979/#2484: heavier tiers drift less with the formation sway
+function clampSway(tier: EnemyTier, swayX: number): number {
+  const limit = tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Boss" ? BOSS_MAX_SWAY : MAX_SWAY;
+  return Math.max(-limit, Math.min(limit, swayX));
+}
 
 // ---------------------------------------------------------------------------
 // Difficulty tier system (#1037)
@@ -285,6 +325,7 @@ const TIER_SIZE: Record<EnemyTier, { w: number; h: number }> = {
   Grunt: { w: 24, h: 24 },
   Elite: { w: 28, h: 28 },
   Boss: { w: 36, h: 32 },
+  Carrier: { w: 54, h: 48 }, // #2484 — matches the 172×151 sprite's aspect so it isn't squashed
 };
 
 // ---------------------------------------------------------------------------
@@ -384,18 +425,22 @@ function waveSlots(wave: number): SlotDef[] {
   const slots: SlotDef[] = [];
 
   // Boss row: 4 enemies, centered
-  for (let c = 0; c < 4; c++) slots.push({ tier: "Boss", row: 0, col: c, rowCols: 4 });
+  for (let c = 0; c < 4; c++) slots.push({ tier: "Boss", row: 1, col: c, rowCols: 4 });
 
   // Two Elite rows
-  for (let r = 1; r <= 2; r++)
+  for (let r = 2; r <= 3; r++)
     for (let c = 0; c < FORMATION_COLS; c++)
       slots.push({ tier: "Elite", row: r, col: c, rowCols: FORMATION_COLS });
 
   // Grunt rows: 2 at wave 1, +1 every other wave, max 5
   const gruntRows = Math.min(2 + Math.floor((wave - 1) / 2), 5);
-  for (let r = 3; r < 3 + gruntRows; r++)
+  for (let r = 4; r < 4 + gruntRows; r++)
     for (let c = 0; c < FORMATION_COLS; c++)
       slots.push({ tier: "Grunt", row: r, col: c, rowCols: FORMATION_COLS });
+
+  // #2484: Carrier row — one ship, centered above its escorts. Last in the list so it is the
+  // last to swoop in (and so enemies[0] stays a Boss, which the dev panel and tests lean on).
+  slots.push({ tier: "Carrier", row: 0, col: 0, rowCols: 1 });
 
   return slots;
 }
@@ -707,7 +752,7 @@ function buildWaveState(
     phase = "SwoopIn";
   }
 
-  const startingNonBossCount = enemies.filter((e) => e.tier !== "Boss").length;
+  const startingNonBossCount = enemies.filter((e) => !isLeaderTier(e.tier)).length;
 
   const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
@@ -958,6 +1003,11 @@ function tickFormation(
   bossThresholdCrossed: boolean,
   paramScale = 1
 ): EnemyTickResult {
+  // #2484: the Carrier holds station — no dives, and (until #2485 lands) no fire
+  if (enemy.tier === "Carrier") {
+    return { enemy, bullet: null };
+  }
+
   // Boss is passive until threshold crossed: no firing, no diving
   if (enemy.tier === "Boss" && !bossThresholdCrossed) {
     return { enemy, bullet: null };
@@ -1260,14 +1310,15 @@ function tickReturning(enemy: Enemy, dtMs: number): EnemyTickResult {
 
 function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #1030: bossThresholdCrossed latches true once ≤35% non-boss enemies remain
-  const aliveNonBoss = state.enemies.filter((e) => e.isAlive && e.tier !== "Boss").length;
+  const aliveNonBoss = state.enemies.filter((e) => e.isAlive && !isLeaderTier(e.tier)).length;
   const bossThresholdCrossed =
     state.bossThresholdCrossed ||
     state.startingNonBossCount === 0 ||
     aliveNonBoss / state.startingNonBossCount <= BOSS_DIVE_THRESHOLD;
 
   // #1077: bossDeepThresholdCrossed latches true at Stage 3 (≤3 enemies alive)
-  const aliveAll = state.enemies.filter((e) => e.isAlive).length;
+  // #2484: the Carrier never leaves formation, so it is not counted as a straggler
+  const aliveAll = state.enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length;
   const bossDeepThresholdCrossed =
     state.bossDeepThresholdCrossed ||
     (state.stragglerEnabled &&
@@ -1289,7 +1340,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
         .map((e, i) => ({ e, i }))
         .filter(
           ({ e }) =>
-            e.isAlive && e.phase === "Formation" && (e.tier !== "Boss" || bossThresholdCrossed)
+            e.isAlive &&
+            e.phase === "Formation" &&
+            e.tier !== "Carrier" && // #2484: never dives
+            (e.tier !== "Boss" || bossThresholdCrossed)
         );
       // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
       const currentDivers = state.enemies.filter((e) => e.isAlive && e.phase === "Diving").length;
@@ -1339,9 +1393,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     // Apply sway offset to enemies holding Formation position
     // #979: Boss sways ±BOSS_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
-      const appliedSway =
-        e.tier === "Boss" ? Math.max(-BOSS_MAX_SWAY, Math.min(BOSS_MAX_SWAY, swayX)) : swayX;
-      e = { ...e, x: e.formationX + appliedSway };
+      e = { ...e, x: e.formationX + clampSway(e.tier, swayX) };
     }
     // Decrement hit-flash timer (#976)
     if (e.isAlive && e.hitFlashTimer > 0) {
@@ -1366,10 +1418,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // all Formation enemies immediately start wiggling
   // #1039: pauseStraggler dev-panel toggle suppresses this
   if (state.stragglerEnabled && !state.pauseStraggler && state.phase === "Playing") {
-    const aliveCount = enemies.filter((e) => e.isAlive).length;
+    const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
     if (aliveCount > 0 && aliveCount <= 3) {
       enemies = enemies.map((e) => {
-        if (!e.isAlive || e.phase !== "Formation") return e;
+        if (!e.isAlive || e.phase !== "Formation" || e.tier === "Carrier") return e;
         return {
           ...e,
           phase: "Wiggling" as const,
@@ -1530,6 +1582,9 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   let dropJitterTarget = state.dropJitterTarget;
   let powerUps: PowerUp[] = [...state.powerUps];
   const scoreMult = difficultyMultiplier(state.difficulty);
+  // #2484: armor is judged on the tick's starting roster — an escort that dies this same tick
+  // still shields the Carrier until the next one.
+  const carrierArmored = carrierArmoredIn(state.enemies);
 
   // ── Player bullets ↔ enemies ──────────────────────────────────────────────
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
@@ -1546,6 +1601,12 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         piercingHits.add(`${b.id}:${enemy.id}`);
       } else {
         hitBulletIds.add(b.id);
+      }
+
+      // #2484: an escorted Carrier shrugs off ordinary shots — the bullet is spent, the force-field
+      // ring plays, no damage. Piercing shots (lightning super-state, buddy burst) go through.
+      if (enemy.tier === "Carrier" && carrierArmored && !b.piercing) {
+        return { ...enemy, hitFlashTimer: HIT_FLASH_DURATION };
       }
 
       const newHp = enemy.hp - b.damage;
@@ -1619,8 +1680,11 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       // #1034: instant — clear all enemy bullets, deal 1 damage to every alive enemy
       bombActivated = true;
       bombFlashTimer = BOMB_FLASH_DURATION;
+      const armoredNow = carrierArmoredIn(enemies);
       enemies = enemies.map((e) => {
         if (!e.isAlive) return e;
+        // #2484: the blast rings off an escorted Carrier's force field
+        if (e.tier === "Carrier" && armoredNow) return { ...e, hitFlashTimer: HIT_FLASH_DURATION };
         const newHp = e.hp - 1;
         if (newHp <= 0) {
           newExplosions.push(spawnExplosion(e.x, e.y));
@@ -1703,6 +1767,7 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
         !hitByBullet &&
         enemies.some((e) => {
           if (!e.isAlive) return false;
+          if (e.tier === "Carrier") return false; // #2484: never leaves formation
           if (e.tier === "Boss" && !state.bossDeepThresholdCrossed) return false;
           if (e.tier === "Elite" && !state.bossThresholdCrossed) return false;
           if (e.phase !== "Diving" && e.phase !== "Circling") return false;
@@ -1923,8 +1988,10 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
     const sm = difficultyMultiplier(state.difficulty);
     let score = state.score;
     let killsSinceLastDrop = state.killsSinceLastDrop;
+    const armoredNow = carrierArmoredIn(state.enemies); // #2484
     const enemies = state.enemies.map((e) => {
       if (!e.isAlive) return e;
+      if (e.tier === "Carrier" && armoredNow) return { ...e, hitFlashTimer: HIT_FLASH_DURATION };
       const newHp = e.hp - 1;
       if (newHp <= 0) {
         newExplosions.push({

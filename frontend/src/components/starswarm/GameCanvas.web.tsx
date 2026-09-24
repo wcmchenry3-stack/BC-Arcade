@@ -25,6 +25,8 @@ import {
   perfectBonusPoints,
   perfectHoldMs,
   FREE_FIRE_ENEMY_COUNT,
+  carrierJustExposed,
+  isCarrierArmored,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -36,6 +38,7 @@ import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -99,6 +102,7 @@ const C = {
   enemyGrunt: "#8888ff",
   enemyElite: "#ff88ff",
   enemyBoss: "#ffff44",
+  enemyCarrier: "#b06cff",
   hitFlash: "#ff2200",
   pipFilled: "#ffffff",
   pipEmpty: "rgba(255,255,255,0.2)",
@@ -157,6 +161,7 @@ interface Images {
   enemyGrunt: HTMLImageElement | null;
   enemyElite: HTMLImageElement | null;
   enemyBoss: HTMLImageElement | null;
+  enemyCarrier: HTMLImageElement | null;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
   bulletCharge: HTMLImageElement | null;
@@ -198,6 +203,8 @@ interface Props {
    * the game then holds for its full length; otherwise it holds only a short silent beat. */
   onFreeFirePerfect?: () => boolean;
   onPowerUpCollect?: (type: PowerUpType) => void;
+  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  onCarrierExposed?: () => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -224,6 +231,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onFreeFireZone,
       onFreeFirePerfect,
       onPowerUpCollect,
+      onCarrierExposed,
       isPaused = false,
       onPause,
       width,
@@ -271,6 +279,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onFreeFireZoneRef = useRef(onFreeFireZone);
     const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
+    const onCarrierExposedRef = useRef(onCarrierExposed);
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
@@ -335,6 +344,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onPowerUpCollectRef.current = onPowerUpCollect;
     }, [onPowerUpCollect]);
     useEffect(() => {
+      onCarrierExposedRef.current = onCarrierExposed;
+    }, [onCarrierExposed]);
+    useEffect(() => {
       onPauseRef.current = onPause;
     }, [onPause]);
     useEffect(() => {
@@ -380,6 +392,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
           loadImg(enemyBossSrc as number),
+          loadImg(enemyCarrierSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
           loadImg(bulletChargeSrc as number),
@@ -396,6 +409,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyGrunt,
           enemyElite,
           enemyBoss,
+          enemyCarrier,
           bulletPlayer,
           bulletEnemy,
           bulletCharge,
@@ -411,6 +425,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyGrunt: enemyGrunt ?? null,
           enemyElite: enemyElite ?? null,
           enemyBoss: enemyBoss ?? null,
+          enemyCarrier: enemyCarrier ?? null,
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
           bulletCharge: bulletCharge ?? null,
@@ -533,6 +548,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
 
       // Enemies
+      const carrierArmored = isCarrierArmored(state); // #2484
       for (const enemy of state.enemies) {
         if (!enemy.isAlive) continue;
         const img =
@@ -540,7 +556,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             ? imgs.enemyGrunt
             : enemy.tier === "Elite"
               ? imgs.enemyElite
-              : imgs.enemyBoss;
+              : enemy.tier === "Carrier"
+                ? imgs.enemyCarrier
+                : imgs.enemyBoss;
         if (img) {
           ctx.drawImage(
             img,
@@ -555,13 +573,23 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ? C.enemyGrunt
               : enemy.tier === "Elite"
                 ? C.enemyElite
-                : C.enemyBoss;
+                : enemy.tier === "Carrier"
+                  ? C.enemyCarrier
+                  : C.enemyBoss;
           ctx.fillRect(
             enemy.x - enemy.width / 2,
             enemy.y - enemy.height / 2,
             enemy.width,
             enemy.height
           );
+        }
+        // #2484: steady force-field ring while the Carrier's escorts still shield it
+        if (enemy.tier === "Carrier" && carrierArmored) {
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, Math.max(enemy.width, enemy.height) * 0.62, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(0,170,255,0.45)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
         }
         if (enemy.hitFlashTimer > 0) {
           const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
@@ -579,9 +607,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.stroke();
         }
 
-        // HP pips — Elite (2) and Boss (4); Grunt always has 1 HP so pips are omitted
+        // HP pips — Elite (2), Boss (4), Carrier (8); Grunt always has 1 HP so pips are omitted
         if (enemy.tier !== "Grunt") {
-          const totalPips = enemy.tier === "Elite" ? 2 : 4;
+          const totalPips = enemy.tier === "Elite" ? 2 : enemy.tier === "Carrier" ? 8 : 4;
           const pipW = 4;
           const pipH = 4;
           const pipGap = 2;
@@ -943,6 +971,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
+              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
+              // Judged against the previous tick, and only while the Carrier is still alive.
+              if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

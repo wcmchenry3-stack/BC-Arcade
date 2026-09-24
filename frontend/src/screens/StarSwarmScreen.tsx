@@ -166,6 +166,11 @@ export default function StarSwarmScreen() {
     return playPerfect();
   }, [playPerfect, t, difficulty]);
 
+  // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
+  const handleCarrierExposed = useCallback(() => {
+    AccessibilityInfo.announceForAccessibility(t("a11y.carrierExposed"));
+  }, [t]);
+
   const handlePlayerHit = useCallback(() => {
     playPlayerHit();
     hapticPlayerHit();
@@ -295,6 +300,7 @@ export default function StarSwarmScreen() {
               onExplosion={playExplosion}
               onFreeFireZone={playFreeFireZone}
               onFreeFirePerfect={handleFreeFirePerfect}
+              onCarrierExposed={handleCarrierExposed}
               onBonusLife={handleBonusLife}
               isPaused={isPaused || showDifficultyPicker}
               onPause={handlePause}
