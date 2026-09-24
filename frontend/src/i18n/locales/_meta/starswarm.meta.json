@@ -5,9 +5,7 @@
     "tone": "neutral",
     "characterLimit": 15,
     "placeholders": [],
-    "doNotTranslate": [
-      "Star Swarm"
-    ],
+    "doNotTranslate": ["Star Swarm"],
     "notes": "Do not translate the game name."
   },
   "game.description": {
@@ -25,9 +23,7 @@
     "tone": "functional",
     "characterLimit": 20,
     "placeholders": [],
-    "doNotTranslate": [
-      "Star Swarm"
-    ],
+    "doNotTranslate": ["Star Swarm"],
     "notes": null
   },
   "game.canvasLabel": {
@@ -36,9 +32,7 @@
     "tone": "functional, descriptive",
     "characterLimit": 100,
     "placeholders": [],
-    "doNotTranslate": [
-      "Star Swarm"
-    ],
+    "doNotTranslate": ["Star Swarm"],
     "notes": null
   },
   "hud.score": {
@@ -91,9 +85,7 @@
     "description": "Sub-line during Free Fire Zone showing how many enemies the player has hit.",
     "tone": "neutral",
     "characterLimit": 15,
-    "placeholders": [
-      "{{count}}"
-    ],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "{{count}} is an integer hit count."
   },
@@ -102,9 +94,7 @@
     "description": "Line under PERFECT! during the celebration pause after a perfect Free Fire Zone clear, showing the bonus points awarded.",
     "tone": "celebratory, classic arcade",
     "characterLimit": 20,
-    "placeholders": [
-      "{{points}}"
-    ],
+    "placeholders": ["{{points}}"],
     "doNotTranslate": [],
     "notes": "{{points}} is a pre-formatted number (e.g. 10,000)."
   },
@@ -113,10 +103,7 @@
     "description": "Screen-reader announcement when the player hits every ship in a Free Fire Zone.",
     "tone": "neutral, clear",
     "characterLimit": 80,
-    "placeholders": [
-      "{{count}}",
-      "{{points}}"
-    ],
+    "placeholders": ["{{count}}", "{{points}}"],
     "doNotTranslate": [],
     "notes": "{{count}} is the number of ships in the Free Fire Zone (an integer, currently 40). {{points}} is a pre-formatted number (e.g. 10,000)."
   },
@@ -134,9 +121,7 @@
     "description": "Accessibility label for the score display.",
     "tone": "functional",
     "characterLimit": 20,
-    "placeholders": [
-      "{{score}}"
-    ],
+    "placeholders": ["{{score}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -244,9 +229,7 @@
     "description": "Screen-reader cue after collecting a salvage crate.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": [
-      "level"
-    ],
+    "placeholders": ["level"],
     "doNotTranslate": [],
     "notes": "#2488."
   },
@@ -255,9 +238,7 @@
     "description": "Screen-reader cue when a lost life drops the gun level.",
     "tone": "neutral",
     "characterLimit": 35,
-    "placeholders": [
-      "level"
-    ],
+    "placeholders": ["level"],
     "doNotTranslate": [],
     "notes": "#2488."
   },
@@ -266,9 +247,7 @@
     "description": "Screen-reader cue after collecting hull plating.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": [
-      "level"
-    ],
+    "placeholders": ["level"],
     "doNotTranslate": [],
     "notes": "#2488."
   },

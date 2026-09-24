@@ -2377,7 +2377,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
       if (newHp <= 0) {
         newExplosions.push(spawnExplosion(enemy.x, enemy.y));
         // #2488: the Carrier always drops hull plating
-        if (enemy.tier === "Carrier") newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
+        if (enemy.tier === "Carrier")
+          newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
         const base = TIER_SCORE[enemy.tier];
         const mult = enemy.phase === "Diving" || enemy.phase === "Circling" ? DIVE_SCORE_MULT : 1;
         const bonus = state.phase === "FreeFireZone" ? 1 : mult;

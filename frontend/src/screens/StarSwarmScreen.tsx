@@ -36,7 +36,13 @@ import {
   perfectBonusPoints,
   FREE_FIRE_ENEMY_COUNT,
 } from "../game/starswarm/engine";
-import type { GamePhase, PowerUpType, DifficultyTier, CarrierEvent, UpgradeEvent } from "../game/starswarm/types";
+import type {
+  GamePhase,
+  PowerUpType,
+  DifficultyTier,
+  CarrierEvent,
+  UpgradeEvent,
+} from "../game/starswarm/types";
 import { starSwarmApi } from "../game/starswarm/api";
 import {
   getSavedPausedState,
@@ -537,16 +543,18 @@ export default function StarSwarmScreen() {
               <Text style={dynamicStyles.devSectionHeader}>── Power-ups ──</Text>
 
               <View style={styles.devPowerUpRow}>
-                {(["lightning", "shield", "buddy", "bomb", "salvage", "hull"] as PowerUpType[]).map((type) => (
-                  <Pressable
-                    key={type}
-                    style={styles.devPowerUpBtn}
-                    onPress={() => handleTriggerPowerUp(type)}
-                    accessibilityLabel={`Trigger ${type} power-up`}
-                  >
-                    <Text style={styles.devPowerUpText}>{type}</Text>
-                  </Pressable>
-                ))}
+                {(["lightning", "shield", "buddy", "bomb", "salvage", "hull"] as PowerUpType[]).map(
+                  (type) => (
+                    <Pressable
+                      key={type}
+                      style={styles.devPowerUpBtn}
+                      onPress={() => handleTriggerPowerUp(type)}
+                      accessibilityLabel={`Trigger ${type} power-up`}
+                    >
+                      <Text style={styles.devPowerUpText}>{type}</Text>
+                    </Pressable>
+                  )
+                )}
               </View>
 
               <Text style={dynamicStyles.devSectionHeader}>── Sound ──</Text>
