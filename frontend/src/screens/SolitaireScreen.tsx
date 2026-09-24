@@ -131,6 +131,11 @@ export default function SolitaireScreen() {
   const winRecordedRef = useRef(false);
 
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
+  /**
+   * The loaded save was already won — the app was closed between the win and
+   * `clearGame()`. Its score was submitted and its cascade played back then.
+   */
+  const [resumedWin, setResumedWin] = useState(false);
   const leaderboard = useLeaderboardSubmit(solitaireLeaderboard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
@@ -216,7 +221,10 @@ export default function SolitaireScreen() {
       if (saved !== null) {
         setState(saved);
         // Suppress re-counting a win when resuming an already-won game.
-        if (saved.isComplete) winRecordedRef.current = true;
+        if (saved.isComplete) {
+          winRecordedRef.current = true;
+          setResumedWin(true);
+        }
       } else if (areTestHooksEnabled() && Platform.OS !== "web") {
         deal(1);
       }
@@ -264,11 +272,13 @@ export default function SolitaireScreen() {
         { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
       );
       clearGame().catch(() => {});
-      submitScore({ score: state.score });
       const finalMs = state.accumulatedMs;
       const finalMoves = movesRef.current;
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
+        // Submit only a win that happened this session, so a resumed won
+        // game can't post the same score twice.
+        submitScore({ score: state.score });
         const isNewBest =
           statsRef.current.bestTimeMs === 0 || finalMs < statsRef.current.bestTimeMs;
         setWinSummary({
@@ -639,6 +649,7 @@ export default function SolitaireScreen() {
     setWinSummary(null);
     resetSubmission();
     winRecordedRef.current = false;
+    setResumedWin(false);
   }, [resetSubmission]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
@@ -957,7 +968,7 @@ export default function SolitaireScreen() {
             // Only a win that just happened plays the cascade; a resumed,
             // already-won game goes straight to the card.
             celebration={
-              state.events?.includes("gameWin")
+              !resumedWin && state.events?.includes("gameWin")
                 ? (done) => <SolitaireWinCascade onDone={done} />
                 : undefined
             }

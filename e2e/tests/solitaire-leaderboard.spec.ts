@@ -1,10 +1,11 @@
 /**
  * solitaire-leaderboard.spec.ts — GH #1143, #2509
  *
- * Result card + leaderboard: inject a completed game (all 52 cards in
- * foundations, isComplete = true), intercept POST /solitaire/score, and
+ * Result card + leaderboard: inject a game one move from winning (the King
+ * of Clubs on the waste), auto-complete it, intercept POST /solitaire/score, and
  * verify the shared result card submits under the player's display name
- * with no name entry (or asks for one once when none is set).
+ * with no name entry (or asks for one once when none is set). A resumed,
+ * already-won save shows the card without submitting again.
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -15,7 +16,7 @@ import { injectSolitaireState } from "./helpers/solitaire";
 const allRanks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const card = (suit: string, rank: number) => ({ suit, rank, faceUp: true });
 
-const WIN_STATE = {
+const WON_STATE = {
   _v: 1,
   drawMode: 1 as const,
   tableau: [[], [], [], [], [], [], []],
@@ -31,6 +32,17 @@ const WIN_STATE = {
   undoStack: [],
   isComplete: true,
   recycleCount: 0,
+  events: ["foundationComplete", "gameWin"],
+};
+
+const NEAR_WIN_STATE = {
+  ...WON_STATE,
+  foundations: {
+    ...WON_STATE.foundations,
+    clubs: allRanks.slice(0, 12).map((r) => card("clubs", r)),
+  },
+  waste: [card("clubs", 13)],
+  isComplete: false,
   events: [],
 };
 
@@ -61,9 +73,13 @@ async function routeSolitaireApi(
   return posts;
 }
 
-/** Opens a saved, already-won game; the result card shows on load. */
-async function openWonGame(page: Page, displayName?: string): Promise<void> {
-  await injectSolitaireState(page, WIN_STATE);
+/** Opens a saved game, optionally under a display name. */
+async function openGame(
+  page: Page,
+  state: Record<string, unknown>,
+  displayName?: string,
+): Promise<void> {
+  await injectSolitaireState(page, state);
   if (displayName) {
     await page.evaluate(([key, name]) => localStorage.setItem(key, name), [
       DISPLAY_NAME_KEY,
@@ -75,7 +91,13 @@ async function openWonGame(page: Page, displayName?: string): Promise<void> {
   await page
     .getByRole("heading", { name: "Solitaire", exact: true })
     .waitFor({ timeout: 10_000 });
-  await expect(page.getByText("You Win!")).toBeVisible({ timeout: 5_000 });
+}
+
+/** Auto-completes the last card onto its foundation and waits out the win cascade. */
+async function winGame(page: Page, displayName?: string): Promise<void> {
+  await openGame(page, NEAR_WIN_STATE, displayName);
+  await page.getByRole("button", { name: "Auto-Complete" }).click();
+  await expect(page.getByText("You Win!")).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe("Solitaire — result card + leaderboard", () => {
@@ -83,12 +105,14 @@ test.describe("Solitaire — result card + leaderboard", () => {
     page,
   }) => {
     const posts = await routeSolitaireApi(page);
-    await openWonGame(page, "Tester");
+    await winGame(page, "Tester");
 
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_name: "Tester", score: 1000 }]);
+    expect(posts).toEqual([
+      { player_name: "Tester", score: expect.any(Number) },
+    ]);
     const card = page.getByTestId("solitaire-result");
     await expect(
       card.getByRole("button", { name: "Play Again" }),
@@ -103,7 +127,7 @@ test.describe("Solitaire — result card + leaderboard", () => {
     page,
   }) => {
     const posts = await routeSolitaireApi(page);
-    await openWonGame(page);
+    await winGame(page);
 
     const nameInput = page.getByLabel("Pick a display name for leaderboards");
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
@@ -117,6 +141,24 @@ test.describe("Solitaire — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_name: "Tester", score: 1000 }]);
+    expect(posts).toEqual([
+      { player_name: "Tester", score: expect.any(Number) },
+    ]);
+  });
+
+  test("a resumed, already-won game shows the card without resubmitting", async ({
+    page,
+  }) => {
+    const posts = await routeSolitaireApi(page);
+    await openGame(page, WON_STATE, "Tester");
+
+    await expect(page.getByText("You Win!")).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByTestId("solitaire-result").getByRole("button", {
+        name: "Play Again",
+      }),
+    ).toBeVisible();
+    await page.waitForTimeout(1_000);
+    expect(posts).toEqual([]);
   });
 });

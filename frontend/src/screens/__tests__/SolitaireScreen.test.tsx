@@ -9,6 +9,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AccessibilityInfo } from "react-native";
 
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -406,6 +407,8 @@ describe("SolitaireScreen — result card (#2509)", () => {
       isComplete: true,
       startedAt: null,
       accumulatedMs: 95000,
+      // Saved with the winning move's events, as a real save would be.
+      events: ["foundationComplete", "gameWin"],
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     return await mount();
@@ -446,8 +449,21 @@ describe("SolitaireScreen — result card (#2509)", () => {
     });
   }
 
+  /** Wins in-session and waits for the card (the cascade is skipped under reduce motion). */
+  async function winNow() {
+    const api = await mountOneMoveFromWin();
+    await playWinningMove(api);
+    await api.findByTestId("solitaire-result");
+    return api;
+  }
+
+  let reduceMotion: jest.SpyInstance;
+
+  afterEach(() => reduceMotion.mockRestore());
+
   beforeEach(() => {
     resetDisplayNameCacheForTests();
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     (solitaireApi.submitScore as jest.Mock).mockResolvedValue({
       player_name: "Alice",
       score: 820,
@@ -469,17 +485,17 @@ describe("SolitaireScreen — result card (#2509)", () => {
 
   it("submits the score under the saved display name with no name entry", async () => {
     await AsyncStorage.setItem("player_display_name", "Alice");
-    const api = await mountAtWonState();
+    const api = await winNow();
     await waitFor(() => {
       expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
     });
     expect(solitaireApi.submitScore).toHaveBeenCalledTimes(1);
-    expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", 820);
+    expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
     expect(api.queryByLabelText("Your name")).toBeNull();
   });
 
   it("asks for a display name once when none is set, then submits", async () => {
-    const api = await mountAtWonState();
+    const api = await winNow();
     const input = await api.findByLabelText("Pick a display name for leaderboards");
     expect(solitaireApi.submitScore).not.toHaveBeenCalled();
 
@@ -490,11 +506,27 @@ describe("SolitaireScreen — result card (#2509)", () => {
       await fireEvent.press(api.getByRole("button", { name: "Save" }));
     });
     await waitFor(() => {
-      expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", 820);
+      expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
     });
   });
 
+  // #2556 review: the app closed after a win but before the save was cleared.
+  it("does not resubmit or replay the cascade for a resumed, already-won game", async () => {
+    reduceMotion.mockResolvedValue(false);
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    const api = await mountAtWonState();
+
+    // Straight to the card — no cascade despite the saved gameWin event.
+    expect(api.getByTestId("solitaire-result")).toBeTruthy();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(solitaireApi.submitScore).not.toHaveBeenCalled();
+    expect(api.queryByText(/Saved as/)).toBeNull();
+  });
+
   it("plays the win cascade, then reveals the card and records the win once", async () => {
+    reduceMotion.mockResolvedValue(false);
     await AsyncStorage.setItem("player_display_name", "Alice");
     await saveStats({ bestTimeMs: 90000, bestMoves: 80, gamesPlayed: 3, gamesWon: 1 });
     const api = await mountOneMoveFromWin();
