@@ -6,6 +6,7 @@ import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -40,6 +41,7 @@ export interface StarSwarmImages {
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
   enemyBoss: SkImage | null;
+  enemyCarrier: SkImage | null;
   bulletPlayer: SkImage | null;
   bulletEnemy: SkImage | null;
   bulletCharge: SkImage | null;
@@ -57,6 +59,7 @@ export function useStarSwarmImages(): StarSwarmImages {
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
   const enemyBoss = useImage(enemyBossSrc);
+  const enemyCarrier = useImage(enemyCarrierSrc);
   const bulletPlayer = useImage(bulletPlayerSrc);
   const bulletEnemy = useImage(bulletEnemySrc);
   const bulletCharge = useImage(bulletChargeSrc);
@@ -91,6 +94,7 @@ export function useStarSwarmImages(): StarSwarmImages {
     enemyGrunt,
     enemyElite,
     enemyBoss,
+    enemyCarrier,
     bulletPlayer,
     bulletEnemy,
     bulletCharge,

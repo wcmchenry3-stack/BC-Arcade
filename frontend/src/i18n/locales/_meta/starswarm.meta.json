@@ -178,5 +178,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "a11y.carrierExposed": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the last Boss escort dies and the Carrier's force field drops, so it can now be damaged by ordinary shots.",
+    "tone": "neutral, urgent",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship added in #2484."
   }
 }

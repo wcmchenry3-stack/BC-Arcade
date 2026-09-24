@@ -1,4 +1,5 @@
-export type EnemyTier = "Grunt" | "Elite" | "Boss";
+/** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
+export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
 
 export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb";
 

@@ -28,6 +28,8 @@ import {
   PLAYER_W,
   MAX_PLAYER_BULLETS,
   MISSION_COMPLETE_BANNER_MS,
+  isCarrierArmored,
+  isLeaderTier,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
 
@@ -1576,7 +1578,8 @@ describe("Boss dive threshold (#978)", () => {
 
   it("startingNonBossCount set correctly at wave init", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
-    const nonBossCount = s.enemies.filter((e) => e.tier !== "Boss").length;
+    // #2484: Boss and Carrier both sit out the count
+    const nonBossCount = s.enemies.filter((e) => !isLeaderTier(e.tier)).length;
     expect(s.startingNonBossCount).toBe(nonBossCount);
     expect(s.startingNonBossCount).toBeGreaterThan(0);
   });
@@ -1960,8 +1963,8 @@ describe("Player bullet cap (#2334)", () => {
   function fillerPlayerBullets(count: number): Bullet[] {
     return Array.from({ length: count }, (_, i) => ({
       id: 20000 + i,
-      x: 50 + i, // spread out, mid-screen — all comfortably on-screen
-      y: 300,
+      x: 50 + i, // spread out — all comfortably on-screen
+      y: 520, // below the deepest formation row (#2484 tightened rows to 42 px) so none overlap an enemy
       vx: 0,
       vy: -0.56, // upward, matches the player bullet speed
       owner: "player" as const,
@@ -2203,8 +2206,10 @@ describe("#1030 Elite phase system & Boss passive start", () => {
     s = {
       ...s,
       enemyBullets: [],
+      // Only the Boss is due to fire this tick — everyone else is pushed far out, so a bullet
+      // here could only be the Boss's (the seed no longer guarantees the rest stay quiet, #2484).
       enemies: s.enemies.map((e, i) =>
-        i === bossIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : e
+        i === bossIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : { ...e, shootTimer: 99_999 }
       ),
     };
     s = tick(s, 16, NO_INPUT);
@@ -2513,7 +2518,7 @@ describe("#1033 Shield power-up", () => {
     s = { ...s, enemyBullets: [eb], player: { ...s.player, invincibleTimer: 0 } };
     s = tick(s, 16, NO_INPUT);
     expect(s.player.lives).toBe(livesBefore); // bullet absorbed
-    expect(s.enemyBullets.length).toBe(0); // bullet removed
+    expect(s.enemyBullets.some((b) => b.id === eb.id)).toBe(false); // bullet removed
     expect(s.activePowerUp?.shieldAbsorbed).toBeGreaterThanOrEqual(1);
   });
 
@@ -2581,6 +2586,7 @@ describe("#1034 Smart Bomb", () => {
     for (const { id, hp } of hpsBefore) {
       const after = s.enemies.find((e) => e.id === id);
       if (!after) continue; // might have died (hp was 1)
+      if (after.tier === "Carrier") continue; // #2484: armored while its escorts live
       if (after.isAlive) {
         expect(after.hp).toBeLessThanOrEqual(hp - 1);
       }
@@ -2914,5 +2920,180 @@ describe("laser sound gating", () => {
     expect(before.activePowerUp?.type).toBe("shield");
     const after = tick(before, 16, FIRE_INPUT);
     expect(laserSoundWouldFire(before, after)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Carrier tier (#2484)
+// ---------------------------------------------------------------------------
+
+describe("Carrier tier (#2484)", () => {
+  let bulletId = 90_000;
+  function shotAt(x: number, y: number, extra: Partial<Bullet> = {}): Bullet {
+    return {
+      id: bulletId++,
+      x,
+      y,
+      vx: 0,
+      vy: -0.56,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 1,
+      ...extra,
+    };
+  }
+  function settled(wave = 1): StarSwarmState {
+    return advanceMs(initStarSwarm(CANVAS_W, CANVAS_H, wave), 8000);
+  }
+  const carrierOf = (s: StarSwarmState) => s.enemies.find((e) => e.tier === "Carrier");
+  const withoutEscorts = (s: StarSwarmState): StarSwarmState => ({
+    ...s,
+    enemies: s.enemies.map((e) => (e.tier === "Boss" ? { ...e, isAlive: false, hp: 0 } : e)),
+  });
+
+  it("wave 1 has exactly one Carrier, centered in a row above the Bosses", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const carriers = s.enemies.filter((e) => e.tier === "Carrier");
+    expect(carriers).toHaveLength(1);
+    const c = carriers[0]!;
+    expect(c.formationX).toBe(CANVAS_W / 2);
+    expect(c.hp).toBe(8);
+    const bossYs = s.enemies.filter((e) => e.tier === "Boss").map((e) => e.formationY);
+    const eliteYs = s.enemies.filter((e) => e.tier === "Elite").map((e) => e.formationY);
+    expect(bossYs).toHaveLength(4);
+    expect(Math.min(...bossYs)).toBeGreaterThan(c.formationY);
+    expect(Math.min(...eliteYs)).toBeGreaterThan(Math.max(...bossYs));
+  });
+
+  it("is excluded from the non-boss threshold count", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const gruntsAndElites = s.enemies.filter((e) => e.tier === "Grunt" || e.tier === "Elite");
+    expect(s.startingNonBossCount).toBe(gruntsAndElites.length);
+    expect(isLeaderTier("Carrier")).toBe(true);
+    expect(isLeaderTier("Boss")).toBe(true);
+    expect(isLeaderTier("Elite")).toBe(false);
+  });
+
+  it("holds formation for the whole wave — never wiggles, dives, circles or returns", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    const seen = new Set<string>();
+    for (let t = 0; t < 40_000; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      const c = carrierOf(s)!;
+      seen.add(c.phase);
+      if (s.phase === "GameOver") break;
+    }
+    expect([...seen].every((p) => p === "SwoopIn" || p === "Formation")).toBe(true);
+    expect(seen.has("Formation")).toBe(true);
+  });
+
+  it("stays passive: alone on the field it fires nothing", () => {
+    let s = settled();
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 })),
+      enemyBullets: [],
+    };
+    for (let t = 0; t < 10_000; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      expect(s.enemyBullets).toHaveLength(0);
+    }
+    expect(carrierOf(s)!.isAlive).toBe(true);
+    expect(s.wave).toBe(1); // a live Carrier keeps the wave open
+  });
+
+  it("sways at most ±12 px while Bosses sway ±20 and Grunts ±40", () => {
+    // Enemy fire off so the drifting player can't be killed (GameOver would freeze the sway)
+    let s = { ...settled(), enemyFireDisabled: true, enemyBullets: [] };
+    for (let t = 0; t < 4000 && Math.abs(s.formationSwayX) < 30; t += 16) s = tick(s, 16, NO_INPUT);
+    expect(Math.abs(s.formationSwayX)).toBeGreaterThanOrEqual(30);
+    const c = carrierOf(s)!;
+    expect(Math.abs(c.x - c.formationX)).toBeLessThanOrEqual(12);
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation")!;
+    expect(Math.abs(boss.x - boss.formationX)).toBeLessThanOrEqual(20);
+  });
+
+  it("isCarrierArmored: true with an escort alive, false once all escorts die or the Carrier dies", () => {
+    const s = settled();
+    expect(isCarrierArmored(s)).toBe(true);
+    expect(isCarrierArmored(withoutEscorts(s))).toBe(false);
+    const oneEscort = {
+      ...s,
+      enemies: s.enemies.map((e, i) =>
+        e.tier === "Boss" && i !== s.enemies.findIndex((x) => x.tier === "Boss")
+          ? { ...e, isAlive: false, hp: 0 }
+          : e
+      ),
+    };
+    expect(isCarrierArmored(oneEscort)).toBe(true);
+    const deadCarrier = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, isAlive: false, hp: 0 } : e)),
+    };
+    expect(isCarrierArmored(deadCarrier)).toBe(false);
+  });
+
+  it("escorted: an ordinary shot is spent on the force field — ring plays, no damage", () => {
+    let s = settled();
+    const c = carrierOf(s)!;
+    s = { ...s, playerBullets: [shotAt(c.x, c.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const after = carrierOf(s)!;
+    expect(after.hp).toBe(8);
+    expect(after.hitFlashTimer).toBeGreaterThan(0);
+    expect(s.playerBullets).toHaveLength(0);
+  });
+
+  it("escorted: a piercing shot goes through the armor", () => {
+    let s = settled();
+    const c = carrierOf(s)!;
+    s = { ...s, playerBullets: [shotAt(c.x, c.y, { piercing: true, damage: 1, width: 12 })] };
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(7);
+  });
+
+  it("exposed: with all four escorts dead an ordinary shot damages it", () => {
+    let s = withoutEscorts(settled());
+    const c = carrierOf(s)!;
+    s = { ...s, playerBullets: [shotAt(c.x, c.y)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(7);
+  });
+
+  it("scores 1000 × difficulty multiplier with no dive bonus", () => {
+    let s = withoutEscorts(settled());
+    const c = carrierOf(s)!;
+    s = {
+      ...s,
+      score: 0,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, hp: 1 } : e)),
+      playerBullets: [shotAt(c.x, c.y)],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.isAlive).toBe(false);
+    expect(s.score).toBe(Math.round(1000 * difficultyMultiplier(s.difficulty)));
+  });
+
+  it("smart bomb rings off an escorted Carrier but chips an exposed one", () => {
+    const armored = applyPowerUp(settled(), "bomb");
+    expect(carrierOf(armored)!.hp).toBe(8);
+    expect(carrierOf(armored)!.hitFlashTimer).toBeGreaterThan(0);
+    const exposed = applyPowerUp(withoutEscorts(settled()), "bomb");
+    expect(carrierOf(exposed)!.hp).toBe(7);
+  });
+
+  it("never rams the player even when it is the last ship and stragglers turn aggressive", () => {
+    let s = settled();
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 })),
+      enemyBullets: [], // nothing already in flight from the dead escorts
+      player: { ...s.player, lives: 3, invincibleTimer: 0 },
+    };
+    const livesBefore = s.player.lives;
+    for (let t = 0; t < 15_000; t += 16) s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(livesBefore);
+    expect(carrierOf(s)!.phase).toBe("Formation");
   });
 });
