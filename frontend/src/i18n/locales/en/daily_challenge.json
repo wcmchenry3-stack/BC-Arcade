@@ -9,6 +9,7 @@
   "goal.daily_word.won_guesses_used_at_most_other": "Solve {{game}} in {{count}} guesses or fewer",
   "goal.twenty48.final_score_at_least": "Score {{target}}+ in {{game}}",
   "goal.twenty48.highest_tile_at_least": "Reach the {{target}} tile in {{game}}",
+  "goal.yacht.final_score_at_least": "Score {{target}}+ in {{game}}",
   "goal.solitaire.moves_at_least_one": "Make a move in {{game}}",
   "goal.solitaire.moves_at_least_other": "Make {{count}}+ moves in {{game}}",
   "goal.solitaire.won": "Win a game of {{game}}",

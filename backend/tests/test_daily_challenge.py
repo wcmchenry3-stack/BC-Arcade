@@ -20,6 +20,7 @@ from daily_challenge.definitions import (
     FREE_GOAL_POOL,
     GOAL_POOLS,
     GOALS_PER_DAY,
+    PENDING_PREMIUM_GOALS,
     PREMIUM_GOAL_POOL,
     TIERS,
     Template,
@@ -169,9 +170,20 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "solitaire",
         "mahjong",
         "freecell",
-        "blackjack",
+        "yacht",
     }
     assert set(FREE_GOAL_POOL).isdisjoint(_ALL_PREMIUM_SLUGS)
+
+
+def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
+    # Blackjack went premium on 2026-09-23; its goals wait for #2458. In a live
+    # pool it would be picked for store builds, where the game does not exist.
+    for pool in GOAL_POOLS.values():
+        assert set(pool).isdisjoint(PENDING_PREMIUM_GOALS)
+    assert set(PENDING_PREMIUM_GOALS) <= set(_ALL_PREMIUM_SLUGS)
+    # The one-win rule's easy-goal fallback must hold for them too.
+    assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
+    assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
 
 
 _EN_COPY = (
@@ -235,7 +247,6 @@ _LUCK_DEPENDENT = {
     "mahjong:won_duration_ms_at_most:480000",
     "freecell:won",
     "freecell:won_moves_at_most:100",
-    "blackjack:chips_gained",
 }
 
 
@@ -331,7 +342,14 @@ _EVALUATION_CASES = [
     ("freecell", _MEDIUM, {"won": False, "moves": 200}, False),
     ("freecell", _HARD, {"won": True, "moves": 100}, True),
     ("freecell", _HARD, {"won": True, "moves": 101}, False),
-    # blackjack
+    # yacht — final_score only, abandoned or not
+    ("yacht", _EASY, {"final_score": 100}, True),
+    ("yacht", _EASY, {"final_score": 99}, False),
+    ("yacht", _MEDIUM, {"final_score": 175}, True),
+    ("yacht", _MEDIUM, {"final_score": 174}, False),
+    ("yacht", _HARD, {"final_score": 250}, True),
+    ("yacht", _HARD, {"final_score": 249, "won": True}, False),
+    # blackjack — premium, pending #2458 (PENDING_PREMIUM_GOALS)
     ("blackjack", _EASY, {"hands_played": 3, "hands_won": 0}, True),
     ("blackjack", _EASY, {"hands_played": 2}, False),
     ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1001}, True),
@@ -350,7 +368,8 @@ _EVALUATION_CASES = [
 def test_goal_evaluation_per_game_and_tier(
     game: str, tier: int, facts: dict, expected: bool
 ) -> None:
-    assert FREE_GOAL_POOL[game][tier].evaluate(facts) is expected
+    goals = {**FREE_GOAL_POOL, **PENDING_PREMIUM_GOALS}
+    assert goals[game][tier].evaluate(facts) is expected
 
 
 def test_every_free_game_tier_is_covered_both_ways() -> None:
@@ -780,7 +799,8 @@ async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
         premium = set(
             (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
         )
-    assert {"yacht", "sudoku", "cascade", "hearts"} <= premium
+    assert {"blackjack", "sudoku", "cascade", "hearts"} <= premium
+    assert "yacht" not in premium
 
 
 @needs_db

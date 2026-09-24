@@ -231,11 +231,14 @@ exist in this build at all?" and lives separately in
 `frontend/src/entitlements/gameVisibility.ts`.
 
 v1.0 ships with the six premium games hidden entirely — no tile, no route, no
-locked screen — until IAP lands (epic #822). `isGameVisible(slug)` filters:
+locked screen — until IAP lands (epic #822). Since 2026-09-23 those are blackjack,
+cascade, hearts, sudoku, starswarm and sort (Blackjack and Yacht swapped tiers, so
+the store build carries no simulated gambling). `isGameVisible(slug)` filters:
 
 - the Home grid and chunk prefetch (`HomeScreen.tsx`);
 - route and tab registration — `App.tsx` registers premium screens from the
-  `premiumRoutes.ts` registry, which also owns the Star Swarm-only **Ranks** tab;
+  `premiumRoutes.ts` registry (a game may own several routes — Blackjack has four),
+  which also owns the Star Swarm-only **Ranks** tab;
 - Profile — bento tiles are re-derived from visible games and hidden-game rows
   are dropped from Recent Games, so earlier plays by a tester cannot resurface.
 

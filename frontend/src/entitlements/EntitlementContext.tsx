@@ -22,7 +22,14 @@ const GAME_STORAGE_CLEARERS: Partial<Record<string, () => Promise<void>>> = {
 };
 
 // Premium games — sourced from backend migration 0014_game_types_premium_cat
-export const PREMIUM_GAMES = new Set(["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"]);
+export const PREMIUM_GAMES = new Set([
+  "blackjack",
+  "cascade",
+  "hearts",
+  "sudoku",
+  "starswarm",
+  "sort",
+]);
 
 export const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
