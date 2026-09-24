@@ -283,13 +283,16 @@ export default function Twenty48Screen({ navigation }: Props) {
   const handleMove = useCallback(
     (direction: Direction) => {
       if (!state || state.game_over) return;
+      // The win card is up: no moves behind it until Keep Playing / Play Again
+      // (on web the keyboard would otherwise keep playing under the card).
+      if (state.has_won && !winDismissed) return;
       if (movingRef.current) {
         pendingMove.current = direction;
         return;
       }
       executeMove(direction, state);
     },
-    [state, executeMove]
+    [state, winDismissed, executeMove]
   );
 
   const resetGame = useCallback(() => {
@@ -476,6 +479,8 @@ export default function Twenty48Screen({ navigation }: Props) {
 
       {/* End-of-game result card (#2513): the 2048 win (Keep Playing) or no moves. */}
       <GameResultModal
+        // Remount on a win → game-over switch so the new outcome is announced.
+        key={showGameOverOverlay ? "game-over" : "win"}
         visible={!!showWinOverlay || !!showGameOverOverlay}
         outcome={showGameOverOverlay ? "ended" : "win"}
         eyebrow={t("twenty48:game.title")}

@@ -765,4 +765,30 @@ describe("Twenty48Screen — result card (#2513)", () => {
     });
     expect(nav.popToTop).toHaveBeenCalledTimes(1);
   });
+
+  it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
+    const { getByTestId, getByLabelText } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    mockedEngineMove.mockClear();
+
+    await act(() => {
+      dispatchKey("ArrowRight");
+      dispatchKey("ArrowDown");
+    });
+    expect(mockedEngineMove).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    });
+    await act(() => {
+      dispatchKey("ArrowRight");
+    });
+    expect(mockedEngineMove).toHaveBeenCalled();
+
+    // Flush the move lock so it doesn't leak into the next test.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+  });
 });
