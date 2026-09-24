@@ -493,8 +493,11 @@ counts are in `baseline.json`):
 - Before #2234 Daring's moon trigger cost it games (field +1.5pp over
   Schemer; the human won 23.9% at its table). The new trigger (`moonHand.ts`)
   attempts rarely from the opening hand and commits once Daring holds every
-  point taken and at least 13 of them: moon attempts in 13.9% of hands,
-  paired success 9.9% of attempts (was 9.2% / 7.2%).
+  point taken and at least 13 of them. Moons completed rose from 0.77% to
+  ~1.4% of Daring's hands. (`moon_attempt` now also counts hands where
+  Daring commits mid-hand, so its attempt and paired-success rates — 13.9%
+  and 9.9% after, 9.2% and 7.2% before — measure different populations and
+  aren't directly comparable.)
 - 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
   could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
   the time.

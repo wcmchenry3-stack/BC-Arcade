@@ -3,12 +3,12 @@
  *
  * Validates four properties:
  * 1. Legality — every play and pass decision is a legal action.
- * 2. Moon-attempt activation parity — earlyMoon/midMoon thresholds match rule-based code.
+ * 2. Moon-attempt activation — the moonHand.ts trigger (#2234) drives moon-mode play.
  * 3. Noise determinism — same seed → same decisions; Daring → zero noise deviations.
  * 4. Pass correctness — always 3 cards, never 2♣, all cards from the hand.
  */
 
-import { selectCardToPlayUtility, selectCardsToPassUtility } from "../ai";
+import { detectMoonAttempt, selectCardToPlayUtility, selectCardsToPassUtility } from "../ai";
 import {
   commitPass,
   createSeededRng,
@@ -231,8 +231,8 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
 
   beforeEach(() => setRng(() => 0.99)); // suppress noise
 
-  it("earlyMoon: leads highest non-heart for trick control", () => {
-    // 7 hearts + Q♠ + A♣ + 2♦ in hand — earlyMoon condition fires
+  it("moon attempt: leads highest non-heart for trick control", () => {
+    // 7 hearts (5 top) + Q♠ + A♣ + 2♦, no points taken — moon attempt (#2234)
     const hand = [
       c("hearts", 1),
       c("hearts", 13),
@@ -245,7 +245,6 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("clubs", 1), // A♣ — highest non-heart, should be led for trick control
       c("diamonds", 2),
     ];
-    // hand.length = 10 ≥ 8, heartsInHand = 7 ≥ 7, myHasQ = true, heartsWon = 0
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
@@ -257,6 +256,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       tricksPlayedInHand: 2,
     });
 
+    expect(detectMoonAttempt(hand, state, 1, "daring")).toBe(true); // in moon mode
     const card = selectCardToPlayUtility(hand, [], state, 1, "daring");
     // Moon-attempt mode: lead highest non-heart → A♣ (not 2♦, not hearts, not Q♠)
     expect(card).toEqual(c("clubs", 1));
@@ -289,6 +289,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       tricksPlayedInHand: 2,
     });
 
+    expect(detectMoonAttempt(hand, state, 1, "daring")).toBe(true); // in moon mode
     const card = selectCardToPlayUtility(
       hand,
       state.currentTrick as TrickCard[],
@@ -301,10 +302,10 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     expect(card).not.toEqual(c("spades", 12));
   });
 
-  it("midMoon/earlyMoon: neither fires when heartsInHand < 7 and another player holds points", () => {
-    // 6 hearts (< 7 → earlyMoon off). midMoon requires myPoints === totalPointsTaken;
-    // setting handScores so the human (seat 0) holds all current points breaks midMoon
-    // for player 1 (myPoints=0 ≠ totalPointsTaken=3). Falls back to normal Daring weights.
+  it("moon attempt: never fires once another player holds points", () => {
+    // A strong moon hand (5 top hearts + Q♠), but the human (seat 0) holds all
+    // current points, so a moon is impossible (myPoints=0 ≠ totalPointsTaken=3,
+    // #2234). Falls back to normal Daring weights.
     // Hand has no clubs so player 1 is void in the clubs-led trick.
     const hand = [
       c("hearts", 1),
@@ -323,7 +324,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       currentPlayerIndex: 1,
       currentLeaderIndex: 0,
       wonCards: [[c("hearts", 2), c("hearts", 3), c("hearts", 4)], [], [], []],
-      handScores: [3, 0, 0, 0], // seat 0 holds all 3 pts → player 1 midMoon = false
+      handScores: [3, 0, 0, 0], // seat 0 holds all 3 pts → no moon attempt for player 1
       heartsBroken: true,
       tricksPlayedInHand: 2,
     });

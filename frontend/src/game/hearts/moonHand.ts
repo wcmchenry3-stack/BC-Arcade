@@ -18,13 +18,10 @@
  * on it (ai.ts); the other personas never attempt moons.
  */
 
+import { isQueenOfSpades } from "./engine";
 import type { Card, Suit } from "./types";
 
 const aceHigh = (rank: number): number => (rank === 1 ? 14 : rank);
-
-function isQueenOfSpades(c: Card): boolean {
-  return c.suit === "spades" && c.rank === 12;
-}
 
 /**
  * Thresholds, chosen by the duplicate-deal sweep on #2234 (sim/harness.ts).
@@ -40,6 +37,14 @@ function isQueenOfSpades(c: Card): boolean {
  *   thirteen hearts already taken) spends the fewest hands in moon mode.
  * - The old triggers stopped attempting with fewer than 5 cards left, which
  *   abandoned nearly finished moons; there is no card-count cutoff now.
+ * - Committing on Q♠ alone looks risky, but also requiring 2 top hearts
+ *   measured worse (Daring − Schemer +6.4pp vs +7.3pp), so it isn't required.
+ * - Side-suit shape (strong suit, weak suits) is judged only on the full
+ *   13-card hand, before the player's first card: it changes with every card
+ *   played (leading the side-suit ace would otherwise end the attempt), while
+ *   top hearts and spade control — held or captured — stay true as long as
+ *   the attempt is alive. The state has no memory of an attempt in
+ *   progress, so these stable criteria are what keep it going.
  */
 export const MOON_HAND_RULES = {
   /** Hearts held + captured that must be top hearts (A/K/Q/J/10♥). */
@@ -66,6 +71,8 @@ export interface MoonHandAssessment {
   readonly totalHearts: number;
   readonly spadeControl: boolean;
   readonly strongSideSuit: boolean;
+  /** The longest ace-led side suit of at least the strong length, if any. */
+  readonly strongSuit: Suit | null;
   readonly weakSuits: number;
   /** All four criteria hold. */
   readonly viable: boolean;
@@ -81,36 +88,44 @@ const SIDE_SUITS: readonly Suit[] = ["spades", "diamonds", "clubs"];
 export function assessMoonHand(
   hand: readonly Card[],
   captured: readonly Card[] = [],
+  checkStructure = true,
   rules: typeof MOON_HAND_RULES = MOON_HAND_RULES
 ): MoonHandAssessment {
   const hearts = [...hand, ...captured].filter((c) => c.suit === "hearts");
   const topHearts = hearts.filter((c) => aceHigh(c.rank) >= rules.topHeartMinRank).length;
-  const has = (suit: Suit, rank: number) => hand.some((c) => c.suit === suit && c.rank === rank);
+  // Held or already captured: a captured A♠/K♠/Q♠ was won by this player,
+  // so its control has been used, not lost.
+  const own = [...hand, ...captured];
   const spadeControl =
-    hand.some(isQueenOfSpades) ||
-    captured.some(isQueenOfSpades) ||
-    (has("spades", 1) && has("spades", 13));
+    own.some(isQueenOfSpades) ||
+    (own.some((c) => c.suit === "spades" && c.rank === 1) &&
+      own.some((c) => c.suit === "spades" && c.rank === 13));
 
-  let strongSideSuit = false;
+  let strongSuit: Suit | null = null;
+  let strongLength = 0;
   let weakSuits = 0;
   for (const suit of SIDE_SUITS) {
     const cards = hand.filter((c) => c.suit === suit);
     if (cards.length === 0) continue;
     const best = Math.max(...cards.map((c) => aceHigh(c.rank)));
-    if (best === 14 && cards.length >= rules.strongSideSuitLength) strongSideSuit = true;
+    if (best === 14 && cards.length >= rules.strongSideSuitLength && cards.length > strongLength) {
+      strongSuit = suit;
+      strongLength = cards.length;
+    }
     if (best < rules.weakSuitBelowRank) weakSuits++;
   }
+  const strongSideSuit = strongSuit !== null;
 
   return {
     topHearts,
     totalHearts: hearts.length,
     spadeControl,
     strongSideSuit,
+    strongSuit,
     weakSuits,
     viable:
       topHearts >= rules.minTopHearts &&
       spadeControl &&
-      strongSideSuit &&
-      weakSuits <= rules.maxWeakSuits,
+      (!checkStructure || (strongSideSuit && weakSuits <= rules.maxWeakSuits)),
   };
 }

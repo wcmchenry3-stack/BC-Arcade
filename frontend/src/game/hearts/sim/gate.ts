@@ -181,8 +181,9 @@ function winShare(matchup: string, role: string): MetricRef {
  * value measured on the baseline seed (baseline.json `separations`) before
  * any gate run. A deliberate re-tune updates them here with new evidence.
  *
- * Both adjacent steps are checked twice: head to head in the field matchup,
- * and at the mixed table the app actually deals.
+ * Both adjacent persona steps are checked head to head in the field
+ * matchup and at the mixed table the app actually deals, and both table
+ * steps are checked for the human (Cautious > Schemer > Daring tables).
  *
  * The Schemer-vs-Daring table step became checkable with #2234: Daring's
  * moon commitment moved the human's win share at its table from 23.9% to

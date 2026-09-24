@@ -1,4 +1,4 @@
-import { detectMoonAttempt } from "../ai";
+import { detectMoonAttempt, selectCardsToPass } from "../ai";
 import { MOON_HAND_RULES, assessMoonHand } from "../moonHand";
 import type { Card, HeartsState, Rank, Suit } from "../types";
 
@@ -55,6 +55,7 @@ describe("assessMoonHand (#2234)", () => {
       totalHearts: 4,
       spadeControl: true,
       strongSideSuit: true,
+      strongSuit: "diamonds",
       weakSuits: 0,
       viable: true,
     });
@@ -190,5 +191,62 @@ describe("detectMoonAttempt (#2234)", () => {
       tricksPlayedInHand: 10,
     });
     expect(detectMoonAttempt(hand, state, 1, "daring")).toBe(false);
+  });
+});
+
+describe("moon attempts across the hand (#2234 review)", () => {
+  it("keeps attempting after the side-suit ace is gone: shape is judged on the full hand only", () => {
+    // Opening hand: 7 hearts (5 top), Q♠, A♦-3♦-2♦ — viable. Two tricks later
+    // it has played A♦ and one more card, still holding every point (none yet).
+    const opening = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 10),
+      c("hearts", 9),
+      c("hearts", 8),
+      c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 3),
+      c("diamonds", 2),
+      c("clubs", 13),
+      c("clubs", 4),
+    ];
+    const start = mkState({ playerHands: [[], opening, [], []] });
+    expect(detectMoonAttempt(opening, start, 1, "daring")).toBe(true);
+
+    const later = opening.filter(
+      (x) => !(x.suit === "diamonds" && x.rank === 1) && !(x.suit === "clubs" && x.rank === 4)
+    );
+    const mid = mkState({ playerHands: [[], later, [], []], tricksPlayedInHand: 2 });
+    expect(assessMoonHand(later).strongSideSuit).toBe(false); // the shape is gone...
+    expect(detectMoonAttempt(later, mid, 1, "daring")).toBe(true); // ...the attempt isn't
+  });
+
+  it("does not pass away the side suit that made the hand viable", () => {
+    // Before #2234's review fix the moon pass gave away 3♦ 4♦ (lowest
+    // non-hearts), leaving A♦ alone and the kept hand no longer viable.
+    const hand = [
+      c("hearts", 1),
+      c("hearts", 13),
+      c("hearts", 12),
+      c("hearts", 11),
+      c("hearts", 6),
+      c("spades", 12),
+      c("spades", 7),
+      c("diamonds", 1),
+      c("diamonds", 4),
+      c("diamonds", 3),
+      c("clubs", 13),
+      c("clubs", 9),
+      c("clubs", 2),
+    ];
+    expect(assessMoonHand(hand).viable).toBe(true);
+    const passed = selectCardsToPass(hand, "across", "daring", 1);
+    expect(passed.some((p) => p.suit === "diamonds")).toBe(false); // side suit kept
+    expect(passed).not.toContainEqual(c("spades", 12));
+    const kept = hand.filter((x) => !passed.some((p) => p.suit === x.suit && p.rank === x.rank));
+    expect(assessMoonHand(kept).viable).toBe(true);
   });
 });
