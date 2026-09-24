@@ -20,5 +20,10 @@
   "a11y.announce": "{{title}}. {{detail}}",
   "a11y.heroScore": "{{label}}: {{value}}",
   "a11y.heroVs": "You {{you}}, {{opponent}} {{opponentScore}}",
-  "a11y.dismissCelebration": "Skip celebration"
+  "a11y.dismissCelebration": "Skip celebration",
+  "stat.score": "Score",
+  "stat.time": "Time",
+  "stat.errors": "Errors",
+  "stat.best": "Best",
+  "stat.moves": "Moves"
 }

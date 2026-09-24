@@ -4,6 +4,8 @@ import type { GameType } from "./types";
 import { scoreQueue } from "./scoreQueue";
 import { useNetwork } from "./NetworkContext";
 import { loadDisplayName, saveDisplayName } from "./displayName";
+import { ApiError } from "./httpClient";
+import { flushQueuedGames } from "./flushQueuedGames";
 
 /**
  * Automatic leaderboard submission under the player's display name (#2503).
@@ -33,6 +35,28 @@ export interface LeaderboardAdapter<P> {
   submit: (playerName: string, payload: P) => Promise<number | null>;
   /** The payload to enqueue when offline — the shape the game's queue handler reads. */
   queuePayload: (playerName: string, payload: P) => Record<string, unknown>;
+}
+
+/**
+ * For endpoints that attach a name to an already-synced game
+ * (`PATCH …/score/{game_id}`): the game-sync request is fire-and-forget, so
+ * the name can arrive first and the server answers 404 (no game row yet) or
+ * 400 (no final score yet). Retry those briefly before the caller falls back
+ * to the offline queue. Other errors are thrown at once.
+ */
+export async function retryUntilGameSynced<T>(
+  fn: () => Promise<T>,
+  { attempts = 4, baseDelayMs = 750 }: { attempts?: number; baseDelayMs?: number } = {}
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const notSyncedYet = e instanceof ApiError && (e.status === 404 || e.status === 400);
+      if (!notSyncedYet || attempt >= attempts) throw e;
+      await new Promise<void>((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+    }
+  }
 }
 
 /** Leaderboard APIs report rank 11 for "not in the top 10"; treat that as unranked. */
@@ -83,6 +107,14 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
       try {
         await scoreQueue.enqueue(gameType, queuePayload(name, payload));
         if (isCurrent()) setStatus("offline");
+        // scoreQueue otherwise only flushes on an offline→online edge, so a
+        // player who stays online would never send a queued score. Upload the
+        // game itself first so a name-attach handler doesn't race it.
+        if (!offlineRef.current) {
+          flushQueuedGames()
+            .then(() => scoreQueue.flush())
+            .catch(() => undefined);
+        }
       } catch (e) {
         Sentry.captureException(e, { tags: { subsystem: "leaderboardSubmit", gameType } });
         if (isCurrent()) setStatus("error");

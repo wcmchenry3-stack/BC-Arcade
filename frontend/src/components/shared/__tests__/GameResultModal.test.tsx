@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo, Pressable, Text } from "react-native";
+import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -68,6 +68,13 @@ describe("GameResultModal — outcomes", () => {
       expect(screen.getByRole("header")).toHaveTextContent(TITLES[outcome]);
       expect(toJSON()).toMatchSnapshot();
     });
+  });
+
+  it("keeps the outcome stripe when the card border is reset (dark theme)", async () => {
+    await renderCard({ outcome: "win" }, "dark");
+    const style = StyleSheet.flatten(screen.getByTestId("game-result").props.style);
+    expect(style.borderWidth).toBe(0);
+    expect(style.borderTopWidth).toBe(5);
   });
 
   it("names the winner on a loss when given", async () => {
