@@ -40,7 +40,7 @@ async function copyToClipboard(text: string): Promise<void> {
 
 /**
  * PIMC engine timing on this device (#2587): times the engine on 30 real
- * decision points at 10 / 20 / 40 sampled deals and shows the median, p95
+ * decision points at 16 / 32 / 64 sampled deals and shows the median, p95
  * and worst case per move. Budget: under 1 s per move, aiming for 250 ms.
  */
 function PimcTimingSection() {

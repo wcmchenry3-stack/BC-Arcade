@@ -101,7 +101,7 @@ const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /** Time the engine per sample count; one row per count. */
 export async function runPimcBenchmark(options: BenchmarkOptions = {}): Promise<LatencyRow[]> {
-  const counts = options.sampleCounts ?? [10, 20, 40];
+  const counts = options.sampleCounts ?? [16, 32, 64];
   const n = options.decisions ?? 30;
   const now = options.now ?? clock;
   const states = collectDecisions(n, options.seed);

@@ -36,9 +36,22 @@ export interface PimcConfig {
   readonly rolloutPersona: AiPersona;
 }
 
+/**
+ * End-of-hand rollouts with inference, 32 deals a move. Measured against a
+ * Schemer field on duplicate deals (docs/HEARTS_PIMC_SPIKE.md, #2587):
+ * - vs Daring on the same cards: +21pp win share at 8 deals, +23pp at 16,
+ *   +33pp at 32 (Node: 11 / 20 / 38 ms a move);
+ * - 64 deals over 32: +4.2 ± 3.8pp — diminishing returns;
+ * - inference (voids, pass memory) over hand sizes only: +4.5 ± 2.4pp,
+ *   −0.27 ± 0.08 points a hand — with an exact sampler it helps, unlike the
+ *   spike's biased one;
+ * - trick-only rollouts are fast (1 ms) but weaker than Daring: they can't
+ *   tell a high losing card from a low one, so they lose duck-high (#2236).
+ * The on-device timing (debug panel) decides the final count.
+ */
 export const DEFAULT_PIMC_CONFIG: PimcConfig = {
-  samples: 40,
-  horizon: "trick",
+  samples: 32,
+  horizon: "hand",
   inference: true,
   rolloutPersona: "schemer",
 };

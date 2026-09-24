@@ -108,3 +108,63 @@ The exit criterion ("statistically significant win-rate gain at under 1 second p
 - **Sample-count vs. quality tradeoff** needs its own tuning pass — this spike used one fixed N (50) for the benchmark/ablation and a separate latency sweep (20/50/100/200), not a joint sweep of win-rate-gain against N.
 - **Rollout policy persona-sampling** (currently fixed to schemer for all sampled opponents) is a likely next lever, given the "average strategy fusion" simplification noted in §2.
 - **Re-run the benchmark once #2238 (sim gate v2) lands**, for the more rigorous paired-deal/SPRT methodology rather than this spike's interim `simulate-hearts.ts`-style stats — this spike's numbers are a strong directional result, not the final statistically-airtight gate #2238 is meant to provide.
+
+## 9. Follow-up: the engine (#2587, part A — 2026-09-24)
+
+The spike's prototype became `frontend/src/game/hearts/pimc/`:
+
+- `sampler.ts` samples deals **exactly uniformly** over every deal consistent
+  with what the player knows. That means hand sizes, known voids, and the
+  cards it passed (pinned to the recipient until played). It counts the deals
+  per suit split with a small dynamic programme over the opponents' remaining
+  hand sizes, then samples splits in proportion. A test checks uniformity
+  against brute force on a small case.
+- `engine.ts` scores each legal card by its mean cost over the sampled deals.
+  Every card is scored on the same deals. Rollouts use the utility AI with
+  its noise off (Schemer as everyone's model), and cost is the
+  moon-adjusted hand score relative to the table.
+- `benchmark.ts` and the Hearts debug panel's **PIMC engine timing** section
+  time the engine on the device. See "On-device timing" below.
+
+**Results.** Duplicate deals, `sim/harness.ts`, PIMC and Daring each taking
+the test seat against a Schemer field on the same cards, 60 blocks (180
+games each):
+
+| Setting                          | PIMC win share | vs Daring         | Points / hand vs Daring | Node ms / move |
+| -------------------------------- | -------------- | ----------------- | ----------------------- | -------------- |
+| Hand rollouts, 8 deals           | 55.8%          | +21.4 ± 4.5pp     | −1.11 ± 0.16            | 11             |
+| Hand rollouts, 16 deals          | 56.9%          | +22.5 ± 4.9pp     | −1.39 ± 0.18            | 20             |
+| Hand rollouts, 32 deals          | 67.2%          | +32.8 ± 4.7pp     | −1.75 ± 0.15            | 38             |
+| Trick-only rollouts (spike-like) | —              | worse than Daring | +1.0 (30 games)         | 1              |
+
+Daring won 34.4% in the same runs.
+
+- **Trick-only rollouts lose to today's Daring.** The spike beat the
+  utility AI of its time. Since then, #2236's duck-high added ~30pp to the
+  utility AI. A rollout that stops at the trick sees every losing card as
+  equal, so it can't duck high. Hand rollouts can.
+- **The sampler question (§5–6) is settled.** In a paired run (150 blocks),
+  inference beat hand-sizes-only by **+4.5 ± 2.4pp** win share and
+  **−0.27 ± 0.08** points a hand. The spike's "uniform beats constrained"
+  result came from its biased sampler (hypothesis 1 in §6), not from a PIMC
+  pathology.
+- **Diminishing returns past 32 deals.** Paired, 64 deals beat 32 by
+  +4.2 ± 3.8pp (−0.22 ± 0.12 points a hand) at twice the cost.
+- **Regret report** (#2239, `simulate-hearts.ts --regret --pimc 16`,
+  60 blocks). PIMC loses 832 points per 100 hands against the reference,
+  where the personas lose 966–1,082. It loses 0.640 points per play (Daring
+  0.767) with 1.0% blunders, and wins 58.9%.
+
+**On-device timing (still to do — needs a phone).** Open a Hearts game in a
+dev build or an internal test build (TestFlight / Play internal track). Tap
+**DBG**, then **Run timing** under "PIMC engine timing". It times 30 real
+moves at 16 / 32 / 64 deals and shows the median, p95 and worst case. The
+budget is under 1 s a move, aiming for 250 ms. Dev builds run slower
+JavaScript, so their numbers are an upper bound; the internal release build
+is the real measurement. The engine's default of 32 deals stands or moves
+on that measurement.
+
+**Next (#2587, part B).** Make the engine the Hard tier (Daring's style).
+Derive the easier levels from it with plausible mistakes read off the
+engine's own card values. Bring moon attempts and defence inside the engine.
+Re-tune the ladder to 40 / 26 / 16 on the sim gate.
