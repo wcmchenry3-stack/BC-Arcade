@@ -54,5 +54,10 @@
   "action.undoLastMove": "Undo last move",
   "stat.undos": "Undos",
   "action.nextLevel": "Next Level",
-  "action.changeLevel": "Change Level"
+  "action.changeLevel": "Change Level",
+  "stat.hands": "Hands",
+  "stat.biggestWin": "Biggest win",
+  "stat.winRate": "Win rate",
+  "stat.netPL": "Net P/L",
+  "a11y.cashOutHome": "Home — cash out and end the run"
 }

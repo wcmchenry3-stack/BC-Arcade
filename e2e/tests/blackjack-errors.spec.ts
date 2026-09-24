@@ -125,33 +125,29 @@ test.describe("Blackjack — error paths and guardrails", () => {
   // Game over
   // ---------------------------------------------------------------------------
 
-  test("Out of Chips modal appears when chips reach 0", async ({ page }) => {
+  test("Out of Chips card appears when chips reach 0", async ({ page }) => {
     await injectEngineState(page, gameOverState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    await expect(page.getByText("Out of Chips").first()).toBeVisible({
-      timeout: 5000,
-    });
-    await expect(
-      page.getByRole("button", {
-        name: /start a new session with 1000 chips/i,
-      }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Return to home screen", exact: true }),
-    ).toBeVisible();
+    // The shared result card (#2507).
+    const card = page.getByTestId("blackjack-result");
+    await expect(card).toBeVisible({ timeout: 5000 });
+    await expect(card.getByText("Game Over")).toBeVisible();
+    await expect(card.getByText("Out of Chips")).toBeVisible();
+    await expect(card.getByText("Hands", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Play Again" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("Play Again in game-over modal shows table selection then starts fresh", async ({
+  test("Play Again on the game-over card shows table selection then starts fresh", async ({
     page,
   }) => {
     await injectEngineState(page, gameOverState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Out of Chips").first()).toBeVisible();
+    const card = page.getByTestId("blackjack-result");
+    await expect(card).toBeVisible({ timeout: 5000 });
 
-    await page
-      .getByRole("button", { name: /start a new session with 1000 chips/i })
-      .click();
+    await card.getByRole("button", { name: "Play Again" }).click();
 
     // BJ-2: Play Again shows TableSelectPanel — select Beginner table
     await page.getByRole("button", { name: /select beginner table/i }).click();
@@ -164,16 +160,15 @@ test.describe("Blackjack — error paths and guardrails", () => {
     ).toBeVisible();
   });
 
-  test("Home button in game-over modal navigates to HomeScreen", async ({
+  test("Home on the game-over card navigates to HomeScreen", async ({
     page,
   }) => {
     await injectEngineState(page, gameOverState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Out of Chips").first()).toBeVisible();
+    const card = page.getByTestId("blackjack-result");
+    await expect(card).toBeVisible({ timeout: 5000 });
 
-    await page
-      .getByRole("button", { name: "Return to home screen", exact: true })
-      .click();
+    await card.getByRole("button", { name: "Home" }).click();
 
     await expect(page.getByText("BC Arcade").first()).toBeVisible({
       timeout: 10000,

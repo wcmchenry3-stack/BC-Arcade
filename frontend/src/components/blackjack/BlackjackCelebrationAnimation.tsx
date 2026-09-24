@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { AnimationOverlay } from "../shared/AnimationOverlay";
+import { useTheme } from "../../theme/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -27,6 +28,8 @@ const STAR_OFFSETS = [
 
 export function BlackjackCelebrationAnimation({ visible, onDismiss }: Props) {
   const { t } = useTranslation("blackjack");
+  // The celebration gold token (#2501, #2507), so it reads in light mode too.
+  const { colors } = useTheme();
   const [reduceMotion, setReduceMotion] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -112,15 +115,23 @@ export function BlackjackCelebrationAnimation({ visible, onDismiss }: Props) {
             key={i}
             style={[
               styles.star,
-              { left: "50%", top: "50%", marginLeft: offset.x, marginTop: offset.y },
+              {
+                left: "50%",
+                top: "50%",
+                marginLeft: offset.x,
+                marginTop: offset.y,
+                color: colors.celebration,
+              },
               starStyles[i],
             ]}
           >
             ★
           </Animated.Text>
         ))}
-        <Animated.View style={[styles.badge, labelStyle]}>
-          <Text style={styles.badgeText}>{t("outcome.blackjack")}</Text>
+        <Animated.View style={[styles.badge, { backgroundColor: colors.celebration }, labelStyle]}>
+          <Text style={[styles.badgeText, { color: colors.background }]}>
+            {t("outcome.blackjack")}
+          </Text>
         </Animated.View>
       </View>
     </AnimationOverlay>
@@ -133,7 +144,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   badge: {
-    backgroundColor: "rgba(255,215,0,0.95)",
     borderRadius: 20,
     paddingHorizontal: 32,
     paddingVertical: 16,
@@ -141,13 +151,11 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 36,
     fontWeight: "900",
-    color: "#1a1a1a",
     letterSpacing: 2,
     textTransform: "uppercase",
   },
   star: {
     position: "absolute",
     fontSize: 28,
-    color: "#FFD700",
   },
 });
