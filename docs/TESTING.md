@@ -482,25 +482,38 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24, after #2555, #2234, #2235 and #2236).** Baseline
+**What the gate measured (2026-09-24, after #2555, #2234, #2235, #2236 and the #2283 retune).** Baseline
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 43.4%
-  at the all-Cautious table, 26.0% at all-Schemer and 16.5% at all-Daring
-  (26.1% at the mixed table). At the mixed table Daring wins 39.3%, Schemer
-  25.3%, Cautious 9.3%; in the field matchup Daring beats Schemer by
-  +9.4pp and Schemer beats Cautious by +13.8pp. All six steps are
-  separation checks. #2236's tactics widened the ladder: better play on
-  every non-random move makes each persona's noise rate (Cautious 38%,
-  Schemer 10%, Daring 0%) cost more.
+- The difficulty ladder holds at every step, on the targets the owner set
+  (#2283): the human stand-in wins 40.0% at the all-Cautious table, 25.3% at
+  all-Schemer and 16.3% at all-Daring (25.1% at the mixed table). At the
+  mixed table Daring wins 40.0%, Schemer 23.5%, Cautious 11.3%. In the field
+  matchup, Daring beats Schemer by +10.5pp and Schemer beats Cautious by
+  +11.9pp. All six steps are separation checks.
+- **Plausible mistakes (#2283).** A noise hit used to play a uniformly
+  random card. It now plays a near-best one: each other card is weighted
+  exp(−(best − score) / 0.1), in utility-score units (`MISTAKE_SPREAD`). A
+  sloppy pass draws its 3 cards the same way.
+  - Near-best mistakes cost fewer games, so the rates rose to hold the
+    ladder: Cautious 55%, Schemer 19%, Daring 0% (previously 38 / 10 / 0).
+  - Measured by the regret report on the same deals (60 blocks), a mistake
+    costs 1.27 points instead of 1.51 (Cautious) and 1.21 instead of 1.49
+    (Schemer). Blunders, Q♠-sized or worse, fell from 3.4% of mistakes to
+    2.6% (Cautious) and from 3.8% to 2.0% (Schemer).
+  - The per-play gain is modest because the AI's own scores rank the
+    alternatives only roughly. Better rankings are #2587's job (the strong
+    engine).
+  - Before this, #2236's tactics had widened the ladder to 43.4 / 26.0 /
+    16.5%: better deliberate play made random noise cost more.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
   Cautious's play weights barely moved that; its noise rate did (30% → still
   level with Schemer, 35% → a correct ladder). #2235's moon defense helped
   Cautious slightly more than Schemer and thinned that step, so Cautious
-  noise is now 38%.
+  noise went to 38% (and to 55% with #2283's plausible mistakes).
 - Before #2234 Daring's moon trigger cost it games (field +1.5pp over
   Schemer; the human won 23.9% at its table). The new trigger (`moonHand.ts`)
   attempts rarely from the opening hand and commits once Daring holds every
@@ -525,9 +538,9 @@ counts are in `baseline.json`):
   left out. Duck-high stands aside while a lone opponent holds every
   point taken, and at least 2 of them: unguarded, defenders shed their
   stoppers and Daring's moon success rose from 5% to 21%. At the
-  all-Daring table paired moon success is now 9.3%.
-- 34% of Daring's Q♠ dumps land on the human (Schemer: 33%). Passes that
-  could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
+  all-Daring table paired moon success is now 9.2%.
+- 35% of Daring's Q♠ dumps land on the human (Schemer: 33%). Passes that
+  could void a suit do so 23% (Cautious), 69% (Schemer), 84% (Daring) of
   the time.
 
 **Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
@@ -610,7 +623,7 @@ where the reference must find the 13-point difference, rollout rules, hand
 cost and bands. `regret.test.ts` covers the tallies, the noise split, win
 share reported independently of regret, and the ladder check.
 
-**What it measured (2026-09-24, seed 2238, 100 blocks, every play graded):**
+**What it measured (2026-09-24, seed 2238, 100 blocks, every play graded — with the old uniform-random noise, before #2283):**
 
 | Persona         | Points lost / 100 hands | Per noise play | Per deliberate play | Blunders | Win share |
 | --------------- | ----------------------- | -------------- | ------------------- | -------- | --------- |
@@ -633,6 +646,19 @@ share reported independently of regret, and the ladder check.
   expected hand points, and they pay off in games won. Cautious's deliberate
   play is actually the closest to the reference; its weakness is almost all
   noise.
+
+**After #2283's plausible mistakes** (same run settings; Cautious 55%,
+Schemer 19%):
+
+| Persona  | Points lost / 100 hands | Per noise play (blunders) | Per deliberate play | Win share |
+| -------- | ----------------------- | ------------------------- | ------------------- | --------- |
+| Cautious | 1,099                   | 1.28 (2.5%)               | 0.524               | 15.3%     |
+| Schemer  | 999                     | 1.20 (2.2%)               | 0.693               | 23.8%     |
+| Daring   | 1,018                   | —                         | 0.783               | 33.3%     |
+
+The noise ladder still holds on noise plays: Cautious − Schemer is +476
+[450, 503] and Schemer − Daring +232 [217, 246]. Each mistake is cheaper and
+less often a blunder; the personas simply make more of them.
 
 ## Manual repros
 
