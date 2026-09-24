@@ -28,7 +28,8 @@ export type PlayWeightKey =
   | "minimizePoints" // rateMinimizeImmediatePoints
   | "queenSpadesRisk" // rateQueenSpadesRisk
   | "moonThreat" // rateMoonThreat
-  | "moonProgress"; // rateMoonAttemptProgress
+  | "moonProgress" // rateMoonAttemptProgress
+  | "tactics"; // rateTactics (#2236): 1.0 everywhere, 0 in moon-attempt mode
 
 export type PassWeightKey =
   | "passingQuality" // ratePassingQuality
@@ -45,6 +46,7 @@ export const CAUTIOUS_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 2.0,
   moonThreat: 1.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Schemer: balanced risk/blocking; no moon progress
@@ -53,6 +55,7 @@ export const SCHEMER_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 1.5,
   moonThreat: 1.5,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring (standard). moonProgress stays 0: rateQueenSpadesRisk already sorts Q♠ first
@@ -64,6 +67,7 @@ export const DARING_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 3.0,
   moonThreat: 1.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring moon-attempt mode: rateMoonAttemptProgress dominates (100.0) so the
@@ -74,6 +78,7 @@ export const DARING_MOON_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 0.2,
   moonThreat: 0.0,
   moonProgress: 100.0,
+  tactics: 0.0,
 };
 
 // Daring endgame mode: any player ≥ 65 cumulative pts, no moon attempt.
@@ -84,6 +89,7 @@ export const DARING_ENDGAME_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 2.5,
   moonThreat: 2.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // Daring adversarial mode: void in led suit + seat 0 winning the current trick.
@@ -94,6 +100,7 @@ export const DARING_ADVERSARIAL_PLAY_WEIGHTS: PlayWeights = {
   queenSpadesRisk: 5.0,
   moonThreat: 2.0,
   moonProgress: 0.0,
+  tactics: 1.0,
 };
 
 // ─── Pass weight maps ─────────────────────────────────────────────────────────
