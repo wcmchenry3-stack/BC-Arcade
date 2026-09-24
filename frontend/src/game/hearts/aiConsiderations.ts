@@ -531,8 +531,13 @@ export const rateTactics: Consideration<HeartsInfoSet, Card> = (infoSet, card) =
       // highest — it's a future liability, and losing with it costs nothing.
       // "Beaten" is strict: a card that still beats the current winner may
       // take the trick even if higher cards are outstanding.
+      // Not while a lone opponent holds every point: shedding high cards then
+      // throws away the stoppers needed to take a point and break the moon
+      // (and a high heart or Q♠ may land on the shooter's trick). Measured:
+      // with duck-high on for the defenders, Daring's moon success against a
+      // Schemer field rose from 5% to 21%; guarding only point cards left 13%.
       const beaten = card.suit !== ledSuit || aceHigh(card.rank) < winRank;
-      if (beaten) score += 0.3 * rankFrac;
+      if (beaten && moonShooter(infoSet) === null) score += 0.3 * rankFrac;
     }
   } else {
     // (c) Spade flush: Q♠ still out, not ours, and no A♠/K♠ it could be

@@ -607,6 +607,15 @@ describe("rateTactics (#2236)", () => {
       expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(0.5);
     });
 
+    it("keeps its high cards while a lone opponent holds every point (moon stoppers)", () => {
+      // P1 holds all 3 points so far: shedding A♦/A♥ now throws away cards
+      // needed to take a point and break a moon (#2235).
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 1), c("hearts", 1)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, handScores: [0, 3, 0, 0] }, 2);
+      for (const card of hand) expect(rateTactics(info, card)).toBe(0.5);
+    });
+
     it("sheds the highest off-suit card when void", () => {
       const trick = [tc("clubs", 5, 1)];
       const hand = [c("diamonds", 3), c("diamonds", 13)];
