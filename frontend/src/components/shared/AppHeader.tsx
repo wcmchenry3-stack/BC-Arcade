@@ -109,6 +109,16 @@ export function AppHeader({
     onEditPlayerNames?.();
   };
 
+  // #2481 — the ⋯ menu replaces the "?" button outright, so before this every
+  // gameplay screen had no way to send feedback: exactly where a player is
+  // most likely to hit something worth reporting. Reuses the widget the "?"
+  // opens, and `feedback:title` rather than a new key, so no locale needs a
+  // new string.
+  const handleMenuFeedback = () => {
+    setMenuOpen(false);
+    setHelpOpen(true);
+  };
+
   const handleAbandonConfirm = () => {
     setAbandonVisible(false);
     onNewGame?.();
@@ -332,6 +342,26 @@ export function AppHeader({
               </Text>
             </Pressable>
           )}
+
+          {/* #2481 — always last, and always present: the one menu item that
+              does not depend on which handlers the screen passed in. */}
+          <Pressable
+            onPress={handleMenuFeedback}
+            accessibilityRole="menuitem"
+            testID="nav-menu-feedback"
+            style={(state) => [
+              styles.dropdownItem,
+              state.pressed && { backgroundColor: colors.surfaceAlt },
+            ]}
+          >
+            <MaterialIcons
+              name="feedback"
+              size={18}
+              color={colors.accent}
+              style={styles.itemIcon}
+            />
+            <Text style={[styles.itemLabel, { color: colors.text }]}>{t("title")}</Text>
+          </Pressable>
         </View>
       </Modal>
 

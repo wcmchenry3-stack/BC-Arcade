@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -75,7 +77,14 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
       onRequestClose={handleClose}
       accessibilityViewIsModal
     >
-      <View style={s.overlay}>
+      {/* #2482 — the description field sits at the bottom of the sheet, so
+          without this the keyboard covers what the player is typing. "padding"
+          on iOS; Android resizes the window itself, so "height" is a no-op
+          there and the default adjustResize handles it. */}
+      <KeyboardAvoidingView
+        style={s.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View style={s.sheet}>
           {/* Header */}
           <View style={s.header}>
@@ -259,7 +268,7 @@ export default function FeedbackWidget({ visible, onClose }: Props) {
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -276,6 +285,9 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       maxHeight: "90%",
+      // #2482 — the sheet has no fixed height, so it must be allowed to shrink
+      // inside the 90% cap rather than being sized purely by its content.
+      flexShrink: 1,
     },
     header: {
       flexDirection: "row",
@@ -300,7 +312,13 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       color: colors.textMuted,
     },
     body: {
-      flex: 1,
+      // #2482 — NOT `flex: 1`. The sheet's own height is content-derived, and a
+      // flex-grow child inside a container with an indefinite main size has no
+      // remaining space to grow into: on iOS the ScrollView measured to nothing
+      // and the sheet collapsed to its header, which is the reported "only a
+      // sliver peeking out". flexShrink lets it take its content height and
+      // give way once the sheet hits maxHeight, which is when scrolling starts.
+      flexShrink: 1,
     },
     bodyContent: {
       padding: 20,
