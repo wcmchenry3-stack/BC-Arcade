@@ -234,6 +234,9 @@ export default function GameResultModal({
                   backgroundColor: colors.surfaceHigh,
                   borderColor: colors.border,
                   borderWidth: theme === "light" ? 1 : 0,
+                  // After borderWidth: on web a later borderWidth would
+                  // otherwise zero the outcome stripe.
+                  borderTopWidth: 5,
                   borderTopColor: fg,
                 },
               ]}
@@ -515,7 +518,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 20,
     borderRadius: 22,
-    borderTopWidth: 5,
   },
   header: { alignItems: "center", gap: 10 },
   iconDisc: {
