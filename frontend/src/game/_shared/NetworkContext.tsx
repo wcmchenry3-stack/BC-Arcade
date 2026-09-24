@@ -16,6 +16,7 @@ import { registerCascadeScoreHandler } from "../cascade/scoreSync";
 import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
 import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
+import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -31,6 +32,7 @@ registerCascadeScoreHandler();
 registerSudokuScoreHandler();
 registerMahjongScoreHandler();
 registerSolitaireScoreHandler();
+registerFreeCellScoreHandler();
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const status = useNetworkStatus();
