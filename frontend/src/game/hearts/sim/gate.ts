@@ -174,11 +174,16 @@ function winShare(matchup: string, role: string): MetricRef {
 }
 
 /**
- * Pre-registered persona separations. Measured 2026-09-24 (duplicate
- * deals, 1,500-6,000 blocks; see docs/TESTING.md): the persona ladder is
- * NOT "Daring > Schemer > Cautious" — Cautious wins most and the all-Cautious
+ * Pre-registered persona separations: each `expected` is the value measured
+ * on the baseline seed (baseline.json `separations`, 2026-09-24: field 6,000
+ * blocks, presets 12,000), before any gate run. The persona ladder is NOT
+ * "Daring > Schemer > Cautious": Cautious wins most, and the all-Cautious
  * table is the hardest for the human. These checks pin the ladder as it is;
  * a deliberate re-tune updates the expectations here with new evidence.
+ *
+ * Not registered: "the Schemer table is easier than the Daring table"
+ * (measured +1.5pp ± 0.5): per-block SD 0.55 would need ~15,000 blocks to
+ * decide, twice the presets cap.
  */
 export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
   {
@@ -187,7 +192,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Daring outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "daring"),
     right: winShare("field-schemer", "schemer"),
-    expected: 0.02,
+    expected: 0.015,
   },
   {
     kind: "separation",
@@ -195,7 +200,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "Cautious outwins Schemer in the same seat, cards and field",
     left: winShare("field-schemer", "cautious"),
     right: winShare("field-schemer", "schemer"),
-    expected: 0.02,
+    expected: 0.027,
   },
   {
     kind: "separation",
@@ -203,7 +208,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Cautious outwins Schemer",
     left: winShare("table-mixed", "cautious"),
     right: winShare("table-mixed", "schemer"),
-    expected: 0.045,
+    expected: 0.043,
   },
   {
     kind: "separation",
@@ -211,7 +216,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "at the mixed table, Daring outwins Schemer",
     left: winShare("table-mixed", "daring"),
     right: winShare("table-mixed", "schemer"),
-    expected: 0.025,
+    expected: 0.031,
   },
   {
     // HRT-3 (#2204): the human does BETTER against three Schemers than
@@ -221,15 +226,7 @@ export const SEPARATION_CHECKS: readonly SeparationCheck[] = [
     description: "the human wins more at the Schemer table than at the Cautious table (HRT-3)",
     left: winShare("table-schemer", "proxy"),
     right: winShare("table-cautious", "proxy"),
-    expected: 0.03,
-  },
-  {
-    kind: "separation",
-    id: "presets:schemer-table-easier-than-daring",
-    description: "the human wins more at the Schemer table than at the Daring table",
-    left: winShare("table-schemer", "proxy"),
-    right: winShare("table-daring", "proxy"),
-    expected: 0.02,
+    expected: 0.036,
   },
 ];
 

@@ -219,6 +219,6 @@ describe("evaluateCheck — separation", () => {
   it("reports a Bonferroni-adjusted CI", () => {
     const r = evaluateCheck(separation, pairRuns(0.3, 0.25, 2000, 18), baseline, true);
     const half = r.estimate.ciHigh - r.estimate.mean;
-    expect(half / r.estimate.se).toBeGreaterThan(2.5); // z at 1 − 0.05/20 two-sided ≈ 3.02
+    expect(half / r.estimate.se).toBeGreaterThan(2.5); // z at 1 − 0.05/19 two-sided ≈ 3.01
   });
 });

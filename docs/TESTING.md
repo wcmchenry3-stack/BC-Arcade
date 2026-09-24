@@ -368,15 +368,15 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
 - **Regression checks** (14) hold a metric at its `baseline.json` value:
   H0 "equals the baseline" against H1 "moved by δ" (3pp for win shares,
   2–4pp for behaviour rates), both directions, each side at α/2.
-- **Separation checks** (6) are signed hypotheses written into `gate.ts`
+- **Separation checks** (5) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
   (H0) against "no difference" (H1). A reversed or vanished separation fails;
   a larger one passes. The report prints the difference with its CI.
 
-All 20 checks are one family, **Bonferroni-corrected**: each runs at
-α = 0.05/20 = 0.0025 with β = 0.05, so a behaviour-neutral change fails the
+All 19 checks are one family, **Bonferroni-corrected**: each runs at
+α = 0.05/19 ≈ 0.0026 with β = 0.05, so a behaviour-neutral change fails the
 gate with probability ≤ 5%, and each check misses a real move of its δ ≤ 5%
-of the time. CIs in the report use the same adjusted level (99.75%).
+of the time. CIs in the report use the same adjusted level (99.74%).
 
 **How a run proceeds.** Each group adds 200 blocks to every matchup, then
 evaluates all its checks, and stops as soon as every check has crossed an
@@ -396,7 +396,7 @@ npx tsx scripts/simulate-hearts.ts --count 3000               # descriptive repo
 **Reading a failure.**
 
 - `FAIL table-daring/daring/moon_success: 3.10% [2.2%, 4.0%] vs baseline
-  7.19% ± δ 2.50% — moons shot in attempted hands | hands attempted =
+  7.23% ± δ 2.50% — moons shot in attempted hands | hands attempted =
   402/12967 — LLR low/high 6.21 / -40.3` — a regression check accepted H1:
   the rate moved by about δ or more from the baseline, with the stated
   error rates. The logged counts show what the rate was computed from.
