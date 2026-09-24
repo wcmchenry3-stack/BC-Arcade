@@ -445,7 +445,7 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 | Group     | Games per block | Stopped at (cap)     | Wall-clock |
 | --------- | --------------- | -------------------- | ---------- |
 | `presets` | 6               | 3,400 blocks (8,000) | ~2 min     |
-| `field`   | 9               | 1,800 blocks (6,000) | ~1.5 min   |
+| `field`   | 9               | 1,600 blocks (6,000) | ~1.5 min   |
 
 Worst case, with every check running to its cap (presets 8,000 blocks ×
 6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
