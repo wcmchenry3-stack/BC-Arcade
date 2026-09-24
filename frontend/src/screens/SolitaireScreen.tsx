@@ -7,10 +7,11 @@
  *      from #595; introduced in #596).
  *   2. Persistence — AsyncStorage save/resume on every mutation so a
  *      backgrounded or force-killed app resumes at the exact board.
- *   3. Instrumentation + leaderboard — `useGameSync` session (started on
- *      the first real move, completed on win, abandoned on unmount for
- *      anything else) and `POST /solitaire/score` on win with an in-modal
- *      retry affordance.
+ *   3. Instrumentation + result — `useGameSync` session (started on the
+ *      first real move, completed on win, abandoned on unmount for anything
+ *      else), and the shared GameResultModal (#2509) on win, which submits
+ *      the score under the player's display name (useLeaderboardSubmit),
+ *      queued when offline.
  *
  * Route wiring into HomeStack and the lobby card live in #599; this file
  * is intentionally route-agnostic and reads its navigation via the hook.
@@ -18,14 +19,12 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   ViewStyle,
 } from "react-native";
@@ -42,6 +41,7 @@ import TableauPile from "../game/solitaire/components/TableauPile";
 import FoundationPile from "../game/solitaire/components/FoundationPile";
 import StockWastePile from "../game/solitaire/components/StockWastePile";
 import { SolitaireWinCascade } from "../game/solitaire/components/SolitaireWinCascade";
+import GameResultModal from "../components/shared/GameResultModal";
 import { useSound } from "../game/_shared/useSound";
 import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../game/solitaire/components/CardView";
@@ -73,10 +73,10 @@ import {
   type SolitaireStats,
 } from "../game/solitaire/storage";
 import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
-import { solitaireApi, type ScoreEntry } from "../game/solitaire/api";
+import { solitaireLeaderboard } from "../game/solitaire/leaderboard";
+import { formatMs } from "../game/solitaire/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useNetwork } from "../game/_shared/NetworkContext";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
@@ -85,7 +85,14 @@ const COL_GAP = 6;
 const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
-const MAX_NAME_LENGTH = 32;
+
+/** What the result card shows for a finished game. */
+interface WinSummary {
+  readonly timeMs: number;
+  readonly moves: number;
+  readonly bestTimeMs: number;
+  readonly isNewBest: boolean;
+}
 
 type Selection =
   | { readonly kind: "waste" }
@@ -94,6 +101,7 @@ type Selection =
 
 export default function SolitaireScreen() {
   const { t } = useTranslation("solitaire");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -113,7 +121,6 @@ export default function SolitaireScreen() {
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const winCascadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Lifecycle refs.
   const hasLoadedRef = useRef(false);
@@ -123,7 +130,9 @@ export default function SolitaireScreen() {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
 
-  const [cascadeVisible, setCascadeVisible] = useState(false);
+  const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
+  const leaderboard = useLeaderboardSubmit(solitaireLeaderboard);
+  const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
@@ -153,7 +162,6 @@ export default function SolitaireScreen() {
   useEffect(() => {
     return () => {
       if (autoStepTimeoutRef.current !== null) clearTimeout(autoStepTimeoutRef.current);
-      if (winCascadeTimeoutRef.current !== null) clearTimeout(winCascadeTimeoutRef.current);
     };
   }, []);
 
@@ -237,6 +245,12 @@ export default function SolitaireScreen() {
     movesRef.current = moves;
   }, [moves]);
 
+  // Stats as of the win, read by the completion effect below.
+  const statsRef = useRef(stats);
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
   // #597 — end sync sessions exactly once on the completion transition and
   // clear the saved game so the next mount starts fresh.
   useEffect(() => {
@@ -250,10 +264,19 @@ export default function SolitaireScreen() {
         { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
       );
       clearGame().catch(() => {});
+      submitScore({ score: state.score });
+      const finalMs = state.accumulatedMs;
+      const finalMoves = movesRef.current;
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
-        const finalMs = state.accumulatedMs;
-        const finalMoves = movesRef.current;
+        const isNewBest =
+          statsRef.current.bestTimeMs === 0 || finalMs < statsRef.current.bestTimeMs;
+        setWinSummary({
+          timeMs: finalMs,
+          moves: finalMoves,
+          bestTimeMs: isNewBest ? finalMs : statsRef.current.bestTimeMs,
+          isNewBest,
+        });
         setStats((prev) => {
           const updated: SolitaireStats = {
             ...prev,
@@ -266,10 +289,18 @@ export default function SolitaireScreen() {
           saveStats(updated);
           return updated;
         });
+      } else {
+        // A resumed, already-won game: its win was counted when it happened.
+        setWinSummary({
+          timeMs: finalMs,
+          moves: finalMoves,
+          bestTimeMs: statsRef.current.bestTimeMs,
+          isNewBest: false,
+        });
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete]);
+  }, [state, syncComplete, submitScore]);
 
   // #597 — abandon on back-navigation when a move has been made and the
   // game isn't already complete. `useGameSync`'s unmount handler provides a
@@ -300,12 +331,7 @@ export default function SolitaireScreen() {
         Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start();
     }
-    if (state.events.includes("gameWin")) {
-      playGameWin();
-      setCascadeVisible(true);
-      if (winCascadeTimeoutRef.current !== null) clearTimeout(winCascadeTimeoutRef.current);
-      winCascadeTimeoutRef.current = setTimeout(() => setCascadeVisible(false), 2000);
-    }
+    if (state.events.includes("gameWin")) playGameWin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.events]);
 
@@ -599,23 +625,28 @@ export default function SolitaireScreen() {
     step();
   }, [state, autoCompleting, ensureSyncStarted]);
 
+  /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {
     if (autoStepTimeoutRef.current !== null) {
       clearTimeout(autoStepTimeoutRef.current);
       autoStepTimeoutRef.current = null;
-    }
-    if (winCascadeTimeoutRef.current !== null) {
-      clearTimeout(winCascadeTimeoutRef.current);
-      winCascadeTimeoutRef.current = null;
     }
     clearGame().catch(() => {});
     setAutoCompleting(false);
     setState(null);
     setSelection(null);
     setMoves(0);
-    setCascadeVisible(false);
+    setWinSummary(null);
+    resetSubmission();
     winRecordedRef.current = false;
-  }, []);
+  }, [resetSubmission]);
+
+  // Play Again deals straight into the same draw mode, skipping the picker.
+  const handlePlayAgain = useCallback(() => {
+    const drawMode = stateRef.current?.drawMode ?? 1;
+    resetToPreGame();
+    deal(drawMode);
+  }, [resetToPreGame, deal]);
 
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
@@ -881,8 +912,6 @@ export default function SolitaireScreen() {
                 </Pressable>
               )}
 
-              <SolitaireWinCascade visible={cascadeVisible} />
-
               <View
                 style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
                 accessibilityLiveRegion="polite"
@@ -898,7 +927,43 @@ export default function SolitaireScreen() {
           </CardSizeContext.Provider>
         )}
 
-        {state?.isComplete === true && <WinModal score={state.score} onNewGame={resetToPreGame} />}
+        {state !== null ? (
+          <GameResultModal
+            visible={state.isComplete}
+            outcome="win"
+            eyebrow={`${t("game.title")} · ${t(state.drawMode === 1 ? "drawMode.one" : "drawMode.three")}`}
+            hero={{ kind: "score", label: tResult("stat.score"), value: state.score }}
+            isNewBest={winSummary?.isNewBest ?? false}
+            stats={[
+              {
+                label: tResult("stat.time"),
+                value: formatMs(winSummary?.timeMs ?? state.accumulatedMs),
+              },
+              { label: tResult("stat.moves"), value: winSummary?.moves ?? moves },
+              ...(winSummary && winSummary.bestTimeMs > 0
+                ? [{ label: tResult("stat.best"), value: formatMs(winSummary.bestTimeMs) }]
+                : []),
+            ]}
+            submission={{
+              status: leaderboard.status,
+              rank: leaderboard.rank,
+              playerName: leaderboard.playerName,
+              onProvideName: leaderboard.provideName,
+              onRetry: leaderboard.retry,
+            }}
+            onPlayAgain={handlePlayAgain}
+            secondaryAction={{ label: tResult("action.changeMode"), onPress: resetToPreGame }}
+            onHome={() => navigation.popToTop()}
+            // Only a win that just happened plays the cascade; a resumed,
+            // already-won game goes straight to the card.
+            celebration={
+              state.events?.includes("gameWin")
+                ? (done) => <SolitaireWinCascade onDone={done} />
+                : undefined
+            }
+            testID="solitaire-result"
+          />
+        ) : null}
       </GameShell>
     </DragProvider>
   );
@@ -950,147 +1015,6 @@ function PreGameModal({ onChoose }: { readonly onChoose: (mode: DrawMode) => voi
           >
             <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
               {t("drawMode.three")}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Win modal — name entry + score POST with retry
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  score,
-  onNewGame,
-}: {
-  readonly score: number;
-  readonly onNewGame: () => void;
-}) {
-  const { t } = useTranslation("solitaire");
-  const { colors } = useTheme();
-  const { isOnline, isInitialized } = useNetwork();
-
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<ScoreEntry | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const offline = isInitialized && !isOnline;
-
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
-  const trimmed = name.trim();
-  const canSubmit = !submitting && !offline && trimmed.length > 0;
-
-  async function handleSubmit() {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const entry = await solitaireApi.submitScore(trimmed, score);
-      setSubmitted(entry);
-    } catch {
-      setError(t("solitaire:error.submitFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const submitLabel = error ? t("solitaire:error.submitRetry") : t("solitaire:action.submitScore");
-
-  return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("solitaire:win.title")}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t("solitaire:win.score", { score })}
-          </Text>
-
-          {submitted === null ? (
-            <>
-              <TextInput
-                style={[
-                  styles.nameInput,
-                  {
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: colors.border,
-                    color: colors.text,
-                  },
-                ]}
-                placeholder={t("solitaire:win.namePlaceholder")}
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                maxLength={MAX_NAME_LENGTH}
-                editable={!submitting}
-                accessibilityLabel={t("solitaire:win.nameLabel")}
-                accessibilityHint={t("solitaire:win.nameHint")}
-              />
-              {offline ? (
-                <OfflineBanner />
-              ) : (
-                error !== null && (
-                  <Text
-                    style={[styles.winError, { color: colors.error }]}
-                    accessibilityLiveRegion="assertive"
-                    accessibilityRole="alert"
-                  >
-                    {error}
-                  </Text>
-                )
-              )}
-              <Pressable
-                style={[styles.modalPrimary, gradient, !canSubmit && styles.modalPrimaryDisabled]}
-                onPress={handleSubmit}
-                disabled={!canSubmit}
-                accessibilityRole="button"
-                accessibilityLabel={submitLabel}
-                accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-                testID="solitaire-submit-score-button"
-              >
-                {submitting ? (
-                  <ActivityIndicator color={colors.textOnAccent} />
-                ) : (
-                  <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-                    {submitLabel}
-                  </Text>
-                )}
-              </Pressable>
-            </>
-          ) : (
-            <Text
-              style={[styles.winSaved, { color: colors.bonus }]}
-              accessibilityLiveRegion="polite"
-            >
-              {t("solitaire:win.rank", { rank: submitted.rank })}
-            </Text>
-          )}
-
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onNewGame}
-            accessibilityRole="button"
-            accessibilityLabel={t("solitaire:action.newGame")}
-            testID="solitaire-new-game-button"
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("solitaire:action.newGame")}
             </Text>
           </Pressable>
         </View>
@@ -1215,9 +1139,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 180,
   },
-  modalPrimaryDisabled: {
-    opacity: 0.5,
-  },
   modalPrimaryText: {
     fontSize: 14,
     fontWeight: "800",
@@ -1235,24 +1156,5 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1,
     textTransform: "uppercase",
-  },
-  nameInput: {
-    width: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  winError: {
-    fontSize: 13,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  winSaved: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
   },
 });
