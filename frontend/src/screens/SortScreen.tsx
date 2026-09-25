@@ -44,8 +44,7 @@ import {
   saveLevelsCache,
   type SortProgress,
 } from "../game/sort/storage";
-import { useNetwork } from "../game/_shared/NetworkContext";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { useSortAudio } from "../game/sort/useSortAudio";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -62,8 +61,6 @@ export default function SortScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const { isOnline, isInitialized } = useNetwork();
-  const offline = isInitialized && !isOnline;
 
   // Top-level view
   const [view, setView] = useState<ScreenView>("loading");
@@ -621,12 +618,7 @@ export default function SortScreen() {
         },
       ]}
     >
-      {/* Offline banner */}
-      {offline && (
-        <View style={styles.offlineBannerWrap}>
-          <OfflineBanner />
-        </View>
-      )}
+      <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
 
       {/* HUD */}
       <View style={[styles.hud, { borderBottomColor: colors.border }]}>

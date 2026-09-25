@@ -57,10 +57,18 @@ export function CapacityWarningToast({
   const check = shouldShowCheck ?? (() => eventStore.shouldShowCapacityWarning());
   const mark = markShown ?? (() => eventStore.markWarningShown());
 
+  // Bumped on every dismiss. A check captures it when it starts and may only
+  // show the banner if no dismiss happened while it ran (#2584 review): the
+  // real eventStore check waits on a lock and a storage read, so a poll already
+  // in flight when the player taps Dismiss could otherwise resolve "show" and
+  // put the banner straight back.
+  const dismissGenRef = useRef(0);
+
   const runCheck = useCallback(async () => {
+    const startedAtGen = dismissGenRef.current;
     try {
       const should = await check();
-      if (should) setVisible(true);
+      if (should && startedAtGen === dismissGenRef.current) setVisible(true);
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "capacityWarningToast", op: "check" },
@@ -98,6 +106,7 @@ export function CapacityWarningToast({
   }, [runCheck, pollIntervalMs]);
 
   const onDismiss = useCallback(() => {
+    dismissGenRef.current += 1;
     setVisible(false);
     mark().catch((e) => {
       Sentry.captureException(e, {

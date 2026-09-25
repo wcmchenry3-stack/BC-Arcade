@@ -22,7 +22,7 @@ import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import OfflineBanner from "../components/OfflineBanner";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
@@ -409,10 +409,6 @@ export default function HomeScreen() {
         }
       />
 
-      <View style={styles.offlineBannerWrap}>
-        <OfflineBanner />
-      </View>
-
       <ScrollView
         contentContainerStyle={[
           styles.grid,
@@ -423,6 +419,7 @@ export default function HomeScreen() {
           },
         ]}
       >
+        <ConnectedOfflineBanner />
         <DailyChallengeCard />
         {numColumns === 1
           ? games.map((item, index) => (
@@ -469,13 +466,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-  },
-  offlineBannerWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    zIndex: 100,
   },
   grid: {
     gap: 16,

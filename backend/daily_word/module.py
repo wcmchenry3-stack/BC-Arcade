@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from daily_word.models import DailyWordMetadata, DailyWordResult
 from daily_word.progress import recorded_guess_count
+from games.board import BoardDefinition
 from vocab import GameType
 
 if TYPE_CHECKING:
@@ -23,6 +24,15 @@ class DailyWordModule:
     metadata_model = DailyWordMetadata
     result_model = DailyWordResult
     has_winner = True
+    # No leaderboard; fewest guesses in a *won* game is the per-game "best" in
+    # stats. A loss uses every guess and is not a best, so only wins qualify.
+    board = BoardDefinition(
+        metric="guesses_used",
+        direction="asc",
+        label_key="guesses",
+        qualifying_outcomes=("win",),
+        enabled=False,
+    )
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

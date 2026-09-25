@@ -12,6 +12,7 @@
   "theme.darkShort": "Dark",
   "lang.switcherLabel": "Select language",
   "network.offlineBanner": "Offline — scores will sync when you reconnect",
+  "a11y.loading": "Loading",
   "brand.wordmark": "BC Arcade",
   "nav.lobby": "Lobby",
   "nav.ranks": "Ranks",

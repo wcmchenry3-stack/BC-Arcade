@@ -7,6 +7,7 @@ structural subtyping — no inheritance required.
 from __future__ import annotations
 
 from blackjack.models import BlackjackMetadata, BlackjackResult
+from games.board import SCORE_METRIC, BoardDefinition
 from vocab import GameType
 
 
@@ -25,6 +26,10 @@ class BlackjackModule:
     # False until #2628 makes a run record ``win`` / ``loss``; today every
     # finished run records ``completed``.
     has_winner = False
+    # No leaderboard: chips are a balance, not a score (#2519 §4.2).
+    # qualifying_outcomes stays None: every non-abandoned session's closing
+    # balance counts toward ``best_chips`` in stats, whatever its last hand was.
+    board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="chips", enabled=False)
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

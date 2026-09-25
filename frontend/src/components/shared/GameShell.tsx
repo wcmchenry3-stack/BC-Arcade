@@ -1,7 +1,8 @@
 import React from "react";
-import { View, ActivityIndicator, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
+import { View, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
+import { EmptyState } from "./EmptyState";
 import { useTheme } from "../../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT, AppHeaderProps } from "./AppHeader";
 
@@ -52,7 +53,7 @@ export function GameShell({
   if (loading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
+        <EmptyState kind="loading" />
       </View>
     );
   }

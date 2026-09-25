@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { starSwarmApi } from "../game/starswarm/api";
@@ -80,26 +81,20 @@ export default function LeaderboardScreen() {
 
   let body: React.ReactNode;
   if (loading) {
-    body = (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" accessibilityLabel="Loading" />
-      </View>
-    );
+    body = <EmptyState kind="loading" />;
   } else if (error) {
     body = (
-      <View style={styles.center}>
-        <Text style={[styles.errorText, { color: colors.error }]}>{t("leaderboard.error")}</Text>
-        <Pressable
-          onPress={() => {
+      <EmptyState
+        kind="error"
+        message={t("leaderboard.error")}
+        retry={{
+          label: t("leaderboard.retry"),
+          onPress: () => {
             setLoading(true);
             load().finally(() => setLoading(false));
-          }}
-          style={[styles.retryBtn, { borderColor: colors.accent }]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.retryText, { color: colors.accent }]}>{t("leaderboard.retry")}</Text>
-        </Pressable>
-      </View>
+          },
+        }}
+      />
     );
   } else {
     body = (
@@ -109,7 +104,7 @@ export default function LeaderboardScreen() {
         renderItem={renderItem}
         ListHeaderComponent={header}
         ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.textMuted }]}>{t("leaderboard.empty")}</Text>
+          <EmptyState kind="empty" layout="inline" message={t("leaderboard.empty")} />
         }
         contentContainerStyle={styles.listContent}
       />
@@ -135,10 +130,6 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  errorText: { fontSize: 14, marginBottom: 12, textAlign: "center" },
-  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
-  retryText: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
   listContent: { paddingBottom: 32 },
   headerRow: {
     flexDirection: "row",
@@ -165,5 +156,4 @@ const styles = StyleSheet.create({
   colWave: { width: 40, fontSize: 13, textAlign: "center" },
   colDifficulty: { flex: 1, fontSize: 11, fontWeight: "600" },
   colDate: { width: 72, fontSize: 11, textAlign: "right" },
-  empty: { fontSize: 14, textAlign: "center", paddingVertical: 48, paddingHorizontal: 24 },
 });
