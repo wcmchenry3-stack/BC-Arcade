@@ -6,7 +6,12 @@
  */
 
 import { createGameClient } from "../game/_shared/httpClient";
-import type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./types";
+import type {
+  StatsResponse,
+  GameHistoryResponse,
+  GameDetailResponse,
+  GameRankResponse,
+} from "./types";
 
 const request = createGameClient({ apiTag: "stats" });
 
@@ -29,7 +34,21 @@ export const statsApi = {
   getGameDetail: (gameId: string, includeEvents = false): Promise<GameDetailResponse> =>
     request<GameDetailResponse>(`/games/${gameId}?include_events=${includeEvents ? 1 : 0}`),
 
+  /**
+   * `GET /games/{id}/rank` (#2677). Read-only. Rejects with an `ApiError`:
+   * 404 until the game has synced (or it has no board), 403 for another
+   * player's game.
+   */
+  getGameRank: (gameId: string): Promise<GameRankResponse> =>
+    request<GameRankResponse>(`/games/${encodeURIComponent(gameId)}/rank`),
+
   deleteMyData: (): Promise<void> => request<void>("/me", { method: "DELETE" }),
 };
 
-export type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./types";
+export type {
+  StatsResponse,
+  GameHistoryResponse,
+  GameDetailResponse,
+  GameRankReason,
+  GameRankResponse,
+} from "./types";

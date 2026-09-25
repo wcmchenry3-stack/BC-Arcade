@@ -425,8 +425,9 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   const { t } = useTranslation("result");
   const { status, rank, playerName, onProvideName, onRetry } = submission;
 
-  // Nothing submitted yet (or this outcome isn't submitted): no line at all.
-  if (status === "idle") return null;
+  // Nothing submitted yet (or this outcome isn't submitted), or the game is on
+  // no board (#2677): no line at all.
+  if (status === "idle" || status === "unranked") return null;
 
   if (status === "needsName") {
     return (

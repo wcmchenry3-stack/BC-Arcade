@@ -76,6 +76,22 @@ describe("retryUntilGameSynced", () => {
     await expect(retryUntilGameSynced(fn, fast)).rejects.toThrow("Forbidden.");
     expect(fn).toHaveBeenCalledTimes(1);
   });
+
+  it("retries a result `notSynced` flags, then returns the next one (#2677)", async () => {
+    const fn = jest.fn().mockResolvedValueOnce("pending").mockResolvedValueOnce("done");
+    await expect(
+      retryUntilGameSynced(fn, { ...fast, notSynced: (r) => r === "pending" })
+    ).resolves.toBe("done");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the last flagged result once the attempts run out", async () => {
+    const fn = jest.fn().mockResolvedValue("pending");
+    await expect(
+      retryUntilGameSynced(fn, { ...fast, notSynced: (r) => r === "pending" })
+    ).resolves.toBe("pending");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe("useLeaderboardSubmit", () => {
@@ -245,6 +261,20 @@ describe("useLeaderboardSubmit", () => {
     expect(result.current.status).toBe("offline");
     await waitFor(() => expect(flush).toHaveBeenCalled());
     flush.mockRestore();
+  });
+
+  it("legacy adapters don't refetch on reconnect: the queue sends the score", async () => {
+    await saveDisplayName("Riley");
+    mockNetwork.isOnline = false;
+    const { result, submit, rerender } = await setup();
+
+    await act(() => result.current.submit({ score: 500 }));
+    expect(result.current.status).toBe("offline");
+
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+    expect(submit).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("offline");
   });
 
   it("leaves the queue for the reconnect flush while offline", async () => {

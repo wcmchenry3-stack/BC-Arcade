@@ -186,6 +186,18 @@ describe("GameResultModal — submission line", () => {
     expect(screen.queryByText(/Saved/)).toBeNull();
   });
 
+  it("shows nothing leaderboard-related for a game on no board (#2677)", async () => {
+    const idle = JSON.stringify((await renderCard({ submission: { status: "idle" } })).toJSON());
+    const { toJSON } = await renderCard({
+      submission: { status: "unranked", playerName: "Riley", onRetry: jest.fn() },
+    });
+    expect(screen.queryByText(/Saved/)).toBeNull();
+    expect(screen.queryByText("Retry")).toBeNull();
+    expect(screen.queryByTestId("result-name-prompt")).toBeNull();
+    // Exactly the card with no submission line.
+    expect(JSON.stringify(toJSON())).toBe(idle);
+  });
+
   it("shows the saving state while submitting", async () => {
     await renderCard({ submission: { status: "submitting" } });
     expect(screen.getByText("Saving your score…")).toBeTruthy();

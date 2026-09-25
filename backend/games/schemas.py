@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from games.leaderboard import RankReason
 from games.registry import get_module
 from players.schemas import DisplayName
 
@@ -136,6 +137,21 @@ class SetPlayerNameResponse(BaseModel):
 
     rank: int
     is_best: bool
+
+
+class GameRankResponse(BaseModel):
+    """``GET /games/{id}/rank`` (#2677): the caller's standing on the game's board.
+
+    When ``ranked`` is true, ``rank`` is the exact rank of the caller's best
+    entry in the game's partition and ``is_best`` says whether this game is
+    that entry (the values ``PATCH /games/{id}/name`` reports). When it is
+    false, both are null and ``reason`` says why.
+    """
+
+    rank: int | None
+    is_best: bool | None
+    ranked: bool
+    reason: RankReason | None
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@ alone, and every board follows.
 
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, Exists, ScalarSelect, Select, select
+from sqlalchemy import ColumnElement, Exists, ScalarSelect, Select, literal, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Player
 
@@ -31,6 +32,15 @@ def has_display_name(session_id: ColumnElement[str]) -> Exists:
     read ``games`` only) without adding a join.
     """
     return name_lookup(session_id).exists()
+
+
+async def session_has_display_name(db: AsyncSession, session_id: str) -> bool:
+    """Whether the player behind ``session_id`` has a display name.
+
+    The same ``has_display_name`` test the boards apply, as one query, for
+    code that must decide it before querying a board (``GET /games/{id}/rank``).
+    """
+    return bool((await db.execute(select(has_display_name(literal(session_id))))).scalar())
 
 
 def display_name_of(session_id: ColumnElement[str]) -> ScalarSelect[str]:

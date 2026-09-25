@@ -1,10 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
 import type { GameType } from "./types";
 import { scoreQueue } from "./scoreQueue";
 import { useNetwork } from "./NetworkContext";
 import { loadDisplayName, saveDisplayName } from "./displayName";
-import { ApiError } from "./httpClient";
+import { ApiError, isNetworkError } from "./httpClient";
 import { flushQueuedGames } from "./flushQueuedGames";
 
 /**
@@ -15,13 +15,18 @@ import { flushQueuedGames } from "./flushQueuedGames";
  *
  *   saved      — the server accepted it; `rank` is set when it placed top 10
  *   offline    — queued in `scoreQueue` (device offline, or the request
- *                failed); the queue retries on reconnect
+ *                failed); the queue retries on reconnect. For a
+ *                `RankOnlyLeaderboardAdapter` nothing is queued: the hook
+ *                asks for the rank again while the card is mounted
  *   needsName  — no display name yet; call `provideName()` (the card's
  *                one-time prompt) and the pending score goes out
+ *   unranked   — rank-only adapters: this game is on no board (the board
+ *                is disabled, or the game can never rank); the card shows
+ *                no leaderboard line
  *   error      — could neither submit nor queue; `retry()` tries again
  */
 export type LeaderboardSubmitStatus =
-  "idle" | "submitting" | "saved" | "offline" | "needsName" | "error";
+  "idle" | "submitting" | "saved" | "offline" | "needsName" | "unranked" | "error";
 
 /**
  * Per-game glue between the shared flow and that game's API. The per-game
@@ -38,24 +43,87 @@ export interface LeaderboardAdapter<P> {
 }
 
 /**
- * For endpoints that attach a name to an already-synced game
- * (`PATCH …/score/{game_id}`): the game-sync request is fire-and-forget, so
- * the name can arrive first and the server answers 404 (no game row yet) or
- * 400 (no final score yet). Retry those briefly before the caller falls back
- * to the offline queue. Other errors are thrown at once.
+ * What a `RankOnlyLeaderboardAdapter`'s `submit` found:
+ *
+ *   ranked    — `saved`; `rank` is this game's rank, or null when it isn't
+ *               the player's best entry (the hook still applies `topTenRank`)
+ *   unranked  — `unranked`: the game is on no board; nothing more to do
+ *   needsName — the server has no name for the player: `needsName`
+ *   pending   — not on the server yet (the completion or the name is still
+ *               syncing): shown as `submitting`, and asked again later
+ */
+export type RankLookup =
+  | { kind: "ranked"; rank: number | null }
+  | { kind: "unranked" }
+  | { kind: "needsName" }
+  | { kind: "pending" };
+
+/**
+ * For games on the session boards (#2624, #2677): the game syncs through
+ * `SyncWorker` and the name through `displayNameSync`, so a finished game is
+ * already on its board and the card only asks where it landed. `submit` only
+ * reads: there is nothing to queue.
+ *
+ * Until the lookup settles (`ranked`, `unranked`, `needsName`, or an HTTP
+ * error, which is `error` with `retry()`), the hook keeps asking while the
+ * card is mounted: on the next offline→online edge, and while online on a
+ * backoff timer (`RANK_REFETCH_DELAYS_MS`). Offline or on a network failure
+ * the status is `offline`; on `pending` it stays `submitting`. No queue item
+ * is ever written. `sessionBoardAdapter` is the one implementation.
+ */
+export interface RankOnlyLeaderboardAdapter<P> {
+  /** For error reporting only. */
+  gameType: GameType;
+  /** Look the rank up. Throws on a failed request. */
+  submit: (playerName: string, payload: P) => Promise<RankLookup>;
+  /** Nothing to queue: the hook fetches again (reconnect, backoff) while mounted. */
+  refetchOnReconnect: true;
+}
+
+/**
+ * Rank-only adapters: how long the hook waits before asking again while
+ * online and unsettled — then the last delay, repeated, until it settles.
+ */
+export const RANK_REFETCH_DELAYS_MS: readonly number[] = [5_000, 15_000, 60_000];
+
+/** What `useLeaderboardSubmit` takes: a legacy per-game adapter or a rank-only one. */
+export type AnyLeaderboardAdapter<P> = LeaderboardAdapter<P> | RankOnlyLeaderboardAdapter<P>;
+
+function isRankOnly<P>(
+  adapter: AnyLeaderboardAdapter<P>
+): adapter is RankOnlyLeaderboardAdapter<P> {
+  return "refetchOnReconnect" in adapter && adapter.refetchOnReconnect === true;
+}
+
+/**
+ * For endpoints that read or attach a name to an already-synced game
+ * (`PATCH …/score/{game_id}`, `GET /games/{id}/rank`): the game-sync request
+ * is fire-and-forget, so the call can arrive first and the server answers 404
+ * (no game row yet) or 400 (no final score yet). Retry those briefly before
+ * the caller falls back to the offline queue. Other errors are thrown at once.
+ *
+ * `notSynced` covers an endpoint that reports "not synced yet" in a success
+ * body instead (the rank route's `not_finished` for a game whose completion
+ * hasn't landed): such a result is retried the same way, and the last one is
+ * returned once the attempts run out.
  */
 export async function retryUntilGameSynced<T>(
   fn: () => Promise<T>,
-  { attempts = 4, baseDelayMs = 750 }: { attempts?: number; baseDelayMs?: number } = {}
+  {
+    attempts = 4,
+    baseDelayMs = 750,
+    notSynced,
+  }: { attempts?: number; baseDelayMs?: number; notSynced?: (result: T) => boolean } = {}
 ): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await fn();
+      const result = await fn();
+      if (!notSynced?.(result) || attempt >= attempts) return result;
     } catch (e) {
       const notSyncedYet = e instanceof ApiError && (e.status === 404 || e.status === 400);
       if (!notSyncedYet || attempt >= attempts) throw e;
-      await new Promise<void>((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
     }
+    await new Promise<void>((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
   }
 }
 
@@ -79,7 +147,9 @@ export interface LeaderboardSubmitState<P> {
   reset: () => void;
 }
 
-export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): LeaderboardSubmitState<P> {
+export function useLeaderboardSubmit<P>(
+  adapter: AnyLeaderboardAdapter<P>
+): LeaderboardSubmitState<P> {
   const { isOnline, isInitialized } = useNetwork();
   const [status, setStatus] = useState<LeaderboardSubmitStatus>("idle");
   const [rank, setRank] = useState<number | null>(null);
@@ -96,46 +166,149 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
   // not write its status/rank over the new game's (it still gets sent or
   // queued — only its state updates are dropped).
   const generationRef = useRef(0);
+  // Rank-only adapters (#2677). `unsettled`: the rank is still wanted, set
+  // before each fetch so a reconnect during one isn't lost. `inFlight`: one
+  // fetch at a time. The timer asks again while online (backoff).
+  const unsettledRef = useRef(false);
+  const inFlightRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptRef = useRef(0);
+  // The timer calls the latest `sendPending` (defined below).
+  const sendPendingRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
-  const send = useCallback(async (name: string, payload: P) => {
-    const { gameType, submit, queuePayload } = adapterRef.current;
-    const generation = generationRef.current;
-    const isCurrent = () => generationRef.current === generation;
-    setPlayerName(name);
-
-    const enqueue = async () => {
-      try {
-        await scoreQueue.enqueue(gameType, queuePayload(name, payload));
-        if (isCurrent()) setStatus("offline");
-        // scoreQueue otherwise only flushes on an offline→online edge, so a
-        // player who stays online would never send a queued score. Upload the
-        // game itself first so a name-attach handler doesn't race it.
-        if (!offlineRef.current) {
-          flushQueuedGames()
-            .then(() => scoreQueue.flush())
-            .catch(() => undefined);
-        }
-      } catch (e) {
-        Sentry.captureException(e, { tags: { subsystem: "leaderboardSubmit", gameType } });
-        if (isCurrent()) setStatus("error");
-      }
-    };
-
-    if (offlineRef.current) {
-      await enqueue();
-      return;
-    }
-    setStatus("submitting");
-    try {
-      const placed = await submit(name, payload);
-      if (!isCurrent()) return;
-      setRank(topTenRank(placed));
-      setStatus("saved");
-    } catch {
-      // The request failed while nominally online — queue it for the next flush.
-      await enqueue();
-    }
+  const clearTimer = useCallback(() => {
+    if (timerRef.current != null) clearTimeout(timerRef.current);
+    timerRef.current = null;
   }, []);
+
+  const scheduleRefetch = useCallback(() => {
+    clearTimer();
+    const delays = RANK_REFETCH_DELAYS_MS;
+    const delay = delays[Math.min(attemptRef.current, delays.length - 1)] ?? 60_000;
+    attemptRef.current += 1;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (unsettledRef.current) void sendPendingRef.current();
+    }, delay);
+  }, [clearTimer]);
+
+  /** A rank-only adapter's `send`: nothing is queued. */
+  const fetchRank = useCallback(
+    async (adapter: RankOnlyLeaderboardAdapter<P>, name: string, payload: P) => {
+      const generation = generationRef.current;
+      const isCurrent = () => generationRef.current === generation;
+      clearTimer();
+      setPlayerName(name);
+      unsettledRef.current = true;
+
+      if (offlineRef.current) {
+        // The reconnect effect asks again.
+        setStatus("offline");
+        return;
+      }
+      // The fetch in flight settles, or schedules the next one itself.
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+      setStatus("submitting");
+
+      let lookup: RankLookup | null = null;
+      let failure: unknown = null;
+      try {
+        lookup = await adapter.submit(name, payload);
+      } catch (e) {
+        failure = e;
+      }
+      if (!isCurrent()) return;
+      inFlightRef.current = false;
+
+      let settled = true;
+      if (lookup != null) {
+        switch (lookup.kind) {
+          case "ranked":
+            setRank(topTenRank(lookup.rank));
+            setStatus("saved");
+            break;
+          case "unranked":
+            setRank(null);
+            setStatus("unranked");
+            break;
+          case "needsName":
+            setStatus("needsName");
+            break;
+          case "pending":
+            settled = false;
+            break;
+        }
+      } else if (offlineRef.current || isNetworkError(failure)) {
+        // NetInfo can lag behind a dropped connection.
+        settled = false;
+        setStatus("offline");
+      } else {
+        // HTTP errors are breadcrumbed by httpClient and never captured (#513).
+        if (!(failure instanceof ApiError)) {
+          Sentry.captureException(failure, {
+            tags: { subsystem: "leaderboardSubmit", gameType: adapter.gameType },
+          });
+        }
+        setStatus("error");
+      }
+
+      if (settled) {
+        unsettledRef.current = false;
+        attemptRef.current = 0;
+      } else if (!offlineRef.current) {
+        scheduleRefetch();
+      }
+    },
+    [clearTimer, scheduleRefetch]
+  );
+
+  const send = useCallback(
+    async (name: string, payload: P) => {
+      if (isRankOnly(adapterRef.current)) {
+        await fetchRank(adapterRef.current, name, payload);
+        return;
+      }
+      const { gameType, submit, queuePayload } = adapterRef.current;
+      const generation = generationRef.current;
+      const isCurrent = () => generationRef.current === generation;
+      setPlayerName(name);
+
+      const enqueue = async () => {
+        try {
+          await scoreQueue.enqueue(gameType, queuePayload(name, payload));
+          if (isCurrent()) setStatus("offline");
+          // scoreQueue otherwise only flushes on an offline→online edge, so a
+          // player who stays online would never send a queued score. Upload the
+          // game itself first so a name-attach handler doesn't race it.
+          if (!offlineRef.current) {
+            flushQueuedGames()
+              .then(() => scoreQueue.flush())
+              .catch(() => undefined);
+          }
+        } catch (e) {
+          Sentry.captureException(e, { tags: { subsystem: "leaderboardSubmit", gameType } });
+          if (isCurrent()) setStatus("error");
+        }
+      };
+
+      if (offlineRef.current) {
+        await enqueue();
+        return;
+      }
+      setStatus("submitting");
+      try {
+        const placed = await submit(name, payload);
+        if (!isCurrent()) return;
+        setRank(topTenRank(placed));
+        setStatus("saved");
+      } catch {
+        // The request failed while nominally online — queue it for the next flush.
+        await enqueue();
+      }
+    },
+    [fetchRank]
+  );
 
   /** Sends the pending score under the stored name, or asks for one. */
   const sendPending = useCallback(async () => {
@@ -150,6 +323,7 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     }
     await send(name, pending.payload);
   }, [send]);
+  sendPendingRef.current = sendPending;
 
   const submit = useCallback(
     async (payload: P) => {
@@ -175,14 +349,36 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
 
   const retry = sendPending;
 
+  // Rank-only adapters: back online with the rank still wanted — ask again
+  // (a fetch in flight settles or reschedules itself). Nothing was queued,
+  // so an unmounted card loses nothing.
+  const online = isInitialized && isOnline;
+  useEffect(() => {
+    if (!online || !unsettledRef.current || inFlightRef.current) return;
+    void sendPending();
+  }, [online, sendPending]);
+
+  // Unmount: stop the timer, and drop the state updates of anything in flight.
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+      clearTimer();
+    },
+    [clearTimer]
+  );
+
   const reset = useCallback(() => {
     generationRef.current += 1;
     startedRef.current = false;
     pendingRef.current = null;
+    unsettledRef.current = false;
+    inFlightRef.current = false;
+    attemptRef.current = 0;
+    clearTimer();
     setStatus("idle");
     setRank(null);
     setPlayerName(null);
-  }, []);
+  }, [clearTimer]);
 
   return { status, rank, playerName, submit, provideName, retry, reset };
 }
