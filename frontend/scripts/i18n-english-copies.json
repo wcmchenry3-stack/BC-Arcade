@@ -1,6 +1,9 @@
 {
   "_about": "Locale values that equal the English text. `accepted`: the word really is the same in that language (reviewed). `pending`: not translated yet; may only shrink (see scripts/check-i18n-strings.js, #2681). Namespace -> locale -> keys.",
   "accepted": {
+    "blackjack": {
+      "nl": ["betting.tableLimitsRange"]
+    },
     "daily_word": {
       "de": ["keyboard.enter"],
       "nl": ["keyboard.enter"]
