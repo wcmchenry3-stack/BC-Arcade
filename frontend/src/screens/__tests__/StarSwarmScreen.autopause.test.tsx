@@ -80,10 +80,21 @@ jest.mock("../../hooks/useStarSwarmAudio", () => {
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
-jest.mock("../../game/starswarm/api", () => ({
-  starSwarmApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+// The result card's rank lookup (#2626) — hermetic, and never left retrying.
+jest.mock("../../api/stats", () => ({
+  statsApi: {
+    getGameRank: jest.fn(() =>
+      Promise.resolve({ rank: null, is_best: null, ranked: false, reason: "not_rankable" })
+    ),
+  },
 }));
-import { starSwarmApi } from "../../game/starswarm/api";
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+}));
 
 const mockStartGame = jest.fn(() => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
@@ -170,7 +181,6 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   await AsyncStorage.setItem("starswarm.difficulty", "Commander");
   resetDisplayNameCacheForTests();
-  (starSwarmApi.submitScore as jest.Mock).mockResolvedValue({ scores: [] });
 });
 
 afterEach(() => {

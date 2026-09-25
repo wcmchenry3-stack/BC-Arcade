@@ -11,19 +11,15 @@ export interface LeaderboardEntry {
 
 export interface LeaderboardResponse {
   scores: LeaderboardEntry[];
-  /** POST /score only: the submitted run's rank, or null outside the top 10 (#2516). */
-  rank?: number | null;
 }
 
 const request = createGameClient({ apiTag: "starswarm" });
 
+/**
+ * The legacy Star Swarm board, read by the Ranks tab until #2634. The app no
+ * longer posts to `POST /starswarm/score` (#2626): a finished run's own
+ * session row is its leaderboard entry.
+ */
 export const starSwarmApi = {
-  /** `player_id` is the name shown on the leaderboard (the profile display name, #2516). */
-  submitScore: (player_id: string, score: number, wave_reached: number, difficulty_tier: string) =>
-    request<LeaderboardResponse>("/starswarm/score", {
-      method: "POST",
-      body: JSON.stringify({ player_id, score, wave_reached, difficulty_tier }),
-    }),
-
   getLeaderboard: () => request<LeaderboardResponse>("/starswarm/leaderboard"),
 };

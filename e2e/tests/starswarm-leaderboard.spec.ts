@@ -1,14 +1,11 @@
 /**
  * starswarm-leaderboard.spec.ts — GH #1147
  *
- * Leaderboard API integration: intercept POST /starswarm/score and
- * GET /starswarm/leaderboard; verify route wiring and correct request shape.
- *
- * StarSwarm has no localStorage hook, so game-over requires real gameplay.
- * These tests verify the API contract (correct POST body including
- * difficulty_tier, GET returns mock data) and that the result card is
- * absent in initial play state. The game-over flow itself is covered by
- * starswarm-game-over.spec.ts (#2516).
+ * Legacy leaderboard read: intercept GET /starswarm/leaderboard (the Ranks
+ * tab, until #2634) and check the result card is absent in initial play
+ * state. The app no longer posts runs to POST /starswarm/score (#2626): the
+ * game-over flow, including the run's rank, is covered by
+ * starswarm-game-over.spec.ts.
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -42,35 +39,6 @@ const MOCK_LEADERBOARD = {
 test.describe("Star Swarm — leaderboard", () => {
   test.beforeEach(async ({ page }) => {
     await mockStarswarmApi(page);
-  });
-
-  test("score submission POST includes difficulty_tier field", async ({ page }) => {
-    const capturedBodies: unknown[] = [];
-
-    await page.route(`${API_BASE}/starswarm/score`, async (route) => {
-      const raw = await route.request().postData();
-      if (raw) capturedBodies.push(JSON.parse(raw));
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(MOCK_LEADERBOARD),
-      });
-    });
-
-    await gotoStarswarm(page);
-    await expect(
-      page.getByRole("img", { name: /Star Swarm game/i }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Any POSTs fired during the test (i.e. on game-over) must include difficulty_tier
-    for (const body of capturedBodies) {
-      expect(body).toMatchObject({
-        player_id: expect.any(String),
-        score: expect.any(Number),
-        wave_reached: expect.any(Number),
-        difficulty_tier: expect.any(String),
-      });
-    }
   });
 
   test("leaderboard GET endpoint is intercepted", async ({ page }) => {
