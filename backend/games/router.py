@@ -153,6 +153,10 @@ async def list_my_games(
             raise HTTPException(status_code=400, detail="Invalid cursor.")
     factory = get_session_factory()
     async with factory() as db:
+        # Close this player's games left open > 24 h before listing them (#2621).
+        # First page only: later pages continue a listing that was just swept.
+        if parsed_cursor is None:
+            await service.sweep_stale_games_safely(db, session_id=sid)
         page = await service.list_games_for_session(
             db, session_id=sid, limit=limit, cursor=parsed_cursor
         )
