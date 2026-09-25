@@ -762,33 +762,20 @@ export default function GameScreen({ navigation, route }: Props) {
 
       {/* Pre-game mode selector (shown once for each fresh game) */}
       {!difficultyChosen && (
-        <ModalCard visible onRequestClose={handleChooseSolo} title={t("vsMode.title")} accentTop>
+        <ModalCard
+          visible
+          onRequestClose={handleChooseSolo}
+          title={t("vsMode.title")}
+          accentTop
+          testID="yacht-mode-card"
+        >
           <View style={styles.modeContent}>
-            <Pressable
+            <ModeButton
               testID="yacht-mode-solo"
-              style={
-                pendingMode === "solo"
-                  ? [
-                      styles.modeBtn,
-                      styles.modeBtnPrimary,
-                      { borderColor: colors.accent, backgroundColor: colors.accent },
-                    ]
-                  : [styles.modeBtn, { borderColor: colors.border }]
-              }
+              label={t("vsMode.solo")}
+              selected={pendingMode === "solo"}
               onPress={handleChooseSolo}
-              accessibilityRole="button"
-              accessibilityLabel={t("vsMode.solo")}
-              accessibilityState={{ selected: pendingMode === "solo" }}
-            >
-              <Text
-                style={[
-                  styles.modeBtnText,
-                  { color: pendingMode === "solo" ? colors.textOnAccent : colors.text },
-                ]}
-              >
-                {t("vsMode.solo")}
-              </Text>
-            </Pressable>
+            />
 
             <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
 
@@ -798,30 +785,11 @@ export default function GameScreen({ navigation, route }: Props) {
 
             <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
 
-            <Pressable
-              style={
-                pendingMode === "vs"
-                  ? [
-                      styles.modeBtn,
-                      styles.modeBtnPrimary,
-                      { borderColor: colors.accent, backgroundColor: colors.accent },
-                    ]
-                  : [styles.modeBtn, { borderColor: colors.border }]
-              }
+            <ModeButton
+              label={t("vsMode.vsComputer")}
+              selected={pendingMode === "vs"}
               onPress={handleChooseVs}
-              accessibilityRole="button"
-              accessibilityLabel={t("vsMode.vsComputer")}
-              accessibilityState={{ selected: pendingMode === "vs" }}
-            >
-              <Text
-                style={[
-                  styles.modeBtnText,
-                  { color: pendingMode === "vs" ? colors.textOnAccent : colors.text },
-                ]}
-              >
-                {t("vsMode.vsComputer")}
-              </Text>
-            </Pressable>
+            />
           </View>
         </ModalCard>
       )}
@@ -939,6 +907,43 @@ export default function GameScreen({ navigation, route }: Props) {
   );
 }
 
+/** Solo / vs Computer choice in the pre-game mode picker; filled when selected. */
+function ModeButton({
+  label,
+  selected,
+  onPress,
+  testID,
+}: {
+  readonly label: string;
+  readonly selected: boolean;
+  readonly onPress: () => void;
+  readonly testID?: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      style={
+        selected
+          ? [
+              styles.modeBtn,
+              styles.modeBtnPrimary,
+              { borderColor: colors.accent, backgroundColor: colors.accent },
+            ]
+          : [styles.modeBtn, { borderColor: colors.border }]
+      }
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+    >
+      <Text style={[styles.modeBtnText, { color: selected ? colors.textOnAccent : colors.text }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
@@ -989,6 +994,8 @@ const styles = StyleSheet.create({
   modeContent: {
     alignSelf: "stretch",
     gap: 12,
+    // With ModalCard's 10pt title margin, keeps the old 16pt title gap.
+    marginTop: 6,
   },
   modeSubtitle: {
     fontSize: 11,
