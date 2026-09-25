@@ -43,7 +43,18 @@ export type SpriteKey =
   | "puBomb"
   | "puBuddy"
   | "puLightning"
+  | "asteroid1"
+  | "asteroid2"
+  | "asteroid3"
+  | "asteroid4"
   | "explosion";
+
+/**
+ * #2573: the four Kenney meteor designs a rock's sprite is randomly picked from. Collision uses
+ * `radius`, not the art, so one design serves both `large` and `small` rocks — each is just drawn
+ * at a different `2 × radius` size.
+ */
+export const ASTEROID_SPRITES = ["asteroid1", "asteroid2", "asteroid3", "asteroid4"] as const;
 
 /** Which sprites have finished loading; a missing one draws its procedural fallback instead. */
 export type LoadedSprites = Readonly<Record<Exclude<SpriteKey, "explosion">, boolean>> & {
@@ -89,6 +100,8 @@ export type DrawOp =
       readonly fit: "fill" | "contain";
       /** Mirror horizontally about the rect's centre. */
       readonly flipX?: boolean;
+      /** Rotate about the rect's centre, radians (#2573: asteroid `rotation`). */
+      readonly rotate?: number;
     }
   | {
       readonly k: "poly";
@@ -156,6 +169,16 @@ function flatRounded(points: readonly { x: number; y: number }[]): number[] {
   const out: number[] = [];
   for (const p of points) out.push(Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10);
   return out;
+}
+
+/**
+ * #2573: which of the 4 meteor designs a rock draws — stable for the rock's lifetime (same hash
+ * technique as `asteroidOutline`'s wobble) without needing a field on `Asteroid`.
+ */
+function asteroidSprite(id: number): (typeof ASTEROID_SPRITES)[number] {
+  const h = Math.sin(id * 78.233) * 43758.5453;
+  const frac = h - Math.floor(h);
+  return ASTEROID_SPRITES[Math.floor(frac * ASTEROID_SPRITES.length)]!;
 }
 
 /** The whole native-canvas scene for one frame, back to front. */
@@ -453,16 +476,45 @@ export function buildFrame(
     }
   }
 
-  // #2486 Asteroids — shared procedural outline, filled then stroked
+  // #2486/#2573 Asteroids — one of 4 Kenney meteor sprites, spun by `rotation`, or the
+  // procedural outline (filled then stroked) while sprites load
   for (const a of state.asteroids) {
-    const points = flatRounded(asteroidOutline(a));
-    ops.push({
-      k: "poly",
-      key: `rock-${a.id}`,
-      points,
-      color: a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47",
-    });
-    ops.push({ k: "poly", key: `rock-${a.id}-edge`, points, color: "#c9a27a", stroke: 1.5 });
+    const sprite = asteroidSprite(a.id);
+    if (loaded[sprite]) {
+      const size = a.radius * 2;
+      ops.push({
+        k: "image",
+        key: `rock-${a.id}`,
+        sprite,
+        x: a.x - a.radius,
+        y: a.y - a.radius,
+        w: size,
+        h: size,
+        fit: "fill",
+        rotate: a.rotation,
+      });
+      if (a.hitFlashTimer > 0) {
+        const f = hitFlash(size, size, a.hitFlashTimer);
+        ops.push({
+          k: "circle",
+          key: `rock-${a.id}-flash`,
+          cx: a.x,
+          cy: a.y,
+          r: f.r,
+          color: `rgba(255,255,255,${f.strokeAlpha.toFixed(3)})`,
+          stroke: 2,
+        });
+      }
+    } else {
+      const points = flatRounded(asteroidOutline(a));
+      ops.push({
+        k: "poly",
+        key: `rock-${a.id}`,
+        points,
+        color: a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47",
+      });
+      ops.push({ k: "poly", key: `rock-${a.id}-edge`, points, color: "#c9a27a", stroke: 1.5 });
+    }
   }
 
   // Explosions — sprite strip, or a procedural burst while frames load
