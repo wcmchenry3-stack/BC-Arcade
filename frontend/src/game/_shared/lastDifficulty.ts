@@ -41,32 +41,45 @@ export async function saveLastDifficulty(gameKey: string, level: string): Promis
 }
 
 export interface LastDifficulty<T extends string> {
-  /** Starts at `fallback`, then the stored difficulty once it loads. */
+  /** Starts at `fallback` (or `initial`), then the stored difficulty once it loads. */
   difficulty: T;
-  /** Picks a difficulty without storing it (a tap in the picker). */
+  /** Picks a difficulty without storing it (a tap, a resumed save). */
   setDifficulty: (level: T) => void;
-  /** Picks and stores a difficulty. Call it when a game starts. */
-  rememberDifficulty: (level: T) => void;
+  /**
+   * Picks and stores the difficulty a new game starts at, and returns it.
+   * Start the game at the returned level: a premium level comes back as
+   * `fallback`.
+   */
+  rememberDifficulty: (level: T) => T;
 }
 
 /**
  * A game's difficulty, restored from the last game on mount.
  *
  * A difficulty set before the stored one loads (a resumed save, or a tap)
- * wins, so the late read never overrides the player. Pass `restore: false`
- * when the screen already has a difficulty to show, e.g. a paused run.
+ * wins, so the late read never overrides the player. Pass `initial` when the
+ * screen already has a difficulty to show, e.g. a paused run; nothing is
+ * restored then.
+ *
+ * A premium level is never picked or started: `setDifficulty` and
+ * `rememberDifficulty` turn it into `fallback`, which must not be premium. A
+ * game already in progress at a level that has since become premium (a
+ * resumed save, `initial`) plays on; its next game does not.
  */
 export function useLastDifficulty<T extends string>(
   gameKey: string,
   levels: readonly T[],
   fallback: T,
-  { restore = true }: { restore?: boolean } = {}
+  { initial }: { initial?: T } = {}
 ): LastDifficulty<T> {
-  const [difficulty, setState] = useState<T>(fallback);
+  const [difficulty, setState] = useState<T>(initial ?? fallback);
   const chosenRef = useRef(false);
 
   useEffect(() => {
-    if (!restore) return;
+    if (__DEV__ && isPremiumLevel(gameKey, fallback)) {
+      console.warn(`useLastDifficulty: ${gameKey}'s default level "${fallback}" is premium.`);
+    }
+    if (initial !== undefined) return;
     let alive = true;
     void loadLastDifficulty(gameKey, levels).then((level) => {
       if (alive && level !== null && !chosenRef.current) setState(level);
@@ -74,21 +87,27 @@ export function useLastDifficulty<T extends string>(
     return () => {
       alive = false;
     };
-    // Restores once, on mount.
+    // Checks and restores once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setDifficulty = useCallback((level: T) => {
-    chosenRef.current = true;
-    setState(level);
-  }, []);
+  const setDifficulty = useCallback(
+    (level: T) => {
+      chosenRef.current = true;
+      setState(isPremiumLevel(gameKey, level) ? fallback : level);
+    },
+    [gameKey, fallback]
+  );
 
   const rememberDifficulty = useCallback(
     (level: T) => {
-      setDifficulty(level);
-      void saveLastDifficulty(gameKey, level);
+      const playable = isPremiumLevel(gameKey, level) ? fallback : level;
+      chosenRef.current = true;
+      setState(playable);
+      void saveLastDifficulty(gameKey, playable);
+      return playable;
     },
-    [gameKey, setDifficulty]
+    [gameKey, fallback]
   );
 
   return { difficulty, setDifficulty, rememberDifficulty };

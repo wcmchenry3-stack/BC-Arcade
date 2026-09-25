@@ -500,8 +500,9 @@ export default function HeartsScreen() {
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
-  function handleStartGame(difficulty: AiPreset) {
-    rememberDifficulty(difficulty);
+  function handleStartGame(requested: AiPreset) {
+    // A premium style starts at the default instead (#1129).
+    const difficulty = rememberDifficulty(requested);
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);

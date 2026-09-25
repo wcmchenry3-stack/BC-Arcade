@@ -59,11 +59,10 @@ describe("TableSelectPanel — last table (#1129)", () => {
     expect(screen.getByTestId("blackjack-table-beginner").props.accessibilityHint).toBeUndefined();
   });
 
-  it("remembers the table picked", async () => {
+  it("starts the table picked (the start remembers it; see BlackjackBettingScreen tests)", async () => {
     const { onSelectTable } = await renderPanel();
     await fireEvent.press(screen.getByTestId("blackjack-table-intermediate"));
     expect(onSelectTable).toHaveBeenCalledWith(expect.objectContaining({ id: "intermediate" }));
-    expect(await AsyncStorage.getItem("blackjack.difficulty")).toBe("intermediate");
   });
 
   it("keeps a progress-locked table disabled", async () => {
@@ -84,7 +83,6 @@ describe("TableSelectPanel — premium table (#1129)", () => {
 
     await fireEvent.press(table);
     expect(onSelectTable).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem("blackjack.difficulty")).toBeNull();
     expect(screen.getByText("This level is part of BC Arcade Premium, coming soon.")).toBeTruthy();
 
     await fireEvent.press(screen.getByTestId("blackjack-premium-ok"));

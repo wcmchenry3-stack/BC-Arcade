@@ -252,6 +252,28 @@ describe("GameScreen — last difficulty (#1129)", () => {
     await fireEvent.press(result.getByTestId("yacht-mode-solo"));
     expect(saveLastMode).toHaveBeenCalledWith("solo", "hard");
   });
+
+  it("a VS difficulty tapped but not played is not remembered by Solo", async () => {
+    (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "easy" });
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(result.getByTestId("yacht-difficulty-hard"));
+    await fireEvent.press(result.getByTestId("yacht-mode-solo"));
+    expect(saveLastMode).toHaveBeenCalledWith("solo", "easy");
+  });
 });
 
 describe("GameScreen — Play Again reset (GH #225)", () => {

@@ -403,8 +403,7 @@ export default function SudokuScreen() {
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});
     digitCountRef.current = 0;
-    rememberDifficulty(difficulty);
-    const fresh = loadPuzzle(difficulty, variant);
+    const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     setState(fresh);
     setElapsed(0);
     setResult(null);
@@ -416,11 +415,11 @@ export default function SudokuScreen() {
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
       setNewGameModalVisible(false);
-      rememberDifficulty(d);
       setVariant(v);
       clearGame().catch(() => {});
       digitCountRef.current = 0;
-      const fresh = loadPuzzle(d, v);
+      // A premium level starts at the default instead (#1129).
+      const fresh = loadPuzzle(rememberDifficulty(d), v);
       setState(fresh);
       setElapsed(0);
       setResult(null);

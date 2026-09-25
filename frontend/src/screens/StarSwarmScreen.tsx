@@ -52,8 +52,7 @@ import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
-import { isPremiumLevel } from "../entitlements/premiumLevels";
-import { PremiumLevelNotice } from "../components/shared/PremiumLevelNotice";
+import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../components/shared/usePremiumLevels";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   getSavedPausedState,
@@ -160,7 +159,6 @@ export default function StarSwarmScreen() {
 function StarSwarmGame() {
   const { t } = useTranslation("starswarm");
   const { t: tResult } = useTranslation("result");
-  const { t: tCommon } = useTranslation("common");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
@@ -219,11 +217,11 @@ function StarSwarmGame() {
   const { difficulty, setDifficulty, rememberDifficulty } = useLastDifficulty<DifficultyTier>(
     "starswarm",
     DIFFICULTY_TIERS,
-    savedPauseRef.current?.difficulty ?? "Ensign",
-    { restore: savedPauseRef.current === null }
+    "Ensign",
+    { initial: savedPauseRef.current?.difficulty }
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
-  const [premiumNoticeVisible, setPremiumNoticeVisible] = useState(false);
+  const premium = usePremiumLevels("starswarm", "starswarm-premium");
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -473,13 +471,14 @@ function StarSwarmGame() {
     (opts?: DevOptions) => {
       if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
       clearSavedPausedState();
-      beginRun(opts?.difficulty ?? difficulty);
+      // A new run: a premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
+      beginRun(opts?.difficulty ?? rememberDifficulty(difficulty));
       scoreRef.current = 0;
       setIsGameOver(false);
       setIsPaused(false);
       setResetTick((t) => t + 1);
     },
-    [beginRun, difficulty]
+    [beginRun, difficulty, rememberDifficulty]
   );
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
@@ -494,11 +493,11 @@ function StarSwarmGame() {
     // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
     // with the panel's own New Game, now that internal testers can reach it
     lastDevOptsRef.current = undefined;
-    rememberDifficulty(difficulty);
+    const tier = rememberDifficulty(difficulty);
     clearSavedPausedState();
     savedPauseRef.current = null;
     setShowDifficultyPicker(false);
-    beginRun(difficulty);
+    beginRun(tier);
     scoreRef.current = 0;
     setIsGameOver(false);
     setIsPaused(false);
@@ -682,7 +681,7 @@ function StarSwarmGame() {
                   {DIFFICULTY_TIERS.map((tier) => {
                     const tierLabel = `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`;
                     // A premium tier shows a lock; a tap explains it (#1129).
-                    const locked = isPremiumLevel("starswarm", tier);
+                    const locked = premium.isLocked(tier);
                     return (
                       <Pressable
                         key={tier}
@@ -691,17 +690,11 @@ function StarSwarmGame() {
                           difficulty === tier && dynamicStyles.pickerRowSelected,
                           locked && styles.pickerRowLocked,
                         ]}
-                        onPress={() =>
-                          locked ? setPremiumNoticeVisible(true) : setDifficulty(tier)
-                        }
+                        onPress={() => (locked ? premium.explain() : setDifficulty(tier))}
                         accessibilityRole="radio"
                         accessibilityState={{ checked: difficulty === tier }}
                         aria-checked={difficulty === tier}
-                        accessibilityLabel={
-                          locked
-                            ? tCommon("premiumLevel.lockedLabel", { level: tierLabel })
-                            : tierLabel
-                        }
+                        accessibilityLabel={locked ? premium.lockedLabel(tierLabel) : tierLabel}
                         testID={`starswarm-tier-${tier}`}
                       >
                         <Text
@@ -710,7 +703,9 @@ function StarSwarmGame() {
                             difficulty === tier && dynamicStyles.pickerTierNameSelected,
                           ]}
                         >
-                          {locked ? `🔒 ${difficultyLabel(tier)}` : difficultyLabel(tier)}
+                          {locked
+                            ? premium.lockedText(difficultyLabel(tier))
+                            : difficultyLabel(tier)}
                         </Text>
                         <Text
                           style={styles.pickerTierMult}
@@ -728,11 +723,7 @@ function StarSwarmGame() {
                 </Pressable>
               </View>
             </View>
-            <PremiumLevelNotice
-              visible={premiumNoticeVisible}
-              onClose={() => setPremiumNoticeVisible(false)}
-              testID="starswarm-premium"
-            />
+            {premium.notice}
           </Modal>
         )}
 
@@ -1144,7 +1135,7 @@ const baseStyles = StyleSheet.create({
     fontWeight: "700",
   },
   pickerRowLocked: {
-    opacity: 0.6,
+    opacity: PREMIUM_LEVEL_OPACITY,
   },
   pickerStartBtn: {
     marginTop: 12,

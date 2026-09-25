@@ -1,7 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DifficultyPicker } from "../shared/DifficultyPicker";
-import { isPremiumLevel } from "../../entitlements/premiumLevels";
 import type { AiDifficulty } from "../../game/yacht/types";
 import { AI_DIFFICULTIES } from "../../game/yacht/types";
 
@@ -14,10 +13,10 @@ export default function AiDifficultySelector({ value, onChange }: Props) {
   const { t } = useTranslation("yacht");
   return (
     <DifficultyPicker
+      gameKey="yacht"
       options={AI_DIFFICULTIES.map((d) => ({
         value: d,
         label: t(`difficulty.${d}`),
-        locked: isPremiumLevel("yacht", d),
       }))}
       value={value}
       onChange={onChange}

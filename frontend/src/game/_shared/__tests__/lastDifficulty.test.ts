@@ -84,13 +84,61 @@ describe("useLastDifficulty", () => {
     expect(result.current.difficulty).toBe("medium");
   });
 
-  it("does not restore when restore is false", async () => {
+  it("starts at `initial` and does not restore when one is given", async () => {
     await saveLastDifficulty("starswarm", "hard");
     const { result } = await renderHook(() =>
-      useLastDifficulty<Level>("starswarm", LEVELS, "medium", { restore: false })
+      useLastDifficulty<Level>("starswarm", LEVELS, "easy", { initial: "medium" })
     );
     await flush();
     expect(result.current.difficulty).toBe("medium");
+  });
+
+  describe("premium levels", () => {
+    beforeEach(() => {
+      __setPremiumLevelsForTests({ sudoku: ["hard"] });
+    });
+
+    it("a picked premium level becomes the fallback", async () => {
+      const { result } = await renderHook(() => useLastDifficulty<Level>("sudoku", LEVELS, "easy"));
+      await act(async () => result.current.setDifficulty("medium"));
+      await act(async () => result.current.setDifficulty("hard"));
+      expect(result.current.difficulty).toBe("easy");
+    });
+
+    it("a game started at a premium level starts, and is stored, at the fallback", async () => {
+      const { result } = await renderHook(() => useLastDifficulty<Level>("sudoku", LEVELS, "easy"));
+      let started: Level | undefined;
+      await act(async () => {
+        started = result.current.rememberDifficulty("hard");
+      });
+      expect(started).toBe("easy");
+      expect(result.current.difficulty).toBe("easy");
+      expect(await AsyncStorage.getItem("sudoku.difficulty")).toBe("easy");
+    });
+
+    it("an open level starts as itself", async () => {
+      const { result } = await renderHook(() => useLastDifficulty<Level>("sudoku", LEVELS, "easy"));
+      let started: Level | undefined;
+      await act(async () => {
+        started = result.current.rememberDifficulty("medium");
+      });
+      expect(started).toBe("medium");
+    });
+
+    it("keeps a premium `initial` (a run already in progress)", async () => {
+      const { result } = await renderHook(() =>
+        useLastDifficulty<Level>("sudoku", LEVELS, "easy", { initial: "hard" })
+      );
+      await flush();
+      expect(result.current.difficulty).toBe("hard");
+    });
+
+    it("warns in dev when the fallback itself is premium", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+      await renderHook(() => useLastDifficulty<Level>("sudoku", LEVELS, "hard"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('default level "hard" is premium'));
+      warn.mockRestore();
+    });
   });
 
   it("setDifficulty picks without storing; rememberDifficulty stores", async () => {

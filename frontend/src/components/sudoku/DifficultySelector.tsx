@@ -1,7 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DifficultyPicker } from "../shared/DifficultyPicker";
-import { isPremiumLevel } from "../../entitlements/premiumLevels";
 import type { Difficulty } from "../../game/sudoku/types";
 import { DIFFICULTIES } from "../../game/sudoku/types";
 
@@ -14,10 +13,10 @@ export default function DifficultySelector({ value, onChange }: Props) {
   const { t } = useTranslation("sudoku");
   return (
     <DifficultyPicker
+      gameKey="sudoku"
       options={DIFFICULTIES.map((d) => ({
         value: d,
         label: t(`difficulty.${d}`),
-        locked: isPremiumLevel("sudoku", d),
       }))}
       value={value}
       onChange={onChange}

@@ -5,9 +5,8 @@ import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { TABLE_CONFIGS, TableConfig, isTableUnlocked } from "../../game/blackjack/tables";
 import { RunRecord } from "../../game/blackjack/storage";
-import { loadLastDifficulty, saveLastDifficulty } from "../../game/_shared/lastDifficulty";
-import { isPremiumLevel } from "../../entitlements/premiumLevels";
-import { PremiumLevelNotice } from "../shared/PremiumLevelNotice";
+import { loadLastDifficulty } from "../../game/_shared/lastDifficulty";
+import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../shared/usePremiumLevels";
 
 const TABLE_IDS = TABLE_CONFIGS.map((c) => c.id);
 
@@ -18,12 +17,11 @@ interface Props {
 }
 
 export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }: Props) {
-  const { t } = useTranslation("blackjack");
-  const { t: tCommon } = useTranslation("common");
+  const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
   // The table the last run was played at, marked so it is easy to pick again (#1129).
   const [lastTableId, setLastTableId] = useState<TableConfig["id"] | null>(null);
-  const [premiumNoticeVisible, setPremiumNoticeVisible] = useState(false);
+  const premium = usePremiumLevels("blackjack", "blackjack-premium");
 
   useEffect(() => {
     let alive = true;
@@ -35,13 +33,10 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
     };
   }, []);
 
+  // The table start itself remembers the table (BlackjackGameContext).
   const handlePress = (config: TableConfig) => {
-    if (isPremiumLevel("blackjack", config.id)) {
-      setPremiumNoticeVisible(true);
-      return;
-    }
-    void saveLastDifficulty("blackjack", config.id);
-    onSelectTable(config);
+    if (premium.isLocked(config.id)) premium.explain();
+    else onSelectTable(config);
   };
 
   return (
@@ -63,8 +58,8 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
         {TABLE_CONFIGS.map((config, idx) => {
           const unlocked = isTableUnlocked(idx, runs);
           // Premium tables stay tappable, to explain the lock; progress locks don't.
-          const premium = unlocked && isPremiumLevel("blackjack", config.id);
-          const playable = unlocked && !premium;
+          const premiumTable = unlocked && premium.isLocked(config.id);
+          const playable = unlocked && !premiumTable;
           const lastPlayed = playable && config.id === lastTableId;
           const prevConfig = idx > 0 ? TABLE_CONFIGS[idx - 1] : null;
           const accentColor = colors[config.accentKey];
@@ -82,15 +77,15 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                     : playable
                       ? accentColor + "66"
                       : colors.border,
-                  opacity: playable ? 1 : 0.5,
+                  opacity: playable ? 1 : premiumTable ? PREMIUM_LEVEL_OPACITY : 0.5,
                 },
               ]}
               onPress={() => unlocked && handlePress(config)}
               disabled={!unlocked}
               accessibilityRole="button"
               accessibilityLabel={
-                premium
-                  ? tCommon("premiumLevel.lockedLabel", { level: tableName })
+                premiumTable
+                  ? premium.lockedLabel(tableName)
                   : unlocked
                     ? t("tableSelect.selectLabel", { table: tableName })
                     : t("tableSelect.lockedLabel", { table: tableName })
@@ -122,9 +117,9 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                     {t("tableSelect.lastPlayed")}
                   </Text>
                 )}
-                {premium && (
+                {premiumTable && (
                   <Text style={[styles.lockHint, { color: colors.textMuted }]}>
-                    🔒 {tCommon("premiumLevel.tag")}
+                    {premium.lockedText(t("common:premiumLevel.tag"))}
                   </Text>
                 )}
                 {!unlocked && prevConfig && (
@@ -184,11 +179,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
         </Text>
       </Pressable>
 
-      <PremiumLevelNotice
-        visible={premiumNoticeVisible}
-        onClose={() => setPremiumNoticeVisible(false)}
-        testID="blackjack-premium"
-      />
+      {premium.notice}
     </View>
   );
 }

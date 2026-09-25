@@ -1,7 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DifficultyPicker } from "../shared/DifficultyPicker";
-import { isPremiumLevel } from "../../entitlements/premiumLevels";
 import type { AiPreset } from "../../game/hearts/types";
 import { AI_PRESETS } from "../../game/hearts/types";
 
@@ -15,11 +14,11 @@ export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
   const { t } = useTranslation("hearts");
   return (
     <DifficultyPicker
+      gameKey="hearts"
       options={AI_PRESETS.map((preset) => ({
         value: preset,
         label: t(`difficulty.${preset}`),
         description: t(`difficulty.${preset}.desc`),
-        locked: isPremiumLevel("hearts", preset),
         fullWidth: preset === "mixed",
       }))}
       value={value}

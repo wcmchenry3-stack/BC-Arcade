@@ -20,6 +20,7 @@ import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
 import { preloadOracleTable } from "../game/yacht/oracle/oracle";
 import { finishTurnFallback, isAiTurnPending } from "../game/yacht/vsTurn";
 import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
+import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -93,6 +94,8 @@ export default function GameScreen({ navigation, route }: Props) {
   );
   const [pendingMode, setPendingMode] = useState<"solo" | "vs">("solo");
   const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
+  // The difficulty the last VS game started at, not one merely tapped in the picker (#1129).
+  const lastVsDiffRef = useRef<AiDifficulty>("medium");
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
   );
@@ -138,6 +141,7 @@ export default function GameScreen({ navigation, route }: Props) {
       if (!cancelled && pref) {
         setPendingMode(pref.mode);
         setPendingDiff(pref.difficulty);
+        lastVsDiffRef.current = pref.difficulty;
       }
     });
     return () => {
@@ -433,6 +437,8 @@ export default function GameScreen({ navigation, route }: Props) {
     async (keepMode: boolean) => {
       const prev = gameStateRef.current;
       const keptDifficulty = keepMode ? aiDifficultyRef.current : null;
+      // Play Again at a difficulty that has since become premium goes to the mode picker (#1129).
+      const keep = keepMode && !(keptDifficulty && isPremiumLevel("yacht", keptDifficulty));
       Sentry.addBreadcrumb({
         category: "yacht.game",
         message: "startNewGame: resetting",
@@ -452,7 +458,7 @@ export default function GameScreen({ navigation, route }: Props) {
       setIsAiTurn(false);
       setGameKey((k) => k + 1);
       setError(null);
-      if (keepMode) {
+      if (keep) {
         // Play Again: same mode and difficulty, straight into a new game.
         setAiDifficulty(keptDifficulty);
         setAiGameState(keptDifficulty ? newGame() : null);
@@ -462,6 +468,7 @@ export default function GameScreen({ navigation, route }: Props) {
         const pref = await loadLastMode();
         setPendingMode(pref?.mode ?? "solo");
         setPendingDiff(pref?.difficulty ?? "medium");
+        lastVsDiffRef.current = pref?.difficulty ?? "medium";
         setAiDifficulty(null);
         setAiGameState(null);
         setDifficultyChosen(false);
@@ -497,14 +504,15 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
-    // Keep the last VS difficulty, so the next VS game still opens on it (#1129).
-    void saveLastMode("solo", pendingDiff);
+    // Keep the last VS difficulty played, so the next VS game still opens on it (#1129).
+    void saveLastMode("solo", lastVsDiffRef.current);
     setDifficultyChosen(true);
     syncStart();
   }
 
   function handleChooseVs() {
     void saveLastMode("vs", pendingDiff);
+    lastVsDiffRef.current = pendingDiff;
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
     setDifficultyChosen(true);

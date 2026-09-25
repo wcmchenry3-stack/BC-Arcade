@@ -3,13 +3,14 @@ import { StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { DifficultyPicker, type DifficultyOption } from "../DifficultyPicker";
+import { __setPremiumLevelsForTests } from "../../../entitlements/premiumLevels";
 
 type Level = "easy" | "hard" | "expert" | "mixed";
 
 const OPTIONS: DifficultyOption<Level>[] = [
   { value: "easy", label: "Easy" },
   { value: "hard", label: "Hard", description: "For experts" },
-  { value: "expert", label: "Expert", locked: true },
+  { value: "expert", label: "Expert" },
   { value: "mixed", label: "Mixed", fullWidth: true },
 ];
 
@@ -18,6 +19,7 @@ async function renderPicker(value: Level = "easy") {
   await render(
     <ThemeProvider>
       <DifficultyPicker
+        gameKey="test"
         options={OPTIONS}
         value={value}
         onChange={onChange}
@@ -28,6 +30,14 @@ async function renderPicker(value: Level = "easy") {
   );
   return { onChange };
 }
+
+beforeEach(() => {
+  __setPremiumLevelsForTests({ test: ["expert"], other: ["easy"] });
+});
+
+afterEach(() => {
+  __setPremiumLevelsForTests(null);
+});
 
 describe("DifficultyPicker", () => {
   it("is a radio group with one radio per option, the value checked", async () => {
@@ -66,6 +76,12 @@ describe("DifficultyPicker", () => {
   });
 
   describe("a premium option", () => {
+    it("is one of its own game's premium levels, not another game's", async () => {
+      await renderPicker();
+      expect(screen.getByText("Easy")).toBeTruthy();
+      expect(screen.queryByText("🔒 Easy")).toBeNull();
+    });
+
     it("shows a lock and says so to screen readers", async () => {
       await renderPicker();
       expect(screen.getByText("🔒 Expert")).toBeTruthy();
