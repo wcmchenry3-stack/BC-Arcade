@@ -32,7 +32,7 @@ Both dark and light themes must pass independently. Use the design tokens from [
 
 BC Arcade uses React Native Reanimated and Matter.js physics. Both must respect the OS-level "Reduce Motion" preference.
 
-- All animations must check `useReduceMotion()` from Reanimated and skip or simplify motion when it returns `true`.
+- All animations must check `useReduceMotion()` from `frontend/src/components/shared/useReduceMotion.ts` and skip or simplify motion when it returns `true`. It follows the setting live, so a player can toggle Reduce Motion mid-session. Don't use Reanimated's `useReducedMotion()` on its own: it only reports the value from app launch and never updates.
 - Physics simulations (Cascade) must resolve immediately to final state when reduce motion is active — no dropping, bouncing, or sliding.
 - Do not auto-play looping animations that cannot be paused.
 - Avoid content that flashes more than 3 times per second (seizure risk).

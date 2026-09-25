@@ -2,13 +2,13 @@ import { useEffect, useRef } from "react";
 import {
   cancelAnimation,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withDelay,
   withSpring,
   withTiming,
   type WithSpringConfig,
 } from "react-native-reanimated";
+import { useReduceMotion } from "./useReduceMotion";
 
 /** What a celebration does when the OS "Reduce Motion" setting is on. */
 export type CelebrationReducedMotion =
@@ -42,20 +42,28 @@ const BADGE_FADE_IN_MS = 300;
  * The shared skeleton of a win / bonus celebration (#2606): a badge that
  * springs in, a ring of particles that spring in one after another, a fade
  * out, then `onDone`. Owns the shared values, the timers and their cleanup,
- * and the Reduce Motion rule from docs/ACCESSIBILITY.md §3 (read
- * synchronously via Reanimated, so motion never starts before it is known).
+ * and the Reduce Motion rule from docs/ACCESSIBILITY.md §3 via the shared,
+ * live `useReduceMotion` (the same source AnimationOverlay uses).
  *
  * Returns the animated styles; the caller lays out its own badge and glyphs.
  */
 export function useCelebration(config: CelebrationConfig) {
   const { visible, reducedMotion: policy } = config;
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReduceMotion();
 
-  // Keep the latest config for the effect without re-running it on every render.
+  // Latest config for the timers, updated after commit (never during render).
+  // Declared before the main effect, so it runs first.
   const configRef = useRef(config);
-  configRef.current = config;
+  useEffect(() => {
+    configRef.current = config;
+  });
 
   const countRef = useRef(config.particleCount);
+  if (__DEV__ && config.particleCount !== countRef.current) {
+    console.warn(
+      `useCelebration: particleCount changed from ${countRef.current} to ${config.particleCount}; it is fixed at mount.`
+    );
+  }
   const badgeScale = useSharedValue(0);
   const badgeOpacity = useSharedValue(0);
   const particles = Array.from({ length: countRef.current }, () =>
@@ -128,7 +136,6 @@ export function useCelebration(config: CelebrationConfig) {
   );
 
   return {
-    reduceMotion,
     /** True when Reduce Motion is on and the policy is to show nothing. */
     hidden: reduceMotion && policy.mode === "skip",
     badgeStyle,

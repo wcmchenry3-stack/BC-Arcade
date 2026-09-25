@@ -14,6 +14,13 @@ async function renderAnimation(onDismiss: () => void) {
 }
 
 afterEach(() => {
+  // The preset's AccessibilityInfo methods are shared jest.fns; put them back.
+  (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockImplementation(() =>
+    Promise.resolve(false)
+  );
+  (AccessibilityInfo.addEventListener as jest.Mock).mockImplementation(() => ({
+    remove: jest.fn(),
+  }));
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
@@ -22,9 +29,11 @@ describe("FreeCellGameWinAnimation (#2508)", () => {
   it("with Reduce Motion on, never shows the burst and hands straight to the card", async () => {
     // Read synchronously (Reanimated), so there is no frame before the setting is known.
     (useReducedMotion as jest.Mock).mockReturnValue(true);
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     try {
       const onDismiss = jest.fn();
       await renderAnimation(onDismiss);
+      await act(async () => {});
       expect(screen.queryByTestId("animation-overlay")).toBeNull();
       expect(screen.queryByTestId("animation-overlay-static")).toBeNull();
       expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -35,7 +44,6 @@ describe("FreeCellGameWinAnimation (#2508)", () => {
 
   it("plays the burst, then hands over to the result card", async () => {
     jest.useFakeTimers();
-    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(false);
     const onDismiss = jest.fn();
     await renderAnimation(onDismiss);
     await act(async () => {});
