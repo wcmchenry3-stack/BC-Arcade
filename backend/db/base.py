@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 
-from sqlalchemy import event
+from sqlalchemy import event, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 
 class Base(DeclarativeBase):
@@ -35,6 +36,16 @@ def _normalize_url(raw: str) -> str:
     if raw.startswith("postgresql://"):
         return "postgresql+asyncpg://" + raw[len("postgresql://") :]
     return raw
+
+
+def _is_sqlite_file_db(url: str) -> bool:
+    """Same test SQLAlchemy's SQLite dialects use to pick a pool."""
+    parsed = make_url(url)
+    return (
+        bool(parsed.database)
+        and parsed.database != ":memory:"
+        and (parsed.query.get("mode") != "memory")
+    )
 
 
 _raw_url = os.environ.get("DATABASE_URL", "").strip()
@@ -54,11 +65,21 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         if not DATABASE_URL:
             raise RuntimeError("DATABASE_URL is not configured")
-        # SQLite uses NullPool under the async driver and rejects pool_size /
-        # max_overflow. Only pass connection-pool tuning to Postgres.
-        kwargs: dict = {"pool_pre_ping": True}
-        if not DATABASE_URL.startswith("sqlite"):
-            kwargs.update({"pool_size": 5, "max_overflow": 5})
+        # A file SQLite DB (tests, local dev) gets NullPool explicitly: since SQLAlchemy
+        # 2.0.38 a file DB defaults to AsyncAdaptedQueuePool, which shares
+        # aiosqlite connections across event loops — pytest's per-test loops
+        # and every TestClient's own. An aiosqlite connection whose loop closes
+        # with a call still in flight loses its worker thread, and any later
+        # call on it (a pool pre-ping included) waits forever: a CI run hung
+        # ~28 min in the retention tests (#2667). NullPool closes each
+        # connection on checkin, so none outlives the loop that opened it.
+        # An in-memory DB keeps SQLAlchemy's StaticPool: its one connection
+        # *is* the database. Only Postgres gets connection-pool tuning.
+        kwargs: dict
+        if DATABASE_URL.startswith("sqlite"):
+            kwargs = {"poolclass": NullPool} if _is_sqlite_file_db(DATABASE_URL) else {}
+        else:
+            kwargs = {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 5}
         _engine = create_async_engine(DATABASE_URL, **kwargs)
 
         # SQLite doesn't enforce foreign keys unless explicitly enabled per
