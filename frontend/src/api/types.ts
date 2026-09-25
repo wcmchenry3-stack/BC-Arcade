@@ -14,13 +14,52 @@ export interface PlayerRef {
   player_id: string;
 }
 
+/** Game-specific figures in `GameTypeStats.extras`, e.g. Blackjack's chips. */
+export type GameStatsExtras = Record<string, number | string | boolean | null>;
+
+/**
+ * One game's stats in `/stats/me`. Full field meanings: `GameTypeStatsResponse`
+ * in backend/games/schemas.py.
+ */
 export interface GameTypeStats {
+  // Deprecated aliases (#2620), kept for current store builds until #2644:
+  // `played` (= `sessions`), `best` (highest final_score, whatever the
+  // direction), `avg`, and Blackjack's `best_chips` / `current_chips`, which
+  // mirror `extras`. New code reads the comparable fields below.
   played: number;
   best: number | null;
   avg: number | null;
   last_played_at: string | null;
   best_chips: number | null;
   current_chips: number | null;
+
+  // Comparable fields (#2620). Optional only because a server older than
+  // #2620 omits them; a current server always sends them.
+  /** Finished games, abandons included. */
+  sessions?: number;
+  /** Finished games minus abandons (the Arcade XP input). */
+  completed?: number;
+  /**
+   * Games with outcome `win` / `loss` / `push`. All three are null when the
+   * game has no win concept for this player (show "—").
+   * Win rate = won / (won + lost + tied).
+   */
+  won?: number | null;
+  lost?: number | null;
+  tied?: number | null;
+  /**
+   * Runs of consecutive wins by completion time. A loss ends a run; ties,
+   * abandons and score-only finishes are skipped. Null with the win fields.
+   */
+  current_win_streak?: number | null;
+  best_win_streak?: number | null;
+  /** Sum of each game's duration (24 h cap per game). */
+  time_played_ms?: number;
+  /** Best value of the game's board metric, in the board's direction. */
+  best_value?: number | null;
+  /** i18n key for what `best_value` counts: "score", "moves", "level", … */
+  best_label_key?: string | null;
+  extras?: GameStatsExtras;
 }
 
 export interface StatsResponse {

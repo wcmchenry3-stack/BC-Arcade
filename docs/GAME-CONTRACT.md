@@ -178,40 +178,77 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 ### 1.5 stats_shape()
 
-**Authority: `backend/<game>/module.py` (`stats_shape` method)**
+**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/service.py` (`get_stats_for_session`) for the comparable fields**
 
-`games/service.py` builds a `raw_stats` dict for each game type after an aggregate DB query and one pre-fetch query for `latest_score`. It then calls `module.stats_shape(raw_stats)` to get the final shape for the `/stats/me` API response. There is no game-specific logic in `service.py`.
+`games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
+
+1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
+2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input, `games/progression.py`).
+
+There is no game-specific logic in `service.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
-| Key              | Type               | Description                                       |
-| ---------------- | ------------------ | ------------------------------------------------- |
-| `played`         | `int`              | completed game count                              |
-| `best`           | `int \| None`      | highest `final_score`                             |
-| `avg`            | `float \| None`    | mean `final_score`                                |
-| `last_played_at` | `datetime \| None` | most recent `completed_at`                        |
-| `latest_score`   | `int \| None`      | `final_score` of the most recently completed game |
+| Key              | Type               | Description                                                  |
+| ---------------- | ------------------ | ------------------------------------------------------------ |
+| `played`         | `int`              | finished game count, abandons included                       |
+| `best`           | `int \| None`      | highest non-abandoned `final_score` (whatever the direction) |
+| `avg`            | `float \| None`    | mean non-abandoned `final_score`                             |
+| `last_played_at` | `datetime \| None` | most recent `completed_at`                                   |
+| `latest_score`   | `int \| None`      | `final_score` of the most recent non-abandoned game          |
+| `metadata`       | `dict`             | `games.metadata` of the most recent game                     |
 
-**Return value:** a dict whose keys are a subset of `GameTypeStats` fields (`played`, `best`, `avg`, `last_played_at`, `best_chips`, `current_chips`). Omitted keys default to `None` in the response.
+**Return value:** a dict with any of `played`, `best`, `avg`, `last_played_at` (deprecated aliases, see below) and `extras`, a dict of game-specific figures. Omitted keys default to `None` (`{}` for `extras`).
 
-**Default (pass-through) implementation** — strip `latest_score`, forward everything else:
+**Comparable fields (#2620)** — the same meaning for every game, set by the service:
+
+| Field                                    | Meaning                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions`                               | rows with `completed_at`, abandons included                                                                                                                                                                                              |
+| `completed`                              | `sessions` minus `abandoned` rows; the XP input                                                                                                                                                                                          |
+| `won` / `lost` / `tied`                  | rows with `outcome` = `win` / `loss` / `push`. All three `null` when the player has no row of the game with any of them (score-only games, solo-only Yacht): clients show "—"                                                            |
+| `current_win_streak` / `best_win_streak` | runs of consecutive `win` rows in `completed_at` order (see rules below); `null` when the win fields are `null`                                                                                                                          |
+| `time_played_ms`                         | sum over `sessions` of `duration_ms`; a missing or 0 value falls back to `completed_at − started_at`; each row clamped to 0–24 h                                                                                                         |
+| `best_value`                             | best non-abandoned value of the board's `metric` in its `direction` (FreeCell: fewest moves; Daily Word: fewest `guesses_used`). A metadata metric that is not a JSON number is ignored. A game with no board uses highest `final_score` |
+| `best_label_key`                         | the board's `label_key` (`"score"` for a game with no board)                                                                                                                                                                             |
+| `extras`                                 | what `stats_shape` returned under `extras`                                                                                                                                                                                               |
+
+**Win rate** = `won / (won + lost + tied)`. `completed` and `kept_playing` rows are not in the denominator. Undefined ("—") when the win fields are `null`.
+
+**Win streak rules:**
+
+- a `win` extends the run;
+- a `loss` ends it;
+- a `push` neither extends nor breaks it;
+- `abandoned`, `completed` and `kept_playing` rows are skipped (leaving a game is never penalised).
+
+**Deprecated aliases** (kept for store builds until #2637 ships; #2644 removes them): `played` (= `sessions`), `best`, `avg`, and Blackjack's top-level `best_chips`, `current_chips`, `best_run_chips`, `total_runs`, `runs_completed`, `current_table`, which mirror `extras`.
+
+**Default (pass-through) implementation** — strip `latest_score`, forward everything else (the service ignores `metadata`):
 
 ```python
 def stats_shape(self, raw_stats: dict) -> dict:
     return {k: v for k, v in raw_stats.items() if k != "latest_score"}
 ```
 
-**Blackjack implementation** — renames `best → best_chips`, maps `latest_score → current_chips`, drops `avg`:
+**Blackjack implementation** — moves `best` and `latest_score` into `extras` as chips, adds the run aggregates from the latest metadata, drops `best` and `avg`:
 
 ```python
 def stats_shape(self, raw_stats: dict) -> dict:
+    meta = raw_stats.get("metadata") or {}
     return {
         "played": raw_stats["played"],
         "best": None,
         "avg": None,
         "last_played_at": raw_stats["last_played_at"],
-        "best_chips": raw_stats["best"],
-        "current_chips": raw_stats["latest_score"],
+        "extras": {
+            "best_chips": raw_stats["best"],
+            "current_chips": raw_stats["latest_score"],
+            "best_run_chips": meta.get("best_run_chips"),
+            "total_runs": meta.get("total_runs"),
+            "runs_completed": meta.get("runs_completed"),
+            "current_table": meta.get("current_table"),
+        },
     }
 ```
 
