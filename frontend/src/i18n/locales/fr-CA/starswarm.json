@@ -29,7 +29,7 @@
   "leaderboard.empty": "Aucun pointage — sois le premier!",
   "leaderboard.error": "Impossible de charger les pointages",
   "leaderboard.retry": "Réessayer",
-  "a11y.carrierExposed": "Blindage du vaisseau-mère détruit. Il peut être endommagé maintenant.",
+  "a11y.carrierExposed": "Blindage du vaisseau-mère détruit. Il peut être endommagé.",
   "a11y.carrierBeam": "Rayon du vaisseau-mère entrant. Écarte-toi.",
   "a11y.reinforcements": "Le vaisseau-mère envoie des renforts.",
   "a11y.bossWave": "Vague de boss. Seulement le vaisseau-mère et ses escortes.",

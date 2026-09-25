@@ -1,6 +1,6 @@
 {
   "title": "Ежедневное задание",
-  "progress": "{{done}} из {{total}} выполнено",
+  "progress": "{{done}}/{{total}} готово",
   "allDone": "Всё выполнено! Новое задание появится завтра.",
   "goal.fallback": "Играть в {{game}}",
   "goal.daily_word.completed": "Пройти сегодняшний {{game}}",

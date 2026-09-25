@@ -2,7 +2,7 @@
   "game.title": "Star Swarm",
   "game.description": "Отражайте волны пришельцев на подходе к вам.",
   "game.playLabel": "Играть в Star Swarm",
-  "game.canvasLabel": "Игра Star Swarm — проводите пальцем по горизонтали, чтобы двигать корабль и уничтожать формацию пришельцев.",
+  "game.canvasLabel": "Игра Star Swarm — проводите пальцем по горизонтали, чтобы двигать корабль и уничтожать пришельцев.",
   "hud.scoreValue": "ОЧКИ {{score}}",
   "hud.bestValue": "РЕКОРД {{best}}",
   "hud.waveValue": "ВОЛНА {{wave}}",
