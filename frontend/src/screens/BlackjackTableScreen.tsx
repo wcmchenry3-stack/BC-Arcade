@@ -35,6 +35,7 @@ import { winRatePct } from "../components/scoreboard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { GameShell } from "../components/shared/GameShell";
+import { PillButton } from "../components/shared/PillButton";
 import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
 // Below this *available content* height, card sizes, action-button sizes,
@@ -250,16 +251,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
       {/* New Game */}
       <View style={styles.actionRow}>
-        <Pressable
+        <PillButton
+          label={t("common:newGame.button")}
           onPress={handleNewGamePress}
-          style={[styles.newGameBtn, { borderColor: tableAccentColor }]}
-          accessibilityRole="button"
-          accessibilityLabel={t("common:newGame.button")}
-        >
-          <Text style={[styles.newGameText, { color: tableAccentColor }]}>
-            {t("common:newGame.button")}
-          </Text>
-        </Pressable>
+          color={tableAccentColor}
+        />
       </View>
 
       {/* Table */}
@@ -416,20 +412,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     paddingHorizontal: 12,
     paddingVertical: 4,
-  },
-  newGameBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  newGameText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
   },
   tableArea: {
     flex: 1,

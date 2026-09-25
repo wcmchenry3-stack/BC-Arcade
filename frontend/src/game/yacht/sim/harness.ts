@@ -52,6 +52,8 @@ export interface PlayerResult {
   readonly bonus: boolean;
   readonly yachtBonusCount: number;
   readonly categories: Readonly<Record<Category, number>>;
+  /** The category filled each round, in order (13 entries). */
+  readonly fillOrder: readonly Category[];
   /** Every dice array this player saw, in order. Only with `recordDice`. */
   readonly diceLog?: readonly (readonly number[])[];
 }
@@ -98,7 +100,8 @@ function playTurn(
   state: GameState,
   seat: Seat,
   opponent: GameState,
-  diceLog: number[][] | null
+  diceLog: number[][] | null,
+  fills: Category[]
 ): GameState {
   const round = state.round;
   const table = turnDiceTable(seat.streamSeed, round);
@@ -114,10 +117,16 @@ function playTurn(
     diceLog?.push([...s.dice]);
   }
   const category = seat.policy.category(s, opponent.total_score, opponent.round);
+  fills.push(category);
   return score(s, category);
 }
 
-function toResult(label: string, state: GameState, diceLog: number[][] | null): PlayerResult {
+function toResult(
+  label: string,
+  state: GameState,
+  diceLog: number[][] | null,
+  fillOrder: readonly Category[]
+): PlayerResult {
   const categories = {} as Record<Category, number>;
   for (const cat of CATEGORIES) categories[cat] = state.scores[cat] ?? 0;
   return {
@@ -127,6 +136,7 @@ function toResult(label: string, state: GameState, diceLog: number[][] | null): 
     bonus: state.upper_bonus > 0,
     yachtBonusCount: state.yacht_bonus_count,
     categories,
+    fillOrder,
     ...(diceLog ? { diceLog } : {}),
   };
 }
@@ -144,19 +154,21 @@ export function playGame(
   const previousRng = getRng();
   const firstLog = recordDice ? ([] as number[][]) : null;
   const secondLog = recordDice ? ([] as number[][]) : null;
+  const fills0: Category[] = [];
+  const fills1: Category[] = [];
   let p0 = newGame();
   let p1 = newGame();
   try {
     for (let round = 0; round < 13; round++) {
-      p0 = playTurn(p0, first, p1, firstLog);
-      p1 = playTurn(p1, second, p0, secondLog);
+      p0 = playTurn(p0, first, p1, firstLog, fills0);
+      p1 = playTurn(p1, second, p0, secondLog, fills1);
     }
   } finally {
     setRng(previousRng);
   }
   return {
-    first: toResult(first.policy.label, p0, firstLog),
-    second: toResult(second.policy.label, p1, secondLog),
+    first: toResult(first.policy.label, p0, firstLog, fills0),
+    second: toResult(second.policy.label, p1, secondLog, fills1),
   };
 }
 

@@ -91,6 +91,8 @@ function recorder() {
     restore: () => calls.push({ fn: "restore", args: [] }),
     translate: (x: number, y: number) => calls.push({ fn: "translate", args: [x, y] }),
     scale: (x: number, y: number) => calls.push({ fn: "scale", args: [x, y] }),
+    rotate: (deg: number, px: number, py: number) =>
+      calls.push({ fn: "rotate", args: [deg, px, py] }),
   };
   return { calls, canvas: canvas as unknown as SkCanvas };
 }
@@ -109,6 +111,10 @@ function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
     puBomb: img("bomb"),
     puBuddy: img("pubuddy"),
     puLightning: img("bolt"),
+    asteroid1: img("asteroid1"),
+    asteroid2: img("asteroid2"),
+    asteroid3: img("asteroid3"),
+    asteroid4: img("asteroid4"),
     explosion: Array.from({ length: 20 }, (_, i) => img(`ex${i}`, 48, 48)),
     ...over,
   } as unknown as DrawImages;
@@ -251,6 +257,42 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
     expect(calls[3]!.args).toEqual([-300, 0]);
   });
 
+  it("a rotated image rotates about its own centre, inside save/restore (#2573)", () => {
+    const calls = draw([
+      {
+        k: "image",
+        key: "r",
+        sprite: "asteroid1",
+        x: 68,
+        y: 68,
+        w: 44,
+        h: 44,
+        fit: "fill",
+        rotate: 0.75,
+      },
+    ]);
+    expect(calls.map((c) => c.fn)).toEqual(["save", "rotate", "drawImageRect", "restore"]);
+    expect(calls[1]!.args).toEqual([(0.75 * 180) / Math.PI, 90, 90]);
+  });
+
+  it("no rotate op is emitted (and no save/restore) when `rotate` is absent or zero", () => {
+    const calls = draw([
+      { k: "image", key: "a", sprite: "asteroid1", x: 0, y: 0, w: 10, h: 10, fit: "fill" },
+      {
+        k: "image",
+        key: "b",
+        sprite: "asteroid1",
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 10,
+        fit: "fill",
+        rotate: 0,
+      },
+    ]);
+    expect(calls.map((c) => c.fn)).toEqual(["drawImageRect", "drawImageRect"]);
+  });
+
   it("an image that isn't there is skipped without disturbing the rest", () => {
     const calls = draw(
       [
@@ -275,6 +317,10 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       puBomb: true,
       puBuddy: true,
       puLightning: true,
+      asteroid1: true,
+      asteroid2: true,
+      asteroid3: true,
+      asteroid4: true,
       explosion: Array.from({ length: 20 }, () => true),
     };
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42);
@@ -307,7 +353,7 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       height: CANVAS_H,
     });
     const calls = draw(ops).filter(
-      (c) => !["save", "restore", "translate", "scale"].includes(c.fn)
+      (c) => !["save", "restore", "translate", "scale", "rotate"].includes(c.fn)
     );
     expect(calls).toHaveLength(ops.length);
     const kindFor: Record<DrawOp["k"], string> = {
