@@ -101,18 +101,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Replaces four ``@app.on_event`` hooks, which FastAPI deprecates — and which
     it stops running once a lifespan is set, so they moved together. Startup
-    steps run in their previous registration order. The Daily Word retention
-    task is owned here: created before ``yield`` and always cancelled after it.
-    It is mirrored on ``app.state`` only so tests can observe it.
+    steps run in their previous registration order.
+
+    The Daily Word retention task is held in one place, ``app.state`` (which
+    tests read). The ``try`` opens as soon as it exists, so it is cancelled on
+    every exit — including a startup that is cancelled or fails during the
+    DB health check, which can take up to ``DB_PING_TIMEOUT_SECONDS`` (#2672
+    review).
     """
     _warn_if_dev_override_active()
-    retention_task = _start_daily_word_retention()
-    app.state.retention_task = retention_task
-    await _db_health_check()
+    app.state.retention_task = _start_daily_word_retention()
     try:
+        await _db_health_check()
         yield
     finally:
-        await _stop_daily_word_retention(retention_task)
+        await _stop_daily_word_retention(app.state.retention_task)
         app.state.retention_task = None
 
 
@@ -304,13 +307,17 @@ def _start_daily_word_retention() -> asyncio.Task | None:
 
 
 async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
+    """Cancel the retention task and wait for it to finish.
+
+    gather(return_exceptions=True) absorbs whatever the task ends with — its
+    own cancellation or any other exception — without catching a
+    CancelledError aimed at *this* coroutine: if shutdown itself is
+    cancelled, that still propagates (#2672 review).
+    """
     if task is None:
         return
     task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    await asyncio.gather(task, return_exceptions=True)
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
