@@ -1,6 +1,6 @@
 {
   "title": "التحدي اليومي",
-  "progress": "{{done}} من {{total}} مكتمل",
+  "progress": "{{done}}/{{total}} مكتمل",
   "allDone": "اكتمل كل شيء! تحدٍ جديد يصل غدًا.",
   "goal.fallback": "العب {{game}}",
   "goal.daily_word.completed": "أكمل {{game}} اليوم",

@@ -20,7 +20,7 @@
   "error.rateLimited": "عدد كبير جدًا من المحاولات — حاول مرة أخرى لاحقًا",
   "keyboard.delete": "حذف",
   "keyboard.enter": "إدخال",
-  "result.countdown": "الكلمة التالية خلال {{time}}",
+  "result.countdown": "القادمة خلال {{time}}",
   "result.share": "مشاركة",
   "result.copied": "تم النسخ!"
 }
