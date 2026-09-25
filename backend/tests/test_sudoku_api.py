@@ -329,7 +329,7 @@ class TestSubmitRank:
 
         for i in range(10):
             limiter.reset()
-            _submit(f"Top{i}", 1000, "medium")
+            _submit(f"Top{i}", 300, "medium")
         limiter.reset()
         assert _submit("Lowly", 1, "medium").json()["rank"] == 11
 

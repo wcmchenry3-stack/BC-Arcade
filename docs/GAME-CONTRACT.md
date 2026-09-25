@@ -94,7 +94,7 @@ class GameModule(Protocol):
     def stats_shape(self, raw_stats: dict) -> dict: ...
 ```
 
-**`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once: `metric` (`"final_score"` or a `games.metadata` key), `direction` (`desc` = higher is better, `asc` = lower is better), an optional `tiebreak` `(key, direction)`, `label_key` (i18n key for the metric's label), `partitions` (metadata keys that split the board), `max_value` (the highest legitimate value, `None` = uncapped) and `enabled` (`False` for games with no leaderboard). `completed_at asc` always breaks the final tie. The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`; `tests/test_vocab.py` fails on drift. No route reads them yet: the generic leaderboard, rank and stats code that uses them lands in #2618 and #2620 (epic #2519).
+**`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once: `metric` (`"final_score"` or a `games.metadata` key), `direction` (`desc` = higher is better, `asc` = lower is better), an optional `tiebreak` `(key, direction)`, `label_key` (i18n key for the metric's label), `partitions` (metadata keys that split the board), `max_value` (the highest legitimate value, `None` = uncapped) and `enabled` (`False` for games with no leaderboard). `completed_at asc` always breaks the final tie. The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`; `tests/test_vocab.py` fails on drift. The generic leaderboard routes below read them (#2618); stats use them from #2620 (epic #2519).
 
 | Game       | metric          | direction | tie-break         | partitions              | max_value | enabled |
 | ---------- | --------------- | --------- | ----------------- | ----------------------- | --------- | ------- |
@@ -110,6 +110,26 @@ class GameModule(Protocol):
 | Daily Word | `guesses_used`  | asc       | —                 | —                       | —         | no      |
 
 Twenty48 and Star Swarm have no module yet (their boards arrive with their modules in #2623) and export `null`.
+
+#### Leaderboard routes (#2618)
+
+**Authority: `backend/games/leaderboard.py`, `backend/games/ranking.py`, `backend/games/router.py`.** Every game's board is served by two generic routes; a game gets a leaderboard by declaring `board`, with no router of its own.
+
+- **`GET /games/leaderboard/{game_type}`** returns `{game_type, partition, label_key, entries: [{rank, player_name, value, completed_at}]}`, top 10 by default (`?limit=` 1–100). Partition values are query params named after `board.partitions` (e.g. `?difficulty=hard&variant=mini`); a missing, unknown, empty or repeated partition is a 400. Unknown games, games without a module or board, and `enabled=False` boards are a 404.
+- **`PATCH /games/{id}/name`** with `{player_name}` (1–32 characters after trimming) puts the display name on one of the caller's finished, scored games (`metadata.player_name`) and returns `{rank, is_best}`: the rank of the caller's **best** entry in that game's partition, and whether this game is that entry. 400 if the game is unfinished, has no metric value, or was abandoned; 403 if another session owns it; 404 if the game or its board doesn't exist.
+- **`PATCH /games/{id}/complete`** rejects a metric above `board.max_value` with 400 (absorbs #2215). A metric or tie-break read from metadata must be a non-negative integer.
+
+Board rules, identical for every game:
+
+1. **One entry per player** (#2519 decision 12). Rows are grouped by `session_id` (the device, until accounts in #1047) and only each session's best row is listed: best `metric` in `direction`, then `tiebreak`, then the earliest `completed_at`. The same key orders the board. A replay that doesn't beat the player's best never appears; a better one replaces it. The name shown is the one on that best row.
+2. **Only named rows rank.** A row needs a non-blank `metadata.player_name`; a player's best is taken among their named rows. There is no "anon" label.
+3. **Abandoned rows** (`not_abandoned()`) and **sentinel `*-anon` sessions** (rows the legacy `POST /<game>/score` routes write) never appear.
+4. **Exact rank** = 1 + the number of players whose best beats yours. It counts sessions, not rows, and there is no "11 = not in the top 10" sentinel. Players with identical keys share a rank.
+5. **Partitions** filter on `games.metadata`. Sudoku keeps its legacy rule: a row or request without `variant` means `classic`.
+
+Both routes are rate-limited by session (`session_key`); the GET also has a per-IP backstop. For a premium game (`game_types.is_premium`, read from the catalog), both check the caller's entitlement exactly like `require_entitlement`; a premium GET without `X-Session-ID` is a 400.
+
+The per-game leaderboard routes (`/solitaire/scores`, `/cascade/score/{id}`, …) still serve v1.0 clients unchanged until #2644 removes them.
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 

@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from db.models import EventType, Game, GameEvent, GameType
 from games.filters import not_abandoned
+from games.leaderboard import check_completion_limits
 from games.registry import get_module
 from vocab import GameOutcome
 
@@ -509,6 +510,13 @@ async def complete_game(
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
     validated_result = await _validate_result(session, game, result)
+    # The board's max_value and metric type (#2618, absorbs #2215).
+    violation = await check_completion_limits(session, game, final_score, validated_result)
+    if violation is not None:
+        _report_rejected_result(
+            violation.game_type, "over board limit", {"field": violation.metric}
+        )
+        raise GameServiceError(400, violation.detail)
 
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
