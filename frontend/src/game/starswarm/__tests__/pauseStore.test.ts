@@ -2,21 +2,26 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   CANVAS_H,
   CANVAS_W,
-  buildStateShape,
+  applyPowerUp,
   engineCounters,
   initStarSwarm,
+  isEngineCounters,
   restoreEngineCounters,
-  stateShape,
+  throwAsteroid,
+  tick,
 } from "../engine";
 import {
+  HYDRATE_TIMEOUT_MS,
   PAUSED_RUN_STORAGE_KEY,
   _resetPauseStoreForTests,
   clearSavedPausedState,
   getSavedPausedState,
   hydratePausedState,
   isPausedStateHydrated,
+  releaseSavedSession,
   savePausedState,
 } from "../pauseStore";
+import { SAVE_FINGERPRINT, fitsSaveShape } from "../saveShape";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
@@ -31,19 +36,38 @@ jest.mock("../../_shared/gameEventClient", () => ({
   },
 }));
 
+const COUNTERS = { nextId: 5000, seed: 123456 };
+
 function run(): StarSwarmState {
   return { ...initStarSwarm(CANVAS_W, CANVAS_H, 4, 7, "Commander"), score: 1234 };
 }
 
-async function newProcess() {
-  _resetPauseStoreForTests();
-  await hydratePausedState();
+const flush = () => new Promise((r) => setImmediate(r));
+
+async function saveAndDie(extra: Record<string, unknown> = {}) {
+  savePausedState({ gameState: run(), difficulty: "Commander", counters: COUNTERS, ...extra });
+  await flush(); // let the write land
+  _resetPauseStoreForTests(); // the OS killed the app
 }
 
 async function persisted(): Promise<Record<string, unknown> | null> {
   const raw = await AsyncStorage.getItem(PAUSED_RUN_STORAGE_KEY);
   return raw == null ? null : (JSON.parse(raw) as Record<string, unknown>);
 }
+
+async function writeRaw(value: unknown) {
+  await AsyncStorage.setItem(
+    PAUSED_RUN_STORAGE_KEY,
+    typeof value === "string" ? value : JSON.stringify(value)
+  );
+}
+
+const abandoned = (gameId: string) =>
+  expect(mockCompleteGame).toHaveBeenCalledWith(
+    gameId,
+    { outcome: "abandoned" },
+    { outcome: "abandoned" }
+  );
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -55,10 +79,11 @@ beforeEach(async () => {
 describe("pauseStore — survives the process (#2645)", () => {
   it("restores a saved run after a cold start", async () => {
     const state = run();
-    savePausedState({ gameState: state, difficulty: "Commander" });
-    await new Promise((r) => setImmediate(r)); // let the write land
+    savePausedState({ gameState: state, difficulty: "Commander", counters: COUNTERS });
+    await flush();
+    _resetPauseStoreForTests();
 
-    await newProcess();
+    await hydratePausedState();
     const saved = getSavedPausedState();
     expect(saved?.difficulty).toBe("Commander");
     // JSON only loses what doesn't matter (-0 comes back as 0).
@@ -66,36 +91,43 @@ describe("pauseStore — survives the process (#2645)", () => {
   });
 
   it("continues the engine's id counter and rng seed", async () => {
-    const counters = { nextId: 5000, seed: 123456 };
-    savePausedState({ gameState: run(), difficulty: "Commander", counters });
-    await new Promise((r) => setImmediate(r));
-
+    await saveAndDie();
     restoreEngineCounters({ nextId: 1, seed: 42 }); // a new process starts them over
-    await newProcess();
-    expect(engineCounters().nextId).toBeGreaterThanOrEqual(5000);
-    expect(engineCounters().seed).toBe(123456);
+    await hydratePausedState();
+    expect(engineCounters().nextId).toBeGreaterThanOrEqual(COUNTERS.nextId);
+    expect(engineCounters().seed).toBe(COUNTERS.seed);
   });
 
-  it("abandons the dead process's session, after the event client has loaded", async () => {
-    savePausedState({ gameState: run(), difficulty: "Commander", gameId: "old-game" });
-    await new Promise((r) => setImmediate(r));
-
-    await newProcess();
+  it("abandons the dead process's session once the event client has loaded", async () => {
+    await saveAndDie({ gameId: "old-game" });
+    await hydratePausedState();
+    await flush();
     expect(mockInit).toHaveBeenCalled();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    expect(mockCompleteGame).toHaveBeenCalledWith(
-      "old-game",
-      { outcome: "abandoned" },
-      { outcome: "abandoned" }
-    );
+    abandoned("old-game");
     // The restored run doesn't carry the dead session on.
     expect(getSavedPausedState()?.gameId).toBeUndefined();
   });
 
+  it("restores without waiting on the event client", async () => {
+    mockInit.mockReturnValue(new Promise(() => undefined)); // never loads
+    await saveAndDie({ gameId: "old-game" });
+    await hydratePausedState();
+    expect(getSavedPausedState()?.difficulty).toBe("Commander");
+  });
+
+  it("a restore that can't reach the event client still restores the run", async () => {
+    mockInit.mockRejectedValue(new Error("storage down"));
+    await saveAndDie({ gameId: "old-game" });
+    await expect(hydratePausedState()).resolves.toBeUndefined();
+    await flush();
+    expect(getSavedPausedState()?.difficulty).toBe("Commander");
+  });
+
   it("does not abandon anything when the save has no session", async () => {
-    savePausedState({ gameState: run(), difficulty: "Commander" });
-    await new Promise((r) => setImmediate(r));
-    await newProcess();
+    await saveAndDie({ gameId: null });
+    await hydratePausedState();
+    await flush();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
@@ -108,31 +140,31 @@ describe("pauseStore — survives the process (#2645)", () => {
     });
     const before = engineCounters();
     await hydratePausedState();
+    await flush();
     expect(engineCounters()).toEqual(before);
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("clear removes the save from disk", async () => {
-    savePausedState({ gameState: run(), difficulty: "Commander" });
-    await new Promise((r) => setImmediate(r));
+    savePausedState({ gameState: run(), difficulty: "Commander", counters: COUNTERS });
+    await flush();
     clearSavedPausedState();
-    await new Promise((r) => setImmediate(r));
+    await flush();
     expect(await persisted()).toBeNull();
 
-    await newProcess();
+    _resetPauseStoreForTests();
+    await hydratePausedState();
     expect(getSavedPausedState()).toBeNull();
   });
 
-  it("a clear while hydrating wins over the disk read", async () => {
-    savePausedState({ gameState: run(), difficulty: "Commander", gameId: "g" });
-    await new Promise((r) => setImmediate(r));
-
-    _resetPauseStoreForTests();
+  it("a clear while hydrating wins over the disk read, and the dead session still closes", async () => {
+    await saveAndDie({ gameId: "old-game" });
     const hydrating = hydratePausedState();
     clearSavedPausedState();
     await hydrating;
+    await flush();
     expect(getSavedPausedState()).toBeNull();
-    expect(mockCompleteGame).not.toHaveBeenCalled();
+    abandoned("old-game");
   });
 
   it("hydrates once per process", async () => {
@@ -144,62 +176,169 @@ describe("pauseStore — survives the process (#2645)", () => {
     expect(getItem.mock.calls.length - before).toBe(1);
     expect(isPausedStateHydrated()).toBe(true);
   });
+
+  it("gives up on a disk read that never settles, and restores nothing late", async () => {
+    await saveAndDie({ gameId: "old-game" });
+    const raw = await AsyncStorage.getItem(PAUSED_RUN_STORAGE_KEY);
+    let settle: (raw: string | null) => void = () => undefined;
+    (AsyncStorage.getItem as jest.Mock).mockImplementationOnce(
+      () => new Promise((r) => (settle = r))
+    );
+    jest.useFakeTimers();
+    try {
+      const hydrating = hydratePausedState();
+      jest.advanceTimersByTime(HYDRATE_TIMEOUT_MS);
+      await hydrating;
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(isPausedStateHydrated()).toBe(true);
+    expect(getSavedPausedState()).toBeNull();
+
+    settle(raw); // the read lands late: the run stays out, the dead session still closes
+    await flush();
+    await flush();
+    expect(getSavedPausedState()).toBeNull();
+    abandoned("old-game");
+  });
 });
 
-describe("pauseStore — saves it won't restore", () => {
-  async function writeRaw(value: unknown) {
-    await AsyncStorage.setItem(
-      PAUSED_RUN_STORAGE_KEY,
-      typeof value === "string" ? value : JSON.stringify(value)
-    );
-  }
-  const good = () => ({ v: 1, gameState: run(), difficulty: "Commander", gameId: "old" });
+describe("pauseStore — releasing the session on unmount", () => {
+  it("keeps the run and drops the session, on disk too", async () => {
+    savePausedState({
+      gameState: run(),
+      difficulty: "Commander",
+      gameId: "live",
+      counters: COUNTERS,
+    });
+    releaseSavedSession();
+    expect(getSavedPausedState()?.gameId).toBeNull();
+    expect(getSavedPausedState()?.gameState.score).toBe(1234);
+    await flush();
+    expect((await persisted())?.gameId).toBeNull();
+  });
+
+  it("writes nothing when there's no session to drop", () => {
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    releaseSavedSession(); // nothing saved
+    savePausedState({ gameState: run(), difficulty: "Commander", gameId: null });
+    const before = setItem.mock.calls.length;
+    releaseSavedSession();
+    expect(setItem.mock.calls.length).toBe(before);
+  });
+});
+
+describe("pauseStore — saves it won't restore still close their session", () => {
+  const good = () => ({
+    v: 1,
+    fp: SAVE_FINGERPRINT,
+    gameState: run(),
+    difficulty: "Commander",
+    counters: COUNTERS,
+    gameId: "old",
+  });
+  const withState = (patch: (s: Record<string, unknown>) => Record<string, unknown>) => {
+    const g = good();
+    return { ...g, gameState: patch(g.gameState as unknown as Record<string, unknown>) };
+  };
 
   it.each([
-    [
-      "from an engine with another state shape",
-      () => {
-        const g = good();
-        const { missionCompleteTimer: _, ...older } = g.gameState;
-        return { ...g, gameState: older };
-      },
-    ],
     ["from another save version", () => ({ ...good(), v: 999 })],
+    ["from a build with another shape", () => ({ ...good(), fp: "older" })],
     ["with an unknown difficulty", () => ({ ...good(), difficulty: "SpaceCadet" })],
-    ["of a finished run", () => ({ ...good(), gameState: { ...run(), phase: "GameOver" } })],
-    ["that isn't JSON", () => "{not json"],
-  ])("drops a save %s", async (_label, make) => {
-    await writeRaw(make());
-    await newProcess();
+    ["of a finished run", () => withState((s) => ({ ...s, phase: "GameOver" }))],
+    ["with no counters", () => ({ ...good(), counters: undefined })],
+    ["with a non-numeric id counter", () => ({ ...good(), counters: { nextId: "5", seed: 1 } })],
+    ["with a missing seed", () => ({ ...good(), counters: { nextId: 9 } })],
+    [
+      "whose top-level state is missing a field",
+      () =>
+        withState((s) => {
+          const { missionCompleteTimer: _, ...rest } = s;
+          return rest;
+        }),
+    ],
+    [
+      "with an enemy missing a field",
+      () =>
+        withState((s) => {
+          const [first, ...others] = s.enemies as Record<string, unknown>[];
+          const { flakCooldown: _, ...older } = first!;
+          return { ...s, enemies: [older, ...others] };
+        }),
+    ],
+    [
+      "with a field this build doesn't know",
+      () => withState((s) => ({ ...s, player: { ...(s.player as object), jetpack: true } })),
+    ],
+  ])("drops a save %s, and abandons its session", async (_label, make) => {
+    const save = make(); // building a state draws engine ids
+    const before = engineCounters();
+    await writeRaw(save);
+    await hydratePausedState();
+    await flush();
     expect(getSavedPausedState()).toBeNull();
     expect(await persisted()).toBeNull();
-    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(engineCounters()).toEqual(before);
+    abandoned("old");
   });
 
-  it("a restore that can't reach the event client still restores the run", async () => {
-    mockInit.mockRejectedValue(new Error("storage down"));
-    await writeRaw(good());
-    await expect(newProcess()).resolves.toBeUndefined();
-    expect(getSavedPausedState()?.difficulty).toBe("Commander");
+  it("drops a save that isn't JSON", async () => {
+    await writeRaw("{not json");
+    await hydratePausedState();
+    await flush();
+    expect(getSavedPausedState()).toBeNull();
+    expect(await persisted()).toBeNull();
+    expect(mockCompleteGame).not.toHaveBeenCalled(); // no session to be read from it
   });
 });
 
-describe("engine — shape and counters", () => {
-  it("buildStateShape leaves the counters alone", () => {
-    restoreEngineCounters({ nextId: 777, seed: 999 });
-    const before = engineCounters();
-    buildStateShape();
-    expect(engineCounters()).toEqual(before);
+describe("saveShape — every state a real run produces fits", () => {
+  it("fits through a long run with every kind of object on screen", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 7, "Commander");
+    const seen = new Set<string>();
+    for (let i = 0; i < 3000 && s.phase !== "GameOver"; i++) {
+      if (i === 300) s = throwAsteroid(applyPowerUp(s, "shield"));
+      if (i === 700) s = applyPowerUp(s, "buddy");
+      s = tick(s, 16, { playerX: 60 + ((i * 3) % 240), fire: true });
+      if (!fitsSaveShape(JSON.parse(JSON.stringify(s)))) {
+        throw new Error(`tick ${i}: the state doesn't fit the save shape`);
+      }
+      if (s.playerBullets.length) seen.add("playerBullets");
+      if (s.enemyBullets.length) seen.add("enemyBullets");
+      if (s.explosions.length) seen.add("explosions");
+      if (s.powerUps.length) seen.add("powerUps");
+      if (s.buddyShips.length) seen.add("buddyShips");
+      if (s.asteroids.length) seen.add("asteroids");
+      if (s.activePowerUp) seen.add("activePowerUp");
+    }
+    expect([...seen].sort()).toEqual([
+      "activePowerUp",
+      "asteroids",
+      "buddyShips",
+      "enemyBullets",
+      "explosions",
+      "playerBullets",
+      "powerUps",
+    ]);
   });
+});
 
-  it("a live state has this build's shape", () => {
-    expect(stateShape(run())).toBe(buildStateShape());
-  });
-
+describe("engine — counters", () => {
   it("restoring never moves the id counter backwards", () => {
     restoreEngineCounters({ nextId: 900, seed: 1 });
     restoreEngineCounters({ nextId: 10, seed: 2 });
     expect(engineCounters().nextId).toBeGreaterThanOrEqual(900);
     expect(engineCounters().seed).toBe(2);
+  });
+
+  it("invalid counters change nothing", () => {
+    const before = engineCounters();
+    restoreEngineCounters({ nextId: NaN, seed: 1 });
+    restoreEngineCounters({ seed: 5 } as unknown as { nextId: number; seed: number });
+    expect(engineCounters()).toEqual(before);
+    expect(isEngineCounters({ nextId: 1.5, seed: 0 })).toBe(false);
+    expect(isEngineCounters({ nextId: 1, seed: -1 })).toBe(false);
+    expect(isEngineCounters({ nextId: 1, seed: 0xffffffff })).toBe(true);
   });
 });

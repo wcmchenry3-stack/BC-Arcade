@@ -432,31 +432,28 @@ export function engineCounters(): EngineCounters {
   return { nextId: _nextId, seed: _seed };
 }
 
+/** Counters a save may carry: a positive integer id counter and a 32-bit seed. */
+export function isEngineCounters(v: unknown): v is EngineCounters {
+  if (v === null || typeof v !== "object") return false;
+  const { nextId, seed } = v as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(nextId) &&
+    (nextId as number) >= 1 &&
+    Number.isInteger(seed) &&
+    (seed as number) >= 0 &&
+    (seed as number) <= 0xffffffff
+  );
+}
+
 /**
  * Continue a restored run's counters. Ids only move forward: never back onto an id this
- * process has already issued, nor onto one the restored run holds.
+ * process has already issued, nor onto one the restored run holds. Counters that aren't
+ * valid change nothing.
  */
 export function restoreEngineCounters(counters: EngineCounters): void {
-  _nextId = Math.max(_nextId, Math.floor(counters.nextId));
+  if (!isEngineCounters(counters)) return;
+  _nextId = Math.max(_nextId, counters.nextId);
   _seed = counters.seed >>> 0;
-}
-
-/** Top-level and player keys: enough to tell a state saved by a build with another shape. */
-export function stateShape(state: StarSwarmState): string {
-  return `${Object.keys(state).sort().join(",")}|${Object.keys(state.player).sort().join(",")}`;
-}
-
-let _buildShape: string | null = null;
-
-/** {@link stateShape} of this build's StarSwarmState, from a fresh state (counters untouched). */
-export function buildStateShape(): string {
-  if (_buildShape === null) {
-    const counters = engineCounters();
-    _buildShape = stateShape(initStarSwarm(CANVAS_W, CANVAS_H));
-    _nextId = counters.nextId;
-    _seed = counters.seed;
-  }
-  return _buildShape;
 }
 
 // ---------------------------------------------------------------------------

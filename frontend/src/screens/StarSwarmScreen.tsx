@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
@@ -57,6 +58,7 @@ import {
   clearSavedPausedState,
   hydratePausedState,
   isPausedStateHydrated,
+  releaseSavedSession,
 } from "../game/starswarm/pauseStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
@@ -128,9 +130,13 @@ const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
 /**
  * A run paused by a previous process is on disk (#2645); the game reads the saved pause
- * synchronously at mount, so it mounts once that's loaded — a few ms, once per process.
+ * synchronously at mount, so it mounts once that's loaded — a few ms, once per process, and
+ * never more than HYDRATE_TIMEOUT_MS. Until then the header, its back button and a spinner are up.
  */
 export default function StarSwarmScreen() {
+  const { t } = useTranslation("starswarm");
+  const { colors } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
   const [hydrated, setHydrated] = useState(isPausedStateHydrated);
   useEffect(() => {
     if (hydrated) return;
@@ -142,7 +148,14 @@ export default function StarSwarmScreen() {
       alive = false;
     };
   }, [hydrated]);
-  return hydrated ? <StarSwarmGame /> : null;
+  if (hydrated) return <StarSwarmGame />;
+  return (
+    <GameShell title={t("game.title")} requireBack onBack={() => navigation.popToTop()}>
+      <View style={styles.canvasOuter}>
+        <ActivityIndicator color={colors.accent} size="large" />
+      </View>
+    </GameShell>
+  );
 }
 
 function StarSwarmGame() {
@@ -515,6 +528,10 @@ function StarSwarmGame() {
   const savePausedRun = useCallback((state: StarSwarmState, gameId: string | null) => {
     // A finished run is never saved as a paused one.
     if (state.phase === "GameOver") return;
+    // Already saved: a paused engine hands back the same state object, and iOS sends
+    // "inactive" then "background" for one trip to the home screen.
+    const saved = getSavedPausedState();
+    if (saved?.gameState === state && (saved.gameId ?? null) === gameId) return;
     savePausedState({
       gameState: state,
       difficulty: state.difficulty,
@@ -527,6 +544,10 @@ function StarSwarmGame() {
   const isLiveRun = !showDifficultyPicker && !isGameOver;
   const isLiveRunRef = useRef(isLiveRun);
   isLiveRunRef.current = isLiveRun;
+
+  // Leaving the screen any way at all — the back button, the iOS swipe, Android's back —
+  // abandons the sync session on unmount, so a save must stop carrying it.
+  useEffect(() => () => releaseSavedSession(), []);
 
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
   // it (#2645): the OS may kill the app from here. "inactive" too — iOS's app switcher only

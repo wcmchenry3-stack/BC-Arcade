@@ -38,6 +38,17 @@ let mockCanvasProps: any = null;
 // What the engine holds — the canvas stores game over before React hears of it.
 let mockEnginePhase = "SwoopIn";
 let mockEngineState: StarSwarmState | null = null;
+let mockStateCache: { src: unknown; phase: string; state: unknown } | null = null;
+function mockCurrentState() {
+  if (mockStateCache?.src !== mockEngineState || mockStateCache?.phase !== mockEnginePhase) {
+    mockStateCache = {
+      src: mockEngineState,
+      phase: mockEnginePhase,
+      state: { ...mockEngineState, phase: mockEnginePhase },
+    };
+  }
+  return mockStateCache.state;
+}
 jest.mock("../../components/starswarm/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -46,9 +57,8 @@ jest.mock("../../components/starswarm/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockCanvas = React.forwardRef((props: any, ref: any) => {
     mockCanvasProps = props;
-    React.useImperativeHandle(ref, () => ({
-      getState: () => ({ ...mockEngineState, phase: mockEnginePhase }),
-    }));
+    // Like the real canvas, the same state object until the engine changes it.
+    React.useImperativeHandle(ref, () => ({ getState: mockCurrentState }));
     return React.createElement(View, { testID: "starswarm-canvas" });
   });
   MockCanvas.displayName = "MockCanvas";
@@ -383,6 +393,50 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     const saved = await persisted();
     expect(saved.gameState.score).toBe(2500);
     expect(saved.gameId).toBeNull();
+    expect(mockPopToTop).toHaveBeenCalled();
+  });
+
+  it("inactive then background writes the run once — a paused engine's state doesn't change", async () => {
+    await renderScreen();
+    await startRun();
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const writes = () => setItem.mock.calls.filter(([k]) => k === PAUSED_RUN_STORAGE_KEY).length;
+    const before = writes();
+    await setAppState("inactive");
+    await setAppState("background");
+    expect(writes() - before).toBe(1);
+  });
+
+  it("leaving the screen any way drops the session from the save — unmounting abandons it", async () => {
+    const r = await renderScreen();
+    await startRun();
+    await setAppState("background");
+    await flush();
+    expect((await persisted()).gameId).toBe("starswarm-game-id");
+
+    // e.g. the iOS swipe-back, which never calls onBack
+    await act(async () => {
+      r.unmount();
+    });
+    await flush();
+    const saved = await persisted();
+    expect(saved.gameId).toBeNull();
+    expect(saved.gameState.score).toBe(2500); // the run itself is kept
+  });
+
+  it("while a previous process's save loads, the header and back button are up", async () => {
+    _resetPauseStoreForTests();
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    getItem.mockImplementationOnce(() => new Promise(() => undefined)); // storage stalls
+    await render(
+      <ThemeProvider>
+        <StarSwarmScreen />
+      </ThemeProvider>
+    );
+    expect(screen.queryByTestId("starswarm-canvas-outer")).toBeNull();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-back"));
+    });
     expect(mockPopToTop).toHaveBeenCalled();
   });
 
