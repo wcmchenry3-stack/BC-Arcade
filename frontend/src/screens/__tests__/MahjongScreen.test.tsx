@@ -736,3 +736,55 @@ describe("MahjongScreen — useGameSync lifecycle", () => {
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 });
+
+// #2469 item 3 / #2619 — the registered progress snapshot, and the explicit
+// abandon built from the same helper. MahjongResult requires `won` + `pairs`;
+// a wrong shape is a 400 the sync worker dead-letters.
+describe("MahjongScreen — progress snapshot (#2619)", () => {
+  /** A board in progress with a free matching pair: not deadlocked. */
+  async function mountMidGameWithSession() {
+    const inProgress = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      pairsRemoved: 12,
+      score: 240,
+      accumulatedMs: 60000,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(inProgress));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    mockCompleteGame.mockClear();
+    return api;
+  }
+
+  it("an unmount abandon carries the snapshot result and no score", async () => {
+    const { unmount } = await mountMidGameWithSession();
+    await unmount();
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, data] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary).not.toHaveProperty("finalScore");
+    expect(summary.result).toEqual({ won: false, pairs: 12 });
+    expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
+  });
+
+  it("a back-navigation abandon sends the same result block as the snapshot", async () => {
+    await mountMidGameWithSession();
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.result).toEqual({ won: false, pairs: 12 });
+  });
+});

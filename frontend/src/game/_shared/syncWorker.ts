@@ -60,6 +60,33 @@ export interface FlushResult {
   backoffMs: number;
 }
 
+/**
+ * Longest play time the SyncWorker will derive from `completedAt − startedAt`
+ * (24 h). Matches the server's stale-session threshold (#2621): a session open
+ * longer than that was left in the background, not played.
+ */
+export const MAX_DERIVED_DURATION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The `duration_ms` sent on PATCH /complete (#2619). A real duration from the
+ * game is kept as-is. When the game sent none, or 0, it is derived from the
+ * pending game's own `startedAt` / `completedAt` timestamps, capped at
+ * `MAX_DERIVED_DURATION_MS`. Returns the game's value unchanged (null, or 0)
+ * when the timestamps can't give a positive duration.
+ */
+export function resolveDurationMs(
+  durationMs: number | null | undefined,
+  startedAt: number | null | undefined,
+  completedAt: number | null | undefined
+): number | null {
+  const reported = durationMs ?? null;
+  if (reported !== null && reported !== 0) return reported;
+  if (typeof startedAt !== "number" || typeof completedAt !== "number") return reported;
+  const elapsed = completedAt - startedAt;
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return reported;
+  return Math.min(Math.round(elapsed), MAX_DERIVED_DURATION_MS);
+}
+
 const EMPTY: FlushResult = {
   attempted: 0,
   accepted: 0,
@@ -344,7 +371,7 @@ export class SyncWorker {
       const body = {
         final_score: summary.finalScore ?? null,
         outcome: summary.outcome ?? null,
-        duration_ms: summary.durationMs ?? null,
+        duration_ms: resolveDurationMs(summary.durationMs, game.startedAt, game.completedAt),
         completed_at: game.completedAt != null ? new Date(game.completedAt).toISOString() : null,
         result: summary.result ?? {},
       };

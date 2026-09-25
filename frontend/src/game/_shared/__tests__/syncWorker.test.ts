@@ -13,7 +13,7 @@ import { EventStore, Row } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncApi, SyncResponse } from "../syncApi";
-import { SyncWorker, FlushResult } from "../syncWorker";
+import { SyncWorker, FlushResult, MAX_DERIVED_DURATION_MS, resolveDurationMs } from "../syncWorker";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 
@@ -508,6 +508,91 @@ describe("SyncWorker", () => {
     expect(bodyFor(without)["result"]).toEqual({});
   });
 
+  // #2619: games that send no duration (or 0) get `completedAt − startedAt`.
+  describe("duration_ms fallback", () => {
+    const patchBody = (gid: string) =>
+      api.calls.find((c) => c.method === "PATCH" && c.path === `/games/${gid}/complete`)!
+        .body as Record<string, unknown>;
+
+    /** Complete a game whose pending row says it lasted `elapsedMs`. */
+    async function completeAfter(
+      elapsedMs: number,
+      durationMs: number | null | undefined
+    ): Promise<string> {
+      api.defaultResponse = ok();
+      const gid = client.startGame("yacht");
+      client.completeGame(
+        gid,
+        durationMs === undefined ? { outcome: "completed" } : { outcome: "completed", durationMs }
+      );
+      await flushMicro();
+      const g = games.get(gid)!;
+      g.startedAt = g.completedAt! - elapsedMs;
+      await worker.flush();
+      return gid;
+    }
+
+    it.each([
+      ["null", null],
+      ["0", 0],
+      ["missing", undefined],
+    ])("derives it when the game sent %s", async (_label, durationMs) => {
+      const gid = await completeAfter(90_000, durationMs);
+      expect(patchBody(gid)["duration_ms"]).toBe(90_000);
+    });
+
+    it("caps a derived duration at 24 h", async () => {
+      const gid = await completeAfter(3 * MAX_DERIVED_DURATION_MS, null);
+      expect(patchBody(gid)["duration_ms"]).toBe(MAX_DERIVED_DURATION_MS);
+      expect(MAX_DERIVED_DURATION_MS).toBe(24 * 60 * 60 * 1000);
+    });
+
+    it("keeps a real duration the game sent", async () => {
+      const gid = await completeAfter(90_000, 45_000);
+      expect(patchBody(gid)["duration_ms"]).toBe(45_000);
+    });
+
+    it("keeps a real duration over 24 h (only missing or 0 is filled)", async () => {
+      const gid = await completeAfter(90_000, MAX_DERIVED_DURATION_MS + 1);
+      expect(patchBody(gid)["duration_ms"]).toBe(MAX_DERIVED_DURATION_MS + 1);
+    });
+
+    // iOS/Android: a game queued by an older build (no durationMs in its summary)
+    // is rehydrated from AsyncStorage and still flushes, now with a duration.
+    it("flushes a pending game persisted by an older build", async () => {
+      const startedAt = 1_700_000_000_000;
+      const legacy = {
+        "legacy-game": {
+          gameType: "yacht",
+          metadata: {},
+          startedAt,
+          startedSynced: true,
+          nextEventIndex: 0,
+          completed: true,
+          completedAt: startedAt + 120_000,
+          completeSummary: { finalScore: 180, outcome: "completed" },
+          completeSynced: false,
+        },
+      };
+      await AsyncStorage.setItem("pending_games_v1", JSON.stringify(legacy));
+      const rehydrated = new PendingGamesStore();
+      await rehydrated.init();
+      const legacyWorker = new SyncWorker(new EventStore(), rehydrated, asSyncApi(api));
+      api.defaultResponse = ok();
+
+      const result = await legacyWorker.flush();
+
+      expect(result.accepted).toBe(1);
+      expect(patchBody("legacy-game")).toMatchObject({
+        final_score: 180,
+        outcome: "completed",
+        duration_ms: 120_000,
+        result: {},
+      });
+      expect(rehydrated.get("legacy-game")).toBeUndefined();
+    });
+  });
+
   // #572/#553: 400 on PATCH /complete is now terminal — dead-letter immediately.
   // The backend has accepted "completed" since #514; a 400 is a permanent
   // bad-request that retrying cannot fix.
@@ -673,5 +758,29 @@ describe("SyncWorker", () => {
     // Only one of the two should have actually attempted anything.
     expect(a.attempted + b.attempted).toBeGreaterThan(0);
     expect(Math.min(a.attempted, b.attempted)).toBe(0);
+  });
+});
+
+describe("resolveDurationMs (#2619)", () => {
+  it("keeps a real value", () => {
+    expect(resolveDurationMs(5_000, 0, 60_000)).toBe(5_000);
+  });
+
+  it("derives completedAt − startedAt for null, undefined and 0", () => {
+    expect(resolveDurationMs(null, 1_000, 61_000)).toBe(60_000);
+    expect(resolveDurationMs(undefined, 1_000, 61_000)).toBe(60_000);
+    expect(resolveDurationMs(0, 1_000, 61_000)).toBe(60_000);
+  });
+
+  it("caps a derived value at 24 h", () => {
+    expect(resolveDurationMs(null, 0, MAX_DERIVED_DURATION_MS * 2)).toBe(MAX_DERIVED_DURATION_MS);
+  });
+
+  it("returns the game's value when the timestamps can't give a positive duration", () => {
+    expect(resolveDurationMs(null, 1_000, null)).toBeNull();
+    expect(resolveDurationMs(null, undefined, 5_000)).toBeNull();
+    expect(resolveDurationMs(0, 5_000, 5_000)).toBe(0);
+    // Clock moved backwards between start and completion.
+    expect(resolveDurationMs(null, 10_000, 5_000)).toBeNull();
   });
 });

@@ -157,10 +157,12 @@ export default function SolitaireScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("solitaire");
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the abandon result block (backend SolitaireResult). Both the
+  // hook's own abandon (unmount) and the beforeRemove abandon build it here.
+  const progressResult = useCallback(() => ({ won: false, moves: movesRef.current }), []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: { won: false, moves: movesRef.current } }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();
 
@@ -268,7 +270,12 @@ export default function SolitaireScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       syncComplete(
-        { finalScore: state.score, outcome: "completed", durationMs: state.accumulatedMs },
+        {
+          finalScore: state.score,
+          outcome: "completed",
+          durationMs: state.accumulatedMs,
+          result: { won: true, moves: movesRef.current },
+        },
         { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
       );
       clearGame().catch(() => {});
@@ -322,13 +329,14 @@ export default function SolitaireScreen() {
       if (!syncGetGameId()) return;
       if (s !== null && s.isComplete) return;
       if (movesRef.current < 1) return;
+      const result = progressResult();
       syncComplete(
-        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
-        { outcome: "abandoned", won: false, moves: movesRef.current }
+        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0, result },
+        { outcome: "abandoned", ...result }
       );
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [navigation, syncComplete, syncGetGameId, progressResult]);
 
   useEffect(() => {
     if (!state?.events) return;

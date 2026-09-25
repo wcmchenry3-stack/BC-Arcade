@@ -128,29 +128,26 @@ export default function SortScreen() {
 
   const audio = useSortAudio();
 
+  // #2619 — the abandon result block. Both the hook's own abandon (unmount) and
+  // abandonSession build it here.
+  const progressResult = useCallback(
+    () => ({
+      won: false,
+      level: currentLevelIdRef.current,
+      moves: gameStateRef.current?.moveCount ?? 0,
+    }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: {
-        won: false,
-        level: currentLevelIdRef.current,
-        moves: gameStateRef.current?.moveCount ?? 0,
-      },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   /** Closes an open, unfinished session as abandoned (a no-op otherwise). */
   const abandonSession = useCallback(() => {
     if (!syncGetGameId()) return;
-    syncComplete(
-      { outcome: "abandoned" },
-      {
-        outcome: "abandoned",
-        won: false,
-        level: currentLevelIdRef.current,
-        moves: gameStateRef.current?.moveCount ?? 0,
-      }
-    );
-  }, [syncGetGameId, syncComplete]);
+    const result = progressResult();
+    syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
+  }, [syncGetGameId, syncComplete, progressResult]);
 
   useEffect(() => {
     return () => {
@@ -242,16 +239,14 @@ export default function SortScreen() {
     if (currentLevelId !== null) {
       // Read before the unlock below moves it on.
       const atFrontier = currentLevelId >= progressRef.current.unlockedLevel;
-      syncComplete(
-        { outcome: "completed" },
-        {
-          outcome: "completed",
-          won: true,
-          level: currentLevelId,
-          moves: gameState.moveCount,
-          undos: gameState.undosUsed,
-        }
-      );
+      const payload = {
+        outcome: "completed",
+        won: true,
+        level: currentLevelId,
+        moves: gameState.moveCount,
+        undos: gameState.undosUsed,
+      };
+      syncComplete({ outcome: "completed", result: payload }, payload);
       const solvedLevel = currentLevelId;
       const gen = levelGenRef.current;
       void recordLevelSolve(solvedLevel, gameState.moveCount).then((solve) => {

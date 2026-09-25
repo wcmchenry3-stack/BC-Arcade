@@ -374,16 +374,19 @@ function CascadeGame() {
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the abandon result block. Both the hook's own abandon
+  // (unmount) and endInstrumentedSession("abandoned") build it here.
+  const progressResult = useCallback(
+    () => ({
+      total_drops: dropCountRef.current,
+      total_merges: mergeCountRef.current,
+      duration_ms: Date.now() - gameStartTimeRef.current,
+    }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: {
-        total_drops: dropCountRef.current,
-        total_merges: mergeCountRef.current,
-        duration_ms: Date.now() - gameStartTimeRef.current,
-      },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const lastSaveTimeRef = useRef<number>(0);
   const settlingTicksLeftRef = useRef<number>(0);
@@ -405,19 +408,19 @@ function CascadeGame() {
   const endInstrumentedSession = useCallback(
     (outcome: "completed" | "abandoned") => {
       const durationMs = Date.now() - gameStartTimeRef.current;
-      syncComplete(
-        { finalScore: scoreRef.current, outcome, durationMs },
-        {
-          final_score: scoreRef.current,
-          duration_ms: durationMs,
-          theme: activeFruitSetRef.current.id,
-          total_drops: dropCountRef.current,
-          total_merges: mergeCountRef.current,
-          outcome,
-        }
-      );
+      const payload = {
+        final_score: scoreRef.current,
+        duration_ms: durationMs,
+        theme: activeFruitSetRef.current.id,
+        total_drops: dropCountRef.current,
+        total_merges: mergeCountRef.current,
+        outcome,
+      };
+      // An abandon's result comes from the same helper as the unmount snapshot.
+      const result = outcome === "abandoned" ? progressResult() : payload;
+      syncComplete({ finalScore: scoreRef.current, outcome, durationMs, result }, payload);
     },
-    [syncComplete]
+    [syncComplete, progressResult]
   );
 
   // Pops queue.current, advances the queue, updates history. Returns the dropped tier.

@@ -82,10 +82,27 @@ invalid or oversized (> 8 KB) result returns 400 without completing the game
 and is reported to Sentry (game type, failing field paths, error types — no
 session id or values), because the app's sync worker dead-letters a 400. Modules with
 `result_model = None` accept any dict. Result models ignore unknown keys so a
-newer app build never fails completion against an older backend. `won` inside
-the result is the win signal — `games.outcome` stays lifecycle-only
-(`completed` / `abandoned` / `kept_playing`) and must not be read as one.
-Older app builds that send no `result` keep working.
+newer app build never fails completion against an older backend. Older app
+builds that send no `result` keep working. The client passes the result block
+explicitly as `summary.result` to `useGameSync.complete()`; the analytics
+`game_ended` payload is never copied into it (#2619).
+
+**Outcome (#2519 decision 11).** `games.outcome` carries the result for games
+with a winner (`GameModule.has_winner`): `win` / `loss` / `push` (a tie).
+Score-only games record `completed` / `kept_playing` — a finished game with no
+win concept. `abandoned` is a quit. The per-game rules live in one place, the
+`GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
+only a daily-challenge input, not the win signal.
+
+**Abandons.** Only a session the player started (`markStarted()`) is ever
+abandoned — on unmount or `restart()`. A game registers a progress snapshot so
+the hook's own abandon carries the result block, and any explicit abandon the
+screen still sends builds its result with the same helper.
+
+**Duration.** `SyncWorker` sends the game's `durationMs` when it is a real
+value. When a game sends none, or 0, it sends `completedAt − startedAt` from the
+pending game instead, capped at 24 h (#2619) — so every row gets a play time,
+including games queued offline by older builds.
 
 **Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
 kicks in (see §5). If 2 MB turns out to be too small in practice, that is a
