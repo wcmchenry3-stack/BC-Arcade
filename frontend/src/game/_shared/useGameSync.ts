@@ -61,9 +61,31 @@
  * one real game stays one row. If the player starts a fresh game of the type
  * instead, or never reopens it within 24 h, gameEventClient abandons it; an
  * unstarted one is discarded at startup.
+ *
+ * Active-play clock (#2684): a game that does not measure its own active time
+ * still reports a duration. A session's duration is the foreground time on the
+ * game screen since the previous session ended (or since the hook mounted),
+ * with each idle gap capped at `IDLE_GAP_CAP_MS` (10 minutes); a game's own
+ * measured duration wins. Foreground time comes from `foregroundNow()`, so time
+ * the app spends `background` or `inactive` is not counted. The gaps are the
+ * stretches between player-activity pings — mount, `markStarted()`,
+ * `enqueue()`, `complete()` and `resume()` — so a screen left awake and idle,
+ * or an in-app pause, adds at most the cap. The thinking time before the first
+ * move counts, and a game won on its first action still gets a duration.
+ *
+ * The window restarts when a session ends: after `complete()`, and when an
+ * open session is abandoned or discarded (unmount, `close()`, or `start()` /
+ * `restart()` / `resume()` replacing it) — after the abandon has read it.
+ * `complete()` sends the game's own `summary.durationMs` when it is > 0,
+ * otherwise the window. The hook's own abandons send the snapshot's
+ * `durationMs` when > 0, otherwise the window; a discarded (never-started)
+ * session sends nothing. A session resumed after a killed process counts from
+ * the relaunch (an undercount, never an overcount). It is never wall-clock
+ * start-to-end time (#2619, `resolveDurationMs`).
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { foregroundNow } from "./foregroundClock";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
@@ -79,6 +101,27 @@ import type { BugLevel } from "./eventQueueConfig";
 export interface ProgressSnapshot {
   /** Per-game result block — must satisfy the backend `result_model`, if any. */
   result?: Record<string, unknown>;
+  /**
+   * The game's own active play time, if it measures one. A value > 0 wins
+   * over the hook's active-play window (#2684); anything else uses the window.
+   */
+  durationMs?: number | null;
+}
+
+/**
+ * The most one gap between player-activity pings adds to a session's duration
+ * (#2684): a screen left awake and idle, or paused in-app, stops counting here.
+ */
+export const IDLE_GAP_CAP_MS = 10 * 60 * 1000;
+
+/** A duration SyncWorker would send: finite and > 0 once rounded (#2619). */
+function isKnownDuration(ms: number | null | undefined): ms is number {
+  return typeof ms === "number" && Number.isFinite(ms) && Math.round(ms) > 0;
+}
+
+/** Foreground time since `from`, at most one idle gap's worth. */
+function cappedGap(from: number): number {
+  return Math.min(Math.max(0, foregroundNow() - from), IDLE_GAP_CAP_MS);
 }
 
 export interface UseGameSyncReturn {
@@ -115,6 +158,9 @@ export interface UseGameSyncReturn {
    * `summary.result` is the PATCH `result` block and must be passed
    * explicitly (#2619). `payload` is only the analytics `game_ended` event
    * data — it is never copied into the result.
+   *
+   * `summary.durationMs` > 0 (the game's own active time) is sent as given;
+   * otherwise the hook's active-play window is sent in its place (#2684).
    */
   complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
   /**
@@ -165,41 +211,73 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     gameTypeRef.current = gameType;
   }, [gameType]);
 
-  // Abandon the open session, attaching the game's progress snapshot if it
-  // registered one. A throwing getter degrades to a bare abandon.
-  const abandon = useCallback((gid: string) => {
-    let snapshot: ProgressSnapshot = {};
-    try {
-      snapshot = snapshotRef.current() ?? {};
-    } catch {
-      // Isolation: a broken getter must not lose the abandon.
-    }
-    const summary: CompleteSummary = { outcome: "abandoned" };
-    if (snapshot.result) summary.result = snapshot.result;
-    try {
-      gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
-    } catch {
-      // Isolation.
-    }
+  // Active-play window (#2684): foreground time banked up to the last
+  // player-activity ping (each gap capped), and foregroundNow() at that ping.
+  // Mounting is the first ping.
+  const windowBankedRef = useRef(0);
+  const fgAtLastPingRef = useRef<number | null>(null);
+  if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
+
+  const ping = useCallback(() => {
+    windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
+    fgAtLastPingRef.current = foregroundNow();
   }, []);
+
+  const readWindow = useCallback(
+    (): number => windowBankedRef.current + cappedGap(fgAtLastPingRef.current ?? foregroundNow()),
+    []
+  );
+
+  const resetWindow = useCallback(() => {
+    windowBankedRef.current = 0;
+    fgAtLastPingRef.current = foregroundNow();
+  }, []);
+
+  // Abandon the open session, attaching the game's progress snapshot if it
+  // registered one. A throwing getter degrades to a bare abandon. The
+  // duration is the snapshot's own when > 0, otherwise the active-play window.
+  const abandon = useCallback(
+    (gid: string) => {
+      let snapshot: ProgressSnapshot = {};
+      try {
+        snapshot = snapshotRef.current() ?? {};
+      } catch {
+        // Isolation: a broken getter must not lose the abandon.
+      }
+      const summary: CompleteSummary = { outcome: "abandoned" };
+      if (snapshot.result) summary.result = snapshot.result;
+      const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
+      if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
+      try {
+        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
+      } catch {
+        // Isolation.
+      }
+    },
+    [readWindow]
+  );
 
   // Close the open session, if any: abandoned when the player started it,
   // otherwise discarded — an untouched session is never left pending (#2619,
-  // #2654). Either way the hook has no open session afterwards.
+  // #2654). Either way the hook has no open session afterwards, and the
+  // active-play window restarts once the abandon has read it. With no session
+  // open nothing changes, so a screen that opens its session at the first move
+  // keeps the thinking time before it.
   const closeOpen = useCallback(() => {
     const gid = gameIdRef.current;
     gameIdRef.current = null;
     if (!gid || completedRef.current) return;
     if (startedRef.current) {
       abandon(gid);
-      return;
+    } else {
+      try {
+        gameEventClient.discardGame(gid);
+      } catch {
+        // Isolation.
+      }
     }
-    try {
-      gameEventClient.discardGame(gid);
-    } catch {
-      // Isolation.
-    }
-  }, [abandon]);
+    resetWindow();
+  }, [abandon, resetWindow]);
 
   // Close any open session on unmount.
   useEffect(() => closeOpen, [closeOpen]);
@@ -228,15 +306,19 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       if (!gid) return false;
       closeOpen();
+      // Play before the kill is unknown: the window counts from the relaunch's
+      // mount (an undercount, never an overcount).
+      ping();
       gameIdRef.current = gid;
       completedRef.current = false;
       startedRef.current = true;
       return true;
     },
-    [closeOpen]
+    [closeOpen, ping]
   );
 
   const markStarted = useCallback(() => {
+    ping();
     if (startedRef.current) return;
     startedRef.current = true;
     const gid = gameIdRef.current;
@@ -246,31 +328,47 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     } catch {
       // Isolation.
     }
-  }, []);
+  }, [ping]);
 
-  const enqueue = useCallback((event: EnqueueEventInput) => {
-    const gid = gameIdRef.current;
-    if (!gid || completedRef.current) return;
-    try {
-      gameEventClient.enqueueEvent(gid, event);
-    } catch {
-      // Isolation.
-    }
-  }, []);
+  const enqueue = useCallback(
+    (event: EnqueueEventInput) => {
+      ping();
+      const gid = gameIdRef.current;
+      if (!gid || completedRef.current) return;
+      try {
+        gameEventClient.enqueueEvent(gid, event);
+      } catch {
+        // Isolation.
+      }
+    },
+    [ping]
+  );
 
-  const complete = useCallback((summary: CompleteSummary, payload?: Record<string, unknown>) => {
-    const gid = gameIdRef.current;
-    if (!gid || completedRef.current) return;
-    try {
-      // The result block is summary.result only (#2619) — the event payload is
-      // no longer copied into it.
-      gameEventClient.completeGame(gid, summary, payload ?? {});
-    } catch {
-      // Isolation.
-    }
-    completedRef.current = true;
-    gameIdRef.current = null;
-  }, []);
+  const complete = useCallback(
+    (summary: CompleteSummary, payload?: Record<string, unknown>) => {
+      const gid = gameIdRef.current;
+      if (!gid || completedRef.current) return;
+      // The game's own durationMs > 0 wins; otherwise the active-play window
+      // (#2684), once it has counted anything.
+      ping();
+      let sent = summary;
+      if (!isKnownDuration(summary.durationMs)) {
+        const windowMs = readWindow();
+        if (isKnownDuration(windowMs)) sent = { ...summary, durationMs: windowMs };
+      }
+      try {
+        // The result block is summary.result only (#2619) — the event payload is
+        // no longer copied into it.
+        gameEventClient.completeGame(gid, sent, payload ?? {});
+      } catch {
+        // Isolation.
+      }
+      completedRef.current = true;
+      gameIdRef.current = null;
+      resetWindow();
+    },
+    [ping, readWindow, resetWindow]
+  );
 
   // Same as start(): it closes the open session before opening the new one.
   // Kept as its own name for the New Game / theme-switch call sites.
