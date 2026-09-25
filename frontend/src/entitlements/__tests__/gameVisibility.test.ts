@@ -171,15 +171,73 @@ describe("gameVisibility", () => {
       expect(SHOW_HIDDEN_GAMES).toBe(false);
     });
 
-    it("the URL Xcode Cloud writes is either the pre-launch API or the production API", () => {
-      // ci_post_clone.sh force-writes .env on every Xcode Cloud build. Any third
-      // value would silently change which games ship — update this test and the
-      // release plan's launch-gating table together if one is ever needed.
-      const xcodeCloudUrl = apiUrlIn("ios/ci_scripts/ci_post_clone.sh");
-      expect([PRE_LAUNCH_API_URL, PRODUCTION_API_URL]).toContain(xcodeCloudUrl);
+    describe("Xcode Cloud (ios/ci_scripts/ci_post_clone.sh)", () => {
+      // The script force-writes .env on every Xcode Cloud build, choosing the URL
+      // from the workflow's BC_API_TARGET (docs/IOS.md). Any third URL, or a
+      // default other than production, would silently change which games ship —
+      // update this test and docs/IOS.md together if that is ever needed.
+      const script = fs.readFileSync(
+        path.join(frontendRoot, "ios/ci_scripts/ci_post_clone.sh"),
+        "utf-8"
+      );
 
-      const { SHOW_HIDDEN_GAMES } = loadWith({ dev: false, apiUrl: xcodeCloudUrl });
-      expect(SHOW_HIDDEN_GAMES).toBe(xcodeCloudUrl === PRE_LAUNCH_API_URL);
+      function assigned(name: string): string {
+        const values = [...script.matchAll(new RegExp(`^${name}=(\\S+)$`, "gm"))];
+        if (values.length !== 1) {
+          throw new Error(
+            `ci_post_clone.sh must set ${name} exactly once (found ${values.length})`
+          );
+        }
+        return values[0][1];
+      }
+
+      /** The arms of the one `case "${BC_API_TARGET:-}"`, pattern -> body. */
+      function bcApiTargetArms(): Record<string, string> {
+        const blocks = [...script.matchAll(/^case "\$\{BC_API_TARGET:-\}" in\n([\s\S]*?)^esac$/gm)];
+        if (blocks.length !== 1) {
+          throw new Error(`expected one BC_API_TARGET case block, found ${blocks.length}`);
+        }
+        const arms: Record<string, string> = {};
+        for (const [, pattern, body] of blocks[0][1].matchAll(/^\s*(\S+?)\)\s*([\s\S]*?)\s*;;/gm)) {
+          arms[pattern] = body.replace(/\s+/g, " ");
+        }
+        return arms;
+      }
+
+      it("contains no URL but the two APIs and the Sentry DSN", () => {
+        const dsn = assigned("EXPO_PUBLIC_SENTRY_DSN");
+        const urls = new Set(script.match(/https?:\/\/[^\s'"]+/g));
+        expect([...urls].sort()).toEqual([PRE_LAUNCH_API_URL, PRODUCTION_API_URL, dsn].sort());
+      });
+
+      it("knows exactly the pre-launch and the production API", () => {
+        expect(assigned("PRELAUNCH_API_URL")).toBe(PRE_LAUNCH_API_URL);
+        expect(assigned("PRODUCTION_API_URL")).toBe(PRODUCTION_API_URL);
+        expect(loadWith({ dev: false, apiUrl: PRE_LAUNCH_API_URL }).SHOW_HIDDEN_GAMES).toBe(true);
+        expect(loadWith({ dev: false, apiUrl: PRODUCTION_API_URL }).SHOW_HIDDEN_GAMES).toBe(false);
+      });
+
+      it("maps prelaunch to the pre-launch API, unset to production, anything else to a failure", () => {
+        const { "*": fallback, ...chosen } = bcApiTargetArms();
+        expect(chosen).toEqual({
+          prelaunch: "API_URL=$PRELAUNCH_API_URL",
+          '""|production': "API_URL=$PRODUCTION_API_URL",
+        });
+        expect(fallback).toMatch(/\bexit 1$/);
+        expect(fallback).not.toMatch(/API_URL=/);
+      });
+
+      it("sets API_URL nowhere but in that case block, and uses the pre-launch URL once", () => {
+        // Not preceded by a name character, so PRELAUNCH_API_URL= etc. don't count.
+        expect(script.match(/(?<![A-Z_])API_URL=/g)).toHaveLength(2);
+        expect(script.match(/\$\{?PRELAUNCH_API_URL\b/g)).toHaveLength(1);
+      });
+
+      it("writes the chosen URL into .env and refuses a workflow-level override", () => {
+        expect(script).toContain(`printf 'EXPO_PUBLIC_API_URL=%s\\n' "$API_URL" > .env`);
+        expect(script).not.toMatch(/^EXPO_PUBLIC_API_URL=/m);
+        expect(script).toContain('[ "$EXPO_PUBLIC_API_URL" != "$API_URL" ]');
+      });
     });
   });
 });

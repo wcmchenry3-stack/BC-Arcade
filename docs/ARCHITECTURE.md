@@ -259,8 +259,9 @@ build (fails closed). There is deliberately **no flag to flip back before
 launch**: pointing the release config at the production API hides the games and
 ends the free entitlements in the same step. `gameVisibility.test.ts` reads the
 real config to keep that true: the tracked `.env.production` must yield a store
-build, and the URL `ci_post_clone.sh` writes must be exactly the pre-launch or the
-production API.
+build, `ci_post_clone.sh` may write only the pre-launch or the production API, and
+only an Xcode Cloud workflow with `BC_API_TARGET=prelaunch` gets the pre-launch
+one. An unset variable means production (`docs/IOS.md`, "API URL per workflow").
 
 It is a compiled constant on purpose:
 
