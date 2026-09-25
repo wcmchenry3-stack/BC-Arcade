@@ -57,6 +57,11 @@ class GameModule(Protocol):
         and describe creation-time state only.  The validated result is merged
         into ``games.metadata``.
 
+    has_winner:
+        ``True`` when a finished game has a winner, so ``games.outcome``
+        records ``win`` / ``loss`` / ``push``; ``False`` for score-only games,
+        which record ``completed`` / ``kept_playing``. See ``vocab.GameOutcome``.
+
     Methods
     -------
     stats_shape(raw_stats):
@@ -78,5 +83,6 @@ class GameModule(Protocol):
     game_type: GameType
     metadata_model: type[BaseModel]
     result_model: type[BaseModel] | None
+    has_winner: bool
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

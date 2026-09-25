@@ -8,7 +8,7 @@ from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
 from games.protocol import GameModule
-from games.registry import get_module
+from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
 from mahjong.module import module as mahjong_module
 from solitaire.module import module as solitaire_module
@@ -55,6 +55,46 @@ def test_result_model_declared(mod, expects_model) -> None:
     assert (mod.result_model is not None) == expects_model
     if expects_model:
         assert mod.result_model is not mod.metadata_model
+
+
+# Games whose finished rows record ``win`` / ``loss`` / ``push`` (see
+# ``vocab.GameOutcome``). Twenty48 (true) and Star Swarm (false) join when #2623
+# registers them.
+_HAS_WINNER = {
+    "yacht": True,
+    "hearts": True,
+    "daily_word": True,
+    "mahjong": True,
+    "blackjack": True,
+    "solitaire": False,
+    "freecell": False,
+    "sudoku": False,
+    "cascade": False,
+    "sort": False,
+}
+
+
+@pytest.mark.parametrize("name", sorted(_REGISTRY))
+def test_has_winner_declared(name: str) -> None:
+    """Every registered module declares ``has_winner`` as a bool (#2619)."""
+    mod = _REGISTRY[name]
+    assert isinstance(
+        type(mod).__dict__.get("has_winner"), bool
+    ), f"{name} module must declare has_winner: bool as a class attribute"
+    assert name in _HAS_WINNER, f"add {name} to _HAS_WINNER (see vocab.GameOutcome)"
+    assert mod.has_winner is _HAS_WINNER[name]
+
+
+def test_module_without_has_winner_fails_protocol() -> None:
+    class _NoWinnerFlag:
+        game_type = GameType.YACHT
+        metadata_model = None
+        result_model = None
+
+        def stats_shape(self, raw_stats: dict) -> dict:
+            return raw_stats
+
+    assert not isinstance(_NoWinnerFlag(), GameModule)
 
 
 def test_daily_word_module_game_type() -> None:

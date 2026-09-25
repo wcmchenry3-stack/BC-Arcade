@@ -30,7 +30,6 @@ export const GAME_OUTCOMES = [
   "win",
   "loss",
   "push",
-  "blackjack",
   "completed",
   "abandoned",
   "kept_playing",

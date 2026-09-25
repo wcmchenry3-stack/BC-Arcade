@@ -22,6 +22,7 @@ class BlackjackModule:
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
+    has_winner = True
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

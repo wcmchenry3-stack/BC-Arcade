@@ -34,8 +34,8 @@ class MahjongResult(BaseModel):
 
     Distinct from the creation-time metadata model. Unknown keys are ignored so
     a newer app build never fails completion. ``won`` is the win signal for
-    goal evaluation. ``games.outcome`` is ``completed`` for a cleared board and
-    ``loss`` for a deadlock the player leaves (#2517).
+    goal evaluation. What Mahjong records in ``games.outcome`` is documented on
+    ``vocab.GameOutcome``.
     """
 
     won: bool

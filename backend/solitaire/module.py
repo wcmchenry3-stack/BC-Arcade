@@ -20,6 +20,7 @@ class SolitaireModule:
     game_type = GameType.SOLITAIRE
     metadata_model = SolitaireMetadata
     result_model = SolitaireResult
+    has_winner = False
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}
