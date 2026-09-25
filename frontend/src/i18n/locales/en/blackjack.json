@@ -145,6 +145,7 @@
   "stats.runOutcome.completed": "Completed",
   "stats.runOutcome.busted": "Busted",
   "stats.runOutcome.comeback": "Comeback",
+  "stats.runOutcome.abandoned": "Abandoned",
   "stats.viewStats": "Run Stats",
   "stats.viewStatsLabel": "View run statistics",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

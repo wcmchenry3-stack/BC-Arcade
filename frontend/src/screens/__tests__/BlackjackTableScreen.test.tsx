@@ -3,7 +3,7 @@ import { render, fireEvent, act, screen, waitFor, within } from "@testing-librar
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { loadGame } from "../../game/blackjack/storage";
+import { loadGame, saveRun } from "../../game/blackjack/storage";
 import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
 
 jest.mock("expo-blur", () => ({
@@ -33,12 +33,13 @@ const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteAr
 // A killed process's session to continue (#2654) — none unless a test says so.
 const mockResumeGame = jest.fn((): string | null => null);
 const mockMarkStarted = jest.fn();
+const mockDiscardGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
     resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
     markStarted: (...args: unknown[]) => (mockMarkStarted as jest.Mock)(...args),
-    discardGame: jest.fn(),
+    discardGame: (...args: unknown[]) => (mockDiscardGame as jest.Mock)(...args),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -223,10 +224,11 @@ describe("BlackjackTableScreen — out of chips (#2507)", () => {
     (loadGame as jest.Mock).mockResolvedValue({ ...makeResultPhaseState(), chips: 0 });
   });
 
-  it("shows the Game Over card with the session stats", async () => {
+  it("shows the result card with the session stats", async () => {
     await renderScreen();
     const card = within(await screen.findByTestId("blackjack-result"));
-    expect(card.getByTestId("blackjack-result-title")).toHaveTextContent("Game Over");
+    // Out of chips with no goal reached: a loss, as the run recorded (#2628).
+    expect(card.getByTestId("blackjack-result-title")).toHaveTextContent("You Lose");
     expect(card.getByText("Out of Chips")).toBeTruthy();
     expect(card.getByText("Hands")).toBeTruthy();
     expect(card.getByText("Biggest win")).toBeTruthy();
@@ -295,6 +297,7 @@ import {
   doubleDown,
   split as engineSplit,
   newGame as engineNewGame,
+  newHand as engineNewHand,
   Card,
 } from "../../game/blackjack/engine";
 
@@ -327,6 +330,8 @@ function getCtx(): {
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
   handlePlayAgain: () => void;
   handleTableSelect: (config: TableConfig) => void;
+  handleCashOut: () => Promise<void>;
+  handleKeepPlaying: () => void;
 } {
   return (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
 }
@@ -533,12 +538,13 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     const completeCall = mockCompleteGame.mock.calls[0];
     if (completeCall === undefined) throw new Error("Expected completeGame call");
     const [, summary, eventData] = completeCall;
-    expect(summary.outcome).toBe("completed");
+    // Out of chips before the goal is a loss (#2628).
+    expect(summary.outcome).toBe("loss");
     expect(eventData).toEqual(
       expect.objectContaining({
         total_hands: expect.any(Number),
         duration_ms: expect.any(Number),
-        outcome: "completed",
+        outcome: "loss",
       })
     );
     expect(eventData.total_hands).toBeGreaterThanOrEqual(1);
@@ -737,6 +743,350 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
     const actions = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "player_action");
     expect(actions).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2628 — a run records win / loss / abandoned from its goal (§8.8)
+// ---------------------------------------------------------------------------
+
+describe("BlackjackGameContext — run outcome (#2628)", () => {
+  const GOAL = 2500;
+
+  /** A hand the player wins by standing: 20 against the dealer's 19. */
+  function winningHand(chips: number, bet: number): EngineState {
+    return {
+      ...engineNewGame(undefined, { runGoal: GOAL }),
+      chips,
+      bet,
+      phase: "player",
+      player_hand: [card("10", "♠"), card("10", "♥")],
+      dealer_hand: [card("10", "♦"), card("9", "♣")],
+    };
+  }
+
+  /** A hand the player loses by standing: 16 against the dealer's 19. */
+  function losingHand(s: EngineState, chips: number): EngineState {
+    return {
+      ...s,
+      chips,
+      bet: chips,
+      phase: "player",
+      player_hand: [card("10", "♠"), card("6", "♥")],
+      dealer_hand: [card("10", "♦"), card("9", "♣")],
+    };
+  }
+
+  /** The outcome of every completeGame call so far. */
+  function recordedOutcomes(): unknown[] {
+    return mockCompleteGame.mock.calls.map((c) => c[1]?.outcome);
+  }
+
+  /** Reach the goal: 2450 + a winning 100 = 2550 ≥ 2500. */
+  async function reachGoal() {
+    await renderWithConsumer(winningHand(2450, 100));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(getCtx().engine?.phase).toBe("victory");
+  }
+
+  /** Bet every chip left on a losing hand, so the chips run out. */
+  async function loseEverything() {
+    await act(() => {
+      getCtx().apply((s) => losingHand(s, s.chips));
+    });
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(getCtx().engine?.chips).toBe(0);
+  }
+
+  beforeEach(() => {
+    mockStartGame.mockReset();
+    mockStartGame.mockReturnValue("game-uuid-test");
+    mockCompleteGame.mockReset();
+    (saveRun as jest.Mock).mockClear();
+  });
+
+  it("reaching the goal and cashing out records a win", async () => {
+    await reachGoal();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await getCtx().handleCashOut();
+    });
+
+    expect(recordedOutcomes()).toEqual(["win"]);
+    expect(saveRun).toHaveBeenCalledTimes(1);
+    expect(saveRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: true,
+        outcome: "win",
+        finalChips: 2550,
+        runGoal: GOAL,
+      })
+    );
+  });
+
+  it("reaching the goal, keeping playing, then running out of chips still records a win", async () => {
+    await reachGoal();
+    await act(() => {
+      getCtx().handleKeepPlaying();
+    });
+    expect(getCtx().engine?.runGoal).toBeNull();
+
+    await loseEverything();
+
+    expect(recordedOutcomes()).toEqual(["win"]);
+    expect(saveRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        completed: true,
+        outcome: "win",
+        finalChips: 0,
+        runGoal: GOAL,
+        lowestChips: 0,
+        // The low before the goal (the session opened at 2450), not the bust's 0,
+        // so the run is not taken for a comeback.
+        lowestChipsBeforeGoal: 2450,
+      })
+    );
+  });
+
+  it("New Game after reaching the goal and keeping playing records a win", async () => {
+    await reachGoal();
+    await act(() => {
+      getCtx().handleKeepPlaying();
+    });
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+    expect(recordedOutcomes()).toEqual(["win"]);
+  });
+
+  it("a resumed run that already reached its goal (Keep Playing save) records a win", async () => {
+    const kept: EngineState = {
+      ...losingHand(engineNewGame(), 300),
+      runGoal: null,
+      reachedRunGoal: GOAL,
+    };
+    await renderWithConsumer(kept);
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(getCtx().engine?.chips).toBe(0);
+    expect(recordedOutcomes()).toEqual(["win"]);
+  });
+
+  it("running out of chips before the goal records a loss", async () => {
+    // A won hand first (450, short of the goal), then everything lost.
+    await renderWithConsumer(winningHand(400, 50));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(getCtx().engine?.phase).toBe("result");
+    await act(() => {
+      getCtx().apply(engineNewHand);
+    });
+    await loseEverything();
+    expect(recordedOutcomes()).toEqual(["loss"]);
+    expect(saveRun).toHaveBeenCalledWith(
+      expect.objectContaining({ completed: false, outcome: "loss" })
+    );
+  });
+
+  it("saveRun records the engine's final chips on a bust-out, not the pre-hand balance", async () => {
+    await renderWithConsumer(losingHand(engineNewGame(undefined, { runGoal: GOAL }), 50));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(getCtx().engine?.chips).toBe(0);
+    expect(saveRun).toHaveBeenCalledTimes(1);
+    expect(saveRun).toHaveBeenCalledWith(
+      expect.objectContaining({ finalChips: 0, lowestChips: 0, outcome: "loss" })
+    );
+  });
+
+  it("Play Again after a bust-out records nothing more and saves the run once", async () => {
+    await renderWithConsumer(losingHand(engineNewGame(undefined, { runGoal: GOAL }), 50));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+    expect(recordedOutcomes()).toEqual(["loss"]);
+    expect(saveRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("New Game mid-run before the goal records abandoned", async () => {
+    await renderWithConsumer(winningHand(1000, 50));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+    expect(recordedOutcomes()).toEqual(["abandoned"]);
+    expect(saveRun).toHaveBeenCalledWith(
+      expect.objectContaining({ completed: false, outcome: "abandoned", finalChips: 1050 })
+    );
+  });
+
+  it("a cash-out before the goal records abandoned, not a win", async () => {
+    await renderWithConsumer(winningHand(1000, 50));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    await act(async () => {
+      await getCtx().handleCashOut();
+    });
+    expect(recordedOutcomes()).toEqual(["abandoned"]);
+  });
+
+  // --- saves from builds before #2628 -------------------------------------
+
+  it("a Keep Playing save from an older build (no reachedRunGoal) still records a win", async () => {
+    // Keep Playing is the only way to have a table's bet limits and no goal.
+    const table = TABLE_CONFIGS[1]!;
+    const legacy = losingHand(
+      engineNewGame(undefined, { betMin: table.betMin, betMax: table.betMax, runGoal: null }),
+      300
+    );
+    expect(legacy.reachedRunGoal).toBeUndefined();
+    await renderWithConsumer(legacy);
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(recordedOutcomes()).toEqual(["win"]);
+  });
+
+  it("a save with no goal and no table's bet limits is not a win", async () => {
+    // A fresh newGame(): no goal, 5/500 limits that match no table.
+    await renderWithConsumer(losingHand(engineNewGame(), 300));
+    await settle();
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    expect(recordedOutcomes()).toEqual(["loss"]);
+  });
+
+  // --- the result card agrees with the row ---------------------------------
+
+  async function renderTableAndConsumer(initial: EngineState) {
+    (loadGame as jest.Mock).mockResolvedValueOnce(initial);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen navigation={mockNav()} />
+          <TestConsumer />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await settle();
+  }
+
+  it("the result card shows a loss when the chips run out before the goal", async () => {
+    await renderTableAndConsumer(losingHand(engineNewGame(undefined, { runGoal: GOAL }), 50));
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    const card = within(await screen.findByTestId("blackjack-result"));
+    expect(card.getByTestId("blackjack-result-title")).toHaveTextContent("You Lose");
+    expect(recordedOutcomes()).toEqual(["loss"]);
+  });
+
+  it("the result card shows a win after the goal, Keep Playing and a bust-out", async () => {
+    await renderTableAndConsumer(winningHand(2450, 100));
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
+    await act(() => {
+      getCtx().handleKeepPlaying();
+    });
+    await loseEverything();
+    const card = within(await screen.findByTestId("blackjack-result"));
+    expect(card.getByTestId("blackjack-result-title")).toHaveTextContent("You Win!");
+    expect(recordedOutcomes()).toEqual(["win"]);
+  });
+
+  // --- relaunch --------------------------------------------------------------
+
+  it("a relaunch that cannot continue its session records the save's table", async () => {
+    const table = TABLE_CONFIGS[2]!;
+    await renderWithConsumer(
+      losingHand(
+        engineNewGame(undefined, {
+          betMin: table.betMin,
+          betMax: table.betMax,
+          runGoal: table.runGoal,
+        }),
+        300
+      )
+    );
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+    expect(mockStartGame.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ current_table: "high_roller" })
+    );
+  });
+
+  // --- sessions with no hand played record no result ----------------------
+
+  it("New Game before any bet records nothing: the untouched session is discarded", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    await renderWithConsumer();
+    await settle();
+    await act(async () => {
+      getCtx().handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockDiscardGame).toHaveBeenCalledWith("game-uuid-test");
+    expect(saveRun).not.toHaveBeenCalled();
+  });
+
+  /** A goal-reached run saved on the betting screen after Keep Playing. */
+  function keptPlayingSave(): EngineState {
+    return { ...engineNewGame(undefined, { runGoal: null }), chips: 2600, reachedRunGoal: GOAL };
+  }
+
+  it("a goal-reached save whose session cannot be continued records no win without a hand", async () => {
+    await renderWithConsumer(keptPlayingSave());
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+
+    expect(recordedOutcomes()).not.toContain("win");
+    expect(saveRun).not.toHaveBeenCalled();
+  });
+
+  it("a continued goal-reached session still records its win without a new hand", async () => {
+    mockResumeGame.mockReturnValueOnce("killed-session");
+    await renderWithConsumer(keptPlayingSave());
+    await settle();
+    expect(mockStartGame).not.toHaveBeenCalled();
+
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+
+    expect(mockCompleteGame.mock.calls[0]?.[0]).toBe("killed-session");
+    expect(recordedOutcomes()).toEqual(["win"]);
   });
 });
 

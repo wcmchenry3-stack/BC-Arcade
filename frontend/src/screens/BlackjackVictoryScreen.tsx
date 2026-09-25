@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
-import { TABLE_CONFIGS } from "../game/blackjack/tables";
+import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
 import { usePremiumLevels } from "../components/shared/usePremiumLevels";
 import {
@@ -41,9 +41,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const { engine, sessionStats, lowestChips, handleCashOut, handleKeepPlaying, handleTableSelect } =
     useBlackjackGame();
 
-  const activeTable =
-    TABLE_CONFIGS.find((tc) => tc.betMin === engine?.betMin && tc.betMax === engine?.betMax) ??
-    TABLE_CONFIGS[0]!;
+  const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableIndex = TABLE_CONFIGS.indexOf(activeTable);
   const nextTable = TABLE_CONFIGS[tableIndex + 1];
   const {

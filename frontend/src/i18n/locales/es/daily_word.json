@@ -1,0 +1,22 @@
+{
+  "game.title": "Palabra Diaria",
+  "game.description": "Una palabra de 5 letras, seis intentos, reto nuevo cada día.",
+  "game.playLabel": "Jugar Palabra Diaria",
+  "hud.guessesLeft_one": "Queda {{count}} intento",
+  "hud.guessesLeft_other": "Quedan {{count}} intentos",
+  "hud.puzzleNumber": "Reto #{{number}}",
+  "result.loss.answer": "La palabra era {{answer}}",
+  "error.notAWord": "No está en la lista",
+  "error.alreadyGuessed": "Ya lo intentaste",
+  "error.tooShort": "Faltan letras",
+  "error.couldNotLoad": "No se pudo cargar el reto de hoy",
+  "error.couldNotSubmit": "No se pudo enviar tu intento",
+  "error.stalePuzzle": "Hay un nuevo reto — cargando la palabra de hoy",
+  "error.wrongLength": "El intento no tiene la longitud correcta",
+  "error.rateLimited": "Demasiados intentos — inténtalo más tarde",
+  "keyboard.delete": "Borrar",
+  "keyboard.enter": "Intro",
+  "result.countdown": "Próx. palabra: {{time}}",
+  "result.share": "Compartir",
+  "result.copied": "¡Copiado!"
+}

@@ -2,6 +2,26 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { RunRecord } from "./storage";
 
+/** A comeback: at most a quarter of the starting chips left, before the goal. */
+const COMEBACK_FRACTION = 0.25;
+
+/**
+ * The chip low a comeback is judged on: the low before the goal was reached
+ * (#2628), or `lowestChips` for runs saved by older builds.
+ */
+export function comebackLow(r: RunRecord): number {
+  return r.lowestChipsBeforeGoal ?? r.lowestChips;
+}
+
+/**
+ * True when the run reached its goal after falling to at most a quarter of its
+ * starting chips. The one rule for the comeback unlock, the run-history badge
+ * and the biggest comeback (#2628); a bust after Keep Playing does not count.
+ */
+export function isComebackRun(r: RunRecord): boolean {
+  return r.completed && comebackLow(r) <= r.startingChips * COMEBACK_FRACTION;
+}
+
 const UNLOCKS_KEY = "blackjack_unlocks_v1";
 
 export interface Unlock {
@@ -60,7 +80,7 @@ export function evaluateUnlocks(runHistory: RunRecord[], existingUnlocks: Unlock
     } else if (unlock.conditionType === "run_count") {
       triggered = runHistory.length >= Number(unlock.conditionValue);
     } else if (unlock.conditionType === "comeback") {
-      triggered = runHistory.some((r) => r.completed && r.lowestChips <= r.startingChips * 0.25);
+      triggered = runHistory.some(isComebackRun);
     }
 
     if (triggered) {
