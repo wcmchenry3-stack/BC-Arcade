@@ -20,6 +20,42 @@ describe("yacht storage", () => {
     expect(loaded).toEqual({ state: g, aiDifficulty: null, aiState: null });
   });
 
+  it("saves and loads the finished game's id with the game (#2630)", async () => {
+    const g = { ...newGame(), game_over: true };
+    await saveGame(g, "hard", newGame(), "game-1");
+    expect(await loadGame()).toEqual({
+      state: g,
+      aiDifficulty: "hard",
+      aiState: newGame(),
+      finishedGameId: "game-1",
+    });
+  });
+
+  it("saves no finished-game id while there is none (#2630)", async () => {
+    await saveGame(newGame(), null, null, null);
+    expect(await loadGame()).not.toHaveProperty("finishedGameId");
+  });
+
+  it.each([42, "", null])(
+    "drops a bad saved finished-game id (%p) but keeps the game",
+    async (id) => {
+      const g = newGame();
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ state: g, aiDifficulty: null, aiState: null, finishedGameId: id })
+      );
+      const loaded = await loadGame();
+      expect(loaded?.state).toEqual(g);
+      expect(loaded).not.toHaveProperty("finishedGameId");
+    }
+  );
+
+  it("clearGame removes the finished-game id with the game (#2630)", async () => {
+    await saveGame({ ...newGame(), game_over: true }, null, null, "game-1");
+    await clearGame();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
   it("returns null when no saved game exists", async () => {
     expect(await loadGame()).toBeNull();
   });

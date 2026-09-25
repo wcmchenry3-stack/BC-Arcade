@@ -9,7 +9,13 @@ export type RootStackParamList = {
 
 export type HomeStackParamList = {
   Home: undefined;
-  Game: { initialState: GameState; aiDifficulty?: AiDifficulty; aiState?: GameState };
+  Game: {
+    initialState: GameState;
+    aiDifficulty?: AiDifficulty;
+    aiState?: GameState;
+    /** A restored finished game's session id, for its rank lookup (#2630). */
+    finishedGameId?: string;
+  };
   Cascade: undefined;
   StarSwarm: undefined;
   BlackjackBetting: undefined;

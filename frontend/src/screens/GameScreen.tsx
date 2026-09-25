@@ -24,6 +24,8 @@ import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useSound } from "../game/_shared/useSound";
 import { YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
@@ -57,6 +59,17 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
 };
+
+/** Solo and vs games rank on Yacht's one session board (#2630). */
+const yachtBoard = sessionBoardAdapter("yacht");
+
+/**
+ * The session's creation metadata (#2630): the mode, and in vs mode the
+ * computer's difficulty. Recorded only — both modes share one board.
+ */
+function sessionMetadata(aiDifficulty: AiDifficulty | null): Record<string, unknown> {
+  return aiDifficulty ? { mode: "vs", difficulty: aiDifficulty } : { mode: "solo" };
+}
 
 /** Who won a finished vs-CPU game, from the player's side (#2505, #2517). */
 function vsOutcome(player: GameState, cpu: GameState): "win" | "loss" | "draw" {
@@ -168,7 +181,21 @@ export default function GameScreen({ navigation, route }: Props) {
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
+    getGameId: syncGetGameId,
   } = useGameSync("yacht");
+
+  // Result card leaderboard line (#2630): the finished session row ranks on
+  // its own; the card only asks where it landed.
+  const leaderboard = useLeaderboardSubmit(yachtBoard);
+  const { submit: submitRank, reset: resetRank } = leaderboard;
+  // The finished game's session id, captured when the player's game ends —
+  // complete() clears the hook's id, and in vs mode (or on a background during
+  // the CPU's last turn) it runs before the card shows. Saved with the game,
+  // so a game reopened with only the CPU's last turn left still finds its
+  // rank; such a game only looks the rank up, it never submits anything.
+  const [finishedGameId, setFinishedGameId] = useState<string | null>(
+    route.params.initialState.game_over ? (route.params.finishedGameId ?? null) : null
+  );
 
   // Sound hooks
   const { play: playDiceRoll } = useSound("yacht.diceRoll", YACHT_SOUNDS);
@@ -208,15 +235,15 @@ export default function GameScreen({ navigation, route }: Props) {
     if (!syncOnMount) return;
     // A restored game continues the session a killed app left open (#2654).
     if (!isFreshGame && syncResume()) return;
-    syncStart();
+    syncStart(undefined, sessionMetadata(route.params.aiDifficulty ?? null));
     // Unmount abandon is handled by useGameSync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist state after every change (includes AI difficulty and AI state for VS mode).
   useEffect(() => {
-    saveGame(gameState, aiDifficulty, aiGameState);
-  }, [gameState, aiDifficulty, aiGameState]);
+    saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
+  }, [gameState, aiDifficulty, aiGameState, finishedGameId]);
 
   // Sync snapshot to shared scorecard context (read by ScoreboardScreen).
   const { setSnapshot: setScorecardSnapshot } = useYachtScorecard();
@@ -412,6 +439,8 @@ export default function GameScreen({ navigation, route }: Props) {
         },
       });
       if (next.game_over) {
+        // The card's rank lookup needs this game's id (#2630).
+        setFinishedGameId(syncGetGameId());
         if (aiDifficultyRef.current && aiGameStateRef.current) {
           // VS mode: the CPU takes its last turn first; the session completes
           // with the result once it has (see the effect on gameReallyOver).
@@ -453,7 +482,10 @@ export default function GameScreen({ navigation, route }: Props) {
       const outcome = prev.game_over ? "completed" : "abandoned";
       const payload = endedPayload(prev, outcome, aiGameStateRef.current);
       syncComplete({ finalScore: prev.total_score, outcome, result: payload }, payload);
+      // The next game gets its own leaderboard line.
+      resetRank();
       await clearGame();
+      setFinishedGameId(null);
       setGameState(newGame());
       setIsAiTurn(false);
       setGameKey((k) => k + 1);
@@ -463,7 +495,7 @@ export default function GameScreen({ navigation, route }: Props) {
         setAiDifficulty(keptDifficulty);
         setAiGameState(keptDifficulty ? newGame() : null);
         setDifficultyChosen(true);
-        syncStart();
+        syncStart(undefined, sessionMetadata(keptDifficulty));
       } else {
         const pref = await loadLastMode();
         setPendingMode(pref?.mode ?? "solo");
@@ -481,7 +513,7 @@ export default function GameScreen({ navigation, route }: Props) {
         level: "info",
       });
     },
-    [syncComplete, syncStart]
+    [syncComplete, syncStart, resetRank]
   );
 
   /** New game via the mode picker (header New Game, Change Difficulty). */
@@ -507,7 +539,7 @@ export default function GameScreen({ navigation, route }: Props) {
     // Keep the last VS difficulty played, so the next VS game still opens on it (#1129).
     void saveLastMode("solo", lastVsDiffRef.current);
     setDifficultyChosen(true);
-    syncStart();
+    syncStart(undefined, sessionMetadata(null));
   }
 
   function handleChooseVs() {
@@ -516,7 +548,7 @@ export default function GameScreen({ navigation, route }: Props) {
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
     setDifficultyChosen(true);
-    syncStart();
+    syncStart(undefined, sessionMetadata(pendingDiff));
   }
 
   // VS result computed when both games are complete.
@@ -547,6 +579,13 @@ export default function GameScreen({ navigation, route }: Props) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameReallyOver, aiDifficulty]);
+
+  // The result card's leaderboard line (#2630), once the game is really over
+  // (after the vs completion above). Never on an abandon: an abandoned game
+  // never reaches game over, so it never sets finishedGameId.
+  useEffect(() => {
+    if (gameReallyOver && finishedGameId) void submitRank({ gameId: finishedGameId });
+  }, [gameReallyOver, finishedGameId, submitRank]);
 
   completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.
@@ -762,6 +801,13 @@ export default function GameScreen({ navigation, route }: Props) {
               }
             : undefined
         }
+        submission={{
+          status: leaderboard.status,
+          rank: leaderboard.rank,
+          playerName: leaderboard.playerName,
+          onProvideName: leaderboard.provideName,
+          onRetry: leaderboard.retry,
+        }}
         onHome={() => navigation.popToTop()}
         testID="yacht-result"
       />

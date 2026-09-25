@@ -32,7 +32,6 @@ LEADERBOARDS = [
     ("solitaire", "/solitaire/scores", None),
     ("freecell", "/freecell/leaderboard", None),
     ("mahjong", "/mahjong/scores", "mahjong"),
-    ("yacht", "/yacht/scores", "yacht"),
     ("cascade", "/cascade/scores", "cascade"),
     ("hearts", "/hearts/scores", "hearts"),
     ("sort", "/sort/scores", "sort"),
@@ -40,7 +39,7 @@ LEADERBOARDS = [
     ("sudoku", "/sudoku/scores/hard", "sudoku"),
 ]
 
-# The nine boards expose their score under different field names (FreeCell
+# The legacy boards expose their score under different field names (FreeCell
 # ranks by `move_count`, StarSwarm by `score`, the rest by `score`/`player_name`),
 # so the assertion below looks for the value anywhere in the entry rather than
 # hardcoding a key per game. Both values are far outside the 1..2 rank range

@@ -18,14 +18,24 @@ export interface SavedGame {
   state: GameState;
   aiDifficulty: AiDifficulty | null;
   aiState: GameState | null;
+  /**
+   * The session id of the player's finished game (#2630), saved once their
+   * game ends. A game reopened while the computer still has its last turn to
+   * play (or whose card was showing) looks its rank up with it. Kept in the
+   * same payload as the state, so the two can never disagree, and cleared
+   * with it.
+   */
+  finishedGameId?: string;
 }
 
 export async function saveGame(
   state: GameState,
   aiDifficulty: AiDifficulty | null = null,
-  aiState: GameState | null = null
+  aiState: GameState | null = null,
+  finishedGameId: string | null = null
 ): Promise<void> {
   const payload: SavedGame = { state, aiDifficulty, aiState };
+  if (finishedGameId) payload.finishedGameId = finishedGameId;
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
@@ -48,6 +58,14 @@ export async function loadGame(): Promise<SavedGame | null> {
       parsed.state.scores === null
     ) {
       return null;
+    }
+    // A bad finished-game id only costs the card its rank, not the game.
+    const { finishedGameId } = parsed;
+    if (
+      finishedGameId !== undefined &&
+      !(typeof finishedGameId === "string" && finishedGameId.length > 0)
+    ) {
+      delete parsed.finishedGameId;
     }
     return parsed;
   } catch (e) {
