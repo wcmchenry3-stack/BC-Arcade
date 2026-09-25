@@ -22,6 +22,9 @@ Adding a new game
    to correct a validated result against server-side state before it is
    stored — see ``backend/daily_word/module.py`` (#2541). Not part of the
    Protocol: ``games/service.py`` looks it up with ``getattr``.
+7. Declare ``board`` — a ``BoardDefinition`` (``games/board.py``) saying how
+   the game is ranked — then regenerate ``frontend/src/api/vocab.ts`` with
+   ``python backend/scripts/gen_vocab_ts.py`` (#2617).
 """
 
 from __future__ import annotations
@@ -32,6 +35,8 @@ from vocab import GameType
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
+
+    from games.board import BoardDefinition
 
 
 @runtime_checkable
@@ -66,6 +71,12 @@ class GameModule(Protocol):
         Yacht) is not a win — it is a finish with no winner.  See
         ``vocab.GameOutcome``.
 
+    board:
+        A ``BoardDefinition`` declaring how the game is ranked (metric,
+        direction, tie-break, partitions and their legacy defaults, caps,
+        qualifying outcomes, ``enabled``) (#2617). Required: a game with no
+        leaderboard declares one with ``enabled=False``, never ``None``.
+
     Methods
     -------
     stats_shape(raw_stats):
@@ -88,5 +99,6 @@ class GameModule(Protocol):
     metadata_model: type[BaseModel]
     result_model: type[BaseModel] | None
     has_winner: bool
+    board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

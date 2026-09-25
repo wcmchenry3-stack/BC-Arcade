@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -7,8 +7,9 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
 import { CARD_WIDTH, CARD_HEIGHT } from "../components/freecell/FreeCellSlot";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
@@ -332,54 +333,34 @@ export default function FreeCellScreen() {
       onNewGame={handleNewGame}
       rightSlot={
         <View style={styles.headerBtnRow}>
-          <Pressable
+          <PillButton
             testID="freecell-hint-button"
+            label={t("freecell:action.hint")}
             onPress={handleHint}
             disabled={hintDisabled}
-            style={[
-              styles.headerBtn,
-              { borderColor: colors.bonus, opacity: hintDisabled ? 0.4 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t("freecell:action.hint")}
-            accessibilityState={{ disabled: hintDisabled }}
-          >
-            <Text style={[styles.headerBtnText, { color: colors.bonus }]}>
-              {t("freecell:action.hint")}
-            </Text>
-          </Pressable>
-          <Pressable
+            color={colors.bonus}
+          />
+          <PillButton
+            label={t("freecell:action.undo")}
             onPress={handleUndo}
             disabled={undoDisabled}
-            style={[
-              styles.headerBtn,
-              { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t("freecell:action.undo")}
-            accessibilityState={{ disabled: undoDisabled }}
-          >
-            <Text style={[styles.headerBtnText, { color: colors.accent }]}>
-              {t("freecell:action.undo")}
-            </Text>
-          </Pressable>
+          />
         </View>
       }
     >
       {state !== null && (
         <CardSizeContext.Provider value={cardSize}>
           <View style={styles.body}>
-            <View style={styles.hudRow} accessibilityRole="summary">
-              <Text style={[styles.hudTitle, { color: colors.text }]}>
-                {t("freecell:game.title")}
-              </Text>
-              <Text
-                style={[styles.hudText, { color: colors.textMuted }]}
-                accessibilityLabel={t("freecell:score.moves", { moves: state.moveCount })}
-              >
-                {t("freecell:score.moves", { moves: state.moveCount })}
-              </Text>
-            </View>
+            <HudStatRow
+              stats={[
+                { key: "title", text: t("freecell:game.title"), bold: true },
+                {
+                  key: "moves",
+                  text: t("freecell:score.moves", { moves: state.moveCount }),
+                  muted: true,
+                },
+              ]}
+            />
 
             <View
               testID="freecell-board"
@@ -401,20 +382,11 @@ export default function FreeCellScreen() {
                 <Text style={[styles.noMovesText, { color: colors.text }]}>
                   {t("freecell:noMoves.message")}
                 </Text>
-                <Pressable
+                <PillButton
+                  label={t("freecell:action.undo")}
                   onPress={handleUndo}
                   disabled={undoDisabled}
-                  style={[
-                    styles.noMovesUndoBtn,
-                    { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("freecell:action.undo")}
-                >
-                  <Text style={[styles.headerBtnText, { color: colors.accent }]}>
-                    {t("freecell:action.undo")}
-                  </Text>
-                </Pressable>
+                />
               </View>
             )}
           </View>
@@ -472,20 +444,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
   noMovesBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -501,30 +459,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
-  },
-  noMovesUndoBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    justifyContent: "center",
-  },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  hudTitle: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  hudText: {
-    fontFamily: typography.body,
-    fontSize: 12,
-    letterSpacing: 0.5,
   },
   boardWrap: {
     alignSelf: "stretch",

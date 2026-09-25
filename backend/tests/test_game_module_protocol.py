@@ -7,6 +7,7 @@ import pytest
 from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
+from games.board import SCORE_METRIC, BoardDefinition
 from games.protocol import GameModule
 from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
@@ -144,6 +145,63 @@ def test_registry_returns_correct_modules() -> None:
 
 def test_registry_returns_none_for_unknown() -> None:
     assert get_module("unknown_game") is None
+
+
+# ---------------------------------------------------------------------------
+# Board definition (#2617)
+# ---------------------------------------------------------------------------
+
+_REGISTERED = [(gt.value, get_module(gt.value)) for gt in GameType if get_module(gt.value)]
+
+
+def test_ten_modules_registered() -> None:
+    """Twenty48 and Star Swarm have no module until #2623."""
+    assert {name for name, _ in _REGISTERED} == {gt.value for gt in GameType} - {
+        "twenty48",
+        "starswarm",
+    }
+
+
+def _carryable(mod, key: str) -> bool:
+    """Whether a row of *mod*'s game can carry *key* in ``games.metadata``.
+
+    ``games.metadata`` is the creation-time metadata merged with the result
+    block. A module with ``result_model = None`` accepts any result key.
+    """
+    if mod.result_model is None:
+        return True
+    return key in mod.metadata_model.model_fields or key in mod.result_model.model_fields
+
+
+@pytest.mark.parametrize("name,mod", _REGISTERED, ids=[n for n, _ in _REGISTERED])
+def test_module_satisfies_protocol_with_board(name, mod) -> None:
+    assert isinstance(mod, GameModule), f"{name} does not satisfy the GameModule Protocol"
+    assert isinstance(mod.board, BoardDefinition), f"{name} must declare a BoardDefinition"
+
+
+@pytest.mark.parametrize("name,mod", _REGISTERED, ids=[n for n, _ in _REGISTERED])
+def test_board_keys_are_carried_by_the_module(name, mod) -> None:
+    """Every metadata key a board ranks, breaks ties or partitions on can be stored."""
+    board = mod.board
+    keys = list(board.partitions)
+    if board.tiebreak is not None:
+        keys.append(board.tiebreak[0])
+    if board.metric != SCORE_METRIC:
+        keys.append(board.metric)
+    missing = [k for k in keys if not _carryable(mod, k)]
+    assert not missing, f"{name}: board keys {missing} are not in its metadata/result model"
+
+
+def test_module_without_board_fails_protocol() -> None:
+    class NoBoard:
+        game_type = GameType.CASCADE
+        metadata_model = cascade_module.metadata_model
+        result_model = None
+
+        def stats_shape(self, raw_stats: dict) -> dict:
+            return raw_stats
+
+    assert not isinstance(NoBoard(), GameModule)
 
 
 # ---------------------------------------------------------------------------

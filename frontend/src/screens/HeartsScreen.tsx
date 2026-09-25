@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { ModalCard } from "../components/shared/ModalCard";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
@@ -704,49 +705,38 @@ export default function HeartsScreen() {
 
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
       {gameState.phase === "dealing" && (
-        <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-          <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
-            <View
-              style={[
-                styles.panel,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
+        <ModalCard visible size="md">
+          <ScrollView
+            style={styles.panelScroll}
+            contentContainerStyle={styles.panelScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
+            {moonShooter !== null && (
+              <Text style={[styles.moonText, { color: colors.accent }]}>
+                {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
+              </Text>
+            )}
+            <HeartsScoreboard
+              playerLabels={playerLabels}
+              cumulativeScores={[...gameState.cumulativeScores]}
+              scoreHistory={scoreHistory}
+              compact
+            />
+            <Pressable
+              style={[styles.btn, { backgroundColor: colors.accent }]}
+              onPress={handleNextHand}
+              accessibilityRole="button"
+              accessibilityLabel={t("hand_end.next")}
             >
-              <ScrollView
-                style={styles.panelScroll}
-                contentContainerStyle={styles.panelScrollContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                bounces={false}
-              >
-                <Text style={[styles.panelTitle, { color: colors.text }]}>
-                  {t("hand_end.title")}
-                </Text>
-                {moonShooter !== null && (
-                  <Text style={[styles.moonText, { color: colors.accent }]}>
-                    {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
-                  </Text>
-                )}
-                <HeartsScoreboard
-                  playerLabels={playerLabels}
-                  cumulativeScores={[...gameState.cumulativeScores]}
-                  scoreHistory={scoreHistory}
-                  compact
-                />
-                <Pressable
-                  style={[styles.btn, { backgroundColor: colors.accent }]}
-                  onPress={handleNextHand}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("hand_end.next")}
-                >
-                  <Text style={[styles.btnText, { color: colors.textOnAccent }]}>
-                    {t("hand_end.next")}
-                  </Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+              <Text style={[styles.btnText, { color: colors.textOnAccent }]}>
+                {t("hand_end.next")}
+              </Text>
+            </Pressable>
+          </ScrollView>
+        </ModalCard>
       )}
 
       {/* ── Game over: the shared result card (#2506) ─────────────── */}
@@ -802,72 +792,61 @@ export default function HeartsScreen() {
       )}
 
       {/* ── Rename players modal ───────────────────────────────────── */}
-      <Modal
+      <ModalCard
         visible={showRename}
-        transparent
+        size="md"
         animationType="slide"
         onRequestClose={() => setShowRename(false)}
-        accessibilityViewIsModal
+        title={t("settings.rename_title")}
       >
-        <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
-          <View
-            style={[styles.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Text style={[styles.panelTitle, { color: colors.text }]}>
-              {t("settings.rename_title")}
-            </Text>
-            <ScrollView style={styles.renameScroll} contentContainerStyle={styles.renameContent}>
-              {DEFAULT_NAMES.map((def, i) => (
-                <View key={i} style={styles.renameRow}>
-                  <Text style={[styles.renameLabel, { color: colors.textMuted }]}>
-                    {t("settings.player_label", { n: i + 1, default: def })}
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.renameInput,
-                      {
-                        color: colors.text,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surfaceAlt,
-                      },
-                    ]}
-                    value={draftNames[i] ?? ""}
-                    onChangeText={(v) =>
-                      setDraftNames((prev) => {
-                        const next = [...prev];
-                        next[i] = v;
-                        return next;
-                      })
-                    }
-                    placeholder={def}
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={32}
-                    accessibilityLabel={t("settings.player_label", { n: i + 1, default: def })}
-                  />
-                </View>
-              ))}
-            </ScrollView>
-            <Pressable
-              style={[styles.btn, { backgroundColor: colors.accent }]}
-              onPress={handleSaveNames}
-              accessibilityRole="button"
-              accessibilityLabel={t("settings.save")}
-            >
-              <Text style={[styles.btnText, { color: colors.textOnAccent }]}>
-                {t("settings.save")}
+        <ScrollView style={styles.renameScroll} contentContainerStyle={styles.renameContent}>
+          {DEFAULT_NAMES.map((def, i) => (
+            <View key={i} style={styles.renameRow}>
+              <Text style={[styles.renameLabel, { color: colors.textMuted }]}>
+                {t("settings.player_label", { n: i + 1, default: def })}
               </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
-              onPress={() => setShowRename(false)}
-              accessibilityRole="button"
-              accessibilityLabel={t("settings.cancel")}
-            >
-              <Text style={[styles.btnText, { color: colors.text }]}>{t("settings.cancel")}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+              <TextInput
+                style={[
+                  styles.renameInput,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surfaceAlt,
+                  },
+                ]}
+                value={draftNames[i] ?? ""}
+                onChangeText={(v) =>
+                  setDraftNames((prev) => {
+                    const next = [...prev];
+                    next[i] = v;
+                    return next;
+                  })
+                }
+                placeholder={def}
+                placeholderTextColor={colors.textMuted}
+                maxLength={32}
+                accessibilityLabel={t("settings.player_label", { n: i + 1, default: def })}
+              />
+            </View>
+          ))}
+        </ScrollView>
+        <Pressable
+          style={[styles.btn, { backgroundColor: colors.accent }]}
+          onPress={handleSaveNames}
+          accessibilityRole="button"
+          accessibilityLabel={t("settings.save")}
+        >
+          <Text style={[styles.btnText, { color: colors.textOnAccent }]}>{t("settings.save")}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
+          onPress={() => setShowRename(false)}
+          accessibilityRole="button"
+          accessibilityLabel={t("settings.cancel")}
+        >
+          <Text style={[styles.btnText, { color: colors.text }]}>{t("settings.cancel")}</Text>
+        </Pressable>
+      </ModalCard>
     </GameShell>
   );
 }
@@ -901,20 +880,6 @@ const styles = StyleSheet.create({
   bottomArea: {
     paddingBottom: 8,
   },
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  panel: {
-    width: "90%",
-    maxWidth: 400,
-    maxHeight: "85%",
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-  },
   panelScroll: {
     width: "100%",
   },
@@ -941,14 +906,6 @@ const styles = StyleSheet.create({
   btnText: {
     fontSize: 16,
     fontWeight: "700",
-  },
-  headerBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  headerBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   humanLabel: {
     fontSize: 12,

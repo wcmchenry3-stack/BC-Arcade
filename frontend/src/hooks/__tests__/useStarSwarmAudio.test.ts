@@ -44,7 +44,8 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Array),
       expect.any(Object),
       true,
-      3
+      3,
+      false
     );
   });
 
@@ -54,7 +55,19 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Array),
       expect.any(Object),
       true,
-      undefined
+      undefined,
+      false
+    );
+  });
+
+  it("passes paused through, so the music holds while the run is paused", async () => {
+    await renderHook(() => useStarSwarmAudio(true, undefined, 3, true));
+    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      true,
+      3,
+      true
     );
   });
 });

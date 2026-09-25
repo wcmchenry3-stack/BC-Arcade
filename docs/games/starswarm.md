@@ -123,6 +123,9 @@ swoop-in or a boss wave; at most 2 in flight from timed spawns). It is a neutral
 - The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, boss
   waves included (only the timed spawner sits out there, #2490).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
+- Drawn as one of 4 Kenney meteor sprites (picked per rock, reused at both `large`/`small` sizes
+  since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
+  procedural rock outline while sprites load (#2573).
 
 Salvage drops are #2488.
 

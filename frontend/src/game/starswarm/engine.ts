@@ -419,6 +419,43 @@ export function _resetIds(): void {
   _nextId = 1;
 }
 
+/**
+ * The module-level counters a run depends on (#2645). A new process starts them over — ids
+ * from 1, the rng from the default seed — so a run restored after a cold start carries them.
+ */
+export interface EngineCounters {
+  readonly nextId: number;
+  readonly seed: number;
+}
+
+export function engineCounters(): EngineCounters {
+  return { nextId: _nextId, seed: _seed };
+}
+
+/** Counters a save may carry: a positive integer id counter and a 32-bit seed. */
+export function isEngineCounters(v: unknown): v is EngineCounters {
+  if (v === null || typeof v !== "object") return false;
+  const { nextId, seed } = v as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(nextId) &&
+    (nextId as number) >= 1 &&
+    Number.isInteger(seed) &&
+    (seed as number) >= 0 &&
+    (seed as number) <= 0xffffffff
+  );
+}
+
+/**
+ * Continue a restored run's counters. Ids only move forward: never back onto an id this
+ * process has already issued, nor onto one the restored run holds. Counters that aren't
+ * valid change nothing.
+ */
+export function restoreEngineCounters(counters: EngineCounters): void {
+  if (!isEngineCounters(counters)) return;
+  _nextId = Math.max(_nextId, counters.nextId);
+  _seed = counters.seed >>> 0;
+}
+
 // ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------
@@ -836,6 +873,15 @@ function settleRocks(
 }
 
 /**
+ * GLSL-style hash → a fraction in [0, 1). Shared by the outline wobble below and the render
+ * layer's per-rock meteor-sprite pick (#2573), so the technique lives in exactly one place.
+ */
+export function hashFrac(seed: number): number {
+  const h = Math.sin(seed) * 43758.5453;
+  return h - Math.floor(h);
+}
+
+/**
  * Deterministic 9-point outline for a rock in world space at its current rotation. Shared by
  * both renderers so the shape is identical on native and web (the id seeds the wobble).
  */
@@ -843,8 +889,7 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
   const pts: Vec2[] = [];
   const n = 9;
   for (let i = 0; i < n; i++) {
-    const h = Math.sin(a.id * 12.9898 + i * 78.233) * 43758.5453;
-    const wobble = 0.78 + 0.28 * (h - Math.floor(h));
+    const wobble = 0.78 + 0.28 * hashFrac(a.id * 12.9898 + i * 78.233);
     const t = a.rotation + (i / n) * Math.PI * 2;
     pts.push({
       x: a.x + Math.cos(t) * a.radius * wobble,
