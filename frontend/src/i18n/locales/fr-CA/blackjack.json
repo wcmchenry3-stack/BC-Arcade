@@ -1,6 +1,6 @@
 {
   "game.title": "Blackjack",
-  "game.description": "Bats le croupier. Pas de dÃ©passement.",
+  "game.description": "Battez le croupier sans dépasser 21.",
   "game.playLabel": "Jouer Blackjack",
   "chips.display": "{{chips}} jetons",
   "chips.accessibilityLabel": "Vous avez {{chips}} jetons",

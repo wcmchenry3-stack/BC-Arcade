@@ -144,7 +144,9 @@ function main() {
       const targetPath = join(LOCALES_DIR, code, `${ns}.json`);
 
       if (!existsSync(targetPath) && NOT_ALL_LOCALES.has(ns)) {
-        console.log(`… [${code}/${ns}.json] not translated yet (#2195); English is shown`);
+        console.log(
+          `… [${code}/${ns}.json] not translated yet (NOT_ALL_LOCALES); English is shown`
+        );
         continue;
       }
 
