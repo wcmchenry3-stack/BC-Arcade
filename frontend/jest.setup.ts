@@ -99,6 +99,8 @@ jest.mock("react-native-reanimated", () => {
       quad: () => 0,
     },
     cancelAnimation: () => {},
+    // Tests flip this with `(useReducedMotion as jest.Mock).mockReturnValue(true)`.
+    useReducedMotion: jest.fn(() => false),
     runOnJS: (fn: unknown) => fn,
     createAnimatedComponent,
     // Used internally by react-native-gesture-handler

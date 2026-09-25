@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, View } from "react-native";
+import React, { useEffect } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { useReduceMotion } from "./useReduceMotion";
 
 interface AnimationOverlayProps {
   visible: boolean;
@@ -9,12 +10,8 @@ interface AnimationOverlayProps {
 }
 
 export function AnimationOverlay({ visible, onDismiss, children }: AnimationOverlayProps) {
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
   const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
 
   useEffect(() => {
     const target = visible ? 1 : 0;
