@@ -70,11 +70,12 @@ class GameOutcome(str, Enum):
 
 `games.outcome` carries the result (#2519 decision 11, PR #2592): games with a
 winner record `win` / `loss` / `push` — Yacht vs the computer, Hearts, Daily
-Word, and Mahjong's deadlock loss today; Mahjong's cleared board (#2627),
-Blackjack (#2628) and Twenty48 (#2631) move onto it next.
+Word, and Mahjong (a cleared board is a `win` since #2627, a deadlock the
+player leaves a `loss`); Blackjack (#2628) and Twenty48 (#2631) move onto it
+next.
 `GameModule.has_winner` means "this game can record win / loss / push" and is
 set only once the client really writes them, a win included: true for Yacht,
-Hearts and Daily Word; Mahjong and Blackjack flip with #2627 / #2628. It is a
+Hearts, Daily Word and Mahjong; Blackjack flips with #2628. It is a
 per-game flag, not a per-row fact — a `completed` row from a `has_winner` game
 (solo Yacht) is a finish with no winner, not a win. Score-only games
 record `completed` / `kept_playing`, which means "no win concept" (win rate
@@ -231,7 +232,7 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                                       |
 | FreeCell    | `FreeCellMetadata`  | None (empty model). The per-session row (#2452) is separate from the leaderboard router's own rows (which hold `player_name`) and carries no `final_score`                                               |
 | Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
-| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                                  |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
 | Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                                                                   |
 | Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank. The router's own leaderboard rows (`POST /starswarm/score`) are written directly and hold `player_name` |
