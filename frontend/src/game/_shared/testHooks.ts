@@ -181,8 +181,13 @@ export function registerLogstoreTestHooks(): () => void {
   g.__gameEventClient_seedBugLogs = async (spec) => {
     await eventStore.seedRows(buildSeedBugLogs(spec));
   };
-  g.__gameEventClient_startGame = (gameType, metadata) =>
-    gameEventClient.startGame(gameType, metadata);
+  // A hook-started game stands for one the player is playing, so it is marked
+  // started at once and syncs like before the deferred create (#2654).
+  g.__gameEventClient_startGame = (gameType, metadata) => {
+    const gameId = gameEventClient.startGame(gameType, metadata);
+    gameEventClient.markStarted(gameId);
+    return gameId;
+  };
   // E2E may send any outcome string (e.g. to exercise a 400), so the hook stays
   // looser than CompleteSummary's GameOutcome (#2517).
   g.__gameEventClient_completeGame = (gameId, summary) =>

@@ -48,9 +48,15 @@ type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
+// A killed process's session to continue (#2654) — none unless a test says so.
+const mockResumeGame = jest.fn() as unknown as jest.Mock<string | null, [string, unknown?]>;
+const mockMarkStarted = jest.fn() as unknown as jest.Mock<undefined, [string]>;
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
+    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
+    discardGame: jest.fn(),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -64,6 +70,9 @@ beforeEach(() => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue(null);
+  mockMarkStarted.mockReset();
 });
 
 function mockNav() {
@@ -462,6 +471,48 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
+  });
+
+  describe("after the app was killed mid-game (#2654)", () => {
+    it("a saved mid-game continues the killed process's session: no new session", async () => {
+      (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+      mockResumeGame.mockReturnValueOnce("killed-session");
+      const { unmount } = await mountAndSettle();
+
+      expect(mockResumeGame).toHaveBeenCalledWith("twenty48", undefined);
+      expect(mockStartGame).not.toHaveBeenCalled();
+      expect(mockMarkStarted).not.toHaveBeenCalled();
+
+      await act(() => {
+        dispatchKey("ArrowRight");
+      });
+      const moveCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move");
+      expect(moveCall?.[0]).toBe("killed-session");
+
+      // Leaving closes that one session — no second game, no extra abandon.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 200));
+      });
+      await unmount();
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      expect(mockCompleteGame.mock.calls[0]?.[0]).toBe("killed-session");
+    });
+
+    it("a saved mid-game with no session left to continue starts one, already started", async () => {
+      (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+      await mountAndSettle();
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      expect(mockMarkStarted).toHaveBeenCalledWith("game-uuid-test");
+    });
+
+    it("a fresh board never resumes", async () => {
+      (loadGame as jest.Mock).mockResolvedValueOnce(null);
+      await mountAndSettle();
+      expect(mockResumeGame).not.toHaveBeenCalled();
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      expect(mockMarkStarted).not.toHaveBeenCalled();
+    });
   });
 
   it("does not start a session when mounted with a game_over state", async () => {

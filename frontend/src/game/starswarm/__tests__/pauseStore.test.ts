@@ -18,23 +18,15 @@ import {
   getSavedPausedState,
   hydratePausedState,
   isPausedStateHydrated,
-  releaseSavedSession,
   savePausedState,
 } from "../pauseStore";
 import { SAVE_FINGERPRINT, fitsSaveShape } from "../saveShape";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
-// new process: the in-memory copy is gone, AsyncStorage is not.
-
-const mockInit = jest.fn().mockResolvedValue(undefined);
-const mockCompleteGame = jest.fn();
-jest.mock("../../_shared/gameEventClient", () => ({
-  gameEventClient: {
-    init: () => mockInit(),
-    completeGame: (...args: unknown[]) => mockCompleteGame(...args),
-  },
-}));
+// new process: the in-memory copy is gone, AsyncStorage is not. The run's sync session is
+// not the store's business (#2654): the screen resumes it, the generic killed-session
+// handling closes it otherwise.
 
 const COUNTERS = { nextId: 5000, seed: 123456 };
 
@@ -62,16 +54,8 @@ async function writeRaw(value: unknown) {
   );
 }
 
-const abandoned = (gameId: string) =>
-  expect(mockCompleteGame).toHaveBeenCalledWith(
-    gameId,
-    { outcome: "abandoned" },
-    { outcome: "abandoned" }
-  );
-
 beforeEach(async () => {
   jest.clearAllMocks();
-  mockInit.mockResolvedValue(undefined);
   await AsyncStorage.clear();
   _resetPauseStoreForTests();
 });
@@ -98,51 +82,29 @@ describe("pauseStore — survives the process (#2645)", () => {
     expect(engineCounters().seed).toBe(COUNTERS.seed);
   });
 
-  it("abandons the dead process's session once the event client has loaded", async () => {
-    await saveAndDie({ gameId: "old-game" });
-    await hydratePausedState();
-    await flush();
-    expect(mockInit).toHaveBeenCalled();
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    abandoned("old-game");
-    // The restored run doesn't carry the dead session on.
-    expect(getSavedPausedState()?.gameId).toBeUndefined();
+  it("saves no sync session with the run", async () => {
+    await saveAndDie();
+    expect(await persisted()).not.toHaveProperty("gameId");
   });
 
-  it("restores without waiting on the event client", async () => {
-    mockInit.mockReturnValue(new Promise(() => undefined)); // never loads
+  it("restores a save from a build that stored the run's session, without it", async () => {
+    // #2651 builds saved `gameId`; it is ignored, not restored.
     await saveAndDie({ gameId: "old-game" });
     await hydratePausedState();
     expect(getSavedPausedState()?.difficulty).toBe("Commander");
-  });
-
-  it("a restore that can't reach the event client still restores the run", async () => {
-    mockInit.mockRejectedValue(new Error("storage down"));
-    await saveAndDie({ gameId: "old-game" });
-    await expect(hydratePausedState()).resolves.toBeUndefined();
-    await flush();
-    expect(getSavedPausedState()?.difficulty).toBe("Commander");
-  });
-
-  it("does not abandon anything when the save has no session", async () => {
-    await saveAndDie({ gameId: null });
-    await hydratePausedState();
-    await flush();
-    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(getSavedPausedState()).not.toHaveProperty("gameId");
   });
 
   it("a navigation restore in the same process never re-reads disk or touches the counters", async () => {
     savePausedState({
       gameState: run(),
       difficulty: "Commander",
-      gameId: "g",
       counters: { nextId: 1, seed: 1 },
     });
     const before = engineCounters();
     await hydratePausedState();
     await flush();
     expect(engineCounters()).toEqual(before);
-    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("clear removes the save from disk", async () => {
@@ -157,14 +119,13 @@ describe("pauseStore — survives the process (#2645)", () => {
     expect(getSavedPausedState()).toBeNull();
   });
 
-  it("a clear while hydrating wins over the disk read, and the dead session still closes", async () => {
-    await saveAndDie({ gameId: "old-game" });
+  it("a clear while hydrating wins over the disk read", async () => {
+    await saveAndDie();
     const hydrating = hydratePausedState();
     clearSavedPausedState();
     await hydrating;
     await flush();
     expect(getSavedPausedState()).toBeNull();
-    abandoned("old-game");
   });
 
   it("hydrates once per process", async () => {
@@ -178,7 +139,7 @@ describe("pauseStore — survives the process (#2645)", () => {
   });
 
   it("gives up on a disk read that never settles, and restores nothing late", async () => {
-    await saveAndDie({ gameId: "old-game" });
+    await saveAndDie();
     const raw = await AsyncStorage.getItem(PAUSED_RUN_STORAGE_KEY);
     let settle: (raw: string | null) => void = () => undefined;
     (AsyncStorage.getItem as jest.Mock).mockImplementationOnce(
@@ -195,47 +156,20 @@ describe("pauseStore — survives the process (#2645)", () => {
     expect(isPausedStateHydrated()).toBe(true);
     expect(getSavedPausedState()).toBeNull();
 
-    settle(raw); // the read lands late: the run stays out, the dead session still closes
+    settle(raw); // the read lands late: the run stays out
     await flush();
     await flush();
     expect(getSavedPausedState()).toBeNull();
-    abandoned("old-game");
   });
 });
 
-describe("pauseStore — releasing the session on unmount", () => {
-  it("keeps the run and drops the session, on disk too", async () => {
-    savePausedState({
-      gameState: run(),
-      difficulty: "Commander",
-      gameId: "live",
-      counters: COUNTERS,
-    });
-    releaseSavedSession();
-    expect(getSavedPausedState()?.gameId).toBeNull();
-    expect(getSavedPausedState()?.gameState.score).toBe(1234);
-    await flush();
-    expect((await persisted())?.gameId).toBeNull();
-  });
-
-  it("writes nothing when there's no session to drop", () => {
-    const setItem = AsyncStorage.setItem as jest.Mock;
-    releaseSavedSession(); // nothing saved
-    savePausedState({ gameState: run(), difficulty: "Commander", gameId: null });
-    const before = setItem.mock.calls.length;
-    releaseSavedSession();
-    expect(setItem.mock.calls.length).toBe(before);
-  });
-});
-
-describe("pauseStore — saves it won't restore still close their session", () => {
+describe("pauseStore — saves it won't restore are dropped", () => {
   const good = () => ({
     v: 1,
     fp: SAVE_FINGERPRINT,
     gameState: run(),
     difficulty: "Commander",
     counters: COUNTERS,
-    gameId: "old",
   });
   const withState = (patch: (s: Record<string, unknown>) => Record<string, unknown>) => {
     const g = good();
@@ -271,7 +205,7 @@ describe("pauseStore — saves it won't restore still close their session", () =
       "with a field this build doesn't know",
       () => withState((s) => ({ ...s, player: { ...(s.player as object), jetpack: true } })),
     ],
-  ])("drops a save %s, and abandons its session", async (_label, make) => {
+  ])("drops a save %s", async (_label, make) => {
     const save = make(); // building a state draws engine ids
     const before = engineCounters();
     await writeRaw(save);
@@ -280,7 +214,6 @@ describe("pauseStore — saves it won't restore still close their session", () =
     expect(getSavedPausedState()).toBeNull();
     expect(await persisted()).toBeNull();
     expect(engineCounters()).toEqual(before);
-    abandoned("old");
   });
 
   it("drops a save that isn't JSON", async () => {
@@ -289,7 +222,6 @@ describe("pauseStore — saves it won't restore still close their session", () =
     await flush();
     expect(getSavedPausedState()).toBeNull();
     expect(await persisted()).toBeNull();
-    expect(mockCompleteGame).not.toHaveBeenCalled(); // no session to be read from it
   });
 });
 

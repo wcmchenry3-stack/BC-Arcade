@@ -42,10 +42,22 @@
  * (a "New game" button, `beforeRemove`) builds that abandon's result with the
  * same helper its getter uses, so the two paths cannot drift apart (#2619).
  *
- * Only abandons the player caused count: the unmount and `restart()` paths
- * both skip the abandon for a session that `markStarted()` was never called
- * for. `restart()` discards that session (`gameEventClient.discardGame`) so it
- * is not left pending when the new one replaces it.
+ * Only abandons the player caused count: the unmount, `start()` and
+ * `restart()` paths all close an open session the same way — abandoned if
+ * `markStarted()` was called for it, otherwise discarded
+ * (`gameEventClient.discardGame`), so an untouched session is never left
+ * pending on the device.
+ *
+ * Deferred create (#2654): `markStarted()` also tells gameEventClient, which
+ * holds the session on the device until then — a session the player never
+ * started never reaches the server.
+ *
+ * Killed process (#2654): a session left open when the process is killed (no
+ * unmount runs) is picked up on the next launch. A screen that restores the
+ * game's saved progress calls `resume()` to continue that same session, so
+ * one real game stays one row. If the player starts a fresh game of the type
+ * instead, or never reopens it within 24 h, gameEventClient abandons it; an
+ * unstarted one is discarded at startup.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -67,12 +79,28 @@ export interface ProgressSnapshot {
 }
 
 export interface UseGameSyncReturn {
-  /** Start a new instrumented session. Call once after the game state is ready. */
+  /**
+   * Start a new instrumented session. Call once after the game state is ready.
+   * An open session it replaces is closed like `restart()` closes it.
+   */
   start: (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => void;
+  /**
+   * Continue the session a killed app process left open for this game (#2654).
+   * Call it when the screen restores saved progress, before `start()`. If that
+   * session exists (started, unfinished, under 24 h old) the hook adopts it —
+   * already started, no new create, no `game_started` — closes any session it
+   * had open, and returns true. Otherwise it changes nothing and returns false,
+   * and the screen starts its session as it normally would. `match` limits it
+   * to a session whose metadata has those values (e.g. the puzzle id).
+   */
+  resume: (match?: Record<string, unknown>) => boolean;
   /**
    * Signal that the player has taken their first meaningful action. Must be
    * called before the unmount cleanup will fire an abandoned event, preventing
-   * false abandons on games the player never actually started.
+   * false abandons on games the player never actually started. Until it is
+   * called (or the session completes) the session is not sent to the server
+   * (#2654). Safe to call on every action — only the first one per session
+   * reaches gameEventClient.
    */
   markStarted: () => void;
   /** Enqueue a gameplay event. No-ops if no session is open. */
@@ -143,19 +171,30 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     }
   }, []);
 
-  // Abandon any open session on unmount, but only if the player actually started.
-  useEffect(() => {
-    return () => {
-      const gid = gameIdRef.current;
-      if (gid && startedRef.current && !completedRef.current) {
-        abandon(gid);
-        gameIdRef.current = null;
-      }
-    };
+  // Close the open session, if any: abandoned when the player started it,
+  // otherwise discarded — an untouched session is never left pending (#2619,
+  // #2654). Either way the hook has no open session afterwards.
+  const closeOpen = useCallback(() => {
+    const gid = gameIdRef.current;
+    gameIdRef.current = null;
+    if (!gid || completedRef.current) return;
+    if (startedRef.current) {
+      abandon(gid);
+      return;
+    }
+    try {
+      gameEventClient.discardGame(gid);
+    } catch {
+      // Isolation.
+    }
   }, [abandon]);
+
+  // Close any open session on unmount.
+  useEffect(() => closeOpen, [closeOpen]);
 
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {
+      closeOpen();
       gameIdRef.current = gameEventClient.startGame(
         gameTypeRef.current,
         metadata ?? {},
@@ -164,11 +203,37 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = false;
       startedRef.current = false;
     },
-    []
+    [closeOpen]
+  );
+
+  const resume = useCallback(
+    (match?: Record<string, unknown>): boolean => {
+      let gid: string | null = null;
+      try {
+        gid = gameEventClient.resumeGame(gameTypeRef.current, match);
+      } catch {
+        // Isolation: the caller starts a new session instead.
+      }
+      if (!gid) return false;
+      closeOpen();
+      gameIdRef.current = gid;
+      completedRef.current = false;
+      startedRef.current = true;
+      return true;
+    },
+    [closeOpen]
   );
 
   const markStarted = useCallback(() => {
+    if (startedRef.current) return;
     startedRef.current = true;
+    const gid = gameIdRef.current;
+    if (!gid) return;
+    try {
+      gameEventClient.markStarted(gid);
+    } catch {
+      // Isolation.
+    }
   }, []);
 
   const enqueue = useCallback((event: EnqueueEventInput) => {
@@ -195,34 +260,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     gameIdRef.current = null;
   }, []);
 
-  const restart = useCallback(
-    (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => {
-      // Close the current session if still open. A session the player started
-      // is abandoned (the same guard as the unmount path); an untouched one is
-      // not an abandon, so it is discarded — never left pending (#2619).
-      const gid = gameIdRef.current;
-      if (gid && !completedRef.current) {
-        if (startedRef.current) {
-          abandon(gid);
-        } else {
-          try {
-            gameEventClient.discardGame(gid);
-          } catch {
-            // Isolation.
-          }
-        }
-      }
-      // Open a fresh session.
-      gameIdRef.current = gameEventClient.startGame(
-        gameTypeRef.current,
-        newMetadata ?? {},
-        newEventData ?? {}
-      );
-      completedRef.current = false;
-      startedRef.current = false;
-    },
-    [abandon]
-  );
+  // Same as start(): it closes the open session before opening the new one.
+  // Kept as its own name for the New Game / theme-switch call sites.
+  const restart = start;
 
   const reportBug = useCallback(
     (level: BugLevel, source: string, message: string, context?: Record<string, unknown>) => {
@@ -243,6 +283,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   return {
     start,
+    resume,
     markStarted,
     enqueue,
     complete,

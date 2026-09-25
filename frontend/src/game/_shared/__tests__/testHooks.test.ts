@@ -9,6 +9,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerLogstoreTestHooks, areTestHooksEnabled } from "../testHooks";
 import { eventStore } from "../eventStore";
+import { pendingGamesStore } from "../pendingGamesStore";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 
 type G = Record<string, unknown>;
@@ -136,6 +137,15 @@ describe("logstore testHooks", () => {
       const stats = await eventStore.stats();
       expect(stats.byPriority[Priority.BUG_LOG]).toBe(4);
       expect(stats.byLogType.bug_log).toBe(4);
+    });
+
+    // #2654: e2e specs expect a hook-started game to sync, so it is started at once.
+    it("startGame opens a game already marked started", () => {
+      const g = globalThis as unknown as {
+        __gameEventClient_startGame: (gameType: string) => string;
+      };
+      const gameId = g.__gameEventClient_startGame("yacht");
+      expect(pendingGamesStore.get(gameId)?.started).toBe(true);
     });
 
     it("seedEvents + eviction clamps to MAX_ROWS", async () => {
