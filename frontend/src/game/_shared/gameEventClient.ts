@@ -12,9 +12,11 @@
  *   4. Only sessions the player played reach the server (#2654) — a new
  *      game is held on the device until `markStarted()` (or a completion)
  *      marks it started; SyncWorker creates it on the server only then.
- *   5. Sessions a killed process left open are closed (#2654) — `init()`
- *      sweeps them once per process: a started one is completed as
- *      `abandoned`, an unstarted one is dropped from the device.
+ *   5. Sessions a killed process left open ("orphans") are resolved (#2654):
+ *      an unstarted one is dropped from the device at startup; a started one
+ *      is continued if its screen restores the game (`resumeGame`), and
+ *      abandoned when the player starts a fresh game of that type instead,
+ *      or at a later launch once it is 24 h old. See `sweepPreviousProcess`.
  *
  * Errors in the fire-and-forget persistence path go to Sentry, not
  * back to the caller (the caller long forgot about the call).
@@ -25,12 +27,23 @@ import * as Sentry from "@sentry/react-native";
 import { eventStore, EventStore, QueueStats } from "./eventStore";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
 import { BugLevel } from "./eventQueueConfig";
-import { pendingGamesStore, PendingGamesStore, CompleteSummary } from "./pendingGamesStore";
+import {
+  pendingGamesStore,
+  PendingGamesStore,
+  CompleteSummary,
+  PendingGame,
+  isOrphanResumable,
+} from "./pendingGamesStore";
 import { generateUUID } from "./uuid";
 
 export interface EnqueueEventInput {
   type: string;
   data?: Record<string, unknown>;
+}
+
+export interface CompleteOptions {
+  /** When the game ended, epoch ms. Defaults to now. */
+  completedAt?: number;
 }
 
 export interface GameEventClient {
@@ -41,10 +54,33 @@ export interface GameEventClient {
     metadata?: Record<string, unknown>,
     eventData?: Record<string, unknown>
   ): string;
-  /** The player acted in this session: it may now be sent to the server (#2654). */
+  /**
+   * Continue the session a killed process left open for `gameType` (#2654),
+   * for a screen restoring that game's saved progress. Returns its id — already
+   * started and on its way to the server, so no new create and no
+   * `game_started` — or null when there is none (or the pending games are not
+   * loaded yet); the caller then starts a new session as usual. `match`
+   * narrows it to a session whose metadata has those values.
+   */
+  resumeGame(gameType: string, match?: Record<string, unknown>): string | null;
+  /**
+   * The player acted in this session: it may now be sent to the server
+   * (#2654). The first time, it also abandons the killed process's sessions of
+   * this game type — the player chose a fresh game over resuming them.
+   */
   markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
-  completeGame(gameId: string, summary: CompleteSummary, eventData?: Record<string, unknown>): void;
+  /**
+   * Finish a game: queue its `game_ended` event, then mark it completed, so
+   * SyncWorker sends the event before the PATCH. An unstarted game is marked
+   * started first (see `markStarted`).
+   */
+  completeGame(
+    gameId: string,
+    summary: CompleteSummary,
+    eventData?: Record<string, unknown>,
+    options?: CompleteOptions
+  ): void;
   /**
    * Throw away a game the player never started (#2619): forget its pending
    * record and drop its queued events, so it is neither completed nor left
@@ -62,19 +98,24 @@ export interface GameEventClient {
 }
 
 export class GameEventClientImpl implements GameEventClient {
-  private ready: Promise<void> | null = null;
+  /**
+   * Game types a fresh session was started for before the pending games were
+   * loaded, when their orphans were not known yet; the sweep abandons those.
+   */
+  private readonly startedBeforeLoad = new Set<string>();
 
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
     private readonly limiter: BugReportLimiter = bugReportLimiter
-  ) {}
+  ) {
+    // The store runs the sweep inside its own init(), which SyncWorker awaits
+    // before flushing — so no flush runs between the load and the sweep.
+    games.setStartupSweep(() => this.sweepPreviousProcess());
+  }
 
   init(): Promise<void> {
-    if (!this.ready) {
-      this.ready = this.games.init().then(() => this.sweepPreviousProcess());
-    }
-    return this.ready;
+    return this.games.init();
   }
 
   /** Returns the new game id synchronously. */
@@ -97,7 +138,15 @@ export class GameEventClientImpl implements GameEventClient {
     return gameId;
   }
 
+  resumeGame(gameType: string, match?: Record<string, unknown>): string | null {
+    const gameId = this.games.adoptOrphan(gameType, Date.now(), match);
+    // The player can continue only one; any other orphan of the type is over.
+    if (gameId !== null) this.abandonOrphans(gameType);
+    return gameId;
+  }
+
   markStarted(gameId: string): void {
+    this.onStarting(gameId);
     this.fireAndForget(this.games.markStarted(gameId), "markStarted");
   }
 
@@ -108,13 +157,21 @@ export class GameEventClientImpl implements GameEventClient {
   completeGame(
     gameId: string,
     summary: CompleteSummary,
-    eventData?: Record<string, unknown>
+    eventData?: Record<string, unknown>,
+    options: CompleteOptions = {}
   ): void {
+    this.onStarting(gameId);
+    // Event first: its enqueue is on the event store's lock before the game is
+    // marked completed, so SyncWorker's outstanding-events check sees it and
+    // the PATCH waits for it.
     this.enqueueEventInternal(gameId, {
       type: "game_ended",
       data: eventData ?? (summary as Record<string, unknown>),
     });
-    this.fireAndForget(this.games.complete(gameId, summary), "completeGame.mark");
+    this.fireAndForget(
+      this.games.complete(gameId, summary, options.completedAt),
+      "completeGame.mark"
+    );
   }
 
   discardGame(gameId: string): void {
@@ -167,42 +224,83 @@ export class GameEventClientImpl implements GameEventClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Close the sessions an earlier, killed process left open (#2654). Runs once,
-   * from init(), after the pending games are loaded. Only games read from disk
-   * that this process did not create are touched (see
-   * `PendingGamesStore.previousProcessOpenGames`), so a game started before
+   * Resolve the sessions an earlier, killed process left open (#2654). The
+   * store runs this once, inside its init(), right after the load. Only games
+   * read from disk that this process neither created nor adopted are touched
+   * (`PendingGamesStore.previousProcessOpenGames`), so a game started before
    * init() resolves is never swept.
    *
-   * - Started (or already on the server): completed as a bare `abandoned`,
-   *   the same as a useGameSync abandon with no progress snapshot. Its
-   *   `completedAt` is the last time the device saw the session alive — its
-   *   last event, else its start (older records have no `lastEventAt`) — not
-   *   the time of this launch, which could be days later. No `durationMs` is
-   *   known, so none is sent and the row's duration stays null (#2619).
    * - Unstarted: never reached the server, so it is discarded exactly like an
-   *   untouched `restart()` (`discardGame`). Nothing is recorded as abandoned.
+   *   untouched `restart()`. Nothing is recorded as abandoned.
+   * - Started, under 24 h old: kept. Its screen may restore the game and
+   *   continue the session (`resumeGame`); a fresh game of the type abandons
+   *   it (`markStarted`); a later launch abandons it once it is 24 h old.
+   * - Started, 24 h old or more (the server's own sweep age, #2621), or of a
+   *   type the player already started a fresh game of: abandoned.
    *
-   * Errors are reported, not thrown: a failed sweep must not fail init().
+   * Every change is written once (`batch`), and the discarded games' events
+   * are deleted in one pass.
    */
   private async sweepPreviousProcess(): Promise<void> {
+    const now = Date.now();
+    const untouched: string[] = [];
     try {
-      for (const [gameId, game] of this.games.previousProcessOpenGames()) {
-        if (!game.started && !game.startedSynced) {
-          this.discardGame(gameId);
-          continue;
+      await this.games.batch(() => {
+        for (const [gameId, game] of this.games.previousProcessOpenGames()) {
+          if (!game.started) {
+            untouched.push(gameId);
+            void this.games.forget(gameId);
+          } else if (!isOrphanResumable(game, now) || this.startedBeforeLoad.has(game.gameType)) {
+            this.abandonOrphan(gameId, game);
+          }
         }
-        const completedAt = game.lastEventAt ?? game.startedAt;
-        this.enqueueEventInternal(gameId, {
-          type: "game_ended",
-          data: { outcome: "abandoned" },
-        });
-        await this.games.complete(gameId, { outcome: "abandoned" }, completedAt);
-      }
+      });
+      this.startedBeforeLoad.clear();
+      await this.store.deleteByGameIds(untouched);
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "gameEventClient", op: "sweepPreviousProcess" },
       });
     }
+  }
+
+  /**
+   * A session is about to count as started (`markStarted`, or a completion).
+   * If it is a fresh one, the player chose it over resuming the killed
+   * process's sessions of this type, so those are abandoned — now, or by the
+   * sweep if they are not loaded yet.
+   */
+  private onStarting(gameId: string): void {
+    const game = this.games.get(gameId);
+    if (!game || game.started) return;
+    if (this.games.isLoaded()) this.abandonOrphans(game.gameType);
+    else this.startedBeforeLoad.add(game.gameType);
+  }
+
+  /** Abandon every started orphan of `gameType`, with one write. */
+  private abandonOrphans(gameType: string): void {
+    const orphans = this.games
+      .previousProcessOpenGames()
+      .filter(([, game]) => game.gameType === gameType && game.started);
+    if (orphans.length === 0) return;
+    this.fireAndForget(
+      this.games.batch(() => {
+        for (const [gameId, game] of orphans) this.abandonOrphan(gameId, game);
+      }),
+      "abandonOrphans"
+    );
+  }
+
+  /**
+   * Close an orphan as a bare `abandoned` through the normal completion path.
+   * Its `completedAt` is the last time the device saw the session alive — its
+   * last event, else its start (older records have no `lastEventAt`) — not the
+   * time of this launch, which could be days later. No `durationMs` is known,
+   * so none is sent and the row's duration stays null (#2619).
+   */
+  private abandonOrphan(gameId: string, game: PendingGame): void {
+    const completedAt = game.lastEventAt ?? game.startedAt;
+    this.completeGame(gameId, { outcome: "abandoned" }, undefined, { completedAt });
   }
 
   private enqueueEventInternal(gameId: string, event: EnqueueEventInput): void {

@@ -131,6 +131,7 @@ export default function SudokuScreen() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -174,6 +175,8 @@ export default function SudokuScreen() {
           setState(saved);
           setDifficulty(saved.difficulty);
           setVariant(saved.variant);
+          // A restored game continues the session a killed app left open (#2654).
+          if (!saved.isComplete) syncResume();
           // Treat any resumed state that already has moves as "timer
           // already started" — the player wants to see it ticking
           // immediately on return.  Elapsed resets to 0 because we
@@ -191,7 +194,7 @@ export default function SudokuScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [syncResume]);
 
   // Persist on every state change after the initial load has resolved.
   // Suppressed pre-load to protect the disk copy; `state === null`

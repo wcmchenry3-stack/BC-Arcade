@@ -128,26 +128,73 @@ describe("PendingGamesStore", () => {
       }
     });
 
-    it("loads an older build's record, which has no `started`, as started", async () => {
-      await AsyncStorage.setItem(
-        "pending_games_v1",
-        JSON.stringify({
-          legacy: {
-            gameType: "yacht",
-            metadata: {},
-            startedAt: 1_000,
-            startedSynced: false,
-            nextEventIndex: 1,
-            completed: false,
-            completedAt: null,
-            completeSummary: null,
-            completeSynced: false,
-          },
-        })
-      );
-      const fresh = new PendingGamesStore();
-      await fresh.init();
-      expect(fresh.get("legacy")?.started).toBe(true);
+    describe("an older build's record, which has no `started`", () => {
+      async function loadLegacy(extra: Record<string, unknown>) {
+        await AsyncStorage.setItem(
+          "pending_games_v1",
+          JSON.stringify({
+            legacy: {
+              gameType: "yacht",
+              metadata: {},
+              startedAt: 1_000,
+              startedSynced: false,
+              nextEventIndex: 1,
+              completed: false,
+              completedAt: null,
+              completeSummary: null,
+              completeSynced: false,
+              ...extra,
+            },
+          })
+        );
+        const fresh = new PendingGamesStore();
+        await fresh.init();
+        return fresh.get("legacy")?.started;
+      }
+
+      it("is started once its create was sent", async () => {
+        expect(await loadLegacy({ startedSynced: true })).toBe(true);
+      });
+
+      it("is started with an event beyond game_started", async () => {
+        expect(await loadLegacy({ nextEventIndex: 2 })).toBe(true);
+      });
+
+      it("is started once finished", async () => {
+        expect(await loadLegacy({ nextEventIndex: 2, completed: true, completedAt: 2_000 })).toBe(
+          true
+        );
+      });
+
+      it("is unstarted when it was never sent and has only game_started", async () => {
+        expect(await loadLegacy({ nextEventIndex: 1 })).toBe(false);
+      });
+    });
+  });
+
+  describe("batch (#2654)", () => {
+    it("persists every change made inside it with one write", async () => {
+      await store.create("a", "yacht", {});
+      await store.create("b", "yacht", {});
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      setItem.mockClear();
+      await store.batch(() => {
+        void store.markStarted("a");
+        store.nextEventIndex("a");
+        void store.complete("a", { outcome: "abandoned" });
+        void store.forget("b");
+      });
+      expect(setItem).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(setItem.mock.calls[0]?.[1] as string);
+      expect(Object.keys(saved)).toEqual(["a"]);
+      expect(saved.a.completed).toBe(true);
+    });
+
+    it("writes nothing when nothing changed", async () => {
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      setItem.mockClear();
+      await store.batch(() => undefined);
+      expect(setItem).not.toHaveBeenCalled();
     });
   });
 
@@ -211,6 +258,18 @@ describe("PendingGamesStore", () => {
       await after.init();
       expect(after.get("saved")).toBeDefined();
       expect(after.get("mine")).toBeDefined();
+    });
+
+    it("adoptOrphan hands over a started, resumable orphan once and lists it no more", async () => {
+      await store.create("a", "yacht", { puzzle: 1 });
+      await store.markStarted("a");
+      const next = await relaunch();
+      expect(next.adoptOrphan("yacht", Date.now())).toBeNull(); // not loaded yet
+      await next.init();
+      expect(next.adoptOrphan("yacht", Date.now(), { puzzle: 2 })).toBeNull();
+      expect(next.adoptOrphan("yacht", Date.now(), { puzzle: 1 })).toBe("a");
+      expect(next.previousProcessOpenGames()).toEqual([]);
+      expect(next.adoptOrphan("yacht", Date.now())).toBeNull();
     });
 
     it("drops a forgotten or completed game from the list", async () => {

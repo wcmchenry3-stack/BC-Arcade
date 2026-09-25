@@ -82,6 +82,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // moves are still playable but aren't tracked — they belong to no session.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
@@ -145,9 +146,12 @@ export default function Twenty48Screen({ navigation }: Props) {
       setLoading(false);
       if (!next.game_over) {
         moveCountRef.current = 0;
-        syncStart({ initial_board: flattenBoard(next.board) });
-        // Resuming a saved mid-game means the player already started — mark it.
-        if (saved) syncMarkStarted();
+        // A saved mid-game continues the session a killed app left open (#2654).
+        if (!(saved && syncResume())) {
+          syncStart({ initial_board: flattenBoard(next.board) });
+          // Resuming a saved mid-game means the player already started — mark it.
+          if (saved) syncMarkStarted();
+        }
       }
       // Count a fresh start; also catch any best-tile improvement from the
       // loaded board (e.g. user had a 1024 before stats were tracked).

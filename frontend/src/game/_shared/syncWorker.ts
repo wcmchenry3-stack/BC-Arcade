@@ -9,8 +9,11 @@
  *
  * Flush algorithm (one pass):
  *
- *   0. Wait for the pending games to load from disk, so no queued event is
- *      read as an orphan of a game that simply isn't loaded yet.
+ *   0. Wait for the pending games to load from disk, and for the startup
+ *      sweep of a killed process's sessions (#2654) that runs inside the
+ *      store's init(): no queued event is read as belonging to a game that
+ *      simply isn't loaded yet, and no flush acts on a game the sweep is
+ *      about to discard or abandon.
  *
  *   1. For each pending game with started=true and startedSynced=false:
  *        POST /games { id, game_type, metadata }
@@ -28,6 +31,10 @@
  *          and preserve events (they'll retry on the next flush)
  *        - 413 → split batch in half, retry halves; single-row 413 →
  *          dead-letter that row
+ *        - 409 "Game is already completed." → the server closed the game
+ *          before these events arrived (e.g. its stale-session sweep, #2621).
+ *          Expected: drop the rows quietly — no Sentry error, no dead-letter.
+ *          The completion still goes out in step 3.
  *        - 400/403 → dead-letter those rows; Sentry with high severity
  *          for 403 (session mismatch shouldn't happen)
  *        - 429/5xx/network → set per-row backoff and stop
@@ -82,6 +89,19 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
   if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
   const ms = Math.round(durationMs);
   return ms > 0 ? ms : null;
+}
+
+/**
+ * The detail of the backend's 409 on POST /games/:id/events for a game whose
+ * row is already completed (`backend/games/service.py`, `append_events`).
+ */
+export const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
+
+function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
+  return (
+    res.status === 409 &&
+    (res.body as { detail?: unknown } | null)?.detail === GAME_ALREADY_COMPLETED_DETAIL
+  );
 }
 
 const EMPTY: FlushResult = {
@@ -142,6 +162,7 @@ export class SyncWorker {
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
+      // Load + startup sweep (see step 0 above).
       await this.games.init();
 
       if (!(await this.flushGameCreations(result, now))) return result;
@@ -168,7 +189,7 @@ export class SyncWorker {
       // Not started yet (#2654): the player never acted, so the server must
       // not hear of this session. Its events wait with it (step 2 skips a
       // game until startedSynced). A completion marks the game started.
-      if (game.started === false) continue;
+      if (!game.started) continue;
       const res = await this.api.request(
         "POST",
         "/games",
@@ -313,6 +334,18 @@ export class SyncWorker {
       });
       const g = this.games.get(gameId);
       if (g) g.startedSynced = false;
+      return true;
+    }
+    if (isAlreadyCompleted(res)) {
+      // The row was closed before these events arrived — by the server's
+      // stale-session sweep (#2621), or a completion that got there first.
+      // Nothing is wrong and retrying can't help: drop them quietly.
+      Sentry.addBreadcrumb({
+        category: "syncWorker",
+        message: `events for completed game ${gameId} dropped (409)`,
+        level: "info",
+      });
+      await this.store.deleteByIds(chunk.map((r) => r.id));
       return true;
     }
     // 400 unknown_event_type — server-side schema gap (missing event_types row),

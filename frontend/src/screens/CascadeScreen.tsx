@@ -347,6 +347,7 @@ function CascadeGame() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
@@ -464,6 +465,9 @@ function CascadeGame() {
     loadCascadeGame().then((snapshot) => {
       if (!active || !snapshot || snapshot.pieces.length === 0) return;
       engineRef.current?.restore(snapshot.pieces, snapshot.score);
+      // The restored game continues the session a killed app left open (#2654),
+      // in place of the untouched one opened at mount.
+      syncResume();
       scoreRef.current = snapshot.score;
       setScore(snapshot.score);
       queueRef.current = snapshot.queue;
@@ -474,7 +478,7 @@ function CascadeGame() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [syncResume]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {

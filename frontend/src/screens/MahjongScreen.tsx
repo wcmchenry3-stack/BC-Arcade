@@ -523,6 +523,7 @@ export default function MahjongScreen() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -618,6 +619,8 @@ export default function MahjongScreen() {
           setState(saved);
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) winRecordedRef.current = true;
+          // A restored game continues the session a killed app left open (#2654).
+          if (!saved.isComplete) syncResume();
           setView("play");
         } else {
           setView("select");
@@ -629,7 +632,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [syncResume]);
 
   // Persist on every state change after mount load resolves.
   useEffect(() => {
@@ -974,12 +977,14 @@ export default function MahjongScreen() {
         }
         setState(saved);
         setHasSavedGame(false);
+        // A restored game continues the session a killed app left open (#2654).
+        if (!saved.isComplete) syncResume();
         setView("play");
       })
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, []);
+  }, [syncResume]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 

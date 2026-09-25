@@ -155,6 +155,7 @@ export default function SolitaireScreen() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -229,6 +230,9 @@ export default function SolitaireScreen() {
         if (saved.isComplete) {
           winRecordedRef.current = true;
           setResumedWin(true);
+        } else {
+          // A restored game continues the session a killed app left open (#2654).
+          syncResume();
         }
       } else if (areTestHooksEnabled() && Platform.OS !== "web") {
         deal(1);

@@ -106,6 +106,7 @@ export default function SortScreen() {
   // solve there. The leaderboard entry is `sortLeaderboard`'s job.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -396,6 +397,8 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(prog.currentLevelId);
     setGameState(prog.currentState);
+    // A restored game continues the session a killed app left open (#2654).
+    syncResume();
     setHistory([]);
     setShowWinModal(false);
     setWinSummary(null);

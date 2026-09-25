@@ -20,10 +20,17 @@
  *
  * Previous process (#2654): the games read from disk at init() — and not
  * created by this process — belong to an earlier app process. Any of them
- * still open was left behind when that process was killed;
- * `previousProcessOpenGames()` lists them for gameEventClient's startup sweep.
- * Origin, not a clock comparison, decides this, so a device clock change can
- * never sweep a session the current process opened.
+ * still open was left behind when that process was killed (an "orphan");
+ * `previousProcessOpenGames()` lists them. Origin, not a clock comparison,
+ * decides this, so a device clock change can never sweep a session the
+ * current process opened. A screen that restores the orphan's saved progress
+ * adopts it (`adoptOrphan`), after which it is this process's game.
+ *
+ * Startup sweep: gameEventClient registers its sweep (`setStartupSweep`) and
+ * `init()` resolves only after the load *and* the sweep. SyncWorker awaits
+ * `init()` before every flush, so a flush never sees the store between the
+ * two (#2654 review). Writes wait only for the load, never for the sweep —
+ * the sweep's own writes would otherwise wait on themselves.
  *
  * Bounded maintenance: once SyncWorker confirms a game is fully synced
  * (started + completed + all events delivered), it calls `forget(gameId)`
@@ -58,8 +65,8 @@ export interface PendingGame {
   /**
    * The player acted in this session (`markStarted`), or finished it (#2654).
    * Until then the game stays on the device: no POST /games, no events.
-   * A record saved by an older build has no `started` field and is loaded as
-   * `true` — see `normalizeLoaded`.
+   * A record saved by an older build has no `started` field; `normalizeLoaded`
+   * derives it on load.
    */
   started: boolean;
   startedSynced: boolean;
@@ -76,32 +83,96 @@ export interface PendingGame {
 }
 
 /**
- * Fill in fields an older build's record lacks (#2654). An older build sent
- * every game to the server as soon as it opened, so a record without `started`
- * is treated as started whether or not it reached the server: it is sent and,
- * if left open by a killed process, closed as abandoned — never dropped.
+ * A killed process's started session stays resumable this long after it
+ * started; older, it is abandoned. Matches the server's stale-session sweep
+ * (#2621, `STALE_GAME_AFTER`), which also measures from the start.
+ */
+export const ORPHAN_RESUMABLE_MS = 24 * 60 * 60 * 1000;
+
+/** Still resumable at `now` — see ORPHAN_RESUMABLE_MS. */
+export function isOrphanResumable(game: PendingGame, now: number): boolean {
+  return now - game.startedAt < ORPHAN_RESUMABLE_MS;
+}
+
+/**
+ * Fill in fields an older build's record lacks (#2654). An older build had no
+ * `started` flag and created every game on the server as soon as it opened, so
+ * a legacy record counts as started only if the player really played it:
+ *   - its POST /games already succeeded (`startedSynced`), or
+ *   - it has an event beyond `game_started` (index 0), or it was finished.
+ * Anything else is an untouched session that never reached the server; it
+ * loads as unstarted and the startup sweep discards it, so upgrading never
+ * creates and abandons a server row for a game nobody played.
  */
 function normalizeLoaded(game: PendingGame): PendingGame {
-  if (typeof game.started !== "boolean") game.started = true;
+  if (typeof game.started !== "boolean") {
+    const eventsBeyondStart = typeof game.nextEventIndex === "number" && game.nextEventIndex > 1;
+    game.started = !!game.startedSynced || eventsBeyondStart || !!game.completed;
+  }
   return game;
 }
 
 export class PendingGamesStore {
   private games: Map<string, PendingGame> = new Map();
+  /** The disk read. Writes wait for this. */
+  private loading: Promise<void> | null = null;
+  private loaded = false;
+  /** The disk read, then the startup sweep. `init()` returns this. */
   private ready: Promise<void> | null = null;
-  /** Ids read from disk at init() that this process did not create (#2654). */
+  private startupSweep: (() => Promise<void>) | null = null;
+  /**
+   * Ids read from disk at init() that this process did not create and has not
+   * adopted (#2654). A game leaves the set when it is adopted or forgotten.
+   */
   private fromPreviousProcess: Set<string> = new Set();
+  /** >0 while `batch()` runs: writes are deferred to one at its end. */
+  private batchDepth = 0;
+  private batchDirty = false;
 
   /**
-   * Load persisted state. Safe to call multiple times; only the first
-   * call actually reads AsyncStorage. Must complete before any other
-   * method is called, although the class will lazy-init if needed.
+   * Load persisted state, then run the startup sweep if one is registered.
+   * Safe to call multiple times; only the first call reads AsyncStorage.
+   * Must complete before any other method is called, although the class
+   * will lazy-load if needed.
    */
-  async init(): Promise<void> {
+  init(): Promise<void> {
     if (!this.ready) {
-      this.ready = this.loadFromStorage();
+      this.ready = this.load().then(() => this.runStartupSweep());
     }
     return this.ready;
+  }
+
+  /**
+   * Register the sweep `init()` runs once, after the load (gameEventClient's
+   * killed-session sweep, #2654). Registered after init() started, it still
+   * runs, and init() waits for it.
+   */
+  setStartupSweep(sweep: () => Promise<void>): void {
+    this.startupSweep = sweep;
+    if (this.ready) this.ready = this.ready.then(() => this.runStartupSweep());
+  }
+
+  /** True once the disk read has finished (successfully or not). */
+  isLoaded(): boolean {
+    return this.loaded;
+  }
+
+  private load(): Promise<void> {
+    if (!this.loading) this.loading = this.loadFromStorage();
+    return this.loading;
+  }
+
+  private async runStartupSweep(): Promise<void> {
+    const sweep = this.startupSweep;
+    this.startupSweep = null;
+    if (!sweep) return;
+    try {
+      await sweep();
+    } catch (e) {
+      Sentry.captureException(e, {
+        tags: { subsystem: "pendingGamesStore", op: "startupSweep" },
+      });
+    }
   }
 
   private async loadFromStorage(): Promise<void> {
@@ -120,14 +191,36 @@ export class PendingGamesStore {
       Sentry.captureException(e, {
         tags: { subsystem: "pendingGamesStore", op: "load" },
       });
+    } finally {
+      this.loaded = true;
     }
   }
 
+  /**
+   * Apply several changes with one write (#2654 review): every change `fn`
+   * makes is persisted once, when it returns. `fn` must be synchronous.
+   */
+  batch(fn: () => void): Promise<void> {
+    this.batchDepth += 1;
+    try {
+      fn();
+    } finally {
+      this.batchDepth -= 1;
+    }
+    if (this.batchDepth > 0 || !this.batchDirty) return Promise.resolve();
+    this.batchDirty = false;
+    return this.persist();
+  }
+
   private async persist(): Promise<void> {
+    if (this.batchDepth > 0) {
+      this.batchDirty = true;
+      return;
+    }
     try {
       // Never write before the saved games are loaded: the write would replace
       // them on disk with only this process's games.
-      await this.init();
+      await this.load();
       const obj: Record<string, PendingGame> = {};
       for (const [k, v] of this.games) obj[k] = v;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
@@ -214,6 +307,7 @@ export class PendingGamesStore {
    * synchronous.
    */
   forget(gameId: string): Promise<void> {
+    this.fromPreviousProcess.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
     return this.persist();
   }
@@ -225,8 +319,8 @@ export class PendingGamesStore {
 
   /**
    * Games an earlier app process left open (#2654): read from disk at init(),
-   * not created by this process, and not completed. Empty until init()
-   * resolves. Never includes a game this process opened.
+   * not created or adopted by this process, and not completed. Empty until
+   * the load resolves. Never includes a game this process opened.
    */
   previousProcessOpenGames(): Array<[string, PendingGame]> {
     const out: Array<[string, PendingGame]> = [];
@@ -235,6 +329,30 @@ export class PendingGamesStore {
       if (game && !game.completed) out.push([id, game]);
     }
     return out;
+  }
+
+  /**
+   * Adopt the killed process's session of `gameType` that a screen is
+   * restoring (#2654): the most recently active started, still-resumable
+   * orphan of that type, optionally only one whose metadata has every
+   * `match` value. It becomes this process's game — never swept again by
+   * this process — and its id is returned. Null when there is none, or
+   * before the load has finished.
+   */
+  adoptOrphan(gameType: string, now: number, match?: Record<string, unknown>): string | null {
+    let bestId: string | null = null;
+    let bestAt = -Infinity;
+    for (const [id, game] of this.previousProcessOpenGames()) {
+      if (game.gameType !== gameType || !game.started || !isOrphanResumable(game, now)) continue;
+      if (match && !Object.entries(match).every(([k, v]) => game.metadata?.[k] === v)) continue;
+      const at = game.lastEventAt ?? game.startedAt;
+      if (at > bestAt) {
+        bestAt = at;
+        bestId = id;
+      }
+    }
+    if (bestId !== null) this.fromPreviousProcess.delete(bestId);
+    return bestId;
   }
 
   /** SyncWorker marks the server-side game created. */

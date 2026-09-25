@@ -8,6 +8,8 @@ const mockMarkStarted = jest.fn();
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
 const mockDiscardGame = jest.fn();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockResumeGame = jest.fn<string | null, any[]>(() => null);
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -17,6 +19,7 @@ jest.mock("../gameEventClient", () => ({
     completeGame: (...args: unknown[]) => mockCompleteGame(...args),
     reportBug: (...args: unknown[]) => mockReportBug(...args),
     discardGame: (...args: unknown[]) => mockDiscardGame(...args),
+    resumeGame: (...args: unknown[]) => mockResumeGame(...args),
   },
 }));
 
@@ -24,6 +27,7 @@ describe("useGameSync", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStartGame.mockReturnValue("test-game-id");
+    mockResumeGame.mockReturnValue(null);
   });
 
   // ---------------------------------------------------------------------------
@@ -168,7 +172,7 @@ describe("useGameSync", () => {
   // unmount cleanup
   // ---------------------------------------------------------------------------
 
-  it("unmount without markStarted does not abandon the session", async () => {
+  it("unmount without markStarted discards the session instead of abandoning it", async () => {
     const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
     await act(() => {
       result.current.start();
@@ -176,6 +180,29 @@ describe("useGameSync", () => {
     });
     await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
+    // Not left pending on the device for the rest of the process (#2654 review).
+    expect(mockDiscardGame).toHaveBeenCalledWith("test-game-id");
+  });
+
+  it("unmount after complete() discards nothing", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
+      result.current.start();
+      result.current.complete({ outcome: "completed" });
+    });
+    await unmount();
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+  });
+
+  it("an unmount whose discardGame throws is isolated", async () => {
+    mockDiscardGame.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+    await act(() => {
+      result.current.start();
+    });
+    await expect(unmount()).resolves.toBeUndefined();
   });
 
   it("unmount after markStarted but without complete abandons the open session", async () => {
@@ -302,6 +329,126 @@ describe("useGameSync", () => {
     const { unmount } = await renderHook(() => useGameSync("cascade"));
     await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // start() over an open session (#2654 review)
+  // ---------------------------------------------------------------------------
+
+  it("start() over an untouched open session discards it", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    const { result } = await renderHook(() => useGameSync("sudoku"));
+    await act(() => {
+      result.current.start();
+      result.current.start();
+    });
+    expect(mockDiscardGame).toHaveBeenCalledWith("session-1");
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(result.current.getGameId()).toBe("session-2");
+  });
+
+  it("start() over a started open session abandons it", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    const { result } = await renderHook(() => useGameSync("sudoku"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.start();
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "session-1",
+      { outcome: "abandoned" },
+      { outcome: "abandoned" }
+    );
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // resume (#2654): a restored game continues the killed process's session
+  // ---------------------------------------------------------------------------
+
+  describe("resume()", () => {
+    it("adopts the killed process's session: no new session, already started", async () => {
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result, unmount } = await renderHook(() => useGameSync("twenty48"));
+      let resumed = false;
+      await act(() => {
+        resumed = result.current.resume();
+        result.current.markStarted();
+        result.current.enqueue({ type: "move" });
+      });
+      expect(resumed).toBe(true);
+      expect(mockResumeGame).toHaveBeenCalledWith("twenty48", undefined);
+      expect(mockStartGame).not.toHaveBeenCalled();
+      expect(mockMarkStarted).not.toHaveBeenCalled(); // it is started already
+      expect(result.current.getGameId()).toBe("orphan-id");
+      expect(mockEnqueueEvent).toHaveBeenCalledWith("orphan-id", { type: "move" });
+      // Leaving the screen abandons it, like any started session.
+      await unmount();
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "orphan-id",
+        { outcome: "abandoned" },
+        { outcome: "abandoned" }
+      );
+    });
+
+    it("completes the adopted session", async () => {
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result } = await renderHook(() => useGameSync("twenty48"));
+      await act(() => {
+        result.current.resume();
+        result.current.complete({ outcome: "completed", finalScore: 64 });
+      });
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "orphan-id",
+        { outcome: "completed", finalScore: 64 },
+        {}
+      );
+    });
+
+    it("passes a metadata match through", async () => {
+      const { result } = await renderHook(() => useGameSync("daily_word"));
+      await act(() => {
+        result.current.resume({ puzzle_id: "p1" });
+      });
+      expect(mockResumeGame).toHaveBeenCalledWith("daily_word", { puzzle_id: "p1" });
+    });
+
+    it("with nothing to resume, changes nothing and returns false", async () => {
+      const { result } = await renderHook(() => useGameSync("cascade"));
+      let resumed = true;
+      await act(() => {
+        result.current.start();
+        resumed = result.current.resume();
+      });
+      expect(resumed).toBe(false);
+      expect(result.current.getGameId()).toBe("test-game-id");
+      expect(mockDiscardGame).not.toHaveBeenCalled();
+    });
+
+    it("replaces an untouched open session, which is discarded", async () => {
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result } = await renderHook(() => useGameSync("cascade"));
+      await act(() => {
+        result.current.start();
+        result.current.resume();
+      });
+      expect(mockDiscardGame).toHaveBeenCalledWith("test-game-id");
+      expect(result.current.getGameId()).toBe("orphan-id");
+    });
+
+    it("a throwing resumeGame is isolated: false, and the screen starts as usual", async () => {
+      mockResumeGame.mockImplementationOnce(() => {
+        throw new Error("boom");
+      });
+      const { result } = await renderHook(() => useGameSync("cascade"));
+      let resumed = true;
+      await act(() => {
+        resumed = result.current.resume();
+      });
+      expect(resumed).toBe(false);
+      expect(result.current.getGameId()).toBeNull();
+    });
   });
 
   // ---------------------------------------------------------------------------
