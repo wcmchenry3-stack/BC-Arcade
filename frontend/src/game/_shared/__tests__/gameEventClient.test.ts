@@ -226,6 +226,402 @@ describe("GameEventClient", () => {
   });
 
   // -------------------------------------------------------------------------
+  // #2654 — deferred create flag + startup sweep of a killed process's games
+  // -------------------------------------------------------------------------
+
+  describe("started flag (#2654)", () => {
+    it("startGame records the game as not started", () => {
+      const id = client.startGame("yacht");
+      expect(games.get(id)?.started).toBe(false);
+    });
+
+    it("markStarted marks the pending game started", () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      expect(games.get(id)?.started).toBe(true);
+    });
+
+    it("completeGame on an unstarted game marks it started", () => {
+      const id = client.startGame("yacht");
+      client.completeGame(id, { outcome: "completed", finalScore: 10 });
+      expect(games.get(id)?.started).toBe(true);
+      expect(games.get(id)?.completed).toBe(true);
+    });
+
+    it("completeGame takes the completion time when one is given", () => {
+      const id = client.startGame("yacht");
+      client.completeGame(id, { outcome: "abandoned" }, undefined, { completedAt: 1234 });
+      expect(games.get(id)?.completedAt).toBe(1234);
+    });
+  });
+
+  describe("startup sweep (#2654)", () => {
+    const DAY = 24 * 60 * 60 * 1000;
+
+    /** A new app process on the same device storage. `init()` is not called. */
+    async function relaunch(): Promise<{
+      store: EventStore;
+      games: PendingGamesStore;
+      client: GameEventClientImpl;
+    }> {
+      await flushMicrotasks(); // let the killed process's writes land
+      const nextStore = new EventStore();
+      const nextGames = new PendingGamesStore();
+      return {
+        store: nextStore,
+        games: nextGames,
+        client: new GameEventClientImpl(nextStore, nextGames, new BugReportLimiter()),
+      };
+    }
+
+    async function eventTypes(s: EventStore, gameId: string): Promise<string[]> {
+      const rows = await s.peek(100, { includeDeadLettered: true, includeFuture: true });
+      return rows
+        .filter((r) => r.log_type === "game_event" && r.game_id === gameId)
+        .map((r) => (r.log_type === "game_event" ? r.event_type : ""));
+    }
+
+    function legacyRecord(extra: Record<string, unknown>) {
+      return {
+        gameType: "yacht",
+        metadata: {},
+        startedAt: 500_000,
+        startedSynced: false,
+        nextEventIndex: 1,
+        completed: false,
+        completedAt: null,
+        completeSummary: null,
+        completeSynced: false,
+        ...extra,
+      };
+    }
+
+    let now: jest.SpyInstance<number, []>;
+    beforeEach(() => {
+      now = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    });
+    afterEach(() => {
+      now.mockRestore();
+    });
+
+    it("keeps a started game under 24 h old open, for its screen to resume", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      client.enqueueEvent(id, { type: "roll" });
+      now.mockReturnValue(1_000_000 + DAY - 1);
+
+      const next = await relaunch();
+      await next.client.init();
+
+      expect(next.games.get(id)?.completed).toBe(false);
+      expect(next.games.get(id)?.started).toBe(true);
+      expect(await eventTypes(next.store, id)).not.toContain("game_ended");
+    });
+
+    it("abandons a started game 24 h old, at its last event", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      now.mockReturnValue(1_090_000);
+      client.enqueueEvent(id, { type: "roll" });
+      // The process is killed here; the next launch is a day after the game started.
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      await next.client.init();
+
+      const g = next.games.get(id);
+      expect(g?.completed).toBe(true);
+      expect(g?.completeSummary).toEqual({ outcome: "abandoned" });
+      expect(g?.completedAt).toBe(1_090_000);
+      // peek() orders by priority tier, so compare as a set.
+      expect((await eventTypes(next.store, id)).sort()).toEqual([
+        "game_ended",
+        "game_started",
+        "roll",
+      ]);
+    });
+
+    it("an orphan never reopened is kept on each launch until it is 24 h old, then abandoned", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+
+      now.mockReturnValue(1_000_000 + DAY / 2);
+      const second = await relaunch();
+      await second.client.init();
+      expect(second.games.get(id)?.completed).toBe(false);
+
+      now.mockReturnValue(1_000_000 + DAY + 1);
+      const third = await relaunch();
+      await third.client.init();
+      expect(third.games.get(id)?.completed).toBe(true);
+      expect(third.games.get(id)?.completeSummary).toEqual({ outcome: "abandoned" });
+    });
+
+    it("drops an unstarted game and its events; nothing is recorded as abandoned", async () => {
+      const id = client.startGame("yacht");
+      client.enqueueEvent(id, { type: "deal" });
+
+      const next = await relaunch();
+      await next.client.init();
+
+      expect(next.games.get(id)).toBeUndefined();
+      expect(await eventTypes(next.store, id)).toEqual([]);
+      // Gone from disk too.
+      const after = await relaunch();
+      await after.games.init();
+      expect(after.games.get(id)).toBeUndefined();
+    });
+
+    describe("an older build's record, which has no `started`", () => {
+      async function loadLegacy(extra: Record<string, unknown>) {
+        await AsyncStorage.setItem(
+          "pending_games_v1",
+          JSON.stringify({ legacy: legacyRecord(extra) })
+        );
+        now.mockReturnValue(500_000 + DAY); // old enough to be abandoned if started
+        const next = await relaunch();
+        await next.client.init();
+        return next;
+      }
+
+      it("already created on the server: started, so it is closed as abandoned", async () => {
+        const next = await loadLegacy({ startedSynced: true });
+        const g = next.games.get("legacy");
+        expect(g?.started).toBe(true);
+        expect(g?.completeSummary).toEqual({ outcome: "abandoned" });
+        // No last-event time on an older record: its start is the last activity known.
+        expect(g?.completedAt).toBe(500_000);
+      });
+
+      it("with an event beyond game_started: started, so it is closed as abandoned", async () => {
+        const next = await loadLegacy({ nextEventIndex: 2 });
+        expect(next.games.get("legacy")?.started).toBe(true);
+        expect(next.games.get("legacy")?.completeSummary).toEqual({ outcome: "abandoned" });
+      });
+
+      it("never sent, with only game_started: unstarted, so it is discarded", async () => {
+        const next = await loadLegacy({ nextEventIndex: 1 });
+        expect(next.games.get("legacy")).toBeUndefined();
+      });
+    });
+
+    it("leaves a completed game from the killed process as it was", async () => {
+      const id = client.startGame("yacht");
+      client.completeGame(id, { outcome: "completed", finalScore: 42 });
+
+      const next = await relaunch();
+      await next.client.init();
+
+      expect(next.games.get(id)?.completeSummary).toEqual({ outcome: "completed", finalScore: 42 });
+      expect(await eventTypes(next.store, id)).toEqual(["game_started", "game_ended"]);
+    });
+
+    it("does not sweep games started in this process before init() resolves", async () => {
+      const killed = client.startGame("yacht");
+      client.markStarted(killed);
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      const initDone = next.client.init();
+      const played = next.client.startGame("twenty48");
+      next.client.markStarted(played);
+      const untouched = next.client.startGame("sudoku");
+      await initDone;
+
+      expect(next.games.get(killed)?.completed).toBe(true);
+      expect(next.games.get(played)?.completed).toBe(false);
+      expect(next.games.get(untouched)).toBeDefined();
+      expect(next.games.get(untouched)?.completed).toBe(false);
+      expect(await eventTypes(next.store, played)).toEqual(["game_started"]);
+      expect(await eventTypes(next.store, untouched)).toEqual(["game_started"]);
+    });
+
+    it("does not sweep a game started in this process before init() is even called", async () => {
+      const killed = client.startGame("yacht");
+      client.markStarted(killed);
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      const early = next.client.startGame("twenty48");
+      next.client.markStarted(early);
+      await flushMicrotasks();
+      await next.client.init();
+
+      expect(next.games.get(killed)?.completed).toBe(true);
+      expect(next.games.get(early)?.completed).toBe(false);
+      expect(next.games.get(early)?.started).toBe(true);
+      expect(await eventTypes(next.store, early)).toEqual(["game_started"]);
+    });
+
+    it("sweeps once per process, however often init() is called", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      await Promise.all([next.client.init(), next.client.init()]);
+      await next.client.init();
+
+      expect((await eventTypes(next.store, id)).filter((t) => t === "game_ended")).toHaveLength(1);
+    });
+
+    it("writes the pending games once and deletes the discarded games' events in one pass", async () => {
+      for (let i = 0; i < 3; i += 1) client.startGame("yacht"); // untouched: discarded
+      for (let i = 0; i < 3; i += 1) client.markStarted(client.startGame("sudoku")); // 24 h old
+      now.mockReturnValue(1_000_000 + DAY);
+      const next = await relaunch();
+      // Killed just before the relaunch: kept.
+      const young = client.startGame("hearts");
+      client.markStarted(young);
+      await flushMicrotasks();
+
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      setItem.mockClear();
+      const deleteByGameIds = jest.spyOn(next.store, "deleteByGameIds");
+      const deleteByGameId = jest.spyOn(next.store, "deleteByGameId");
+      await next.client.init();
+      await flushMicrotasks();
+
+      const pendingWrites = setItem.mock.calls.filter(([k]) => k === "pending_games_v1");
+      expect(pendingWrites).toHaveLength(1);
+      expect(deleteByGameIds).toHaveBeenCalledTimes(1);
+      expect(deleteByGameIds.mock.calls[0]?.[0]).toHaveLength(3);
+      expect(deleteByGameId).not.toHaveBeenCalled();
+      expect(next.games.all().filter(([, g]) => g.completed)).toHaveLength(3);
+      expect(next.games.get(young)?.completed).toBe(false);
+    });
+
+    describe("resuming a killed process's game", () => {
+      it("continues the same session: no new create, no game_started, same event counter", async () => {
+        const id = client.startGame("yacht", { mode: "solo" });
+        client.markStarted(id);
+        client.enqueueEvent(id, { type: "roll" });
+
+        const next = await relaunch();
+        await next.client.init();
+        expect(next.client.resumeGame("yacht")).toBe(id);
+        next.client.enqueueEvent(id, { type: "score" });
+        next.client.completeGame(id, { outcome: "completed", finalScore: 99 });
+        await flushMicrotasks();
+
+        expect(next.games.all()).toHaveLength(1);
+        expect(next.games.get(id)?.completeSummary).toEqual({
+          outcome: "completed",
+          finalScore: 99,
+        });
+        const rows = await next.store.peek(100, { includeFuture: true });
+        const indices = rows
+          .filter((r) => r.log_type === "game_event")
+          .map((r) => (r.log_type === "game_event" ? `${r.event_index}:${r.event_type}` : ""))
+          .sort();
+        expect(indices).toEqual(["0:game_started", "1:roll", "2:score", "3:game_ended"]);
+      });
+
+      it("a resumed game is this process's: a later sweep or fresh game leaves it alone", async () => {
+        const id = client.startGame("yacht");
+        client.markStarted(id);
+        const next = await relaunch();
+        await next.client.init();
+        expect(next.client.resumeGame("yacht")).toBe(id);
+        // A second resume finds nothing: it was adopted.
+        expect(next.client.resumeGame("yacht")).toBeNull();
+        next.client.markStarted(next.client.startGame("yacht"));
+        await flushMicrotasks();
+        expect(next.games.get(id)?.completed).toBe(false);
+      });
+
+      it("finds nothing for another game type, an unstarted game, or one 24 h old", async () => {
+        const started = client.startGame("yacht");
+        client.markStarted(started);
+        client.startGame("sudoku"); // unstarted
+        now.mockReturnValue(1_000_000 + DAY / 2);
+        const next = await relaunch();
+        await next.client.init();
+        expect(next.client.resumeGame("twenty48")).toBeNull();
+        expect(next.client.resumeGame("sudoku")).toBeNull();
+        now.mockReturnValue(1_000_000 + DAY);
+        expect(next.client.resumeGame("yacht")).toBeNull();
+      });
+
+      it("finds nothing before the pending games are loaded", async () => {
+        const id = client.startGame("yacht");
+        client.markStarted(id);
+        const next = await relaunch();
+        expect(next.client.resumeGame("yacht")).toBeNull();
+      });
+
+      it("matches on metadata when asked", async () => {
+        const monday = client.startGame("daily_word", { puzzle_id: "mon" });
+        client.markStarted(monday);
+        const next = await relaunch();
+        await next.client.init();
+        expect(next.client.resumeGame("daily_word", { puzzle_id: "tue" })).toBeNull();
+        expect(next.client.resumeGame("daily_word", { puzzle_id: "mon" })).toBe(monday);
+      });
+
+      it("adopts the most recently played orphan of the type and abandons the others", async () => {
+        const older = client.startGame("yacht");
+        client.markStarted(older);
+        now.mockReturnValue(1_050_000);
+        const newer = client.startGame("yacht");
+        client.markStarted(newer);
+        const next = await relaunch();
+        await next.client.init();
+
+        expect(next.client.resumeGame("yacht")).toBe(newer);
+        await flushMicrotasks();
+        expect(next.games.get(older)?.completeSummary).toEqual({ outcome: "abandoned" });
+        expect(next.games.get(newer)?.completed).toBe(false);
+      });
+    });
+
+    describe("starting a fresh game instead", () => {
+      it("abandons the type's orphans when the fresh game is started, not when it opens", async () => {
+        const orphan = client.startGame("yacht");
+        client.markStarted(orphan);
+        now.mockReturnValue(1_020_000);
+        client.enqueueEvent(orphan, { type: "roll" });
+        const other = client.startGame("sudoku");
+        client.markStarted(other);
+
+        now.mockReturnValue(1_100_000);
+        const next = await relaunch();
+        await next.client.init();
+        const fresh = next.client.startGame("yacht");
+        await flushMicrotasks();
+        expect(next.games.get(orphan)?.completed).toBe(false); // opened, not played yet
+
+        next.client.markStarted(fresh);
+        await flushMicrotasks();
+        expect(next.games.get(orphan)?.completeSummary).toEqual({ outcome: "abandoned" });
+        expect(next.games.get(orphan)?.completedAt).toBe(1_020_000);
+        expect(next.games.get(fresh)?.completed).toBe(false);
+        expect(next.games.get(other)?.completed).toBe(false); // another game type
+      });
+
+      it("a fresh game completed before any markStarted also abandons them", async () => {
+        const orphan = client.startGame("yacht");
+        client.markStarted(orphan);
+        const next = await relaunch();
+        await next.client.init();
+        next.client.completeGame(next.client.startGame("yacht"), { outcome: "completed" });
+        await flushMicrotasks();
+        expect(next.games.get(orphan)?.completeSummary).toEqual({ outcome: "abandoned" });
+      });
+
+      it("a fresh game started before the load: the sweep abandons the type's orphans", async () => {
+        const orphan = client.startGame("yacht");
+        client.markStarted(orphan);
+        const next = await relaunch();
+        expect(next.client.resumeGame("yacht")).toBeNull(); // not loaded yet
+        next.client.markStarted(next.client.startGame("yacht"));
+        await next.client.init();
+        expect(next.games.get(orphan)?.completeSummary).toEqual({ outcome: "abandoned" });
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // generateUUID — crypto fallback (regression for Sentry issue: "Property
   // 'crypto' doesn't exist")
   // -------------------------------------------------------------------------

@@ -124,6 +124,7 @@ export default function HeartsScreen() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -159,6 +160,8 @@ export default function HeartsScreen() {
         }
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
+        // A restored game continues the session a killed app left open (#2654).
+        if (saved.phase !== "game_over") syncResume();
         if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
           // Best-effort: saved state doesn't preserve the original deal, so
           // playerHands approximates both initial and final hands for resumed games.
@@ -176,7 +179,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, []);
+  }, [syncResume]);
 
   // ─── Sync snapshot to shared rounds context (read by ScoreboardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();

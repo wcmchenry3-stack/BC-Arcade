@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from games.board import BoardDefinition
+from games.protocol import default_stats_shape
 from sort.models import SortMetadata
 from vocab import GameType
 
@@ -28,7 +29,7 @@ class SortModule:
     )
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = SortModule()

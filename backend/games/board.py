@@ -34,7 +34,11 @@ column) or a key in ``games.metadata``, which holds the creation-time metadata
 merged with the validated result block. ``tiebreak`` and ``partitions`` keys
 always live in ``games.metadata``. A row that predates a partition key is read
 with that key's ``partition_defaults`` value (Sudoku rows from before #748 have
-no ``variant`` and belong to ``classic``).
+no ``variant`` and belong to ``classic``). A partition key listed in
+``partition_values`` only has those boards: a request for any other value is
+rejected, and a row holding one can't be named, so a typo or a forged value
+can't open a new public board. The row itself is still stored (a 4xx on
+create or completion would dead-letter the whole game in the app).
 """
 
 from __future__ import annotations
@@ -79,6 +83,15 @@ class BoardDefinition(BaseModel):
         ``(partition key, value)`` pairs: the value to assume when a row's
         metadata lacks that key (or holds ``null``). Every key is one of
         ``partitions`` and appears once. Read it with ``partition_default``.
+    partition_values:
+        ``(partition key, allowed values)`` pairs: the only values that key
+        has a board for, e.g. Star Swarm's ten difficulty tiers. A row with
+        another value is stored but never ranks (``_unrankable_reason`` in
+        ``games/leaderboard.py``). A key not listed accepts any value.
+        Every key is one of ``partitions`` and appears once; its values are
+        non-empty and distinct, and its ``partition_defaults`` and
+        ``partition_max_values`` values are among them. Read it with
+        ``allowed_values``.
     max_value:
         Highest legitimate ``metric`` value on any of the game's boards, for
         submission validation (absorbs #2215). ``None`` means the game has no
@@ -108,6 +121,7 @@ class BoardDefinition(BaseModel):
     label_key: str = Field(min_length=1)
     partitions: tuple[str, ...] = ()
     partition_defaults: tuple[tuple[str, str], ...] = ()
+    partition_values: tuple[tuple[str, tuple[str, ...]], ...] = ()
     max_value: int | None = Field(default=None, ge=0)
     partition_max_values: tuple[tuple[str, str, int], ...] = ()
     qualifying_outcomes: tuple[str, ...] | None = None
@@ -125,6 +139,18 @@ class BoardDefinition(BaseModel):
         if unknown:
             raise ValueError(f"partition_defaults keys {unknown} are not in partitions")
 
+        value_keys = [key for key, _ in self.partition_values]
+        if len(set(value_keys)) != len(value_keys):
+            raise ValueError(f"duplicate partition_values keys: {value_keys}")
+        for key, values in self.partition_values:
+            if key not in self.partitions:
+                raise ValueError(f"partition_values key {key!r} is not in partitions")
+            if not values or len(set(values)) != len(values):
+                raise ValueError(f"partition_values for {key!r} must be non-empty and distinct")
+        for key, value in self.partition_defaults:
+            if not self.is_allowed(key, value):
+                raise ValueError(f"partition_defaults value {key}={value} is not allowed")
+
         if self.partition_max_values and self.max_value is None:
             raise ValueError("partition_max_values needs an overall max_value")
         seen: set[tuple[str, str]] = set()
@@ -134,6 +160,8 @@ class BoardDefinition(BaseModel):
             if (key, value) in seen:
                 raise ValueError(f"duplicate partition_max_values entry {key}={value}")
             seen.add((key, value))
+            if not self.is_allowed(key, value):
+                raise ValueError(f"partition_max_values value {key}={value} is not allowed")
             if cap < 0:
                 raise ValueError(f"partition_max_values cap for {key}={value} is negative")
             if self.max_value is not None and cap > self.max_value:
@@ -155,6 +183,15 @@ class BoardDefinition(BaseModel):
     def partition_default(self, key: str) -> str | None:
         """The value assumed for partition *key* when a row lacks it, or ``None``."""
         return next((value for k, value in self.partition_defaults if k == key), None)
+
+    def allowed_values(self, key: str) -> tuple[str, ...] | None:
+        """The only values partition *key* may take, or ``None`` if any value may."""
+        return next((values for k, values in self.partition_values if k == key), None)
+
+    def is_allowed(self, key: str, value: str) -> bool:
+        """Whether partition *key* has a board for *value* (``partition_values``)."""
+        allowed = self.allowed_values(key)
+        return allowed is None or value in allowed
 
     def max_value_for(self, partition: Mapping[str, Any]) -> int | None:
         """The effective cap for a row in *partition* (its metadata, or any dict).

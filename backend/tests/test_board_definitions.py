@@ -8,12 +8,15 @@ scoring constants so a constant change fails here until the cap is updated.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from db.models import Game
 from games.board import FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
+from games.leaderboard import _unrankable_reason
 from games.registry import get_module
 
 _FRONTEND_SRC = Path(__file__).parents[2] / "frontend" / "src"
@@ -31,6 +34,8 @@ _GAMES = [
     "sort",
     "blackjack",
     "daily_word",
+    "twenty48",
+    "starswarm",
 ]
 
 
@@ -50,6 +55,7 @@ def test_defaults() -> None:
     assert board.tiebreak is None
     assert board.partitions == ()
     assert board.partition_defaults == ()
+    assert board.partition_values == ()
     assert board.max_value is None
     assert board.partition_max_values == ()
     assert board.qualifying_outcomes is None
@@ -84,6 +90,24 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
             "partition_max_values": (("difficulty", "easy", 100), ("difficulty", "easy", 90)),
         },
         {**_PARTITIONED, "max_value": None, "partition_max_values": (("difficulty", "easy", 1),)},
+        {"partition_values": (("variant", ("classic",)),)},
+        {**_PARTITIONED, "partition_values": (("mode", ("classic",)),)},
+        {
+            **_PARTITIONED,
+            "partition_values": (("variant", ("classic",)), ("variant", ("mini",))),
+        },
+        {**_PARTITIONED, "partition_values": (("variant", ()),)},
+        {**_PARTITIONED, "partition_values": (("variant", ("mini", "mini")),)},
+        {
+            **_PARTITIONED,
+            "partition_defaults": (("variant", "classic"),),
+            "partition_values": (("variant", ("mini",)),),
+        },
+        {
+            **_PARTITIONED,
+            "partition_max_values": (("difficulty", "extreme", 300),),
+            "partition_values": (("difficulty", ("easy", "hard")),),
+        },
         {"qualifying_outcomes": ()},
         {"qualifying_outcomes": ("abandoned",)},
         {"qualifying_outcomes": ("victory",)},
@@ -105,6 +129,13 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
         "negative-cap",
         "duplicate-cap",
         "cap-without-max-value",
+        "values-without-partition",
+        "values-key-not-a-partition",
+        "duplicate-values-key",
+        "empty-values",
+        "duplicate-value",
+        "default-not-allowed",
+        "cap-value-not-allowed",
         "empty-qualifying-outcomes",
         "abandoned-qualifies",
         "unknown-outcome",
@@ -167,6 +198,21 @@ def test_max_value_for_applies_defaults_and_takes_the_tightest_cap() -> None:
     assert board.max_value_for({"variant": "mini"}) == 50  # no per-partition cap
 
 
+def test_allowed_values() -> None:
+    board = BoardDefinition(
+        metric=SCORE_METRIC,
+        direction="desc",
+        label_key="score",
+        partitions=("difficulty", "variant"),
+        partition_values=(("variant", ("classic", "mini")),),
+    )
+    assert board.allowed_values("variant") == ("classic", "mini")
+    assert board.allowed_values("difficulty") is None
+    assert board.is_allowed("variant", "mini")
+    assert not board.is_allowed("variant", "Mini")
+    assert board.is_allowed("difficulty", "anything")  # no allow-list for this key
+
+
 def test_max_value_for_uncapped_board_is_none() -> None:
     assert _board("cascade").max_value_for({}) is None
 
@@ -203,6 +249,8 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("sort", "level_reached", "desc", ("total_moves", "asc"), (), 23, None, True),
         ("blackjack", SCORE_METRIC, "desc", None, (), None, None, False),
         ("daily_word", "guesses_used", "asc", None, (), None, ("win",), False),
+        ("twenty48", SCORE_METRIC, "desc", None, (), None, None, True),
+        ("starswarm", SCORE_METRIC, "desc", None, ("difficulty_tier",), None, None, True),
     ],
 )
 def test_declared_board(
@@ -218,11 +266,49 @@ def test_declared_board(
     assert board.enabled is enabled
 
 
-@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku"}))
-def test_only_sudoku_has_partition_rules(game: str) -> None:
+@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku", "starswarm"}))
+def test_only_sudoku_and_starswarm_have_partition_rules(game: str) -> None:
     board = _board(game)
     assert board.partition_defaults == ()
+    assert board.partition_values == ()
     assert board.partition_max_values == ()
+
+
+@pytest.mark.parametrize("game", _GAMES)
+def test_partition_values_fill_every_board_and_nothing_else_ranks(game: str) -> None:
+    """Every board can fill, and a row outside ``partition_values`` never ranks.
+
+    For each ``partition_values`` key, the metadata model (and the result
+    model, when it declares the key) accepts every allowed value. It also
+    accepts other values: rejecting one would dead-letter the game in the app.
+    Such a row is stored but can't be named (``_unrankable_reason``), so it
+    never lands on a board nobody can request.
+    """
+    mod = get_module(game)
+    assert mod is not None
+    for key, values in mod.board.partition_values:
+        models = [mod.metadata_model]
+        if mod.result_model is not None and key in mod.result_model.model_fields:
+            models.append(mod.result_model)
+        for model in models:
+            assert key in model.model_fields, f"{game}: {model.__name__} lacks {key}"
+            for value in values:
+                model.model_validate({key: value})
+
+        def reason(value: str, key: str = key) -> str | None:
+            row = Game(
+                final_score=1,
+                outcome="completed",
+                completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                game_metadata={mod.board.metric: 1, key: value},
+            )
+            return _unrankable_reason(mod.board, row)
+
+        for value in values:
+            assert reason(value) is None, f"{game}: {key}={value} should rank"
+        for bad in (values[0].lower(), values[0] + "x", "forged"):
+            if bad not in values:
+                assert reason(bad) == "This game's board does not exist."
 
 
 def test_sudoku_variant_defaults_to_classic_like_the_legacy_route() -> None:

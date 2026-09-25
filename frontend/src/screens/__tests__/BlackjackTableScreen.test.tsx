@@ -30,9 +30,15 @@ type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
+// A killed process's session to continue (#2654) — none unless a test says so.
+const mockResumeGame = jest.fn((): string | null => null);
+const mockMarkStarted = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
+    markStarted: (...args: unknown[]) => (mockMarkStarted as jest.Mock)(...args),
+    discardGame: jest.fn(),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -283,7 +289,7 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
 // ---------------------------------------------------------------------------
 
 import { useBlackjackGame, PlayerActionHint } from "../../game/blackjack/BlackjackGameContext";
-import { TableConfig } from "../../game/blackjack/tables";
+import { TABLE_CONFIGS, TableConfig } from "../../game/blackjack/tables";
 import {
   hit,
   doubleDown,
@@ -612,6 +618,44 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+  });
+
+  describe("after the app was killed mid-game (#2654)", () => {
+    it("a saved mid-game continues the killed process's session: no new session", async () => {
+      mockResumeGame.mockReturnValueOnce("killed-session");
+      const { unmount } = await renderWithConsumer(makePlayerPhaseState());
+      await settle();
+
+      expect(mockResumeGame).toHaveBeenCalledWith("blackjack", undefined);
+      expect(mockStartGame).not.toHaveBeenCalled();
+      expect(mockMarkStarted).not.toHaveBeenCalled();
+
+      // Leaving closes that one session — no second game, no extra abandon.
+      await unmount();
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      expect(mockCompleteGame.mock.calls[0]?.[0]).toBe("killed-session");
+      expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+    });
+
+    it("a saved mid-game with no session left to continue starts one, already started", async () => {
+      await renderWithConsumer(makePlayerPhaseState());
+      await settle();
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      expect(mockMarkStarted).toHaveBeenCalledWith("game-uuid-test");
+    });
+
+    it("a table picked for a fresh run never resumes", async () => {
+      (loadGame as jest.Mock).mockResolvedValueOnce(null);
+      await renderWithConsumer();
+      await settle();
+      await act(async () => {
+        getCtx().handleTableSelect(TABLE_CONFIGS[0]!);
+      });
+      await settle();
+      expect(mockResumeGame).not.toHaveBeenCalled();
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("New Game mid-session abandons the old session and starts a new one", async () => {

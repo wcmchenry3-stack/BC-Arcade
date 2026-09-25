@@ -269,8 +269,9 @@ def test_create_game_request_invalid_sudoku_metadata_raises_422() -> None:
 
 
 def test_create_game_request_unregistered_game_type_skips_validation() -> None:
-    # twenty48 is in GameType but not yet in the registry — should not raise
-    req = CreateGameRequest(game_type="twenty48", metadata={"anything": True})
+    # A game type with no registered module (e.g. seeded in the DB before its
+    # module ships) skips validation. Every GameType has a module since #2623.
+    req = CreateGameRequest(game_type="unregistered_game", metadata={"anything": True})
     assert req.metadata == {"anything": True}
 
 

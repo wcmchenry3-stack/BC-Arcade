@@ -523,14 +523,9 @@ async def test_only_json_true_marks_a_row_swept(client: TestClient) -> None:
     assert r.json()["final_score"] == 10
 
 
-# An active game type with no registered module: its creation metadata and its
-# result are both stored as sent, unvalidated.
-_UNVALIDATED = "twenty48"
-
-
-def _create(client: TestClient, sid: str, metadata: dict) -> str:
+def _create(client: TestClient, sid: str, game_type: str, metadata: dict) -> str:
     r = client.post(
-        "/games", headers=_headers(sid), json={"game_type": _UNVALIDATED, "metadata": metadata}
+        "/games", headers=_headers(sid), json={"game_type": game_type, "metadata": metadata}
     )
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -546,23 +541,43 @@ def _complete(client: TestClient, sid: str, gid: str, score: int, **extra) -> di
     return r.json()
 
 
-async def test_a_client_cannot_set_the_swept_flag_at_create(client: TestClient) -> None:
-    sid = str(uuid.uuid4())
-    gid = _create(client, sid, {"swept": True, "player_name": "Ann"})
-    assert (await _get(uuid.UUID(gid))).game_metadata == {"player_name": "Ann"}
+def test_a_client_sending_the_swept_flag_at_create_is_rejected(client: TestClient) -> None:
+    # Every game's metadata model forbids unknown keys (#2623), so the flag
+    # never reaches create_game over HTTP.
+    r = client.post(
+        "/games",
+        headers=_headers(str(uuid.uuid4())),
+        json={"game_type": "twenty48", "metadata": {"swept": True}},
+    )
+    assert r.status_code == 422
 
-    assert _complete(client, sid, gid, 100)["final_score"] == 100
-    # First completion wins: the finished row is not overwritable.
-    assert _complete(client, sid, gid, 999)["final_score"] == 100
+
+async def test_create_game_drops_the_swept_flag() -> None:
+    # Defence in depth below the models: create_game never stores the flag.
+    sid = str(uuid.uuid4())
+    async with get_session_factory()() as db:
+        game = await service.create_game(
+            db,
+            session_id=sid,
+            client_id=None,
+            game_type_name="cascade",
+            metadata={"swept": True, "player_name": "Ann"},
+            players=[],
+        )
+        gid = game.id
+    assert (await _get(gid)).game_metadata == {"player_name": "Ann"}
 
 
 async def test_a_result_cannot_set_the_swept_flag(client: TestClient) -> None:
+    # Yacht has no result model, so its result is merged as sent — except the flag.
     sid = str(uuid.uuid4())
-    gid = _create(client, sid, {"player_name": "Ann"})
+    gid = _create(client, sid, "yacht", {})
     assert (
         _complete(client, sid, gid, 100, result={"swept": True, "rolls": 3})["final_score"] == 100
     )
-    assert (await _get(uuid.UUID(gid))).game_metadata == {"player_name": "Ann", "rolls": 3}
+    metadata = (await _get(uuid.UUID(gid))).game_metadata
+    assert "swept" not in metadata and metadata["rolls"] == 3
+    # First completion wins: the finished row is not overwritable.
     assert _complete(client, sid, gid, 999)["final_score"] == 100
 
 

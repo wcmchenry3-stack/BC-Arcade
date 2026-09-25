@@ -38,7 +38,10 @@ export default function LanguageSwitcher() {
         onRequestClose={() => setOpen(false)}
         accessibilityViewIsModal
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: colors.overlay }]}
+          onPress={() => setOpen(false)}
+        >
           <View
             style={[styles.sheet, { backgroundColor: colors.modalBg, borderColor: colors.border }]}
           >
@@ -88,7 +91,6 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,

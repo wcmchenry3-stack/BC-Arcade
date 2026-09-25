@@ -114,20 +114,21 @@ class GameModule(Protocol):
 
 **`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once. It is required: a game with no leaderboard declares a board with `enabled=False`, never `None`. Boards are shared class-level singletons, so the model is frozen and every container field is a tuple. The generic leaderboard routes below read them (#2618); stats use them from #2620 (epic #2519).
 
-| Field                  | Type                               | Meaning                                                                                                                                                                                                                                 |
-| ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `metric`               | `str`                              | What is ranked: `"final_score"` (the `games` column) or a `games.metadata` key.                                                                                                                                                         |
-| `direction`            | `"asc" \| "desc"`                  | `desc` = higher is better, `asc` = lower is better.                                                                                                                                                                                     |
-| `tiebreak`             | `tuple[str, Direction] \| None`    | Optional `(metadata key, direction)` applied before the final tie-break, `completed_at asc`, which every board uses.                                                                                                                    |
-| `label_key`            | `str`                              | i18n key for the metric's label.                                                                                                                                                                                                        |
-| `partitions`           | `tuple[str, ...]`                  | Metadata keys that split the game into one board per combination of values.                                                                                                                                                             |
-| `partition_defaults`   | `tuple[tuple[str, str], ...]`      | `(key, value)`: the value assumed when a row lacks that partition key or holds `null` (legacy rows). Keys must be in `partitions`, once each. Read with `partition_default(key)`.                                                       |
-| `max_value`            | `int \| None`                      | Highest legitimate `metric` value on any of the game's boards (absorbs #2215). `None` = no ceiling.                                                                                                                                     |
-| `partition_max_values` | `tuple[tuple[str, str, int], ...]` | `(key, value, cap)`: a tighter cap for rows in that partition. Keys must be in `partitions`, each `(key, value)` once, each cap at most `max_value` (which must be set). `max_value_for(metadata)` returns the effective cap for a row. |
-| `qualifying_outcomes`  | `tuple[str, ...] \| None`          | `games.outcome` values that count toward the board and the per-game "best" in stats. `None` = every non-abandoned row. Never includes `abandoned`.                                                                                      |
-| `enabled`              | `bool`                             | `False` for games with no leaderboard. Their `metric`, `direction`, `label_key` and `qualifying_outcomes` still define the "best" in stats.                                                                                             |
+| Field                  | Type                                      | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metric`               | `str`                                     | What is ranked: `"final_score"` (the `games` column) or a `games.metadata` key.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `direction`            | `"asc" \| "desc"`                         | `desc` = higher is better, `asc` = lower is better.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `tiebreak`             | `tuple[str, Direction] \| None`           | Optional `(metadata key, direction)` applied before the final tie-break, `completed_at asc`, which every board uses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `label_key`            | `str`                                     | i18n key for the metric's label.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `partitions`           | `tuple[str, ...]`                         | Metadata keys that split the game into one board per combination of values.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `partition_defaults`   | `tuple[tuple[str, str], ...]`             | `(key, value)`: the value assumed when a row lacks that partition key or holds `null` (legacy rows). Keys must be in `partitions`, once each. Read with `partition_default(key)`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `partition_values`     | `tuple[tuple[str, tuple[str, ...]], ...]` | `(key, allowed values)`: the only values that key has a board for; a request for any other is a 400, and a row holding another value is stored but can't be named, so it never ranks (`test_partition_values_fill_every_board_and_nothing_else_ranks`). The models accept every allowed value, and other values too: a 4xx on create or completion would dead-letter the whole game in the app. A key not listed takes any value. Keys must be in `partitions`, once each; values non-empty and distinct; that key's `partition_defaults` and `partition_max_values` values must be among them. Read with `allowed_values(key)` / `is_allowed(key, value)`. |
+| `max_value`            | `int \| None`                             | Highest legitimate `metric` value on any of the game's boards (absorbs #2215). `None` = no ceiling.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `partition_max_values` | `tuple[tuple[str, str, int], ...]`        | `(key, value, cap)`: a tighter cap for rows in that partition. Keys must be in `partitions`, each `(key, value)` once, each cap at most `max_value` (which must be set). `max_value_for(metadata)` returns the effective cap for a row.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `qualifying_outcomes`  | `tuple[str, ...] \| None`                 | `games.outcome` values that count toward the board and the per-game "best" in stats. `None` = every non-abandoned row. Never includes `abandoned`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `enabled`              | `bool`                                    | `False` for games with no leaderboard. Their `metric`, `direction`, `label_key` and `qualifying_outcomes` still define the "best" in stats.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`, every field camelCased (`tiebreak`, `labelKey`, `partitions`, `partitionDefaults`, `maxValue`, `partitionMaxValues`, `qualifyingOutcomes`, `enabled`); the pair and triple tuples become records (`{ variant: "classic" }`, `{ difficulty: { easy: 100, … } }`). `tests/test_vocab.py` fails on drift. The generic leaderboard and rank routes (#2618, below) read them; stats use them from #2620 (epic #2519).
+The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`, every field camelCased (`tiebreak`, `labelKey`, `partitions`, `partitionDefaults`, `partitionValues`, `maxValue`, `partitionMaxValues`, `qualifyingOutcomes`, `enabled`); the pair and triple tuples become records (`{ variant: "classic" }`, `{ difficulty_tier: ["Ensign", …] }`, `{ difficulty: { easy: 100, … } }`). `tests/test_vocab.py` fails on drift. The generic leaderboard and rank routes (#2618, below) read them; stats use them from #2620 (epic #2519).
 
 | Game       | metric          | direction | tie-break         | partitions (default)                | max_value                            | qualifying outcomes | enabled |
 | ---------- | --------------- | --------- | ----------------- | ----------------------------------- | ------------------------------------ | ------------------- | ------- |
@@ -141,22 +142,26 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 | Sort       | `level_reached` | desc      | `total_moves` asc | —                                   | 23                                   | any                 | yes     |
 | Blackjack  | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | no      |
 | Daily Word | `guesses_used`  | asc       | —                 | —                                   | —                                    | `win`               | no      |
+| Twenty48   | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
+| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier` (`LieutenantJG`)  | —                                    | any                 | yes     |
 
 "any" means every non-abandoned row. Notes on the declarations:
 
 - **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. The legacy `POST /yacht/score` bound of 400 applies to its `400 - raw` transform, not to a real game's total.
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
+- **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
+- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG`, the legacy `POST /starswarm/score` default.
 - **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
 - **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet, and Sort sends `level`/`moves` rather than `level_reached`/`total_moves`. Their Phase 2 stories (#2632, #2625) make the clients send the declared keys; the declarations stay as they are.
 
-Twenty48 and Star Swarm have no module yet (their boards arrive with their modules in #2623) and export `null`.
+Every `GameType` has a module since #2623, so no game exports `null`.
 
 #### Leaderboard routes (#2618)
 
 **Authority: `backend/games/leaderboard.py`, `backend/games/ranking.py`, `backend/games/router.py`.** Every game's board is served by two generic routes; a game gets a leaderboard by declaring `board`, with no router of its own.
 
-- **`GET /games/leaderboard/{game_type}`** returns `{game_type, partition, label_key, entries: [{rank, player_name, value, completed_at}]}`, top 10 by default (`?limit=` 1–100). Partition values are query params named after `board.partitions` (e.g. `?difficulty=hard&variant=mini`); a missing, unknown, empty or repeated partition is a 400. Unknown games, games without a module or board, and `enabled=False` boards are a 404.
+- **`GET /games/leaderboard/{game_type}`** returns `{game_type, partition, label_key, entries: [{rank, player_name, value, completed_at}]}`, top 10 by default (`?limit=` 1–100). Partition values are query params named after `board.partitions` (e.g. `?difficulty=hard&variant=mini`); a missing, unknown, empty or repeated partition is a 400, and so is a value outside the key's `partition_values` (e.g. `?difficulty_tier=captain`). Unknown games, games without a module or board, and `enabled=False` boards are a 404.
 - **`PATCH /games/{id}/name`** with `{player_name}` (1–32 characters after trimming) puts the display name on one of the caller's finished, scored games (`metadata.player_name`) and returns `{rank, is_best}`: the rank of the caller's **best** entry in that game's partition, and whether this game is that entry. 400 if the game could never rank: unfinished, no metric value, abandoned, an outcome outside `qualifying_outcomes`, or a metric that is negative, not an integer or above the row's cap; 403 if another session owns it; 404 if the game or its board doesn't exist.
 - **`PATCH /games/{id}/complete`** rejects a metric above the row's effective cap, `board.max_value_for(metadata)` (e.g. 100 for an easy Sudoku), with 400 (absorbs #2215); on an uncapped board the bound is 2³¹−1. A metric or tie-break read from metadata must be an integer from 0 to 2³¹−1. A negative `final_score` is **not** rejected: a 400 would dead-letter the game in the sync worker and lose its stats, so the board ignores the row instead (rule 6).
 
@@ -188,6 +193,7 @@ Example (pass-through stats, no metadata):
 ```python
 # backend/mygame/module.py
 from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from mygame.models import MyGameMetadata
 from vocab import GameType
 
@@ -199,7 +205,7 @@ class MyGameModule:
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 module = MyGameModule()
 ```
@@ -214,20 +220,22 @@ Each game's `games.metadata` JSONB column is validated on write by a Pydantic mo
 
 All metadata models use `extra="forbid"` to prevent arbitrary data from being silently stored.
 
-| Game        | Model               | Fields                                                                                                                                                             |
-| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Blackjack   | `BlackjackMetadata` | `best_run_chips: int \| None`, `total_runs: int \| None`, `runs_completed: int \| None`, `current_table: Literal["beginner","intermediate","high_roller"] \| None` |
-| Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
-| Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                 |
-| FreeCell    | `FreeCellMetadata`  | None (empty model). The per-session row (#2452) is separate from the leaderboard router's own rows (which hold `player_name`) and carries no `final_score`         |
-| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                             |
-| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
-| Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                             |
-| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                             |
-| Starswarm   | —                   | No backend module; router-only                                                                                                                                     |
-| Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                 |
-| Twenty48    | —                   | Frontend-only; no backend module                                                                                                                                   |
-| Yacht       | `YachtMetadata`     | `difficulty: Literal["easy","medium","hard"] = "easy"`                                                                                                             |
+| Game        | Model               | Fields                                                                                                                                                                                                   |
+| ----------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blackjack   | `BlackjackMetadata` | `best_run_chips: int \| None`, `total_runs: int \| None`, `runs_completed: int \| None`, `current_table: Literal["beginner","intermediate","high_roller"] \| None`                                       |
+| Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                                       |
+| FreeCell    | `FreeCellMetadata`  | None (empty model). The per-session row (#2452) is separate from the leaderboard router's own rows (which hold `player_name`) and carries no `final_score`                                               |
+| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                                                                   |
+| Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank. The router's own leaderboard rows (`POST /starswarm/score`) are written directly and hold `player_name` |
+| Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                                                       |
+| Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                                                       |
+| Yacht       | `YachtMetadata`     | `difficulty: Literal["easy","medium","hard"] = "easy"`                                                                                                                                                   |
+
+**Completion merge:** `PATCH /games/{id}/complete` merges the validated result block into `games.metadata` (`merge_result_metadata` in `games/leaderboard.py`; the board's limit check merges the same way). Creation-time keys win, so a result can't rewrite `player_name` or a partition. A creation key holding `null` has no value to protect and doesn't win: the result's value fills it (a Star Swarm run created with `difficulty_tier: null` keeps the tier its completion reports). A `null` in the result never clears a creation value.
 
 **Adding a metadata model:**
 
@@ -241,40 +249,79 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 ### 1.5 stats_shape()
 
-**Authority: `backend/<game>/module.py` (`stats_shape` method)**
+**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/service.py` (`get_stats_for_session`) for the comparable fields**
 
-`games/service.py` builds a `raw_stats` dict for each game type after an aggregate DB query and one pre-fetch query for `latest_score`. It then calls `module.stats_shape(raw_stats)` to get the final shape for the `/stats/me` API response. There is no game-specific logic in `service.py`.
+`games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
+
+1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
+2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input, `games/progression.py`).
+
+There is no game-specific logic in `service.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
-| Key              | Type               | Description                                       |
-| ---------------- | ------------------ | ------------------------------------------------- |
-| `played`         | `int`              | completed game count                              |
-| `best`           | `int \| None`      | highest `final_score`                             |
-| `avg`            | `float \| None`    | mean `final_score`                                |
-| `last_played_at` | `datetime \| None` | most recent `completed_at`                        |
-| `latest_score`   | `int \| None`      | `final_score` of the most recently completed game |
+| Key              | Type               | Description                                                  |
+| ---------------- | ------------------ | ------------------------------------------------------------ |
+| `played`         | `int`              | finished game count, abandons included                       |
+| `best`           | `int \| None`      | highest non-abandoned `final_score` (whatever the direction) |
+| `avg`            | `float \| None`    | mean non-abandoned `final_score`                             |
+| `last_played_at` | `datetime \| None` | most recent `completed_at`                                   |
+| `latest_score`   | `int \| None`      | `final_score` of the most recent non-abandoned game          |
+| `metadata`       | `dict`             | `games.metadata` of the most recent game                     |
 
-**Return value:** a dict whose keys are a subset of `GameTypeStats` fields (`played`, `best`, `avg`, `last_played_at`, `best_chips`, `current_chips`). Omitted keys default to `None` in the response.
+**Return value:** a dict with any of `played`, `best`, `avg`, `last_played_at` (deprecated aliases, see below) and `extras`, a dict of game-specific figures. Omitted keys default to `None` (`{}` for `extras`).
 
-**Default (pass-through) implementation** — strip `latest_score`, forward everything else:
+**Comparable fields (#2620)** — the same meaning for every game, set by the service:
+
+| Field                                    | Meaning                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions`                               | rows with `completed_at`, abandons included                                                                                                                                                                                                                                                                                                                                                             |
+| `completed`                              | `sessions` minus `abandoned` rows; the XP input                                                                                                                                                                                                                                                                                                                                                         |
+| `won` / `lost` / `tied`                  | rows with `outcome` = `win` / `loss` / `push`. All three `null` when the player has no row of the game with any of them (score-only games, solo-only Yacht): clients show "—". The legacy `blackjack` outcome is not counted; #2619 migrates it to `win`                                                                                                                                                |
+| `current_win_streak` / `best_win_streak` | runs of consecutive `win` rows in `completed_at` order (see rules below); `null` when the win fields are `null`                                                                                                                                                                                                                                                                                         |
+| `time_played_ms`                         | reported play time only: the sum over `sessions` of `duration_ms` where it is > 0, each row capped at 24 h. Rows with a null or 0 `duration_ms` add nothing; there is no `completed_at − started_at` fallback, so idle or backgrounded time is never counted. Undercounts until each game reports active time (its Phase 2 timer story)                                                                 |
+| `best_value`                             | best value of the board's `metric` in its `direction`, over non-abandoned rows whose `outcome` is in the board's `qualifying_outcomes` (any outcome when that is `null`). FreeCell: fewest moves; Daily Word: fewest `guesses_used` in a won game, `null` with only losses. A metadata metric that is not a JSON number is ignored. A game with no registered module is an error, never a guessed board |
+| `best_label_key`                         | the board's `label_key` (`"score"` for a game with no board)                                                                                                                                                                                                                                                                                                                                            |
+| `extras`                                 | what `stats_shape` returned under `extras`                                                                                                                                                                                                                                                                                                                                                              |
+
+**Win rate** = `won / (won + lost + tied)`. `completed` and `kept_playing` rows are not in the denominator. Undefined ("—") when the win fields are `null`.
+
+**Win streak rules:**
+
+- a `win` extends the run;
+- a `loss` ends it;
+- a `push` neither extends nor breaks it;
+- `abandoned`, `completed` and `kept_playing` rows are skipped (leaving a game is never penalised).
+
+**Deprecated aliases** (kept for store builds until #2637 ships; #2644 removes them): `played` (= `sessions`), `best`, `avg`, and Blackjack's top-level `best_chips`, `current_chips`, `best_run_chips`, `total_runs`, `runs_completed`, `current_table`, which mirror `extras`.
+
+**Default (pass-through) implementation** — strip `latest_score`, forward everything else (the service ignores `metadata`). Every game but Blackjack uses the shared helper in `games/protocol.py`:
 
 ```python
+from games.protocol import default_stats_shape
+
 def stats_shape(self, raw_stats: dict) -> dict:
-    return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+    return default_stats_shape(raw_stats)
 ```
 
-**Blackjack implementation** — renames `best → best_chips`, maps `latest_score → current_chips`, drops `avg`:
+**Blackjack implementation** — moves `best` and `latest_score` into `extras` as chips, adds the run aggregates from the latest metadata, drops `best` and `avg`:
 
 ```python
 def stats_shape(self, raw_stats: dict) -> dict:
+    meta = raw_stats.get("metadata") or {}
     return {
         "played": raw_stats["played"],
         "best": None,
         "avg": None,
         "last_played_at": raw_stats["last_played_at"],
-        "best_chips": raw_stats["best"],
-        "current_chips": raw_stats["latest_score"],
+        "extras": {
+            "best_chips": raw_stats["best"],
+            "current_chips": raw_stats["latest_score"],
+            "best_run_chips": meta.get("best_run_chips"),
+            "total_runs": meta.get("total_runs"),
+            "runs_completed": meta.get("runs_completed"),
+            "current_table": meta.get("current_table"),
+        },
     }
 ```
 

@@ -12,6 +12,7 @@ row is not a win. See ``vocab.GameOutcome``.
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from vocab import GameType
 from yacht.models import YachtMetadata
 
@@ -39,7 +40,7 @@ class YachtModule:
     )
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = YachtModule()

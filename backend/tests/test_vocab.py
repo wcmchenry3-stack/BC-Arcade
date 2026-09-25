@@ -92,7 +92,42 @@ def test_board_json_turns_pair_tuples_into_records() -> None:
     assert sort["tiebreak"] == ["total_moves", "asc"]
     assert sort["maxValue"] == 23
     assert gen.board_json(gen.board_for(GameType.DAILY_WORD))["qualifyingOutcomes"] == ["win"]
-    assert gen.board_json(gen.board_for(GameType.TWENTY48)) is None
+    starswarm = gen.board_json(gen.board_for(GameType.STARSWARM))
+    assert starswarm["partitions"] == ["difficulty_tier"]
+    assert starswarm["partitionDefaults"] == {"difficulty_tier": "LieutenantJG"}
+    assert starswarm["partitionValues"]["difficulty_tier"][:2] == ["Ensign", "LieutenantJG"]
+    assert sudoku["partitionValues"] == {}
+    # Every GameType has a module since #2623; a future one without is still null.
+    assert gen.board_json(None) is None
+
+
+def test_long_arrays_wrap_like_prettier() -> None:
+    """An array past the 100-column print width goes one item per line."""
+    gen = _load_generator()
+    assert gen._ts({"k": ["a", "b"]}, "  ") == '{\n    k: ["a", "b"],\n  }'
+    wide = ["x" * 30, "y" * 30, "z" * 30]
+    assert gen._ts({"k": wide}, "  ") == (
+        '{\n    k: [\n      "'
+        + wide[0]
+        + '",\n      "'
+        + wide[1]
+        + '",\n      "'
+        + wide[2]
+        + '",\n    ],\n  }'
+    )
+
+
+def test_long_number_arrays_fill_like_prettier() -> None:
+    """Prettier fills a long array of numbers: as many per line as fit
+    (checked against Prettier with frontend/.prettierrc)."""
+    gen = _load_generator()
+    nums = list(range(100_000, 1_400_001, 100_000))
+    assert gen._ts(nums, "    ", len("    nums: ")) == (
+        "[\n"
+        "      100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000,\n"
+        "      1200000, 1300000, 1400000,\n"
+        "    ]"
+    )
 
 
 def test_vocab_ts_matches_generator_output() -> None:

@@ -231,10 +231,14 @@ React commits per second over the game. See
 
 ## Backend
 
-- No `module.py` — Starswarm has a router-only backend
-- Endpoints: `backend/starswarm/router.py`
-- No metadata model
-- Scoring: score submitted via the router at game over
+- Module: `backend/starswarm/module.py`, registered in `backend/games/registry.py` (#2623)
+- Metadata model: `StarSwarmMetadata` in `backend/starswarm/models.py` — `difficulty_tier` only (extra keys forbidden)
+- Result model: `StarSwarmResult` — `outcome`, `wave_reached`, `difficulty_tier`, all optional; unknown keys are ignored
+- Tiers: `difficulty_tier` must be one of `DIFFICULTY_TIERS` in `backend/starswarm/models.py` — `Ensign`, `LieutenantJG`, `Lieutenant`, `LieutenantCommander`, `Commander`, `Captain`, `RearAdmiral`, `ViceAdmiral`, `Admiral`, `FleetAdmiral`, the client's `DIFFICULTY_TIERS` (`frontend/src/game/starswarm/engine.ts`). Any other value (`captain`, a forged tier) fails creation (422) and completion (400). `tests/test_starswarm_module.py` parses the client list and fails if the two drift, so **a tier added to the app must be added to the backend in the same release**, or its runs dead-letter. A missing or `null` tier is allowed
+- Board: `final_score` desc, one board per `difficulty_tier` (`GET /games/leaderboard/starswarm?difficulty_tier=Captain`), no cap. A row with no tier counts as `LieutenantJG`, as on the legacy `POST /starswarm/score`, and a request without `difficulty_tier` is the `LieutenantJG` board; an unknown tier is a 400. `has_winner = False`
+- Stats: default pass-through `stats_shape` (`default_stats_shape`)
+- Endpoints: `backend/starswarm/router.py` (`POST /starswarm/score`, `GET /starswarm/leaderboard`)
+- Scoring: each run records a session row through `useGameSync("starswarm")` (no score); the named score is submitted via the router at game over
 
 ## Accessibility
 
@@ -247,4 +251,3 @@ Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.
 ## Known Issues / Limitations
 
 - In early development — game design is not finalized
-- No `module.py`; tracked in issue #893 (in-memory leaderboard migration)

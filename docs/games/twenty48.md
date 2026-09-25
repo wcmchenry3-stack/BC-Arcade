@@ -21,7 +21,7 @@ Each merge scores points equal to the value of the new (merged) tile. A 2+2 merg
 
 ## Scoring (Persistence)
 
-`final_score` = cumulative merge score at game over. This game is **frontend-only** — there is no backend module. Score submission and leaderboard behavior: see implementation in `frontend/src/game/twenty48/`.
+`final_score` = cumulative merge score at game over. Sessions are recorded through the shared `/games` pipeline (`useGameSync("twenty48")`) and validated by the backend module (see [Backend](#backend)).
 
 ## Client-Side Engine
 
@@ -32,7 +32,13 @@ Each merge scores points equal to the value of the new (merged) tile. A 2+2 merg
 
 ## Backend
 
-No backend module. Twenty48 is a fully client-side game. Score persistence, if implemented, routes through the shared `SyncWorker` pipeline.
+Gameplay is fully client-side; sessions reach the server through the shared `SyncWorker` pipeline.
+
+- Module: `backend/twenty48/module.py`, registered in `backend/games/registry.py` (#2623)
+- Metadata model: `Twenty48Metadata` in `backend/twenty48/models.py` — empty (extra keys forbidden); the opening board is event data
+- Result model: `Twenty48Result` — `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`, all optional; unknown keys are ignored. The daily challenge reads `final_score` and `highest_tile` from it
+- Board: `final_score` desc, one global board, no cap. `has_winner = False` until the app records `win`/`loss` (#2631); a `kept_playing` completion counts like `completed`
+- Stats: default pass-through `stats_shape`
 
 ## Entitlement
 
@@ -40,4 +46,4 @@ Tier TBD. If free: no entitlement check — game is always accessible.
 
 ## Known Issues / Limitations
 
-- No backend module; leaderboard not yet implemented
+- Board is declared, but no leaderboard submission or view yet

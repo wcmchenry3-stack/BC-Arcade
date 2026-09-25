@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from cascade.models import CascadeMetadata
 from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from vocab import GameType
 
 
@@ -26,7 +27,7 @@ class CascadeModule:
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = CascadeModule()

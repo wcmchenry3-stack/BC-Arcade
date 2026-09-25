@@ -37,6 +37,7 @@ import i18n from "i18next";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -493,6 +494,7 @@ export default function DailyWordScreen() {
   // by the hook; the snapshot below gives them the result block.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -639,6 +641,9 @@ export default function DailyWordScreen() {
         let gameState: DailyWordState;
         if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
           gameState = saved;
+          // A restored board continues the session a killed app left open for
+          // this puzzle (#2654).
+          if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
         } else {
           if (saved) await clearState();
           gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
@@ -1266,7 +1271,7 @@ const styles = StyleSheet.create({
   },
   devOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: DEV_OVERLAY_BG,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -33,9 +33,12 @@ jest.mock("../../game/hearts/api", () => ({
 // Shared so tests can assert how a finished game is recorded (#2517).
 const mockSyncComplete = jest.fn();
 const mockSyncGetGameId = jest.fn((): string | null => null);
+// No killed-process session to continue (#2654). Stable, like the real hook's.
+const mockSyncResume = jest.fn(() => false);
 jest.mock("../../game/_shared/useGameSync", () => ({
   useGameSync: () => ({
     start: jest.fn(),
+    resume: mockSyncResume,
     markStarted: jest.fn(),
     complete: mockSyncComplete,
     restart: jest.fn(),

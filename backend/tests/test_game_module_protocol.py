@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import sys
+import uuid
+
 import pytest
+from fastapi.testclient import TestClient
 
 from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
+from games import service
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import GameModule
+from games.protocol import GameModule, default_stats_shape
 from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
 from mahjong.module import module as mahjong_module
+from main import app
 from solitaire.module import module as solitaire_module
 from sudoku.module import module as sudoku_module
 from vocab import GameType
@@ -74,6 +80,9 @@ _HAS_WINNER = {
     "sudoku": False,
     "cascade": False,
     "sort": False,
+    # Twenty48 flips to True when #2631 records reaching 2048 as a win.
+    "twenty48": False,
+    "starswarm": False,
 }
 
 
@@ -154,12 +163,9 @@ def test_registry_returns_none_for_unknown() -> None:
 _REGISTERED = [(gt.value, get_module(gt.value)) for gt in GameType if get_module(gt.value)]
 
 
-def test_ten_modules_registered() -> None:
-    """Twenty48 and Star Swarm have no module until #2623."""
-    assert {name for name, _ in _REGISTERED} == {gt.value for gt in GameType} - {
-        "twenty48",
-        "starswarm",
-    }
+def test_every_game_type_has_a_module() -> None:
+    """Twenty48 and Star Swarm were the last two without one (#2623)."""
+    assert {name for name, _ in _REGISTERED} == {gt.value for gt in GameType}
 
 
 def _carryable(mod, key: str) -> bool:
@@ -205,7 +211,7 @@ def test_module_without_board_fails_protocol() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BlackjackModule.stats_shape — key renames and chip logic
+# BlackjackModule.stats_shape — chip figures under "extras" (#2620)
 # ---------------------------------------------------------------------------
 
 _RAW_BJ = {
@@ -219,7 +225,7 @@ _RAW_BJ = {
 
 def test_blackjack_stats_shape_renames_best_to_best_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["best_chips"] == 2400
+    assert shaped["extras"]["best_chips"] == 2400
     assert shaped.get("best") is None
 
 
@@ -230,7 +236,7 @@ def test_blackjack_stats_shape_drops_avg() -> None:
 
 def test_blackjack_stats_shape_maps_latest_score_to_current_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["current_chips"] == 2100
+    assert shaped["extras"]["current_chips"] == 2100
 
 
 def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
@@ -242,15 +248,15 @@ def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
 def test_blackjack_stats_shape_none_latest_score() -> None:
     raw = {**_RAW_BJ, "latest_score": None}
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["current_chips"] is None
+    assert shaped["extras"]["current_chips"] is None
 
 
 def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("total_runs") is None
-    assert shaped.get("runs_completed") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("total_runs") is None
+    assert shaped["extras"].get("runs_completed") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
@@ -264,16 +270,16 @@ def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
         },
     }
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["best_run_chips"] == 3000
-    assert shaped["total_runs"] == 12
-    assert shaped["runs_completed"] == 4
-    assert shaped["current_table"] == "intermediate"
+    assert shaped["extras"]["best_run_chips"] == 3000
+    assert shaped["extras"]["total_runs"] == 12
+    assert shaped["extras"]["runs_completed"] == 4
+    assert shaped["extras"]["current_table"] == "intermediate"
 
 
 def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 # ---------------------------------------------------------------------------
@@ -424,3 +430,94 @@ def test_daily_word_stats_shape_preserves_aggregate_fields() -> None:
 def test_daily_word_stats_shape_strips_latest_score() -> None:
     shaped = daily_word_module.stats_shape(_RAW_DAILY_WORD)
     assert "latest_score" not in shaped
+
+
+# ---------------------------------------------------------------------------
+# default_stats_shape — the one shared pass-through
+# ---------------------------------------------------------------------------
+
+
+def test_default_stats_shape_strips_latest_score_only() -> None:
+    raw = {**_RAW_CASCADE, "metadata": {"k": 1}}
+    shaped = default_stats_shape(raw)
+    assert shaped == {k: v for k, v in raw.items() if k != "latest_score"}
+    assert raw["latest_score"] == 8000  # the input is not mutated
+
+
+_PASS_THROUGH = sorted(name for name in _REGISTRY if name != "blackjack")
+
+
+def test_every_game_but_blackjack_is_pass_through() -> None:
+    assert len(_PASS_THROUGH) == len(_REGISTRY) - 1
+
+
+@pytest.mark.parametrize("name", _PASS_THROUGH)
+def test_pass_through_modules_use_the_shared_stats_shape(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every pass-through module delegates to ``default_stats_shape``, not a copy of it."""
+    mod = _REGISTRY[name]
+    shaped = {"shaped_by": "default_stats_shape"}
+    monkeypatch.setattr(
+        sys.modules[type(mod).__module__], "default_stats_shape", lambda raw: shaped
+    )
+    assert mod.stats_shape(dict(_RAW_CASCADE)) is shaped
+
+
+# ---------------------------------------------------------------------------
+# A game without a module fails loudly (#2623 left no fallback)
+# ---------------------------------------------------------------------------
+
+
+def _without_module(monkeypatch: pytest.MonkeyPatch, missing: str) -> None:
+    real = service.get_module
+    monkeypatch.setattr(service, "get_module", lambda n: None if n == missing else real(n))
+
+
+def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No board or stats shape is guessed for a game type with no module, and
+    it doesn't take /stats/me down either: it is reported and left out."""
+    sid = str(uuid.uuid4())
+    headers = {"X-Session-ID": sid, "Content-Type": "application/json"}
+    client = TestClient(app)
+    for game_type, score in (("twenty48", 10), ("yacht", 20)):
+        gid = client.post("/games", headers=headers, json={"game_type": game_type}).json()["id"]
+        r = client.patch(
+            f"/games/{gid}/complete",
+            headers=headers,
+            json={"final_score": score, "outcome": "completed"},
+        )
+        assert r.status_code == 200, r.text
+    # Warm the (cached) best-value expression while every module is registered:
+    # it covers the vocab game types, which a test elsewhere keeps registered.
+    assert set(client.get("/stats/me", headers=headers).json()["by_game"]) == {
+        "twenty48",
+        "yacht",
+    }
+
+    captured: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        service.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
+    )
+    _without_module(monkeypatch, "twenty48")
+    r = client.get("/stats/me", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body["by_game"]) == {"yacht"}
+    assert body["total_games"] == 1
+    assert len(captured) == 1
+    assert "twenty48" in captured[0][0]
+    assert captured[0][1]["level"] == "error"
+
+
+def test_the_best_value_expression_fails_loudly_without_a_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service._best_candidate.cache_clear()
+    _without_module(monkeypatch, "starswarm")
+    try:
+        with pytest.raises(LookupError, match="starswarm"):
+            service._best_candidate("sqlite")
+    finally:
+        monkeypatch.undo()
+        service._best_candidate.cache_clear()
