@@ -301,6 +301,80 @@ def test_daily_word_session_round_trip(client: TestClient, session_id: str) -> N
     assert detail["final_score"] is None
 
 
+async def _record_guesses(session_id: str, puzzle_id: str, guesses: list[str]) -> None:
+    from db.models import DailyWordProgress
+
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(
+            DailyWordProgress(
+                session_id=session_id, puzzle_id=puzzle_id, guesses=guesses, solved=True
+            )
+        )
+        await db.commit()
+
+
+def _complete_daily_word(client: TestClient, sid: str, puzzle_id: str, guesses_used: int) -> dict:
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "daily_word", "metadata": {"puzzle_id": puzzle_id}},
+    )
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(sid),
+        json={
+            "outcome": "completed",
+            "result": {"is_complete": True, "won": True, "guesses_used": guesses_used},
+        },
+    )
+    assert r.status_code == 200, r.text
+    return client.get(f"/games/{gid}", headers=_headers(sid)).json()["metadata"]
+
+
+# #2541 — the "win within 4 guesses" goal reads guesses_used, and the client's
+# count can be low (an older build counting a board that fell behind, or a
+# tampered client). The server's guess record sets the floor.
+
+
+async def test_daily_word_complete_raises_a_low_count_to_the_record(
+    client: TestClient, session_id: str
+) -> None:
+    await _record_guesses(
+        session_id, "2026-09-20:en", ["nymph", "crwth", "phlox", "xylem", "squib"]
+    )
+    meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=4)
+    assert meta["guesses_used"] == 5
+
+
+async def test_daily_word_complete_never_lowers_the_client_count(
+    client: TestClient, session_id: str
+) -> None:
+    """Guesses scored while the record was unreachable (#2542) leave it short,
+    so a record below the client's count must not pull the count down."""
+    await _record_guesses(session_id, "2026-09-20:en", ["nymph", "crwth"])
+    meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=5)
+    assert meta["guesses_used"] == 5
+
+
+def test_daily_word_complete_keeps_the_client_count_with_no_record(
+    client: TestClient, session_id: str
+) -> None:
+    meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=3)
+    assert meta["guesses_used"] == 3
+
+
+async def test_daily_word_complete_reads_only_this_sessions_record(
+    client: TestClient, session_id: str
+) -> None:
+    other = str(uuid.uuid4())
+    await _record_guesses(other, "2026-09-20:en", ["nymph", "crwth", "phlox", "xylem", "squib"])
+    meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=2)
+    assert meta["guesses_used"] == 2
+
+
 def test_daily_word_rejects_invalid_result(client: TestClient, session_id: str) -> None:
     r = client.post(
         "/games",

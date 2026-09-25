@@ -548,6 +548,36 @@ def test_no_further_guesses_once_solved(client: TestClient) -> None:
     assert r.json()["detail"] == "already_solved"
 
 
+# #2541 — a 403 means the board is behind the server's record, so the refusal
+# carries the server's count: the client's own row count is structurally low
+# there and would feed the "win within N guesses" goal and the share text.
+
+
+def test_no_guesses_remaining_carries_the_server_count(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    body = _guess(client, headers, puzzle_id, _SEVENTH).json()
+    assert body == {"detail": "no_guesses_remaining", "guesses_used": 6}
+
+
+def test_already_solved_carries_the_winning_guess_count(client: TestClient) -> None:
+    """The lost-response win from #2541: solved on the third guess, so the
+    count is 3 — not the 2 a board missing its winning row would report."""
+    from daily_word.puzzle import get_answer
+
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG[:2]:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    body = _guess(client, headers, puzzle_id, _SIX_WRONG[2]).json()
+    assert body == {"detail": "already_solved", "guesses_used": 3}
+
+
 def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:
     """A guess re-typed after a lost response must not cost a second turn.
 

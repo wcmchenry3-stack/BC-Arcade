@@ -20,8 +20,11 @@ export interface GuessResponse {
   /**
    * Server-side guess count for this session and puzzle (#2197). The server,
    * not the board, is the authority on how many guesses have been spent — a
-   * recorded guess whose response was lost leaves the board one behind.
-   * Optional so a build talking to an older API still type-checks.
+   * recorded guess whose response was lost leaves the board one behind. The
+   * screen stores `guesses_used` on the state (#2541). `guesses_remaining` is
+   * not used to end the game: a 200 can be a replay, and carries no `solved`
+   * flag. Both are absent when the server's record was unreachable (it
+   * degrades open, #2542), and from an older API.
    */
   readonly guesses_used?: number;
   readonly guesses_remaining?: number;

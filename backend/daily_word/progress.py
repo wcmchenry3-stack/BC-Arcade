@@ -99,6 +99,25 @@ async def may_see_answer(session: AsyncSession, *, session_id: str, puzzle_id: s
     return bool(row.solved) or len(row.guesses or []) >= MAX_GUESSES
 
 
+async def recorded_guess_count(
+    session: AsyncSession, *, session_id: str, puzzle_id: str
+) -> int | None:
+    """How many scored guesses this session has on record for the puzzle (#2541).
+
+    ``None`` when there is no row: the session never landed a guess the record
+    saw, e.g. every guess was scored while the record was unreachable (#2542).
+    """
+    row = (
+        await session.execute(
+            select(DailyWordProgress.guesses).where(
+                DailyWordProgress.session_id == session_id,
+                DailyWordProgress.puzzle_id == puzzle_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return None if row is None else len(row)
+
+
 async def _get_or_create(
     session: AsyncSession, *, session_id: str, puzzle_id: str
 ) -> DailyWordProgress:

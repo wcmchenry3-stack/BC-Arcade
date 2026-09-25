@@ -18,6 +18,10 @@ Adding a new game
 5. Optionally define a ``result_model`` (also in ``models.py``) describing the
    per-game result block sent on ``PATCH /games/{id}/complete``, or set
    ``result_model = None`` to accept any dict unvalidated.
+6. Optionally define ``async reconcile_result(session, game, result) -> dict``
+   to correct a validated result against server-side state before it is
+   stored — see ``backend/daily_word/module.py`` (#2541). Not part of the
+   Protocol: ``games/service.py`` looks it up with ``getattr``.
 """
 
 from __future__ import annotations
