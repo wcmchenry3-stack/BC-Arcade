@@ -231,6 +231,9 @@ class DailyWordProgress(Base):
         # No separate session_id index: this unique constraint's btree leads
         # with session_id, and every query filters on both columns.
         UniqueConstraint("session_id", "puzzle_id", name="uq_daily_word_progress_session_puzzle"),
+        # Retention prunes by updated_at at every process start and daily
+        # (daily_word/retention.py); without this each run scans the table.
+        Index("daily_word_progress_updated_at_idx", "updated_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

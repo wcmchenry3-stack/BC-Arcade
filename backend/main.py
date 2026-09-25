@@ -268,32 +268,32 @@ async def _dev_entitlement_override_warning() -> None:
 
 
 # Daily Word retention (#2544): prune guess records older than 14 days, at
-# startup and then daily. Held here so shutdown can cancel it cleanly.
-_retention_task: asyncio.Task | None = None
-
-
+# startup and then daily. The task lives on app.state, not a module global, so
+# it belongs to the app that started it — test_security.py reloads this module,
+# which would otherwise rebind a global out from under a running task (#2661
+# review). Moving every hook to a lifespan handler is a separate change.
 @app.on_event("startup")
 async def _start_daily_word_retention() -> None:
-    global _retention_task
+    app.state.retention_task = None
     if not is_configured():
         return
     from daily_word.retention import run_retention_loop
     from db.base import get_session_factory
 
-    _retention_task = asyncio.create_task(run_retention_loop(get_session_factory()))
+    app.state.retention_task = asyncio.create_task(run_retention_loop(get_session_factory))
 
 
 @app.on_event("shutdown")
 async def _stop_daily_word_retention() -> None:
-    global _retention_task
-    if _retention_task is None:
+    task = getattr(app.state, "retention_task", None)
+    if task is None:
         return
-    _retention_task.cancel()
+    task.cancel()
     try:
-        await _retention_task
+        await task
     except asyncio.CancelledError:
         pass
-    _retention_task = None
+    app.state.retention_task = None
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
