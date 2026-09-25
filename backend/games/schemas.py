@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from games.registry import get_module
 
@@ -77,6 +77,14 @@ class CompleteGameRequest(BaseModel):
         return {} if v is None else v
 
 
+class SetPlayerNameRequest(BaseModel):
+    """``PATCH /games/{id}/name`` (#2618). Surrounding whitespace is dropped."""
+
+    player_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------
@@ -102,6 +110,29 @@ class GameStateResponse(BaseModel):
     final_score: int | None
     outcome: str | None
     duration_ms: int | None
+
+
+class LeaderboardEntryOut(BaseModel):
+    rank: int
+    player_name: str
+    value: int
+    completed_at: datetime
+
+
+class LeaderboardResponse(BaseModel):
+    """``GET /games/leaderboard/{game_type}`` (#2618): one entry per player."""
+
+    game_type: str
+    partition: dict[str, str]
+    label_key: str
+    entries: list[LeaderboardEntryOut]
+
+
+class SetPlayerNameResponse(BaseModel):
+    """The rank of the caller's best entry, and whether this game is that entry."""
+
+    rank: int
+    is_best: bool
 
 
 # ---------------------------------------------------------------------------
