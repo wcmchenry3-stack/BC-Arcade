@@ -41,7 +41,7 @@
   "dice.hintBeforeRoll": "Нажмите «Бросить», чтобы начать",
   "dice.holdHint": "Дважды нажмите, чтобы удержать",
   "dice.unholdHint": "Дважды нажмите, чтобы отпустить",
-  "roll.button": "Бросок (ещё {{count}})",
+  "roll.button": "Бросить (ещё {{count}})",
   "roll.label_one": "Бросить кубики, {{count}} бросок остался",
   "roll.label_other": "Бросить кубики, {{count}} броска осталось",
   "roll.rolling": "Бросаем...",

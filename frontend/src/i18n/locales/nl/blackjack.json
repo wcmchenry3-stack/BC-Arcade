@@ -102,7 +102,7 @@
   "victory.nextTable": "Speel {{table}}-tafel",
   "victory.subtitle": "Je hebt de {{table}}-tafel voltooid",
   "victory.keepPlaying": "Doorspelen",
-  "phase.victory": "Doel bereikt!",
+  "phase.victory": "Run voltooid",
   "victory.keepPlayingLabel": "Doorspelen — doorgaan zonder doel",
   "victory.goalLine": "Doel: {{goal}} chips",
   "victory.nextTableLabel": "Speel {{table}}-tafel — ga naar de volgende tafel",

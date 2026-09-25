@@ -102,7 +102,7 @@
   "victory.nextTable": "Jogar Mesa {{table}}",
   "victory.subtitle": "Você completou a mesa {{table}}",
   "victory.keepPlaying": "Continuar Jogando",
-  "phase.victory": "Meta alcançada!",
+  "phase.victory": "Partida concluída",
   "victory.keepPlayingLabel": "Continuar jogando — continuar sem meta",
   "victory.goalLine": "Meta: {{goal}} fichas",
   "victory.nextTableLabel": "Jogar mesa {{table}} — avançar para a próxima mesa",

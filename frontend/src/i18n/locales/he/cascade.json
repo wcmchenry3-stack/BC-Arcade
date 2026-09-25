@@ -13,7 +13,7 @@
   "theme.optionLabel": "ערכת {{label}}",
   "event.merged": "התמזגו! נוצר {{fruit}}.",
   "scoreboard.heroLabel": "ניקוד",
-  "scoreboard.heroSub": "פרי מוביל: {{bestFruit}} · {{merges}} מיזוגים",
+  "scoreboard.heroSub": "הפרי הגבוה: {{bestFruit}} · {{merges}} מיזוגים",
   "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
   "scoreboard.bestScore": "שיא כל הזמנים",
   "scoreboard.bestFruit": "הפרי הגבוה",

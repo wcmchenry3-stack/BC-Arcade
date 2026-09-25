@@ -13,7 +13,7 @@
   "theme.optionLabel": "{{label}} थीम",
   "event.merged": "मर्ज हो गया! {{fruit}} बना।",
   "scoreboard.heroLabel": "स्कोर",
-  "scoreboard.heroSub": "बेस्ट फल: {{bestFruit}} · {{merges}} मर्ज",
+  "scoreboard.heroSub": "सबसे बड़ा फल: {{bestFruit}} · {{merges}} मर्ज",
   "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
   "scoreboard.bestScore": "सर्वश्रेष्ठ",
   "scoreboard.bestFruit": "सबसे बड़ा फल",
