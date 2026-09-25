@@ -1,7 +1,10 @@
 import React from "react";
-import { render, fireEvent, act, screen, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { render, renderHook, fireEvent, act, screen, waitFor } from "@testing-library/react-native";
 import BlackjackBettingScreen from "../BlackjackBettingScreen";
-import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
+import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
+import { TABLE_CONFIGS } from "../../game/blackjack/tables";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
 import { newGame } from "../../game/blackjack/engine";
@@ -163,5 +166,44 @@ describe("BlackjackBettingScreen — persistent table, no pre-deal labels", () =
     await screen.findByText("Deal");
     expect(screen.queryByText("Dealer's Hand")).toBeNull();
     expect(screen.queryByText("Your Hand")).toBeNull();
+  });
+});
+
+describe("BlackjackGameContext — table start (#1129)", () => {
+  const intermediate = TABLE_CONFIGS[1]!;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  async function renderGame() {
+    const hook = await renderHook(() => useBlackjackGame(), {
+      wrapper: ({ children }) => <BlackjackGameProvider>{children}</BlackjackGameProvider>,
+    });
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  it("remembers the table every start goes to, Next Table included", async () => {
+    const { result } = await renderGame();
+    await act(async () => result.current.handleTableSelect(intermediate));
+    expect(result.current.engine?.betMin).toBe(intermediate.betMin);
+    await waitFor(async () =>
+      expect(await AsyncStorage.getItem("blackjack.difficulty")).toBe("intermediate")
+    );
+  });
+
+  it("never starts a premium table", async () => {
+    __setPremiumLevelsForTests({ blackjack: ["intermediate"] });
+    const { result } = await renderGame();
+    const before = result.current.engine;
+    await act(async () => result.current.handleTableSelect(intermediate));
+    expect(result.current.engine).toBe(before);
+    expect(await AsyncStorage.getItem("blackjack.difficulty")).toBeNull();
   });
 });

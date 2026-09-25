@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "Sequência atual: {{count}} dia",
   "streak.pillA11y_other": "Sequência atual: {{count}} dias",
   "legal.privacyPolicy": "Política de Privacidade",
-  "legal.termsOfService": "Termos de Serviço"
+  "legal.termsOfService": "Termos de Serviço",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "Este nível faz parte do BC Arcade Premium, em breve.",
+  "premiumLevel.ok": "OK",
+  "premiumLevel.tag": "Premium",
+  "premiumLevel.lockedLabel": "{{level}}, bloqueado. Parte do BC Arcade Premium."
 }

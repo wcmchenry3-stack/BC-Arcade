@@ -8,6 +8,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
+import { usePremiumLevels } from "../components/shared/usePremiumLevels";
 import {
   ResultCard,
   useResultFeedback,
@@ -45,6 +46,11 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
     TABLE_CONFIGS[0]!;
   const tableIndex = TABLE_CONFIGS.indexOf(activeTable);
   const nextTable = TABLE_CONFIGS[tableIndex + 1];
+  const {
+    isLocked: isPremiumTable,
+    explain: explainPremium,
+    notice: premiumNotice,
+  } = usePremiumLevels("blackjack", "blackjack-premium");
 
   const [newUnlocks, setNewUnlocks] = useState<Unlock[]>([]);
 
@@ -92,10 +98,15 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   // End the run then immediately start the next table — bypasses TableSelectPanel.
   const onNextTable = useCallback(async () => {
     if (!nextTable) return;
+    // A premium next table explains itself; the run carries on (#1129).
+    if (isPremiumTable(nextTable.id)) {
+      explainPremium();
+      return;
+    }
     await handleCashOut();
     handleTableSelect(nextTable);
     navigation.replace("BlackjackBetting");
-  }, [handleCashOut, handleTableSelect, nextTable, navigation]);
+  }, [handleCashOut, handleTableSelect, nextTable, navigation, isPremiumTable, explainPremium]);
 
   const onKeepPlaying = useCallback(() => {
     handleKeepPlaying();
@@ -174,6 +185,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
           testID="blackjack-victory"
         />
       </ScrollView>
+      {premiumNotice}
     </GameShell>
   );
 }

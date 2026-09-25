@@ -403,5 +403,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "tableSelect.lastPlayed": {
+    "component": "TableSelectPanel",
+    "description": "Tag on the table card the player's last run was played at, so they can pick it again. Also read as the card's screen-reader hint.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short past-tense label, e.g. 'Last played'."
   }
 }

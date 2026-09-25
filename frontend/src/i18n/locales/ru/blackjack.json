@@ -147,5 +147,6 @@
   "tableSelect.kicker": "ВЫБЕРИ СТОЛ",
   "tableSelect.tagline": "Выживи в раунде.",
   "tableSelect.taglineSub": "Каждый стол — это полная история: начальный баланс, цель и чистый финал.",
-  "tableSelect.viewHistory": "Просмотр истории раундов"
+  "tableSelect.viewHistory": "Просмотр истории раундов",
+  "tableSelect.lastPlayed": "Последняя игра"
 }

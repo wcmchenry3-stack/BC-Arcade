@@ -147,5 +147,6 @@
   "stats.runOutcome.comeback": "Comeback",
   "stats.viewStats": "Run Stats",
   "stats.viewStatsLabel": "View run statistics",
-  "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}"
+  "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
+  "tableSelect.lastPlayed": "Last played"
 }

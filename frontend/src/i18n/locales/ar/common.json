@@ -69,5 +69,10 @@
   "streak.pillA11y_many": "السلسلة الحالية: {{count}} يومًا",
   "streak.pillA11y_other": "السلسلة الحالية: {{count}} يوم",
   "legal.privacyPolicy": "سياسة الخصوصية",
-  "legal.termsOfService": "شروط الخدمة"
+  "legal.termsOfService": "شروط الخدمة",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "هذا المستوى جزء من BC Arcade Premium، قريبًا.",
+  "premiumLevel.ok": "حسنًا",
+  "premiumLevel.tag": "بريميوم",
+  "premiumLevel.lockedLabel": "{{level}}، مقفل. جزء من BC Arcade Premium."
 }

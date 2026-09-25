@@ -77,6 +77,7 @@ import { sudokuApi } from "../../game/sudoku/api";
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): SudokuState {
   let s = state;
@@ -141,6 +142,22 @@ describe("SudokuScreen — pre-game (after load)", () => {
     expect(getByLabelText(/hard/i)).toBeTruthy();
     expect(getByRole("button", { name: /start/i })).toBeTruthy();
   });
+
+  it("opens on the difficulty of the last puzzle (#1129)", async () => {
+    await AsyncStorage.setItem("sudoku.difficulty", "hard");
+    const { getByTestId } = await renderAndAwaitLoad();
+    await waitFor(() =>
+      expect(getByTestId("sudoku-difficulty-hard").props.accessibilityState.checked).toBe(true)
+    );
+  });
+
+  it("remembers the difficulty a puzzle starts at (#1129)", async () => {
+    const { getByTestId } = await renderAndAwaitLoad();
+    await fireEvent.press(getByTestId("sudoku-difficulty-medium"));
+    expect(await AsyncStorage.getItem("sudoku.difficulty")).toBeNull();
+    await fireEvent.press(getByTestId("sudoku-pregame-start"));
+    expect(await AsyncStorage.getItem("sudoku.difficulty")).toBe("medium");
+  });
 });
 
 describe("SudokuScreen — mount resume", () => {
@@ -156,6 +173,34 @@ describe("SudokuScreen — mount resume", () => {
     });
     const buttons = getAllByRole("button");
     expect(buttons.length).toBeGreaterThanOrEqual(81);
+  });
+
+  it("plays on at a level that became premium, but the next puzzle starts at Easy (#1129)", async () => {
+    await saveGame(loadPuzzle("hard", "classic", () => 0));
+    __setPremiumLevelsForTests({ sudoku: ["hard"] });
+    try {
+      const rendered = await renderScreen();
+      await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+      expect(rendered.getByText("Hard")).toBeTruthy(); // the resumed puzzle's HUD
+
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText("More options"));
+      });
+      await act(async () => {
+        await fireEvent.press(rendered.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText("Start New")); // confirm the abandon dialog
+      });
+      await act(async () => {
+        await fireEvent.press(rendered.getByText("Quick Restart"));
+      });
+      await waitFor(() => expect(rendered.getByText("Easy")).toBeTruthy());
+      expect(rendered.queryByText("Hard")).toBeNull();
+      expect(await AsyncStorage.getItem("sudoku.difficulty")).toBe("easy");
+    } finally {
+      __setPremiumLevelsForTests(null);
+    }
   });
 });
 

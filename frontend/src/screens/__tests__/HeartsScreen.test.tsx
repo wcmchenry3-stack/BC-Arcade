@@ -10,6 +10,7 @@ import type { Card, HeartsState, Suit } from "../../game/hearts/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { heartsApi } from "../../game/hearts/api";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -110,8 +111,26 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
       const updated = getAllByRole("radio").find((r) =>
         /mixed table/i.test(r.props.accessibilityLabel)
       )!;
-      expect(updated.props.accessibilityState.selected).toBe(true);
+      expect(updated.props.accessibilityState.checked).toBe(true);
     });
+  });
+
+  it("opens on the opponent style of the last game (#1129)", async () => {
+    await AsyncStorage.setItem("hearts.difficulty", "daring");
+    const { getByTestId } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("hearts-difficulty-daring").props.accessibilityState.checked).toBe(true)
+    );
+  });
+
+  it("remembers the opponent style a game starts with (#1129)", async () => {
+    await AsyncStorage.removeItem("hearts.difficulty");
+    const { getByTestId } = await renderScreen();
+    await waitFor(() => getByTestId("hearts-difficulty-cautious"));
+    await fireEvent.press(getByTestId("hearts-difficulty-cautious"));
+    expect(await AsyncStorage.getItem("hearts.difficulty")).toBeNull();
+    await fireEvent.press(getByTestId("hearts-start-game"));
+    expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("cautious");
   });
 });
 
@@ -572,6 +591,24 @@ describe("HeartsScreen — result card (#2506)", () => {
     });
     expect(r.queryByTestId("hearts-result")).toBeNull();
     expect(r.getByLabelText("Your hand, 13 cards")).toBeTruthy();
+    expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("daring");
+  });
+
+  it("Play Again at a style that became premium deals at the default instead (#1129)", async () => {
+    __setPremiumLevelsForTests({ hearts: ["daring"] });
+    const dealGame = jest.spyOn(engine, "dealGame");
+    try {
+      const r = await finishGame([45, 100, 63, 52]);
+      await r.findByTestId("hearts-result");
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+      });
+      expect(dealGame).toHaveBeenLastCalledWith("schemer");
+      expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("schemer");
+    } finally {
+      dealGame.mockRestore();
+      __setPremiumLevelsForTests(null);
+    }
   });
 
   it("Change Difficulty returns to the difficulty picker", async () => {

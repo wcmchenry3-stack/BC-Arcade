@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import StarSwarmScreen from "../StarSwarmScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 // The shared result card for Star Swarm (#2516). The Skia canvas is mocked: the
 // test drives its onGameOver callback the way the game loop does.
@@ -197,5 +198,44 @@ describe("StarSwarmScreen — result card (#2516)", () => {
       await fireEvent.press(screen.getByRole("button", { name: "Home" }));
     });
     expect(mockPopToTop).toHaveBeenCalled();
+  });
+});
+
+describe("StarSwarmScreen — difficulty picker (#1129)", () => {
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  const checked = (tier: string) =>
+    screen.getByTestId(`starswarm-tier-${tier}`).props.accessibilityState.checked;
+
+  it("opens on the last tier played and remembers the next one", async () => {
+    await renderScreen();
+    await waitFor(() => expect(checked("Commander")).toBe(true));
+
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-tier-Captain"));
+    });
+    await startRun();
+    expect(await AsyncStorage.getItem("starswarm.difficulty")).toBe("Captain");
+  });
+
+  it("explains a premium tier on tap and keeps the tier picked", async () => {
+    __setPremiumLevelsForTests({ starswarm: ["FleetAdmiral"] });
+    await renderScreen();
+    await waitFor(() => expect(checked("Commander")).toBe(true));
+    expect(screen.getByText("🔒 Fleet Admiral")).toBeTruthy();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-tier-FleetAdmiral"));
+    });
+    expect(screen.getByText("This level is part of BC Arcade Premium, coming soon.")).toBeTruthy();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-premium-ok"));
+    });
+    expect(screen.queryByText("This level is part of BC Arcade Premium, coming soon.")).toBeNull();
+    expect(checked("FleetAdmiral")).toBe(false);
+    expect(checked("Commander")).toBe(true);
   });
 });

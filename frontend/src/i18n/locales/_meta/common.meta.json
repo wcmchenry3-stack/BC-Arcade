@@ -187,5 +187,50 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Spoken by VoiceOver and TalkBack. Use the short progressive form, e.g. 'Loading'."
+  },
+  "premiumLevel.title": {
+    "component": "PremiumLevelNotice",
+    "description": "Title of the notice shown when the player taps a difficulty level that is locked because it belongs to the paid tier.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "The product name. Keep it exactly as written."
+  },
+  "premiumLevel.body": {
+    "component": "PremiumLevelNotice",
+    "description": "Body of the notice shown when the player taps a locked premium difficulty level. The paid tier is not on sale yet.",
+    "tone": "friendly",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "Say it is coming soon; do not promise a date or tell the player to buy anything."
+  },
+  "premiumLevel.ok": {
+    "component": "PremiumLevelNotice",
+    "description": "Button that closes the premium-level notice.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "premiumLevel.tag": {
+    "component": "TableSelectPanel",
+    "description": "Short tag next to a lock icon on a table card that belongs to the paid tier.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One word."
+  },
+  "premiumLevel.lockedLabel": {
+    "component": "DifficultyPicker",
+    "description": "Screen-reader label for a difficulty option that is locked because it belongs to the paid tier. Not shown visually.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "{{level}} is the option's own name, e.g. 'Hard'. Spoken by VoiceOver and TalkBack."
   }
 }

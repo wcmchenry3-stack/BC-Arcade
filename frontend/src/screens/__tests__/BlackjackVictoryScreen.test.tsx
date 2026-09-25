@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react-n
 import BlackjackVictoryScreen from "../BlackjackVictoryScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 // Goal Reached (#2507): its own screen, built from the shared result card.
 
@@ -123,5 +124,24 @@ describe("BlackjackVictoryScreen (#2507)", () => {
     await renderScreen();
     expect(screen.queryByRole("button", { name: /Play .* Table/ })).toBeNull();
     expect(screen.getByTestId("game-result-primary")).toHaveTextContent("Keep Playing");
+  });
+});
+
+describe("BlackjackVictoryScreen — premium next table (#1129)", () => {
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  it("explains a premium next table and keeps the run going", async () => {
+    __setPremiumLevelsForTests({ blackjack: ["intermediate"] });
+    atTable(5, 25, 100, 250);
+    const { nav } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: /Play Intermediate Table/ }));
+    });
+    expect(screen.getByText("This level is part of BC Arcade Premium, coming soon.")).toBeTruthy();
+    expect(mockCtx.handleCashOut).not.toHaveBeenCalled();
+    expect(mockCtx.handleTableSelect).not.toHaveBeenCalled();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });

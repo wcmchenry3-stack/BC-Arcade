@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame } from "../storage";
+import { saveGame, loadGame, clearGame, saveLastMode, loadLastMode } from "../storage";
 import { newGame } from "../engine";
+import { __setPremiumLevelsForTests } from "../../../entitlements/premiumLevels";
 
 const STORAGE_KEY = "yacht_game_v2";
 
@@ -54,5 +55,42 @@ describe("yacht storage", () => {
     await saveGame(newGame());
     await clearGame();
     expect(await loadGame()).toBeNull();
+  });
+});
+
+describe("yacht last mode (#1129)", () => {
+  const PREF_KEY = "yacht_pref_v1";
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  it("round-trips the mode and difficulty", async () => {
+    await saveLastMode("vs", "hard");
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "hard" });
+  });
+
+  it("returns null when nothing is stored", async () => {
+    expect(await loadLastMode()).toBeNull();
+  });
+
+  it("falls back to medium for an unknown difficulty", async () => {
+    await AsyncStorage.setItem(PREF_KEY, JSON.stringify({ mode: "vs", difficulty: "insane" }));
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "medium" });
+  });
+
+  it("falls back to medium for a difficulty that is now premium", async () => {
+    await saveLastMode("vs", "hard");
+    __setPremiumLevelsForTests({ yacht: ["hard"] });
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "medium" });
+  });
+
+  it("falls back to solo for an unknown mode", async () => {
+    await AsyncStorage.setItem(PREF_KEY, JSON.stringify({ mode: "duo", difficulty: "easy" }));
+    expect(await loadLastMode()).toEqual({ mode: "solo", difficulty: "easy" });
   });
 });

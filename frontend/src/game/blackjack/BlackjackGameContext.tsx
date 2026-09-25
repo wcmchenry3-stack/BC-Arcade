@@ -18,6 +18,8 @@ import {
 } from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
 import { TableConfig } from "./tables";
+import { saveLastDifficulty } from "../_shared/lastDifficulty";
+import { isPremiumLevel } from "../../entitlements/premiumLevels";
 
 /** Hint passed to apply() so the context can emit a typed player_action. */
 export type PlayerActionHint = "hit" | "stand" | "double" | "split" | null;
@@ -395,8 +397,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     setError(null);
   }, [engine]);
 
+  // Every table start (table select, Next Table) comes through here (#1129).
   const handleTableSelect = useCallback(
     (config: TableConfig) => {
+      // A premium table never starts; callers show the premium notice instead.
+      if (isPremiumLevel("blackjack", config.id)) return;
+      void saveLastDifficulty("blackjack", config.id);
       const fresh = newGame(undefined, {
         startingChips: config.startingChips,
         runGoal: config.runGoal,

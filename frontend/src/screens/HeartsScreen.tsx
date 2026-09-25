@@ -43,6 +43,7 @@ import {
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -53,7 +54,7 @@ import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimatio
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
-import { resolvePersona } from "../game/hearts/types";
+import { AI_PRESETS, resolvePersona } from "../game/hearts/types";
 import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
 import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
@@ -84,7 +85,12 @@ export default function HeartsScreen() {
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<AiPreset>("schemer");
+  // Opens on the opponent style of the last game started (#1129).
+  const {
+    difficulty: selectedDifficulty,
+    setDifficulty: setSelectedDifficulty,
+    rememberDifficulty,
+  } = useLastDifficulty<AiPreset>("hearts", AI_PRESETS, "schemer");
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
   const [showMoonShot, setShowMoonShot] = useState(false);
@@ -179,7 +185,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume]);
+  }, [syncResume, setSelectedDifficulty]);
 
   // ─── Sync snapshot to shared rounds context (read by ScoreboardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -494,7 +500,9 @@ export default function HeartsScreen() {
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
-  function handleStartGame(difficulty: AiPreset) {
+  function handleStartGame(requested: AiPreset) {
+    // A premium style starts at the default instead (#1129).
+    const difficulty = rememberDifficulty(requested);
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);

@@ -66,5 +66,10 @@
   "streak.pillA11y_two": "רצף נוכחי: יומיים",
   "streak.pillA11y_other": "רצף נוכחי: {{count}} ימים",
   "legal.privacyPolicy": "מדיניות פרטיות",
-  "legal.termsOfService": "תנאי שימוש"
+  "legal.termsOfService": "תנאי שימוש",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "השלב הזה הוא חלק מ-BC Arcade Premium, בקרוב.",
+  "premiumLevel.ok": "אישור",
+  "premiumLevel.tag": "פרימיום",
+  "premiumLevel.lockedLabel": "{{level}}, נעול. חלק מ-BC Arcade Premium."
 }

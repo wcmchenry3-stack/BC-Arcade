@@ -147,5 +147,6 @@
   "tableSelect.kicker": "CHOISIR UNE TABLE",
   "tableSelect.tagline": "Survie à la partie.",
   "tableSelect.taglineSub": "Chaque table est un arc complet — un solde de départ, un objectif à atteindre et une sortie nette.",
-  "tableSelect.viewHistory": "Voir l'historique"
+  "tableSelect.viewHistory": "Voir l'historique",
+  "tableSelect.lastPlayed": "Dernière partie"
 }

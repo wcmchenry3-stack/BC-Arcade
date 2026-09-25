@@ -382,6 +382,30 @@ lands:
    goal pool, and the e2e specs — real but bounded, and never a reason to keep
    a game on the wrong side of #1–#4.
 
+### 10.9 Premium difficulty levels
+
+A single level of a game can be premium too (#1129). List it under the game's
+key in `PREMIUM_LEVELS` (`frontend/src/entitlements/premiumLevels.ts`); none
+is listed yet. Every level picker (the shared `DifficultyPicker`, the Star
+Swarm tier picker, the Blackjack table cards and Next Table) goes through
+`usePremiumLevels`, which shows the level with a lock and, when it is tapped,
+opens `PremiumLevelNotice` ("part of BC Arcade Premium, coming soon") instead
+of starting it.
+
+The pickers are not the only guard. Every new game starts through
+`useLastDifficulty`'s `rememberDifficulty` (Blackjack: `handleTableSelect`),
+which turns a premium level into the game's default. That covers Play Again,
+Quick Restart and a remembered level that has since become premium. A game
+already in progress at such a level (a resumed save, a paused run) plays on. A
+game's default level must never be premium; `useLastDifficulty` warns in dev
+if it is. Nothing unlocks a listed level until IAP lands (epic #822); gate
+`isPremiumLevel` on the entitlement then.
+
+Each game also remembers the difficulty it was last started at
+(`game/_shared/lastDifficulty.ts`, key `<gameKey>.difficulty`) and opens its
+picker on it. Yacht keeps its own mode-and-difficulty preference
+(`yacht_pref_v1`).
+
 ## 11. Database topology and environments
 
 Three tiers, and no tier ever points at another's data:

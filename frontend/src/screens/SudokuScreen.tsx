@@ -47,7 +47,7 @@ import {
   undo,
 } from "../game/sudoku/engine";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
-import { VARIANTS, variantConfig } from "../game/sudoku/types";
+import { DIFFICULTIES, VARIANTS, variantConfig } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
 import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
@@ -63,6 +63,7 @@ import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
 import { sudokuLeaderboard } from "../game/sudoku/leaderboard";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 
 const FLASH_MS = 200;
@@ -92,7 +93,12 @@ export default function SudokuScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  // Opens on the difficulty of the last puzzle started (#1129).
+  const { difficulty, setDifficulty, rememberDifficulty } = useLastDifficulty<Difficulty>(
+    "sudoku",
+    DIFFICULTIES,
+    "easy"
+  );
   const [variant, setVariant] = useState<Variant>("classic");
   const [state, setState] = useState<SudokuState | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -194,7 +200,7 @@ export default function SudokuScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume]);
+  }, [syncResume, setDifficulty]);
 
   // Persist on every state change after the initial load has resolved.
   // Suppressed pre-load to protect the disk copy; `state === null`
@@ -397,23 +403,23 @@ export default function SudokuScreen() {
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});
     digitCountRef.current = 0;
-    const fresh = loadPuzzle(difficulty, variant);
+    const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     setState(fresh);
     setElapsed(0);
     setResult(null);
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [difficulty, variant, resetScore]);
+  }, [difficulty, variant, resetScore, rememberDifficulty]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
       setNewGameModalVisible(false);
-      setDifficulty(d);
       setVariant(v);
       clearGame().catch(() => {});
       digitCountRef.current = 0;
-      const fresh = loadPuzzle(d, v);
+      // A premium level starts at the default instead (#1129).
+      const fresh = loadPuzzle(rememberDifficulty(d), v);
       setState(fresh);
       setElapsed(0);
       setResult(null);
@@ -421,7 +427,7 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore]
+    [resetScore, rememberDifficulty]
   );
 
   const handleNewGameRequest = useCallback(() => {

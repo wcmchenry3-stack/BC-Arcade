@@ -7,8 +7,9 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { GameState } from "./types";
+import { AI_DIFFICULTIES, GameState } from "./types";
 import type { AiDifficulty } from "./types";
+import { isPremiumLevel } from "../../entitlements/premiumLevels";
 
 const STORAGE_KEY = "yacht_game_v2";
 const PREF_KEY = "yacht_pref_v1";
@@ -80,7 +81,12 @@ export async function loadLastMode(): Promise<LastModePref | null> {
   try {
     const raw = await AsyncStorage.getItem(PREF_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as LastModePref;
+    const parsed = JSON.parse(raw) as Partial<LastModePref>;
+    // An unknown or now-premium difficulty falls back to the default (#1129).
+    const difficulty =
+      AI_DIFFICULTIES.find((d) => d === parsed.difficulty && !isPremiumLevel("yacht", d)) ??
+      "medium";
+    return { mode: parsed.mode === "vs" ? "vs" : "solo", difficulty };
   } catch (e) {
     Sentry.addBreadcrumb({
       category: "yacht.storage",
