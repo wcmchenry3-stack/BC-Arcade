@@ -32,6 +32,8 @@ async def get_my_stats(
     sid = get_session_id(request)
     factory = get_session_factory()
     async with factory() as db:
+        # Close this player's games left open > 24 h before counting them (#2621).
+        await games_service.sweep_stale_games_safely(db, session_id=sid)
         summary = await games_service.get_stats_for_session(db, session_id=sid)
         try:
             streak_days = await compute_streak(db, sid, tz_offset_minutes)
