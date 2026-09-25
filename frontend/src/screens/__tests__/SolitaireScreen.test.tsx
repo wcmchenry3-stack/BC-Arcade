@@ -519,6 +519,8 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
       outcome: "abandoned",
       result: { won: false, moves: 1 },
     });
+    // The close opens nothing: the picker has no session until a mode is chosen.
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
 
     const nextDeal = nearWin(3); // built before the spy replaces dealGame
     dealSpy = jest.spyOn(solitaireEngine, "dealGame").mockReturnValue(nextDeal);
@@ -527,8 +529,10 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
     });
     await playWinningMove(api);
 
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockDiscardGame).not.toHaveBeenCalled();
     const newId = mockStartGame.mock.results.at(-1)!.value as string;
-    expect(newId).not.toBe("game-1");
+    expect(newId).toBe("game-2");
     expect(mockStartGame.mock.calls.at(-1)![1]).toEqual({ draw_mode: 3 });
     expect(mockCompleteGame).toHaveBeenCalledTimes(2);
     expect(mockCompleteGame.mock.calls[1]![0]).toBe(newId);
@@ -542,8 +546,18 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
     const api = await mount();
     await chooseDraw1(api); // game-1, never played
     await newGameFromMenu(api);
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
     expect(mockDiscardGame).toHaveBeenCalledWith("game-1");
     expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).toHaveBeenCalledTimes(1); // no throwaway session
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 3"));
+    });
+    // The new deal's session is the second one ever opened, with its mode.
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockStartGame.mock.calls[1]![1]).toEqual({ draw_mode: 3 });
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
   });
 
   it("Play Again after a win opens a new session for the new deal", async () => {

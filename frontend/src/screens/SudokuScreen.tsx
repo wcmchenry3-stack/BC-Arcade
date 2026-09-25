@@ -140,6 +140,7 @@ export default function SudokuScreen() {
   const {
     start: syncStart,
     restart: syncRestart,
+    close: syncClose,
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
@@ -459,9 +460,8 @@ export default function SudokuScreen() {
 
   const handleChangeDifficulty = useCallback(() => {
     // #2690: close this puzzle's session now, while the snapshot still reads
-    // it. The restart leaves an untouched session open, which the next puzzle
-    // (or unmount) discards: the hook has no close-only call.
-    syncRestart();
+    // it (abandoned if started, discarded if not). The next puzzle opens its own.
+    syncClose();
     clearGame().catch(() => {});
     setState(null);
     setElapsed(0);
@@ -469,7 +469,7 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore, syncRestart]);
+  }, [resetScore, syncClose]);
 
   const handleHint = useCallback(() => {
     setState((s) => {

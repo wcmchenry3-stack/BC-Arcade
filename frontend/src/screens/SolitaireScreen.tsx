@@ -159,6 +159,7 @@ export default function SolitaireScreen() {
   const {
     start: syncStart,
     restart: syncRestart,
+    close: syncClose,
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
@@ -653,9 +654,8 @@ export default function SolitaireScreen() {
   const resetToPreGame = useCallback(() => {
     // #2690: close this game's session now, while the snapshot still reads its
     // moves (abandoned if started, discarded if not; a won game's is already
-    // complete). The restart leaves an untouched session open, which the next
-    // deal (or unmount) discards: the hook has no close-only call.
-    syncRestart();
+    // complete). The next deal opens its own.
+    syncClose();
     if (autoStepTimeoutRef.current !== null) {
       clearTimeout(autoStepTimeoutRef.current);
       autoStepTimeoutRef.current = null;
@@ -669,7 +669,7 @@ export default function SolitaireScreen() {
     resetSubmission();
     winRecordedRef.current = false;
     setResumedWin(false);
-  }, [resetSubmission, syncRestart]);
+  }, [resetSubmission, syncClose]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {

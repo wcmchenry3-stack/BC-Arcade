@@ -466,10 +466,16 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
       await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${easy.digit}`, "i")));
     });
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1)); // game-1 won
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
     });
+    // The pre-picker close opens nothing (and the won session is already
+    // complete, so there is nothing to abandon or discard).
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     await act(async () => {
       await fireEvent.press(r.getByRole("radio", { name: /hard/i }));
     });
@@ -477,9 +483,9 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
     await act(async () => {
       await fireEvent.press(r.getByLabelText(/^start$/i));
     });
-    const opened = mockStartGame.mock.calls.at(-1)!;
-    expect(opened[1]).toEqual({ difficulty: "hard", variant: "classic" });
-    // Nothing but the win was completed; the picker's placeholder was discarded.
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockStartGame.mock.calls[1]![1]).toEqual({ difficulty: "hard", variant: "classic" });
+    expect(mockDiscardGame).not.toHaveBeenCalled();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
