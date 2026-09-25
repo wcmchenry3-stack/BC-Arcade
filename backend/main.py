@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -91,7 +93,37 @@ if _sentry_dsn:
 # prod, and they were unthrottled (#2464's route audit exempts FastAPI's own
 # doc routes, so this doesn't need a rate limit added).
 _is_production = os.environ.get("ENVIRONMENT") == "production"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Startup and shutdown for the API (#2668).
+
+    Replaces four ``@app.on_event`` hooks, which FastAPI deprecates — and which
+    it stops running once a lifespan is set, so they moved together. Startup
+    steps run in their previous registration order.
+
+    The Daily Word retention task is held in one place, ``app.state`` (which
+    tests read). The ``try`` opens as soon as it exists, so it is stopped on
+    every exit — including a startup that is cancelled or fails during the
+    DB health check, which can take up to ``DB_PING_TIMEOUT_SECONDS`` (#2672
+    review). Stopping is bounded (#2667), and the state is reset even when a
+    crashed task is re-raised.
+    """
+    _warn_if_dev_override_active()
+    app.state.retention_task = _start_daily_word_retention()
+    try:
+        await _db_health_check()
+        yield
+    finally:
+        try:
+            await _stop_daily_word_retention(app.state.retention_task)
+        finally:
+            app.state.retention_task = None
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="BC Arcade API",
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
@@ -259,8 +291,7 @@ async def request_logger(request: Request, call_next) -> Response:
     return response
 
 
-@app.on_event("startup")
-async def _dev_entitlement_override_warning() -> None:
+def _warn_if_dev_override_active() -> None:
     if is_dev_override_active():
         logging.getLogger("audit").warning(
             "DEV ENTITLEMENT OVERRIDE ACTIVE — all premium games unlocked for all sessions"
@@ -268,36 +299,37 @@ async def _dev_entitlement_override_warning() -> None:
 
 
 # Daily Word retention (#2544): prune guess records older than 14 days, at
-# startup and then daily. The task lives on app.state, not a module global, so
-# it belongs to the app that started it — test_security.py reloads this module,
-# which would otherwise rebind a global out from under a running task (#2661
-# review). Moving every hook to a lifespan handler is a separate change.
-@app.on_event("startup")
-async def _start_daily_word_retention() -> None:
-    app.state.retention_task = None
+# startup and then daily. Started and cancelled by `lifespan` above.
+def _start_daily_word_retention() -> asyncio.Task | None:
     if not is_configured():
-        return
+        return None
     from daily_word.retention import run_retention_loop
     from db.base import get_session_factory
 
-    app.state.retention_task = asyncio.create_task(run_retention_loop(get_session_factory))
+    return asyncio.create_task(run_retention_loop(get_session_factory))
 
 
 RETENTION_STOP_TIMEOUT_SECONDS = 5.0
 
 
-@app.on_event("shutdown")
-async def _stop_daily_word_retention() -> None:
-    """Cancel the loop and wait for it, but only so long: a prune stuck in the
-    driver must not hold shutdown (and a TestClient exit) forever (#2667)."""
-    task = getattr(app.state, "retention_task", None)
+async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
+    """Cancel the retention task and wait for it — but only so long.
+
+    Bounded (#2667): a prune stuck in the driver can absorb the cancel, and an
+    unbounded wait held shutdown, and a TestClient exit, for good; CI hung
+    ~28 min on it. After the bound it warns and moves on.
+
+    asyncio.wait never raises the task's own outcome, so a CancelledError aimed
+    at *this* coroutine — shutdown itself being cancelled — still propagates
+    (#2672 review). A task that crashed is re-raised, as ``await task`` did;
+    the lifespan resets its state regardless.
+    """
     if task is None:
         return
     from daily_word.retention import logger as retention_logger
 
     task.cancel()
     done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
-    app.state.retention_task = None
     if not done:
         retention_logger.warning(
             "daily_word retention: task still running %.0fs after cancel; not waiting",
@@ -327,7 +359,6 @@ async def _ping_db() -> None:
     await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
 
 
-@app.on_event("startup")
 async def _db_health_check() -> None:
     """Log DB reachability on boot. Non-fatal if DATABASE_URL is unset."""
     if not is_configured():
