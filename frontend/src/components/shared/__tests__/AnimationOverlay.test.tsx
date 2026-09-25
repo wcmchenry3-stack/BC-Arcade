@@ -16,7 +16,7 @@ describe("AnimationOverlay — pointer events", () => {
     const { getByTestId } = await render(
       <AnimationOverlay visible={false} onDismiss={jest.fn()} />
     );
-    const overlay = getByTestId("animation-overlay");
+    const overlay = getByTestId("animation-overlay", { includeHiddenElements: true });
     expect(overlay.props.pointerEvents).toBe("none");
   });
 
@@ -68,7 +68,37 @@ describe("AnimationOverlay — reduced motion", () => {
     );
     await act(async () => {});
 
-    const overlay = getByTestId("animation-overlay-static");
+    const overlay = getByTestId("animation-overlay-static", { includeHiddenElements: true });
     expect(overlay.props.pointerEvents).toBe("none");
+  });
+});
+
+describe("AnimationOverlay — accessibility (#2711)", () => {
+  it("labels the backdrop as the skip button when shown", async () => {
+    const onDismiss = jest.fn();
+    const { getByRole } = await render(<AnimationOverlay visible={true} onDismiss={onDismiss} />);
+    const skip = getByRole("button", { name: "Skip celebration" });
+    await fireEvent.press(skip);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels the backdrop in the reduced-motion fallback too", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const { getByRole, getByTestId } = await render(
+      <AnimationOverlay visible={true} onDismiss={jest.fn()} />
+    );
+    await act(async () => {});
+    expect(getByTestId("animation-overlay-static")).toBeTruthy();
+    expect(getByRole("button", { name: "Skip celebration" })).toBeTruthy();
+  });
+
+  it("hides the overlay from screen readers while it is not shown", async () => {
+    const { getByTestId, queryByRole } = await render(
+      <AnimationOverlay visible={false} onDismiss={jest.fn()} />
+    );
+    const overlay = getByTestId("animation-overlay", { includeHiddenElements: true });
+    expect(overlay.props.accessibilityElementsHidden).toBe(true);
+    expect(overlay.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(queryByRole("button", { name: "Skip celebration" })).toBeNull();
   });
 });
