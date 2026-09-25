@@ -49,7 +49,7 @@ import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/env
 import {
   createFrameStats,
   recordCommit,
-  recordFrame,
+  recordLoopFrame,
   summarizeFrameStats,
 } from "../../game/starswarm/render/frameStats";
 import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
@@ -561,11 +561,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       function loop(timestamp: number) {
         if (lastFrameTimeRef.current === 0) lastFrameTimeRef.current = timestamp;
-        // #2567: the raw interval, before the engine's cap — a long frame is what we want to see
+        // #2567: the raw interval, before the engine's cap — a long frame is what we want to see.
+        // RN hands RAF the performance.now() clock, the same one the readout's window uses.
         const intervalMs = timestamp - lastFrameTimeRef.current;
-        if (frameStatsRef.current && intervalMs > 0) {
-          recordFrame(frameStatsRef.current, performance.now(), intervalMs);
-        }
+        if (frameStatsRef.current) recordLoopFrame(frameStatsRef.current, timestamp, intervalMs);
         const dtMs = Math.min(intervalMs, DT_CAP_MS);
         lastFrameTimeRef.current = timestamp;
 

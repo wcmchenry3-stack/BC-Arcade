@@ -789,8 +789,8 @@ against the panel. Unit coverage: `engine.test.ts` ("Run stats (#2491)") and `te
 ### Star Swarm: reading the "Frame" readout (#2567)
 
 The readout answers "is the canvas keeping up, and is React out of the frame loop?". Turn on
-_Frame readout_ in the dev panel, then close the panel. A green line appears under the `DEV`
-button:
+_Frame readout_ in the dev panel, then close the panel. A green line appears along the bottom
+edge of the game:
 
 ```
 picture · 16.7 ms avg · 18.2 p95 · 60 f · 0 commits/s

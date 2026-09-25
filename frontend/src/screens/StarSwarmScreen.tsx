@@ -272,11 +272,13 @@ export default function StarSwarmScreen() {
         void saveBestScore(finalScore);
       }
       setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
+      // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
+      const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
       syncComplete(
         { outcome: "completed" },
-        { outcome: "completed", wave_reached: wave, difficulty_tier: difficulty }
+        { outcome: "completed", wave_reached: wave, difficulty_tier: tier }
       );
-      submitScore({ score: finalScore, wave, difficulty });
+      submitScore({ score: finalScore, wave, difficulty: tier });
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();
         if (state) {
@@ -460,6 +462,9 @@ export default function StarSwarmScreen() {
 
   // Confirm difficulty selection and start the game
   const handleConfirmDifficulty = useCallback(() => {
+    // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
+    // with the panel's own New Game, now that internal testers can reach it
+    lastDevOptsRef.current = undefined;
     AsyncStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty).catch(() => {});
     clearSavedPausedState();
     savedPauseRef.current = null;

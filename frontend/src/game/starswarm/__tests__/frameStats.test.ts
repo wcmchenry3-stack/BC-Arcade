@@ -2,7 +2,9 @@
 import {
   createFrameStats,
   recordFrame,
+  recordLoopFrame,
   recordCommit,
+  FRAME_GAP_IGNORE_MS,
   summarizeFrameStats,
   percentile,
   formatFrameStats,
@@ -71,6 +73,30 @@ describe("summarizeFrameStats", () => {
     const s = createFrameStats();
     for (let i = 0; i < 60; i++) recordFrame(s, i * 16, 16);
     expect(summarizeFrameStats(s, 960)!.commitsPerSec).toBe(0);
+  });
+});
+
+describe("recordLoopFrame — what the RAF loop feeds in", () => {
+  it("skips the first frame and a resume (interval 0) and a background gap", () => {
+    const s = createFrameStats();
+    expect(recordLoopFrame(s, 100, 0)).toBe(false); // first frame / resume from pause
+    expect(recordLoopFrame(s, 116, 16)).toBe(true);
+    expect(recordLoopFrame(s, 30_116, 30_000)).toBe(false); // back from the background
+    expect(recordLoopFrame(s, 30_132, 16)).toBe(true);
+    // the returning second reads the real frames, not a 30-second "frame"
+    expect(summarizeFrameStats(s, 30_140)!.avgMs).toBe(16);
+    expect(recordLoopFrame(s, 31_132, FRAME_GAP_IGNORE_MS)).toBe(true); // a 1 s hitch still counts
+    expect(s.frames).toBe(3);
+  });
+});
+
+describe("recordCommit", () => {
+  it("wraps its ring and still counts only the last second", () => {
+    const s = createFrameStats(4);
+    recordFrame(s, 1000, 16);
+    for (let t = 1; t <= 10; t++) recordCommit(s, 900 + t * 10); // 910..1000
+    // ring holds the newest 4, all inside the window
+    expect(summarizeFrameStats(s, 1000)!.commitsPerSec).toBe(4);
   });
 });
 

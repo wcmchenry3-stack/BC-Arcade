@@ -15,6 +15,12 @@ export const FRAME_STATS_CAPACITY = 256;
 /** The window the readout summarizes. */
 export const FRAME_STATS_WINDOW_MS = 1000;
 
+/**
+ * A loop gap longer than this is the app coming back from the background (or a debugger pause),
+ * not a slow frame: it is dropped, as a resume from pause is, instead of spiking the average.
+ */
+export const FRAME_GAP_IGNORE_MS = 1000;
+
 export interface FrameStats {
   /** When each frame was recorded (ms, `performance.now()` clock). */
   readonly frameAt: Float64Array;
@@ -54,6 +60,16 @@ export function recordFrame(stats: FrameStats, now: number, intervalMs: number):
   stats.frameAt[i] = now;
   stats.frameMs[i] = intervalMs;
   stats.frames++;
+}
+
+/**
+ * The RAF loop's recorder: skips the first frame and a resume (interval 0 — the loop resets its
+ * clock) and a gap from backgrounding (over `FRAME_GAP_IGNORE_MS`). Returns whether it recorded.
+ */
+export function recordLoopFrame(stats: FrameStats, now: number, intervalMs: number): boolean {
+  if (intervalMs <= 0 || intervalMs > FRAME_GAP_IGNORE_MS) return false;
+  recordFrame(stats, now, intervalMs);
+  return true;
 }
 
 /** Record one React commit of the canvas. */

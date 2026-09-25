@@ -22,9 +22,7 @@ interface Props {
 export default function FrameStatsReadout({ read, renderer }: Props) {
   const [line, setLine] = useState(() => formatFrameStats(read()));
   useEffect(() => {
-    const tick = () => setLine(formatFrameStats(read()));
-    tick();
-    const id = setInterval(tick, FRAME_STATS_POLL_MS);
+    const id = setInterval(() => setLine(formatFrameStats(read())), FRAME_STATS_POLL_MS);
     return () => clearInterval(id);
   }, [read]);
   const text = `${renderer} · ${line}`;
@@ -43,7 +41,7 @@ export default function FrameStatsReadout({ read, renderer }: Props) {
 const styles = StyleSheet.create({
   wrap: {
     position: "absolute",
-    top: 28,
+    bottom: 4, // below the lives and power-up rows, clear of the HUD's top lines
     left: 6,
     right: 6,
     backgroundColor: "rgba(0,0,0,0.6)",
