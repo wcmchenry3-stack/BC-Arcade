@@ -26,12 +26,9 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
 
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  // The overlay stays mounted while hidden (opacity 0), so hide it from screen
-  // readers then; when shown, the full-screen backdrop is the skip button (#2711).
-  const a11yHidden = {
-    accessibilityElementsHidden: !visible,
-    importantForAccessibility: visible ? ("auto" as const) : ("no-hide-descendants" as const),
-  };
+  // The overlay stays mounted while hidden (opacity 0), so it is hidden from
+  // screen readers then (aria-hidden); when shown, the full-screen backdrop is
+  // the skip button (#2711).
   const backdrop = (
     <Pressable
       style={StyleSheet.absoluteFill}
@@ -48,7 +45,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
         style={[styles.overlay, { opacity: visible ? 1 : 0 }]}
         pointerEvents={visible ? "auto" : "none"}
         testID="animation-overlay-static"
-        {...a11yHidden}
+        aria-hidden={!visible}
       >
         {backdrop}
         {children}
@@ -61,7 +58,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
       style={[styles.overlay, animatedStyle]}
       pointerEvents={visible ? "auto" : "none"}
       testID="animation-overlay"
-      {...a11yHidden}
+      aria-hidden={!visible}
     >
       {backdrop}
       {children}

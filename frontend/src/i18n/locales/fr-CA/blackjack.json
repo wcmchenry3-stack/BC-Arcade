@@ -143,10 +143,10 @@
   "hud.criticalWarning": "⚠ Solde critique",
   "hud.winStreakBadge": "🔥 {{count}} SÉRIE DE VICTOIRES",
   "table.beginner.subtitle": "Apprends le rythme.",
-  "table.intermediate.subtitle": "Reste dans la partie.",
+  "table.intermediate.subtitle": "Restez dans la partie.",
   "table.highRoller.subtitle": "Un essai.",
   "tableSelect.kicker": "CHOISIR UNE TABLE",
-  "tableSelect.tagline": "Survie à la partie.",
+  "tableSelect.tagline": "Survivez à la série.",
   "tableSelect.taglineSub": "Chaque table est un arc complet — un solde de départ, un objectif à atteindre et une sortie nette.",
   "tableSelect.viewHistory": "Voir l'historique",
   "tableSelect.lastPlayed": "Dernière partie"

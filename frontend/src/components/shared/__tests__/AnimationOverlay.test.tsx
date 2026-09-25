@@ -97,8 +97,18 @@ describe("AnimationOverlay — accessibility (#2711)", () => {
       <AnimationOverlay visible={false} onDismiss={jest.fn()} />
     );
     const overlay = getByTestId("animation-overlay", { includeHiddenElements: true });
-    expect(overlay.props.accessibilityElementsHidden).toBe(true);
-    expect(overlay.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(overlay.props["aria-hidden"]).toBe(true);
+    expect(queryByRole("button", { name: "Skip celebration" })).toBeNull();
+  });
+
+  it("hides the reduced-motion fallback from screen readers while it is not shown", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const { getByTestId, queryByRole } = await render(
+      <AnimationOverlay visible={false} onDismiss={jest.fn()} />
+    );
+    await act(async () => {});
+    const overlay = getByTestId("animation-overlay-static", { includeHiddenElements: true });
+    expect(overlay.props["aria-hidden"]).toBe(true);
     expect(queryByRole("button", { name: "Skip celebration" })).toBeNull();
   });
 });
