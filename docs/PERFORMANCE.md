@@ -581,8 +581,8 @@ This section records what that bought on real hardware.
 2. Open the Star Swarm dev panel (`DEV` button) and turn on _Frame readout_. How to read it is in
    [`TESTING.md`](TESTING.md#star-swarm-reading-the-frame-readout-2567).
 3. Record the readout after about ten seconds in each scenario. Close the panel before reading.
-   The legacy column below was measured with the dev panel's _Legacy renderer_ switch before
-   #2567 removed it. To re-measure it, build a commit from before that removal.
+   The legacy column comes from the dev panel's _Legacy renderer_ switch, which exists only in
+   builds from before #2567 removed it (#2594 is the last). To re-measure it, build one of those.
    - **Wave 1 idle:** set wave 1, New Game, don't fire.
    - **Wave 5 boss:** set wave 5, New Game, hold fire.
    - **Wave 9 lightning:** set wave 9, New Game, trigger _lightning_, hold fire.
