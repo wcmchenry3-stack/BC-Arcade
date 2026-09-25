@@ -5,9 +5,9 @@ Each ``GameModule`` declares how its game is ranked in one place, its
 ``frontend/src/api/vocab.ts``) and the docs all read that declaration instead
 of per-game leaderboard code.
 
-This module only declares. Ranking, rank lookup, stats and ``max_value``
-enforcement read these definitions in later stories (#2618, #2620); no route
-uses them yet.
+This module only declares. ``games/leaderboard.py`` ranks boards, looks up
+ranks and enforces the caps from these definitions (#2618); stats read them
+from #2620.
 
 Every board is a class-level singleton shared by all requests, so the model
 is frozen and every container field is a tuple: nothing on a board can be
