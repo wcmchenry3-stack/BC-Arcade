@@ -47,6 +47,8 @@ import {
   applyServerResult,
   markComplete,
   buildShareText,
+  guessCount as countGuesses,
+  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
@@ -764,8 +766,19 @@ export default function DailyWordScreen() {
       if (!mountedRef.current) return;
       const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
 
-      const afterApply = applyServerResult(s, tileStates);
+      // #2541 — keep the server's count on the state; `guessCount` reads it.
+      const afterApply = withServerGuessCount(
+        applyServerResult(s, tileStates),
+        result.guesses_used
+      );
       const won = tileStates.every((tile) => tile.status === "correct");
+      // Deliberately the board's rows, not the server's `guesses_remaining`
+      // (#2541 review). A 200 can be a replay of a recorded guess — on a
+      // puzzle the server has as solved, or on a wiped board — and the 200
+      // carries no `solved` flag, so ending the game here would record a
+      // loss for a win, or a fresh completion for a finished puzzle. A board
+      // that is behind reaches its next guess, which the server refuses with
+      // a 403 that the recovery path below handles, guards included.
       const outOfGuesses = !won && afterApply.current_row >= 6;
 
       if (!syncGetGameId()) {
@@ -851,7 +864,14 @@ export default function DailyWordScreen() {
           // would persist won:false and show them the word they had already
           // found.
           const wonIt = err.message === "already_solved";
-          const finished = markComplete(current, wonIt);
+          // The board is behind the server here by definition — that is why
+          // this 403 happened — so its row count is too low. Take the
+          // server's count from the refusal (#2541); `guessCount` falls back
+          // to the board if an older API sent none.
+          const finished = markComplete(
+            withServerGuessCount(current, err.body?.guesses_used),
+            wonIt
+          );
 
           // Only report a session this visit actually played. `already_solved`
           // is returned for *any* guess on a puzzle this session finished at
@@ -934,7 +954,7 @@ export default function DailyWordScreen() {
   // Render
   // ---------------------------------------------------------------------------
 
-  const guessCount = state ? state.rows.filter((r) => r.submitted).length : 0;
+  const guessCount = state ? countGuesses(state) : 0;
 
   async function handleShare() {
     if (!state) return;

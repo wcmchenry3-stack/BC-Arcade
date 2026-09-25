@@ -9,6 +9,7 @@
 
 import { test, expect } from "@playwright/test";
 import { mockMahjongApi, injectMahjongFull } from "./helpers/mahjong";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 const PROGRESS_TURTLE_ONLY = {
   unlockedLayouts: ["turtle"],
@@ -57,6 +58,7 @@ const COMPLETED_TURTLE_GAME = {
 test.describe("Mahjong — layout select screen", () => {
   test.beforeEach(async ({ page }) => {
     await mockMahjongApi(page);
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");

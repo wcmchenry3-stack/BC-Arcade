@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(
 LEADERBOARDS = [
     ("solitaire", "/solitaire/scores", None),
     ("freecell", "/freecell/leaderboard", None),
-    ("mahjong", "/mahjong/scores", None),
+    ("mahjong", "/mahjong/scores", "mahjong"),
     ("yacht", "/yacht/scores", "yacht"),
     ("cascade", "/cascade/scores", "cascade"),
     ("hearts", "/hearts/scores", "hearts"),

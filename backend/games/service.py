@@ -548,7 +548,7 @@ async def _validate_result(
     if result_model is None:
         return dict(result)
     try:
-        return result_model.model_validate(result).model_dump(exclude_unset=True)
+        validated = result_model.model_validate(result).model_dump(exclude_unset=True)
     except ValidationError as e:
         errors = e.errors()
         fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in errors)
@@ -558,6 +558,12 @@ async def _validate_result(
             {"fields": fields, "error_types": sorted({err["type"] for err in errors})},
         )
         raise GameServiceError(400, f"Invalid result for {name}: {fields}")
+    # Optional per-game hook: correct a validated result against server-side
+    # state the client cannot be trusted on (Daily Word's guess record, #2541).
+    reconcile = getattr(mod, "reconcile_result", None)
+    if reconcile is not None:
+        validated = await reconcile(session, game, validated)
+    return validated
 
 
 def _report_rejected_result(game_type: str, reason: str, extra: dict[str, Any]) -> None:

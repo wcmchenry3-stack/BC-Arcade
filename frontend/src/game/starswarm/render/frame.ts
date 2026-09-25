@@ -3,9 +3,9 @@
  * canvas, as a pure function returning a flat, ordered display list of primitive draw ops.
  *
  * The ops are plain data — numbers, strings and sprite keys, no Skia objects and no functions —
- * so the same list can be replayed on the UI thread in phase 3 (#2565) by a worklet that makes no
- * decisions of its own. Today `GameCanvas.tsx` maps each op to one Skia element. Draw order is
- * list order (painter's algorithm), so the order below is the z-order on screen.
+ * so the list can be replayed on the UI thread (#2565) by `drawFrame.ts`, a worklet that makes no
+ * decisions of its own. Draw order is list order (painter's algorithm), so the order below is the
+ * z-order on screen.
  *
  * The web renderer (`GameCanvas.web.tsx`, unmaintained) still derives the same rules itself.
  */
@@ -51,7 +51,7 @@ export type LoadedSprites = Readonly<Record<Exclude<SpriteKey, "explosion">, boo
   readonly explosion: readonly boolean[];
 };
 
-/** A primitive draw op. `key` is stable per entity so a React renderer can reconcile cheaply. */
+/** A primitive draw op. `key` is stable per entity — tests and debugging use it to find an op. */
 export type DrawOp =
   | { readonly k: "fill"; readonly key: string; readonly color: string }
   | {
@@ -156,20 +156,6 @@ function flatRounded(points: readonly { x: number; y: number }[]): number[] {
   const out: number[] = [];
   for (const p of points) out.push(Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10);
   return out;
-}
-
-/** SVG path for a closed `poly` op: "M x0,y0 L x1,y1 … Z". */
-export function polyPath(points: readonly number[]): string {
-  let d = "";
-  for (let i = 0; i < points.length; i += 2) {
-    d += `${i === 0 ? "M" : " L"}${points[i]},${points[i + 1]}`;
-  }
-  return `${d} Z`;
-}
-
-/** The x a `flipX` image op mirrors about — its own centre. */
-export function mirrorAxisX(op: { readonly x: number; readonly w: number }): number {
-  return op.x + op.w / 2;
 }
 
 /** The whole native-canvas scene for one frame, back to front. */

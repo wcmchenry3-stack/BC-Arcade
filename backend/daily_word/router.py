@@ -42,7 +42,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import sentry_sdk
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
@@ -187,7 +187,7 @@ async def get_today(
 # prevents. This is a volume backstop, not a security boundary; it does not
 # stop a determined caller, which needs server-issued sessions (#1047).
 @limiter.limit("1200/hour")
-async def post_guess(request: Request, body: GuessRequest) -> dict:
+async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
     try:
@@ -256,10 +256,18 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
         _report_degraded_guess(exc)
 
     if outcome is not None and not outcome.allowed:
-        raise HTTPException(
-            status_code=403,
-            detail="already_solved" if outcome.solved else "no_guesses_remaining",
-        )
+        # #2541 — the server's count travels with the refusal. This 403 means
+        # the board is behind the record (a recorded guess whose response was
+        # lost), so the client must not count its own rows: that number is
+        # structurally low, and it feeds the "win within N guesses" goal and
+        # the share text. `detail` stays the bare code the client matches on.
+        # Set on the injected Response rather than raising HTTPException, whose
+        # body can only be `detail`; this keeps the route's `-> dict` contract.
+        response.status_code = 403
+        return {
+            "detail": "already_solved" if outcome.solved else "no_guesses_remaining",
+            "guesses_used": outcome.guesses_used,
+        }
 
     result: dict = {"tiles": tiles}
     if outcome is not None:

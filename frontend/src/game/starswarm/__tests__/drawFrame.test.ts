@@ -1,7 +1,7 @@
 /**
  * #2565: the UI-thread renderer replays a display list onto a Skia canvas. These tests drive it
  * against a recording fake of the Skia API and pin, per op kind, the draw call and the paint
- * state it is made with — the port of the phase-2 declarative `renderOp` must draw the same.
+ * state it is made with, matching what the phase-2 declarative renderer drew (removed in #2567).
  */
 jest.mock("@shopify/react-native-skia", () => {
   const alphaOf = (c: string) => {

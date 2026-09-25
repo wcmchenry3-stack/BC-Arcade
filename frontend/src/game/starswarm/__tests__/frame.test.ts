@@ -18,8 +18,6 @@ import {
   buildFrame,
   playerVisible,
   hitFlash,
-  polyPath,
-  mirrorAxisX,
   EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
@@ -460,17 +458,6 @@ describe("buildFrame — player", () => {
         color: "#00ffcc",
       }
     );
-  });
-});
-
-describe("renderer helpers", () => {
-  it("polyPath closes the polygon: M first, L each other vertex, Z", () => {
-    expect(polyPath([1, 2, 3, 4, 5.5, 6])).toBe("M1,2 L3,4 L5.5,6 Z");
-    expect(polyPath([0, 0])).toBe("M0,0 Z");
-  });
-
-  it("a flipped image mirrors about its own centre — the buddy's x", () => {
-    expect(mirrorAxisX({ x: 300 - BUDDY_SIZE / 2, w: BUDDY_SIZE })).toBe(300);
   });
 });
 

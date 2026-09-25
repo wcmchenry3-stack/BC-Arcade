@@ -4,8 +4,8 @@
  * Runs as a worklet on the UI thread inside `createPicture`, so it may touch only Skia APIs, the
  * ops and the images it is handed — no React state, refs or engine imports. It makes no drawing
  * decisions: every choice (sprite vs fallback, colours, alphas, order) was made by `buildFrame`
- * on the JS thread and is tested there. This is a straight port of `renderOp` in GameCanvas.tsx,
- * the declarative path kept behind the "Legacy renderer" dev switch until phase 5.
+ * on the JS thread and is tested there. It began as a straight port of the phase-2 declarative
+ * renderer, which phase 5 (#2567) removed once the Picture path was measured on device.
  */
 import { Skia, PaintStyle, FilterMode, MipmapMode } from "@shopify/react-native-skia";
 import type { SkCanvas, SkImage, SkPaint } from "@shopify/react-native-skia";

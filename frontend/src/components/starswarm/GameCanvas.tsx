@@ -1,11 +1,4 @@
-import React, {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -13,17 +6,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { StyleSheet, Text, View } from "react-native";
-import {
-  Canvas,
-  Circle,
-  Fill,
-  Group,
-  Image as SkiaImage,
-  Path,
-  Picture,
-  Rect,
-  createPicture,
-} from "@shopify/react-native-skia";
+import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import {
@@ -45,6 +28,14 @@ import {
   upgradeEvents,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
+import {
+  createFrameStats,
+  recordCommit,
+  recordLoopFrame,
+  summarizeFrameStats,
+} from "../../game/starswarm/render/frameStats";
+import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
@@ -59,8 +50,7 @@ import {
 } from "../../game/starswarm/assets";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
 import type { DrawImages } from "../../game/starswarm/render/drawFrame";
-import type { StarSwarmImages } from "../../game/starswarm/assets";
-import { buildFrame, polyPath, mirrorAxisX } from "../../game/starswarm/render/frame";
+import { buildFrame } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import type {
   StarSwarmState,
@@ -92,14 +82,7 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
-  /**
-   * #2565: "picture" (default) draws the frame on the UI thread as one Skia Picture; "react" is
-   * the phase-2 declarative path, kept for side-by-side comparison until phase 5 (#2567).
-   */
-  rendererMode?: RendererMode;
 }
-
-export type RendererMode = "picture" | "react";
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
@@ -112,7 +95,15 @@ export interface GameCanvasHandle {
   killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
+  /** #2567: the last second of frame times and React commits, or null when sampling is off. */
+  getFrameStats: () => FrameStatsSummary | null;
 }
+
+/**
+ * #2567: frame-time sampling runs in dev builds, internal pre-launch builds (TestFlight / Play
+ * test, where the numbers are measured) and E2E test builds — never in a store build.
+ */
+const FRAME_STATS_ENABLED = __DEV__ || isPreLaunchApiBuild() || areTestHooksEnabled();
 
 /** #2565: a throw inside the UI-thread renderer is reported once, on the JS thread. */
 function reportDrawError(message: string): void {
@@ -134,71 +125,6 @@ function publishPicture(
   height: number
 ): void {
   frameSV.value = buildFrame(inputs.game, inputs.sf, { loaded, width, height });
-}
-
-/** #2564: one Skia element per display-list op. No decisions here — buildFrame made them. */
-function renderOp(op: DrawOp, images: StarSwarmImages): React.ReactElement | null {
-  switch (op.k) {
-    case "fill":
-      return <Fill key={op.key} color={op.color} />;
-    case "rect":
-      return (
-        <Rect
-          key={op.key}
-          x={op.x}
-          y={op.y}
-          width={op.w}
-          height={op.h}
-          color={op.color}
-          {...(op.opacity !== undefined ? { opacity: op.opacity } : {})}
-        />
-      );
-    case "circle":
-      return (
-        <Circle
-          key={op.key}
-          cx={op.cx}
-          cy={op.cy}
-          r={op.r}
-          color={op.color}
-          {...(op.opacity !== undefined ? { opacity: op.opacity } : {})}
-          {...(op.stroke !== undefined ? { style: "stroke", strokeWidth: op.stroke } : {})}
-        />
-      );
-    case "image": {
-      const image =
-        op.sprite === "explosion" ? images.explosionFrames[op.frame ?? 0] : images[op.sprite];
-      if (!image) return null; // buildFrame only emits loaded sprites; belt and braces
-      const el = (
-        <SkiaImage
-          key={op.key}
-          image={image}
-          x={op.x}
-          y={op.y}
-          width={op.w}
-          height={op.h}
-          fit={op.fit}
-        />
-      );
-      if (!op.flipX) return el;
-      const cx = mirrorAxisX(op);
-      return (
-        <Group key={op.key} transform={[{ translateX: cx }, { scaleX: -1 }, { translateX: -cx }]}>
-          {el}
-        </Group>
-      );
-    }
-    case "poly": {
-      return (
-        <Path
-          key={op.key}
-          path={polyPath(op.points)}
-          color={op.color}
-          {...(op.stroke !== undefined ? { style: "stroke", strokeWidth: op.stroke } : {})}
-        />
-      );
-    }
-  }
 }
 
 interface Props {
@@ -236,9 +162,6 @@ interface Props {
   /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
   initialState?: StarSwarmState;
 }
-
-/** #2563: what the render reads each frame — see render/publish.ts for when it is published. */
-type RenderState = FrameInputs;
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
@@ -282,7 +205,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     loadedRef.current = loadedSprites(images);
     const sizeRef = useRef({ width, height });
     sizeRef.current = { width, height };
-    const rendererMode: RendererMode = devOptions?.rendererMode ?? "picture";
 
     const gameRef = useRef<StarSwarmState>(
       initialState ??
@@ -305,12 +227,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     difficultyRef.current = difficultyProp;
     // ms remaining in pre-wave countdown; null = no countdown active.
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
-    // countdownDigit in renderState must be initialized consistently with this value.
+    // countdownDigit in initialFrame must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
     // True when the active countdown follows a wave clear (shows the "— WAVE N —" banner).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const waveBannerCountdownRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
+    const frameStatsRef = useRef(FRAME_STATS_ENABLED ? createFrameStats() : null);
+    // #2567: count this component's React commits for the "Frame" readout (no deps: every commit)
+    useEffect(() => {
+      if (frameStatsRef.current) recordCommit(frameStatsRef.current, performance.now());
+    });
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
     const prevPhaseRef = useRef(gameRef.current.phase);
@@ -383,7 +310,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onUpgradeRef.current = onUpgrade;
     }, [onUpgrade]);
 
-    const [renderState, setRenderState] = useState<RenderState>(() => ({
+    // #2563: the first frame's inputs; after this the loop publishes, never React state
+    const [initialFrame] = useState<FrameInputs>(() => ({
       game: gameRef.current,
       sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
@@ -391,18 +319,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       bonusFlash: false,
     }));
     // #2566: the HUD, published to React only when a value in it changes — a few commits a second
-    // in steady play (score ticks), none while paused. `renderState` above now feeds only the
-    // legacy declarative renderer (dev switch), and goes away with it in phase 5 (#2567).
+    // in steady play (score ticks), none while paused. It is the only React state the loop sets.
     const [hud, setHud] = useState<HudState>(() =>
-      deriveHud(renderState.game, {
-        countdownDigit: renderState.countdownDigit,
-        waveBannerCountdown: renderState.waveBannerCountdown,
-        bonusFlash: renderState.bonusFlash,
+      deriveHud(initialFrame.game, {
+        countdownDigit: initialFrame.countdownDigit,
+        waveBannerCountdown: initialFrame.waveBannerCountdown,
+        bonusFlash: initialFrame.bonusFlash,
       })
     );
     const hudRef = useRef<HudState>(hud);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
-    const [initialCues] = useState<HudCues>(() => hudCues(renderState.game));
+    const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
     const powerUpSV = useSharedValue(initialCues.powerUpFraction);
     const cueSVRef = useRef({ mission: missionOpacitySV, powerUp: powerUpSV });
@@ -413,16 +340,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const powerUpBarStyle = useAnimatedStyle(() => ({
       transform: [{ translateX: -POWERUP_BAR_WIDTH * (1 - powerUpSV.value) }],
     }));
-    // #2563: the frame last published — to the Picture (#2565) or, under the legacy renderer, to
-    // React. The loop publishes only when the next one differs, so a paused or finished game
-    // stops publishing instead of reconciling ~60×/s.
-    const publishedRef = useRef<RenderState>(renderState);
+    // #2563: the frame last published to the Picture (#2565). The loop publishes only when the
+    // next one differs, so a paused or finished game stops publishing entirely.
+    const publishedRef = useRef<FrameInputs>(initialFrame);
 
     // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
     // derived value re-records only when the list, the image set or the canvas size changes.
     // Seeded with the first frame so the Picture is never blank before the first publish.
     const [initialOps] = useState(() =>
-      buildFrame(renderState.game, renderState.sf, { loaded: loadedRef.current, width, height })
+      buildFrame(initialFrame.game, initialFrame.sf, { loaded: loadedRef.current, width, height })
     );
     const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
     // Effects and the loop write through a ref: the shared value's identity is stable in the app,
@@ -448,18 +374,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       );
     }, [drawImages, width, height]);
 
-    // #2565: republish when sprites finish loading or the dev renderer switch flips — without
-    // this a paused game would keep its fallback shapes until it resumed. A layout effect, so the
-    // legacy path's catch-up render lands before paint instead of flashing a stale frame.
-    useLayoutEffect(() => {
-      if (rendererMode !== "picture") {
-        // #2566: the legacy path reads the full frame state, which picture mode stops updating
-        setRenderState(publishedRef.current);
-        return;
-      }
+    // #2565: republish when sprites finish loading — without this a paused game would keep its
+    // fallback shapes until it resumed.
+    useEffect(() => {
       const { width: w, height: h } = sizeRef.current;
       publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
-    }, [drawImages, rendererMode]);
+    }, [drawImages]);
 
     useImperativeHandle(
       ref,
@@ -481,6 +401,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         getState() {
           return gameRef.current;
+        },
+        getFrameStats() {
+          const stats = frameStatsRef.current;
+          return stats ? summarizeFrameStats(stats, performance.now()) : null;
         },
       }),
       []
@@ -513,7 +437,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       waveBannerCountdownRef.current = false;
       // #2490: a game that opens on a boss wave (dev wave jump) is announced like a cleared-into one
       if (isBossWave(gameRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
-      const fresh: RenderState = {
+      const fresh: FrameInputs = {
         game: gameRef.current,
         sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
@@ -521,11 +445,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         bonusFlash: false,
       };
       publishedRef.current = fresh;
-      if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
-        publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
-      } else {
-        setRenderState(fresh);
-      }
+      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
       publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height]);
 
@@ -536,7 +456,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       function loop(timestamp: number) {
         if (lastFrameTimeRef.current === 0) lastFrameTimeRef.current = timestamp;
-        const dtMs = Math.min(timestamp - lastFrameTimeRef.current, DT_CAP_MS);
+        // #2567: the raw interval, before the engine's cap — a long frame is what we want to see.
+        // RN hands RAF the performance.now() clock, the same one the readout's window uses.
+        const intervalMs = timestamp - lastFrameTimeRef.current;
+        if (frameStatsRef.current) recordLoopFrame(frameStatsRef.current, timestamp, intervalMs);
+        const dtMs = Math.min(intervalMs, DT_CAP_MS);
         lastFrameTimeRef.current = timestamp;
 
         // #1039: apply dev-panel power-up injection before regular tick
@@ -685,7 +609,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           countdownMsRef.current !== null
             ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
             : null;
-        const next: RenderState = {
+        const next: FrameInputs = {
           game: gameRef.current,
           sf: sfRef.current,
           countdownDigit,
@@ -698,13 +622,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (!sameFrame(publishedRef.current, next)) {
           publishedRef.current = next;
           // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
-          // when the HUD changed — or every frame under the legacy renderer, which draws from it.
-          if ((devOptionsRef.current?.rendererMode ?? "picture") === "picture") {
-            const { width: w, height: h } = sizeRef.current;
-            publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
-          } else {
-            setRenderState(next);
-          }
+          // when the HUD changed.
+          const { width: w, height: h } = sizeRef.current;
+          publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
           publishHud(next, hudRef, setHud, cuesRef, cueSVRef.current);
         }
         id = requestAnimationFrame(loop);
@@ -714,15 +634,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf } = renderState; // #2566: legacy renderer only — the HUD reads `hud`
-    // #2564: every drawing decision (sprites vs fallbacks, rings, flashes, the beam, the #2334
-    // hidden-ship-at-game-over rule, the invincibility blink) lives in buildFrame — tested there.
-    // #2565: only the legacy declarative renderer builds it here; the Picture path builds it in
-    // the loop and draws it on the UI thread.
-    const legacyFrame =
-      rendererMode === "react"
-        ? buildFrame(state, sf, { loaded: loadedRef.current, width, height })
-        : null;
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, hud.score);
@@ -735,13 +646,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="none"
         >
           <Group transform={[{ scale }]}>
-            {/* #2565: the whole scene as one UI-thread Picture; the phase-2 declarative path is
-                kept behind the "Legacy renderer" dev switch until phase 5 (#2567) */}
-            {legacyFrame ? (
-              legacyFrame.map((op) => renderOp(op, images))
-            ) : (
-              <Picture picture={picture} />
-            )}
+            {/* #2565: the whole scene as one UI-thread Picture. Every drawing decision lives in
+                buildFrame (#2564), built in the loop and tested there. */}
+            <Picture picture={picture} />
           </Group>
         </Canvas>
 

@@ -43,7 +43,9 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
-import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
+import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
 import { starSwarmLeaderboard } from "../game/starswarm/leaderboard";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -57,6 +59,13 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
 import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+
+/**
+ * #2567: the dev panel exists in dev builds and in internal pre-launch builds (TestFlight / Play
+ * test against the pre-launch API, as Hearts does) — the frame-time numbers are measured on
+ * release builds, and reaching wave 5 or 9 there needs the panel. Store builds never show it.
+ */
+const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
 // #2491: dev-panel run-stats view — a 4 Hz snapshot of the engine's counters.
 const DEV_STATS_POLL_MS = 250;
@@ -86,6 +95,8 @@ interface RunStatsHook {
   readonly wave: number;
   readonly difficulty: DifficultyTier;
   readonly score: number;
+  /** #2567: the last second of frame times and canvas commits (null on web or before a frame). */
+  readonly frame: FrameStatsSummary | null;
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
@@ -149,7 +160,7 @@ export default function StarSwarmScreen() {
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
-  // Dev panel state — stripped from production builds by Metro's __DEV__ dead-code elimination
+  // Dev panel state — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [devWave, setDevWave] = useState(1);
   const [devInfiniteLives, setDevInfiniteLives] = useState(false);
@@ -163,7 +174,7 @@ export default function StarSwarmScreen() {
   const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
   const [devFlakOff, setDevFlakOff] = useState(false); // #2491
   const [devRoutOff, setDevRoutOff] = useState(false); // #2489
-  const [devLegacyRenderer, setDevLegacyRenderer] = useState(false); // #2565
+  const [devFrameReadout, setDevFrameReadout] = useState(false); // #2567
   // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
   const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
 
@@ -260,11 +271,13 @@ export default function StarSwarmScreen() {
         void saveBestScore(finalScore);
       }
       setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
+      // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
+      const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
       syncComplete(
         { outcome: "completed" },
-        { outcome: "completed", wave_reached: wave, difficulty_tier: difficulty }
+        { outcome: "completed", wave_reached: wave, difficulty_tier: tier }
       );
-      submitScore({ score: finalScore, wave, difficulty });
+      submitScore({ score: finalScore, wave, difficulty: tier });
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();
         if (state) {
@@ -352,6 +365,9 @@ export default function StarSwarmScreen() {
     canvasRef.current?.throwAsteroid(); // #2486
   }, []);
 
+  // #2567: stable, so the readout's poll timer is not restarted by screen re-renders
+  const readFrameStats = useCallback(() => canvasRef.current?.getFrameStats() ?? null, []);
+
   const handleKillEscorts = useCallback(() => {
     canvasRef.current?.killEscorts(); // #2491
   }, []);
@@ -359,7 +375,7 @@ export default function StarSwarmScreen() {
   // #2491: refresh the dev panel's counters at 4 Hz while it is open — a timer, never a
   // per-frame React update; the loop itself keeps running in the canvas untouched.
   useEffect(() => {
-    if (!__DEV__ || !devPanelOpen) return;
+    if (!DEV_TOOLS || !devPanelOpen) return;
     const read = () => {
       const s = canvasRef.current?.getState();
       setDevStats(s ? snapshotStats(s) : null);
@@ -396,6 +412,7 @@ export default function StarSwarmScreen() {
             wave: s.wave,
             difficulty: s.difficulty,
             score: s.score,
+            frame: canvasRef.current?.getFrameStats() ?? null,
           }
         : null;
     };
@@ -425,7 +442,7 @@ export default function StarSwarmScreen() {
 
   const handleNewGame = useCallback(
     (opts?: DevOptions) => {
-      if (__DEV__ && opts !== undefined) lastDevOptsRef.current = opts;
+      if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
       beginRun(opts?.difficulty ?? difficulty);
       scoreRef.current = 0;
       setPhase("SwoopIn");
@@ -444,6 +461,9 @@ export default function StarSwarmScreen() {
 
   // Confirm difficulty selection and start the game
   const handleConfirmDifficulty = useCallback(() => {
+    // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
+    // with the panel's own New Game, now that internal testers can reach it
+    lastDevOptsRef.current = undefined;
     AsyncStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty).catch(() => {});
     clearSavedPausedState();
     savedPauseRef.current = null;
@@ -552,7 +572,7 @@ export default function StarSwarmScreen() {
               // pauseStraggler is also overridden here (fixes a pre-existing gap where the toggle
               // only took effect after New Game).
               devOptions={
-                __DEV__
+                DEV_TOOLS
                   ? {
                       ...lastDevOptsRef.current,
                       pauseStraggler: devPauseStraggler,
@@ -562,7 +582,6 @@ export default function StarSwarmScreen() {
                       dodgeDisabled: devDodgeOff,
                       flakDisabled: devFlakOff,
                       routDisabled: devRoutOff,
-                      rendererMode: devLegacyRenderer ? "react" : "picture",
                     }
                   : undefined
               }
@@ -576,11 +595,12 @@ export default function StarSwarmScreen() {
               onResume={handleResume}
               onNewGame={handleRequestNewGame}
             />
-            {__DEV__ && (
+            {DEV_TOOLS && (
               <Pressable style={dynamicStyles.devButton} onPress={() => setDevPanelOpen(true)}>
                 <Text style={styles.devButtonText}>DEV</Text>
               </Pressable>
             )}
+            {DEV_TOOLS && devFrameReadout && <FrameStatsReadout read={readFrameStats} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
@@ -668,7 +688,7 @@ export default function StarSwarmScreen() {
           testID="starswarm-result"
         />
 
-        {__DEV__ && devPanelOpen && (
+        {DEV_TOOLS && devPanelOpen && (
           <View
             style={dynamicStyles.devPanelOverlay}
             accessible
@@ -753,10 +773,10 @@ export default function StarSwarmScreen() {
                 <Switch value={devRoutOff} onValueChange={setDevRoutOff} />
               </View>
 
-              {/* #2565: compare the UI-thread Picture renderer against the phase-2 path */}
+              {/* #2567: frame-time avg / p95 and canvas commits/s, shown over the game */}
               <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Legacy renderer</Text>
-                <Switch value={devLegacyRenderer} onValueChange={setDevLegacyRenderer} />
+                <Text style={dynamicStyles.devLabel}>Frame readout</Text>
+                <Switch value={devFrameReadout} onValueChange={setDevFrameReadout} />
               </View>
 
               <Pressable

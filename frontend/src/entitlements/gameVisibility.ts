@@ -1,7 +1,7 @@
 /**
  * Which games exist at all in this build (#2390).
  *
- * v1.0 ships to the stores with the six premium games hidden entirely — not
+ * v1.0 ships to the stores with the premium games hidden entirely — not
  * locked, not free. They come back when IAP lands (epic #822).
  *
  * This is deliberately a compiled constant and NOT:
@@ -18,12 +18,12 @@
  * compiled against rather than a flag somebody has to remember to flip back:
  * a build pointed at the pre-launch API — whose backend grants every premium
  * game to every session — shows everything; a build pointed at anything else
- * is a store build. Pointing the release config at the production API
- * (release plan, Sep 29) therefore hides the games and ends the free
- * entitlements in the same step. `EXPO_PUBLIC_API_URL` is safe from both
- * objections above: it is one of the two vars `ci_post_clone.sh` itself
- * writes, and it is inlined at build time, so the reviewed binary is the
- * shipped binary.
+ * is a store build. Building against the production API (on Xcode Cloud,
+ * any workflow without `BC_API_TARGET=prelaunch`; docs/IOS.md) therefore
+ * hides the games and ends the free entitlements in the same step.
+ * `EXPO_PUBLIC_API_URL` is safe from both objections above: it is one of the
+ * two vars `ci_post_clone.sh` itself writes, and it is inlined at build time,
+ * so the reviewed binary is the shipped binary.
  *
  * Visibility is separate from entitlement: `PREMIUM_GAMES` / `canPlay` in
  * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden
@@ -35,9 +35,8 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
   "blackjack",
   "cascade",
   "hearts",
-  "sudoku",
   "starswarm",
-  "sort",
+  "mahjong",
 ]);
 
 /**
