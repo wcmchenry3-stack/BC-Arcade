@@ -9,6 +9,13 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 // Mocks — factories must be self-contained (jest.mock is hoisted)
 // ---------------------------------------------------------------------------
 
+// The shared play clock (#2684) is pinned so exact completion summaries don't
+// pick up real test time; one test moves it forward.
+let mockForegroundMs = 0;
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => mockForegroundMs,
+}));
+
 // Pass-through mock that stores the latest SortBoard props in global so tests
 // can call onPourComplete directly (v14: composite components unavailable in
 // host tree, so UNSAFE_getByType is gone).
@@ -726,6 +733,17 @@ describe("SortScreen — result card (#2512)", () => {
       result: { won: true, level: 1, moves: 1, undos: 0, level_reached: 1, total_moves: 1 },
     });
     expect(payload).toEqual(expect.objectContaining({ outcome: "completed", won: true }));
+  });
+
+  it("sends the shared play clock's time as the duration (#2684)", async () => {
+    const r = await renderScreen();
+    mockForegroundMs = 45_000;
+    try {
+      await solveLevel(r, 1);
+      expect(completion().summary.durationMs).toBe(45_000);
+    } finally {
+      mockForegroundMs = 0;
+    }
   });
 
   it("sends total_moves as the sum of the best moves up to the frontier", async () => {
