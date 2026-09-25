@@ -190,8 +190,12 @@ export default function GameScreen({ navigation, route }: Props) {
   const { submit: submitRank, reset: resetRank } = leaderboard;
   // The finished game's session id, captured when the player's game ends —
   // complete() clears the hook's id, and in vs mode (or on a background during
-  // the CPU's last turn) it runs before the card shows.
-  const finishedGameIdRef = useRef<string | null>(null);
+  // the CPU's last turn) it runs before the card shows. Saved with the game,
+  // so a game reopened with only the CPU's last turn left still finds its
+  // rank; such a game only looks the rank up, it never submits anything.
+  const [finishedGameId, setFinishedGameId] = useState<string | null>(
+    route.params.initialState.game_over ? (route.params.finishedGameId ?? null) : null
+  );
 
   // Sound hooks
   const { play: playDiceRoll } = useSound("yacht.diceRoll", YACHT_SOUNDS);
@@ -238,8 +242,8 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Persist state after every change (includes AI difficulty and AI state for VS mode).
   useEffect(() => {
-    saveGame(gameState, aiDifficulty, aiGameState);
-  }, [gameState, aiDifficulty, aiGameState]);
+    saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
+  }, [gameState, aiDifficulty, aiGameState, finishedGameId]);
 
   // Sync snapshot to shared scorecard context (read by ScoreboardScreen).
   const { setSnapshot: setScorecardSnapshot } = useYachtScorecard();
@@ -436,7 +440,7 @@ export default function GameScreen({ navigation, route }: Props) {
       });
       if (next.game_over) {
         // The card's rank lookup needs this game's id (#2630).
-        finishedGameIdRef.current = syncGetGameId();
+        setFinishedGameId(syncGetGameId());
         if (aiDifficultyRef.current && aiGameStateRef.current) {
           // VS mode: the CPU takes its last turn first; the session completes
           // with the result once it has (see the effect on gameReallyOver).
@@ -479,9 +483,9 @@ export default function GameScreen({ navigation, route }: Props) {
       const payload = endedPayload(prev, outcome, aiGameStateRef.current);
       syncComplete({ finalScore: prev.total_score, outcome, result: payload }, payload);
       // The next game gets its own leaderboard line.
-      finishedGameIdRef.current = null;
       resetRank();
       await clearGame();
+      setFinishedGameId(null);
       setGameState(newGame());
       setIsAiTurn(false);
       setGameKey((k) => k + 1);
@@ -578,12 +582,10 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // The result card's leaderboard line (#2630), once the game is really over
   // (after the vs completion above). Never on an abandon: an abandoned game
-  // never reaches game over, so it never sets finishedGameIdRef.
+  // never reaches game over, so it never sets finishedGameId.
   useEffect(() => {
-    if (!gameReallyOver) return;
-    const gameId = finishedGameIdRef.current;
-    if (gameId) void submitRank({ gameId });
-  }, [gameReallyOver, submitRank]);
+    if (gameReallyOver && finishedGameId) void submitRank({ gameId: finishedGameId });
+  }, [gameReallyOver, finishedGameId, submitRank]);
 
   completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.

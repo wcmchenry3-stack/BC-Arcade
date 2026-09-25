@@ -6,6 +6,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { newGame } from "../../game/yacht/engine";
+import * as storage from "../../game/yacht/storage";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -66,6 +67,8 @@ jest.mock("../../game/_shared/displayNameSync", () => ({
 
 const completeGame = gameEventClient.completeGame as jest.Mock;
 const startGame = gameEventClient.startGame as jest.Mock;
+const saveGame = storage.saveGame as jest.Mock;
+const clearGame = storage.clearGame as jest.Mock;
 
 const CATEGORIES = [
   "ones",
@@ -510,5 +513,94 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
     await settle();
     expect(r.queryByText(/Saved as Riley/)).toBeNull();
     expect(mockGetRank).toHaveBeenCalledTimes(1);
+    // The next game's save carries no finished-game id.
+    expect(saveGame.mock.calls.at(-1)![3]).toBeNull();
+  });
+});
+
+describe("Yacht reporting — a finished game reopened (#2630 review)", () => {
+  /** The player's finished game: every category scored, Yacht worth 50. */
+  function finishedPlayer(): GameState {
+    const s = lastRound("yacht", [6, 6, 6, 6, 6], 1);
+    return {
+      ...s,
+      scores: { ...s.scores, yacht: 50 },
+      game_over: true,
+      total_score: 50,
+    } as GameState;
+  }
+
+  /** Reopened from the save with only the CPU's last turn left. */
+  async function renderReopened(finishedGameId?: string) {
+    return await renderGame({
+      initialState: finishedPlayer(),
+      aiDifficulty: "easy" as const,
+      aiState: lastRound("chance", [0, 0, 0, 0, 0], 0),
+      finishedGameId,
+    });
+  }
+
+  it("saves the finished game's id with the game once the player's game ends", async () => {
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+
+    // Saved while the CPU still has its last turn to play.
+    expect(completedCalls()).toHaveLength(0);
+    const last = saveGame.mock.calls.at(-1)!;
+    expect(last[0]).toEqual(expect.objectContaining({ game_over: true }));
+    expect(last[3]).toBe("yacht-game-id");
+  });
+
+  it("looks the rank up with the saved id once the CPU finishes, and submits nothing", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderReopened("saved-game-id");
+    await finishCpuTurn();
+    await settle();
+
+    const card = within(r.getByTestId("yacht-result"));
+    expect(card.getByTestId("yacht-result-title")).toHaveTextContent("You Win!");
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("saved-game-id");
+    expect(card.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
+    // Its row synced when it was played: no new session, no completion.
+    expect(startGame).not.toHaveBeenCalled();
+    expect(completeGame).not.toHaveBeenCalled();
+    // The id stays saved until the game is cleared.
+    expect(saveGame.mock.calls.at(-1)![3]).toBe("saved-game-id");
+  });
+
+  it("shows no leaderboard line for a reopened game saved without an id", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderReopened(undefined);
+    await finishCpuTurn();
+    await settle();
+
+    expect(mockGetRank).not.toHaveBeenCalled();
+    expect(within(r.getByTestId("yacht-result")).queryByText(/Saved as/)).toBeNull();
+  });
+
+  it("ignores a saved id on a game that isn't over", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderGame({
+      initialState: lastRound("yacht", [6, 6, 6, 6, 6], 0),
+      finishedGameId: "stale-id",
+    });
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("yacht-game-id");
+  });
+
+  it("Play Again clears the saved id", async () => {
+    const r = await renderReopened("saved-game-id");
+    await finishCpuTurn();
+    await settle();
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(clearGame).toHaveBeenCalled();
+    expect(saveGame.mock.calls.at(-1)![3]).toBeNull();
   });
 });

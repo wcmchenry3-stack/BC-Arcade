@@ -8,7 +8,7 @@
 
 Yacht is a classic dice scoring game. Each turn the player rolls 5 dice and may re-roll any subset up to two more times. After the third roll the player must assign the result to one of 13 scoring categories. Each category can only be scored once per game. The game ends when all 13 categories are filled.
 
-BC Arcade's Yacht mode is 1v1 against an AI opponent. Both players alternate turns under the same rules.
+BC Arcade's Yacht has two modes, picked at the start of each game: **solo**, and **vs the computer** at one of three AI difficulties. In vs mode both players alternate turns under the same rules.
 
 ### Scoring Categories
 
@@ -24,7 +24,7 @@ BC Arcade's Yacht mode is 1v1 against an AI opponent. Both players alternate tur
 | Chance          | Any combination             | Sum of all dice |
 
 Upper section bonus: if the sum of Ones–Sixes ≥ 63, add 35 bonus points.
-Maximum possible score: ~400 points (with bonus).
+Scores range from 0 to 1575: the theoretical maximum is every category at its best, the upper bonus, and 12 extra Yachts at the Yacht bonus each (recomputed from `engine.ts` in `backend/tests/test_board_definitions.py`).
 
 ## AI Difficulty
 
@@ -51,7 +51,7 @@ Yacht has **one leaderboard** (`GET /games/leaderboard/yacht`, #2630): solo and 
 
 - Module: `backend/yacht/module.py`
 - Endpoints: none of its own — the generic `/games` routes. The legacy `POST /yacht/score` and `GET /yacht/scores` were removed in #2630.
-- Metadata model: `YachtMetadata` — `mode: Literal["solo","vs"] | None`, `difficulty: Literal["easy","medium","hard"] = "easy"` (sent only in vs mode)
+- Metadata model: `YachtMetadata` — `mode: Literal["solo","vs"] | None`, `difficulty: Literal["easy","medium","hard"] | None`. A `vs` game requires a difficulty and a `solo` game forbids one; metadata with no `mode` (builds before #2630) accepts either.
 - Scoring: `final_score` = player's total points
 
 ## Entitlement

@@ -121,15 +121,9 @@ def test_legacy_score_routes_are_gone(client: TestClient, method: str, path: str
     assert r.status_code == 404, r.text
 
 
-def test_legacy_models_are_gone() -> None:
-    from yacht import models
-
-    for name in ("ScoreEntry", "LeaderboardResponse", "YachtScoreSubmitRequest"):
-        assert not hasattr(models, name), name
-
-
 # ---------------------------------------------------------------------------
-# Session metadata: mode and difficulty
+# Session metadata: mode and difficulty (the model's own rules, and that the
+# legacy models are gone, are in test_yacht_models.py, which needs no DB)
 # ---------------------------------------------------------------------------
 
 
@@ -140,7 +134,9 @@ def test_legacy_models_are_gone() -> None:
         _vs("easy"),
         _vs("medium"),
         _vs("hard"),
-        {},  # installed builds that predate #2630
+        # Installed builds that predate #2630 send no mode.
+        {},
+        {"difficulty": "hard"},
     ],
 )
 async def test_metadata_accepted_and_stored(client: TestClient, metadata: dict) -> None:
@@ -157,6 +153,8 @@ async def test_metadata_accepted_and_stored(client: TestClient, metadata: dict) 
         {"mode": "duo"},
         {"mode": "vs", "difficulty": "legendary"},
         {"mode": "solo", "player_name": "Alice"},
+        {"mode": "vs"},  # a vs game needs the computer's difficulty
+        {"mode": "solo", "difficulty": "easy"},  # a solo game has none
     ],
 )
 def test_invalid_metadata_is_422(client: TestClient, metadata: dict) -> None:
