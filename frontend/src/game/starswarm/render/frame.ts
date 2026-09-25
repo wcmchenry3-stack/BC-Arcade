@@ -12,10 +12,12 @@
 import {
   BULLET_C_W,
   HIT_FLASH_DURATION,
+  ASTEROID_HIT_FLASH_MS,
   BEAM_HALF_WIDTH,
   isCarrierArmored,
   carrierBeam,
   asteroidOutline,
+  hashFrac,
 } from "../engine";
 import { HARMLESS_BULLET_OPACITY } from "../constants";
 import type { StarfieldState } from "../starfield";
@@ -152,15 +154,21 @@ export function playerVisible(state: StarSwarmState): boolean {
   return !blink && player.y + player.height > 0 && state.phase !== "GameOver";
 }
 
-/** Hit-flash burst ring for a ship `timer` ms into its flash (#1310/#974). */
+/**
+ * Hit-flash burst ring for something `timer` ms into its flash (#1310/#974), normalized against
+ * `duration` — the full flash length the timer counts down from (ships use `HIT_FLASH_DURATION`;
+ * #2573's asteroid ring uses the shorter `ASTEROID_HIT_FLASH_MS`, so it still starts at full
+ * intensity instead of already 52% decayed).
+ */
 export function hitFlash(
   w: number,
   h: number,
-  timer: number
+  timer: number,
+  duration: number = HIT_FLASH_DURATION
 ): { r: number; fillAlpha: number; strokeAlpha: number } {
-  const progress = 1 - timer / HIT_FLASH_DURATION;
+  const progress = 1 - timer / duration;
   const r = Math.max(w, h) * 1.2 * (0.6 + 0.5 * progress);
-  const a = timer / HIT_FLASH_DURATION; // 1 → 0 as the burst plays
+  const a = timer / duration; // 1 → 0 as the burst plays
   return { r, fillAlpha: a * 0.25, strokeAlpha: a * 0.75 };
 }
 
@@ -172,12 +180,11 @@ function flatRounded(points: readonly { x: number; y: number }[]): number[] {
 }
 
 /**
- * #2573: which of the 4 meteor designs a rock draws — stable for the rock's lifetime (same hash
- * technique as `asteroidOutline`'s wobble) without needing a field on `Asteroid`.
+ * #2573: which of the 4 meteor designs a rock draws — stable for the rock's lifetime (shares
+ * `asteroidOutline`'s hash, see `hashFrac`) without needing a field on `Asteroid`.
  */
 function asteroidSprite(id: number): (typeof ASTEROID_SPRITES)[number] {
-  const h = Math.sin(id * 78.233) * 43758.5453;
-  const frac = h - Math.floor(h);
+  const frac = hashFrac(id * 78.233);
   return ASTEROID_SPRITES[Math.floor(frac * ASTEROID_SPRITES.length)]!;
 }
 
@@ -494,7 +501,7 @@ export function buildFrame(
         rotate: a.rotation,
       });
       if (a.hitFlashTimer > 0) {
-        const f = hitFlash(size, size, a.hitFlashTimer);
+        const f = hitFlash(size, size, a.hitFlashTimer, ASTEROID_HIT_FLASH_MS);
         ops.push({
           k: "circle",
           key: `rock-${a.id}-flash`,

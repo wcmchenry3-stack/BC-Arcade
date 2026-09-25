@@ -7,6 +7,7 @@ import {
   CANVAS_W,
   CANVAS_H,
   HIT_FLASH_DURATION,
+  ASTEROID_HIT_FLASH_MS,
   BEAM_CHARGE_MS,
   BEAM_FIRE_MS,
   BEAM_HALF_WIDTH,
@@ -649,7 +650,21 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     expect(byKey(ops, "rock-10")).toMatchObject({ k: "image" });
     const flash = byKey(ops, "rock-10-flash");
     expect(flash).toMatchObject({ k: "circle", cx: 80, cy: 80, stroke: 2 });
-    expect(flash && flash.k === "circle" && flash.color).toMatch(/^rgba\(255,255,255,/);
+    // normalized against ASTEROID_HIT_FLASH_MS (120), not the ships' HIT_FLASH_DURATION (250) —
+    // a rock's flash timer never reaches 250, so the wrong constant would under-scale every value
+    expect(flash).toMatchObject({ r: expect.closeTo(47.08, 2) });
+    expect(flash && flash.k === "circle" && flash.color).toBe("rgba(255,255,255,0.313)");
+    // fresh off a hit (timer === ASTEROID_HIT_FLASH_MS) the ring starts at full intensity, exactly
+    // like a ship's fresh flash does at HIT_FLASH_DURATION
+    const fresh = byKey(
+      buildFrame(
+        blank({ asteroids: [{ ...rock, hitFlashTimer: ASTEROID_HIT_FLASH_MS }] }),
+        NO_STARS,
+        OPTS
+      ),
+      "rock-10-flash"
+    );
+    expect(fresh && fresh.k === "circle" && fresh.color).toBe("rgba(255,255,255,0.750)");
     const calm = buildFrame(blank({ asteroids: [{ ...rock, hitFlashTimer: 0 }] }), NO_STARS, OPTS);
     expect(byKey(calm, "rock-10-flash")).toBeUndefined();
   });
