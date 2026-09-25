@@ -75,7 +75,7 @@
     "component": "Scorecard",
     "description": "Bonus progress display when bonus not yet earned.",
     "tone": "functional",
-    "characterLimit": 10,
+    "characterLimit": 17,
     "placeholders": ["{{subtotal}}"],
     "doNotTranslate": [],
     "notes": null
@@ -84,7 +84,7 @@
     "component": "Scorecard",
     "description": "Bonus progress display when bonus has been earned (shows checkmark).",
     "tone": "functional",
-    "characterLimit": 12,
+    "characterLimit": 19,
     "placeholders": ["{{subtotal}}"],
     "doNotTranslate": [],
     "notes": "The ✓ checkmark should be preserved."
@@ -219,7 +219,7 @@
     "component": "ScoreRow",
     "description": "Accessibility text when a category can be scored this turn.",
     "tone": "functional",
-    "characterLimit": 60,
+    "characterLimit": 65,
     "placeholders": ["{{potential}}"],
     "doNotTranslate": [],
     "notes": null
@@ -237,7 +237,7 @@
     "component": "Die",
     "description": "Accessibility label for a die showing its index, value, and held state.",
     "tone": "functional",
-    "characterLimit": 50,
+    "characterLimit": 55,
     "placeholders": ["{{index}}", "{{value}}", "{{heldSuffix}}"],
     "doNotTranslate": [],
     "notes": "{{heldSuffix}} is either ', held' or empty string."
@@ -282,7 +282,7 @@
     "component": "Die",
     "description": "Accessibility hint for an unheld die.",
     "tone": "functional",
-    "characterLimit": 25,
+    "characterLimit": 30,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -291,7 +291,7 @@
     "component": "Die",
     "description": "Accessibility hint for a held die.",
     "tone": "functional",
-    "characterLimit": 25,
+    "characterLimit": 35,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -300,16 +300,16 @@
     "component": "DiceRow",
     "description": "Roll button label showing remaining rolls.",
     "tone": "action, concise",
-    "characterLimit": 20,
+    "characterLimit": 25,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": "{{count}} is 1, 2, or 3."
+    "notes": "{{count}} is 1, 2, or 3. Renders as e.g. 'Würfeln (2 übrig)'; the limit counts the raw {{count}}."
   },
   "roll.label_one": {
     "component": "DiceRow",
     "description": "Accessibility label for roll button — singular (1 roll left).",
     "tone": "functional",
-    "characterLimit": 35,
+    "characterLimit": 40,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
@@ -318,7 +318,7 @@
     "component": "DiceRow",
     "description": "Accessibility label for roll button — plural (2–3 rolls left).",
     "tone": "functional",
-    "characterLimit": 35,
+    "characterLimit": 45,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
@@ -354,7 +354,7 @@
     "component": "AiDifficultySelector",
     "description": "Accessibility label for the AI difficulty radio group.",
     "tone": "functional",
-    "characterLimit": 20,
+    "characterLimit": 25,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

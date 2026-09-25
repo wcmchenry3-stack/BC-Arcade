@@ -35,33 +35,6 @@
     "doNotTranslate": ["Star Swarm"],
     "notes": null
   },
-  "hud.score": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the current score in the HUD.",
-    "tone": "functional",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "hud.best": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the high score in the HUD.",
-    "tone": "functional",
-    "characterLimit": 6,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "hud.wave": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the current wave number in the HUD.",
-    "tone": "functional",
-    "characterLimit": 6,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "phase.waveClear": {
     "component": "GameCanvas",
     "description": "Overlay text shown for a moment when the player clears a wave.",
@@ -88,15 +61,6 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "A rout is a panicked retreat. All caps in English to match the other phase banners."
-  },
-  "phase.gameOver": {
-    "component": "GameCanvas",
-    "description": "Large overlay text when the player loses all lives.",
-    "tone": "dramatic, classic arcade",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
   },
   "score.display": {
     "component": "GameCanvas",
@@ -125,38 +89,11 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "controls.tapToResume": {
-    "component": "Controls",
-    "description": "Hint text under the PAUSED heading — instructs user to tap to resume.",
-    "tone": "functional",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "controls.resumeLabel": {
     "component": "Controls",
     "description": "Accessibility label for the pause-overlay resume pressable.",
     "tone": "functional",
     "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "controls.newGame": {
-    "component": "Controls",
-    "description": "Label on the new-game button shown on the game-over screen.",
-    "tone": "action, brief",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "controls.newGameLabel": {
-    "component": "Controls",
-    "description": "Accessibility label for the new-game button.",
-    "tone": "functional",
-    "characterLimit": 25,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

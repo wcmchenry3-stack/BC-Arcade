@@ -43,7 +43,7 @@
   "outcome.lose": "Поражение",
   "payout.positive": "+{{amount}} фишек",
   "payout.negative": "{{amount}} фишек",
-  "payout.zero": "Без изменений",
+  "payout.zero": "Возврат",
   "payout.accessibilityLabel": "Выплата: {{amount}} фишек",
   "phase.betting": "Ставка",
   "phase.player": "Ваш ход",

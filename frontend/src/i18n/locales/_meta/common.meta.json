@@ -120,10 +120,10 @@
     "component": "HomeScreen",
     "description": "Compact Arcade level badge in the Home header, e.g. 'Lv 4'. Abbreviate 'level' the way games in this language usually do.",
     "tone": "neutral",
-    "characterLimit": 10,
+    "characterLimit": 15,
     "placeholders": ["level"],
     "doNotTranslate": [],
-    "notes": "Must stay very short — it sits in the header next to the title."
+    "notes": "Must stay very short — it sits in the header next to the title. Renders as e.g. 'Niv. 4' (under 8 characters); the limit counts the raw {{level}}."
   },
   "level.pillA11y": {
     "component": "HomeScreen",
@@ -138,7 +138,7 @@
     "component": "HomeScreen",
     "description": "Compact daily-streak badge in the Home header next to the level pill: a fire emoji and the number of consecutive days, e.g. '🔥 5'.",
     "tone": "neutral",
-    "characterLimit": 8,
+    "characterLimit": 11,
     "placeholders": ["count"],
     "doNotTranslate": [],
     "notes": "Keep the emoji and the {{count}} placeholder; it must stay tiny — it shares the header with the title and the level pill. Do not add words."

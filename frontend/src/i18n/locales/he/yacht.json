@@ -2,7 +2,7 @@
   "game.title": "Yacht",
   "game.description": "גלגלו קוביות, צברו נקודות, שברו שיאים!",
   "game.playLabel": "שחק Yacht",
-  "round.header": "סיבוב {{round}} מתוך 13",
+  "round.header": "סיבוב {{round}}/13",
   "section.upper": "חלק עליון",
   "section.lower": "חלק תחתון",
   "section.total": "סך הכל",

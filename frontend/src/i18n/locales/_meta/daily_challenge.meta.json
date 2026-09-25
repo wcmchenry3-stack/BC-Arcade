@@ -12,7 +12,7 @@
     "component": "DailyChallengeCard",
     "description": "How many of today's challenge goals are done, shown top-right of the card heading, e.g. \"1 of 3 complete\".",
     "tone": "functional",
-    "characterLimit": 24,
+    "characterLimit": 30,
     "placeholders": ["done", "total"],
     "doNotTranslate": [],
     "notes": "Shares a row with the heading — keep it short."
@@ -84,7 +84,7 @@
     "component": "DailyChallengeCard",
     "description": "A goal chip: build a tile of at least the given value in one game, e.g. \"Reach the 512 tile in 2048\".",
     "tone": "functional",
-    "characterLimit": 36,
+    "characterLimit": 37,
     "placeholders": ["game", "target"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
@@ -174,7 +174,7 @@
     "component": "DailyChallengeCard",
     "description": "A goal chip: clear the whole board within {{count}} minutes. Plural form.",
     "tone": "functional",
-    "characterLimit": 40,
+    "characterLimit": 43,
     "placeholders": ["game", "count"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."

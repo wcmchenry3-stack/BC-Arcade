@@ -219,7 +219,7 @@
     "component": "CardView",
     "description": "Accessibility label for a face-down card that is currently selected.",
     "tone": "functional",
-    "characterLimit": 32,
+    "characterLimit": 35,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

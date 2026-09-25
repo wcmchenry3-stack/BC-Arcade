@@ -43,7 +43,7 @@
   "outcome.lose": "आप हारे",
   "payout.positive": "+{{amount}} चिप्स",
   "payout.negative": "{{amount}} चिप्स",
-  "payout.zero": "कोई बदलाव नहीं",
+  "payout.zero": "बदलाव नहीं",
   "payout.accessibilityLabel": "भुगतान: {{amount}} चिप्स",
   "phase.betting": "शर्त लगाएं",
   "phase.player": "आपकी बारी",

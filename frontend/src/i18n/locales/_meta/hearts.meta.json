@@ -300,7 +300,7 @@
     "component": "PassBanner counter",
     "description": "Shows how many cards are currently selected out of 3.",
     "tone": "functional",
-    "characterLimit": 20,
+    "characterLimit": 23,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null

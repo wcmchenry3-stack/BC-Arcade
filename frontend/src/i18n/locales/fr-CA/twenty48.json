@@ -10,7 +10,7 @@
   "actions.newGameLabel": "Démarrer une nouvelle partie de 2048",
   "actions.keepPlaying": "Continuer",
   "actions.keepPlayingLabel": "Continuer à jouer après avoir atteint 2048",
-  "swipe.hint": "Glissez pour déplacer les tuiles",
+  "swipe.hint": "Glissez pour bouger les tuiles",
   "win.body": "Vous avez atteint 2048 ! Vous pouvez continuer pour un meilleur score.",
   "controls.keyboardHint": "Ou utilise les touches fléchées",
   "stats.highestTile": "Highest Tile",

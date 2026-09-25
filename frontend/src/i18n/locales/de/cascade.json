@@ -11,7 +11,7 @@
   "preview.comingUp": "Kommt: {{name}}",
   "theme.groupLabel": "Frucht-Set Thema",
   "theme.optionLabel": "{{label}} Thema",
-  "event.merged": "Kombiniert! {{fruit}} erstellt.",
+  "event.merged": "Fusion! {{fruit}} erstellt.",
   "scoreboard.heroLabel": "SCORE",
   "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
   "scoreboard.heroSubEmpty": "No games played yet",

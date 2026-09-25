@@ -19,7 +19,12 @@
  *     i18n-english-copies.json: "accepted" (the word really is the same in
  *     that language) or "pending" (known untranslated backlog, #2681).
  *     "pending" may only shrink: a new English copy fails, and so does a
- *     listed one that has since been translated, until the list is updated.
+ *     listed one that has since been translated, until the list is updated;
+ *   - every value within its _meta characterLimit, English included (#2681).
+ *
+ * And per namespace, that _meta has an entry for every English key and none
+ * for keys English no longer has (#2681). A plural key may share one entry
+ * under its base key.
  *
  * Exit codes:
  *   0 — all locales are in sync
@@ -34,6 +39,7 @@ import { doNotTranslateTerms } from "../src/i18n/glossary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, "../src/i18n/locales");
+const META_DIR = join(LOCALES_DIR, "_meta");
 const COPIES_PATH = join(__dirname, "i18n-english-copies.json");
 // Every namespace English has (#2194): a hand-kept list here drifted and missed
 // six games. A namespace in NOT_ALL_LOCALES may lack a file in some locales
@@ -110,6 +116,32 @@ function hasWords(value) {
   return /\p{L}/u.test(value.replace(/\{\{[^}]*\}\}/g, ""));
 }
 
+const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/;
+
+// The _meta entry for a key: its own, or its plural base key's.
+function metaFor(meta, key) {
+  return meta[key] ?? meta[key.replace(PLURAL_SUFFIX, "")];
+}
+
+// Values longer than their _meta characterLimit (which counts raw {{placeholders}}).
+function overLimit(strings, meta) {
+  return Object.entries(strings).filter(([k, v]) => {
+    const limit = metaFor(meta, k)?.characterLimit;
+    return typeof v === "string" && limit && [...v].length > limit;
+  });
+}
+
+function reportOverLimit(label, over, meta) {
+  if (over.length === 0) return 0;
+  console.log(`✗ [${label}] Over the _meta characterLimit (${over.length}):`);
+  over.forEach(([k, v]) =>
+    console.log(
+      `    > ${k}: ${[...v].length}/${metaFor(meta, k).characterLimit} ${JSON.stringify(v)}`
+    )
+  );
+  return over.length;
+}
+
 // ns -> locale -> keys, from one section of i18n-english-copies.json.
 function listed(section, ns, code) {
   return new Set(section?.[ns]?.[code] ?? []);
@@ -139,6 +171,30 @@ function main() {
     }
     const enKeys = flattenKeys(enStrings);
     const enSet = new Set(enKeys);
+
+    const meta = loadJson(join(META_DIR, `${ns}.meta.json`)) ?? {};
+    if (!filterLocale || filterLocale === "en") {
+      const noMeta = enKeys.filter((k) => !metaFor(meta, k));
+      const staleMeta = Object.keys(meta).filter(
+        (k) =>
+          !enSet.has(k) &&
+          !enSet.has(`${k}_other`) &&
+          !enSet.has(`${k.replace(PLURAL_SUFFIX, "")}_other`)
+      );
+      if (noMeta.length > 0) {
+        console.log(`✗ [_meta/${ns}.meta.json] No entry for (${noMeta.length}):`);
+        noMeta.forEach((k) => console.log(`    - ${k}`));
+        totalIssues += noMeta.length;
+      }
+      if (staleMeta.length > 0) {
+        console.log(
+          `✗ [_meta/${ns}.meta.json] Entry for a key English no longer has (${staleMeta.length}):`
+        );
+        staleMeta.forEach((k) => console.log(`    + ${k}`));
+        totalIssues += staleMeta.length;
+      }
+      totalIssues += reportOverLimit(`en/${ns}.json`, overLimit(enStrings, meta), meta);
+    }
 
     for (const { code } of targetLocales) {
       const targetPath = join(LOCALES_DIR, code, `${ns}.json`);
@@ -184,6 +240,9 @@ function main() {
         totalPending += pending.length;
       }
 
+      const over = overLimit(targetStrings, meta);
+      totalIssues += reportOverLimit(`${code}/${ns}.json`, over, meta);
+
       // English copies: values identical to English that are not expected to be.
       const accepted = listed(copies.accepted, ns, code);
       const knownPending = listed(copies.pending, ns, code);
@@ -215,7 +274,7 @@ function main() {
         }
       }
 
-      if (missing.length === 0 && extra.length === 0) {
+      if (missing.length === 0 && extra.length === 0 && over.length === 0) {
         const pendingNote = pending.length > 0 ? ` (${pending.length} still need translation)` : "";
         const copyNote =
           englishCopies.length > 0 ? ` (${englishCopies.length} English copies pending)` : "";

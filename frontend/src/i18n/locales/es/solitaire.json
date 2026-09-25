@@ -7,7 +7,7 @@
   "drawMode.one": "Robo 1",
   "drawMode.three": "Robo 3",
   "score.label": "Puntos: {{score}}",
-  "score.moves": "Movimientos: {{moves}}",
+  "score.moves": "Jugadas: {{moves}}",
   "action.undo": "Deshacer",
   "action.hint": "Pista",
   "action.autoComplete": "Auto-Completar",

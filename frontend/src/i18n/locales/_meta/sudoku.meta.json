@@ -26,7 +26,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "cell.label": {
     "component": "SudokuCell (accessibility)",
     "description": "Screen-reader label for a grid cell, e.g. 'Cell row 3, column 5, empty' or 'Cell row 3, column 5, 7'.",
@@ -45,7 +44,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "numberPad.digit": {
     "component": "NumberPad (accessibility)",
     "description": "Accessibility label for a digit button on the number pad.",
@@ -91,7 +89,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "difficulty.groupLabel": {
     "component": "DifficultySelector (accessibility)",
     "description": "Accessibility group label for the difficulty radio buttons.",
@@ -128,7 +125,6 @@
     "doNotTranslate": [],
     "notes": "Show grid size after the name, e.g. 'Mini 6×6'."
   },
-
   "difficulty.easy": {
     "component": "DifficultySelector",
     "description": "Label for the 'Easy' difficulty tier (36-44 given cells).",
@@ -156,7 +152,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "action.undo": {
     "component": "Header action",
     "description": "Label + accessibility label for the Undo button.",
@@ -170,10 +165,10 @@
     "component": "NumberPad tool row",
     "description": "Label for the Hint button — reveals the correct digit for the selected empty cell.",
     "tone": "casual",
-    "characterLimit": 8,
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Russian 'Подсказка' needs 9."
   },
   "action.quickRestart": {
     "component": "New Game modal",
@@ -202,7 +197,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "newGame.title": {
     "component": "New Game modal",
     "description": "Headline for the New Game settings modal shown after the player confirms abandoning their current game.",
@@ -212,7 +206,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "preGame.title": {
     "component": "Pre-game card header",
     "description": "Headline inviting the player to pick a difficulty.",
@@ -231,15 +224,14 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "hud.errors": {
     "component": "HUD row",
     "description": "Error counter for 2+ errors (plural).",
     "tone": "neutral",
-    "characterLimit": 15,
+    "characterLimit": 17,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": "Use the locale's plural form.  The engine picks `hud.errorsOne` for exactly one error."
+    "notes": "Use the locale's plural form.  The engine picks `hud.errorsOne` for exactly one error. Renders as e.g. '3 errores'; the limit counts the raw {{count}}."
   },
   "hud.errorsOne": {
     "component": "HUD row",

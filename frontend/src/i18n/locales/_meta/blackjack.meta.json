@@ -219,7 +219,7 @@
     "component": "HandDisplay",
     "description": "Displays the numeric value of a hard hand.",
     "tone": "neutral",
-    "characterLimit": 15,
+    "characterLimit": 16,
     "placeholders": ["value"],
     "doNotTranslate": [],
     "notes": null
@@ -228,10 +228,10 @@
     "component": "HandDisplay",
     "description": "Displays the numeric value of a soft hand (at least one Ace counted as 11).",
     "tone": "neutral",
-    "characterLimit": 15,
+    "characterLimit": 16,
     "placeholders": ["value"],
     "doNotTranslate": [],
-    "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6."
+    "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6. Renders as e.g. 'Souple 17'; the limit counts the raw {{value}}."
   },
   "hand.valueHidden": {
     "component": "HandDisplay",
