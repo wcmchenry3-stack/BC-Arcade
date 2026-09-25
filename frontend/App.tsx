@@ -195,7 +195,6 @@ const PREMIUM_SCREEN_BASES: Record<PremiumRouteName, React.ComponentType<object>
   Cascade: withSuspense(LazyScreens.Cascade, "cascade"),
   StarSwarm: withSuspense(LazyScreens.StarSwarm, "starswarm"),
   Hearts: withSuspense(LazyScreens.Hearts, "hearts"),
-  Sudoku: withSuspense(LazyScreens.Sudoku, "sudoku"),
   Mahjong: withSuspense(LazyScreens.Mahjong, "mahjong"),
 };
 const PREMIUM_SCREENS = Object.fromEntries(
@@ -208,6 +207,7 @@ const LazyTwenty48Screen = withSuspense(LazyScreens.Twenty48, "twenty48");
 const LazySolitaireScreen = withSuspense(LazyScreens.Solitaire, "solitaire");
 const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
 const LazySortScreen = withSuspense(LazyScreens.Sort, "sort");
+const LazySudokuScreen = withSuspense(LazyScreens.Sudoku, "sudoku");
 const LazyMahjongLayoutInspectorScreen = withSuspense(
   LazyScreens.MahjongLayoutInspector,
   "mahjong_layout_inspector"
@@ -244,6 +244,7 @@ function LobbyStack() {
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />
       <HomeStack.Screen name="Sort" component={LazySortScreen} />
+      <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen
         name="MahjongLayoutInspector"
         component={LazyMahjongLayoutInspectorScreen}

@@ -246,7 +246,7 @@ def test_slate_rule_needs_every_named_premium_game() -> None:
 
 _PREMIUM_TEMPLATE = Template(
     "premium_streak_for_tests",
-    (_at_least("yacht", "score", 1, "easy"), _at_least("sudoku", "errors", 0, "easy"), _MOVES),
+    (_at_least("yacht", "score", 1, "easy"), _at_least("starswarm", "errors", 0, "easy"), _MOVES),
 )
 
 
@@ -263,7 +263,9 @@ async def test_each_past_day_uses_the_slate_the_session_is_entitled_to(two_slate
     free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
     factory = get_session_factory()
     async with factory() as db:
-        db.add_all([GameEntitlement(session_id=entitled, game_slug=s) for s in ("yacht", "sudoku")])
+        db.add_all(
+            [GameEntitlement(session_id=entitled, game_slug=s) for s in ("yacht", "starswarm")]
+        )
         await db.commit()
     # Both sessions met the FREE template's goals yesterday.
     for sid in (free, entitled):

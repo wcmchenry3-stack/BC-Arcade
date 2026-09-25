@@ -230,11 +230,12 @@ Entitlement answers "locked or playable?". **Visibility** answers "does this gam
 exist in this build at all?" and lives separately in
 `frontend/src/entitlements/gameVisibility.ts`.
 
-v1.0 ships with the six premium games hidden entirely — no tile, no route, no
-locked screen — until IAP lands (epic #822). Since 2026-09-23 those are blackjack,
-cascade, hearts, sudoku, starswarm and mahjong (Blackjack and Yacht swapped tiers
+v1.0 ships with the premium games hidden entirely — no tile, no route, no
+locked screen — until IAP lands (epic #822). As of 2026-09-25 those are blackjack,
+cascade, hearts, starswarm and mahjong (Blackjack and Yacht swapped tiers
 on 2026-09-23 so the store build carries no simulated gambling; Mahjong and Sort
-swapped tiers on 2026-09-24, owner decision). `isGameVisible(slug)` filters:
+swapped tiers on 2026-09-24; Sudoku moved to free on 2026-09-25 with no
+compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 
 - the Home grid and chunk prefetch (`HomeScreen.tsx`);
 - route and tab registration — `App.tsx` registers premium screens from the
@@ -245,7 +246,7 @@ swapped tiers on 2026-09-24, owner decision). `isGameVisible(slug)` filters:
 
 `SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1" || isPreLaunchApiBuild()`,
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
-build shows 6 tiles and 3 tabs.
+build shows 7 tiles and 3 tabs.
 
 **Pre-launch builds (owner decision, 2026-09-19).** Until launch, internal
 TestFlight / Play test builds keep every game visible and free. A build is
@@ -287,6 +288,33 @@ Xcode Cloud rewrites `.env` on every build (it does not check the workflow's own
 environment variables — never add the flag there). `frontend/metro.config.js`
 keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
 test-hooks build can never be reused by a store build on any platform.
+
+### 10.8 How the free/premium split is decided
+
+The split is **criteria-driven, not quota-driven.** The original 6/6 was an
+artifact of the launch-review pass (six tiles shown to reviewers, six hidden
+pending IAP) — it was never a design target, and the roster will keep growing,
+so nothing should be swapped just to keep the count balanced. Judge each game
+against these, roughly in priority order, and let the ratio fall out wherever it
+lands:
+
+1. **Compliance/rating risk (hard constraint).** Simulated gambling, violence,
+   or other rating-raising mechanics push a game to premium regardless of
+   anything else — this is the only non-negotiable criterion. It's why
+   Blackjack and Star Swarm are premium.
+2. **Perceived paywall value.** Would someone who's never paid look at this and
+   think "that's worth unlocking"? Deep content banks, real AI opponents, a
+   skill ceiling — these read as premium. A shallow, single-session mechanic
+   doesn't, however polished.
+3. **Free-tier onboarding pull.** Name recognition and zero-friction appeal —
+   the games that get someone to open the app a second time before they've
+   spent anything.
+4. **Genre coverage in the free tier.** A non-paying player should get a
+   complete arcade, not five variations on one genre.
+5. **Engineering churn cost (tie-breaker only).** Swapping a game's tier
+   touches the migration, both entitlement registries, the daily-challenge
+   goal pool, and the e2e specs — real but bounded, and never a reason to keep
+   a game on the wrong side of #1–#4.
 
 ## 11. Database topology and environments
 

@@ -17,9 +17,9 @@ export const PREMIUM_ROUTES = [
   { slug: "cascade", route: "Cascade" },
   { slug: "starswarm", route: "StarSwarm" },
   { slug: "hearts", route: "Hearts" },
-  { slug: "sudoku", route: "Sudoku" },
   // Mahjong moved to premium and Sort to free on 2026-09-24 (owner).
   { slug: "mahjong", route: "Mahjong" },
+  // Sudoku moved to free on 2026-09-25 (owner) — no compensating premium swap.
 ] as const;
 
 /** Tabs that only make sense while their game exists (the leaderboard is Star Swarm-only). */

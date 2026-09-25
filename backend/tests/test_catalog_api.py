@@ -79,9 +79,9 @@ def test_catalog_premium_flags(client: TestClient) -> None:
     r = client.get("/games/catalog")
     assert r.status_code == 200
     by_name = {g["name"]: g for g in r.json()["items"]}
-    for premium in ("cascade", "hearts", "sudoku", "starswarm", "blackjack", "mahjong"):
+    for premium in ("cascade", "hearts", "starswarm", "blackjack", "mahjong"):
         assert by_name[premium]["is_premium"] is True, f"{premium} should be premium"
-    for free in ("yacht", "solitaire", "freecell", "sort", "twenty48"):
+    for free in ("yacht", "solitaire", "freecell", "sort", "twenty48", "sudoku"):
         assert by_name[free]["is_premium"] is False, f"{free} should be free"
 
 

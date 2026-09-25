@@ -706,14 +706,16 @@ async def test_only_games_inside_the_local_day_count(fixed_template: Template) -
 # slate resolution (#2454)
 # ---------------------------------------------------------------------------
 
-# A premium-slate day that names two premium games (yacht, sudoku) — patched in,
-# because until #2458 the real premium pool holds only free games.
+# A premium-slate day that names one free game (yacht) and one real premium game
+# (starswarm) — patched in, because until #2458 the real premium pool holds only
+# free games. Only the premium one actually counts (resolve_slate filters named
+# games to is_premium=True), so yacht is a harmless decoy.
 _PREMIUM_DAY = Template(
     "premium_for_tests",
     (
         FREE_GOAL_POOL["daily_word"][_EASY],
         _at_least("yacht", "score", 1, "easy"),
-        _at_least("sudoku", "errors", 0, "easy"),
+        _at_least("starswarm", "errors", 0, "easy"),
     ),
 )
 _DAY = date(2026, 10, 9)
@@ -752,7 +754,7 @@ async def test_free_session_gets_the_free_slate(two_slates: Template) -> None:
 
 @needs_db
 async def test_partly_entitled_session_gets_the_free_slate(two_slates: Template) -> None:
-    # Owns yacht but not sudoku: the premium day names both, so it would hand
+    # Owns yacht but not starswarm: the premium day names both, so it would hand
     # this session a goal in a game it cannot open.
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
@@ -762,7 +764,7 @@ async def test_partly_entitled_session_gets_the_free_slate(two_slates: Template)
 @needs_db
 async def test_fully_entitled_session_gets_the_premium_slate(two_slates: Template) -> None:
     sid = str(uuid.uuid4())
-    await _grant(sid, "yacht", "sudoku")
+    await _grant(sid, "yacht", "starswarm")
     assert await _slate(sid) == "premium"
 
 
@@ -800,8 +802,9 @@ async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
         premium = set(
             (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
         )
-    assert {"blackjack", "sudoku", "cascade", "hearts"} <= premium
+    assert {"blackjack", "cascade", "hearts", "starswarm", "mahjong"} <= premium
     assert "yacht" not in premium
+    assert "sudoku" not in premium
 
 
 @needs_db
@@ -856,7 +859,7 @@ async def test_a_mid_day_entitlement_change_swaps_the_challenge(two_slates: Temp
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
     assert await _slate(sid) == "free"
-    await _grant(sid, "sudoku")
+    await _grant(sid, "starswarm")
     assert await _slate(sid) == "premium"
 
 
@@ -884,7 +887,7 @@ async def test_slate_resolution_is_one_statement(two_slates: Template) -> None:
 async def test_status_reports_and_uses_the_resolved_slate(two_slates: Template) -> None:
     now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
     free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
-    await _grant(entitled, "yacht", "sudoku")
+    await _grant(entitled, "yacht", "starswarm")
     factory = get_session_factory()
     async with factory() as db:
         free_status = await service.get_status_for_session(
@@ -924,7 +927,7 @@ def test_status_for_a_premium_session_differs_from_today(
     assert today["template_id"] == _FIXED.id
     assert status["template_id"] == _PREMIUM_DAY.id
     assert [g["id"] for g in status["goals"]] != [g["id"] for g in today["goals"]]
-    assert {g["game_type"] for g in status["goals"]} >= {"yacht", "sudoku"}
+    assert {g["game_type"] for g in status["goals"]} >= {"yacht", "starswarm"}
 
 
 @needs_db

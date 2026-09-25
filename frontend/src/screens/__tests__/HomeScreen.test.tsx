@@ -182,32 +182,26 @@ describe("HomeScreen — game cards", () => {
       __forceStoreBuildForTests(false);
     });
 
-    it("renders exactly the six free games", async () => {
+    it("renders exactly the seven free games", async () => {
       const { getByLabelText, getAllByRole } = await renderScreen();
       expect(getByLabelText("Play Yacht")).toBeTruthy();
       expect(getByLabelText("Play 2048")).toBeTruthy();
       expect(getByLabelText("Play Solitaire")).toBeTruthy();
       expect(getByLabelText("Play FreeCell")).toBeTruthy();
       expect(getByLabelText("Play Sort Puzzle")).toBeTruthy();
+      expect(getByLabelText("Play Sudoku")).toBeTruthy();
       expect(getByLabelText("Play Daily Word")).toBeTruthy();
       expect(
         getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
-      ).toHaveLength(6);
+      ).toHaveLength(7);
     });
 
-    it("renders none of the six premium games — not even as locked cards", async () => {
+    it("renders none of the five premium games — not even as locked cards", async () => {
       // Unentitled is the realistic store-build state: a locked card would
       // still be a rendered card.
       mockCanPlay.mockReturnValue(false);
       const { queryByLabelText, queryByText } = await renderScreen();
-      for (const title of [
-        "Blackjack",
-        "Cascade",
-        "Hearts",
-        "Sudoku",
-        "Star Swarm",
-        "Mahjong Solitaire",
-      ]) {
+      for (const title of ["Blackjack", "Cascade", "Hearts", "Star Swarm", "Mahjong Solitaire"]) {
         expect(queryByLabelText(`Play ${title}`)).toBeNull();
         expect(queryByText(title)).toBeNull();
       }
@@ -593,9 +587,9 @@ describe("HomeScreen — locked game UI (#1054)", () => {
   });
 
   it("entitled premium games render and navigate normally", async () => {
-    // Sudoku is entitled (mockCanPlay returns true for non-cascade)
+    // Hearts is entitled (mockCanPlay returns true for non-cascade)
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Play Sudoku")).toBeTruthy();
+    expect(getByLabelText("Play Hearts")).toBeTruthy();
   });
 
   it("all games show play label when all entitled", async () => {

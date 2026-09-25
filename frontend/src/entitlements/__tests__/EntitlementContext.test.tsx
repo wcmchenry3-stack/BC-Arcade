@@ -135,7 +135,7 @@ describe("EntitlementProvider", () => {
 
     it("returns true for free games regardless of entitlement state", async () => {
       await renderProvider();
-      for (const slug of ["yacht", "twenty48", "solitaire", "sort", "freecell"]) {
+      for (const slug of ["yacht", "twenty48", "solitaire", "sort", "freecell", "sudoku"]) {
         expect(ctx.canPlay(slug)).toBe(true);
       }
     });
@@ -148,12 +148,12 @@ describe("EntitlementProvider", () => {
       await renderProvider();
       expect(ctx.canPlay("cascade")).toBe(true);
       expect(ctx.canPlay("hearts")).toBe(true);
-      expect(ctx.canPlay("sudoku")).toBe(false);
+      expect(ctx.canPlay("starswarm")).toBe(false);
     });
 
     it("covers exactly the premium game slugs", () => {
       expect(PREMIUM_GAMES).toEqual(
-        new Set(["blackjack", "cascade", "hearts", "sudoku", "starswarm", "mahjong"])
+        new Set(["blackjack", "cascade", "hearts", "starswarm", "mahjong"])
       );
     });
   });
@@ -201,7 +201,7 @@ describe("EntitlementProvider", () => {
       const listener = getAppStateListener();
       mockRequest.mockClear();
       mockRequest.mockResolvedValue({
-        token: makeToken(makePayload(["sudoku"])),
+        token: makeToken(makePayload(["starswarm"])),
         expires_at: "2099-01-01T00:00:00Z",
       });
 
@@ -210,7 +210,7 @@ describe("EntitlementProvider", () => {
         await new Promise<void>((resolve) => setImmediate(resolve));
       });
 
-      expect(ctx.canPlay("sudoku")).toBe(true);
+      expect(ctx.canPlay("starswarm")).toBe(true);
       expect(mockRequest).toHaveBeenCalledTimes(1);
     });
   });
@@ -275,7 +275,7 @@ describe("EntitlementProvider", () => {
   // ---------------------------------------------------------------------------
 
   describe("dev-override cache persistence (Sentry GAMESAPI-4D9816B4)", () => {
-    const ALL_PREMIUM = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "mahjong"];
+    const ALL_PREMIUM = ["blackjack", "cascade", "hearts", "starswarm", "mahjong"];
 
     it("all-games token from dev-override period still grants access on cold-launch network failure within grace period", async () => {
       // Simulate a device that cached an all-games token while ENTITLEMENT_DEV_OVERRIDE was active
@@ -471,11 +471,11 @@ describe("revocation flow", () => {
 
   it("drops queue entries for the revoked game", async () => {
     mockRequest.mockResolvedValue({
-      token: makeToken(makePayload(["sudoku"])),
+      token: makeToken(makePayload(["starswarm"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
     await triggerForegroundWith([]);
-    expect(mockDropByGameType).toHaveBeenCalledWith("sudoku");
+    expect(mockDropByGameType).toHaveBeenCalledWith("starswarm");
   });
 
   it("does not clear storage when entitlements are unchanged", async () => {

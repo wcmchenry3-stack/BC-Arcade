@@ -1,7 +1,7 @@
 # Sudoku
 
 **Category:** Puzzle
-**Tier:** TBD
+**Tier:** Free (v1.0 store build; moved from premium, owner decision 2026-09-25, no compensating swap)
 **Status:** In Development
 
 ## How to Play
@@ -49,7 +49,7 @@ All 3000 puzzles in the bank have been validated: every puzzle is solvable, has 
 
 ## Entitlement
 
-Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
+Free: no entitlement check.
 
 ## Known Issues / Limitations
 

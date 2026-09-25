@@ -22,15 +22,8 @@ const GAME_STORAGE_CLEARERS: Partial<Record<string, () => Promise<void>>> = {
 };
 
 // Premium games — sourced from backend migrations 0014_game_types_premium_cat,
-// 0020_swap_yacht_blackjack, 0022_swap_mahjong_sort
-export const PREMIUM_GAMES = new Set([
-  "blackjack",
-  "cascade",
-  "hearts",
-  "sudoku",
-  "starswarm",
-  "mahjong",
-]);
+// 0020_swap_yacht_blackjack, 0022_swap_mahjong_sort, 0023_sudoku_free
+export const PREMIUM_GAMES = new Set(["blackjack", "cascade", "hearts", "starswarm", "mahjong"]);
 
 export const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 

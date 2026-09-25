@@ -55,7 +55,6 @@ const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
   ["Cascade", "cascade"],
   ["StarSwarm", "starswarm"],
   ["Hearts", "hearts"],
-  ["Sudoku", "sudoku"],
   ["Mahjong", "mahjong"],
 ];
 
@@ -109,6 +108,7 @@ export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): vo
     factories.Solitaire,
     factories.FreeCell,
     factories.Sort,
+    factories.Sudoku,
     factories.DailyWord,
     ...PREMIUM_LAZY.filter(([, slug]) => canPlay(slug)).map(([key]) => factories[key]),
   ];

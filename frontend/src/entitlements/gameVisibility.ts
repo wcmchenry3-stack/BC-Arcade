@@ -1,7 +1,7 @@
 /**
  * Which games exist at all in this build (#2390).
  *
- * v1.0 ships to the stores with the six premium games hidden entirely — not
+ * v1.0 ships to the stores with the premium games hidden entirely — not
  * locked, not free. They come back when IAP lands (epic #822).
  *
  * This is deliberately a compiled constant and NOT:
@@ -35,7 +35,6 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
   "blackjack",
   "cascade",
   "hearts",
-  "sudoku",
   "starswarm",
   "mahjong",
 ]);

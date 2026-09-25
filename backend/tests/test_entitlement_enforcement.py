@@ -3,7 +3,7 @@
 Acceptance criteria:
 - POST /games with a premium game_type and no entitlement → 403
 - POST /games with a free game_type → proceeds normally
-- Any route on /cascade/*, /hearts/*, /sudoku/*, /starswarm/* without
+- Any route on /cascade/*, /hearts/*, /starswarm/* without
   entitlement → 403
 - Entitled session passes through without error
 - Free game routes are unaffected
@@ -167,24 +167,6 @@ async def test_hearts_entitled_session_passes(client: TestClient, session_id: st
 
 
 # ---------------------------------------------------------------------------
-# /sudoku/* — gated
-# ---------------------------------------------------------------------------
-
-
-def test_sudoku_scores_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.get("/sudoku/scores/easy", headers=_headers(session_id))
-    assert r.status_code == 403
-    assert r.json()["game"] == "sudoku"
-
-
-@pytest.mark.anyio
-async def test_sudoku_entitled_session_passes(client: TestClient, session_id: str) -> None:
-    await _grant(session_id, "sudoku")
-    r = client.get("/sudoku/scores/easy", headers=_headers(session_id))
-    assert r.status_code != 403
-
-
-# ---------------------------------------------------------------------------
 # /starswarm/* — gated
 # ---------------------------------------------------------------------------
 
@@ -229,4 +211,9 @@ def test_freecell_not_gated(client: TestClient, session_id: str) -> None:
 
 def test_solitaire_not_gated(client: TestClient, session_id: str) -> None:
     r = client.get("/solitaire/scores", headers=_headers(session_id))
+    assert r.status_code != 403
+
+
+def test_sudoku_not_gated(client: TestClient, session_id: str) -> None:
+    r = client.get("/sudoku/scores/easy", headers=_headers(session_id))
     assert r.status_code != 403

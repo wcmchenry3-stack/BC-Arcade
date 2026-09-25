@@ -9,8 +9,8 @@ sitting. Privacy forms (Apple App Privacy, Play Data safety, #2014) are already 
 > checked against Apple's and IARC's published definitions on that date; **confirm the result in
 > each console's rating preview before saving.**
 
-**What the rating covers:** the v1.0 store build, which ships six games — Yacht, Solitaire,
-FreeCell, Sort, Daily Word, 2048. The six premium games are compiled out of store builds
+**What the rating covers:** the v1.0 store build, which ships seven games — Yacht, Solitaire,
+FreeCell, Sort, Daily Word, 2048, Sudoku. The five premium games are compiled out of store builds
 (`gameVisibility.ts`), so they are not rated now. **When a premium game ships (IAP, #822), redo both
 questionnaires** — Blackjack adds simulated gambling (§1), Star Swarm cartoon/fantasy violence, and
 Hearts needs a fresh look.
@@ -18,6 +18,15 @@ Hearts needs a fresh look.
 **Amended 2026-09-24 (owner): Mahjong and Sort swapped tiers** — Mahjong is now premium (migration
 `0022_swap_mahjong_sort` flips `game_types.is_premium`), Sort is free. Sort's daily-challenge goals
 take Mahjong's slot in the free pool; Mahjong's goals wait for #2458 alongside Blackjack's.
+
+**Amended 2026-09-25 (owner): Sudoku moved to free, no compensating swap** — migration
+`0023_sudoku_free` flips `game_types.is_premium`. The 6/6 split was never a design target (see
+`docs/ARCHITECTURE.md` §10.8); this lands the v1.0 store build at **seven** free games (Yacht,
+Solitaire, FreeCell, Sort, Daily Word, 2048, Sudoku) and five premium (Blackjack, Cascade, Hearts,
+Star Swarm, Mahjong). Sudoku is not added to the daily-challenge free goal pool — see the migration's
+docstring for why. Every "six games" reference below the 2026-09-23 decision line predates this and
+describes the build as it stood then; the listing text and rating count later in this file are
+updated to seven.
 
 ---
 
@@ -143,10 +152,10 @@ login, no ads) and only claiming what the v1.0 store build does. Name is always 
 
 ### Google Play
 
-**Short description** (80 max — 76 chars):
+**Short description** (80 max — 78 chars):
 
 ```
-Six calm classics, one daily challenge. No ads, no login, no timers to beat.
+Seven calm classics, one daily challenge. No ads, no login, no timers to beat.
 ```
 
 **Full description** (4,000 max):
@@ -154,13 +163,14 @@ Six calm classics, one daily challenge. No ads, no login, no timers to beat.
 ```
 BC Arcade is a small arcade of classic games built for short moments — open it, play a round, put your phone down. No ads interrupt you, nothing asks you to sign in, and you can leave any game at any time without a penalty.
 
-SIX GAMES
+SEVEN GAMES
 • Solitaire — Klondike with draw-3 and unlimited undo
 • FreeCell — every card face-up; nearly every deal can be won
 • Bottle Sort — pour and sort colored liquid layers to clear every bottle
 • Daily Word — one word puzzle a day, six guesses, the same word for everyone (English and Hindi)
 • 2048 — slide and merge tiles to reach 2048 and beyond
 • Yacht — roll five dice, fill 13 scoring boxes, and try to beat the computer
+• Sudoku — classic number-grid logic puzzle, 3,000 puzzles across 3 difficulty tiers
 
 A DAILY CHALLENGE
 Every day brings three goals: today's Daily Word plus one goal in each of two other games. Finish two of the three to keep your streak going.
@@ -188,7 +198,7 @@ Calm classics, a daily goal
 **Promotional text** (170 max — editable without a new build):
 
 ```
-Three new goals every day across six classic games. Keep your streak alive — no ads, no login, no timers.
+Three new goals every day across seven classic games. Keep your streak alive — no ads, no login, no timers.
 ```
 
 **Description:** same as the Play full description above (Apple has no separate short description).
@@ -196,7 +206,7 @@ Three new goals every day across six classic games. Keep your streak alive — n
 **Keywords** (100 max, comma-separated, no spaces after commas, don't repeat the name or category):
 
 ```
-solitaire,freecell,puzzle,dice,word,2048,daily,klondike,cards,tiles,offline,streak,classic,casual
+solitaire,freecell,sudoku,dice,word,2048,daily,klondike,cards,tiles,offline,streak,classic,casual
 ```
 
 _(Avoid `casino` and `poker`, even when Blackjack returns: they invite gambling-app scrutiny.)_
