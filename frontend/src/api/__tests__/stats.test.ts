@@ -31,3 +31,14 @@ describe("statsApi.getMyStats", () => {
     expect(mockRequest).toHaveBeenCalledWith("/stats/me?tz_offset_minutes=0");
   });
 });
+
+describe("statsApi.getGameRank (#2677)", () => {
+  afterEach(() => mockRequest.mockClear());
+
+  it("GETs the game's rank", async () => {
+    const body = { rank: 1, is_best: true, ranked: true, reason: null };
+    mockRequest.mockResolvedValueOnce(body);
+    await expect(statsApi.getGameRank("abc-123")).resolves.toEqual(body);
+    expect(mockRequest).toHaveBeenCalledWith("/games/abc-123/rank");
+  });
+});

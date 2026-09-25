@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from games.leaderboard import RankReason
 from games.registry import get_module
 from players.schemas import DisplayName
 
@@ -150,7 +151,7 @@ class GameRankResponse(BaseModel):
     rank: int | None
     is_best: bool | None
     ranked: bool
-    reason: Literal["no_name", "not_rankable", "board_disabled"] | None
+    reason: RankReason | None
 
 
 # ---------------------------------------------------------------------------

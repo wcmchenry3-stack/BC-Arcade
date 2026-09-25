@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
+from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from session import get_session_id
@@ -231,24 +234,32 @@ async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankRespons
     The result card's call: the rank of the caller's best entry in the game's
     partition and whether this game is that entry, computed exactly as
     ``PATCH /games/{id}/name`` and the board compute it. ``ranked: false``
-    with ``reason`` ``no_name`` / ``not_rankable`` / ``board_disabled`` (rank
-    and is_best null) when there is no standing to report. 403 if another
-    session owns the game (or a premium game isn't entitled), 404 if the game
-    or its board definition doesn't exist.
+    with ``reason`` ``board_disabled`` / ``not_finished`` / ``not_rankable`` /
+    ``no_name`` (rank and is_best null) when there is no standing to report.
+    403 if another session owns the game (or a premium game isn't entitled),
+    404 if the game or its board definition doesn't exist.
     """
     sid = get_session_id(request)
     factory = get_session_factory()
     async with factory() as db:
-        game = await leaderboard.load_game(db, game_id)
-        if game is None:
-            raise HTTPException(status_code=404, detail="Game not found.")
-        if game.session_id != sid:
-            raise HTTPException(status_code=403, detail="Game belongs to a different session.")
-        await check_entitlement(db, sid, game.game_type.name)  # no-op for free games
+        game = await _load_owned_game(db, game_id, sid)
         result = await leaderboard.game_rank(db, game=game, session_id=sid)
-    return GameRankResponse(
-        rank=result.rank, is_best=result.is_best, ranked=result.ranked, reason=result.reason
-    )
+    return GameRankResponse.model_validate(asdict(result))
+
+
+async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Game:
+    """The caller's game with its ``game_type``, for the name and rank routes.
+
+    404 if it doesn't exist, 403 if another session owns it or it is a premium
+    game the caller isn't entitled to (a no-op for free games).
+    """
+    game = await leaderboard.load_game(db, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found.")
+    if game.session_id != sid:
+        raise HTTPException(status_code=403, detail="Game belongs to a different session.")
+    await check_entitlement(db, sid, game.game_type.name)
+    return game
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
@@ -392,12 +403,7 @@ async def set_player_name(
     sid = get_session_id(request)
     factory = get_session_factory()
     async with factory() as db:
-        game = await leaderboard.load_game(db, game_id)
-        if game is None:
-            raise HTTPException(status_code=404, detail="Game not found.")
-        if game.session_id != sid:
-            raise HTTPException(status_code=403, detail="Game belongs to a different session.")
-        await check_entitlement(db, sid, game.game_type.name)  # no-op for free games
+        game = await _load_owned_game(db, game_id, sid)
         result = await leaderboard.set_player_name(
             db, game=game, session_id=sid, player_name=body.player_name
         )

@@ -5,11 +5,11 @@ import { useLeaderboardSubmit } from "../useLeaderboardSubmit";
 import { loadDisplayName, resetDisplayNameCacheForTests, saveDisplayName } from "../displayName";
 import { scoreQueue } from "../scoreQueue";
 import { ApiError } from "../httpClient";
-import type { GameRankResponse } from "../../../api/games";
+import type { GameRankResponse } from "../../../api/types";
 
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
-jest.mock("../../../api/games", () => ({
-  gamesApi: { getRank: (gameId: string) => mockGetRank(gameId) },
+jest.mock("../../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
 }));
 
 const mockFlushQueuedGames = jest.fn(() => Promise.resolve());
@@ -77,6 +77,15 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(await scoreQueue.peek()).toEqual([]);
   });
 
+  it("shows no rank when this game isn't the player's best entry", async () => {
+    await saveDisplayName("Riley");
+    mockGetRank.mockResolvedValue(ranked(3, false));
+    const { result } = await setup();
+    await act(() => result.current.submit({ gameId: "g-1" }));
+    expect(result.current.status).toBe("saved");
+    expect(result.current.rank).toBeNull();
+  });
+
   it("shows a rank outside the top ten as saved with no rank, like the other cards", async () => {
     await saveDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(25));
@@ -122,14 +131,14 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.rank).toBe(1);
   });
 
-  it("shows offline, not a name prompt, while the name is still waiting to sync", async () => {
+  it("keeps saving, not a name prompt, while the name is still waiting to sync", async () => {
     await saveDisplayName("Riley");
     mockFlushDisplayNameSync.mockResolvedValue(false);
     mockGetRank.mockResolvedValue(unranked("no_name"));
     const { result } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
-    expect(result.current.status).toBe("offline");
+    expect(result.current.status).toBe("submitting");
     expect(await scoreQueue.peek()).toEqual([]);
   });
 
@@ -188,9 +197,9 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.rank).toBe(5);
   });
 
-  it("retries not_rankable while the completion hasn't landed yet", async () => {
+  it("retries not_finished while the completion hasn't landed yet", async () => {
     await saveDisplayName("Riley");
-    mockGetRank.mockResolvedValueOnce(unranked("not_rankable")).mockResolvedValueOnce(ranked(6));
+    mockGetRank.mockResolvedValueOnce(unranked("not_finished")).mockResolvedValueOnce(ranked(6));
     const { result } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -199,8 +208,19 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.rank).toBe(6);
   });
 
+  it("a not_finished that outlasts the retries stays pending (the hook asks again)", async () => {
+    await saveDisplayName("Riley");
+    mockGetRank.mockResolvedValue(unranked("not_finished"));
+    const { result } = await setup();
+
+    await act(() => result.current.submit({ gameId: "g-1" }));
+
+    expect(mockGetRank).toHaveBeenCalledTimes(3);
+    expect(result.current.status).toBe("submitting");
+  });
+
   it.each(["not_rankable", "board_disabled"] as const)(
-    "%s for good: saved with no rank",
+    "%s is final at once: unranked, no retry",
     async (reason) => {
       await saveDisplayName("Riley");
       mockGetRank.mockResolvedValue(unranked(reason));
@@ -208,7 +228,8 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
 
       await act(() => result.current.submit({ gameId: "g-1" }));
 
-      expect(result.current.status).toBe("saved");
+      expect(mockGetRank).toHaveBeenCalledTimes(1);
+      expect(result.current.status).toBe("unranked");
       expect(result.current.rank).toBeNull();
     }
   );

@@ -199,10 +199,32 @@ async def test_no_display_name_is_no_name(client: TestClient) -> None:
     assert _rank(client, game_id, sid) == _ranked(1, True)
 
 
-NOT_RANKABLE: dict[str, tuple[str, dict[str, Any]]] = {
+async def test_no_name_is_decided_by_the_boards_name_lookup(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Accounts (#1047) change only ``players.names.name_lookup``: the rank
+    route must follow it, like every board, rather than read ``players``."""
+    from sqlalchemy import false
+
+    from players import names
+
+    sid = _sid()
+    game_id = await _seed("solitaire", sid, score=100, name="Me")
+    assert _rank(client, game_id, sid) == _ranked(1, True)
+
+    monkeypatch.setattr(
+        names, "name_lookup", lambda session_id: select(Player.display_name).where(false())
+    )
+    assert _rank(client, game_id, sid) == _unranked("no_name")
+
+
+NOT_FINISHED: dict[str, tuple[str, dict[str, Any]]] = {
     "no final score": ("solitaire", {"score": None}),
-    "abandoned": ("solitaire", {"score": 100, "outcome": "abandoned"}),
     "no metric": ("sort", {"meta": {"total_moves": 3}}),
+}
+
+NOT_RANKABLE: dict[str, tuple[str, dict[str, Any]]] = {
+    "abandoned": ("solitaire", {"score": 100, "outcome": "abandoned"}),
     "non-integer metric": ("sort", {"meta": {"level_reached": "5"}}),
     "negative score": ("solitaire", {"score": -5}),
     "over the partition cap": ("sudoku", {"score": 101, "meta": {"difficulty": "easy"}}),
@@ -226,12 +248,43 @@ async def test_a_game_that_cannot_rank_is_not_rankable(
     assert _rank(client, game_id, sid) == _unranked("not_rankable")
 
 
-async def test_an_unfinished_game_is_not_rankable(client: TestClient) -> None:
+@pytest.mark.parametrize("named", [True, False], ids=["named", "unnamed"])
+@pytest.mark.parametrize("case", sorted(NOT_FINISHED))
+async def test_a_game_without_a_value_yet_is_not_finished(
+    client: TestClient, case: str, named: bool
+) -> None:
+    game_type, row = NOT_FINISHED[case]
     sid = _sid()
-    await _set_name(sid, "Me")
+    game_id = await _seed(game_type, sid, name="Me" if named else None, **row)
+    assert _rank(client, game_id, sid) == _unranked("not_finished")
+
+
+@pytest.mark.parametrize("named", [True, False], ids=["named", "unnamed"])
+async def test_an_open_game_is_not_finished_until_its_completion_lands(
+    client: TestClient, named: bool
+) -> None:
+    sid = _sid()
+    if named:
+        await _set_name(sid, "Me")
     r = client.post("/games", headers=_headers(sid), json={"game_type": "solitaire"})
     assert r.status_code == 200, r.text
-    assert _rank(client, r.json()["id"], sid) == _unranked("not_rankable")
+    game_id = r.json()["id"]
+    assert _rank(client, game_id, sid) == _unranked("not_finished")
+
+    r = client.patch(
+        f"/games/{game_id}/complete",
+        headers=_headers(sid),
+        json={"final_score": 120, "outcome": "completed", "duration_ms": 1000},
+    )
+    assert r.status_code == 200, r.text
+    assert _rank(client, game_id, sid) == (_ranked(1, True) if named else _unranked("no_name"))
+
+
+async def test_a_disabled_board_wins_over_an_unfinished_game(client: TestClient) -> None:
+    sid = _sid()
+    await _grant_all(sid)
+    game_id = await _seed("blackjack", sid, score=None, name=None)
+    assert _rank(client, game_id, sid) == _unranked("board_disabled")
 
 
 async def test_a_non_qualifying_outcome_is_not_rankable(

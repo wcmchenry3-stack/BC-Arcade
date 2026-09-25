@@ -113,3 +113,25 @@ export interface GameEventRow {
 export interface GameDetailResponse extends GameRow {
   events?: GameEventRow[] | null;
 }
+
+/** Why `GET /games/{id}/rank` has no rank to report. Mirrors backend `RankReason`. */
+export type GameRankReason = "no_name" | "not_finished" | "not_rankable" | "board_disabled";
+
+/**
+ * `GET /games/{id}/rank` (#2677): where one of the caller's games puts them
+ * on its board. Mirrors backend `GameRankResponse`. `rank` (exact, 1-based)
+ * is the rank of the player's best entry in that game's partition; `is_best`
+ * says whether this game is that entry. Both are null when `ranked` is false,
+ * and `reason` says why:
+ *
+ *   board_disabled — the game has no leaderboard
+ *   not_finished   — no completion or value yet (usually still syncing)
+ *   not_rankable   — this game can never rank (abandoned, over the cap…)
+ *   no_name        — the player has no display name on the server
+ */
+export interface GameRankResponse {
+  readonly rank: number | null;
+  readonly is_best: boolean | null;
+  readonly ranked: boolean;
+  readonly reason: GameRankReason | null;
+}

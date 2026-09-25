@@ -72,7 +72,7 @@ from games.protocol import GameModule
 from games.ranking import compute_rank
 from games.registry import get_module
 from players import service as players_service
-from players.names import display_name_of, has_display_name
+from players.names import display_name_of, has_display_name, session_has_display_name
 from vocab import GameOutcome
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,8 @@ class Standing:
     is_best: bool
 
 
-RankReason = Literal["no_name", "not_rankable", "board_disabled"]
+RankReason = Literal["no_name", "not_finished", "not_rankable", "board_disabled"]
+"""Why ``GET /games/{id}/rank`` has no rank (the response model reuses it)."""
 
 
 @dataclass(frozen=True)
@@ -478,11 +479,21 @@ def _metric_value(board: BoardDefinition, game: Game) -> Any:
     return (game.game_metadata or {}).get(board.metric)
 
 
+def _not_finished(board: BoardDefinition, game: Game) -> bool:
+    """``game`` has no completion or no metric value yet: nothing to rank *so far*.
+
+    A completion still in the app's sync queue looks exactly like this, so it
+    is the one unrankable cause that can change (``not_finished`` on the rank
+    route); every other cause in ``_unrankable_reason`` is permanent.
+    """
+    return game.completed_at is None or _metric_value(board, game) is None
+
+
 def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
     """Why ``game`` can't appear on its board (mirrors ``board_filters``)."""
-    value = _metric_value(board, game)
-    if game.completed_at is None or value is None:
+    if _not_finished(board, game):
         return "Game has no final score."
+    value = _metric_value(board, game)
     if game.outcome == GameOutcome.ABANDONED.value:
         return "Abandoned games are not ranked."
     if board.qualifying_outcomes is not None and game.outcome not in board.qualifying_outcomes:
@@ -589,12 +600,15 @@ async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRan
     ``ranked: false`` with the first reason that applies:
 
     - ``board_disabled``: the game has no leaderboard (Blackjack, Daily Word);
-    - ``not_rankable``: this game can't be on its board (unfinished,
-      abandoned, a non-qualifying outcome, over the cap, a partition value
-      with no board, ...). Checked before the name, so a result card never
-      asks for a name the game couldn't use;
+    - ``not_finished``: no completion or no metric value yet. Usually the
+      completion is still in the app's sync queue, so asking again later can
+      give a rank;
+    - ``not_rankable``: this game can never be on its board (abandoned, a
+      non-qualifying outcome, over the cap, a partition value with no board,
+      a sentinel session, ...).
     - ``no_name``: the player has no display name, so no board shows them and
-      no rank is computed.
+      no rank is computed. Checked after the game, so a result card never
+      asks for a name the game couldn't use.
     """
     game_type = game.game_type.name
     board = _module_board(get_module(game_type))
@@ -602,14 +616,16 @@ async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRan
         raise LeaderboardError(404, f"{game_type} has no leaderboard.")
     if not board.enabled:
         return GameRank(ranked=False, reason="board_disabled")
+    if _not_finished(board, game):
+        return GameRank(ranked=False, reason="not_finished")
     if _unrankable_reason(board, game) is not None:
         return GameRank(ranked=False, reason="not_rankable")
     try:
-        name = await players_service.get_display_name(db, session_id)
+        named = await session_has_display_name(db, session_id)
     except SQLAlchemyError as exc:
         _log_db_error("player name query", game_type, exc)
         raise LeaderboardError(500, "Failed to calculate rank.") from exc
-    if name is None:
+    if not named:
         return GameRank(ranked=False, reason="no_name")
     standing = await player_standing(db, board=board, game=game, session_id=session_id)
     if standing is None:
