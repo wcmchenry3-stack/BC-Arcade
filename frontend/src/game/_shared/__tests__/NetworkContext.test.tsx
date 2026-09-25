@@ -45,9 +45,6 @@ jest.mock("../../solitaire/scoreSync", () => ({
 jest.mock("../../freecell/scoreSync", () => ({
   registerFreeCellScoreHandler: jest.fn(),
 }));
-jest.mock("../../hearts/scoreSync", () => ({
-  registerHeartsScoreHandler: jest.fn(),
-}));
 
 jest.mock("../../../components/shared/CapacityWarningToast", () => ({
   CapacityWarningToast: () => null,
