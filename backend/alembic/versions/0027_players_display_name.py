@@ -114,12 +114,14 @@ def upgrade() -> None:
             _games.c.session_id.not_like(f"%{_SENTINEL_SUFFIX}"),
         )
         .order_by(_games.c.session_id, _games.c.completed_at.desc(), _games.c.id.desc())
+        # Streamed (a server-side cursor on Postgres). Set on this statement,
+        # not the connection: a connection-level yield_per would wrap the
+        # INSERTs below in a cursor too, which Postgres rejects.
+        .execution_options(yield_per=_BATCH)
     )
     bind = op.get_bind()
-    # Streamed (a server-side cursor on Postgres) and fully read before any
-    # insert runs on the same connection.
-    rows = bind.execution_options(yield_per=_BATCH).execute(stmt)
-    names = latest_names((row[0], row[1]) for row in rows)
+    # Fully read before any insert runs on the same connection.
+    names = latest_names((row[0], row[1]) for row in bind.execute(stmt))
 
     batch = [{"session_id": sid, "display_name": n} for sid, n in names.items()]
     for start in range(0, len(batch), _BATCH):
