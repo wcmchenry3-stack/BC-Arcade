@@ -74,7 +74,7 @@ def test_is_immutable() -> None:
 @pytest.mark.parametrize(
     "game,metric,direction,tiebreak,partitions,max_value,enabled",
     [
-        ("yacht", SCORE_METRIC, "desc", None, [], 400, True),
+        ("yacht", SCORE_METRIC, "desc", None, [], 1575, True),
         ("solitaire", SCORE_METRIC, "desc", None, [], 1245, True),
         ("freecell", SCORE_METRIC, "asc", None, [], None, True),
         ("mahjong", SCORE_METRIC, "desc", None, [], 1220, True),
@@ -97,14 +97,17 @@ def test_declared_board(game, metric, direction, tiebreak, partitions, max_value
 
 
 def test_existing_request_bounds_match_max_value() -> None:
-    """The per-game submit bounds that exist today agree with the boards."""
+    """The per-game submit bounds that exist today agree with the boards.
+
+    Yacht is left out on purpose: the legacy ``POST /yacht/score`` bound of 400
+    limits the input to its ``400 - raw`` transform, not a game's real total,
+    which can reach 1575 with bonus Yachts (see the recompute test below).
+    """
     from sort.models import ScoreSubmitRequest as SortSubmit
-    from yacht.models import YachtScoreSubmitRequest
 
     def le(model, field: str) -> int:
         return next(m.le for m in model.model_fields[field].metadata if hasattr(m, "le"))
 
-    assert le(YachtScoreSubmitRequest, "score") == _board("yacht").max_value
     assert le(SortSubmit, "level_reached") == _board("sort").max_value
 
 
@@ -160,3 +163,39 @@ def test_mahjong_max_value_recomputed_from_engine() -> None:
 
     expected = max(tile_counts) // 2 * c["SCORE_PER_PAIR"] + c["SCORE_COMPLETE_BONUS"]
     assert _board("mahjong").max_value == expected == 1220
+
+
+def test_yacht_max_value_recomputed_from_engine() -> None:
+    """1575: the classic theoretical maximum, derived from engine.ts.
+
+    Every roll is a Yacht of the right face. The Yacht box scores its fixed 50,
+    the other 12 categories take their best joker values (five of a face in the
+    upper section, five sixes for the kinds and chance, the fixed full house and
+    straights), the upper bonus is earned, and each of the 12 extra Yachts adds
+    the Yacht bonus. A cap below this rejects real games with bonus Yachts.
+    """
+    path = _FRONTEND_GAME / "yacht" / "engine.ts"
+    c = _ts_constants(path)
+    text = path.read_text(encoding="utf-8")
+    # The joker scorer prices every lower category at its best (fixed) value.
+    joker = text[text.index("export function calculateJokerScore") :]
+
+    def fixed(category: str) -> int:
+        # A case may carry comment lines before its return (the "yacht" case does).
+        found = re.findall(rf'case "{category}":(?:\s*//[^\n]*)*\s*return (\d+);', joker)
+        assert found, f"no fixed score for {category} in the Yacht joker scorer"
+        return int(found[0])
+
+    dice, faces = 5, 6
+    upper = sum(face * dice for face in range(1, faces + 1))  # 105
+    kinds_and_chance = 3 * faces * dice  # three/four of a kind and chance: 30 each
+    lower = (
+        kinds_and_chance
+        + fixed("full_house")
+        + fixed("small_straight")
+        + fixed("large_straight")
+        + fixed("yacht")
+    )
+    extra_yachts = 12  # 13 rounds, the first Yacht fills the Yacht box
+    expected = upper + c["UPPER_BONUS_VALUE"] + lower + extra_yachts * c["YACHT_BONUS_VALUE"]
+    assert _board("yacht").max_value == expected == 1575
