@@ -6,6 +6,7 @@ const mockStartGame = jest.fn<string, any[]>(() => "test-game-id");
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
+const mockDiscardGame = jest.fn();
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -13,6 +14,7 @@ jest.mock("../gameEventClient", () => ({
     enqueueEvent: (...args: unknown[]) => mockEnqueueEvent(...args),
     completeGame: (...args: unknown[]) => mockCompleteGame(...args),
     reportBug: (...args: unknown[]) => mockReportBug(...args),
+    discardGame: (...args: unknown[]) => mockDiscardGame(...args),
   },
 }));
 
@@ -326,8 +328,8 @@ describe("useGameSync", () => {
   });
 
   // #2619: same guard as the unmount path — a game the player never touched is
-  // not an abandon.
-  it("restart() before markStarted() sends no abandon but still starts a new session", async () => {
+  // not an abandon. It is discarded instead, so it is not left pending.
+  it("restart() before markStarted() discards the old session instead of abandoning it", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
     const { result } = await renderHook(() => useGameSync("cascade"));
     await act(() => {
@@ -338,7 +340,24 @@ describe("useGameSync", () => {
       result.current.restart({ fruit_set: "cosmos" });
     });
     expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
+    expect(mockDiscardGame).toHaveBeenCalledWith("session-1");
     expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(result.current.getGameId()).toBe("session-2");
+  });
+
+  it("restart() still starts a new session when discardGame throws", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    mockDiscardGame.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+    });
+    await act(() => {
+      result.current.restart();
+    });
     expect(result.current.getGameId()).toBe("session-2");
   });
 
@@ -352,6 +371,7 @@ describe("useGameSync", () => {
       result.current.markStarted();
       result.current.restart();
     });
+    expect(mockDiscardGame).not.toHaveBeenCalled();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "session-1",

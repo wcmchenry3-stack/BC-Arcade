@@ -22,7 +22,9 @@ class BlackjackModule:
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
-    has_winner = True
+    # False until #2628 makes a run record ``win`` / ``loss``; today every
+    # finished run records ``completed``.
+    has_winner = False
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

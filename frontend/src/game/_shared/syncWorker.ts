@@ -61,30 +61,22 @@ export interface FlushResult {
 }
 
 /**
- * Longest play time the SyncWorker will derive from `completedAt − startedAt`
- * (24 h). Matches the server's stale-session threshold (#2621): a session open
- * longer than that was left in the background, not played.
+ * The `duration_ms` sent on PATCH /complete (#2619). Only the game's own
+ * active-time measurement counts as play time: a reported duration > 0 is
+ * sent (rounded to whole ms, since the server field is an int). Anything
+ * else — 0, null, missing, negative or not finite — is sent as `null`,
+ * meaning "unknown".
+ *
+ * The duration is never derived from the pending game's `startedAt` /
+ * `completedAt`: wall-clock time counts idle and backgrounded time as play
+ * (a Daily Word left open all day would record 12 h). A negative value must
+ * never reach the server either — `duration_ms` is `Field(ge=0)`, so it would
+ * 400 the whole completion and lose the score.
  */
-export const MAX_DERIVED_DURATION_MS = 24 * 60 * 60 * 1000;
-
-/**
- * The `duration_ms` sent on PATCH /complete (#2619). A real duration from the
- * game is kept as-is. When the game sent none, or 0, it is derived from the
- * pending game's own `startedAt` / `completedAt` timestamps, capped at
- * `MAX_DERIVED_DURATION_MS`. Returns the game's value unchanged (null, or 0)
- * when the timestamps can't give a positive duration.
- */
-export function resolveDurationMs(
-  durationMs: number | null | undefined,
-  startedAt: number | null | undefined,
-  completedAt: number | null | undefined
-): number | null {
-  const reported = durationMs ?? null;
-  if (reported !== null && reported !== 0) return reported;
-  if (typeof startedAt !== "number" || typeof completedAt !== "number") return reported;
-  const elapsed = completedAt - startedAt;
-  if (!Number.isFinite(elapsed) || elapsed <= 0) return reported;
-  return Math.min(Math.round(elapsed), MAX_DERIVED_DURATION_MS);
+export function resolveDurationMs(durationMs: number | null | undefined): number | null {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
+  const ms = Math.round(durationMs);
+  return ms > 0 ? ms : null;
 }
 
 const EMPTY: FlushResult = {
@@ -371,7 +363,7 @@ export class SyncWorker {
       const body = {
         final_score: summary.finalScore ?? null,
         outcome: summary.outcome ?? null,
-        duration_ms: resolveDurationMs(summary.durationMs, game.startedAt, game.completedAt),
+        duration_ms: resolveDurationMs(summary.durationMs),
         completed_at: game.completedAt != null ? new Date(game.completedAt).toISOString() : null,
         result: summary.result ?? {},
       };

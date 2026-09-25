@@ -329,7 +329,12 @@ export default function SudokuScreen() {
         {
           outcome: "abandoned",
           finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
-          durationMs: 0,
+          // The game's own play timer (#2619): its start moves past time spent
+          // in the background, so this is active time, not wall-clock time.
+          durationMs:
+            startMsRef.current !== null
+              ? (pausedAtRef.current ?? Date.now()) - startMsRef.current
+              : null,
           result,
         },
         {

@@ -642,6 +642,11 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
     expect(mockStartGame).toHaveBeenCalledWith("twenty48", {}, expect.any(Object));
+    // #2619: the result is built once; the analytics payload is it plus outcome.
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result).not.toHaveProperty("outcome");
+    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    expect(summary.durationMs).toBe(summary.result.duration_ms);
   });
 
   it("capture ordering: move events are emitted in direction sequence", async () => {

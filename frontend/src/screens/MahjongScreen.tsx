@@ -713,7 +713,9 @@ export default function MahjongScreen() {
         {
           finalScore: state.score,
           outcome: "completed",
-          durationMs: state.accumulatedMs,
+          // elapsedMs, not accumulatedMs: the running segment is only banked
+          // on pause, so accumulatedMs alone misses the current play time.
+          durationMs: elapsedMs(state),
           result: { won: true, pairs: state.pairsRemoved },
         },
         { final_score: state.score, outcome: "completed", won: true, pairs: state.pairsRemoved }
@@ -786,7 +788,7 @@ export default function MahjongScreen() {
     if (!syncGetGameId() || !s?.isDeadlocked || s.isComplete) return false;
     const result = progressResult();
     syncComplete(
-      { outcome: "loss", durationMs: s.accumulatedMs, result },
+      { outcome: "loss", durationMs: elapsedMs(s), result },
       { outcome: "loss", ...result }
     );
     clearGame().catch(() => {});
@@ -803,7 +805,13 @@ export default function MahjongScreen() {
       if (recordDeadlockLoss()) return;
       const result = progressResult();
       syncComplete(
-        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0, result },
+        {
+          outcome: "abandoned",
+          finalScore: s?.score ?? 0,
+          // The game's own play timer (#2619), not wall-clock time.
+          durationMs: s ? elapsedMs(s) : null,
+          result,
+        },
         { outcome: "abandoned", ...result }
       );
     });
@@ -884,9 +892,16 @@ export default function MahjongScreen() {
   const abandonOpenSession = useCallback(() => {
     if (recordDeadlockLoss()) return;
     if (syncGetGameId()) {
+      const s = stateRef.current;
       const result = progressResult();
       syncComplete(
-        { outcome: "abandoned", finalScore: 0, durationMs: 0, result },
+        {
+          outcome: "abandoned",
+          finalScore: 0,
+          // The game's own play timer (#2619), not wall-clock time.
+          durationMs: s ? elapsedMs(s) : null,
+          result,
+        },
         { outcome: "abandoned", ...result }
       );
     }

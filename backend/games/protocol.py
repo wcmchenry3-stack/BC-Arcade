@@ -58,9 +58,13 @@ class GameModule(Protocol):
         into ``games.metadata``.
 
     has_winner:
-        ``True`` when a finished game has a winner, so ``games.outcome``
-        records ``win`` / ``loss`` / ``push``; ``False`` for score-only games,
-        which record ``completed`` / ``kept_playing``. See ``vocab.GameOutcome``.
+        ``True`` when this game can record ``win`` / ``loss`` / ``push`` —
+        set only once the client really writes them (a win included).
+        ``False`` for score-only games, which record ``completed`` /
+        ``kept_playing``.  It is a per-game capability, not a per-row fact:
+        a ``completed`` row from a game with ``has_winner = True`` (e.g. solo
+        Yacht) is not a win — it is a finish with no winner.  See
+        ``vocab.GameOutcome``.
 
     Methods
     -------

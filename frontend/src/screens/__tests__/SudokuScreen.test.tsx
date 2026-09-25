@@ -18,12 +18,22 @@ import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/stora
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
 const mockPopToTop = jest.fn();
+// Captured so tests can fire `beforeRemove` (back-navigation).
+const mockNavListeners = new Map<string, Array<() => void>>();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: jest.fn(),
-    addListener: jest.fn(() => () => {}),
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    }),
   }),
 }));
 
@@ -105,6 +115,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockPopToTop.mockClear();
+  mockNavListeners.clear();
   (sudokuApi.submitPlayerName as jest.Mock).mockReset();
   (sudokuApi.submitPlayerName as jest.Mock).mockImplementation((_id: string, name: string) =>
     Promise.resolve({ player_name: name, score: 100, rank: 3 })
@@ -207,6 +218,38 @@ describe("SudokuScreen — in-game input", () => {
     // that the sync worker dead-letters.
     expect(summary["result"]).toEqual({ won: false, errors: expect.any(Number) });
     expect(summary).not.toHaveProperty("finalScore");
+  });
+
+  // #2619: the abandon carries the game's own play time, not 0.
+  it("a back-navigation abandon sends the play timer as durationMs", async () => {
+    const { getAllByRole, getByLabelText } = await startEasy();
+    const emptyCells = getAllByRole("button").filter((n) =>
+      /empty/.test(String(n.props.accessibilityLabel ?? ""))
+    );
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText(/enter digit 1/i));
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+    mockCompleteGame.mockClear();
+
+    const realNow = Date.now.bind(Date);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + 30_000);
+    try {
+      await act(async () => {
+        mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const summary = mockCompleteGame.mock.calls[0]![1] as { outcome: string; durationMs: number };
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.durationMs).toBeGreaterThanOrEqual(30_000);
+    expect(summary.durationMs).toBeLessThan(40_000);
   });
 
   it("persists state after digit input", async () => {

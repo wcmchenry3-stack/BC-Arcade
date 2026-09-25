@@ -786,5 +786,31 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
     expect(summary.result).toEqual({ won: false, pairs: 12 });
+    // #2619: the game's own timer (60 s banked + the running segment), not 0.
+    expect(summary.durationMs).toBeGreaterThanOrEqual(60_000);
+    expect(summary.durationMs).toBeLessThan(70_000);
+  });
+
+  it("a New Game abandon sends the play timer as durationMs (#2619)", async () => {
+    const api = await mountMidGameWithSession();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    const confirm = api.queryByLabelText("Start New");
+    if (confirm) {
+      await act(async () => {
+        await fireEvent.press(confirm);
+      });
+    }
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.result).toEqual({ won: false, pairs: 12 });
+    expect(summary.durationMs).toBeGreaterThanOrEqual(60_000);
+    expect(summary.durationMs).toBeLessThan(70_000);
   });
 });
