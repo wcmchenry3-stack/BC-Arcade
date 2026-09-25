@@ -35,6 +35,7 @@ export interface GateMatchup {
 export const GATE_MATCHUPS: readonly GateMatchup[] = [
   { id: "hard-vs-easy", a: "hard", b: "easy", seed: 11, games: 2000 },
   { id: "hard-vs-medium", a: "hard", b: "medium", seed: 12, games: 2000 },
+  { id: "medium-vs-easy", a: "medium", b: "easy", seed: 16, games: 2000 },
   { id: "easy-self", a: "easy", b: "easy", seed: 13, games: 1000 },
   { id: "medium-self", a: "medium", b: "medium", seed: 14, games: 1000 },
   { id: "hard-self", a: "hard", b: "hard", seed: 15, games: 1000 },
@@ -48,6 +49,7 @@ export const GATE_MATCHUPS: readonly GateMatchup[] = [
 export const GATE_GROUPS: Readonly<Record<string, readonly string[]>> = {
   "hard-vs-easy": ["hard-vs-easy"],
   "hard-vs-medium": ["hard-vs-medium"],
+  "medium-vs-easy": ["medium-vs-easy"],
   "self-play": ["easy-self", "medium-self", "hard-self"],
 };
 

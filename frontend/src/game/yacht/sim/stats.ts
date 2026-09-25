@@ -38,6 +38,20 @@ export interface PlayerStats {
   readonly bonusRate: Estimate;
   readonly upperMean: Estimate;
   readonly belowParMean: Estimate;
+  /** 10th / 50th / 90th percentile of final score (descriptive, #2156). */
+  readonly scorePercentiles: { readonly p10: number; readonly p50: number; readonly p90: number };
+  /** Games that scored 0 in the Yacht box. */
+  readonly yachtZeroRate: Estimate;
+  /** Games with at least one Yacht bonus, i.e. a second Yacht scored (Joker turns). */
+  readonly jokerRate: Estimate;
+  /** The round (1-13) in which Chance was filled; early is a beginner's mistake. */
+  readonly chanceRound: Estimate;
+  /**
+   * Of the upper boxes a player zeroed, the share that were Fours, Fives or
+   * Sixes: sacrificing those costs far more than Ones or Twos. Blocks with
+   * no zeroed upper box are left out.
+   */
+  readonly highUpperZeroShare: Estimate;
   readonly categories: Readonly<Record<Category, CategoryStats>>;
 }
 
@@ -111,6 +125,34 @@ export function belowParFills(player: PlayerResult): number {
   return n;
 }
 
+const UPPER: readonly Category[] = ["ones", "twos", "threes", "fours", "fives", "sixes"];
+const HIGH_UPPER: ReadonlySet<Category> = new Set(["fours", "fives", "sixes"]);
+
+/** The q-quantile of sorted values (nearest rank). */
+export function quantile(sorted: readonly number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil(q * sorted.length) - 1));
+  return sorted[i]!;
+}
+
+/** 1-based round in which `cat` was filled (0 if never). */
+export function fillRound(player: PlayerResult, cat: Category): number {
+  return player.fillOrder.indexOf(cat) + 1;
+}
+
+/** [zeroed Fours-Sixes, zeroed upper boxes] for one player's game. */
+export function upperZeros(player: PlayerResult): [number, number] {
+  let high = 0;
+  let all = 0;
+  for (const cat of UPPER) {
+    if (player.categories[cat] === 0) {
+      all++;
+      if (HIGH_UPPER.has(cat)) high++;
+    }
+  }
+  return [high, all];
+}
+
 function avg(values: readonly number[]): number {
   return values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
 }
@@ -140,6 +182,20 @@ function playerStats(
     };
   }
 
+  const sorted = [...scores].sort((x, y) => x - y);
+  const highShare = blocks
+    .map((blk) => {
+      let high = 0;
+      let all = 0;
+      for (const p of blk.games.flatMap(pick)) {
+        const [h, n] = upperZeros(p);
+        high += h;
+        all += n;
+      }
+      return all > 0 ? high / all : null;
+    })
+    .filter((v): v is number => v !== null);
+
   return {
     label,
     meanScore: perBlock((p) => p.score),
@@ -147,6 +203,15 @@ function playerStats(
     bonusRate: perBlock((p) => (p.bonus ? 1 : 0)),
     upperMean: perBlock((p) => p.upperSubtotal),
     belowParMean: perBlock(belowParFills),
+    scorePercentiles: {
+      p10: quantile(sorted, 0.1),
+      p50: quantile(sorted, 0.5),
+      p90: quantile(sorted, 0.9),
+    },
+    yachtZeroRate: perBlock((p) => (p.categories.yacht === 0 ? 1 : 0)),
+    jokerRate: perBlock((p) => (p.yachtBonusCount > 0 ? 1 : 0)),
+    chanceRound: perBlock((p) => fillRound(p, "chance")),
+    highUpperZeroShare: estimate(highShare),
     categories,
   };
 }
@@ -229,6 +294,33 @@ export function formatReport(report: MatchupReport): string {
   lines.push(row("upper subtotal", formatEstimate(a.upperMean), formatEstimate(b.upperMean)));
   lines.push(
     row("below-par upper fills", formatEstimate(a.belowParMean), formatEstimate(b.belowParMean))
+  );
+  const pcts = (p: PlayerStats) =>
+    `${p.scorePercentiles.p10} / ${p.scorePercentiles.p50} / ${p.scorePercentiles.p90}`;
+  lines.push(row("score p10 / p50 / p90", pcts(a), pcts(b)));
+  lines.push(
+    row(
+      "yacht zero rate",
+      formatEstimate(a.yachtZeroRate, true),
+      formatEstimate(b.yachtZeroRate, true)
+    )
+  );
+  lines.push(
+    row(
+      "joker (2nd yacht) rate",
+      formatEstimate(a.jokerRate, true),
+      formatEstimate(b.jokerRate, true)
+    )
+  );
+  lines.push(
+    row("chance filled (round)", formatEstimate(a.chanceRound), formatEstimate(b.chanceRound))
+  );
+  lines.push(
+    row(
+      "zeroed upper: 4s-6s share",
+      formatEstimate(a.highUpperZeroShare, true),
+      formatEstimate(b.highUpperZeroShare, true)
+    )
   );
   lines.push("");
   lines.push(row("category (mean / hit%)", "A", "B"));
