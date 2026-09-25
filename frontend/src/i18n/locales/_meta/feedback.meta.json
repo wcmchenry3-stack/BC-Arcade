@@ -1,0 +1,146 @@
+{
+  "title": {
+    "component": "FeedbackWidget",
+    "description": "Title of the feedback sheet header.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "fab_label": {
+    "component": "AppHeader",
+    "description": "Accessibility label for the help/feedback button that opens the feedback sheet.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "close_label": {
+    "component": "FeedbackWidget",
+    "description": "Accessibility label for the button that closes the feedback sheet.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "type_label": {
+    "component": "FeedbackWidget",
+    "description": "Label above the bug/feature type selector.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "type_bug": {
+    "component": "FeedbackWidget",
+    "description": "Option label for reporting a bug in the feedback type selector.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "type_feature": {
+    "component": "FeedbackWidget",
+    "description": "Option label for requesting a feature in the feedback type selector.",
+    "tone": "neutral",
+    "characterLimit": 34,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "label_title": {
+    "component": "FeedbackWidget",
+    "description": "Label above the feedback title text field.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "label_description": {
+    "component": "FeedbackWidget",
+    "description": "Label above the feedback description text field.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "placeholder_title": {
+    "component": "FeedbackWidget",
+    "description": "Placeholder text in the feedback title field.",
+    "tone": "casual",
+    "characterLimit": 65,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "placeholder_description": {
+    "component": "FeedbackWidget",
+    "description": "Placeholder text in the feedback description field.",
+    "tone": "casual",
+    "characterLimit": 85,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submit": {
+    "component": "FeedbackWidget",
+    "description": "Submit button label on the feedback form.",
+    "tone": "action",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submit_success": {
+    "component": "FeedbackWidget",
+    "description": "Success message shown after feedback is submitted.",
+    "tone": "celebratory",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submit_error": {
+    "component": "FeedbackWidget",
+    "description": "Error message shown when feedback submission fails.",
+    "tone": "sympathetic",
+    "characterLimit": 68,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submit_error_rate_limit": {
+    "component": "FeedbackWidget",
+    "description": "Error message shown when the player has hit the feedback rate limit.",
+    "tone": "sympathetic",
+    "characterLimit": 85,
+    "placeholders": ["seconds"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error_title_required": {
+    "component": "FeedbackWidget",
+    "description": "Validation error shown when the feedback title field is left empty.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error_description_required": {
+    "component": "FeedbackWidget",
+    "description": "Validation error shown when the feedback description field is left empty.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}
