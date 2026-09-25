@@ -9,6 +9,11 @@ import * as Sentry from "@sentry/react-native";
  *
  * Kept in a module-level cache with listeners so every mounted
  * `useDisplayName()` — Profile, a result card, Hearts — sees a save at once.
+ *
+ * The name is the player's, not a game's (#2624): every leaderboard shows it
+ * for all of the player's finished games. Each save is also sent to the server
+ * (`PUT /players/me`) through the hook `displayNameSync.ts` installs; see there
+ * for the offline behaviour.
  */
 
 const STORAGE_KEY = "player_display_name";
@@ -25,6 +30,17 @@ export function normalizeDisplayName(raw: string): string | null {
 let cached: string | null = null;
 let loadPromise: Promise<string | null> | null = null;
 const listeners = new Set<(name: string | null) => void>();
+let saveHook: ((name: string) => void) | null = null;
+
+/**
+ * Called with every name `saveDisplayName` stores. `NetworkContext` installs
+ * the server sync here at module load (`registerDisplayNameSync`), the way it
+ * registers the score-queue handlers, so this module stays free of network
+ * code. Pass null to remove it.
+ */
+export function setDisplayNameSaveHook(hook: ((name: string) => void) | null): void {
+  saveHook = hook;
+}
 
 /** Reads the stored name once per app run; later calls reuse the result. */
 export function loadDisplayName(): Promise<string | null> {
@@ -58,6 +74,12 @@ export async function saveDisplayName(raw: string): Promise<string | null> {
   cached = name;
   loadPromise = Promise.resolve(name);
   listeners.forEach((l) => l(name));
+  try {
+    saveHook?.(name);
+  } catch (e) {
+    // The name is saved locally either way; the sync retries on its next trigger.
+    Sentry.captureException(e, { tags: { subsystem: "displayName", op: "sync" } });
+  }
   return name;
 }
 
