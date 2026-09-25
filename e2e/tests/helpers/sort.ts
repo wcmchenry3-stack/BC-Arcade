@@ -30,27 +30,16 @@ export const MOCK_LEVELS = {
 };
 
 export async function mockSortApi(page: Page): Promise<void> {
+  // The Leaderboard tab reads the generic board (#2625).
+  await mockSortBoard(page, []);
   await page.route("**/sort/**", async (route) => {
     const url = route.request().url();
-    const method = route.request().method();
 
     if (url.includes("/sort/levels")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(MOCK_LEVELS),
-      });
-    } else if (url.includes("/sort/score") && method === "POST") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ player_name: "Tester", level_reached: 1, rank: 1 }),
-      });
-    } else if (url.includes("/sort/scores")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
       });
     } else {
       await route.fulfill({
@@ -59,6 +48,25 @@ export async function mockSortApi(page: Page): Promise<void> {
         body: JSON.stringify({}),
       });
     }
+  });
+}
+
+/** `GET /games/leaderboard/sort` (#2618) answering with `entries`. */
+export async function mockSortBoard(
+  page: Page,
+  entries: unknown[],
+): Promise<void> {
+  await page.route("**/games/leaderboard/sort*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        game_type: "sort",
+        partition: {},
+        label_key: "level",
+        entries,
+      }),
+    });
   });
 }
 

@@ -3547,29 +3547,37 @@ describe("Carrier actions (#2485)", () => {
     expect(s.activePowerUp?.type).toBe("shield"); // the beam itself was absorbed, shield intact
   });
 
-  it("stays silent while anything else lives, then fires twin aimed lasers when alone", () => {
+  it("#2699: stays silent while armored, then fires twin aimed lasers once unarmored — even with a grunt still alive", () => {
     let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
     const c = carrierOf(s);
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss")!;
     const grunt = s.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
-    s = killAllBut(s, (e) => e.id === c.id || e.id === grunt.id);
+    s = killAllBut(s, (e) => e.id === c.id || e.id === boss.id || e.id === grunt.id);
     s = {
       ...s,
       enemies: s.enemies.map((e) =>
-        e.id === grunt.id ? { ...e, shootTimer: 1e9 } : e.id === c.id ? { ...e, shootTimer: 0 } : e
+        e.id === grunt.id || e.id === boss.id
+          ? { ...e, shootTimer: 1e9 }
+          : e.id === c.id
+            ? { ...e, shootTimer: 0 }
+            : e
       ),
     };
+    expect(isCarrierArmored(s)).toBe(true);
     for (let t = 0; t < 3000; t += 16) {
       s = tick(s, 16, ASIDE);
       expect(s.enemyBullets).toHaveLength(0);
     }
-    // now alone
-    s = killAllBut(s, (e) => e.id === c.id);
+    // its last Boss escort dies — armor drops, but the grunt is still alive
+    s = killAllBut(s, (e) => e.id === c.id || e.id === grunt.id);
+    expect(isCarrierArmored(s)).toBe(false);
     let volleyAt = -1;
     for (let t = 0; t < LONE_FIRE_INTERVAL + 100 && volleyAt < 0; t += 16) {
       s = tick(s, 16, ASIDE);
       if (s.enemyBullets.length > 0) volleyAt = t;
     }
     expect(volleyAt).toBeGreaterThanOrEqual(0);
+    expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(true); // fires with the grunt still alive
     expect(s.enemyBullets).toHaveLength(2);
     const xs = s.enemyBullets.map((b) => b.x).sort((a, b) => a - b);
     const cx = carrierOf(s).x;
@@ -3578,6 +3586,24 @@ describe("Carrier actions (#2485)", () => {
     expect(Math.abs((xs[0]! + xs[1]!) / 2 - cx)).toBeLessThan(8);
     // aimed at the player parked off to the left: both drift left while descending
     expect(s.enemyBullets.every((b) => b.vx < 0 && b.vy > 0)).toBe(true);
+  });
+
+  it("#2699: stays silent while any Boss escort lives, even once every grunt is dead", () => {
+    let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
+    const c = carrierOf(s);
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss")!;
+    s = killAllBut(s, (e) => e.id === c.id || e.id === boss.id);
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.id === c.id ? { ...e, shootTimer: 0 } : { ...e, shootTimer: 1e9 }
+      ),
+    };
+    expect(isCarrierArmored(s)).toBe(true);
+    for (let t = 0; t < LONE_FIRE_INTERVAL + 100; t += 16) {
+      s = tick(s, 16, ASIDE);
+      expect(s.enemyBullets).toHaveLength(0);
+    }
   });
 
   it("launches 2–4 reinforcements into empty grunt slots, capped at half the grunt slots", () => {

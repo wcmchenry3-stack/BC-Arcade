@@ -1,10 +1,11 @@
 /**
- * sort-win-flow.spec.ts — GH #1255, #2512
+ * sort-win-flow.spec.ts — GH #1255, #2512, #2625
  *
  * Win flow: inject a near-solved state, complete the last pour, and verify
- * the shared result card — its stats, the automatic POST /sort/score under
- * the player's display name, the next-level unlock, and the Next Level /
- * Change Level actions (available at once, with no score entry).
+ * the shared result card — its stats, the scored session completion and the
+ * rank the card reads from GET /games/{id}/rank (no POST /sort/score any
+ * more), the next-level unlock, and the Next Level / Change Level actions
+ * (available at once, with no score entry).
  *
  * Near-solved layout (injected via localStorage):
  *   Bottle 1 (idx 0): ["blue","blue","blue","blue"]  solved
@@ -37,33 +38,58 @@ const NEAR_SOLVED = {
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
-/** Captures POST /sort/score bodies; register after mockSortApi so it wins. */
-async function capturePosts(page: Page): Promise<Record<string, unknown>[]> {
-  const posts: Record<string, unknown>[] = [];
-  await page.route("**/sort/score", async (route) => {
-    if (route.request().method() === "POST") {
-      posts.push(JSON.parse(route.request().postData() ?? "{}"));
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        player_name: "Tester",
-        level_reached: 1,
-        rank: 3,
-      }),
-    });
+interface Captured {
+  /** POST /sort/score bodies: the app must send none (#2625). */
+  legacyPosts: Record<string, unknown>[];
+  /** PATCH /games/{id}/complete bodies. */
+  completions: Record<string, unknown>[];
+}
+
+/**
+ * Mocks the session sync (`/games`, `/players/me`) and the rank lookup, and
+ * captures what the app sends. Register after mockSortApi so it wins.
+ */
+async function captureSync(page: Page): Promise<Captured> {
+  const captured: Captured = { legacyPosts: [], completions: [] };
+  const ok = (body: unknown = {}) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
   });
-  return posts;
+  await page.route("**/sort/score", async (route) => {
+    captured.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
+    await route.fulfill(
+      ok({ player_name: "Tester", level_reached: 1, rank: 3 }),
+    );
+  });
+  await page.route("**/players/me", (route) => route.fulfill(ok()));
+  await page.route(
+    (url) => /^\/games(\/|$)/.test(url.pathname),
+    async (route) => {
+      const req = route.request();
+      const url = req.url();
+      if (url.includes("/leaderboard/")) return route.fallback();
+      if (req.method() === "PATCH" && url.endsWith("/complete")) {
+        captured.completions.push(JSON.parse(req.postData() ?? "{}"));
+      }
+      if (req.method() === "GET" && url.endsWith("/rank")) {
+        return route.fulfill(
+          ok({ rank: 3, is_best: true, ranked: true, reason: null }),
+        );
+      }
+      return route.fulfill(ok());
+    },
+  );
+  return captured;
 }
 
 async function loadNearSolvedLevel(
   page: Page,
   displayName?: string,
-): Promise<Record<string, unknown>[]> {
+): Promise<Captured> {
   await mockSortApi(page);
   // Registered after mockSortApi so it takes priority (routes match LIFO).
-  const posts = await capturePosts(page);
+  const captured = await captureSync(page);
   await injectSortProgress(page, NEAR_SOLVED);
   if (displayName) {
     await page.evaluate(([key, name]) => localStorage.setItem(key, name), [
@@ -78,7 +104,7 @@ async function loadNearSolvedLevel(
   await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
     timeout: 5_000,
   });
-  return posts;
+  return captured;
 }
 
 async function makeWinningPour(page: Page): Promise<void> {
@@ -107,16 +133,30 @@ test.describe("Sort Puzzle — win flow", () => {
     await expect(card.getByText("Undos")).toBeVisible();
   });
 
-  test("submits the level to POST /sort/score under the display name", async ({
+  test("completes the level as the session's score and shows its rank", async ({
     page,
   }) => {
-    const posts = await loadNearSolvedLevel(page, "Tester");
+    const captured = await loadNearSolvedLevel(page, "Tester");
     await makeWinningPour(page);
 
     await expect(
       page.getByText("Saved as Tester · #3 on the leaderboard"),
     ).toBeVisible({ timeout: 10_000 });
-    expect(posts).toEqual([{ player_name: "Tester", level_reached: 1 }]);
+    expect(captured.legacyPosts).toEqual([]);
+    expect(captured.completions).toHaveLength(1);
+    expect(captured.completions[0]).toMatchObject({
+      final_score: 1,
+      outcome: "completed",
+      // First solve of level 1: its best (6 moves) is the whole total.
+      result: {
+        won: true,
+        level: 1,
+        moves: 6,
+        undos: 0,
+        level_reached: 1,
+        total_moves: 6,
+      },
+    });
   });
 
   test("Next Level is available at once, with no score entry", async ({

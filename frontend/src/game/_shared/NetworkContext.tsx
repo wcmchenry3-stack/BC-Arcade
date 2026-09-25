@@ -15,7 +15,6 @@ import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
 import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
-import { registerSortScoreHandler } from "../sort/scoreSync";
 import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import {
   flushDisplayNameSync,
@@ -37,7 +36,6 @@ const NetworkContext = createContext<NetworkStatus>({
 // the rank of the synced game (`sessionBoardAdapter`).
 registerMahjongScoreHandler();
 registerHeartsScoreHandler();
-registerSortScoreHandler();
 registerStarSwarmScoreHandler();
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
