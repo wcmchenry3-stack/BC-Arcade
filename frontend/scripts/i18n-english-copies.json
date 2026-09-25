@@ -25,6 +25,22 @@
         "outcome.blackjack",
         "rules.h17",
         "rules.s17"
+      ],
+      "ja": [
+        "chip.vipCredits",
+        "rules.h17",
+        "rules.s17"
+      ],
+      "ko": [
+        "chip.vipCredits",
+        "rules.h17",
+        "rules.s17"
+      ],
+      "zh": [
+        "chip.vipCredits",
+        "outcome.blackjack",
+        "rules.h17",
+        "rules.s17"
       ]
     },
     "daily_word": {
@@ -165,6 +181,9 @@
         "nav.lobby",
         "premiumLevel.ok",
         "premiumLevel.tag"
+      ],
+      "ja": [
+        "premiumLevel.ok"
       ]
     },
     "sudoku": {
@@ -179,6 +198,9 @@
       ],
       "ru": [
         "variant.mini"
+      ],
+      "ko": [
+        "game.title"
       ]
     },
     "yacht": {
@@ -199,6 +221,21 @@
         "vsMode.vs"
       ],
       "ru": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "ja": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "ko": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "zh": [
         "category.yacht",
         "vsMode.cpu",
         "vsMode.vs"

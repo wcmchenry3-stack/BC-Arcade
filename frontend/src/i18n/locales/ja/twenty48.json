@@ -13,13 +13,13 @@
   "swipe.hint": "スワイプしてタイルを動かす",
   "win.body": "2048に到達しました！さらに高いスコアを目指して続けられます。",
   "controls.keyboardHint": "または矢印キーを使用",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "最高タイル",
+  "stats.timePlayed": "プレイ時間",
+  "scoreboard.heroLabel": "スコア",
+  "scoreboard.heroSub": "最高タイル: {{bestTile}} · {{moves}}手",
+  "scoreboard.heroSubEmpty": "まだプレイしていません",
+  "scoreboard.bestScore": "最高スコア",
+  "scoreboard.bestTile": "最高タイル",
+  "scoreboard.gamesPlayed": "プレイ回数",
+  "scoreboard.gamesWon": "勝利数"
 }
