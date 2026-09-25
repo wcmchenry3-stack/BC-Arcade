@@ -12,6 +12,19 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 // Pass-through mock that stores the latest SortBoard props in global so tests
 // can call onPourComplete directly (v14: composite components unavailable in
 // host tree, so UNSAFE_getByType is gone).
+// Pass-through to the real solver; one test swaps in a held promise.
+const mockGetNextHint = jest.fn();
+jest.mock("../../game/sort/solver", () => {
+  const actual = jest.requireActual("../../game/sort/solver");
+  return {
+    ...actual,
+    getNextHintAsync: (...args: unknown[]) =>
+      mockGetNextHint.getMockImplementation()
+        ? mockGetNextHint(...args)
+        : actual.getNextHintAsync(...args),
+  };
+});
+
 jest.mock("../../game/sort/components/SortBoard", () => {
   const mod = jest.requireActual("../../game/sort/components/SortBoard");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -193,6 +206,65 @@ describe("SortScreen — entering and playing a level", () => {
       await fireEvent.press(backBtn);
     });
     expect(await findByText("Choose a Level")).toBeTruthy();
+  });
+
+  it("New Game in the menu restarts the level after confirmation", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 3,/));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+    });
+    // Restarting abandons the open session and leaves the player on the board.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    expect(r.getByTestId("sort-board")).toBeTruthy();
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+  });
+
+  it("drops a hint that finishes after the level was restarted", async () => {
+    let resolveHint: (h: { from: number; to: number }) => void = () => {};
+    mockGetNextHint.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
+    try {
+      const r = await renderScreen();
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText("Level 1"));
+      });
+      // Not awaited: the hint promise is held open on purpose.
+      await act(async () => {
+        void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "More options" }));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+      });
+      // The solver answers for the old board after the restart.
+      await act(async () => {
+        resolveHint({ from: 0, to: 2 });
+      });
+      expect(r.queryByLabelText(/selected — tap another bottle/)).toBeNull();
+    } finally {
+      mockGetNextHint.mockReset();
+    }
   });
 
   it("undo button is disabled initially (no history)", async () => {

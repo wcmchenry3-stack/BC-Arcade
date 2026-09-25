@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
-import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
@@ -15,7 +12,7 @@ import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { GameShell } from "../components/shared/GameShell";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackBetting">;
@@ -24,8 +21,6 @@ type Props = {
 export default function BlackjackBettingScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
   const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
     useBlackjackGame();
   const [runs, setRuns] = useState<RunRecord[]>([]);
@@ -60,36 +55,18 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
     }
   }, [loading, engine, navigation]);
 
-  if (!engine && loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <EmptyState kind="loading" />
-      </View>
-    );
-  }
-
   const state = engine ? toViewState(engine) : null;
   const handleDeal = (amount: number) => apply((s) => enginePlaceBet(s, amount));
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(tabBarHeight, 16),
-        },
-      ]}
+    <GameShell
+      title={t("game.title")}
+      requireBack
+      onBack={() => navigation.popToTop()}
+      onNewGame={handlePlayAgain}
+      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
+      loading={!engine && loading}
     >
-      <AppHeader
-        title={t("game.title")}
-        requireBack
-        onBack={() => navigation.popToTop()}
-        onNewGame={handlePlayAgain}
-        onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
-      />
-
       {/* Full-width run HUD — shown once a table is selected */}
       {state && !showTableSelect && engine?.runGoal != null && (
         <View style={styles.hudContainer}>
@@ -160,19 +137,11 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
           </Text>
         </Pressable>
       )}
-    </View>
+    </GameShell>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  container: {
-    flex: 1,
-  },
   hudContainer: {
     paddingHorizontal: 12,
     paddingTop: 6,
