@@ -21,6 +21,7 @@ class SudokuModule:
     game_type = GameType.SUDOKU
     metadata_model = SudokuMetadata
     result_model = SudokuResult
+    has_winner = False
     # One board per (difficulty, variant). A game scores its difficulty's base
     # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error, so
     # each difficulty has its own cap and 300 is the overall one (recomputed in

@@ -2,6 +2,11 @@
 
 Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
 structural subtyping — no inheritance required.
+
+``has_winner`` is true because vs-the-computer games record ``win`` /
+``loss`` / ``push``. Solo games have no opponent and record ``completed``,
+which the stats layer reads per row as "no winner" — a ``completed`` Yacht
+row is not a win. See ``vocab.GameOutcome``.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ class YachtModule:
     game_type = GameType.YACHT
     metadata_model = YachtMetadata
     result_model = None
+    has_winner = True
     # Solo and vs-computer games share one board (#2519 decision 2).
     # 1575: every roll a Yacht of the right face — 13 categories at their best
     # plus the upper bonus, and 12 extra Yachts at the Yacht bonus each

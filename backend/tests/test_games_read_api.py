@@ -222,14 +222,13 @@ async def test_abandoning_a_new_game_type_earns_no_variety_bonus(client: TestCli
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "outcome", ["completed", "kept_playing", "win", "loss", "push", "blackjack"]
-)
+@pytest.mark.parametrize("outcome", ["completed", "kept_playing", "win", "loss", "push"])
 async def test_non_abandoned_outcomes_still_score(client: TestClient, outcome: str) -> None:
     """The predicate is NULL-safe and outcome-inclusive on purpose.
 
-    `kept_playing` (Twenty48 past 2048) and the Blackjack result vocabulary are
-    real finishes — filtering on `outcome == "completed"` would have dropped them.
+    `kept_playing` (Twenty48 past 2048) and the result vocabulary (`win` /
+    `loss` / `push`) are real finishes — filtering on `outcome == "completed"`
+    would have dropped them.
     """
     sid = str(uuid.uuid4())
     _create_and_complete(client, sid, game_type="twenty48", final_score=2048, outcome=outcome)

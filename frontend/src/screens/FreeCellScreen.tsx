@@ -95,11 +95,15 @@ export default function FreeCellScreen() {
   /** Move count last seen — a rise is the first move of a session. */
   const seenMovesRef = useRef<number | null>(null);
 
+  // #2450 / #2619 — the abandon result block (backend FreeCellResult). Both the
+  // hook's own abandon (unmount) and the New Game abandon build it here.
+  const progressResult = useCallback(
+    () => ({ won: false, moves: stateRef.current?.moveCount ?? 0 }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: { won: false, moves: stateRef.current?.moveCount ?? 0 },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const [showFoundation, setShowFoundation] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
@@ -225,7 +229,7 @@ export default function FreeCellScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       syncComplete(
-        { outcome: "completed" },
+        { outcome: "completed", result: { won: true, moves: state.moveCount } },
         { outcome: "completed", won: true, moves: state.moveCount }
       );
       clearGame().catch(() => {});
@@ -280,10 +284,8 @@ export default function FreeCellScreen() {
   const handleNewGame = useCallback(() => {
     // Close the current session as abandoned (a no-op after a win or before a move).
     if (syncGetGameId()) {
-      syncComplete(
-        { outcome: "abandoned" },
-        { outcome: "abandoned", won: false, moves: stateRef.current?.moveCount ?? 0 }
-      );
+      const result = progressResult();
+      syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
     }
     // Stop an in-flight auto-complete. Its next scheduled step would otherwise overwrite
     // the new deal with the old game's state — and, since that state's move count is
@@ -304,7 +306,7 @@ export default function FreeCellScreen() {
     setResumedWin(false);
     setWinSummary(null);
     resetSubmission();
-  }, [syncGetGameId, syncComplete, resetSubmission]);
+  }, [syncGetGameId, syncComplete, resetSubmission, progressResult]);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;

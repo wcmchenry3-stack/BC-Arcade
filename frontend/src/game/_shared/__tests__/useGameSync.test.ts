@@ -6,6 +6,7 @@ const mockStartGame = jest.fn<string, any[]>(() => "test-game-id");
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
+const mockDiscardGame = jest.fn();
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -13,6 +14,7 @@ jest.mock("../gameEventClient", () => ({
     enqueueEvent: (...args: unknown[]) => mockEnqueueEvent(...args),
     completeGame: (...args: unknown[]) => mockCompleteGame(...args),
     reportBug: (...args: unknown[]) => mockReportBug(...args),
+    discardGame: (...args: unknown[]) => mockDiscardGame(...args),
   },
 }));
 
@@ -96,14 +98,33 @@ describe("useGameSync", () => {
     const { result } = await renderHook(() => useGameSync("yacht"));
     await act(() => {
       result.current.start();
-      result.current.complete({ finalScore: 250, outcome: "completed" }, { final_score: 250 });
+      result.current.complete(
+        { finalScore: 250, outcome: "completed", result: { final_score: 250 } },
+        { final_score: 250 }
+      );
     });
-    // The per-game payload doubles as the PATCH result block (#2450).
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "test-game-id",
       { finalScore: 250, outcome: "completed", result: { final_score: 250 } },
       { final_score: 250 }
     );
+  });
+
+  // #2619 (#2469 item 1): the event payload is analytics only — it is never
+  // copied into the PATCH result block.
+  it("complete() sends only the explicit result, never the event payload", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
+      result.current.start();
+      result.current.complete({ finalScore: 250, outcome: "completed" }, { final_score: 250 });
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { finalScore: 250, outcome: "completed" },
+      { final_score: 250 }
+    );
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary).not.toHaveProperty("result");
   });
 
   it("complete() keeps an explicit summary.result over the payload", async () => {
@@ -210,6 +231,7 @@ describe("useGameSync", () => {
     const { result } = await renderHook(() => useGameSync("mahjong"));
     await act(() => {
       result.current.start();
+      result.current.markStarted();
       result.current.setProgressSnapshot(() => ({ result: { won: false, pairs: 5 } }));
     });
     await act(() => {
@@ -284,11 +306,12 @@ describe("useGameSync", () => {
   // restart
   // ---------------------------------------------------------------------------
 
-  it("restart() abandons the current session and starts a new one", async () => {
+  it("restart() abandons a started session and starts a new one", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
     const { result } = await renderHook(() => useGameSync("cascade"));
     await act(() => {
       result.current.start({ fruit_set: "fruits" });
+      result.current.markStarted();
     });
     await act(() => {
       result.current.restart({ fruit_set: "cosmos" });
@@ -302,6 +325,59 @@ describe("useGameSync", () => {
     // Second session started
     expect(mockStartGame).toHaveBeenCalledTimes(2);
     expect(mockStartGame).toHaveBeenLastCalledWith("cascade", {}, { fruit_set: "cosmos" });
+  });
+
+  // #2619: same guard as the unmount path — a game the player never touched is
+  // not an abandon. It is discarded instead, so it is not left pending.
+  it("restart() before markStarted() discards the old session instead of abandoning it", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => ({ result: { total_drops: 0 } }));
+    });
+    await act(() => {
+      result.current.restart({ fruit_set: "cosmos" });
+    });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
+    expect(mockDiscardGame).toHaveBeenCalledWith("session-1");
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(result.current.getGameId()).toBe("session-2");
+  });
+
+  it("restart() still starts a new session when discardGame throws", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    mockDiscardGame.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+    });
+    await act(() => {
+      result.current.restart();
+    });
+    expect(result.current.getGameId()).toBe("session-2");
+  });
+
+  it("restart() after markStarted() sends the abandon", async () => {
+    mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+    });
+    await act(() => {
+      result.current.markStarted();
+      result.current.restart();
+    });
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "session-1",
+      { outcome: "abandoned" },
+      { outcome: "abandoned" }
+    );
   });
 
   it("restart() after complete() does not double-abandon", async () => {

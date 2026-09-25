@@ -409,9 +409,10 @@ export default function GameScreen({ navigation, route }: Props) {
           // with the result once it has (see the effect on gameReallyOver).
           setIsAiTurn(true);
         } else {
+          const payload = endedPayload(next, "completed");
           syncComplete(
-            { finalScore: next.total_score, outcome: "completed" },
-            endedPayload(next, "completed")
+            { finalScore: next.total_score, outcome: "completed", result: payload },
+            payload
           );
         }
       } else if (aiDifficultyRef.current && aiGameStateRef.current) {
@@ -440,10 +441,8 @@ export default function GameScreen({ navigation, route }: Props) {
         level: "info",
       });
       const outcome = prev.game_over ? "completed" : "abandoned";
-      syncComplete(
-        { finalScore: prev.total_score, outcome },
-        endedPayload(prev, outcome, aiGameStateRef.current)
-      );
+      const payload = endedPayload(prev, outcome, aiGameStateRef.current);
+      syncComplete({ finalScore: prev.total_score, outcome, result: payload }, payload);
       await clearGame();
       setGameState(newGame());
       setIsAiTurn(false);
@@ -524,12 +523,14 @@ export default function GameScreen({ navigation, route }: Props) {
   // the result. (Solo completes in handleScore.) syncComplete is idempotent.
   useEffect(() => {
     if (!aiDifficulty || !gameReallyOver || !aiGameState) return;
+    const payload = endedPayload(gameState, "completed", aiGameState);
     syncComplete(
       {
         finalScore: gameState.total_score,
         outcome: recordedOutcome(vsOutcome(gameState, aiGameState)),
+        result: payload,
       },
-      endedPayload(gameState, "completed", aiGameState)
+      payload
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameReallyOver, aiDifficulty]);
@@ -537,9 +538,10 @@ export default function GameScreen({ navigation, route }: Props) {
   completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.
     if (aiDifficulty && gameState.game_over && !aiGameState?.game_over) {
+      const payload = endedPayload(gameState, "completed");
       syncComplete(
-        { finalScore: gameState.total_score, outcome: "completed" },
-        endedPayload(gameState, "completed")
+        { finalScore: gameState.total_score, outcome: "completed", result: payload },
+        payload
       );
     }
   };

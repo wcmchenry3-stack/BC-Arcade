@@ -21,6 +21,7 @@ class SolitaireModule:
     game_type = GameType.SOLITAIRE
     metadata_model = SolitaireMetadata
     result_model = SolitaireResult
+    has_winner = False
     # Draw-1 and Draw-3 share one board (#591). The 1245 cap is recomputed from
     # the engine's scoring constants in tests/test_board_definitions.py.
     # qualifying_outcomes stays None: only a won game is recorded ``completed``.

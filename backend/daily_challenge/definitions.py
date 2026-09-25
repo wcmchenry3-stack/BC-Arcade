@@ -22,7 +22,8 @@ that type today satisfies it; nothing is aggregated across games. Abandoned game
 count for progress goals (``moves_at_least`` and friends) because the game
 reports ``won: false`` plus its progress on abandon; only ``won`` goals need a
 win. ``games.outcome`` is never read here (it records who won only for games
-with a winner, #2517; the result block is the one source for every game).
+with a winner — see ``vocab.GameOutcome``; the result block is the one source
+for every game).
 
 Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)

@@ -27,6 +27,7 @@ class FreeCellModule:
     game_type = GameType.FREECELL
     metadata_model = FreeCellMetadata
     result_model = FreeCellResult
+    has_winner = False
     # Fewest moves wins. qualifying_outcomes stays None: every non-abandoned
     # FreeCell completion is a won game today (a game given up is abandoned).
     # Session rows (POST /games) don't set ``final_score`` yet, so today only

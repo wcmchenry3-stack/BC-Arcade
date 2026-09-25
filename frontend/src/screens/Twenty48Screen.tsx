@@ -94,34 +94,33 @@ export default function Twenty48Screen({ navigation }: Props) {
     stateRef.current = state;
   }, [state]);
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
-  useEffect(() => {
-    syncSetProgressSnapshot(() => {
-      const s = stateRef.current;
-      if (!s) return {};
-      return {
-        // final_score goes in the result (games.metadata) — the daily challenge's
-        // score goals read it — but NOT as summary.finalScore: that column ranks
-        // the game on leaderboards, and an abandon must not (#2468).
-        result: {
-          final_score: s.score,
-          highest_tile: highestTile(s.board),
-          move_count: moveCountRef.current,
-          duration_ms: computeDurationMs(s),
-        },
-      };
-    });
-  }, [syncSetProgressSnapshot]);
-
-  const endedPayload = useCallback(
-    (s: Twenty48State, outcome: "completed" | "abandoned" | "kept_playing") => ({
+  // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
+  // and the New Game abandon both build it here. final_score goes in the result
+  // (games.metadata) — the daily challenge's score goals read it — but NOT as
+  // summary.finalScore on an abandon: that column ranks the game on
+  // leaderboards, and an abandon must not (#2468).
+  const progressResult = useCallback(
+    (s: Twenty48State) => ({
       final_score: s.score,
       highest_tile: highestTile(s.board),
       move_count: moveCountRef.current,
       duration_ms: computeDurationMs(s),
-      outcome,
     }),
     []
+  );
+  useEffect(() => {
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      return s ? { result: progressResult(s) } : {};
+    });
+  }, [syncSetProgressSnapshot, progressResult]);
+
+  const endedPayload = useCallback(
+    (s: Twenty48State, outcome: "completed" | "abandoned" | "kept_playing") => ({
+      ...progressResult(s),
+      outcome,
+    }),
+    [progressResult]
   );
 
   // Disable back swipe gesture on this screen.
@@ -259,9 +258,15 @@ export default function Twenty48Screen({ navigation }: Props) {
         },
       });
       if (next.game_over) {
+        const payload = endedPayload(next, "completed");
         syncComplete(
-          { finalScore: next.score, outcome: "completed", durationMs: computeDurationMs(next) },
-          endedPayload(next, "completed")
+          {
+            finalScore: next.score,
+            outcome: "completed",
+            durationMs: computeDurationMs(next),
+            result: payload,
+          },
+          payload
         );
       }
       // Hold the lock for the slide animation duration, then fire any queued move.
@@ -305,9 +310,19 @@ export default function Twenty48Screen({ navigation }: Props) {
     const prev = stateRef.current;
     if (prev) {
       const outcome = prev.game_over ? "completed" : "abandoned";
+      // Built once: the analytics payload is the result plus its outcome. An
+      // abandon's result is the same block as the unmount snapshot; a
+      // completion's keeps `outcome`, as it always has.
+      const result = progressResult(prev);
+      const payload = { ...result, outcome };
       syncComplete(
-        { finalScore: prev.score, outcome, durationMs: computeDurationMs(prev) },
-        endedPayload(prev, outcome)
+        {
+          finalScore: prev.score,
+          outcome,
+          durationMs: result.duration_ms,
+          result: outcome === "abandoned" ? result : payload,
+        },
+        payload
       );
     }
     const next = newGame();
@@ -320,7 +335,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       saveStats(updated);
       return updated;
     });
-  }, [endedPayload, syncComplete, syncStart]);
+  }, [progressResult, syncComplete, syncStart]);
 
   const handleNewGamePress = useCallback(() => {
     if (state && state.score > 0 && !state.game_over) {
@@ -398,13 +413,15 @@ export default function Twenty48Screen({ navigation }: Props) {
     setWinDismissed(true);
     const s = stateRef.current;
     if (s) {
+      const payload = endedPayload(s, "kept_playing");
       syncComplete(
         {
           finalScore: s.score,
           outcome: "kept_playing",
           durationMs: computeDurationMs(s),
+          result: payload,
         },
-        endedPayload(s, "kept_playing")
+        payload
       );
     }
   }, [endedPayload, syncComplete]);

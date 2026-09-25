@@ -36,6 +36,12 @@ export interface GameEventClient {
   ): string;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
   completeGame(gameId: string, summary: CompleteSummary, eventData?: Record<string, unknown>): void;
+  /**
+   * Throw away a game the player never started (#2619): forget its pending
+   * record and drop its queued events, so it is neither completed nor left
+   * pending. Later events for the id are dropped like any unknown game's.
+   */
+  discardGame(gameId: string): void;
   reportBug(
     level: BugLevel,
     source: string,
@@ -91,6 +97,14 @@ export class GameEventClientImpl implements GameEventClient {
       data: eventData ?? (summary as Record<string, unknown>),
     });
     this.fireAndForget(this.games.complete(gameId, summary), "completeGame.mark");
+  }
+
+  discardGame(gameId: string): void {
+    // forget() drops the in-memory record synchronously, so nothing new can be
+    // enqueued for this game; deleteByGameId() runs behind any enqueue already
+    // queued on the store's lock, so it also removes game_started.
+    this.fireAndForget(this.games.forget(gameId), "discardGame.forget");
+    this.fireAndForget(this.store.deleteByGameId(gameId), "discardGame.events");
   }
 
   reportBug(

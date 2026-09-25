@@ -23,6 +23,9 @@ class BlackjackModule:
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
+    # False until #2628 makes a run record ``win`` / ``loss``; today every
+    # finished run records ``completed``.
+    has_winner = False
     # No leaderboard: chips are a balance, not a score (#2519 §4.2).
     # qualifying_outcomes stays None: every non-abandoned session's closing
     # balance counts toward ``best_chips`` in stats, whatever its last hand was.

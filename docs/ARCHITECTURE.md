@@ -82,10 +82,34 @@ invalid or oversized (> 8 KB) result returns 400 without completing the game
 and is reported to Sentry (game type, failing field paths, error types — no
 session id or values), because the app's sync worker dead-letters a 400. Modules with
 `result_model = None` accept any dict. Result models ignore unknown keys so a
-newer app build never fails completion against an older backend. `won` inside
-the result is the win signal — `games.outcome` stays lifecycle-only
-(`completed` / `abandoned` / `kept_playing`) and must not be read as one.
-Older app builds that send no `result` keep working.
+newer app build never fails completion against an older backend. Older app
+builds that send no `result` keep working. The client passes the result block
+explicitly as `summary.result` to `useGameSync.complete()`; the analytics
+`game_ended` payload is never copied into it (#2619).
+
+**Outcome (#2519 decision 11).** `games.outcome` carries the result for games
+that can record a winner (`GameModule.has_winner`, set only once the client
+writes one): `win` / `loss` / `push` (a tie). A `completed` row from such a
+game (solo Yacht) is a finish with no winner, not a win.
+Score-only games record `completed` / `kept_playing` — a finished game with no
+win concept. `abandoned` is a quit. The per-game rules live in one place, the
+`GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
+only a daily-challenge input, not the win signal.
+
+**Abandons.** Only a session the player started (`markStarted()`) is ever
+abandoned — on unmount or `restart()`. `restart()` discards an untouched
+session instead (`gameEventClient.discardGame()`: the pending game and its
+queued events are dropped, so it is neither completed nor left pending). A game registers a progress snapshot so
+the hook's own abandon carries the result block, and any explicit abandon the
+screen still sends builds its result with the same helper.
+
+**Duration.** `SyncWorker` sends the game's own `durationMs` (its active play
+time) when it is > 0, and `null` ("unknown") for anything else — 0, missing or
+negative (#2619). It never derives a duration from the pending game's
+`completedAt − startedAt`: wall-clock time counts idle and backgrounded time as
+play, so a Daily Word left open all day would record 12 h. A negative value
+never reaches the server, where `duration_ms` is `ge=0` and would 400 the
+whole completion.
 
 **Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
 kicks in (see §5). If 2 MB turns out to be too small in practice, that is a

@@ -23,6 +23,7 @@ class DailyWordModule:
     game_type = GameType.DAILY_WORD
     metadata_model = DailyWordMetadata
     result_model = DailyWordResult
+    has_winner = True
     # No leaderboard; fewest guesses in a *won* game is the per-game "best" in
     # stats. A loss uses every guess and is not a best, so only wins qualify.
     board = BoardDefinition(

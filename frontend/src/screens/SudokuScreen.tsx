@@ -137,12 +137,15 @@ export default function SudokuScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("sudoku");
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the abandon result block (backend SudokuResult). Both the
+  // hook's own abandon (unmount) and the beforeRemove abandon build it here.
+  const progressResult = useCallback(
+    () => ({ won: false, errors: stateRef.current?.errorCount ?? 0 }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: { won: false, errors: stateRef.current?.errorCount ?? 0 },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
 
@@ -254,7 +257,12 @@ export default function SudokuScreen() {
       const gid = syncGetGameId();
       if (gid) {
         syncComplete(
-          { finalScore: score, outcome: "completed", durationMs: finalElapsed * 1000 },
+          {
+            finalScore: score,
+            outcome: "completed",
+            durationMs: finalElapsed * 1000,
+            result: { won: true, errors: state.errorCount },
+          },
           {
             final_score: score,
             outcome: "completed",
@@ -314,23 +322,29 @@ export default function SudokuScreen() {
       if (!syncGetGameId()) return;
       if (s !== null && s.isComplete) return;
       if (digitCountRef.current < 1) return;
+      const result = progressResult();
       syncComplete(
         {
           outcome: "abandoned",
           finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
-          durationMs: 0,
+          // The game's own play timer (#2619): its start moves past time spent
+          // in the background, so this is active time, not wall-clock time.
+          durationMs:
+            startMsRef.current !== null
+              ? (pausedAtRef.current ?? Date.now()) - startMsRef.current
+              : null,
+          result,
         },
         {
           outcome: "abandoned",
-          won: false,
+          ...result,
           difficulty: s?.difficulty,
           variant: s?.variant,
-          errors: s?.errorCount ?? 0,
         }
       );
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [navigation, syncComplete, syncGetGameId, progressResult]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {

@@ -309,10 +309,9 @@ function StarSwarmGame() {
       setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
-      syncComplete(
-        { outcome: "completed" },
-        { outcome: "completed", wave_reached: wave, difficulty_tier: tier }
-      );
+      // The starswarm router reads wave_reached / difficulty_tier from games.metadata.
+      const payload = { outcome: "completed", wave_reached: wave, difficulty_tier: tier };
+      syncComplete({ outcome: "completed", result: payload }, payload);
       submitScore({ score: finalScore, wave, difficulty: tier });
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();

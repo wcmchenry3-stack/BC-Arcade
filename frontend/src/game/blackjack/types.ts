@@ -2,7 +2,7 @@
  * Blackjack API response shapes.
  */
 
-import type { GameOutcome, GameSession } from "../_shared/types";
+import type { GameSession } from "../_shared/types";
 
 export type BlackjackGameEvent =
   | { readonly type: "cardDeal" }
@@ -63,9 +63,3 @@ export interface BlackjackState {
 }
 
 export type BlackjackSession = GameSession<BlackjackState>;
-
-/** Outcome for a completed Blackjack hand. */
-export interface BlackjackOutcome extends GameOutcome {
-  /** Raw outcome string from the server ("blackjack" | "win" | "lose" | "push"). */
-  handResult: string | null;
-}

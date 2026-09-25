@@ -543,7 +543,8 @@ export default function DailyWordScreen() {
         // The old puzzle's session must close now: left open, the next guess would
         // skip start() and be reported against the old puzzle_id.
         if (syncGetGameId()) {
-          syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+          const result = sessionResult(stateRef.current);
+          syncComplete({ outcome: "abandoned", result }, result);
         }
         const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
         setState(fresh);
@@ -791,10 +792,8 @@ export default function DailyWordScreen() {
         finalState = markComplete(afterApply, won);
         // Daily Word has no numeric score: final_score stays null and the
         // challenge reads the result block instead.
-        syncComplete(
-          { finalScore: null, outcome: finishedOutcome(finalState) },
-          sessionResult(finalState)
-        );
+        const result = sessionResult(finalState);
+        syncComplete({ finalScore: null, outcome: finishedOutcome(finalState), result }, result);
       }
 
       setState(finalState);
@@ -894,10 +893,8 @@ export default function DailyWordScreen() {
               );
             }
             syncMarkStarted();
-            syncComplete(
-              { finalScore: null, outcome: finishedOutcome(finished) },
-              sessionResult(finished)
-            );
+            const result = sessionResult(finished);
+            syncComplete({ finalScore: null, outcome: finishedOutcome(finished), result }, result);
           }
 
           setState(finished);
