@@ -86,6 +86,11 @@ const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
 
+/** The game's play timer so far: time banked plus the running segment. */
+function activeMs(state: SolitaireState, now: number = Date.now()): number {
+  return state.accumulatedMs + (state.startedAt !== null ? now - state.startedAt : 0);
+}
+
 /** What the result card shows for a finished game. */
 interface WinSummary {
   readonly timeMs: number;
@@ -177,8 +182,7 @@ export default function SolitaireScreen() {
     const foundationsComplete = Object.values(state.foundations).filter(
       (cards) => cards.length === 13
     ).length;
-    const elapsedMs =
-      state.accumulatedMs + (state.startedAt !== null ? Date.now() - state.startedAt : 0);
+    const elapsedMs = activeMs(state);
     setScoreboardSnapshot({
       moves,
       elapsedMs,
@@ -331,7 +335,13 @@ export default function SolitaireScreen() {
       if (movesRef.current < 1) return;
       const result = progressResult();
       syncComplete(
-        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0, result },
+        {
+          outcome: "abandoned",
+          finalScore: s?.score ?? 0,
+          // The game's own play timer (#2619), not wall-clock time.
+          durationMs: s ? activeMs(s) : null,
+          result,
+        },
         { outcome: "abandoned", ...result }
       );
     });

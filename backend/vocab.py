@@ -48,8 +48,10 @@ class GameOutcome(str, Enum):
     meaning is written down (#2519 decision 11, PR #2592). Every other docstring
     points here instead of restating it.
 
-    Result vocabulary — a finished game in a game with a winner
-    (``GameModule.has_winner`` is true):
+    Result vocabulary — a finished game in a game that can record a winner
+    (``GameModule.has_winner`` is true; that flag is set only once the client
+    writes win / loss / push, and a ``completed`` row from such a game is still
+    "no winner", not a win):
 
     * ``win`` / ``loss`` — the player won or lost.
     * ``push`` — a tie (the player and the opponent finished level).
@@ -62,9 +64,11 @@ class GameOutcome(str, Enum):
     * Daily Word — ``win`` when the word is solved, ``loss`` when the guesses
       run out.
     * Mahjong — ``loss`` when the player leaves a deadlocked board. A cleared
-      board still records ``completed`` until #2627 makes it ``win``.
+      board still records ``completed`` until #2627 makes it ``win``, so
+      Mahjong's ``has_winner`` stays false until then.
     * Blackjack — records ``completed`` until #2628: a run reaching its goal
-      becomes ``win``, busting out becomes ``loss``.
+      becomes ``win``, busting out becomes ``loss``. ``has_winner`` is false
+      until then.
     * Twenty48 — records ``completed`` / ``kept_playing`` until #2631:
       reaching 2048 becomes ``win``.
 

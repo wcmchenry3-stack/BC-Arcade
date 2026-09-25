@@ -45,6 +45,12 @@ export interface GameEventClient {
   markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
   completeGame(gameId: string, summary: CompleteSummary, eventData?: Record<string, unknown>): void;
+  /**
+   * Throw away a game the player never started (#2619): forget its pending
+   * record and drop its queued events, so it is neither completed nor left
+   * pending. Later events for the id are dropped like any unknown game's.
+   */
+  discardGame(gameId: string): void;
   reportBug(
     level: BugLevel,
     source: string,
@@ -111,6 +117,14 @@ export class GameEventClientImpl implements GameEventClient {
     this.fireAndForget(this.games.complete(gameId, summary), "completeGame.mark");
   }
 
+  discardGame(gameId: string): void {
+    // forget() drops the in-memory record synchronously, so nothing new can be
+    // enqueued for this game; deleteByGameId() runs behind any enqueue already
+    // queued on the store's lock, so it also removes game_started.
+    this.fireAndForget(this.games.forget(gameId), "discardGame.forget");
+    this.fireAndForget(this.store.deleteByGameId(gameId), "discardGame.events");
+  }
+
   reportBug(
     level: BugLevel,
     source: string,
@@ -164,18 +178,17 @@ export class GameEventClientImpl implements GameEventClient {
    *   `completedAt` is the last time the device saw the session alive — its
    *   last event, else its start (older records have no `lastEventAt`) — not
    *   the time of this launch, which could be days later. No `durationMs` is
-   *   sent, so SyncWorker derives it from those timestamps (#2619).
-   * - Unstarted: never reached the server, so it is forgotten and its queued
-   *   events are deleted. Nothing is recorded as abandoned.
+   *   known, so none is sent and the row's duration stays null (#2619).
+   * - Unstarted: never reached the server, so it is discarded exactly like an
+   *   untouched `restart()` (`discardGame`). Nothing is recorded as abandoned.
    *
    * Errors are reported, not thrown: a failed sweep must not fail init().
    */
   private async sweepPreviousProcess(): Promise<void> {
     try {
-      const unstarted: string[] = [];
       for (const [gameId, game] of this.games.previousProcessOpenGames()) {
         if (!game.started && !game.startedSynced) {
-          unstarted.push(gameId);
+          this.discardGame(gameId);
           continue;
         }
         const completedAt = game.lastEventAt ?? game.startedAt;
@@ -185,8 +198,6 @@ export class GameEventClientImpl implements GameEventClient {
         });
         await this.games.complete(gameId, { outcome: "abandoned" }, completedAt);
       }
-      for (const gameId of unstarted) await this.games.forget(gameId);
-      await this.store.deleteGameEvents(unstarted);
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "gameEventClient", op: "sweepPreviousProcess" },

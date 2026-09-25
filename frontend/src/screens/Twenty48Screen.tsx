@@ -310,11 +310,18 @@ export default function Twenty48Screen({ navigation }: Props) {
     const prev = stateRef.current;
     if (prev) {
       const outcome = prev.game_over ? "completed" : "abandoned";
-      const payload = endedPayload(prev, outcome);
-      // An abandon's result comes from the same helper as the unmount snapshot.
-      const result = outcome === "abandoned" ? progressResult(prev) : payload;
+      // Built once: the analytics payload is the result plus its outcome. An
+      // abandon's result is the same block as the unmount snapshot; a
+      // completion's keeps `outcome`, as it always has.
+      const result = progressResult(prev);
+      const payload = { ...result, outcome };
       syncComplete(
-        { finalScore: prev.score, outcome, durationMs: computeDurationMs(prev), result },
+        {
+          finalScore: prev.score,
+          outcome,
+          durationMs: result.duration_ms,
+          result: outcome === "abandoned" ? result : payload,
+        },
         payload
       );
     }
@@ -328,7 +335,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       saveStats(updated);
       return updated;
     });
-  }, [endedPayload, progressResult, syncComplete, syncStart]);
+  }, [progressResult, syncComplete, syncStart]);
 
   const handleNewGamePress = useCallback(() => {
     if (state && state.score > 0 && !state.game_over) {

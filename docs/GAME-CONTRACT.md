@@ -71,7 +71,12 @@ class GameOutcome(str, Enum):
 `games.outcome` carries the result (#2519 decision 11, PR #2592): games with a
 winner record `win` / `loss` / `push` — Yacht vs the computer, Hearts, Daily
 Word, and Mahjong's deadlock loss today; Mahjong's cleared board (#2627),
-Blackjack (#2628) and Twenty48 (#2631) move onto it next. Score-only games
+Blackjack (#2628) and Twenty48 (#2631) move onto it next.
+`GameModule.has_winner` means "this game can record win / loss / push" and is
+set only once the client really writes them, a win included: true for Yacht,
+Hearts and Daily Word; Mahjong and Blackjack flip with #2627 / #2628. It is a
+per-game flag, not a per-row fact — a `completed` row from a `has_winner` game
+(solo Yacht) is a finish with no winner, not a win. Score-only games
 record `completed` / `kept_playing`, which means "no win concept" (win rate
 shows "—"). `abandoned` is a quit and is excluded from leaderboards, stats and
 XP by `games.filters.not_abandoned()`. There is no separate `won` field. The
@@ -101,7 +106,7 @@ class GameModule(Protocol):
     game_type: GameType          # identifies this module in the registry
     metadata_model: type[BaseModel]  # Pydantic model for games.metadata validation
     result_model: type[BaseModel] | None  # PATCH /complete result block, or None
-    has_winner: bool             # True → outcome is win/loss/push (see §1.2)
+    has_winner: bool             # True → this game can record win/loss/push (see §1.2)
 
     def stats_shape(self, raw_stats: dict) -> dict: ...
 ```
@@ -247,6 +252,13 @@ A shared screen wrapper component that owns: header, loading/error states, and a
 ### 2.3 useGameSync _(TBD)_
 
 A hook that manages the game session lifecycle — creating, polling, and completing a game via the `/games` API. Screens call the hook; they do not call the API directly.
+
+**`durationMs` (#2619).** Pass the game's own active play time — a timer that
+pauses while the app is backgrounded or the game is idle. `SyncWorker` sends a
+value > 0 as `duration_ms` and sends anything else (0, null, missing,
+negative) as `null`, meaning "unknown". It never derives a duration from the
+session's wall-clock start and end times: those count idle and backgrounded
+time as play.
 
 ### 2.4 ESLint import zones _(TBD)_
 

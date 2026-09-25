@@ -2,6 +2,11 @@
 
 Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
 structural subtyping — no inheritance required.
+
+``has_winner`` is true because vs-the-computer games record ``win`` /
+``loss`` / ``push``. Solo games have no opponent and record ``completed``,
+which the stats layer reads per row as "no winner" — a ``completed`` Yacht
+row is not a win. See ``vocab.GameOutcome``.
 """
 
 from __future__ import annotations

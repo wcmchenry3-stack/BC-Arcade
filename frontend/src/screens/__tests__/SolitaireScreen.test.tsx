@@ -371,6 +371,29 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     expect(summary.result).toEqual({ won: false, moves: 1 });
   });
 
+  // #2619: the abandon carries the game's own play timer, not 0.
+  it("a beforeRemove abandon sends the play timer as durationMs", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+    });
+    const realNow = Date.now.bind(Date);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + 30_000);
+    try {
+      await act(async () => {
+        for (const h of mockNavListeners.get("beforeRemove") ?? []) h();
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0];
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.durationMs).toBeGreaterThanOrEqual(30_000);
+    expect(summary.durationMs).toBeLessThan(40_000);
+  });
+
   it("does not fire an abandon event before any moves are made", async () => {
     const api = await mount();
     await chooseDraw1(api);

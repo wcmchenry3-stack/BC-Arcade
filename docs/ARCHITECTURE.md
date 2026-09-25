@@ -88,16 +88,28 @@ explicitly as `summary.result` to `useGameSync.complete()`; the analytics
 `game_ended` payload is never copied into it (#2619).
 
 **Outcome (#2519 decision 11).** `games.outcome` carries the result for games
-with a winner (`GameModule.has_winner`): `win` / `loss` / `push` (a tie).
+that can record a winner (`GameModule.has_winner`, set only once the client
+writes one): `win` / `loss` / `push` (a tie). A `completed` row from such a
+game (solo Yacht) is a finish with no winner, not a win.
 Score-only games record `completed` / `kept_playing` — a finished game with no
 win concept. `abandoned` is a quit. The per-game rules live in one place, the
 `GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
 only a daily-challenge input, not the win signal.
 
 **Abandons.** Only a session the player started (`markStarted()`) is ever
-abandoned — on unmount or `restart()`. A game registers a progress snapshot so
+abandoned — on unmount or `restart()`. `restart()` discards an untouched
+session instead (`gameEventClient.discardGame()`: the pending game and its
+queued events are dropped, so it is neither completed nor left pending). A game registers a progress snapshot so
 the hook's own abandon carries the result block, and any explicit abandon the
 screen still sends builds its result with the same helper.
+
+**Duration.** `SyncWorker` sends the game's own `durationMs` (its active play
+time) when it is > 0, and `null` ("unknown") for anything else — 0, missing or
+negative (#2619). It never derives a duration from the pending game's
+`completedAt − startedAt`: wall-clock time counts idle and backgrounded time as
+play, so a Daily Word left open all day would record 12 h. A negative value
+never reaches the server, where `duration_ms` is `ge=0` and would 400 the
+whole completion.
 
 **Deferred create and killed sessions (#2654).** `startGame()` records the
 session on the device only. `SyncWorker` sends `POST /games` and the session's
@@ -107,16 +119,11 @@ unmount runs, so on the next launch `gameEventClient.init()` sweeps the pending
 games the earlier process left open — decided by where the record came from
 (read from disk, not created by this process), not by comparing clocks: a
 started one is completed as a bare `abandoned` with `completedAt` set to its
-last event (else its start), and its duration derived as above; an unstarted
-one is forgotten and its queued events deleted. A pending record saved by an
-older build has no `started` field and counts as started, so it is sent, never
-dropped. The server's 24 h stale-session sweep (#2621) remains the fallback for
-devices that never report back.
-
-**Duration.** `SyncWorker` sends the game's `durationMs` when it is a real
-value. When a game sends none, or 0, it sends `completedAt − startedAt` from the
-pending game instead, capped at 24 h (#2619) — so every row gets a play time,
-including games queued offline by older builds.
+last event (else its start) and no `durationMs`, so its duration is `null`; an
+unstarted one is discarded like an untouched `restart()` (`discardGame()`). A
+pending record saved by an older build has no `started` field and counts as
+started, so it is sent, never dropped. The server's 24 h stale-session sweep
+(#2621) remains the fallback for devices that never report back.
 
 **Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
 kicks in (see §5). If 2 MB turns out to be too small in practice, that is a

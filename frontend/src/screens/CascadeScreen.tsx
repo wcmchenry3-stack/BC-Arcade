@@ -374,13 +374,16 @@ function CascadeGame() {
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
 
-  // #2450 / #2619 — the abandon result block. Both the hook's own abandon
-  // (unmount) and endInstrumentedSession("abandoned") build it here.
+  // #2450 / #2619 — the result block. The hook's own abandon (unmount) and
+  // endInstrumentedSession build it here, so completed and abandoned rows
+  // store the same metadata keys. `outcome` is left out: it is its own column.
   const progressResult = useCallback(
     () => ({
+      final_score: scoreRef.current,
+      duration_ms: Date.now() - gameStartTimeRef.current,
+      theme: activeFruitSetRef.current.id,
       total_drops: dropCountRef.current,
       total_merges: mergeCountRef.current,
-      duration_ms: Date.now() - gameStartTimeRef.current,
     }),
     []
   );
@@ -407,18 +410,20 @@ function CascadeGame() {
 
   const endInstrumentedSession = useCallback(
     (outcome: "completed" | "abandoned") => {
-      const durationMs = Date.now() - gameStartTimeRef.current;
-      const payload = {
-        final_score: scoreRef.current,
-        duration_ms: durationMs,
-        theme: activeFruitSetRef.current.id,
-        total_drops: dropCountRef.current,
-        total_merges: mergeCountRef.current,
-        outcome,
-      };
-      // An abandon's result comes from the same helper as the unmount snapshot.
-      const result = outcome === "abandoned" ? progressResult() : payload;
-      syncComplete({ finalScore: scoreRef.current, outcome, durationMs, result }, payload);
+      // Built once: the analytics payload is the result plus its outcome. An
+      // abandon's result is the same block as the unmount snapshot; a
+      // completion's keeps `outcome`, as it always has.
+      const result = progressResult();
+      const payload = { ...result, outcome };
+      syncComplete(
+        {
+          finalScore: scoreRef.current,
+          outcome,
+          durationMs: result.duration_ms,
+          result: outcome === "abandoned" ? result : payload,
+        },
+        payload
+      );
     },
     [syncComplete, progressResult]
   );

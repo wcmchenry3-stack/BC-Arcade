@@ -206,7 +206,13 @@ export class PendingGamesStore {
     return this.games.get(gameId);
   }
 
-  /** SyncWorker calls this once the game is fully synced (started + events + completed). */
+  /**
+   * Drop a game's record. SyncWorker calls this once the game is fully synced
+   * (started + events + completed); `gameEventClient.discardGame` calls it for
+   * a game the player never started — on `restart()` (#2619) and for a killed
+   * process's unstarted games at startup (#2654). The in-memory delete is
+   * synchronous.
+   */
   forget(gameId: string): Promise<void> {
     if (!this.games.delete(gameId)) return Promise.resolve();
     return this.persist();

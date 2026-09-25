@@ -126,6 +126,45 @@ describe("GameEventClient", () => {
   });
 
   // -------------------------------------------------------------------------
+  // discardGame (#2619)
+  // -------------------------------------------------------------------------
+
+  it("discardGame forgets the pending record and drops only its queued events", async () => {
+    const discarded = client.startGame("cascade");
+    client.enqueueEvent(discarded, { type: "drop" });
+    const kept = client.startGame("cascade");
+    client.reportBug("warn", "src", "msg");
+    // Straight after startGame, before its events have landed — the discard
+    // must still remove game_started.
+    client.discardGame(discarded);
+    await flushMicrotasks();
+
+    expect(games.get(discarded)).toBeUndefined();
+    expect(games.get(kept)).toBeDefined();
+    const rows = await store.peek(20, { includeDeadLettered: true, includeFuture: true });
+    const gameIds = rows.flatMap((r) => (r.log_type === "game_event" ? [r.game_id] : []));
+    expect(gameIds).toEqual([kept]);
+    expect(rows.filter((r) => r.log_type === "bug_log")).toHaveLength(1);
+
+    // Persisted too: a fresh store rehydrated from AsyncStorage has no record.
+    const rehydrated = new PendingGamesStore();
+    await rehydrated.init();
+    expect(rehydrated.get(discarded)).toBeUndefined();
+    expect(rehydrated.get(kept)).toBeDefined();
+  });
+
+  it("enqueueEvent and completeGame after discardGame are dropped", async () => {
+    const id = client.startGame("cascade");
+    client.discardGame(id);
+    client.enqueueEvent(id, { type: "drop" });
+    client.completeGame(id, { outcome: "abandoned" });
+    await flushMicrotasks();
+
+    expect(games.get(id)).toBeUndefined();
+    expect(await store.peek(20)).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
   // reportBug — rate limiter integration
   // -------------------------------------------------------------------------
 
@@ -335,6 +374,22 @@ describe("GameEventClient", () => {
       expect(next.games.get(untouched)?.completed).toBe(false);
       expect(await eventTypes(next.store, played)).toEqual(["game_started"]);
       expect(await eventTypes(next.store, untouched)).toEqual(["game_started"]);
+    });
+
+    it("does not sweep a game started in this process before init() is even called", async () => {
+      const killed = client.startGame("yacht");
+      client.markStarted(killed);
+
+      const next = await relaunch();
+      const early = next.client.startGame("twenty48");
+      next.client.markStarted(early);
+      await flushMicrotasks();
+      await next.client.init();
+
+      expect(next.games.get(killed)?.completed).toBe(true);
+      expect(next.games.get(early)?.completed).toBe(false);
+      expect(next.games.get(early)?.started).toBe(true);
+      expect(await eventTypes(next.store, early)).toEqual(["game_started"]);
     });
 
     it("sweeps once per process, however often init() is called", async () => {

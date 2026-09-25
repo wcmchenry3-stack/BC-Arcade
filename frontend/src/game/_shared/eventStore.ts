@@ -301,18 +301,16 @@ export class EventStore {
   }
 
   /**
-   * Delete every game-event row of the given games, dead-lettered or backed
-   * off included. Used for sessions the player never started (#2654), whose
-   * events never left the device. Returns the number of rows removed.
+   * Drop every queued game-event row for one game, dead-lettered and
+   * backed-off rows included. Used when a game is discarded before the
+   * player started it (#2619). Returns how many rows were removed.
    */
-  async deleteGameEvents(gameIds: string[]): Promise<number> {
-    if (gameIds.length === 0) return 0;
+  async deleteByGameId(gameId: string): Promise<number> {
     return this.withLock(async () => {
-      const set = new Set(gameIds);
       let removed = 0;
       for (const tier of TIERS) {
         const rows = await this.readTier(tier);
-        const kept = rows.filter((r) => !(r.log_type === "game_event" && set.has(r.game_id)));
+        const kept = rows.filter((r) => r.log_type !== "game_event" || r.game_id !== gameId);
         removed += rows.length - kept.length;
         if (kept.length !== rows.length) {
           await this.writeTier(tier, kept);

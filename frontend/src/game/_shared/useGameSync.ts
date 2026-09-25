@@ -26,8 +26,8 @@
  *     { final_score: 250 }
  *   );
  *
- *   // End the current session (as abandoned, if the player started it) and
- *   // immediately start a fresh one
+ *   // End the current session (abandoned if the player started it, else
+ *   // discarded) and immediately start a fresh one
  *   restart({ initial_score: 0 });
  *
  * The unmount cleanup automatically abandons any open session, so callers
@@ -43,13 +43,15 @@
  * same helper its getter uses, so the two paths cannot drift apart (#2619).
  *
  * Only abandons the player caused count: the unmount and `restart()` paths
- * both skip a session that `markStarted()` was never called for.
+ * both skip the abandon for a session that `markStarted()` was never called
+ * for. `restart()` discards that session (`gameEventClient.discardGame`) so it
+ * is not left pending when the new one replaces it.
  *
  * Deferred create (#2654): `markStarted()` also tells gameEventClient, which
  * holds the session on the device until then — a session the player never
  * started never reaches the server. A session left open when the process is
  * killed (no unmount runs) is closed by gameEventClient's startup sweep on the
- * next launch: abandoned if started, dropped if not.
+ * next launch: abandoned if started, discarded if not.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -94,9 +96,10 @@ export interface UseGameSyncReturn {
    */
   complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
   /**
-   * End the current session and immediately start a fresh one. The old
-   * session is abandoned only if it is still open and the player started it
-   * (`markStarted()`), the same rule as the unmount path. Use this for
+   * End the current session and immediately start a fresh one. If the old
+   * session is still open, it is abandoned when the player started it
+   * (`markStarted()`, the same rule as the unmount path) and otherwise
+   * discarded via `gameEventClient.discardGame()`. Use this for
    * New Game / theme-switch flows.
    */
   restart: (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => void;
@@ -211,11 +214,20 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   const restart = useCallback(
     (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => {
-      // Close the current session if still open and the player started it —
-      // the same guard as the unmount path, so an untouched game is not an abandon.
+      // Close the current session if still open. A session the player started
+      // is abandoned (the same guard as the unmount path); an untouched one is
+      // not an abandon, so it is discarded — never left pending (#2619).
       const gid = gameIdRef.current;
-      if (gid && startedRef.current && !completedRef.current) {
-        abandon(gid);
+      if (gid && !completedRef.current) {
+        if (startedRef.current) {
+          abandon(gid);
+        } else {
+          try {
+            gameEventClient.discardGame(gid);
+          } catch {
+            // Isolation.
+          }
+        }
       }
       // Open a fresh session.
       gameIdRef.current = gameEventClient.startGame(
