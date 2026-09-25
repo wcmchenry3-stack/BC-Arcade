@@ -183,7 +183,14 @@ identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also e
 
 ## Scoring (Persistence)
 
-`final_score` = points at game over. Leaderboard tracks top scores.
+`final_score` = points at game over. Since #2626 the run's own session row is its leaderboard
+entry: game over completes it with `outcome: "completed"` (score-only, no win), `final_score` and a
+result of `{outcome, wave_reached, difficulty_tier}`. Each difficulty tier is its own board, and a
+player's best run on a tier ranks there under their display name. The result card reads the rank
+from `GET /games/{id}/rank` through the shared `sessionBoardAdapter`; it asks for a display name
+only when the player has none. The screen sends no `durationMs` (never `0`): the engine keeps no
+play clock. The device keeps the best score
+(`game/starswarm/bestScore.ts`) for the card's "Best" and "New best".
 
 ## Client-Side Engine
 
@@ -237,8 +244,8 @@ React commits per second over the game. See
 - Tiers: `difficulty_tier` must be one of `DIFFICULTY_TIERS` in `backend/starswarm/models.py` — `Ensign`, `LieutenantJG`, `Lieutenant`, `LieutenantCommander`, `Commander`, `Captain`, `RearAdmiral`, `ViceAdmiral`, `Admiral`, `FleetAdmiral`, the client's `DIFFICULTY_TIERS` (`frontend/src/game/starswarm/engine.ts`). Any other value (`captain`, a forged tier) fails creation (422) and completion (400). `tests/test_starswarm_module.py` parses the client list and fails if the two drift, so **a tier added to the app must be added to the backend in the same release**, or its runs dead-letter. A missing or `null` tier is allowed
 - Board: `final_score` desc, one board per `difficulty_tier` (`GET /games/leaderboard/starswarm?difficulty_tier=Captain`), no cap. A row with no tier counts as `LieutenantJG`, as on the legacy `POST /starswarm/score`, and a request without `difficulty_tier` is the `LieutenantJG` board; an unknown tier is a 400. `has_winner = False`
 - Stats: default pass-through `stats_shape` (`default_stats_shape`)
-- Endpoints: `backend/starswarm/router.py` (`POST /starswarm/score`, `GET /starswarm/leaderboard`)
-- Scoring: each run records a session row through `useGameSync("starswarm")` (no score); the named score is submitted via the router at game over
+- Endpoints: `backend/starswarm/router.py` — legacy. `POST /starswarm/score` stays for installed builds; the app no longer calls it (#2626). `GET /starswarm/leaderboard` is read by the Ranks tab until #2634
+- Scoring: each run's session row (`useGameSync("starswarm")`) completes with its `final_score` and is the leaderboard entry on its tier's board (#2626); see [Scoring](#scoring-persistence)
 
 ## Accessibility
 

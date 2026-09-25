@@ -57,11 +57,19 @@ jest.mock("../../hooks/useStarSwarmAudio", () => {
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
-jest.mock("../../game/starswarm/api", () => ({
-  starSwarmApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+// #2626: the card reads the run's rank from GET /games/{id}/rank (sessionBoardAdapter);
+// nothing is posted to the legacy POST /starswarm/score any more.
+const mockGetRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
 }));
-import { starSwarmApi } from "../../game/starswarm/api";
-const submitScore = starSwarmApi.submitScore as jest.Mock;
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+}));
 
 const mockStartGame = jest.fn(() => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
@@ -110,8 +118,12 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   await AsyncStorage.setItem("starswarm.difficulty", "Commander");
   resetDisplayNameCacheForTests();
-  submitScore.mockResolvedValue({ scores: [] });
+  mockGetRank.mockResolvedValue(ranked(1));
 });
+
+function ranked(rank: number) {
+  return { rank, is_best: true, ranked: true, reason: null };
+}
 
 describe("StarSwarmScreen — result card (#2516)", () => {
   it("shows Game Over with the score, wave and best when the run ends", async () => {
@@ -141,31 +153,65 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     );
   });
 
-  it("submits the run under the display name", async () => {
+  // #2626: the named session row is the leaderboard entry; the card only reads its rank.
+  it("shows the run's rank on its tier's board under the display name", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
-    submitScore.mockResolvedValue({ scores: [], rank: 4 });
+    mockGetRank.mockResolvedValue(ranked(4));
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     await waitFor(() =>
       expect(screen.getByText("Saved as Riley · #4 on the leaderboard")).toBeTruthy()
     );
-    expect(submitScore).toHaveBeenCalledTimes(1);
-    expect(submitScore).toHaveBeenCalledWith("Riley", 4200, 7, "Commander");
+    // The completed session's id, read before complete() clears it.
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("starswarm-game-id");
   });
 
-  it("records the run as a completed session with no score", async () => {
+  it("asks for a display name when the player has none, without reading the rank", async () => {
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    const card = within(screen.getByTestId("starswarm-result"));
+    await waitFor(() => expect(card.getByTestId("result-name-prompt")).toBeTruthy());
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("shows no leaderboard line for a run that can never rank", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockGetRank.mockResolvedValue({
+      rank: null,
+      is_best: null,
+      ranked: false,
+      reason: "not_rankable",
+    });
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    await waitFor(() => expect(mockGetRank).toHaveBeenCalledTimes(1));
+    const card = within(screen.getByTestId("starswarm-result"));
+    await waitFor(() => expect(card.queryByText(/Saving|Saved as/)).toBeNull());
+    expect(card.queryByTestId("result-name-prompt")).toBeNull();
+  });
+
+  it("records the run as a completed session carrying its score, wave and tier", async () => {
     await renderScreen();
     await startRun();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     expect(mockStartGame.mock.calls[0]![0]).toBe("starswarm");
     await endRun(4200, 7);
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("starswarm-game-id");
     expect(summary.outcome).toBe("completed");
-    expect(summary.result).toEqual(expect.objectContaining({ wave_reached: 7 }));
-    // Star Swarm's leaderboard ranks every scored row — a session must never carry one.
-    expect(summary).not.toHaveProperty("finalScore");
+    expect(summary.finalScore).toBe(4200);
+    expect(summary.result).toEqual({
+      outcome: "completed",
+      wave_reached: 7,
+      difficulty_tier: "Commander",
+    });
+    // The engine keeps no play clock: a duration is real or absent, never 0.
+    expect(summary.durationMs).not.toBe(0);
   });
 
   it("Play Again starts a new run at the same difficulty", async () => {

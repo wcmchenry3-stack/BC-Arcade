@@ -54,9 +54,6 @@ jest.mock("../../hearts/scoreSync", () => ({
 jest.mock("../../sort/scoreSync", () => ({
   registerSortScoreHandler: jest.fn(),
 }));
-jest.mock("../../starswarm/scoreSync", () => ({
-  registerStarSwarmScoreHandler: jest.fn(),
-}));
 
 jest.mock("../../../components/shared/CapacityWarningToast", () => ({
   CapacityWarningToast: () => null,

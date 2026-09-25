@@ -1,9 +1,9 @@
 /**
  * starswarm-game-over.spec.ts — #2516
  *
- * Star Swarm's end of run: the shared result card, the automatic leaderboard
- * submission under the player's display name, Play Again / Change Difficulty,
- * and a Best that survives a reload.
+ * Star Swarm's end of run: the shared result card, the run recorded with its
+ * score and its rank on the tier's board under the player's display name
+ * (#2626), Play Again / Change Difficulty, and a Best that survives a reload.
  *
  * Reaching game over by real play isn't practical here, so the run is ended
  * through the `__starswarm_endRun(score, wave)` test hook (EXPO_PUBLIC_TEST_HOOKS
@@ -18,32 +18,57 @@ import { gotoStarswarm } from "./helpers/starswarm";
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
-/** Intercepts the Star Swarm API; returns the POST /starswarm/score bodies. */
-async function routeStarswarmApi(
-  page: Page,
-): Promise<Record<string, unknown>[]> {
-  const posts: Record<string, unknown>[] = [];
+const API_BASE = "http://localhost:8000";
+
+interface RoutedApi {
+  /** Bodies posted to the legacy POST /starswarm/score — the app sends none (#2626). */
+  legacyPosts: Record<string, unknown>[];
+  /** PATCH /games/{id}/complete bodies, as SyncWorker uploads them. */
+  completions: Record<string, unknown>[];
+  /** Game ids the result card asked GET /games/{id}/rank about. */
+  rankRequests: string[];
+}
+
+/**
+ * Intercepts the legacy Star Swarm routes and the session pipeline: the run's
+ * games row (create, events, complete), its rank, and the display name.
+ */
+async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
+  const api: RoutedApi = { legacyPosts: [], completions: [], rankRequests: [] };
+  const json = (body: unknown, status = 200) => ({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
   await page.route("**/starswarm/**", async (route) => {
     if (route.request().method() === "POST") {
-      const body = JSON.parse(route.request().postData() ?? "{}");
-      posts.push(body);
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          scores: [{ ...body, timestamp: "", rank: 3 }],
-          rank: 3,
-        }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
+      api.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
     }
+    await route.fulfill(json({ scores: [] }));
   });
-  return posts;
+  await page.route(new RegExp(`^${API_BASE}/games(/.*)?$`), async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    const rank = path.match(/^\/games\/([^/]+)\/rank$/);
+    if (req.method() === "GET" && rank) {
+      api.rankRequests.push(decodeURIComponent(rank[1]!));
+      await route.fulfill(
+        json({ rank: 3, is_best: true, ranked: true, reason: null }),
+      );
+      return;
+    }
+    if (req.method() === "PATCH" && path.endsWith("/complete")) {
+      api.completions.push(JSON.parse(req.postData() ?? "{}"));
+    }
+    await route.fulfill(
+      json({}, req.method() === "POST" && path === "/games" ? 201 : 200),
+    );
+  });
+  await page.route("**/players/me", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    await route.fulfill(json({ display_name: body.display_name ?? null }));
+  });
+  return api;
 }
 
 /** Opens Star Swarm, optionally under a display name, and starts a run. */
@@ -115,8 +140,10 @@ test.describe("Star Swarm — result card", () => {
     ).not.toBeAttached();
   });
 
-  test("submits the run under the display name", async ({ page }) => {
-    const posts = await routeStarswarmApi(page);
+  test("records the run with its score and shows its rank on the tier's board", async ({
+    page,
+  }) => {
+    const api = await routeStarswarmApi(page);
     await startRun(page, "Tester");
     await endRun(page, 4200, 7);
 
@@ -125,13 +152,20 @@ test.describe("Star Swarm — result card", () => {
     ).toBeVisible({
       timeout: 10_000,
     });
-    expect(posts).toHaveLength(1);
-    expect(posts[0]).toMatchObject({
-      player_id: "Tester",
-      score: 4200,
-      wave_reached: 7,
-      difficulty_tier: expect.any(String),
+    // #2626: the run's games row is the entry — it carries the score, wave and tier.
+    expect(api.completions).toHaveLength(1);
+    expect(api.completions[0]).toMatchObject({
+      final_score: 4200,
+      outcome: "completed",
+      result: {
+        outcome: "completed",
+        wave_reached: 7,
+        difficulty_tier: expect.any(String),
+      },
     });
+    expect(api.rankRequests).toHaveLength(1);
+    // Nothing goes to the legacy POST /starswarm/score any more.
+    expect(api.legacyPosts).toHaveLength(0);
   });
 
   test("Play Again starts a new run; Change Difficulty opens the picker", async ({
