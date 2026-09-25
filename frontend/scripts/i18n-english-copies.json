@@ -2,56 +2,207 @@
   "_about": "Locale values that equal the English text. `accepted`: the word really is the same in that language (reviewed). `pending`: not translated yet; may only shrink (see scripts/check-i18n-strings.js, #2681). Namespace -> locale -> keys.",
   "accepted": {
     "blackjack": {
-      "nl": ["betting.tableLimitsRange"]
+      "nl": [
+        "betting.tableLimitsRange"
+      ],
+      "es": [
+        "chip.vipCredits",
+        "header.bankrollLabel",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks"
+      ],
+      "pt": [
+        "chip.vipCredits",
+        "header.bankrollLabel",
+        "outcome.blackjack",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks"
+      ],
+      "ru": [
+        "chip.vipCredits",
+        "outcome.blackjack",
+        "rules.h17",
+        "rules.s17"
+      ]
     },
     "daily_word": {
-      "de": ["keyboard.enter"],
-      "nl": ["keyboard.enter"]
+      "de": [
+        "keyboard.enter"
+      ],
+      "nl": [
+        "keyboard.enter"
+      ]
     },
     "freecell": {
-      "nl": ["action.hint"]
+      "nl": [
+        "action.hint"
+      ]
     },
     "hearts": {
-      "fr-CA": ["score.board", "score.total"],
-      "nl": ["score.board"],
-      "pt": ["score.total"]
+      "fr-CA": [
+        "score.board",
+        "score.total"
+      ],
+      "nl": [
+        "score.board"
+      ],
+      "pt": [
+        "score.total"
+      ]
     },
     "mahjong": {
-      "de": ["layout.arena"],
-      "es": ["layout.arena"],
-      "nl": ["hud.score", "action.hint", "layout.arena", "scoreboard.score"],
-      "pt": ["layout.arena"]
+      "de": [
+        "layout.arena"
+      ],
+      "es": [
+        "layout.arena"
+      ],
+      "nl": [
+        "action.hint",
+        "hud.score",
+        "layout.arena",
+        "scoreboard.score"
+      ],
+      "pt": [
+        "layout.arena"
+      ]
     },
     "profile": {
-      "ar": ["level.xpTotal"],
-      "de": ["level.value", "level.xpTotal"],
-      "es": ["level.xpTotal"],
-      "fr-CA": ["level.xpTotal"],
-      "hi": ["level.xpTotal"],
-      "nl": ["level.xpTotal"],
-      "pt": ["level.xpTotal"],
-      "ru": ["level.xpTotal"]
+      "ar": [
+        "level.xpTotal"
+      ],
+      "de": [
+        "level.value",
+        "level.xpTotal"
+      ],
+      "es": [
+        "level.xpTotal"
+      ],
+      "fr-CA": [
+        "level.xpTotal"
+      ],
+      "hi": [
+        "level.xpTotal"
+      ],
+      "nl": [
+        "level.xpTotal"
+      ],
+      "pt": [
+        "level.xpTotal"
+      ],
+      "ru": [
+        "level.xpTotal"
+      ]
     },
     "result": {
-      "de": ["hero.vs", "name.computer", "stat.bonus"],
-      "es": ["hero.vs"],
-      "fr-CA": ["hero.vs", "stat.bonus", "standings.row"],
-      "nl": ["hero.vs", "stat.score", "name.computer", "stat.bonus"],
-      "ru": ["hero.vs"]
+      "de": [
+        "hero.vs",
+        "name.computer",
+        "stat.bonus"
+      ],
+      "es": [
+        "hero.vs"
+      ],
+      "fr-CA": [
+        "hero.vs",
+        "standings.row",
+        "stat.bonus"
+      ],
+      "nl": [
+        "hero.vs",
+        "name.computer",
+        "stat.bonus",
+        "stat.score"
+      ],
+      "ru": [
+        "hero.vs"
+      ]
     },
     "solitaire": {
-      "de": ["game.title"],
-      "fr-CA": ["game.title"],
-      "nl": ["score.label"]
+      "de": [
+        "game.title"
+      ],
+      "fr-CA": [
+        "game.title"
+      ],
+      "nl": [
+        "score.label"
+      ]
     },
     "sort": {
-      "de": ["hud.level", "color.gold", "color.indigo", "leaderboard.levelReached"],
-      "fr-CA": ["color.indigo"],
-      "nl": ["action.hint", "color.indigo"]
+      "de": [
+        "color.gold",
+        "color.indigo",
+        "hud.level",
+        "leaderboard.levelReached"
+      ],
+      "fr-CA": [
+        "color.indigo"
+      ],
+      "nl": [
+        "action.hint",
+        "color.indigo"
+      ]
     },
     "starswarm": {
-      "fr-CA": ["leaderboard.colDate"],
-      "nl": ["hud.scoreValue", "score.display", "leaderboard.colScore"]
+      "fr-CA": [
+        "leaderboard.colDate"
+      ],
+      "nl": [
+        "hud.scoreValue",
+        "leaderboard.colScore",
+        "score.display"
+      ]
+    },
+    "common": {
+      "es": [
+        "nav.lobby",
+        "premiumLevel.tag"
+      ],
+      "pt": [
+        "nav.lobby",
+        "premiumLevel.ok",
+        "premiumLevel.tag"
+      ]
+    },
+    "sudoku": {
+      "es": [
+        "game.title",
+        "hud.errorsOne",
+        "variant.mini"
+      ],
+      "pt": [
+        "game.title",
+        "variant.mini"
+      ],
+      "ru": [
+        "variant.mini"
+      ]
+    },
+    "yacht": {
+      "es": [
+        "category.yacht",
+        "score.total",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs"
+      ],
+      "pt": [
+        "category.chance",
+        "category.fullHouse",
+        "category.yacht",
+        "score.total",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs"
+      ],
+      "ru": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ]
     }
   },
   "pending": {
@@ -778,8 +929,13 @@
       ]
     },
     "feedback": {
-      "fr-CA": ["type_label", "label_description"],
-      "nl": ["type_label"]
+      "fr-CA": [
+        "type_label",
+        "label_description"
+      ],
+      "nl": [
+        "type_label"
+      ]
     },
     "sudoku": {
       "fr-CA": [
@@ -1085,12 +1241,38 @@
         "vsMode.vs",
         "vsMode.cpu"
       ],
-      "es": ["category.yacht", "score.total", "vsMode.solo", "vsMode.vs", "vsMode.cpu"],
-      "hi": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
-      "ar": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
-      "zh": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
-      "ja": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
-      "ko": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
+      "es": [
+        "category.yacht",
+        "score.total",
+        "vsMode.solo",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
+      "hi": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
+      "ar": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
+      "zh": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
+      "ja": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
+      "ko": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
       "pt": [
         "category.fullHouse",
         "category.yacht",
@@ -1100,7 +1282,11 @@
         "vsMode.vs",
         "vsMode.cpu"
       ],
-      "he": ["category.yacht", "vsMode.vs", "vsMode.cpu"],
+      "he": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ],
       "de": [
         "bonus.label",
         "category.fullHouse",
@@ -1120,7 +1306,11 @@
         "vsMode.vs",
         "vsMode.cpu"
       ],
-      "ru": ["category.yacht", "vsMode.vs", "vsMode.cpu"]
+      "ru": [
+        "category.yacht",
+        "vsMode.vs",
+        "vsMode.cpu"
+      ]
     }
   }
 }

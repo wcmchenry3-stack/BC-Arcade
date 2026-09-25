@@ -13,13 +13,13 @@
   "swipe.hint": "Desliza para mover las fichas",
   "win.body": "¡Llegaste a 2048! Puedes seguir jugando para una puntuación más alta.",
   "controls.keyboardHint": "O usa las flechas del teclado",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "Ficha Más Alta",
+  "stats.timePlayed": "Tiempo Jugado",
+  "scoreboard.heroLabel": "PUNTUACIÓN",
+  "scoreboard.heroSub": "Mejor ficha: {{bestTile}} · {{moves}} movimientos",
+  "scoreboard.heroSubEmpty": "Aún no hay partidas jugadas",
+  "scoreboard.bestScore": "Mejor Puntuación",
+  "scoreboard.bestTile": "Mejor Ficha",
+  "scoreboard.gamesPlayed": "Partidas Jugadas",
+  "scoreboard.gamesWon": "Partidas Ganadas"
 }

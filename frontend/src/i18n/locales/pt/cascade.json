@@ -12,11 +12,11 @@
   "theme.groupLabel": "Tema de frutas",
   "theme.optionLabel": "Tema {{label}}",
   "event.merged": "Combinado! {{fruit}} criado.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "PONTOS",
+  "scoreboard.heroSub": "Melhor fruta: {{bestFruit}} · {{merges}} fusões",
+  "scoreboard.heroSubEmpty": "Nenhum jogo jogado ainda",
+  "scoreboard.bestScore": "Melhor de Todos",
+  "scoreboard.bestFruit": "Melhor Fruta",
+  "scoreboard.gamesPlayed": "Jogos Jogados",
+  "scoreboard.totalMerges": "Total Fusões"
 }
