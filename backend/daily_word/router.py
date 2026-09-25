@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
@@ -177,7 +178,7 @@ async def get_today(
     return get_today_meta(tz_offset_minutes, lang)
 
 
-@router.post("/guess")
+@router.post("/guess", response_model=None)
 @limiter.limit("20/hour", key_func=_guess_key)
 # An IP-keyed backstop *in addition to* the session key, because the session id
 # is self-asserted: without one, minting a fresh UUID bought another six
@@ -187,7 +188,7 @@ async def get_today(
 # prevents. This is a volume backstop, not a security boundary; it does not
 # stop a determined caller, which needs server-issued sessions (#1047).
 @limiter.limit("1200/hour")
-async def post_guess(request: Request, body: GuessRequest) -> dict:
+async def post_guess(request: Request, body: GuessRequest) -> dict | JSONResponse:
     sid = get_session_id(request)
 
     try:
@@ -256,9 +257,18 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
         _report_degraded_guess(exc)
 
     if outcome is not None and not outcome.allowed:
-        raise HTTPException(
+        # #2541 — the server's count travels with the refusal. This 403 means
+        # the board is behind the record (a recorded guess whose response was
+        # lost), so the client must not count its own rows: that number is
+        # structurally low, and it feeds the "win within N guesses" goal and
+        # the share text. `detail` stays the bare code the client matches on.
+        return JSONResponse(
             status_code=403,
-            detail="already_solved" if outcome.solved else "no_guesses_remaining",
+            content={
+                "detail": "already_solved" if outcome.solved else "no_guesses_remaining",
+                "guesses_used": outcome.guesses_used,
+                "solved": outcome.solved,
+            },
         )
 
     result: dict = {"tiles": tiles}

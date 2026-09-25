@@ -518,6 +518,53 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(summary).toMatchObject({ outcome: "completed", result: { won: true } });
   });
 
+  // #2541 — the 403 means the board is behind the server, so the board's row
+  // count is too low. Here the winning (third) guess landed but its response
+  // was lost: the board shows one row, and the server says three. Reporting
+  // the board's count credited the "win within N guesses" goal for a longer
+  // win, and printed the short count on the result card and in the share.
+  it("reports the server's guess count from the 403, not the board's", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+    dailyWordApi.submitGuess.mockRejectedValue(
+      new ApiError("already_solved", 403, {
+        detail: "already_solved",
+        guesses_used: 3,
+        solved: true,
+      })
+    );
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    await typeAndSubmitAgain(api, "brick");
+
+    expect(await api.findByText("You Win!")).toBeTruthy();
+    expect(api.getByText("3/6")).toBeTruthy();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ result: { won: true, guesses_used: 3 } });
+  });
+
+  // #2541 — a 200 that says no guesses remain ends the game, even when the
+  // board (one behind the server) would still offer a row. Otherwise the
+  // player types a word only for the server to refuse it.
+  it("ends the game when the server says no guesses remain", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({
+      tiles: tilesFor("zzzzz", "absent"),
+      guesses_used: 6,
+      guesses_remaining: 0,
+    });
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(await api.findByText("You Lose")).toBeTruthy();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({
+      outcome: "completed",
+      result: { is_complete: true, won: false, guesses_used: 6 },
+    });
+  });
+
   // #2535 review — without syncComplete the session stays open and the unmount
   // cleanup reports it abandoned. Abandoned games earn no daily-challenge
   // credit, no streak day and no XP (#2468/#2472), so recovering this way

@@ -139,10 +139,39 @@ export function markComplete(state: DailyWordState, won: boolean): DailyWordStat
 }
 
 /**
+ * Guesses spent on this puzzle (#2541). The larger of the server's count and
+ * the board's submitted rows: the server's is authoritative when the board has
+ * fallen behind it, and the board's covers a stale or missing server count
+ * (an older save, or guesses scored while the record was unreachable). A
+ * legitimate server count is never below the board's, so this only ever
+ * corrects upward.
+ */
+export function guessCount(state: DailyWordState): number {
+  const boardCount = state.rows.filter((row) => row.submitted).length;
+  return Math.max(parseGuessCount(state.guesses_used) ?? 0, boardCount);
+}
+
+/**
+ * A server guess count, if `value` is a plausible one (#2541). The value is
+ * untrusted: it comes from a response body — the 200 from `POST /guess`, or
+ * the `403` refusal (`no_guesses_remaining` / `already_solved`) via
+ * `ApiError.body` — or from saved state that `looksValid` does not check.
+ * Returns `undefined` for anything else, including an older API that sends
+ * no count.
+ */
+export function parseGuessCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_ROWS
+    ? value
+    : undefined;
+}
+
+/**
  * The result block sent on `PATCH /games/{id}/complete` (#2451). Must satisfy
  * the backend `DailyWordResult`; the daily challenge reads exactly these fields.
- * Counts submitted rows rather than `current_row` so it is right both at the
- * win (where `current_row` has already advanced) and mid-puzzle for an abandon.
+ * `guessCount` rather than `current_row`, so it is right at the win (where
+ * `current_row` has already advanced), mid-puzzle for an abandon, and when the
+ * board is behind the server (#2541) — this count drives the daily challenge's
+ * "win within N guesses" goal.
  */
 export function sessionResult(state: DailyWordState | null): {
   is_complete: boolean;
@@ -153,7 +182,7 @@ export function sessionResult(state: DailyWordState | null): {
   return {
     is_complete: state.is_complete,
     won: state.won,
-    guesses_used: state.rows.filter((row) => row.submitted).length,
+    guesses_used: guessCount(state),
   };
 }
 
@@ -175,8 +204,9 @@ function puzzleNumber(puzzleId: string): number {
 export function buildShareText(state: DailyWordState, deepLink: string): string {
   const n = puzzleNumber(state.puzzle_id);
   const submittedRows = state.rows.filter((r) => r.submitted);
-  const guessCount = submittedRows.length;
-  const result = state.won ? `${guessCount}/6` : "X/6";
+  // The count comes from `guessCount`, not the grid: when the board is behind
+  // the server the grid is missing rows, but the result must not be (#2541).
+  const result = state.won ? `${guessCount(state)}/6` : "X/6";
 
   const grid = submittedRows
     .map((row) =>

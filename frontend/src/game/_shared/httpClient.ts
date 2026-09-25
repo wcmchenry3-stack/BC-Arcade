@@ -19,10 +19,17 @@ import { getOrCreateSessionId } from "./session";
 /** Error subclass that preserves the HTTP status code from the API response. */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /**
+   * The parsed JSON error body, when there was one (#2541). `message` stays
+   * the bare `detail` code that call sites compare against; this carries any
+   * structured fields alongside it, e.g. Daily Word's 403 `guesses_used`.
+   */
+  readonly body?: Readonly<Record<string, unknown>>;
+  constructor(message: string, status: number, body?: Readonly<Record<string, unknown>>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -256,7 +263,11 @@ export function createGameClient(options: HttpClientOptions) {
             extra: { url, detail: msg, platform: Platform.OS },
           });
         }
-        throw new ApiError(msg, res.status);
+        const body =
+          err !== null && typeof err === "object" && !Array.isArray(err)
+            ? (err as Record<string, unknown>)
+            : undefined;
+        throw new ApiError(msg, res.status, body);
       }
       if (res.status === 204) {
         return undefined as unknown as T;

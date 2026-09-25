@@ -5,6 +5,8 @@ import {
   deleteLastLetter,
   markComplete,
   buildShareText,
+  guessCount,
+  parseGuessCount,
   sessionResult,
 } from "../engine";
 import type { TileState } from "../types";
@@ -296,5 +298,70 @@ describe("sessionResult (#2451)", () => {
     }
     s = markComplete(s, false);
     expect(sessionResult(s)).toEqual({ is_complete: true, won: false, guesses_used: 6 });
+  });
+});
+
+// #2541 — when a guess's response is lost the board falls behind the server,
+// so its row count is structurally low. The server's count wins; the board
+// covers a missing or stale one.
+describe("guessCount (#2541)", () => {
+  const tiles = (word: string, status: TileState["status"]): TileState[] =>
+    word.split("").map((letter) => ({ letter, status }));
+
+  function boardWithRows(n: number) {
+    let s = initialState("2026-05-03:en", 5, "en");
+    for (const word of ["crane", "stole", "bunny", "fizzy", "hippo", "jazzy"].slice(0, n)) {
+      s = applyServerResult(typeWord(s, word), tiles(word, "absent"));
+    }
+    return s;
+  }
+
+  it("counts submitted rows when the server has given no count", () => {
+    expect(guessCount(boardWithRows(3))).toBe(3);
+  });
+
+  it("takes the server's count when the board is behind it", () => {
+    expect(guessCount({ ...boardWithRows(4), guesses_used: 5 })).toBe(5);
+  });
+
+  it("ignores a stale server count that is below the board", () => {
+    // A count stored before later guesses were scored while the server's
+    // record was unreachable (they return no count).
+    expect(guessCount({ ...boardWithRows(4), guesses_used: 2 })).toBe(4);
+  });
+
+  it("drives sessionResult, so a lost-response 5-guess win is not reported as 4", () => {
+    const s = markComplete({ ...boardWithRows(4), guesses_used: 5 }, true);
+    expect(sessionResult(s)).toEqual({ is_complete: true, won: true, guesses_used: 5 });
+  });
+
+  it("drives the share text result", () => {
+    const s = markComplete({ ...boardWithRows(4), guesses_used: 5 }, true);
+    expect(buildShareText(s, "https://bcarcade.com/daily-word")).toContain("Daily Word #1 — 5/6");
+  });
+});
+
+describe("parseGuessCount (#2541)", () => {
+  it("accepts a plausible count", () => {
+    expect(parseGuessCount(5)).toBe(5);
+    expect(parseGuessCount(0)).toBe(0);
+    expect(parseGuessCount(6)).toBe(6);
+  });
+
+  it("returns undefined when there is no count, e.g. an older API", () => {
+    expect(parseGuessCount(undefined)).toBeUndefined();
+  });
+
+  it("rejects anything that is not a plausible count — the source is untrusted", () => {
+    for (const bad of ["5", 2.5, -1, 7, NaN, null, true, {}]) {
+      expect(parseGuessCount(bad)).toBeUndefined();
+    }
+  });
+});
+
+describe("guessCount — corrupt saved count", () => {
+  it("falls back to the board rather than producing NaN", () => {
+    const s = initialState("2026-05-03:en", 5, "en");
+    expect(guessCount({ ...s, guesses_used: "garbage" as unknown as number })).toBe(0);
   });
 });
