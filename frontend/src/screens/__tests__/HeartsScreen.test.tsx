@@ -110,8 +110,26 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
       const updated = getAllByRole("radio").find((r) =>
         /mixed table/i.test(r.props.accessibilityLabel)
       )!;
-      expect(updated.props.accessibilityState.selected).toBe(true);
+      expect(updated.props.accessibilityState.checked).toBe(true);
     });
+  });
+
+  it("opens on the opponent style of the last game (#1129)", async () => {
+    await AsyncStorage.setItem("hearts.difficulty", "daring");
+    const { getByTestId } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("hearts-difficulty-daring").props.accessibilityState.checked).toBe(true)
+    );
+  });
+
+  it("remembers the opponent style a game starts with (#1129)", async () => {
+    await AsyncStorage.removeItem("hearts.difficulty");
+    const { getByTestId } = await renderScreen();
+    await waitFor(() => getByTestId("hearts-difficulty-cautious"));
+    await fireEvent.press(getByTestId("hearts-difficulty-cautious"));
+    expect(await AsyncStorage.getItem("hearts.difficulty")).toBeNull();
+    await fireEvent.press(getByTestId("hearts-start-game"));
+    expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("cautious");
   });
 });
 

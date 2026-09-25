@@ -641,8 +641,8 @@ describe("DifficultySelector", () => {
 
   it("marks the current value as selected", async () => {
     const { getByLabelText } = await wrap(<DifficultySelector value="hard" onChange={() => {}} />);
-    expect(getByLabelText(/hard/i).props.accessibilityState?.selected).toBe(true);
-    expect(getByLabelText(/easy/i).props.accessibilityState?.selected).toBe(false);
+    expect(getByLabelText(/hard/i).props.accessibilityState?.checked).toBe(true);
+    expect(getByLabelText(/easy/i).props.accessibilityState?.checked).toBe(false);
   });
 
   it("fires onChange with the new difficulty", async () => {

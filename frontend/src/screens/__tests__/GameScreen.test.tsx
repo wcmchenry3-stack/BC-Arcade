@@ -3,7 +3,7 @@ import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
-import { saveGame, clearGame } from "../../game/yacht/storage";
+import { saveGame, clearGame, loadLastMode, saveLastMode } from "../../game/yacht/storage";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -226,6 +226,33 @@ function makeGameOverState(): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 // GH #225 — "Play Again" reset correctness
 // ---------------------------------------------------------------------------
+
+describe("GameScreen — last difficulty (#1129)", () => {
+  it("playing Solo keeps the last VS difficulty for next time", async () => {
+    (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "hard" });
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    expect(result.getByTestId("yacht-difficulty-hard").props.accessibilityState).toEqual(
+      expect.objectContaining({ checked: true })
+    );
+
+    await fireEvent.press(result.getByTestId("yacht-mode-solo"));
+    expect(saveLastMode).toHaveBeenCalledWith("solo", "hard");
+  });
+});
 
 describe("GameScreen — Play Again reset (GH #225)", () => {
   beforeEach(() => {

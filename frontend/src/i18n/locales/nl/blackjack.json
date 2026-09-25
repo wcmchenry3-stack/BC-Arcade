@@ -147,5 +147,6 @@
   "tableSelect.kicker": "KIES EEN TAFEL",
   "tableSelect.tagline": "Overleef de run.",
   "tableSelect.taglineSub": "Elke tafel is een volledig verhaal — startkapitaal, een doel om te bereiken en een schone afsluiting.",
-  "tableSelect.viewHistory": "Bekijk runhistorie"
+  "tableSelect.viewHistory": "Bekijk runhistorie",
+  "tableSelect.lastPlayed": "Laatst gespeeld"
 }

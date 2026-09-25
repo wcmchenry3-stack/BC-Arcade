@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "現在の連続記録：{{count}}日",
   "streak.pillA11y_other": "現在の連続記録：{{count}}日",
   "legal.privacyPolicy": "プライバシーポリシー",
-  "legal.termsOfService": "利用規約"
+  "legal.termsOfService": "利用規約",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "このレベルは BC Arcade Premium の一部です。近日公開。",
+  "premiumLevel.ok": "OK",
+  "premiumLevel.tag": "プレミアム",
+  "premiumLevel.lockedLabel": "{{level}}、ロック中。BC Arcade Premium の一部です。"
 }

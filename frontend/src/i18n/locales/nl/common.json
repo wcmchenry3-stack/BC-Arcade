@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "Huidige reeks: {{count}} dag",
   "streak.pillA11y_other": "Huidige reeks: {{count}} dagen",
   "legal.privacyPolicy": "Privacybeleid",
-  "legal.termsOfService": "Servicevoorwaarden"
+  "legal.termsOfService": "Servicevoorwaarden",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "Dit niveau hoort bij BC Arcade Premium, binnenkort beschikbaar.",
+  "premiumLevel.ok": "OK",
+  "premiumLevel.tag": "Premium",
+  "premiumLevel.lockedLabel": "{{level}}, vergrendeld. Onderdeel van BC Arcade Premium."
 }

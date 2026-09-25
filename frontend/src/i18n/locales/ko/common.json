@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "현재 연속 기록: {{count}}일",
   "streak.pillA11y_other": "현재 연속 기록: {{count}}일",
   "legal.privacyPolicy": "개인정보 처리방침",
-  "legal.termsOfService": "서비스 약관"
+  "legal.termsOfService": "서비스 약관",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "이 레벨은 BC Arcade Premium에 포함됩니다. 곧 출시됩니다.",
+  "premiumLevel.ok": "확인",
+  "premiumLevel.tag": "프리미엄",
+  "premiumLevel.lockedLabel": "{{level}}, 잠김. BC Arcade Premium에 포함됨."
 }

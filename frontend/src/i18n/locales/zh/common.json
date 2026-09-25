@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "当前连续天数：{{count}}天",
   "streak.pillA11y_other": "当前连续天数：{{count}}天",
   "legal.privacyPolicy": "隐私政策",
-  "legal.termsOfService": "服务条款"
+  "legal.termsOfService": "服务条款",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "此级别属于 BC Arcade Premium，即将推出。",
+  "premiumLevel.ok": "确定",
+  "premiumLevel.tag": "高级版",
+  "premiumLevel.lockedLabel": "{{level}}，已锁定。属于 BC Arcade Premium。"
 }

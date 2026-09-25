@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "Current streak: {{count}} day",
   "streak.pillA11y_other": "Current streak: {{count}} days",
   "legal.privacyPolicy": "Privacy Policy",
-  "legal.termsOfService": "Terms of Service"
+  "legal.termsOfService": "Terms of Service",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "This level is part of BC Arcade Premium, coming soon.",
+  "premiumLevel.ok": "OK",
+  "premiumLevel.tag": "Premium",
+  "premiumLevel.lockedLabel": "{{level}}, locked. Part of BC Arcade Premium."
 }

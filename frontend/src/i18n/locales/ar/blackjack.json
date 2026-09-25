@@ -147,5 +147,6 @@
   "tableSelect.kicker": "اختر طاولة",
   "tableSelect.tagline": "انجُ من الجولة.",
   "tableSelect.taglineSub": "كل طاولة قوس كامل — رصيد بداية، وهدف للوصول، ونهاية نظيفة.",
-  "tableSelect.viewHistory": "عرض سجل الجولات"
+  "tableSelect.viewHistory": "عرض سجل الجولات",
+  "tableSelect.lastPlayed": "آخر لعب"
 }

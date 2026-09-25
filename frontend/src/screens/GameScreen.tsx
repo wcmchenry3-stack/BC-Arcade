@@ -497,7 +497,8 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
-    void saveLastMode("solo", "medium");
+    // Keep the last VS difficulty, so the next VS game still opens on it (#1129).
+    void saveLastMode("solo", pendingDiff);
     setDifficultyChosen(true);
     syncStart();
   }

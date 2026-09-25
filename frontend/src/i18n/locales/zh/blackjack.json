@@ -147,5 +147,6 @@
   "tableSelect.kicker": "选择牌桔",
   "tableSelect.tagline": "在轮次中生存。",
   "tableSelect.taglineSub": "每张牌桔都是一段完整旅程——初始筹码、达成目标、干净结束。",
-  "tableSelect.viewHistory": "查看轮次记录"
+  "tableSelect.viewHistory": "查看轮次记录",
+  "tableSelect.lastPlayed": "上次游玩"
 }

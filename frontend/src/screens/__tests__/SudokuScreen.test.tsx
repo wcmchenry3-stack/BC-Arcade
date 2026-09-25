@@ -141,6 +141,22 @@ describe("SudokuScreen — pre-game (after load)", () => {
     expect(getByLabelText(/hard/i)).toBeTruthy();
     expect(getByRole("button", { name: /start/i })).toBeTruthy();
   });
+
+  it("opens on the difficulty of the last puzzle (#1129)", async () => {
+    await AsyncStorage.setItem("sudoku.difficulty", "hard");
+    const { getByTestId } = await renderAndAwaitLoad();
+    await waitFor(() =>
+      expect(getByTestId("sudoku-difficulty-hard").props.accessibilityState.checked).toBe(true)
+    );
+  });
+
+  it("remembers the difficulty a puzzle starts at (#1129)", async () => {
+    const { getByTestId } = await renderAndAwaitLoad();
+    await fireEvent.press(getByTestId("sudoku-difficulty-medium"));
+    expect(await AsyncStorage.getItem("sudoku.difficulty")).toBeNull();
+    await fireEvent.press(getByTestId("sudoku-pregame-start"));
+    expect(await AsyncStorage.getItem("sudoku.difficulty")).toBe("medium");
+  });
 });
 
 describe("SudokuScreen — mount resume", () => {

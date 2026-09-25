@@ -147,5 +147,6 @@
   "tableSelect.kicker": "בחר שולחן",
   "tableSelect.tagline": "שרוד את הסיבוב.",
   "tableSelect.taglineSub": "כל שולחן הוא קשת שלמה — יתרת פתיחה, יעד להגיע אליו ויציאה נקייה.",
-  "tableSelect.viewHistory": "הצג היסטוריית סיבובים"
+  "tableSelect.viewHistory": "הצג היסטוריית סיבובים",
+  "tableSelect.lastPlayed": "שוחק לאחרונה"
 }

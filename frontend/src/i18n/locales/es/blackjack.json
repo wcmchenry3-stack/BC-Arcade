@@ -147,5 +147,6 @@
   "tableSelect.kicker": "ELIGE UNA MESA",
   "tableSelect.tagline": "Sobrevive la racha.",
   "tableSelect.taglineSub": "Cada mesa es un arco completo — un saldo inicial, una meta y un cierre limpio.",
-  "tableSelect.viewHistory": "Ver historial de rachas"
+  "tableSelect.viewHistory": "Ver historial de rachas",
+  "tableSelect.lastPlayed": "Última partida"
 }

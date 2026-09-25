@@ -67,5 +67,10 @@
   "streak.pillA11y_many": "Текущая серия: {{count}} дней",
   "streak.pillA11y_other": "Текущая серия: {{count}} дня",
   "legal.privacyPolicy": "Политика конфиденциальности",
-  "legal.termsOfService": "Условия использования"
+  "legal.termsOfService": "Условия использования",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "Этот уровень входит в BC Arcade Premium — скоро.",
+  "premiumLevel.ok": "ОК",
+  "premiumLevel.tag": "Премиум",
+  "premiumLevel.lockedLabel": "{{level}}, заблокировано. Входит в BC Arcade Premium."
 }

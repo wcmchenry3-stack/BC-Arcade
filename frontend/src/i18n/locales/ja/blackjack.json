@@ -147,5 +147,6 @@
   "tableSelect.kicker": "テーブルを選ぶ",
   "tableSelect.tagline": "ランを生き延びろ。",
   "tableSelect.taglineSub": "各テーブルは完全なアーク——開始チップ、目標額、そしてクリーンなエンド。",
-  "tableSelect.viewHistory": "ランの履歴を見る"
+  "tableSelect.viewHistory": "ランの履歴を見る",
+  "tableSelect.lastPlayed": "前回プレイ"
 }

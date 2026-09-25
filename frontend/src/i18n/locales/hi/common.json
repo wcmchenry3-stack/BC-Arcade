@@ -65,5 +65,10 @@
   "streak.pillA11y_one": "वर्तमान स्ट्रीक: {{count}} दिन",
   "streak.pillA11y_other": "वर्तमान स्ट्रीक: {{count}} दिन",
   "legal.privacyPolicy": "गोपनीयता नीति",
-  "legal.termsOfService": "सेवा की शर्तें"
+  "legal.termsOfService": "सेवा की शर्तें",
+  "premiumLevel.title": "BC Arcade Premium",
+  "premiumLevel.body": "यह स्तर BC Arcade Premium का हिस्सा है, जल्द आ रहा है।",
+  "premiumLevel.ok": "ठीक है",
+  "premiumLevel.tag": "प्रीमियम",
+  "premiumLevel.lockedLabel": "{{level}}, लॉक है। BC Arcade Premium का हिस्सा।"
 }

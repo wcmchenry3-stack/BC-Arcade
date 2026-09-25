@@ -147,5 +147,6 @@
   "tableSelect.kicker": "ESCOLHA UMA MESA",
   "tableSelect.tagline": "Sobreviva à rodada.",
   "tableSelect.taglineSub": "Cada mesa é um arco completo — saldo inicial, uma meta a alcançar e um final limpo.",
-  "tableSelect.viewHistory": "Ver histórico de rodadas"
+  "tableSelect.viewHistory": "Ver histórico de rodadas",
+  "tableSelect.lastPlayed": "Última partida"
 }
