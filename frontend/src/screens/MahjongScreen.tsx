@@ -1325,11 +1325,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 12,
   },
-  errorText: {
-    fontSize: 13,
-    marginBottom: 10,
-    textAlign: "center",
-  },
   submittedText: {
     fontSize: 18,
     fontWeight: "700",

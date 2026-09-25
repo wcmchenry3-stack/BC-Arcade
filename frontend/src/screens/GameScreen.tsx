@@ -975,11 +975,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  errorText: {
-    textAlign: "center",
-    fontSize: 13,
-    marginTop: 4,
-  },
   scorecardContainer: {
     flex: 1,
     minHeight: 0,
