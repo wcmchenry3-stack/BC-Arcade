@@ -219,7 +219,7 @@ async def test_sudoku_partition_filter_and_missing_variant_is_classic(client: Te
         "sudoku", _sid(), score=260, name="Mini", meta={"difficulty": "hard", "variant": "mini"}
     )
     await _seed(
-        "sudoku", _sid(), score=270, name="Easy", meta={"difficulty": "easy", "variant": "classic"}
+        "sudoku", _sid(), score=90, name="Easy", meta={"difficulty": "easy", "variant": "classic"}
     )
 
     classic = _board(client, "sudoku?difficulty=hard")
@@ -233,7 +233,7 @@ async def test_sudoku_partition_filter_and_missing_variant_is_classic(client: Te
     assert _pairs(mini) == [("Mini", 260)]
 
     easy = _board(client, "sudoku?difficulty=easy")
-    assert _pairs(easy) == [("Easy", 270)]
+    assert _pairs(easy) == [("Easy", 90)]
 
 
 @pytest.mark.parametrize(
@@ -674,3 +674,366 @@ async def test_named_session_row_appears_exactly_once(client: TestClient, game_t
     assert play(worse) == {"rank": 1, "is_best": False}
     entries = _board(client, path, sid)["entries"]
     assert [(e["player_name"], e["value"]) for e in entries] == [("Solo", 5)]
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: bad stored rows never break or top a board
+# ---------------------------------------------------------------------------
+
+HUGE = 10**400
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("level_reached", 2**31), ("total_moves", 2**31), ("total_moves", HUGE)],
+)
+async def test_complete_rejects_out_of_range_metadata_values(
+    client: TestClient, field: str, value: int
+) -> None:
+    sid = _sid()
+    await _grant_all(sid)
+    game_id = _create(client, sid, "sort")
+    result = {"level_reached": 3, field: value}
+    r = _complete(client, sid, game_id, result=result)
+    assert r.status_code == 400, r.text
+
+
+async def test_complete_rejects_final_score_above_int32_on_uncapped_board(
+    client: TestClient,
+) -> None:
+    sid = _sid()
+    await _grant_all(sid)
+    game_id = _create(client, sid, "cascade")
+    assert _complete(client, sid, game_id, final_score=2**31).status_code == 400
+    assert _complete(client, sid, game_id, final_score=2**31 - 1).status_code == 200
+
+
+async def test_stored_huge_metric_or_tiebreak_does_not_break_the_board(
+    client: TestClient,
+) -> None:
+    # Rows written before the write-side bound: the board must still load.
+    await _seed("sort", _sid(), name="HugeLevel", meta={"level_reached": HUGE})
+    await _seed(
+        "sort", _sid(), name="HugeMoves", minutes=1, meta={"level_reached": 5, "total_moves": HUGE}
+    )
+    await _seed("sort", _sid(), name="NoMoves", minutes=2, meta={"level_reached": 5})
+    body = _board(client, "sort")
+    # A huge tie-break counts as missing: HugeMoves ties NoMoves and finished first.
+    assert _pairs(body) == [("HugeMoves", 5), ("NoMoves", 5)]
+
+
+async def test_stored_non_integer_metric_never_ranks(client: TestClient) -> None:
+    for i, level in enumerate(("12", "abc", 3.5, True, None, [1], {"x": 1})):
+        await _seed("sort", _sid(), name=f"Bad{i}", meta={"level_reached": level})
+    await _seed("sort", _sid(), name="Good", meta={"level_reached": 2})
+    assert _pairs(_board(client, "sort")) == [("Good", 2)]
+
+
+async def test_stored_non_integer_tiebreak_counts_as_missing(client: TestClient) -> None:
+    await _seed(
+        "sort", _sid(), name="StrMoves", minutes=1, meta={"level_reached": 5, "total_moves": "1"}
+    )
+    await _seed(
+        "sort", _sid(), name="NegMoves", minutes=2, meta={"level_reached": 5, "total_moves": -5}
+    )
+    await _seed(
+        "sort", _sid(), name="RealMoves", minutes=3, meta={"level_reached": 5, "total_moves": 90}
+    )
+    assert [n for n, _ in _pairs(_board(client, "sort"))] == ["RealMoves", "StrMoves", "NegMoves"]
+
+
+def test_board_sql_never_casts_json_to_float() -> None:
+    """Postgres ``CAST(... AS FLOAT)`` overflows on a huge JSON number (500)."""
+    from sqlalchemy.dialects import postgresql
+
+    board = leaderboard.enabled_board("sort")
+    stmt = leaderboard.top_statement(board, 1, {})
+    sql = str(stmt.compile(dialect=postgresql.dialect())).upper()
+    assert "FLOAT" not in sql
+    assert "JSONB_TYPEOF" in sql
+
+
+async def test_negative_score_never_ranks_on_asc_board(client: TestClient) -> None:
+    await _seed("freecell", _sid(), score=-1_000_000, name="Cheat")
+    await _seed("freecell", _sid(), score=90, name="Honest")
+    assert _pairs(_board(client, "freecell")) == [("Honest", 90)]
+
+    sid = _sid()
+    game_id = await _seed("freecell", sid, score=80, name=None, minutes=1)
+    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
+    assert r.json() == {"rank": 1, "is_best": True}
+
+
+async def test_negative_final_score_completes_but_cannot_be_named(client: TestClient) -> None:
+    """Rejecting the completion would dead-letter the game and lose its stats."""
+    sid = _sid()
+    await _grant_all(sid)
+    game_id = _create(client, sid, "freecell")
+    r = _complete(client, sid, game_id, final_score=-5)
+    assert r.status_code == 200, r.text
+    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.parametrize("level", ["12", 3.5, -1])
+async def test_name_route_rejects_non_integer_or_negative_metric(
+    client: TestClient, level: Any
+) -> None:
+    sid = _sid()
+    game_id = await _seed("sort", sid, name=None, meta={"level_reached": level})
+    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
+    assert r.status_code == 400, r.text
+
+
+async def test_stored_rows_above_the_cap_never_rank(client: TestClient) -> None:
+    cap = leaderboard.enabled_board("solitaire").max_value
+    await _seed("solitaire", _sid(), score=cap + 1, name="Over")
+    await _seed("solitaire", _sid(), score=cap, name="AtCap")
+    assert _pairs(_board(client, "solitaire")) == [("AtCap", cap)]
+
+    await _seed("sort", _sid(), name="Level30", meta={"level_reached": 30})
+    await _seed("sort", _sid(), name="Level23", meta={"level_reached": 23})
+    assert _pairs(_board(client, "sort")) == [("Level23", 23)]
+
+
+async def test_sudoku_per_difficulty_caps_apply_to_stored_rows(client: TestClient) -> None:
+    await _seed("sudoku", _sid(), score=150, name="EasyOver", meta={"difficulty": "easy"})
+    await _seed("sudoku", _sid(), score=100, name="EasyMax", meta={"difficulty": "easy"})
+    await _seed("sudoku", _sid(), score=250, name="MediumOver", meta={"difficulty": "medium"})
+    await _seed("sudoku", _sid(), score=290, name="Hard", meta={"difficulty": "hard"})
+    assert _pairs(_board(client, "sudoku?difficulty=easy")) == [("EasyMax", 100)]
+    assert _board(client, "sudoku?difficulty=medium")["entries"] == []
+    assert _pairs(_board(client, "sudoku?difficulty=hard")) == [("Hard", 290)]
+
+    sid = _sid()
+    over = await _seed("sudoku", sid, score=150, name=None, meta={"difficulty": "easy"})
+    r = client.patch(f"/games/{over}/name", headers=_headers(sid), json={"player_name": "X"})
+    assert r.status_code == 400, r.text
+
+
+async def test_complete_uses_the_rows_partition_cap(client: TestClient) -> None:
+    sid = _sid()
+    await _grant_all(sid)
+
+    def create(difficulty: str) -> str:
+        r = client.post(
+            "/games",
+            headers=_headers(sid),
+            json={"game_type": "sudoku", "metadata": {"difficulty": difficulty}},
+        )
+        assert r.status_code == 200, r.text
+        return r.json()["id"]
+
+    easy = create("easy")
+    assert _complete(client, sid, easy, final_score=150).status_code == 400
+    assert _complete(client, sid, easy, final_score=100).status_code == 200
+    hard = create("hard")
+    assert _complete(client, sid, hard, final_score=250).status_code == 200
+
+
+def _patched_board(monkeypatch: pytest.MonkeyPatch, game_type: str, **changes: Any) -> None:
+    mod = get_module(game_type)
+    monkeypatch.setattr(mod, "board", mod.board.model_copy(update=changes))
+
+
+async def test_partition_default_comes_from_the_board(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patched_board(monkeypatch, "sudoku", partition_defaults=(("variant", "mini"),))
+    await _seed("sudoku", _sid(), score=90, name="NoVariant", meta={"difficulty": "easy"})
+    await _seed(
+        "sudoku",
+        _sid(),
+        score=80,
+        name="Classic",
+        meta={"difficulty": "easy", "variant": "classic"},
+    )
+    body = _board(client, "sudoku?difficulty=easy")
+    assert body["partition"] == {"difficulty": "easy", "variant": "mini"}
+    assert _pairs(body) == [("NoVariant", 90)]
+
+
+async def test_no_partition_default_means_the_key_is_required(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patched_board(monkeypatch, "sudoku", partition_defaults=())
+    r = client.get("/games/leaderboard/sudoku?difficulty=easy")
+    assert r.status_code == 400, r.text
+
+
+async def test_qualifying_outcomes_are_honoured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patched_board(monkeypatch, "solitaire", qualifying_outcomes=("completed",))
+    await _seed("solitaire", _sid(), score=100, name="Completed", outcome="completed")
+    await _seed("solitaire", _sid(), score=900, name="KeptPlaying", outcome="kept_playing")
+    await _seed("solitaire", _sid(), score=800, name="NoOutcome", outcome=None)
+    assert _pairs(_board(client, "solitaire")) == [("Completed", 100)]
+
+    sid = _sid()
+    other = await _seed("solitaire", sid, score=50, name=None, outcome="kept_playing")
+    r = client.patch(f"/games/{other}/name", headers=_headers(sid), json={"player_name": "X"})
+    assert r.status_code == 400, r.text
+
+
+async def test_long_metadata_names_are_trimmed_and_truncated(client: TestClient) -> None:
+    long_name = "  " + "A" * 31 + " " + "B" * 30 + "  "  # 64 characters inside the padding
+    await _seed("sudoku", _sid(), score=90, name=long_name, meta={"difficulty": "easy"})
+    await _seed("sudoku", _sid(), score=80, name="x" * 40, meta={"difficulty": "easy"})
+    await _seed("sudoku", _sid(), score=70, name="\t 　\n", meta={"difficulty": "easy"})
+    names = [e["player_name"] for e in _board(client, "sudoku?difficulty=easy")["entries"]]
+    assert names == ["A" * 31, "x" * 32]
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: DB errors are logged, rolled back and chained
+# ---------------------------------------------------------------------------
+
+SECRET_SID = "0f0f0f0f-dead-4bee-8f00-000000000000"
+
+
+def _db_error() -> Exception:
+    from sqlalchemy.exc import OperationalError
+
+    return OperationalError("SELECT ... WHERE session_id = ?", {"sid": SECRET_SID}, Exception("x"))
+
+
+class _FailingDB:
+    def __init__(self, *, fail_commit: bool = False, fail_execute: bool = False) -> None:
+        self.fail_commit = fail_commit
+        self.fail_execute = fail_execute
+        self.rolled_back = False
+
+    async def execute(self, *_: Any, **__: Any) -> Any:
+        if self.fail_execute:
+            raise _db_error()
+        raise AssertionError("unexpected execute")
+
+    async def commit(self) -> None:
+        if self.fail_commit:
+            raise _db_error()
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+def _assert_logged_safely(caplog: pytest.LogCaptureFixture, game_type: str) -> None:
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert errors, "the DB error was not logged"
+    text = " ".join(r.getMessage() for r in errors)
+    assert "OperationalError" in text and game_type in text
+    assert SECRET_SID not in text
+    assert all(SECRET_SID not in repr(r.args) for r in errors)
+
+
+async def test_top_entries_db_error_is_logged_and_chained(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    board = leaderboard.enabled_board("solitaire")
+    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
+        await leaderboard.top_entries(
+            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            game_type="solitaire",
+            board=board,
+            game_type_id=1,
+            partition={},
+        )
+    assert info.value.status_code == 500
+    assert isinstance(info.value.__cause__, OperationalError)
+    _assert_logged_safely(caplog, "solitaire")
+
+
+def _finished_game(game_type: str) -> Game:
+    return Game(
+        id=uuid.uuid4(),
+        session_id=SECRET_SID,
+        game_type=GameType(name=game_type),
+        game_type_id=1,
+        game_metadata={},
+        final_score=100,
+        outcome="completed",
+        completed_at=T0,
+    )
+
+
+async def test_set_player_name_commit_error_rolls_back_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    db = _FailingDB(fail_commit=True)
+    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
+        await leaderboard.set_player_name(
+            db,  # type: ignore[arg-type]
+            game=_finished_game("solitaire"),
+            session_id=SECRET_SID,
+            player_name="Me",
+        )
+    assert info.value.status_code == 500
+    assert isinstance(info.value.__cause__, OperationalError)
+    assert db.rolled_back
+    _assert_logged_safely(caplog, "solitaire")
+
+
+async def test_set_player_name_rank_error_is_logged_and_chained(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
+        await leaderboard.set_player_name(
+            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            game=_finished_game("solitaire"),
+            session_id=SECRET_SID,
+            player_name="Me",
+        )
+    assert info.value.status_code == 500
+    assert isinstance(info.value.__cause__, OperationalError)
+    _assert_logged_safely(caplog, "solitaire")
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: one game-type lookup per completion
+# ---------------------------------------------------------------------------
+
+
+async def test_complete_game_looks_up_the_game_type_once() -> None:
+    from sqlalchemy import event
+
+    from db.base import get_engine
+    from games import service
+
+    sid = _sid()
+    factory = get_session_factory()
+    async with factory() as db:
+        game = await service.create_game(
+            db,
+            session_id=sid,
+            client_id=None,
+            game_type_name="sort",
+            metadata={},
+            players=[],
+        )
+        statements: list[str] = []
+
+        def record(_conn, _cursor, statement, *_args) -> None:  # type: ignore[no-untyped-def]
+            statements.append(statement)
+
+        engine = get_engine().sync_engine
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            await service.complete_game(
+                db,
+                game_id=game.id,
+                session_id=sid,
+                final_score=None,
+                outcome="completed",
+                duration_ms=None,
+                result={"level_reached": 3, "total_moves": 10},
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+    lookups = [s for s in statements if "FROM game_types" in s]
+    assert len(lookups) == 1, lookups

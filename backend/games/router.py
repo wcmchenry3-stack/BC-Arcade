@@ -183,6 +183,8 @@ async def get_leaderboard(
         gt = await leaderboard.load_game_type(db, game_type)
         if gt is None:
             raise HTTPException(status_code=404, detail="Leaderboard not found.")
+        # Not redundant with check_entitlement's own premium check: a free
+        # board is public, so X-Session-ID is only required (400) for premium.
         if gt.is_premium:
             await check_entitlement(db, get_session_id(request), game_type)
         entries = await leaderboard.top_entries(
@@ -353,8 +355,7 @@ async def set_player_name(
             raise HTTPException(status_code=404, detail="Game not found.")
         if game.session_id != sid:
             raise HTTPException(status_code=403, detail="Game belongs to a different session.")
-        if game.game_type.is_premium:
-            await check_entitlement(db, sid, game.game_type.name)
+        await check_entitlement(db, sid, game.game_type.name)  # no-op for free games
         result = await leaderboard.set_player_name(
             db, game=game, session_id=sid, player_name=body.player_name
         )

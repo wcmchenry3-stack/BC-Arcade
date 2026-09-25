@@ -84,8 +84,9 @@ async def compute_rank(
             )
         ).scalar()
     except SQLAlchemyError as exc:
-        logger.error("%s rank query failed: %s", game_label, exc)
-        raise HTTPException(status_code=500, detail="Failed to calculate rank.")
+        # Class name only: the exception text carries bound parameters.
+        logger.error("%s rank query failed: %s", game_label, type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Failed to calculate rank.") from exc
     return int(count or 0) + 1
 
 
