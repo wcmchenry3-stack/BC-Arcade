@@ -6,10 +6,12 @@
  */
 
 import { createGameClient } from "../game/_shared/httpClient";
+import type { GameType } from "../game/_shared/types";
 import type {
   StatsResponse,
   GameHistoryResponse,
   GameDetailResponse,
+  GameLeaderboardResponse,
   GameRankResponse,
 } from "./types";
 
@@ -42,6 +44,20 @@ export const statsApi = {
   getGameRank: (gameId: string): Promise<GameRankResponse> =>
     request<GameRankResponse>(`/games/${encodeURIComponent(gameId)}/rank`),
 
+  /**
+   * `GET /games/leaderboard/{gameType}` (#2618): the top players on one board,
+   * one entry each. `partition` holds the board's partition query params
+   * (e.g. `{ difficulty: "easy" }`); a board without partitions takes none.
+   */
+  getLeaderboard: (
+    gameType: GameType,
+    partition: Readonly<Record<string, string>> = {}
+  ): Promise<GameLeaderboardResponse> => {
+    const query = new URLSearchParams(partition as Record<string, string>).toString();
+    const path = `/games/leaderboard/${encodeURIComponent(gameType)}`;
+    return request<GameLeaderboardResponse>(query ? `${path}?${query}` : path);
+  },
+
   deleteMyData: (): Promise<void> => request<void>("/me", { method: "DELETE" }),
 };
 
@@ -49,6 +65,8 @@ export type {
   StatsResponse,
   GameHistoryResponse,
   GameDetailResponse,
+  GameLeaderboardEntry,
+  GameLeaderboardResponse,
   GameRankReason,
   GameRankResponse,
 } from "./types";
