@@ -1,7 +1,8 @@
-"""Contract tests for shared vocabulary (#537, #538).
+"""Contract tests for shared vocabulary (#537, #538, #2617).
 
-Verifies that frontend/src/api/vocab.ts stays in sync with backend/vocab.py,
-and that the GameType enum stays in sync with the game_types DB table.
+Verifies that frontend/src/api/vocab.ts stays in sync with backend/vocab.py
+and every GameModule's ``board``, and that the GameType enum stays in sync
+with the game_types DB table.
 
 These tests run in CI on every push — a drift between the Python enums and
 the committed TypeScript file (or the DB rows) will fail the build with an
@@ -10,6 +11,8 @@ actionable error message.
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -37,6 +40,66 @@ def _parse_ts_array(array_name: str) -> set[str]:
 
 def test_ts_vocab_file_exists() -> None:
     assert _VOCAB_TS.exists(), f"Missing {_VOCAB_TS} — run: python backend/scripts/gen_vocab_ts.py"
+
+
+def _load_generator():
+    """Import backend/scripts/gen_vocab_ts.py (``scripts`` is not a package)."""
+    path = Path(__file__).parents[1] / "scripts" / "gen_vocab_ts.py"
+    spec = importlib.util.spec_from_file_location("_gen_vocab_ts", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_REGEN = "Re-generate: python backend/scripts/gen_vocab_ts.py > frontend/src/api/vocab.ts"
+
+
+def _parse_ts_boards() -> dict[str, dict | None]:
+    """Parse the ``BOARDS`` object literal in vocab.ts into Python values."""
+    content = _VOCAB_TS.read_text(encoding="utf-8")
+    match = re.search(r"export const BOARDS\b[^=]*=\s*(\{.*?\n\});", content, re.DOTALL)
+    assert match, f"Could not find BOARDS in {_VOCAB_TS}. {_REGEN}"
+    literal = re.sub(r"^(\s*)(\w+):", r'\1"\2":', match.group(1), flags=re.MULTILINE)
+    literal = re.sub(r",(\s*[}\]])", r"\1", literal)
+    return json.loads(literal)
+
+
+def test_boards_ts_matches_modules() -> None:
+    """BOARDS in vocab.ts must match every registered GameModule's ``board`` (#2617)."""
+    from games.registry import get_module
+
+    expected: dict[str, dict | None] = {}
+    for gt in GameType:
+        mod = get_module(gt.value)
+        board = mod.board if mod is not None else None
+        expected[gt.value] = (
+            None
+            if board is None
+            else {
+                "metric": board.metric,
+                "direction": board.direction,
+                "labelKey": board.label_key,
+                "partitions": board.partitions,
+                "enabled": board.enabled,
+            }
+        )
+    actual = _parse_ts_boards()
+    drift = {k: (expected.get(k), actual.get(k)) for k in expected.keys() | actual.keys()}
+    drift = {k: v for k, v in drift.items() if v[0] != v[1]}
+    assert not drift, (
+        "BOARDS in frontend/src/api/vocab.ts is out of sync with the backend modules.\n"
+        + "\n".join(f"  {k}: backend={e!r} ts={a!r}" for k, (e, a) in sorted(drift.items()))
+        + f"\n{_REGEN}"
+    )
+
+
+def test_vocab_ts_matches_generator_output() -> None:
+    """The committed vocab.ts is byte-for-byte what the generator prints."""
+    rendered = _load_generator().render() + "\n"
+    assert (
+        _VOCAB_TS.read_text(encoding="utf-8") == rendered
+    ), f"frontend/src/api/vocab.ts differs from the generator output. {_REGEN}"
 
 
 def test_game_type_ts_in_sync() -> None:

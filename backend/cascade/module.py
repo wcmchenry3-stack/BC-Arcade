@@ -7,6 +7,7 @@ structural subtyping — no inheritance required.
 from __future__ import annotations
 
 from cascade.models import CascadeMetadata
+from games.board import SCORE_METRIC, BoardDefinition
 from vocab import GameType
 
 
@@ -20,6 +21,8 @@ class CascadeModule:
     game_type = GameType.CASCADE
     metadata_model = CascadeMetadata
     result_model = None
+    # No natural ceiling (#2519 decision 14).
+    board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

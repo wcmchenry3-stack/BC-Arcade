@@ -88,9 +88,28 @@ Every game module must expose an object that satisfies the `GameModule` `typing.
 class GameModule(Protocol):
     game_type: GameType          # identifies this module in the registry
     metadata_model: type[BaseModel]  # Pydantic model for games.metadata validation
+    result_model: type[BaseModel] | None  # result block on PATCH /games/{id}/complete
+    board: BoardDefinition | None     # how the game is ranked (#2617)
 
     def stats_shape(self, raw_stats: dict) -> dict: ...
 ```
+
+**`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once: `metric` (`"final_score"` or a `games.metadata` key), `direction` (`desc` = higher is better, `asc` = lower is better), an optional `tiebreak` `(key, direction)`, `label_key` (i18n key for the metric's label), `partitions` (metadata keys that split the board), `max_value` (the highest legitimate value, `None` = uncapped) and `enabled` (`False` for games with no leaderboard). `completed_at asc` always breaks the final tie. The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`; `tests/test_vocab.py` fails on drift. No route reads them yet: the generic leaderboard, rank and stats code that uses them lands in #2618 and #2620 (epic #2519).
+
+| Game       | metric          | direction | tie-break         | partitions              | max_value | enabled |
+| ---------- | --------------- | --------- | ----------------- | ----------------------- | --------- | ------- |
+| Yacht      | `final_score`   | desc      | —                 | —                       | 400       | yes     |
+| Solitaire  | `final_score`   | desc      | —                 | —                       | 1245      | yes     |
+| FreeCell   | `final_score`   | asc       | —                 | —                       | —         | yes     |
+| Mahjong    | `final_score`   | desc      | —                 | —                       | 1220      | yes     |
+| Hearts     | `final_score`   | desc      | —                 | —                       | 100       | yes     |
+| Sudoku     | `final_score`   | desc      | —                 | `difficulty`, `variant` | 300       | yes     |
+| Cascade    | `final_score`   | desc      | —                 | —                       | —         | yes     |
+| Sort       | `level_reached` | desc      | `total_moves` asc | —                       | 23        | yes     |
+| Blackjack  | `final_score`   | desc      | —                 | —                       | —         | no      |
+| Daily Word | `guesses_used`  | asc       | —                 | —                       | —         | no      |
+
+Twenty48 and Star Swarm have no module yet (their boards arrive with their modules in #2623) and export `null`.
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
@@ -98,7 +117,7 @@ The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameM
 
 **Adding a module:**
 
-1. Create `backend/<game>/module.py` with a class that has `game_type`, `metadata_model`, and `stats_shape`.
+1. Create `backend/<game>/module.py` with a class that has `game_type`, `metadata_model`, `result_model`, `board` and `stats_shape`.
 2. Expose a module-level singleton: `module = MyGameModule()`.
 3. Add an entry to `_REGISTRY` in `backend/games/registry.py`.
 
@@ -106,12 +125,15 @@ Example (pass-through stats, no metadata):
 
 ```python
 # backend/mygame/module.py
+from games.board import SCORE_METRIC, BoardDefinition
 from mygame.models import MyGameMetadata
 from vocab import GameType
 
 class MyGameModule:
     game_type = GameType.MYGAME
     metadata_model = MyGameMetadata
+    result_model = None
+    board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}
@@ -251,7 +273,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`backend/mygame/`** — create the game package with at minimum `__init__.py`, `game.py`, `models.py`, `module.py`, `router.py`
 - [ ] **`backend/mygame/models.py`** — define `MyGameMetadata(BaseModel)` with `extra="forbid"`
   - CI: `tests/test_game_metadata.py` pattern (add a valid/invalid unit test)
-- [ ] **`backend/mygame/module.py`** — implement `GameModule` Protocol: `game_type`, `metadata_model`, `stats_shape()`
+- [ ] **`backend/mygame/module.py`** — implement `GameModule` Protocol: `game_type`, `metadata_model`, `result_model`, `board`, `stats_shape()`
   - CI: `tests/test_game_module_protocol.py` pattern (add a Protocol conformance test)
 - [ ] **`backend/games/registry.py`** — add the module singleton to `_REGISTRY`
 - [ ] **`backend/scripts/gen_vocab_ts.py`** — regenerate `frontend/src/api/vocab.ts`

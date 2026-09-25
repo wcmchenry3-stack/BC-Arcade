@@ -7,6 +7,7 @@ structural subtyping — no inheritance required.
 from __future__ import annotations
 
 from blackjack.models import BlackjackMetadata, BlackjackResult
+from games.board import SCORE_METRIC, BoardDefinition
 from vocab import GameType
 
 
@@ -22,6 +23,8 @@ class BlackjackModule:
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
+    # No leaderboard: chips are a balance, not a score (#2519 §4.2).
+    board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="chips", enabled=False)
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

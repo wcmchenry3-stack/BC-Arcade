@@ -6,6 +6,7 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
+from games.board import SCORE_METRIC, BoardDefinition
 from solitaire.models import SolitaireMetadata, SolitaireResult
 from vocab import GameType
 
@@ -20,6 +21,11 @@ class SolitaireModule:
     game_type = GameType.SOLITAIRE
     metadata_model = SolitaireMetadata
     result_model = SolitaireResult
+    # Draw-1 and Draw-3 share one board (#591). The 1245 cap is recomputed from
+    # the engine's scoring constants in tests/test_board_definitions.py.
+    board = BoardDefinition(
+        metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1245
+    )
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}
