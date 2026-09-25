@@ -31,11 +31,11 @@
   "a11y.invalidMove": "잘못된 이동",
   "error.saveFailed": "게임을 저장할 수 없습니다.",
   "error.loadFailed": "저장된 게임을 불러올 수 없습니다.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "시간",
+  "scoreboard.heroSub": "{{moves}}수 · 4개 중 {{foundations}}개 완성",
+  "scoreboard.heroSubEmpty": "아직 플레이한 게임이 없습니다",
+  "scoreboard.bestTime": "최고 기록",
+  "scoreboard.bestMoves": "최소 이동",
+  "scoreboard.gamesPlayed": "플레이한 게임",
+  "scoreboard.gamesWon": "이긴 게임"
 }

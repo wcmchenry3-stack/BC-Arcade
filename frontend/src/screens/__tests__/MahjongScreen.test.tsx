@@ -149,7 +149,7 @@ async function mount() {
   });
   // If no saved game exists the screen shows the layout select screen.
   // Pick the turtle layout so tests that need the play view can proceed.
-  const layoutCard = api.queryByLabelText("layout.turtle");
+  const layoutCard = api.queryByLabelText("Turtle");
   if (layoutCard) {
     await act(async () => {
       await fireEvent.press(layoutCard);
@@ -219,8 +219,8 @@ describe("MahjongScreen — mount and HUD", () => {
 
   it("renders score and pairs HUD on a fresh game", async () => {
     const api = await mount();
-    expect(api.getByText(/hud\.score/)).toBeTruthy();
-    expect(api.getByText(/hud\.pairs/)).toBeTruthy();
+    expect(api.getByText(/SCORE/)).toBeTruthy();
+    expect(api.getByText(/PAIRS/)).toBeTruthy();
   });
 });
 
@@ -231,7 +231,7 @@ describe("MahjongScreen — mount and HUD", () => {
 describe("MahjongScreen — undo affordance", () => {
   it("undo button is disabled on a fresh game (no moves yet)", async () => {
     const api = await mount();
-    const undo = api.getByLabelText("action.undoLabel");
+    const undo = api.getByLabelText("Undo last matched pair");
     expect(undo.props.accessibilityState?.disabled).toBe(true);
   });
 });
@@ -349,7 +349,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     });
     expect(api.queryByTestId("mahjong-result")).toBeNull();
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("layout.turtle"));
+      await fireEvent.press(api.getByLabelText("Turtle"));
     });
     await waitFor(() => {
       expect(api.getByTestId("game-canvas")).toBeTruthy();
@@ -417,7 +417,9 @@ describe("MahjongScreen — hint button", () => {
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("action.hintLabel"));
+      await fireEvent.press(
+        api.getByLabelText("Show a hint — highlights one valid pair for 2 seconds")
+      );
     });
 
     expect(api.getByTestId("hint-ids-size").props.children).toBe(2);
@@ -447,7 +449,9 @@ describe("MahjongScreen — hint button", () => {
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("action.hintLabel"));
+      await fireEvent.press(
+        api.getByLabelText("Show a hint — highlights one valid pair for 2 seconds")
+      );
     });
 
     expect(api.getByTestId("no-hint-toast")).toBeTruthy();
@@ -484,7 +488,7 @@ describe("MahjongScreen — shuffle button", () => {
   it("shuffle HUD button is enabled on a fresh game", async () => {
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeShufflableState(3)));
     const api = await mount();
-    const btn = api.getByLabelText("action.shuffleLabel");
+    const btn = api.getByLabelText("Shuffle remaining tiles into a new solvable arrangement");
     expect(btn.props.accessibilityState?.disabled).toBe(false);
   });
 
@@ -493,17 +497,19 @@ describe("MahjongScreen — shuffle button", () => {
     const api = await mount();
 
     await act(async () => {
-      await fireEvent.press(api.getByLabelText("action.shuffleLabel"));
+      await fireEvent.press(
+        api.getByLabelText("Shuffle remaining tiles into a new solvable arrangement")
+      );
     });
 
     // shufflesLeft should now be 2; the HUD text shows the count.
-    expect(api.queryByText(/action\.shuffle.*2/)).toBeTruthy();
+    expect(api.queryByText(/SHUFFLE 2/)).toBeTruthy();
   });
 
   it("shuffle HUD button is disabled when shufflesLeft is 0", async () => {
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeShufflableState(0)));
     const api = await mount();
-    const btn = api.getByLabelText("action.shuffleLabel");
+    const btn = api.getByLabelText("Shuffle remaining tiles into a new solvable arrangement");
     expect(btn.props.accessibilityState?.disabled).toBe(true);
   });
 });
@@ -531,8 +537,8 @@ describe("MahjongScreen — no-moves overlays", () => {
       JSON.stringify(makeNoMovesState({ shufflesLeft: 2 }))
     );
     const api = await mount();
-    expect(api.getByText("overlay.noMoves")).toBeTruthy();
-    expect(api.queryByText(/overlay\.shuffleButton/)).toBeTruthy();
+    expect(api.getByText("NO MOVES")).toBeTruthy();
+    expect(api.queryByText(/Shuffle \(\d+\)/)).toBeTruthy();
   });
 
   it("does not show the deadlock card immediately on mount", async () => {
@@ -687,8 +693,8 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
     });
-    expect(api.getByLabelText("layout.turtle")).toBeTruthy(); // on layout select
-    expect(api.queryByLabelText("layoutSelect.continue")).toBeNull();
+    expect(api.getByLabelText("Turtle")).toBeTruthy(); // on layout select
+    expect(api.queryByLabelText("Continue")).toBeNull();
     await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
   });
 

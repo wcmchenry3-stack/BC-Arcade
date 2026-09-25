@@ -213,69 +213,21 @@ jest.mock("@react-native-async-storage/async-storage", () => {
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-// English namespace fixtures for testing
-import common from "./src/i18n/locales/en/common.json";
-import yacht from "./src/i18n/locales/en/yacht.json";
-import cascade from "./src/i18n/locales/en/cascade.json";
-import errors from "./src/i18n/locales/en/errors.json";
-import blackjack from "./src/i18n/locales/en/blackjack.json";
-import twenty48 from "./src/i18n/locales/en/twenty48.json";
-import freecell from "./src/i18n/locales/en/freecell.json";
-import solitaire from "./src/i18n/locales/en/solitaire.json";
-import hearts from "./src/i18n/locales/en/hearts.json";
-import sudoku from "./src/i18n/locales/en/sudoku.json";
-import feedback from "./src/i18n/locales/en/feedback.json";
-import profile from "./src/i18n/locales/en/profile.json";
-import sort from "./src/i18n/locales/en/sort.json";
-import daily_word from "./src/i18n/locales/en/daily_word.json";
-import daily_challenge from "./src/i18n/locales/en/daily_challenge.json";
-import result from "./src/i18n/locales/en/result.json";
-import starswarm from "./src/i18n/locales/en/starswarm.json";
+import { NAMESPACES } from "./src/i18n/localeLoaders";
+
+// English resources for every namespace, from the same list the app loads
+// (#2678), so a new namespace can't be missing here.
+const englishResources = Object.fromEntries(
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  NAMESPACES.map((ns) => [ns, require(`./src/i18n/locales/en/${ns}.json`)])
+);
 
 i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
-  ns: [
-    "common",
-    "yacht",
-    "cascade",
-    "errors",
-    "blackjack",
-    "twenty48",
-    "freecell",
-    "solitaire",
-    "hearts",
-    "sudoku",
-    "feedback",
-    "profile",
-    "sort",
-    "daily_word",
-    "daily_challenge",
-    "result",
-    "starswarm",
-  ],
+  ns: [...NAMESPACES],
   defaultNS: "common",
-  resources: {
-    en: {
-      common,
-      yacht,
-      cascade,
-      errors,
-      blackjack,
-      twenty48,
-      freecell,
-      solitaire,
-      hearts,
-      sudoku,
-      feedback,
-      profile,
-      sort,
-      daily_word,
-      daily_challenge,
-      result,
-      starswarm,
-    },
-  },
+  resources: { en: englishResources },
   interpolation: { escapeValue: false },
 });
 
