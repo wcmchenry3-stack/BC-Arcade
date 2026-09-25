@@ -522,6 +522,58 @@ describe("useGameSync", () => {
     expect(result.current.getGameId()).toBe("session-2");
   });
 
+  // close() (#2628): restart()'s close without the new session.
+  describe("close()", () => {
+    it("abandons a started session with its snapshot and opens no new one", async () => {
+      const { result } = await renderHook(() => useGameSync("blackjack"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        result.current.setProgressSnapshot(() => ({ result: { hands_won: 0 } }));
+      });
+      await act(() => {
+        result.current.close();
+      });
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "test-game-id",
+        { outcome: "abandoned", result: { hands_won: 0 } },
+        { hands_won: 0, outcome: "abandoned" }
+      );
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      expect(result.current.getGameId()).toBeNull();
+    });
+
+    it("discards a session the player never started", async () => {
+      const { result, unmount } = await renderHook(() => useGameSync("blackjack"));
+      await act(() => {
+        result.current.start();
+      });
+      await act(() => {
+        result.current.close();
+      });
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+      expect(mockDiscardGame).toHaveBeenCalledWith("test-game-id");
+      // Nothing left open for the unmount to close.
+      await unmount();
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+      expect(mockDiscardGame).toHaveBeenCalledTimes(1);
+    });
+
+    it("does nothing after complete()", async () => {
+      const { result } = await renderHook(() => useGameSync("blackjack"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        result.current.complete({ outcome: "win" });
+      });
+      await act(() => {
+        result.current.close();
+      });
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      expect(mockDiscardGame).not.toHaveBeenCalled();
+    });
+  });
+
   it("restart() still starts a new session when discardGame throws", async () => {
     mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
     mockDiscardGame.mockImplementationOnce(() => {

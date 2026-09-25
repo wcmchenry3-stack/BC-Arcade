@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "पूर्ण",
   "stats.runOutcome.busted": "दिवालिया",
   "stats.runOutcome.comeback": "वापसी",
+  "stats.runOutcome.abandoned": "छोड़ी गई",
   "stats.viewStats": "रन के आँकड़े",
   "stats.viewStatsLabel": "रन के आँकड़े देखें",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

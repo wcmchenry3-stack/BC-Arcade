@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "Concluída",
   "stats.runOutcome.busted": "Falida",
   "stats.runOutcome.comeback": "Reviravolta",
+  "stats.runOutcome.abandoned": "Abandonada",
   "stats.viewStats": "Estatísticas de rodada",
   "stats.viewStatsLabel": "Ver estatísticas da rodada",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

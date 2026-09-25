@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "完了",
   "stats.runOutcome.busted": "バスト",
   "stats.runOutcome.comeback": "逆転",
+  "stats.runOutcome.abandoned": "中断",
   "stats.viewStats": "ランの統計",
   "stats.viewStatsLabel": "ランの統計を見る",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

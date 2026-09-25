@@ -30,6 +30,9 @@
  *   // discarded) and immediately start a fresh one
  *   restart({ initial_score: 0 });
  *
+ *   // End the current session the same way, without starting a new one
+ *   close();
+ *
  * The unmount cleanup automatically abandons any open session, so callers
  * only need to call complete() for game-over paths; abandoned paths are
  * handled for free.
@@ -154,6 +157,15 @@ export interface UseGameSyncReturn {
    * New Game / theme-switch flows.
    */
   restart: (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => void;
+  /**
+   * End the open session, if any, without starting another: abandoned (with
+   * the registered progress snapshot) when the player started it, otherwise
+   * discarded via `gameEventClient.discardGame()` — the same rule as the
+   * unmount path and `restart()`. A no-op once the session is completed. Use
+   * it when the player leaves a session that should record no result (e.g.
+   * Blackjack's New Game before any hand was played, #2628).
+   */
+  close: () => void;
   /** Delegate to gameEventClient.reportBug with try/catch isolation. */
   reportBug: (
     level: BugLevel,
@@ -403,6 +415,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     enqueue,
     complete,
     restart,
+    close: closeOpen,
     reportBug,
     getGameId,
     setProgressSnapshot,

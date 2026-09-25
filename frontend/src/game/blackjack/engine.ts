@@ -101,6 +101,12 @@ export interface EngineState {
   hitLowChips: boolean;
   /** True after the comeback event has been emitted once for this run. */
   comebackEmitted: boolean;
+  /**
+   * The goal this run already reached (#2628). Keep Playing clears `runGoal`,
+   * so this is how a saved or resumed run still knows it was won. Absent until
+   * the player chooses Keep Playing, and on saves from older builds.
+   */
+  reachedRunGoal?: number;
 }
 
 // ---------------------------------------------------------------------------

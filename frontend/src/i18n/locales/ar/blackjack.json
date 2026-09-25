@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "مكتملة",
   "stats.runOutcome.busted": "مفلس",
   "stats.runOutcome.comeback": "عودة",
+  "stats.runOutcome.abandoned": "متروكة",
   "stats.viewStats": "إحصائيات الجولة",
   "stats.viewStatsLabel": "عرض إحصائيات الجولة",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

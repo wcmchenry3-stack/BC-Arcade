@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "完成",
   "stats.runOutcome.busted": "破产",
   "stats.runOutcome.comeback": "逆转",
+  "stats.runOutcome.abandoned": "中途放弃",
   "stats.viewStats": "游戏统计",
   "stats.viewStatsLabel": "查看游戏统计",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

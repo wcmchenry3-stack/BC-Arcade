@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "Abgeschlossen",
   "stats.runOutcome.busted": "Pleite",
   "stats.runOutcome.comeback": "Comeback",
+  "stats.runOutcome.abandoned": "Abgebrochen",
   "stats.viewStats": "Laufstatistiken",
   "stats.viewStatsLabel": "Laufstatistiken ansehen",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
