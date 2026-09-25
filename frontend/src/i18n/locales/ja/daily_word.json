@@ -1,0 +1,22 @@
+{
+  "game.title": "デイリーワード",
+  "game.description": "5文字の単語を6回のチャンスで当てよう。毎日新しいパズルが登場。",
+  "game.playLabel": "デイリーワードをプレイ",
+  "hud.guessesLeft_one": "残り{{count}}回",
+  "hud.guessesLeft_other": "残り{{count}}回",
+  "hud.puzzleNumber": "パズル #{{number}}",
+  "result.loss.answer": "正解は{{answer}}でした",
+  "error.notAWord": "単語リストにありません",
+  "error.alreadyGuessed": "すでに回答しています",
+  "error.tooShort": "文字数が足りません",
+  "error.couldNotLoad": "今日のパズルを読み込めませんでした",
+  "error.couldNotSubmit": "回答を送信できませんでした",
+  "error.stalePuzzle": "新しいパズルがあります — 今日の単語を読み込み中",
+  "error.wrongLength": "回答の文字数が今日の単語と一致しません",
+  "error.rateLimited": "回答回数が多すぎます — しばらくしてからお試しください",
+  "keyboard.delete": "削除",
+  "keyboard.enter": "確定",
+  "result.countdown": "次の単語まで{{time}}",
+  "result.share": "シェア",
+  "result.copied": "コピーしました！"
+}
