@@ -56,6 +56,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   // from chip allocation until chips=0 OR the provider unmounts.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
@@ -69,6 +70,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   // Chips when THIS session began. A resumed run starts a new session mid-run, so
   // engine.startingChips (the run's opening balance) would make a session with no
   // hands look profitable — the hand counters are per-session, so chips must be too.
+  // A session continued after a relaunch (#2654) counts from the relaunch, like
+  // the hand counters, which do not survive the process.
   const sessionStartChipsRef = useRef<number | null>(null);
   const lowestChipsRef = useRef(0);
   const biggestWinRef = useRef(0);
@@ -102,6 +105,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       lowestChipsRef.current = startingChips;
       biggestWinRef.current = 0;
       setSessionStats(initialSessionStats(startingChips));
+      // A saved mid-game continues the session a killed app left open (#2654).
+      if (resuming && syncResume()) return;
       // Load run history to compute aggregate metadata for the backend game row.
       // Runs saved in the *previous* endSession call are included because saveRun
       // is awaited before startSession is invoked from handleTableSelect, and because
@@ -127,7 +132,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // Must come after syncStart so the game ID exists.
       if (resuming) syncMarkStarted();
     },
-    [syncStart, syncMarkStarted]
+    [syncStart, syncResume, syncMarkStarted]
   );
 
   const endSession = useCallback(

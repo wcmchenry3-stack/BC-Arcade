@@ -494,6 +494,7 @@ export default function DailyWordScreen() {
   // by the hook; the snapshot below gives them the result block.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -640,6 +641,9 @@ export default function DailyWordScreen() {
         let gameState: DailyWordState;
         if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
           gameState = saved;
+          // A restored board continues the session a killed app left open for
+          // this puzzle (#2654).
+          if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
         } else {
           if (saved) await clearState();
           gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);

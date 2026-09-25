@@ -97,9 +97,10 @@ win concept. `abandoned` is a quit. The per-game rules live in one place, the
 only a daily-challenge input, not the win signal.
 
 **Abandons.** Only a session the player started (`markStarted()`) is ever
-abandoned — on unmount or `restart()`. `restart()` discards an untouched
-session instead (`gameEventClient.discardGame()`: the pending game and its
-queued events are dropped, so it is neither completed nor left pending). A game registers a progress snapshot so
+abandoned — on unmount, `start()` or `restart()` over an open session. Those
+same paths discard an untouched session instead (`gameEventClient.discardGame()`:
+the pending game and its queued events are dropped, so it is neither completed
+nor left pending). A game registers a progress snapshot so
 the hook's own abandon carries the result block, and any explicit abandon the
 screen still sends builds its result with the same helper.
 
@@ -110,6 +111,46 @@ negative (#2619). It never derives a duration from the pending game's
 play, so a Daily Word left open all day would record 12 h. A negative value
 never reaches the server, where `duration_ms` is `ge=0` and would 400 the
 whole completion.
+
+**Deferred create and killed sessions (#2654).** `startGame()` records the
+session on the device only. `SyncWorker` sends `POST /games` and the session's
+events once `markStarted()` (or a completion) marks it started, so a session the
+player never started never reaches the server.
+
+When the OS kills the app no unmount runs, so the next launch finds the pending
+games the earlier process left open ("orphans") — decided by where the record
+came from (read from disk, not created by this process), not by comparing
+clocks, so a session of the current process is never swept. A game the player
+resumes stays one game:
+
+- **Startup sweep.** `gameEventClient` registers a sweep that the pending-games
+  store runs inside its own `init()`, right after the load. `SyncWorker.flush()`
+  awaits that `init()`, so no flush runs between the load and the sweep. An
+  unstarted orphan is discarded (it never reached the server). A started orphan
+  under 24 h old is kept for its screen to resume; one 24 h old or more — the
+  age the server's sweep uses — is abandoned. All changes are written in one
+  AsyncStorage write, and the discarded games' events are deleted in one pass.
+- **Resume.** A screen that restores saved progress calls
+  `useGameSync.resume()`. If a started orphan of that game type exists, the hook
+  adopts its id: already started, no new create, no `game_started`, the event
+  counter continues. Otherwise nothing changes and the screen starts its session
+  as usual. Daily Word passes `{ puzzle_id }` so only that puzzle's session
+  matches. Twenty48, Blackjack, Solitaire, FreeCell, Mahjong, Sudoku, Hearts,
+  Daily Word, Cascade, Sort, Yacht and a paused Star Swarm run resume.
+- **Fresh game instead.** When a session of the same type is marked started (or
+  completed) without resuming, its type's orphans are abandoned then. If that
+  happens before the load, the sweep abandons them.
+
+Every orphan abandon goes through `completeGame()` (a bare `abandoned`,
+`completedAt` = its last event, else its start, and no `durationMs`), so its
+`game_ended` is queued before the game is marked completed and the PATCH waits
+for it. A pending record saved by an older build has no `started` field: it
+counts as started if its create was sent (`startedSynced`), it has an event
+beyond `game_started`, or it was finished; otherwise it is an untouched session
+and is discarded. The server's 24 h stale-session sweep (#2621) remains the
+fallback for devices that never report back; a device's later completion
+replaces a swept row. An event batch the server refuses with 409 "Game is
+already completed." is dropped quietly — no Sentry error, no dead-letter.
 
 **Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
 kicks in (see §5). If 2 MB turns out to be too small in practice, that is a
@@ -485,4 +526,3 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
 **Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
-

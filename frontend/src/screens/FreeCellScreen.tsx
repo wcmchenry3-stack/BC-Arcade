@@ -87,6 +87,7 @@ export default function FreeCellScreen() {
   // session row would duplicate each win as "anon" and rank abandoned games.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -152,6 +153,8 @@ export default function FreeCellScreen() {
       hasLoadedRef.current = true;
       const initial = saved ?? dealGame();
       setState(initial);
+      // A restored game continues the session a killed app left open (#2654).
+      if (saved && !saved.isComplete) syncResume();
       // Suppress re-counting a win when resuming an already-won game.
       if (saved?.isComplete) {
         winRecordedRef.current = true;
@@ -172,7 +175,7 @@ export default function FreeCellScreen() {
     return () => {
       alive = false;
     };
-  }, [startAutoComplete]);
+  }, [startAutoComplete, syncResume]);
 
   // Persist on every state change once the mount load has resolved
   useEffect(() => {

@@ -160,6 +160,7 @@ export default function GameScreen({ navigation, route }: Props) {
   // Game event instrumentation (#368 / #549).
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
@@ -201,6 +202,8 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (gameStateRef.current.game_over) return;
     if (!syncOnMount) return;
+    // A restored game continues the session a killed app left open (#2654).
+    if (!isFreshGame && syncResume()) return;
     syncStart();
     // Unmount abandon is handled by useGameSync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
