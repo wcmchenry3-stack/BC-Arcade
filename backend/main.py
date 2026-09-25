@@ -285,17 +285,28 @@ async def _start_daily_word_retention() -> None:
     app.state.retention_task = asyncio.create_task(run_retention_loop(get_session_factory))
 
 
+RETENTION_STOP_TIMEOUT_SECONDS = 5.0
+
+
 @app.on_event("shutdown")
 async def _stop_daily_word_retention() -> None:
+    """Cancel the loop and wait for it, but only so long: a prune stuck in the
+    driver must not hold shutdown (and a TestClient exit) forever (#2667)."""
     task = getattr(app.state, "retention_task", None)
     if task is None:
         return
+    from daily_word.retention import logger as retention_logger
+
     task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
     app.state.retention_task = None
+    if not done:
+        retention_logger.warning(
+            "daily_word retention: task still running %.0fs after cancel; not waiting",
+            RETENTION_STOP_TIMEOUT_SECONDS,
+        )
+    elif not task.cancelled():
+        task.result()  # re-raises a crash, as `await task` did
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
