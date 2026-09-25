@@ -7,12 +7,14 @@ GET  /freecell/leaderboard — returns top-10 scores sorted ascending by
 
 Sort order: ascending move_count; ties broken by completed_at (older wins).
 
-The leaderboard ranks EVERY ``games`` row of this type with a non-null
-``final_score`` — it never looks at ``outcome`` or ``session_id``. The per-session
-rows the app now records through ``POST /games`` + ``PATCH /games/{id}/complete``
-(#2452) therefore send no ``final_score`` (moves travel in the result block), or
-each win would appear here twice — once as "anon" — and an abandoned game with a
-handful of moves would rank first (fewer moves is better).
+Kept for installed builds until #2644; the current app no longer calls it
+(#2632) and ranks on the generic board (``GET /games/leaderboard/freecell``).
+
+This legacy board ranks every non-abandoned ``games`` row of this type with a
+non-null ``final_score`` — it never looks at ``session_id``. Current builds'
+session rows carry their move count as ``final_score`` since #2632, so they
+are listed here too, as "anon" (no build reads this board any more). A current
+build never posts here as well, so no win is counted twice.
 """
 
 from __future__ import annotations

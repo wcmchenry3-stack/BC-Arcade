@@ -119,6 +119,23 @@ def test_solitaire_metadata_rejects_unknown_field() -> None:
         SolitaireMetadata.model_validate({"score": 9999})
 
 
+@pytest.mark.parametrize("draw_mode", [1, 3])
+def test_solitaire_metadata_accepts_draw_mode(draw_mode: int) -> None:
+    # #2632: current builds send the deal's draw mode on POST /games.
+    assert SolitaireMetadata.model_validate({"draw_mode": draw_mode}).draw_mode == draw_mode
+
+
+def test_solitaire_metadata_draw_mode_is_optional() -> None:
+    # Installed builds send no metadata at all.
+    assert SolitaireMetadata.model_validate({}).draw_mode is None
+
+
+@pytest.mark.parametrize("draw_mode", [0, 2, "1", True, 3.0])
+def test_solitaire_metadata_rejects_other_draw_modes(draw_mode: object) -> None:
+    with pytest.raises(ValidationError):
+        SolitaireMetadata.model_validate({"draw_mode": draw_mode})
+
+
 # ---------------------------------------------------------------------------
 # HeartsMetadata unit tests
 # ---------------------------------------------------------------------------
