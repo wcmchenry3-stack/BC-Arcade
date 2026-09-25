@@ -13,7 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { MahjongScoreboardProvider } from "../../game/mahjong/MahjongScoreboardContext";
+import * as mahjongEngine from "../../game/mahjong/engine";
 import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
 
@@ -142,9 +142,7 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 async function renderScreen() {
   return await render(
     <ThemeProvider>
-      <MahjongScoreboardProvider>
-        <MahjongScreen />
-      </MahjongScoreboardProvider>
+      <MahjongScreen />
     </ThemeProvider>
   );
 }
@@ -341,6 +339,33 @@ describe("MahjongScreen — win result card (#2510)", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  // #2627 review: the engine banks the running clock only on pause, so
+  // accumulatedMs is still 0 on a board cleared in one sitting.
+  it("records the best time from the play timer, not the banked time", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({
+        ...makeLastPairState(),
+        accumulatedMs: 0,
+        startedAt: Date.now() - 90_000,
+      })
+    );
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-1"));
+    });
+    await api.findByTestId("mahjong-result");
+    await waitFor(async () => {
+      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      expect(stats.gamesWon).toBe(1);
+      expect(stats.bestTimeMs).toBeGreaterThanOrEqual(90_000);
+      expect(stats.bestTimeMs).toBeLessThan(100_000);
+    });
   });
 
   it("asks for a display name on the card when none is set", async () => {
@@ -904,6 +929,95 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
       await fireEvent.press(api.getByLabelText("mock-tile-0"));
     });
     expect(mockStartGame.mock.calls[0]![1]).toEqual({ layout: "four_rivers" });
+  });
+
+  // #2627 review: Level Select keeps the board's session open for CONTINUE;
+  // a new layout picked there must open its own session, not win on the old one.
+  it("a layout picked from Level Select opens its own session", async () => {
+    await AsyncStorage.setItem(
+      "@mahjong/progress",
+      JSON.stringify({
+        unlockedLayouts: ["turtle", "pyramid"],
+        currentLayoutId: "turtle",
+        currentState: null,
+      })
+    );
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 5,
+          score: 50,
+          currentLayoutId: "turtle",
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+            { id: 2, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+            { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 30, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    mockStartGame.mockReturnValueOnce("turtle-game").mockReturnValueOnce("pyramid-game");
+    const lastPairDeal = makeWinState({
+      isComplete: false,
+      pairsRemoved: 71,
+      score: 710,
+      startedAt: null,
+      accumulatedMs: 0,
+      tiles: [
+        { id: 10, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 11, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    const createGame = jest.spyOn(mahjongEngine, "createGame").mockReturnValue(lastPairDeal);
+    try {
+      const api = await mount();
+      // Play on turtle: a matched pair opens the turtle session.
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-0"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-1"));
+      });
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("More options"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByText("Level Select"));
+      });
+      expect(mockCompleteGame).not.toHaveBeenCalled(); // CONTINUE still resumes it
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Pyramid"));
+      });
+
+      // The turtle session is closed as abandoned, with its own progress.
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      const [turtleId, turtleSummary] = mockCompleteGame.mock.calls[0]!;
+      expect(turtleId).toBe("turtle-game");
+      expect(turtleSummary).toEqual(
+        expect.objectContaining({ outcome: "abandoned", result: { won: false, pairs: 6 } })
+      );
+
+      // Clearing the pyramid board wins on a new session with its layout.
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-10"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-11"));
+      });
+      expect(mockStartGame).toHaveBeenCalledTimes(2);
+      expect(mockStartGame.mock.calls[1]![1]).toEqual({ layout: "pyramid" });
+      expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+      const [winId, winSummary] = mockCompleteGame.mock.calls[1]!;
+      expect(winId).toBe("pyramid-game");
+      expect(winSummary.outcome).toBe("win");
+    } finally {
+      createGame.mockRestore();
+    }
   });
 
   it("has no Scoreboard item in the overflow menu", async () => {

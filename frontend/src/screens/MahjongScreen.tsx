@@ -87,7 +87,6 @@ import {
   type MahjongStats,
 } from "../game/mahjong/storage";
 import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
-import { useMahjongScoreboard } from "../game/mahjong/MahjongScoreboardContext";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -547,8 +546,6 @@ export default function MahjongScreen() {
     syncSetProgressSnapshot(() => ({ result: progressResult() }));
   }, [syncSetProgressSnapshot, progressResult]);
 
-  const { setSnapshot: setScoreboardSnapshot } = useMahjongScoreboard();
-
   // Audio
   const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
   const { playTileSelect, playTileMatch, playShuffle, playWin, playDeadlock } =
@@ -594,23 +591,6 @@ export default function MahjongScreen() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // Scoreboard snapshot — updated on every state change.
-  useEffect(() => {
-    if (!state) return;
-    const elapsed = elapsedMs(state, Date.now());
-    setScoreboardSnapshot({
-      score: state.score,
-      pairsRemoved: state.pairsRemoved,
-      shufflesLeft: state.shufflesLeft,
-      elapsedMs: elapsed,
-      hasGame: true,
-      bestScore: stats.bestScore,
-      bestTimeMs: stats.bestTimeMs,
-      gamesPlayed: stats.gamesPlayed,
-      gamesWon: stats.gamesWon,
-    });
-  }, [state, stats, setScoreboardSnapshot]);
 
   // Mount: restore saved game or show layout select.
   useEffect(() => {
@@ -738,7 +718,9 @@ export default function MahjongScreen() {
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
-        const finalMs = state.accumulatedMs;
+        // The play timer, not accumulatedMs: the engine banks the running
+        // segment only on pause, so a board cleared in one sitting has 0 there.
+        const finalMs = elapsedMs(state);
         const finalScore = state.score;
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
@@ -936,6 +918,10 @@ export default function MahjongScreen() {
 
   const handleSelectLayout = useCallback(
     (layoutId: string) => {
+      // Level Select keeps the board's session open (so CONTINUE resumes it);
+      // a new deal closes it here, so the next tap opens a session with this
+      // layout (#2627).
+      abandonOpenSession();
       setWinSummary(null);
       resetSubmission();
       winRecordedRef.current = false;
@@ -959,14 +945,13 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [resetSubmission]
+    [abandonOpenSession, resetSubmission]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.
   const handlePlayAgain = useCallback(() => {
-    abandonOpenSession();
     handleSelectLayout(stateRef.current?.currentLayoutId ?? "turtle");
-  }, [abandonOpenSession, handleSelectLayout]);
+  }, [handleSelectLayout]);
 
   const handleContinue = useCallback(() => {
     loadGame()
