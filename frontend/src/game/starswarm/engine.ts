@@ -836,6 +836,15 @@ function settleRocks(
 }
 
 /**
+ * GLSL-style hash → a fraction in [0, 1). Shared by the outline wobble below and the render
+ * layer's per-rock meteor-sprite pick (#2573), so the technique lives in exactly one place.
+ */
+export function hashFrac(seed: number): number {
+  const h = Math.sin(seed) * 43758.5453;
+  return h - Math.floor(h);
+}
+
+/**
  * Deterministic 9-point outline for a rock in world space at its current rotation. Shared by
  * both renderers so the shape is identical on native and web (the id seeds the wobble).
  */
@@ -843,8 +852,7 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
   const pts: Vec2[] = [];
   const n = 9;
   for (let i = 0; i < n; i++) {
-    const h = Math.sin(a.id * 12.9898 + i * 78.233) * 43758.5453;
-    const wobble = 0.78 + 0.28 * (h - Math.floor(h));
+    const wobble = 0.78 + 0.28 * hashFrac(a.id * 12.9898 + i * 78.233);
     const t = a.rotation + (i / n) * Math.PI * 2;
     pts.push({
       x: a.x + Math.cos(t) * a.radius * wobble,

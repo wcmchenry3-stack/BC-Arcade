@@ -89,6 +89,13 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         const iw = img.width();
         const ih = img.height();
         const dst = fitRect(iw, ih, op, op.fit);
+        // #2573: rotate about the op's rect centre — Skia's canvas.rotate(degrees, px, py) pivots
+        // directly, so no manual translate/rotate/translate is needed (unlike the flipX mirror
+        // below, which has no built-in equivalent).
+        if (op.rotate) {
+          canvas.save();
+          canvas.rotate((op.rotate * 180) / Math.PI, op.x + op.w / 2, op.y + op.h / 2);
+        }
         if (op.flipX) {
           const cx = op.x + op.w / 2;
           canvas.save();
@@ -108,6 +115,7 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
           imagePaint
         );
         if (op.flipX) canvas.restore();
+        if (op.rotate) canvas.restore();
         break;
       }
       case "poly": {
