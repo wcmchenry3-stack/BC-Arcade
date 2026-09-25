@@ -1,5 +1,5 @@
 /**
- * #2563 (epic #2562): when the native canvas's RAF loop hands a new frame to React.
+ * #2563 (epic #2562): when the native canvas's RAF loop publishes a new frame to the Picture.
  *
  * Every published frame costs work — recording the Skia Picture on the UI thread (#2565), and
  * checking the HUD for changes (#2566) — so the loop publishes only when something drawn has
@@ -25,7 +25,7 @@ export interface FrameInputs {
   readonly bonusFlash: boolean;
 }
 
-/** True when `next` would render exactly what `prev` already did — skip the React commit. */
+/** True when `next` would draw exactly what `prev` already did — skip the publish. */
 export function sameFrame(prev: FrameInputs, next: FrameInputs): boolean {
   return (
     prev.game === next.game &&

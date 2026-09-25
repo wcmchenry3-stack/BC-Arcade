@@ -113,7 +113,7 @@ describe("prefetchLobbyGameScreens", () => {
     expect(canPlay).toHaveBeenCalledWith("cascade");
     expect(canPlay).toHaveBeenCalledWith("starswarm");
     expect(canPlay).toHaveBeenCalledWith("hearts");
-    expect(canPlay).toHaveBeenCalledWith("sudoku");
+    expect(canPlay).toHaveBeenCalledWith("mahjong");
   });
 
   it("does not query canPlay for free game slugs", () => {
@@ -124,7 +124,8 @@ describe("prefetchLobbyGameScreens", () => {
     expect(canPlay).not.toHaveBeenCalledWith("twenty48");
     expect(canPlay).not.toHaveBeenCalledWith("solitaire");
     expect(canPlay).not.toHaveBeenCalledWith("freecell");
-    expect(canPlay).not.toHaveBeenCalledWith("mahjong");
+    expect(canPlay).not.toHaveBeenCalledWith("sort");
+    expect(canPlay).not.toHaveBeenCalledWith("sudoku");
   });
 });
 

@@ -195,7 +195,7 @@ drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(s
 `rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the beam, harmless-bullet dimming, the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
-`__tests__/frame.test.ts`. `GameCanvas.tsx` maps each op to one Skia element and decides nothing.
+`__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
 
 `render/publish.ts` gates when a frame is published at all (#2563): only when something drawn
 changed, so a paused or finished game does not re-render.
@@ -204,9 +204,8 @@ Since #2565 the display list is drawn on the UI thread. Each published frame, th
 the list and writes it into one Reanimated shared value; a `useDerivedValue` worklet replays it
 with `render/drawFrame.ts` into a Skia `Picture` (`createPicture`), and the canvas renders a single
 `<Picture>`. So the pipeline is engine → `buildFrame` (JS thread) → shared value → `drawFrame`
-(UI thread) → Picture. `drawFrame` decides nothing; it is a straight port of the declarative
-`renderOp` and is tested against a recording fake of the Skia API in
-`__tests__/drawFrame.test.ts`. A throw inside it is reported to Sentry once
+(UI thread) → Picture. `drawFrame` decides nothing and is tested against a recording fake of the
+Skia API in `__tests__/drawFrame.test.ts`. A throw inside it is reported to Sentry once
 (`starswarm.drawFrame`) and never takes down the UI thread. Sprite images reach the worklet as a
 stable set that changes only when an image finishes loading.
 
@@ -218,9 +217,14 @@ scored re-renders React zero times. The two cues that do move every frame, the m
 fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
 thread. Gameplay is the Picture; the HUD is on-change React.
 
-Dev builds keep the phase-2 declarative path behind the dev-panel "Legacy renderer" switch for
-side-by-side comparison until phase 5 (#2567) deletes it; only that path still pushes the whole
-frame through React state. The web renderer (unmaintained) still derives the same rules itself.
+The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
+and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (unmaintained) still
+derives the same rules itself.
+
+The dev panel's _Frame readout_ switch (#2567) shows frame-time average and p95 and the canvas's
+React commits per second over the game. See
+[`TESTING.md`](../TESTING.md#star-swarm-reading-the-frame-readout-2567) for how to read it and
+[`PERFORMANCE.md`](../PERFORMANCE.md#star-swarm-native-renderer-2567) for the measured numbers.
 
 ## Backend
 

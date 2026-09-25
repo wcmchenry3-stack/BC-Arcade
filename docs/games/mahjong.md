@@ -1,7 +1,7 @@
 # Mahjong
 
 **Category:** Puzzle
-**Tier:** TBD
+**Tier:** Premium (hidden in the v1.0 store build; swapped with Sort, owner decision 2026-09-24)
 **Status:** In Development
 
 ## How to Play
@@ -49,7 +49,8 @@ Mahjong uses a Skia canvas on native. The canvas must be complemented by native 
 
 ## Entitlement
 
-Tier TBD. If free: no entitlement check.
+Premium: requires a valid entitlement JWT. Offline play continues within the
+7-day grace period; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
 
 ## Known Issues / Limitations
 

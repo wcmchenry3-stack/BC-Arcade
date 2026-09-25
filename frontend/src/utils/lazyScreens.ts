@@ -55,8 +55,7 @@ const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
   ["Cascade", "cascade"],
   ["StarSwarm", "starswarm"],
   ["Hearts", "hearts"],
-  ["Sudoku", "sudoku"],
-  ["Sort", "sort"],
+  ["Mahjong", "mahjong"],
 ];
 
 // Max simultaneous Metro bundle requests. Windows Node.js defaults to 512 fds;
@@ -108,7 +107,8 @@ export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): vo
     factories.Twenty48,
     factories.Solitaire,
     factories.FreeCell,
-    factories.Mahjong,
+    factories.Sort,
+    factories.Sudoku,
     factories.DailyWord,
     ...PREMIUM_LAZY.filter(([, slug]) => canPlay(slug)).map(([key]) => factories[key]),
   ];

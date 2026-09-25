@@ -9,8 +9,8 @@ import * as path from "path";
 
 import { PREMIUM_GAMES } from "../EntitlementContext";
 
-const PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"];
-const FREE_SLUGS = ["yacht", "solitaire", "freecell", "mahjong", "daily_word", "twenty48"];
+const PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "starswarm", "mahjong"];
+const FREE_SLUGS = ["yacht", "solitaire", "freecell", "sort", "daily_word", "twenty48", "sudoku"];
 
 const PRE_LAUNCH_API_URL = "https://dev-games-api.buffingchi.com";
 const PRODUCTION_API_URL = "https://games-api.buffingchi.com";
@@ -59,7 +59,7 @@ describe("gameVisibility", () => {
   });
 
   describe("store build (__DEV__ false, test hooks unset, production API)", () => {
-    it("hides all six premium games", () => {
+    it("hides all premium games", () => {
       const { isGameVisible, SHOW_HIDDEN_GAMES } = loadWith({
         dev: false,
         apiUrl: PRODUCTION_API_URL,
@@ -68,7 +68,7 @@ describe("gameVisibility", () => {
       for (const slug of PREMIUM_SLUGS) expect(isGameVisible(slug)).toBe(false);
     });
 
-    it("keeps all six free games", () => {
+    it("keeps all free games", () => {
       const { isGameVisible } = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
       for (const slug of FREE_SLUGS) expect(isGameVisible(slug)).toBe(true);
     });

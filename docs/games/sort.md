@@ -1,7 +1,7 @@
 # Bottle Sort
 
 **Category:** Puzzle
-**Tier:** TBD
+**Tier:** Free (v1.0 store build; swapped with Mahjong, owner decision 2026-09-24)
 **Status:** In Development
 
 ## How to Play
@@ -41,7 +41,7 @@ Levels increase in difficulty (more bottles, more colors). Level data is defined
 
 ## Entitlement
 
-Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
+Free: no entitlement check.
 
 ## Known Issues / Limitations
 

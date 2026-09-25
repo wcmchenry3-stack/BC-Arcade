@@ -761,8 +761,9 @@ test (see "What's Tested" note above — no React/canvas coverage).
 
 The question the panel answers is "does the collision rate match the enemy's skill?" — the
 per-tier dodge odds are configuration; the panel shows what actually happened next to them. Dev
-builds only (the `DEV` button in the corner of the canvas; the whole panel is behind `__DEV__`, so
-store builds never carry it).
+builds and internal pre-launch builds only (the `DEV` button in the corner of the canvas). The
+panel is behind `DEV_TOOLS` in `StarSwarmScreen.tsx`, which is `__DEV__` or a build against the
+pre-launch API (#2567, as Hearts does), so store builds never show it.
 
 1. Start a run at the difficulty you are tuning (the _Difficulty_ section applies on New Game).
 2. Open the panel. Under _Run stats_ the tier table has one row per tier:
@@ -784,6 +785,39 @@ store builds never carry it).
 The same numbers reach Sentry as one `starswarm.run_stats` breadcrumb per finished run (counts,
 wave, difficulty, score) — look at the breadcrumbs on any Star Swarm event to compare real play
 against the panel. Unit coverage: `engine.test.ts` ("Run stats (#2491)") and `telemetry.test.ts`.
+
+### Star Swarm: reading the "Frame" readout (#2567)
+
+The readout answers "is the canvas keeping up, and is React out of the frame loop?". Turn on
+_Frame readout_ in the dev panel, then close the panel. A green line appears along the bottom
+edge of the game:
+
+```
+16.7 ms avg · 18.2 p95 · 60 f · 0 commits/s
+```
+
+- **`ms avg` and `p95`** are the mean and 95th-percentile interval between the game loop's
+  frames over the last second. At 60 Hz a healthy loop reads about 16.7 for both. A p95 well
+  above the average means occasional long frames (jank) even when the average looks fine. At
+  120 Hz the target is about 8.3.
+- **`f`** is the number of frames in that second: the frame rate the loop actually got.
+- **`commits/s`** is how many times React re-rendered the game canvas in that second. It should
+  be 0 while paused and only a few per second in play (score, wave and banner changes). The
+  removed legacy renderer re-rendered once per frame, so this read about the frame rate.
+
+Read it with the panel closed. The panel's own 4 Hz run-stats refresh re-renders the screen and
+the canvas with it, which adds 4 commits/s. The readout polls on its own timer and re-renders only
+itself, so it does not disturb what it measures.
+
+It measures the JavaScript thread, where the game loop runs. A slow UI thread (drawing the
+Picture) shows up as a lower `f` only when it holds up the loop's next frame. React Native's Perf
+Monitor (dev menu) shows the UI thread's frame rate separately in dev builds.
+
+Take real numbers from a release build (TestFlight or a Play test build against the pre-launch
+API). Dev builds run React in development mode and are much slower. The same summary is on the
+`__starswarm_getRunStats()` test hook as `frame` in E2E builds. The protocol and results table
+are in [`PERFORMANCE.md`](PERFORMANCE.md#star-swarm-native-renderer-2567). Unit coverage:
+`frameStats.test.ts` and `FrameStatsReadout.test.tsx`.
 
 ---
 
