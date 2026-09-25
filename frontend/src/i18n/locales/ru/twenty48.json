@@ -13,7 +13,7 @@
   "swipe.hint": "Смахните для сдвига плиток",
   "win.body": "Вы достигли 2048! Можете продолжить игру для более высокого счёта.",
   "controls.keyboardHint": "Или используйте клавиши со стрелками",
-  "stats.highestTile": "Наибольшая плитка",
+  "stats.highestTile": "Макс. плитка",
   "stats.timePlayed": "Время игры",
   "scoreboard.heroLabel": "СЧЁТ",
   "scoreboard.heroSub": "Лучшая плитка: {{bestTile}} · ходов: {{moves}}",

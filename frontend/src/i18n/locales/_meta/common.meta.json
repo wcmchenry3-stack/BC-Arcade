@@ -337,7 +337,7 @@
     "description": "Accessibility label for a selectable card deck option in Settings.",
     "tone": "functional",
     "characterLimit": 42,
-    "placeholders": ["name"],
+    "placeholders": ["{{name}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -346,7 +346,7 @@
     "description": "Accessibility label for the currently selected card deck option in Settings.",
     "tone": "functional",
     "characterLimit": 32,
-    "placeholders": ["name"],
+    "placeholders": ["{{name}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -445,7 +445,7 @@
     "description": "Accessibility label for a locked, coming-soon game card on the home screen.",
     "tone": "functional",
     "characterLimit": 42,
-    "placeholders": ["title"],
+    "placeholders": ["{{title}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -544,7 +544,7 @@
     "description": "Compact Arcade level badge in the Home header, e.g. 'Lv 4'. Abbreviate 'level' the way games in this language usually do.",
     "tone": "neutral",
     "characterLimit": 15,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": "Must stay very short — it sits in the header next to the title. Renders as e.g. 'Niv. 4' (under 8 characters); the limit counts the raw {{level}}."
   },
@@ -553,7 +553,7 @@
     "description": "Screen-reader label for the Arcade level badge in the Home header.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -562,7 +562,7 @@
     "description": "Compact daily-streak badge in the Home header next to the level pill: a fire emoji and the number of consecutive days, e.g. '🔥 5'.",
     "tone": "neutral",
     "characterLimit": 11,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Keep the emoji and the {{count}} placeholder; it must stay tiny — it shares the header with the title and the level pill. Do not add words."
   },
@@ -571,7 +571,7 @@
     "description": "Screen-reader label for the streak badge, singular form ({{count}} = 1): the number of consecutive days the player has hit their daily-challenge target.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
   },
@@ -580,7 +580,7 @@
     "description": "Screen-reader label for the streak badge, plural form.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
   },

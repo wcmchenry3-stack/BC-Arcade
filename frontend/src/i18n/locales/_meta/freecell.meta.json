@@ -157,7 +157,7 @@
     "description": "Displays the number of moves made in the current game.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": ["moves"],
+    "placeholders": ["{{moves}}"],
     "doNotTranslate": [],
     "notes": null
   },

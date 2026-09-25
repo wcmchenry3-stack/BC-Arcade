@@ -13,7 +13,7 @@
   "swipe.hint": "החלק כדי להזיז אריחים",
   "win.body": "הגעת ל-2048! אתה יכול להמשיך לשחק לניקוד גבוה יותר.",
   "controls.keyboardHint": "או השתמש במקשי החיצים",
-  "stats.highestTile": "האריח הגבוה ביותר",
+  "stats.highestTile": "האריח הגבוה",
   "stats.timePlayed": "זמן משחק",
   "scoreboard.heroLabel": "ניקוד",
   "scoreboard.heroSub": "האריח הטוב ביותר: {{bestTile}} · {{moves}} מהלכים",

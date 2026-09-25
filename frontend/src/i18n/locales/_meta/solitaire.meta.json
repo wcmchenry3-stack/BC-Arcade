@@ -301,7 +301,7 @@
     "description": "Subtitle under the scoreboard hero showing moves made and foundations completed.",
     "tone": "neutral",
     "characterLimit": 70,
-    "placeholders": ["moves", "foundations"],
+    "placeholders": ["{{moves}}", "{{foundations}}"],
     "doNotTranslate": [],
     "notes": "The '4' is the fixed number of foundation piles; keep it as a literal number."
   },

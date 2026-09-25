@@ -13,7 +13,7 @@
     "description": "How many of today's challenge goals are done, shown top-right of the card heading, e.g. \"1 of 3 complete\".",
     "tone": "functional",
     "characterLimit": 30,
-    "placeholders": ["done", "total"],
+    "placeholders": ["{{done}}", "{{total}}"],
     "doNotTranslate": [],
     "notes": "Shares a row with the heading — keep it short."
   },
@@ -31,7 +31,7 @@
     "description": "A goal chip for a goal this app version has no specific wording for: play the named game.",
     "tone": "functional",
     "characterLimit": 30,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -40,7 +40,7 @@
     "description": "A goal chip: play today's puzzle through to the end, win or lose.",
     "tone": "functional",
     "characterLimit": 32,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -49,7 +49,7 @@
     "description": "A goal chip: win today's puzzle.",
     "tone": "functional",
     "characterLimit": 32,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -58,7 +58,7 @@
     "description": "A goal chip: win the puzzle using no more than {{count}} guesses (of 6). Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 44,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -67,7 +67,7 @@
     "description": "A goal chip: win the puzzle using no more than {{count}} guesses (of 6). Plural form.",
     "tone": "functional",
     "characterLimit": 44,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -76,7 +76,7 @@
     "description": "A goal chip: reach at least the given score in one game, e.g. \"Score 2500+ in 2048\".",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "target"],
+    "placeholders": ["{{target}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. The \"+\" after {{target}} means \"or more\"; use the natural equivalent if \"+\" reads oddly."
   },
@@ -85,16 +85,34 @@
     "description": "A goal chip: build a tile of at least the given value in one game, e.g. \"Reach the 512 tile in 2048\".",
     "tone": "functional",
     "characterLimit": 37,
-    "placeholders": ["game", "target"],
+    "placeholders": ["{{target}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.yacht.final_score_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least the given score in one game, e.g. \"Score 300+ in Yacht\".",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{target}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. The \"+\" after {{target}} means \"or more\"; use the natural equivalent if \"+\" reads oddly."
+  },
+  "goal.sort.final_score_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least the given level in one game, e.g. \"Reach level 12 in Sort Puzzle\".",
+    "tone": "functional",
+    "characterLimit": 39,
+    "placeholders": ["{{target}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Despite the shared \"final_score_at_least\" kind name, Sort Puzzle's goal is worded as reaching a level, not a score; {{target}} is the level number."
   },
   "goal.solitaire.moves_at_least_one": {
     "component": "DailyChallengeCard",
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -103,7 +121,7 @@
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Plural form.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{count}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -112,7 +130,7 @@
     "description": "A goal chip: win one game.",
     "tone": "functional",
     "characterLimit": 32,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -121,7 +139,7 @@
     "description": "A goal chip: win a game using no more than {{count}} moves. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -130,7 +148,7 @@
     "description": "A goal chip: win a game using no more than {{count}} moves. Plural form.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -139,7 +157,7 @@
     "description": "A goal chip: match at least {{count}} pairs of tiles in one game. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -148,7 +166,7 @@
     "description": "A goal chip: match at least {{count}} pairs of tiles in one game. Plural form.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{count}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -157,7 +175,7 @@
     "description": "A goal chip: remove every tile in one game.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -166,7 +184,7 @@
     "description": "A goal chip: clear the whole board within {{count}} minutes. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -175,7 +193,7 @@
     "description": "A goal chip: clear the whole board within {{count}} minutes. Plural form.",
     "tone": "functional",
     "characterLimit": 43,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -184,7 +202,7 @@
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -193,7 +211,7 @@
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Plural form.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{count}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -202,7 +220,7 @@
     "description": "A goal chip: win one game.",
     "tone": "functional",
     "characterLimit": 32,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -211,7 +229,7 @@
     "description": "A goal chip: win a game using no more than {{count}} moves. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -220,7 +238,7 @@
     "description": "A goal chip: win a game using no more than {{count}} moves. Plural form.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}", "{{count}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -229,7 +247,7 @@
     "description": "A goal chip: play at least {{count}} hands in one session. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -238,7 +256,7 @@
     "description": "A goal chip: play at least {{count}} hands in one session. Plural form.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{count}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -247,7 +265,7 @@
     "description": "A goal chip: end one session with more chips than it started with.",
     "tone": "functional",
     "characterLimit": 44,
-    "placeholders": ["game"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
   },
@@ -256,7 +274,7 @@
     "description": "A goal chip: win at least {{count}} hands in one session. Singular form ({{count}} = 1).",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -265,7 +283,7 @@
     "description": "A goal chip: win at least {{count}} hands in one session. Plural form.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["game", "count"],
+    "placeholders": ["{{count}}", "{{game}}"],
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
@@ -274,7 +292,7 @@
     "description": "Screen-reader label for a goal chip that is done. {{goal}} is the chip's visible text.",
     "tone": "neutral",
     "characterLimit": 60,
-    "placeholders": ["goal"],
+    "placeholders": ["{{goal}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -283,7 +301,7 @@
     "description": "Screen-reader label for a goal chip that is not done yet. {{goal}} is the chip's visible text.",
     "tone": "neutral",
     "characterLimit": 60,
-    "placeholders": ["goal"],
+    "placeholders": ["{{goal}}"],
     "doNotTranslate": [],
     "notes": null
   },

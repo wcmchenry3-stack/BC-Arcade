@@ -13,7 +13,7 @@
   "swipe.hint": "Glissez pour bouger les tuiles",
   "win.body": "Vous avez atteint 2048 ! Vous pouvez continuer pour un meilleur score.",
   "controls.keyboardHint": "Ou utilise les touches fléchées",
-  "stats.highestTile": "Tuile la plus haute",
+  "stats.highestTile": "Tuile max.",
   "stats.timePlayed": "Temps de jeu",
   "scoreboard.heroLabel": "SCORE",
   "scoreboard.heroSub": "Meilleure tuile : {{bestTile}} · {{moves}} coups",

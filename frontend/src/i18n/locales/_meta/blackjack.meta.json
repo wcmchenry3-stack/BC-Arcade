@@ -31,7 +31,7 @@
     "description": "Displays the player's current chip count.",
     "tone": "neutral",
     "characterLimit": 20,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -40,7 +40,7 @@
     "description": "Screen reader label for chip count.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -76,7 +76,7 @@
     "description": "Screen reader label for the current bet stepper value.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -94,7 +94,7 @@
     "description": "Accessibility label for the Deal button.",
     "tone": "functional",
     "characterLimit": 50,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -247,7 +247,7 @@
     "description": "Label above each player hand when the hand has been split into multiple hands.",
     "tone": "neutral",
     "characterLimit": 24,
-    "placeholders": ["number"],
+    "placeholders": ["{{number}}"],
     "doNotTranslate": [],
     "notes": "The limit counts the raw {{number}} placeholder."
   },
@@ -265,7 +265,7 @@
     "description": "Displays the numeric value of a hard hand.",
     "tone": "neutral",
     "characterLimit": 16,
-    "placeholders": ["value"],
+    "placeholders": ["{{value}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -274,7 +274,7 @@
     "description": "Displays the numeric value of a soft hand (at least one Ace counted as 11).",
     "tone": "neutral",
     "characterLimit": 16,
-    "placeholders": ["value"],
+    "placeholders": ["{{value}}"],
     "doNotTranslate": [],
     "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6. Renders as e.g. 'Souple 17'; the limit counts the raw {{value}}."
   },
@@ -292,7 +292,7 @@
     "description": "Screen reader label for a visible playing card.",
     "tone": "functional",
     "characterLimit": 30,
-    "placeholders": ["rank", "suit"],
+    "placeholders": ["{{rank}}", "{{suit}}"],
     "doNotTranslate": [],
     "notes": "rank and suit are interpolated; suit uses card.suit.* keys."
   },
@@ -382,7 +382,7 @@
     "description": "Payout display when player wins chips (positive).",
     "tone": "celebratory",
     "characterLimit": 20,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": "Leading + sign should be preserved if possible."
   },
@@ -391,7 +391,7 @@
     "description": "Payout display when player loses chips (negative). amount is already negative.",
     "tone": "sympathetic",
     "characterLimit": 20,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -409,7 +409,7 @@
     "description": "Screen reader label for the payout value.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -472,7 +472,7 @@
     "description": "Accessibility label for the bankroll display, intended for a future Blackjack table header.",
     "tone": "functional",
     "characterLimit": 45,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": "Currently unused in the app; the limit counts the raw {{chips}} placeholder."
   },
@@ -508,7 +508,7 @@
     "description": "Displays the table's minimum and maximum bet in chips.",
     "tone": "neutral",
     "characterLimit": 32,
-    "placeholders": ["min", "max"],
+    "placeholders": ["{{min}}", "{{max}}"],
     "doNotTranslate": [],
     "notes": "The limit counts the raw {{min}}/{{max}} placeholders."
   },
@@ -526,7 +526,7 @@
     "description": "Accessibility label for a chip button when it can be added to the bet.",
     "tone": "functional",
     "characterLimit": 45,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -535,7 +535,7 @@
     "description": "Accessibility label for a chip button when it cannot be added (exceeds table max or bankroll).",
     "tone": "functional",
     "characterLimit": 45,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -733,7 +733,7 @@
     "description": "Displays the session's net profit/loss in chips as the scoreboard hero value.",
     "tone": "neutral",
     "characterLimit": 28,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -742,7 +742,7 @@
     "description": "Subtitle under the scoreboard hero showing hands played and win rate.",
     "tone": "neutral",
     "characterLimit": 65,
-    "placeholders": ["handsPlayed", "winRate"],
+    "placeholders": ["{{handsPlayed}}", "{{winRate}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -814,7 +814,7 @@
     "description": "Accessibility label for the run's goal progress bar.",
     "tone": "functional",
     "characterLimit": 60,
-    "placeholders": ["chips", "goal"],
+    "placeholders": ["{{chips}}", "{{goal}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -832,7 +832,7 @@
     "description": "Badge shown in the HUD highlighting the player's current win streak.",
     "tone": "celebratory",
     "characterLimit": 45,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Keep the 🔥 emoji; the limit counts the raw {{count}} placeholder."
   },
@@ -949,7 +949,7 @@
     "description": "Hint on a locked table card naming the table that must be completed first.",
     "tone": "neutral",
     "characterLimit": 36,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -958,7 +958,7 @@
     "description": "Accessibility label for an unlocked, selectable table card.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -967,7 +967,7 @@
     "description": "Accessibility label for a locked table card.",
     "tone": "functional",
     "characterLimit": 34,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -994,7 +994,7 @@
     "description": "Subtitle on the victory screen naming the table just completed.",
     "tone": "celebratory",
     "characterLimit": 48,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1003,7 +1003,7 @@
     "description": "Displays the chip goal that was reached, on the victory screen.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": ["goal"],
+    "placeholders": ["{{goal}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1030,7 +1030,7 @@
     "description": "Button label to move up and play the next unlocked table.",
     "tone": "action",
     "characterLimit": 32,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1039,7 +1039,7 @@
     "description": "Accessibility label for the button that moves up to the next table.",
     "tone": "functional",
     "characterLimit": 60,
-    "placeholders": ["table"],
+    "placeholders": ["{{table}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1048,7 +1048,7 @@
     "description": "Announces a card deck or reward unlocked by completing the run.",
     "tone": "celebratory",
     "characterLimit": 34,
-    "placeholders": ["name"],
+    "placeholders": ["{{name}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1057,7 +1057,7 @@
     "description": "Toast announcing a chip milestone reached during a run.",
     "tone": "celebratory",
     "characterLimit": 50,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1066,7 +1066,7 @@
     "description": "Accessibility label for the win streak badge.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1156,7 +1156,7 @@
     "description": "Displays a chip count value.",
     "tone": "neutral",
     "characterLimit": 26,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1165,7 +1165,7 @@
     "description": "Displays a number of hands played.",
     "tone": "neutral",
     "characterLimit": 24,
-    "placeholders": ["hands"],
+    "placeholders": ["{{hands}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1174,7 +1174,7 @@
     "description": "Displays a win-rate percentage.",
     "tone": "neutral",
     "characterLimit": 34,
-    "placeholders": ["winRate"],
+    "placeholders": ["{{winRate}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1192,7 +1192,7 @@
     "description": "Displays the biggest win amount with a leading plus sign.",
     "tone": "neutral",
     "characterLimit": 28,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": "Leading + sign should be preserved if possible."
   },
@@ -1210,7 +1210,7 @@
     "description": "Displays a positive net profit/loss amount.",
     "tone": "celebratory",
     "characterLimit": 28,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": "Leading + sign should be preserved if possible."
   },
@@ -1219,7 +1219,7 @@
     "description": "Displays a negative net profit/loss amount (amount is already negative).",
     "tone": "sympathetic",
     "characterLimit": 28,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1264,7 +1264,7 @@
     "description": "Displays how low the bankroll got before the biggest comeback.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -1345,7 +1345,7 @@
     "description": "Accessibility label summarizing a row in the run history list.",
     "tone": "functional",
     "characterLimit": 70,
-    "placeholders": ["table", "date", "chips", "outcome"],
+    "placeholders": ["{{table}}", "{{date}}", "{{chips}}", "{{outcome}}"],
     "doNotTranslate": [],
     "notes": null
   },

@@ -121,7 +121,7 @@
     "description": "Error message shown when the player has hit the feedback rate limit.",
     "tone": "sympathetic",
     "characterLimit": 85,
-    "placeholders": ["seconds"],
+    "placeholders": ["{{seconds}}"],
     "doNotTranslate": [],
     "notes": null
   },
