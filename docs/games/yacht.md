@@ -40,7 +40,7 @@ Three levels available in vs mode, recorded at game start in `YachtMetadata.diff
 
 `final_score` = the player's total at game end (0–1575 with bonus Yachts). The session row goes through the generic `/games` pipeline; the computer's score is recorded only in the vs result block (`opponent_score`, `vs_result`).
 
-Yacht has **one leaderboard** (`GET /games/leaderboard/yacht`, #2630): solo and vs-the-computer games share it, ranked by `final_score` descending, one entry per named player (their best game). Every outcome except `abandoned` ranks: solo `completed`, and vs `win` / `loss` / `push`. The session metadata records `mode` (`solo` | `vs`) and, in vs mode, `difficulty`, without partitioning the board. The result card shows the game's rank via the shared `sessionBoardAdapter`. `duration_ms` comes from the shared foreground-time clock in `useGameSync` (#2684); Yacht never sends 0.
+Yacht has **one leaderboard** (`GET /games/leaderboard/yacht`, #2630): solo and vs-the-computer games share it, ranked by `final_score` descending, one entry per named player (their best game). Every outcome except `abandoned` ranks: solo `completed`, and vs `win` / `loss` / `push`. The session metadata records `mode` (`solo` | `vs`) and, in vs mode, `difficulty`, without partitioning the board. The result card shows the game's rank via the shared `sessionBoardAdapter`. Yacht measures no play time of its own. `duration_ms` comes from `useGameSync`'s active-play clock (#2684): foreground time on the game screen, with each idle gap between player actions capped at 10 minutes. A duration that isn't > 0 is never sent.
 
 ## Client-Side Engine
 

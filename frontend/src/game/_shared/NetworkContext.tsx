@@ -19,7 +19,6 @@ import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
 import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
-import { registerSortScoreHandler } from "../sort/scoreSync";
 import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import {
   flushDisplayNameSync,
@@ -43,7 +42,6 @@ registerMahjongScoreHandler();
 registerSolitaireScoreHandler();
 registerFreeCellScoreHandler();
 registerHeartsScoreHandler();
-registerSortScoreHandler();
 registerStarSwarmScoreHandler();
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
