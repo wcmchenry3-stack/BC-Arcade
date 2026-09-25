@@ -149,9 +149,31 @@ describe("SudokuScreen — mount resume", () => {
 });
 
 describe("SudokuScreen — in-game input", () => {
+  // Start pins the puzzle (#2584). The screen picks an Easy puzzle with
+  // Math.random, and the number pad disables a digit once all nine are placed:
+  // 2 of the 1000 Easy puzzles give all nine 1s, so "enter digit 1" was a
+  // disabled no-op there, no session ever started, and the waitFor below ran
+  // out the whole test — the "Exceeded timeout of 5000 ms" these tests threw
+  // in CI about once in every few hundred runs. Forcing puzzle 479 reproduced
+  // it exactly.
+  const PINNED = loadPuzzle("easy", "classic", () => 0);
+
+  it("pins a puzzle where the digits these tests press are still open", () => {
+    // Guards the pin against a puzzle-bank change: fail here, loudly, rather
+    // than as a timeout in the tests below.
+    for (const digit of ["1", "5"]) {
+      expect(PINNED.puzzle.split("").filter((ch) => ch === digit).length).toBeLessThan(9);
+    }
+  });
+
   async function startEasy() {
     const rendered = await renderAndAwaitLoad();
-    await fireEvent.press(rendered.getByLabelText(/start/i));
+    const random = jest.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      await fireEvent.press(rendered.getByLabelText(/start/i));
+    } finally {
+      random.mockRestore();
+    }
     return rendered;
   }
 
@@ -248,32 +270,39 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect(almostSolved.isComplete).toBe(false);
     await saveGame(almostSolved);
 
-    const rendered = await renderScreen();
-    await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
-
-    const emptyCells = rendered
-      .getAllByRole("button")
-      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
-    await act(async () => {
-      await fireEvent.press(emptyCells[0]!);
-    });
-
-    // The resumed game's clock started at mount; jump it forward.
-    const realNow = Date.now.bind(Date);
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + elapsedMs);
-    const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
+    // The clock is frozen from before mount until the win (#2584). The resumed
+    // game's clock starts at mount, so jumping only the winning press forward
+    // made the elapsed time `elapsedMs` *plus* however long the test really
+    // took from mount to that press: under load that crossed a second and the
+    // card read 01:06 instead of 01:05. (waitFor runs on setTimeout, not
+    // Date.now, so a frozen clock doesn't stall it.)
+    const mountedAt = Date.now();
+    let now = mountedAt;
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
     try {
+      const rendered = await renderScreen();
+      await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
+
+      const emptyCells = rendered
+        .getAllByRole("button")
+        .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+      await act(async () => {
+        await fireEvent.press(emptyCells[0]!);
+      });
+
+      now = mountedAt + elapsedMs;
+      const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
       await act(async () => {
         await fireEvent.press(
           rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i"))
         );
       });
+
+      await waitFor(() => expect(rendered.getByTestId("sudoku-result-title")).toBeTruthy());
+      return rendered;
     } finally {
       nowSpy.mockRestore();
     }
-
-    await waitFor(() => expect(rendered.getByTestId("sudoku-result-title")).toBeTruthy());
-    return rendered;
   }
 
   it("shows the shared win card with time, score and errors", async () => {
