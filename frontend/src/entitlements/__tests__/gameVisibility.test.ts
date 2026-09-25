@@ -182,15 +182,32 @@ describe("gameVisibility", () => {
       );
 
       function assigned(name: string): string {
-        const value = script.match(new RegExp(`^${name}=(\\S+)$`, "m"))?.[1];
-        if (value === undefined) throw new Error(`ci_post_clone.sh does not set ${name}`);
-        return value;
+        const values = [...script.matchAll(new RegExp(`^${name}=(\\S+)$`, "gm"))];
+        if (values.length !== 1) {
+          throw new Error(
+            `ci_post_clone.sh must set ${name} exactly once (found ${values.length})`
+          );
+        }
+        return values[0][1];
       }
 
-      it("writes only the URL chosen by BC_API_TARGET into .env", () => {
-        expect(script.match(/^EXPO_PUBLIC_API_URL=.*$/gm)).toEqual([
-          "EXPO_PUBLIC_API_URL=$API_URL",
-        ]);
+      /** The arms of the one `case "${BC_API_TARGET:-}"`, pattern -> body. */
+      function bcApiTargetArms(): Record<string, string> {
+        const blocks = [...script.matchAll(/^case "\$\{BC_API_TARGET:-\}" in\n([\s\S]*?)^esac$/gm)];
+        if (blocks.length !== 1) {
+          throw new Error(`expected one BC_API_TARGET case block, found ${blocks.length}`);
+        }
+        const arms: Record<string, string> = {};
+        for (const [, pattern, body] of blocks[0][1].matchAll(/^\s*(\S+?)\)\s*([\s\S]*?)\s*;;/gm)) {
+          arms[pattern] = body.replace(/\s+/g, " ");
+        }
+        return arms;
+      }
+
+      it("contains no URL but the two APIs and the Sentry DSN", () => {
+        const dsn = assigned("EXPO_PUBLIC_SENTRY_DSN");
+        const urls = new Set(script.match(/https?:\/\/[^\s'"]+/g));
+        expect([...urls].sort()).toEqual([PRE_LAUNCH_API_URL, PRODUCTION_API_URL, dsn].sort());
       });
 
       it("knows exactly the pre-launch and the production API", () => {
@@ -200,14 +217,26 @@ describe("gameVisibility", () => {
         expect(loadWith({ dev: false, apiUrl: PRODUCTION_API_URL }).SHOW_HIDDEN_GAMES).toBe(false);
       });
 
-      it("only BC_API_TARGET=prelaunch builds against the pre-launch API", () => {
-        expect(script).toMatch(/^\s*prelaunch\) API_URL=\$PRELAUNCH_API_URL ;;$/m);
-        expect(script.match(/\$PRELAUNCH_API_URL/g)).toHaveLength(1);
+      it("maps prelaunch to the pre-launch API, unset to production, anything else to a failure", () => {
+        const { "*": fallback, ...chosen } = bcApiTargetArms();
+        expect(chosen).toEqual({
+          prelaunch: "API_URL=$PRELAUNCH_API_URL",
+          '""|production': "API_URL=$PRODUCTION_API_URL",
+        });
+        expect(fallback).toMatch(/\bexit 1$/);
+        expect(fallback).not.toMatch(/API_URL=/);
       });
 
-      it("an unset BC_API_TARGET builds against production, an unknown one fails", () => {
-        expect(script).toMatch(/^\s*""\|production\) API_URL=\$PRODUCTION_API_URL ;;$/m);
-        expect(script).toMatch(/^\s*\*\)\n(?:\s*echo .*\n)?\s*exit 1\n\s*;;$/m);
+      it("sets API_URL nowhere but in that case block, and uses the pre-launch URL once", () => {
+        // Not preceded by a name character, so PRELAUNCH_API_URL= etc. don't count.
+        expect(script.match(/(?<![A-Z_])API_URL=/g)).toHaveLength(2);
+        expect(script.match(/\$\{?PRELAUNCH_API_URL\b/g)).toHaveLength(1);
+      });
+
+      it("writes the chosen URL into .env and refuses a workflow-level override", () => {
+        expect(script).toContain(`printf 'EXPO_PUBLIC_API_URL=%s\\n' "$API_URL" > .env`);
+        expect(script).not.toMatch(/^EXPO_PUBLIC_API_URL=/m);
+        expect(script).toContain('[ "$EXPO_PUBLIC_API_URL" != "$API_URL" ]');
       });
     });
   });

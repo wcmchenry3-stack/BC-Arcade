@@ -20,10 +20,10 @@
  * game to every session — shows everything; a build pointed at anything else
  * is a store build. Building against the production API (on Xcode Cloud,
  * any workflow without `BC_API_TARGET=prelaunch`; docs/IOS.md) therefore
- * hides the games and ends the free entitlements in the same step. `EXPO_PUBLIC_API_URL` is safe from both
- * objections above: it is one of the two vars `ci_post_clone.sh` itself
- * writes, and it is inlined at build time, so the reviewed binary is the
- * shipped binary.
+ * hides the games and ends the free entitlements in the same step.
+ * `EXPO_PUBLIC_API_URL` is safe from both objections above: it is one of the
+ * two vars `ci_post_clone.sh` itself writes, and it is inlined at build time,
+ * so the reviewed binary is the shipped binary.
  *
  * Visibility is separate from entitlement: `PREMIUM_GAMES` / `canPlay` in
  * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden

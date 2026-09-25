@@ -53,12 +53,29 @@ case "${BC_API_TARGET:-}" in
     exit 1
     ;;
 esac
-echo "=== workflow '${CI_WORKFLOW:-unknown}': BC_API_TARGET='${BC_API_TARGET:-}' -> $API_URL ==="
+if [ "$API_URL" = "$PRODUCTION_API_URL" ]; then BUILD_KIND="STORE build"; else BUILD_KIND="PRE-LAUNCH build (never submit for App Store review)"; fi
+echo "=== workflow '${CI_WORKFLOW:-unknown}': BC_API_TARGET='${BC_API_TARGET:-}' -> $API_URL — $BUILD_KIND ==="
+
+# Expo CLI gives the process environment priority over .env, so an
+# EXPO_PUBLIC_API_URL set on the workflow would silently replace the URL
+# chosen above. Refuse it — BC_API_TARGET is the only switch.
+if [ -n "${EXPO_PUBLIC_API_URL:-}" ] && [ "$EXPO_PUBLIC_API_URL" != "$API_URL" ]; then
+  echo "error: EXPO_PUBLIC_API_URL='$EXPO_PUBLIC_API_URL' is set in the Xcode Cloud environment and would override $API_URL — remove it and use BC_API_TARGET (docs/IOS.md)." >&2
+  exit 1
+fi
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/frontend"
 rm -f .env.production
-cat > .env <<DOTENV
-EXPO_PUBLIC_API_URL=$API_URL
+# The same override through a dotenv file Expo ranks above .env. Both are
+# gitignored, so a fresh clone should never have them.
+for dotenv in .env.local .env.production.local; do
+  if [ -f "$dotenv" ] && grep -q -E "^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_API_URL[[:space:]]*=" "$dotenv"; then
+    echo "error: frontend/$dotenv sets EXPO_PUBLIC_API_URL and would override $API_URL." >&2
+    exit 1
+  fi
+done
+printf 'EXPO_PUBLIC_API_URL=%s\n' "$API_URL" > .env
+cat >> .env <<'DOTENV'
 EXPO_PUBLIC_SENTRY_DSN=https://4e8b2bd816cbce3f73b0cd6923530d53@o4511129011093504.ingest.us.sentry.io/4511129020334080
 DOTENV
 echo "=== .env written (.env.production removed) ==="
