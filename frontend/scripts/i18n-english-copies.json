@@ -41,6 +41,21 @@
         "outcome.blackjack",
         "rules.h17",
         "rules.s17"
+      ],
+      "ar": [
+        "chip.vipCredits",
+        "rules.h17",
+        "rules.s17"
+      ],
+      "he": [
+        "chip.vipCredits",
+        "rules.h17",
+        "rules.s17"
+      ],
+      "hi": [
+        "chip.vipCredits",
+        "rules.h17",
+        "rules.s17"
       ]
     },
     "daily_word": {
@@ -236,6 +251,21 @@
         "vsMode.vs"
       ],
       "zh": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "ar": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "he": [
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.vs"
+      ],
+      "hi": [
         "category.yacht",
         "vsMode.cpu",
         "vsMode.vs"

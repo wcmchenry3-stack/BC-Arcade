@@ -13,13 +13,13 @@
   "swipe.hint": "החלק כדי להזיז אריחים",
   "win.body": "הגעת ל-2048! אתה יכול להמשיך לשחק לניקוד גבוה יותר.",
   "controls.keyboardHint": "או השתמש במקשי החיצים",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "האריח הגבוה ביותר",
+  "stats.timePlayed": "זמן משחק",
+  "scoreboard.heroLabel": "ניקוד",
+  "scoreboard.heroSub": "האריח הטוב ביותר: {{bestTile}} · {{moves}} מהלכים",
+  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
+  "scoreboard.bestScore": "שיא",
+  "scoreboard.bestTile": "האריח הטוב ביותר",
+  "scoreboard.gamesPlayed": "משחקים ששוחקו",
+  "scoreboard.gamesWon": "משחקים שנוצחו"
 }
