@@ -1282,40 +1282,6 @@ const styles = StyleSheet.create({
   dealIdText: {
     fontSize: 10,
   },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  modalBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  modalScore: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 16,
-    fontVariant: ["tabular-nums"],
-  },
   nameInput: {
     width: "100%",
     paddingHorizontal: 12,
@@ -1329,35 +1295,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 12,
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginBottom: 10,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryDisabled: {
-    opacity: 0.5,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
   devPanel: {
     position: "absolute",
