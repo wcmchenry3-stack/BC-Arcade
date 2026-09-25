@@ -12,6 +12,26 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+const mockCalls: string[] = [];
+jest.mock("../../api/stats", () => ({
+  statsApi: {
+    deleteMyData: jest.fn(async () => {
+      mockCalls.push("deleteMyData");
+    }),
+  },
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  clearDisplayNameSync: jest.fn(async () => {
+    mockCalls.push("clearDisplayNameSync");
+  }),
+}));
+jest.mock("../../game/_shared/displayName", () => ({
+  clearDisplayName: jest.fn(async () => {
+    mockCalls.push("clearDisplayName");
+    return true;
+  }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -132,5 +152,19 @@ describe("SettingsScreen", () => {
       await fireEvent.press(screen.getByTestId("clear-logs-confirm"));
       await waitFor(() => expect(mockClearAll).toHaveBeenCalledTimes(1));
     });
+  });
+
+  it("Delete my data settles the name sync first, then forgets the local name (#2624)", async () => {
+    mockCalls.length = 0;
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() => expect(mockCalls).toContain("clearDisplayName"));
+    // No name sync may land after the server-side delete, and the name must
+    // be gone locally so the next launch doesn't send it again.
+    expect(mockCalls.indexOf("clearDisplayNameSync")).toBeLessThan(
+      mockCalls.indexOf("deleteMyData")
+    );
+    expect(mockCalls.indexOf("deleteMyData")).toBeLessThan(mockCalls.indexOf("clearDisplayName"));
   });
 });

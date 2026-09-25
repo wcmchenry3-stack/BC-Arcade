@@ -17,3 +17,14 @@ def get_session_id(request: Request) -> str:
     except ValueError:
         raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.")
     return sid
+
+
+def optional_session_id(request: Request) -> str | None:
+    """The X-Session-ID header if present and a valid UUID, else ``None``.
+
+    For routes that accept requests without one (the legacy score routes).
+    """
+    try:
+        return get_session_id(request)
+    except HTTPException:
+        return None

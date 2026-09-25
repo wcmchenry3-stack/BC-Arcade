@@ -8,11 +8,13 @@ jest.mock("../../../api/players", () => ({
 }));
 
 import {
+  normalizeDisplayName,
   resetDisplayNameCacheForTests,
   saveDisplayName,
   setDisplayNameSaveHook,
 } from "../displayName";
 import {
+  clearDisplayNameSync,
   flushDisplayNameSync,
   registerDisplayNameSync,
   resetDisplayNameSyncForTests,
@@ -22,6 +24,7 @@ import { ApiError } from "../httpClient";
 import { clearSession } from "../session";
 
 const PENDING_KEY = "player_display_name_pending_sync";
+const SYNCED_KEY = "player_display_name_synced";
 
 const ok = (name: string) => Promise.resolve({ display_name: name });
 const offline = () => Promise.reject(new TypeError("Network request failed"));
@@ -114,6 +117,17 @@ describe("offline", () => {
     expect(mockPutMe).toHaveBeenCalledTimes(calls);
   });
 
+  it("doesn't resend a rejected name on every launch", async () => {
+    mockPutMe.mockRejectedValue(new ApiError("invalid", 422));
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    const calls = mockPutMe.mock.calls.length;
+    resetDisplayNameCacheForTests();
+    registerDisplayNameSync();
+    await syncDisplayNameOnLaunch();
+    expect(mockPutMe).toHaveBeenCalledTimes(calls);
+  });
+
   it("sends a name saved during an in-flight PUT right after it", async () => {
     let release: (v: { display_name: string }) => void = () => {};
     mockPutMe.mockImplementationOnce(
@@ -195,5 +209,43 @@ describe("replays", () => {
     await AsyncStorage.setItem(PENDING_KEY, "Riley");
     await Promise.all([flushDisplayNameSync(), flushDisplayNameSync(), flushDisplayNameSync()]);
     expect(sentNames()).toEqual(["Riley"]);
+  });
+});
+
+describe("name rule matches the server", () => {
+  it.each(["\u0085", "a\u001fb", "a\u0000b", "\u001c", "tab\there"])(
+    "rejects a name with a control character (%j)",
+    (raw) => {
+      expect(normalizeDisplayName(raw)).toBeNull();
+    }
+  );
+
+  it("still accepts ordinary names", () => {
+    expect(normalizeDisplayName("  Zoë O'Neil ")).toBe("Zoë O'Neil");
+  });
+});
+
+describe("clearDisplayNameSync (Delete my data)", () => {
+  it("waits for a PUT in flight, then forgets the pending and settled state", async () => {
+    let release: (v: { display_name: string }) => void = () => {};
+    mockPutMe.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve as typeof release))
+    );
+    await saveDisplayName("Riley");
+    await waitFor(() => expect(mockPutMe).toHaveBeenCalledTimes(1));
+
+    let cleared = false;
+    const clearing = clearDisplayNameSync().then(() => (cleared = true));
+    await Promise.resolve();
+    expect(cleared).toBe(false); // still waiting for the in-flight PUT
+    release({ display_name: "Riley" });
+    await clearing;
+
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+    await expect(AsyncStorage.getItem(SYNCED_KEY)).resolves.toBeNull();
+  });
+
+  it("never rejects", async () => {
+    await expect(clearDisplayNameSync()).resolves.toBeUndefined();
   });
 });

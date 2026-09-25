@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Player
+from players.schemas import clean_display_name
 
 
 async def get_display_name(db: AsyncSession, session_id: str) -> str | None:
@@ -52,3 +53,21 @@ async def set_display_name(db: AsyncSession, session_id: str, name: str) -> bool
 async def clear_display_name(db: AsyncSession, session_id: str) -> None:
     """Remove the player's display name, if any. Does not commit."""
     await db.execute(delete(Player).where(Player.session_id == session_id))
+
+
+async def remember_legacy_name(db: AsyncSession, session_id: str | None, raw: object) -> None:
+    """Make a name an installed build sent through a legacy route the player's
+    display name (#2624 review). Does not commit.
+
+    Builds from before #2624 name players only through the per-game routes
+    (``PATCH /sudoku/score/{id}``, ``PATCH /cascade/score/{id}``, the seven
+    ``POST /<game>/score`` routes, a ``player_name`` in ``POST /games``
+    metadata). Without this, a player who never updates would never appear on
+    the generic boards. Silently skipped without a valid player id or name.
+    """
+    if not session_id:
+        return
+    name = clean_display_name(raw, truncate=True)
+    if name is None:
+        return
+    await set_display_name(db, session_id, name)

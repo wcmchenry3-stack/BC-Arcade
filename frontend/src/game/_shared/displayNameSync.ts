@@ -23,8 +23,13 @@
  *   player already has writes nothing on the server.
  *
  * A 400/422 means the server will never accept that name, so it is dropped
- * rather than retried forever. Anything else (offline, 5xx, 429, a 404 from a
- * backend without the route yet) keeps it pending.
+ * and recorded as settled for this player id, so launch doesn't send it again
+ * every time. Anything else (offline, 5xx, 429, a 404 from a backend without
+ * the route yet) keeps it pending.
+ *
+ * "Delete my data" calls `clearDisplayNameSync` first: it waits for a sync
+ * already in flight (which could otherwise recreate the erased name after the
+ * server deleted it) and forgets the pending and settled state.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -101,12 +106,17 @@ async function flushOnce(): Promise<boolean> {
   await slotWrites;
   const name = await getItem(PENDING_KEY);
   if (name == null) return true;
-  let sessionId: string;
+  let sessionId: string | null = null;
   try {
     sessionId = await getOrCreateSessionId();
     await playersApi.putMe(name);
   } catch (e) {
     if (e instanceof ApiError && REJECTED_STATUSES.has(e.status)) {
+      // Settled: the same name would be refused again, so launch mustn't resend it.
+      if (sessionId != null) {
+        const settled: SyncedMarker = { session_id: sessionId, name };
+        await setItem(SYNCED_KEY, JSON.stringify(settled));
+      }
       await clearPendingIf(name);
       // No name in the event: it is player-entered text.
       Sentry.captureMessage("displayNameSync: server rejected the display name", {
@@ -187,6 +197,21 @@ export function registerDisplayNameSync(): void {
       Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "queue" } });
     });
   });
+}
+
+/**
+ * "Delete my data": waits for any sync in flight, then forgets the pending
+ * name and the settled marker. Call it before erasing the server's copy, so
+ * no PUT can land after the delete. Never rejects.
+ */
+export async function clearDisplayNameSync(): Promise<void> {
+  await slotWrites;
+  await Promise.allSettled([running, queued].filter((p) => p != null));
+  try {
+    await Promise.all([AsyncStorage.removeItem(PENDING_KEY), AsyncStorage.removeItem(SYNCED_KEY)]);
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "clearAll" } });
+  }
 }
 
 /** Test-only: forget in-flight state (AsyncStorage is cleared by the tests). */
