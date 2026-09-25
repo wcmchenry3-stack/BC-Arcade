@@ -13,6 +13,8 @@
  *   rateQueenSpadesRisk         — avoid self-taking Q♠ (13 pts)
  *   rateMoonThreat              — block an opponent's moon attempt
  *   rateMoonAttemptProgress     — advance our own moon run (Daring)
+ *   rateTactics                 — standard plays: duck high, forced/free win high,
+ *                                 spade flush (#2236; engine-level, off in moon mode)
  *
  * Pass considerations (action = Card to include in the pass selection):
  *   rateSuitVoidingUtility      — progress toward a useful suit void
@@ -21,7 +23,7 @@
 
 import type { Consideration } from "../_shared/utilityAi/types";
 import type { HeartsInfoSet } from "./aiInfoSet";
-import type { Card, Rank, Suit } from "./types";
+import type { Card, Rank, Suit, TrickCard } from "./types";
 
 // ---------------------------------------------------------------------------
 // Internal helpers (exported for unit tests)
@@ -37,6 +39,11 @@ function cardPoints(c: Card): number {
   if (c.suit === "hearts") return 1;
   if (isQueenOfSpades(c)) return 13;
   return 0;
+}
+
+/** Points (hearts + Q♠) already in a trick. */
+function trickPoints(trick: readonly TrickCard[]): number {
+  return trick.reduce((sum, tc) => sum + cardPoints(tc.card), 0);
 }
 
 const ALL_RANKS: readonly Rank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
@@ -118,6 +125,7 @@ export function computePWin(card: Card, infoSet: HeartsInfoSet): number {
 
     const winRank = currentTrickWinRank(currentTrick, ledSuit);
     if (aceHigh(card.rank) <= winRank) return 0; // already beaten by current winner
+    if (currentTrick.length === 3) return 1.0; // last to play: nobody left to overtake (#2236)
 
     const higher = countHigherOutstanding(card, ledSuit, seenKeys, hand);
     if (higher === 0) return 1.0;
@@ -169,7 +177,7 @@ export const rateMinimizeImmediatePoints: Consideration<HeartsInfoSet, Card> = (
   const pWin = computePWin(card, infoSet);
   if (pWin === 0) return 1.0;
 
-  const trickPts = infoSet.currentTrick.reduce((s, tc) => s + cardPoints(tc.card), 0);
+  const trickPts = trickPoints(infoSet.currentTrick);
   const totalPts = trickPts + cardPoints(card);
   if (totalPts === 0) return 1.0;
 
@@ -294,55 +302,298 @@ export const rateQueenSpadesRisk: Consideration<HeartsInfoSet, Card> = (infoSet,
 // ---------------------------------------------------------------------------
 
 /**
- * Score = how effectively this card blocks an opponent's moon attempt.
+ * Moon-defense thresholds (#2235). Always-on engine behaviour (#2269): the
+ * personas differ only through their `moonThreat` weight.
+ */
+export const MOON_DEFENSE = {
+  /** A lone point-holder is treated as a threat from this many points... */
+  minThreatPoints: 2,
+  /** ...rising linearly to a full threat at this many (the old gate was all-or-nothing at 4). */
+  fullThreatPoints: 4,
+};
+
+/** The trick card currently winning a non-empty trick (highest of the led suit). */
+export function currentTrickWinner(trick: readonly TrickCard[]): TrickCard {
+  const ledSuit = trick[0]!.card.suit;
+  let winner = trick[0]!;
+  for (const tc of trick) {
+    if (tc.card.suit === ledSuit && aceHigh(tc.card.rank) > aceHigh(winner.card.rank)) winner = tc;
+  }
+  return winner;
+}
+
+/**
+ * The opponent who holds every point taken this hand, or null when nobody
+ * has points, several players do, or it's this player (no threat to block).
+ */
+export function moonShooter(infoSet: HeartsInfoSet): number | null {
+  const { pointsPerPlayer, playerIndex } = infoSet;
+  const total = pointsPerPlayer.reduce((s, v) => s + v, 0);
+  if (total === 0) return null;
+  for (let i = 0; i < 4; i++) {
+    if ((pointsPerPlayer[i] ?? 0) === total) return i === playerIndex ? null : i;
+  }
+  return null;
+}
+
+/**
+ * Probability that none of `seats` holds a card of `suit` ranked above
+ * `aboveRank` (ace-high). Outstanding cards (not seen, not in hand) we
+ * passed away this hand are with their known recipient (#2237); the rest
+ * are equally likely to be with any opponent not known void in the suit.
+ */
+function pNoHigherCardIn(
+  infoSet: HeartsInfoSet,
+  seats: readonly number[],
+  suit: Suit,
+  aboveRank: number
+): number {
+  const { seenKeys, hand, passedCards, passedToPlayerIndex, voidLedger, playerIndex } = infoSet;
+  const inHand = new Set(hand.map((c) => `${c.suit}:${c.rank}`));
+  const passed = new Set(passedCards.map((c) => `${c.suit}:${c.rank}`));
+  const holders = [0, 1, 2, 3].filter((p) => p !== playerIndex && !voidLedger[p]?.[suit]);
+  const eligible = seats.filter((p) => holders.includes(p)).length;
+  let p = 1;
+  for (const rank of ALL_RANKS) {
+    if (aceHigh(rank) <= aboveRank) continue;
+    const key = `${suit}:${rank}`;
+    if (seenKeys.has(key) || inHand.has(key)) continue;
+    if (passed.has(key) && passedToPlayerIndex !== null) {
+      if (seats.includes(passedToPlayerIndex)) return 0; // we know they hold it
+      continue;
+    }
+    if (holders.length > 0) p *= 1 - eligible / holders.length;
+  }
+  return p;
+}
+
+/** Seats still to play in the current trick after this player. */
+function seatsAfterMe(infoSet: HeartsInfoSet): number[] {
+  const { currentTrick, playerIndex } = infoSet;
+  const leader = currentTrick.length > 0 ? currentTrick[0]!.playerIndex : playerIndex;
+  const order = [0, 1, 2, 3].map((i) => (leader + i) % 4);
+  return order.slice(order.indexOf(playerIndex) + 1);
+}
+
+/**
+ * Probability the trick ends with a non-shooter winning it, given this
+ * player's card doesn't win. `topRank`/`suit` describe the card to beat:
+ * the current winner when following, this player's own lead when leading.
+ */
+function pTrickAvoidsShooter(
+  infoSet: HeartsInfoSet,
+  shooter: number,
+  suit: Suit,
+  topRank: number,
+  shooterIsWinning: boolean
+): number {
+  const later = seatsAfterMe(infoSet);
+  const shooterPlayed = !later.includes(shooter);
+  if (shooterPlayed) {
+    if (!shooterIsWinning) return 1; // the shooter can't come back
+    // A non-shooter still to play overtakes (and, with points in the trick,
+    // defends by doing so) if they hold a higher card of the suit.
+    return 1 - pNoHigherCardIn(infoSet, later, suit, topRank);
+  }
+  // The shooter plays after us and takes the trick with any higher card.
+  return pNoHigherCardIn(infoSet, [shooter], suit, topRank);
+}
+
+interface MoonOutlook {
+  readonly shooter: number;
+  readonly threat: number;
+  readonly trickPoints: number;
+  /** Following: chance the trick avoids the shooter if our card doesn't win. */
+  readonly pAvoidFollowing: number;
+}
+
+// Per-decision context, shared by every candidate card of one info set.
+const outlookCache = new WeakMap<HeartsInfoSet, MoonOutlook | null>();
+
+function moonOutlook(infoSet: HeartsInfoSet): MoonOutlook | null {
+  if (outlookCache.has(infoSet)) return outlookCache.get(infoSet)!;
+  let outlook: MoonOutlook | null = null;
+  const shooter = moonShooter(infoSet);
+  const shooterPts = shooter === null ? 0 : (infoSet.pointsPerPlayer[shooter] ?? 0);
+  const { minThreatPoints, fullThreatPoints } = MOON_DEFENSE;
+  if (shooter !== null && shooterPts >= minThreatPoints) {
+    const threat = Math.min(
+      1,
+      (shooterPts - minThreatPoints + 1) / (fullThreatPoints - minThreatPoints + 1)
+    );
+    const { currentTrick, ledSuit } = infoSet;
+    const trickPts = trickPoints(currentTrick);
+    let pAvoidFollowing = 0;
+    if (ledSuit !== null) {
+      const winner = currentTrickWinner(currentTrick);
+      pAvoidFollowing = pTrickAvoidsShooter(
+        infoSet,
+        shooter,
+        ledSuit,
+        aceHigh(winner.card.rank),
+        winner.playerIndex === shooter
+      );
+    }
+    outlook = { shooter, threat, trickPoints: trickPts, pAvoidFollowing };
+  }
+  outlookCache.set(infoSet, outlook);
+  return outlook;
+}
+
+/**
+ * Score = how well this card defends against an opponent's moon (#2235).
  *
- * Decomposed from: the moon-blocking dump sequences in the legacy Medium/Hard
- * AI — dump highest safe point card on the moon-shooter's trick
- * when following, prefer low leads that won't feed the shooter when leading.
+ * A moon is broken the moment any other player takes a point, so a card is
+ * judged on where the trick's points — including any already in it — end
+ * up:
+ * - with a non-shooter (this player winning the trick, or the trick going
+ *   to someone else) the moon is blocked: high score;
+ * - with the shooter the moon is fed: low score, so the player keeps its
+ *   hearts and Q♠ — its stoppers — and discards safe cards instead.
+ * The trick's destination is estimated from who still has to play and
+ * where the higher cards can be (pass memory and known voids included). A
+ * trick with no points is neutral whatever is played. The old version
+ * rewarded any point dump while a lone opponent held 4+ points, including
+ * onto the shooter's own winning trick.
  *
- * 1.0: optimal block (safe high-value point dump onto the shooter's winning trick).
- * 0.5: neutral (no moon threat, or card has no blocking effect).
- * 0.0: counter-productive (would win back a point trick, helping the shooter).
+ * Detection is graded: the threat rises from `minThreatPoints` to full at
+ * `fullThreatPoints`, and the score is blended towards neutral by it.
+ *
+ * 1.0: best block. 0.5: neutral (no threat, or no points at stake). 0.0: feeds the moon.
  */
 export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
-  const { pointsPerPlayer, playerIndex, ledSuit } = infoSet;
+  const outlook = moonOutlook(infoSet);
+  if (outlook === null) return 0.5;
+  const points = outlook.trickPoints + cardPoints(card);
+  if (points === 0) return 0.5; // nothing at stake either way
 
-  const totalPts = pointsPerPlayer.reduce((s, v) => s + v, 0);
-  if (totalPts < 4) return 0.5; // insufficient signal for a moon threat
-
-  // Moon threat: exactly one opponent holds all points taken so far
-  let threatFound = false;
-  for (let i = 0; i < 4; i++) {
-    if (i === playerIndex) continue;
-    const pts = pointsPerPlayer[i] ?? 0;
-    if (pts > 0 && pts === totalPts) {
-      threatFound = true;
-      break;
-    }
-  }
-  if (!threatFound) return 0.5;
-
-  const pts = cardPoints(card);
   const pWin = computePWin(card, infoSet);
-  const isVoid = ledSuit !== null && card.suit !== ledSuit;
+  const pAvoid =
+    infoSet.ledSuit === null
+      ? pTrickAvoidsShooter(infoSet, outlook.shooter, card.suit, aceHigh(card.rank), false)
+      : outlook.pAvoidFollowing;
+  const pBlock = pWin + (1 - pWin) * pAvoid;
+  // More points at stake matter more (Q♠ onto the shooter is the worst case).
+  const size = Math.min(0.45, 0.35 + 0.1 * (points / 13));
+  const raw = 0.5 + (2 * pBlock - 1) * size;
+  return 0.5 + outlook.threat * (raw - 0.5);
+};
 
-  if (ledSuit === null) {
-    // Leading during a moon threat: avoid starting point tricks the shooter can take
-    return pts > 0 ? 0.2 : 0.6;
+// ---------------------------------------------------------------------------
+// rateTactics (#2236)
+// ---------------------------------------------------------------------------
+
+/**
+ * Standard Hearts plays the other considerations don't express (#2236).
+ * Engine-level, not persona flavour (#2269): the `tactics` weight is 1.0 in
+ * every weight map and 0 in moon-attempt mode (aiWeights.ts). Each tactic
+ * was validated on its own — a seat with it against the same seat without
+ * it, same cards and Schemer field (3,000 blocks): (a) duck high +30.5pp
+ * win share, −1.65 points a hand (with its moon guard); (b) +4.1pp, −0.24;
+ * (c) +3.0pp, −0.21.
+ *
+ * #2236's fourth tactic, (d) keeping low "exit" cards in two suits for the
+ * last tricks, is not here: it did cut all-high endgame leads (17% → 8%),
+ * but cost 1.2-2.2pp of win share in every variant tried, since holding
+ * low cards means shedding high ones later, into point tricks.
+ */
+export const PLAY_TACTICS = Object.freeze({
+  /** (a) Can't win the trick → play the highest such card (#1500's rule). */
+  duckHigh: true,
+  /**
+   * (b) Last to play, and every legal card wins or the trick holds no
+   * points (a free win) → play the highest card of the suit (never Q♠).
+   */
+  forcedWinHigh: true,
+  /** (c) Lead low spades to force Q♠ out, when safe (no Q♠, A♠ or K♠ held). */
+  spadeFlush: true,
+});
+
+interface TacticsContext {
+  /** Following: the rank to beat, and whether we're last to play. */
+  readonly winRank: number;
+  readonly forcedOrFree: boolean;
+  /** A lone opponent holds at least minThreatPoints: a moon is live. */
+  readonly moonLive: boolean;
+  /** Leading: a low-spade flush is safe and useful. */
+  readonly flushable: boolean;
+}
+
+// Per-decision context, shared by every candidate card of one info set.
+const tacticsCache = new WeakMap<HeartsInfoSet, TacticsContext>();
+
+function tacticsContext(infoSet: HeartsInfoSet): TacticsContext {
+  const cached = tacticsCache.get(infoSet);
+  if (cached) return cached;
+  const { hand, currentTrick, ledSuit, seenKeys, pointsPerPlayer } = infoSet;
+  const shooter = moonShooter(infoSet);
+  const moonLive =
+    shooter !== null && (pointsPerPlayer[shooter] ?? 0) >= MOON_DEFENSE.minThreatPoints;
+  let winRank = 0;
+  let forcedOrFree = false;
+  let flushable = false;
+  if (ledSuit !== null) {
+    winRank = currentTrickWinRank(currentTrick, ledSuit);
+    const inSuit = hand.filter((c) => c.suit === ledSuit);
+    forcedOrFree =
+      currentTrick.length === 3 &&
+      inSuit.length > 0 &&
+      (trickPoints(currentTrick) === 0 || inSuit.every((c) => aceHigh(c.rank) > winRank));
+  } else {
+    const held = (rank: number) => hand.some((c) => c.suit === "spades" && c.rank === rank);
+    flushable = !seenKeys.has("spades:12") && !held(12) && !held(1) && !held(13);
+  }
+  const ctx = { winRank, forcedOrFree, moonLive, flushable };
+  tacticsCache.set(infoSet, ctx);
+  return ctx;
+}
+
+/**
+ * Score = how well this card follows the standard tactics above. 0.5 is
+ * neutral; each tactic moves it by at most +0.3, so tactics break ties and
+ * nudge close calls without overriding point or Q♠ safety.
+ */
+export const rateTactics: Consideration<HeartsInfoSet, Card> = (infoSet, card) => {
+  const { ledSuit } = infoSet;
+  const ctx = tacticsContext(infoSet);
+  const rankFrac = (aceHigh(card.rank) - 2) / 12; // 0 for a 2, 1 for an ace
+  let score = 0.5;
+
+  if (ledSuit !== null) {
+    if (PLAY_TACTICS.forcedWinHigh && ctx.forcedOrFree) {
+      // (b) Forced or free win: last to play, following suit, and either every
+      // card of the suit wins or the trick holds no points — win with the
+      // highest card and keep the low ones as exits. Q♠ gets no bonus:
+      // dropping it into our own trick is 13 points, not a purge (each heart
+      // costs the same 1 point whichever we play, so hearts keep theirs).
+      // On trick 1 this is the old "play your highest club" rule.
+      if (card.suit === ledSuit && !isQueenOfSpades(card)) score += 0.3 * rankFrac;
+    } else if (PLAY_TACTICS.duckHigh && !ctx.moonLive) {
+      // (a) Duck high: of the cards already beaten (strictly: off-suit, or
+      // below the current winner — a card that still beats the winner may
+      // take the trick), shed the highest: it's a future liability and
+      // losing with it costs nothing. Rank decides, points or not: giving an
+      // off-suit heart the full bonus kept A♦ over 2♥ and cut this tactic
+      // from +30.5pp to +19.1pp (dumping points where they hurt is left to
+      // the point considerations). Not while a moon is live (a lone
+      // opponent with minThreatPoints+): shedding high cards then throws away
+      // the stoppers needed to break it, and rateMoonThreat decides where
+      // points go. Unguarded, Daring's moon success against a Schemer field
+      // rose from 5% to 21%.
+      if (card.suit !== ledSuit || aceHigh(card.rank) < ctx.winRank) score += 0.3 * rankFrac;
+    }
+  } else if (
+    PLAY_TACTICS.spadeFlush &&
+    ctx.flushable &&
+    card.suit === "spades" &&
+    aceHigh(card.rank) < 12
+  ) {
+    // (c) Spade flush: Q♠ still out, not ours, and no A♠/K♠ it could be
+    // dumped on — a low spade lead makes its holder follow or reveal it.
+    score += 0.25;
   }
 
-  if (isVoid) {
-    // Off-suit discard onto the shooter's trick: dumping points is ideal blocking
-    // Q♠ (13 pts) is worth maximally dumping; each heart (1 pt) is still useful
-    if (pts > 0) return 0.7 + (pts / 26) * 0.3;
-    return 0.5; // non-point discard: neutral
-  }
-
-  // Following in led suit: dump points only when we won't win the trick back
-  if (pts > 0) {
-    return 0.5 + (1.0 - pWin) * 0.45; // safe dump → up to 0.95; self-win → ~0.5
-  }
-  return 0.5;
+  return Math.min(1, score);
 };
 
 // ---------------------------------------------------------------------------

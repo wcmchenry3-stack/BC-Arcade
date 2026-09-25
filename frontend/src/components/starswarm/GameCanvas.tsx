@@ -1,49 +1,57 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from "react-native-reanimated";
 import { StyleSheet, Text, View } from "react-native";
-import {
-  Canvas,
-  Circle,
-  Fill,
-  Group,
-  Image as SkiaImage,
-  Path,
-  Rect,
-} from "@shopify/react-native-skia";
+import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import {
   initStarSwarm,
   tick,
   applyPowerUp,
-  BULLET_C_W,
-  HIT_FLASH_DURATION,
-  POWERUP_DURATION,
   difficultyLabel,
   difficultyMultiplier,
-  MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
-  showMissionCompleteBanner,
   isBossWave,
   routJustStarted,
   fleeingCount,
   carrierJustExposed,
-  isCarrierArmored,
-  asteroidOutline,
   throwAsteroid,
   killEscorts,
-  carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
   reinforcementsJustLaunched,
-  BEAM_HALF_WIDTH,
   upgradeEvents,
 } from "../../game/starswarm/engine";
-import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
+import {
+  createFrameStats,
+  recordCommit,
+  recordLoopFrame,
+  summarizeFrameStats,
+} from "../../game/starswarm/render/frameStats";
+import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
+import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
+import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
-import { useStarSwarmImages } from "../../game/starswarm/assets";
+import {
+  useStarSwarmImages,
+  loadedSprites,
+  drawImagesOf,
+  sameDrawImages,
+} from "../../game/starswarm/assets";
+import { drawFrame } from "../../game/starswarm/render/drawFrame";
+import type { DrawImages } from "../../game/starswarm/render/drawFrame";
+import { buildFrame } from "../../game/starswarm/render/frame";
+import type { DrawOp } from "../../game/starswarm/render/frame";
 import type {
   StarSwarmState,
   PowerUpType,
@@ -52,13 +60,7 @@ import type {
   UpgradeEvent,
 } from "../../game/starswarm/types";
 
-const EXPLOSION_DRAW_SIZE = 48;
 const DT_CAP_MS = 33;
-const INVINCIBLE_BLINK_INTERVAL = 120; // ms
-
-const C = {
-  buddyShip: "rgba(0,120,255,0.8)",
-} as const;
 
 export interface DevOptions {
   wave?: number;
@@ -93,6 +95,36 @@ export interface GameCanvasHandle {
   killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
+  /** #2567: the last second of frame times and React commits, or null when sampling is off. */
+  getFrameStats: () => FrameStatsSummary | null;
+}
+
+/**
+ * #2567: frame-time sampling runs in dev builds, internal pre-launch builds (TestFlight / Play
+ * test, where the numbers are measured) and E2E test builds — never in a store build.
+ */
+const FRAME_STATS_ENABLED = __DEV__ || isPreLaunchApiBuild() || areTestHooksEnabled();
+
+/** #2565: a throw inside the UI-thread renderer is reported once, on the JS thread. */
+function reportDrawError(message: string): void {
+  Sentry.captureMessage(`starswarm.drawFrame: ${message}`, {
+    level: "error",
+    tags: { subsystem: "starswarm.render" },
+  });
+}
+
+/**
+ * #2565: hand the latest display list to the UI-thread renderer. Built on the JS thread (where
+ * every drawing decision is made and tested) and copied across once per published frame.
+ */
+function publishPicture(
+  frameSV: { value: readonly DrawOp[] },
+  inputs: FrameInputs,
+  loaded: ReturnType<typeof loadedSprites>,
+  width: number,
+  height: number
+): void {
+  frameSV.value = buildFrame(inputs.game, inputs.sf, { loaded, width, height });
 }
 
 interface Props {
@@ -131,9 +163,6 @@ interface Props {
   initialState?: StarSwarmState;
 }
 
-/** #2563: what the render reads each frame — see render/publish.ts for when it is published. */
-type RenderState = FrameInputs;
-
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
     {
@@ -164,6 +193,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   ) => {
     const { t } = useTranslation("starswarm");
     const images = useStarSwarmImages();
+    // #2565: a stable image set for the UI thread — a new object only when an image loads, so
+    // the picture worklet (which captures it) is rebuilt only when there is something to add.
+    const drawImagesRef = useRef<DrawImages>(drawImagesOf(images));
+    const nextDrawImages = drawImagesOf(images);
+    if (!sameDrawImages(drawImagesRef.current, nextDrawImages)) {
+      drawImagesRef.current = nextDrawImages;
+    }
+    const drawImages = drawImagesRef.current;
+    const loadedRef = useRef(loadedSprites(images));
+    loadedRef.current = loadedSprites(images);
+    const sizeRef = useRef({ width, height });
+    sizeRef.current = { width, height };
 
     const gameRef = useRef<StarSwarmState>(
       initialState ??
@@ -186,12 +227,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     difficultyRef.current = difficultyProp;
     // ms remaining in pre-wave countdown; null = no countdown active.
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
-    // countdownDigit in renderState must be initialized consistently with this value.
+    // countdownDigit in initialFrame must be initialized consistently with this value.
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
     // True when the active countdown follows a wave clear (shows the "— WAVE N —" banner).
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const waveBannerCountdownRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
+    const frameStatsRef = useRef(FRAME_STATS_ENABLED ? createFrameStats() : null);
+    // #2567: count this component's React commits for the "Frame" readout (no deps: every commit)
+    useEffect(() => {
+      if (frameStatsRef.current) recordCommit(frameStatsRef.current, performance.now());
+    });
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
     const prevPhaseRef = useRef(gameRef.current.phase);
@@ -264,16 +310,76 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onUpgradeRef.current = onUpgrade;
     }, [onUpgrade]);
 
-    const [renderState, setRenderState] = useState<RenderState>(() => ({
+    // #2563: the first frame's inputs; after this the loop publishes, never React state
+    const [initialFrame] = useState<FrameInputs>(() => ({
       game: gameRef.current,
       sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
       waveBannerCountdown: false,
       bonusFlash: false,
     }));
-    // #2563: the frame React last received. The loop publishes only when the next one differs,
-    // so a paused or finished game stops re-rendering instead of reconciling ~60×/s.
-    const publishedRef = useRef<RenderState>(renderState);
+    // #2566: the HUD, published to React only when a value in it changes — a few commits a second
+    // in steady play (score ticks), none while paused. It is the only React state the loop sets.
+    const [hud, setHud] = useState<HudState>(() =>
+      deriveHud(initialFrame.game, {
+        countdownDigit: initialFrame.countdownDigit,
+        waveBannerCountdown: initialFrame.waveBannerCountdown,
+        bonusFlash: initialFrame.bonusFlash,
+      })
+    );
+    const hudRef = useRef<HudState>(hud);
+    // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
+    const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
+    const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
+    const powerUpSV = useSharedValue(initialCues.powerUpFraction);
+    const cueSVRef = useRef({ mission: missionOpacitySV, powerUp: powerUpSV });
+    cueSVRef.current = { mission: missionOpacitySV, powerUp: powerUpSV };
+    const cuesRef = useRef<HudCues>(initialCues);
+    const missionStyle = useAnimatedStyle(() => ({ opacity: missionOpacitySV.value }));
+    // translateX, not width: a transform stays off the layout path; the wrap's overflow clips it
+    const powerUpBarStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: -POWERUP_BAR_WIDTH * (1 - powerUpSV.value) }],
+    }));
+    // #2563: the frame last published to the Picture (#2565). The loop publishes only when the
+    // next one differs, so a paused or finished game stops publishing entirely.
+    const publishedRef = useRef<FrameInputs>(initialFrame);
+
+    // #2565: the display list for the UI-thread renderer, and the Picture recorded from it. The
+    // derived value re-records only when the list, the image set or the canvas size changes.
+    // Seeded with the first frame so the Picture is never blank before the first publish.
+    const [initialOps] = useState(() =>
+      buildFrame(initialFrame.game, initialFrame.sf, { loaded: loadedRef.current, width, height })
+    );
+    const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
+    // Effects and the loop write through a ref: the shared value's identity is stable in the app,
+    // and a ref keeps them correct (and out of dependency lists) even where it isn't.
+    const frameSVRef = useRef(frameSV);
+    frameSVRef.current = frameSV;
+    const drawErrorReported = useSharedValue(false);
+    const picture = useDerivedValue(() => {
+      const ops = frameSV.value;
+      return createPicture(
+        (canvas) => {
+          try {
+            drawFrame(canvas, ops, drawImages);
+          } catch (e) {
+            // whatever drew before the throw stays; report once, never take down the UI thread
+            if (!drawErrorReported.value) {
+              drawErrorReported.value = true;
+              runOnJS(reportDrawError)(String(e));
+            }
+          }
+        },
+        { width, height }
+      );
+    }, [drawImages, width, height]);
+
+    // #2565: republish when sprites finish loading — without this a paused game would keep its
+    // fallback shapes until it resumed.
+    useEffect(() => {
+      const { width: w, height: h } = sizeRef.current;
+      publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
+    }, [drawImages]);
 
     useImperativeHandle(
       ref,
@@ -295,6 +401,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         getState() {
           return gameRef.current;
+        },
+        getFrameStats() {
+          const stats = frameStatsRef.current;
+          return stats ? summarizeFrameStats(stats, performance.now()) : null;
         },
       }),
       []
@@ -327,7 +437,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       waveBannerCountdownRef.current = false;
       // #2490: a game that opens on a boss wave (dev wave jump) is announced like a cleared-into one
       if (isBossWave(gameRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
-      const fresh: RenderState = {
+      const fresh: FrameInputs = {
         game: gameRef.current,
         sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
@@ -335,7 +445,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         bonusFlash: false,
       };
       publishedRef.current = fresh;
-      setRenderState(fresh);
+      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
+      publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height]);
 
     // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
@@ -345,7 +456,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       function loop(timestamp: number) {
         if (lastFrameTimeRef.current === 0) lastFrameTimeRef.current = timestamp;
-        const dtMs = Math.min(timestamp - lastFrameTimeRef.current, DT_CAP_MS);
+        // #2567: the raw interval, before the engine's cap — a long frame is what we want to see.
+        // RN hands RAF the performance.now() clock, the same one the readout's window uses.
+        const intervalMs = timestamp - lastFrameTimeRef.current;
+        if (frameStatsRef.current) recordLoopFrame(frameStatsRef.current, timestamp, intervalMs);
+        const dtMs = Math.min(intervalMs, DT_CAP_MS);
         lastFrameTimeRef.current = timestamp;
 
         // #1039: apply dev-panel power-up injection before regular tick
@@ -494,7 +609,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           countdownMsRef.current !== null
             ? Math.max(1, Math.ceil(countdownMsRef.current / 1000))
             : null;
-        const next: RenderState = {
+        const next: FrameInputs = {
           game: gameRef.current,
           sf: sfRef.current,
           countdownDigit,
@@ -506,7 +621,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         // frame after game over. Live play still publishes each frame: the starfield moves.
         if (!sameFrame(publishedRef.current, next)) {
           publishedRef.current = next;
-          setRenderState(next);
+          // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
+          // when the HUD changed.
+          const { width: w, height: h } = sizeRef.current;
+          publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
+          publishHud(next, hudRef, setHud, cuesRef, cueSVRef.current);
         }
         id = requestAnimationFrame(loop);
       }
@@ -515,25 +634,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       return () => cancelAnimationFrame(id);
     }, []); // intentionally empty — loop lives for component lifetime
 
-    const { game: state, sf, countdownDigit, waveBannerCountdown, bonusFlash } = renderState;
-    const { player } = state;
-    const playerDisplayY = player.y;
-    const shipVisible = playerDisplayY + player.height > 0;
-    // #2334: tick() freezes the instant phase becomes GameOver, so the ship would
-    // otherwise render frozen mid-frame (looking like it's still flying/firing) instead
-    // of appearing destroyed. Hide it once the death explosion has taken over.
-    const showShip = shipVisible && state.phase !== "GameOver";
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
-    const hs = Math.max(highScore, state.score);
-    const showBonusFlash = bonusFlash; // #2563: decided in the loop so its expiry publishes
-
-    const blink =
-      player.invincibleTimer > 0 &&
-      Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
-    // Shared visibility guard for the player ship and its overlays (shield aura, lightning
-    // tint) — hoisted so the GameOver/blink rule only has to be updated in one place.
-    const showPlayerShip = !blink && showShip;
+    const hs = Math.max(highScore, hud.score);
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -543,456 +646,43 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="none"
         >
           <Group transform={[{ scale }]}>
-            <Fill color="#000010" />
-
-            {/* Starfield */}
-            {sf.stars.map((star) => (
-              <Circle
-                key={`star-${star.id}`}
-                cx={star.x}
-                cy={star.y}
-                r={star.r}
-                color={`rgba(255,255,255,${star.opacity})`}
-              />
-            ))}
-
-            {/* Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless)
-                are dimmed so the player can tell they no longer need dodging. */}
-            {state.enemyBullets.map((b) => (
-              <Rect
-                key={b.id}
-                x={b.x - b.width / 2}
-                y={b.y - b.height / 2}
-                width={b.width}
-                height={b.height}
-                color={b.flak ? "#ffd27a" : "#ff4422"} // #2487: flak at rocks reads as amber
-                opacity={b.harmless ? HARMLESS_BULLET_OPACITY : 1}
-              />
-            ))}
-
-            {/* Player bullets — charge bullets (wider) rendered as a distinct cyan beam */}
-            {state.playerBullets.map((b) =>
-              b.width >= BULLET_C_W ? (
-                <Rect
-                  key={b.id}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  color="#00f0ff"
-                />
-              ) : images.bulletPlayer ? (
-                <SkiaImage
-                  key={b.id}
-                  image={images.bulletPlayer}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  fit="fill"
-                />
-              ) : (
-                <Rect
-                  key={b.id}
-                  x={b.x - b.width / 2}
-                  y={b.y - b.height / 2}
-                  width={b.width}
-                  height={b.height}
-                  color="#00ffcc"
-                />
-              )
-            )}
-
-            {/* Enemies */}
-            {state.enemies.map((enemy) => {
-              if (!enemy.isAlive) return null;
-              const img =
-                enemy.tier === "Grunt"
-                  ? images.enemyGrunt
-                  : enemy.tier === "Elite"
-                    ? images.enemyElite
-                    : enemy.tier === "Carrier"
-                      ? images.enemyCarrier
-                      : images.enemyBoss;
-              const fallbackColor =
-                enemy.tier === "Grunt"
-                  ? "#8888ff"
-                  : enemy.tier === "Elite"
-                    ? "#ff88ff"
-                    : enemy.tier === "Carrier"
-                      ? "#b06cff"
-                      : "#ffff44";
-              // #2484: steady force-field ring while the Carrier's escorts still shield it
-              const carrierArmored = enemy.tier === "Carrier" && isCarrierArmored(state);
-              return (
-                <Group key={enemy.id}>
-                  {img ? (
-                    <SkiaImage
-                      image={img}
-                      x={enemy.x - enemy.width / 2}
-                      y={enemy.y - enemy.height / 2}
-                      width={enemy.width}
-                      height={enemy.height}
-                      fit="fill"
-                    />
-                  ) : (
-                    <Rect
-                      x={enemy.x - enemy.width / 2}
-                      y={enemy.y - enemy.height / 2}
-                      width={enemy.width}
-                      height={enemy.height}
-                      color={fallbackColor}
-                    />
-                  )}
-                  {carrierArmored && (
-                    <Circle
-                      cx={enemy.x}
-                      cy={enemy.y}
-                      r={Math.max(enemy.width, enemy.height) * 0.62}
-                      color="rgba(0,170,255,0.45)"
-                      style="stroke"
-                      strokeWidth={2}
-                    />
-                  )}
-                  {enemy.hitFlashTimer > 0 &&
-                    (() => {
-                      const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
-                      const refR = Math.max(enemy.width, enemy.height) * 1.2;
-                      const r = refR * (0.6 + 0.5 * progress);
-                      const a = enemy.hitFlashTimer / HIT_FLASH_DURATION; // 1→0 as burst plays
-                      return (
-                        <Group>
-                          <Circle
-                            cx={enemy.x}
-                            cy={enemy.y}
-                            r={r}
-                            color={`rgba(0,170,255,${(a * 0.25).toFixed(3)})`}
-                            style="fill"
-                          />
-                          <Circle
-                            cx={enemy.x}
-                            cy={enemy.y}
-                            r={r}
-                            color={`rgba(0,170,255,${(a * 0.75).toFixed(3)})`}
-                            style="stroke"
-                            strokeWidth={3}
-                          />
-                        </Group>
-                      );
-                    })()}
-                </Group>
-              );
-            })}
-
-            {/* #2485 Carrier sweep beam — telegraph, then the beam */}
-            {(() => {
-              const beam = carrierBeam(state);
-              if (!beam) return null;
-              if (beam.phase === "charge") {
-                return (
-                  <Group>
-                    <Rect
-                      x={beam.x - 2}
-                      y={beam.y}
-                      width={4}
-                      height={state.canvasH}
-                      color={`rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`}
-                    />
-                    <Circle
-                      cx={beam.x}
-                      cy={beam.y + 6}
-                      r={4 + beam.progress * 8}
-                      color={`rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`}
-                    />
-                  </Group>
-                );
-              }
-              return (
-                <Group>
-                  <Rect
-                    x={beam.x - BEAM_HALF_WIDTH - 4}
-                    y={beam.y}
-                    width={BEAM_HALF_WIDTH * 2 + 8}
-                    height={state.canvasH}
-                    color="rgba(176,108,255,0.35)"
-                  />
-                  <Rect
-                    x={beam.x - BEAM_HALF_WIDTH * 0.5}
-                    y={beam.y}
-                    width={BEAM_HALF_WIDTH}
-                    height={state.canvasH}
-                    color="rgba(230,205,255,0.9)"
-                  />
-                </Group>
-              );
-            })()}
-
-            {/* Player — hidden once GameOver freezes the frame */}
-            {showPlayerShip &&
-              (images.playerShip ? (
-                <SkiaImage
-                  image={images.playerShip}
-                  x={player.x - player.width / 2}
-                  y={playerDisplayY - player.height / 2}
-                  width={player.width}
-                  height={player.height}
-                  fit="fill"
-                />
-              ) : (
-                <Rect
-                  x={player.x - player.width / 2}
-                  y={playerDisplayY - player.height / 2}
-                  width={player.width}
-                  height={player.height}
-                  color="#00ffcc"
-                />
-              ))}
-
-            {/* #1033 Shield aura — glowing ring when shield is active */}
-            {showPlayerShip && state.activePowerUp?.type === "shield" && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * 0.8}
-                color="rgba(0,170,255,0.25)"
-                style="fill"
-              />
-            )}
-            {showPlayerShip && state.activePowerUp?.type === "shield" && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * 0.8}
-                color="rgba(0,170,255,0.75)"
-                style="stroke"
-                strokeWidth={2}
-              />
-            )}
-
-            {/* #2488 Hull plating flash — the plating that just took a hit */}
-            {showPlayerShip && player.hullFlashTimer > 0 && (
-              <Circle
-                cx={player.x}
-                cy={playerDisplayY}
-                r={player.width * (0.6 + 0.4 * (1 - player.hullFlashTimer / HIT_FLASH_DURATION))}
-                color={`rgba(0,170,255,${((0.75 * player.hullFlashTimer) / HIT_FLASH_DURATION).toFixed(3)})`}
-                style="stroke"
-                strokeWidth={3}
-              />
-            )}
-
-            {/* Lightning super-state electric tint on player ship */}
-            {showPlayerShip && state.activePowerUp?.type === "lightning" && (
-              <Rect
-                x={player.x - player.width / 2}
-                y={playerDisplayY - player.height / 2}
-                width={player.width}
-                height={player.height}
-                color="rgba(255,238,0,0.45)"
-              />
-            )}
-
-            {/* #1035 Buddy ships */}
-            {state.buddyShips.map((buddy) =>
-              images.buddyShip ? (
-                <Group
-                  key={buddy.id}
-                  transform={
-                    buddy.fromLeft
-                      ? []
-                      : [{ translateX: buddy.x }, { scaleX: -1 }, { translateX: -buddy.x }]
-                  }
-                >
-                  <SkiaImage
-                    image={images.buddyShip}
-                    x={buddy.x - 17}
-                    y={buddy.y - 17}
-                    width={34}
-                    height={34}
-                    fit="fill"
-                  />
-                </Group>
-              ) : (
-                <Rect
-                  key={buddy.id}
-                  x={buddy.x - 17}
-                  y={buddy.y - 17}
-                  width={34}
-                  height={34}
-                  color={C.buddyShip}
-                />
-              )
-            )}
-
-            {/* Power-ups — Kenney CC0 sprites with procedural fallback */}
-            {state.powerUps.map((pu) => {
-              const lx = pu.x - pu.width / 2;
-              const ly = pu.y - pu.height / 2;
-              const pw = pu.width;
-              const ph = pu.height;
-              const spriteMap: Partial<Record<PowerUpType, typeof images.puShield>> = {
-                shield: images.puShield,
-                bomb: images.puBomb,
-                buddy: images.puBuddy,
-                lightning: images.puLightning,
-              };
-              const sprite = spriteMap[pu.type] ?? null;
-              if (sprite) {
-                return (
-                  <SkiaImage key={pu.id} image={sprite} x={lx} y={ly} width={pw} height={ph} />
-                );
-              }
-              // #2488 salvage crate (gold) and hull plating (cyan hexagon) — procedural for now
-              if (pu.type === "salvage") {
-                return (
-                  <Group key={pu.id}>
-                    <Rect
-                      x={lx + pw * 0.15}
-                      y={ly + ph * 0.15}
-                      width={pw * 0.7}
-                      height={ph * 0.7}
-                      color="#ffb020"
-                    />
-                    <Rect
-                      x={lx + pw * 0.15}
-                      y={ly + ph * 0.45}
-                      width={pw * 0.7}
-                      height={ph * 0.1}
-                      color="#7a4d08"
-                    />
-                  </Group>
-                );
-              }
-              if (pu.type === "hull") {
-                const hex =
-                  `M${pu.x},${ly} L${lx + pw},${ly + ph * 0.25} L${lx + pw},${ly + ph * 0.75} ` +
-                  `L${pu.x},${ly + ph} L${lx},${ly + ph * 0.75} L${lx},${ly + ph * 0.25} Z`;
-                return <Path key={pu.id} path={hex} color="#00aaff" />;
-              }
-              // fallback procedural shapes when sprite not yet loaded
-              if (pu.type === "shield") {
-                return (
-                  <Circle
-                    key={pu.id}
-                    cx={pu.x}
-                    cy={pu.y}
-                    r={pw * 0.4}
-                    color="rgba(0,170,255,0.9)"
-                  />
-                );
-              }
-              if (pu.type === "bomb") {
-                return (
-                  <Circle key={pu.id} cx={pu.x} cy={pu.y} r={pw * 0.4} color="rgba(255,80,0,0.9)" />
-                );
-              }
-              if (pu.type === "buddy") {
-                return (
-                  <Rect
-                    key={pu.id}
-                    x={lx + pw * 0.2}
-                    y={ly + ph * 0.2}
-                    width={pw * 0.6}
-                    height={ph * 0.6}
-                    color="rgba(0,255,200,0.9)"
-                  />
-                );
-              }
-              const boltPath =
-                `M${lx + pw * 0.625},${ly} ` +
-                `L${lx + pw * 0.125},${ly + ph * 0.542} ` +
-                `L${lx + pw * 0.458},${ly + ph * 0.542} ` +
-                `L${lx + pw * 0.375},${ly + ph} ` +
-                `L${lx + pw * 0.875},${ly + ph * 0.458} ` +
-                `L${lx + pw * 0.542},${ly + ph * 0.458} Z`;
-              return <Path key={pu.id} path={boltPath} color="#ffee00" />;
-            })}
-
-            {/* #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it) */}
-            {state.asteroids.map((a) => {
-              const d =
-                asteroidOutline(a)
-                  .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-                  .join(" ") + " Z";
-              return (
-                <Group key={a.id}>
-                  <Path path={d} color={a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47"} />
-                  <Path path={d} color="#c9a27a" style="stroke" strokeWidth={1.5} />
-                </Group>
-              );
-            })}
-
-            {/* Explosions */}
-            {state.explosions.map((exp) => {
-              const frameImg = images.explosionFrames[exp.frame] ?? null;
-              const half = EXPLOSION_DRAW_SIZE / 2;
-              if (frameImg) {
-                return (
-                  <SkiaImage
-                    key={exp.id}
-                    image={frameImg}
-                    x={exp.x - half}
-                    y={exp.y - half}
-                    width={EXPLOSION_DRAW_SIZE}
-                    height={EXPLOSION_DRAW_SIZE}
-                    fit="fill"
-                  />
-                );
-              }
-              const progress = exp.frame / 20;
-              return (
-                <Circle
-                  key={exp.id}
-                  cx={exp.x}
-                  cy={exp.y}
-                  r={6 + progress * 18}
-                  color={progress < 0.4 ? "#ffcc00" : "#ff4400"}
-                  opacity={1 - progress}
-                />
-              );
-            })}
-            {/* #1034 Bomb flash — full-screen white overlay fading out */}
-            {state.bombFlashTimer > 0 && (
-              <Rect
-                x={0}
-                y={0}
-                width={width}
-                height={height}
-                color={`rgba(255,255,255,${(state.bombFlashTimer / 300) * 0.75})`}
-              />
-            )}
+            {/* #2565: the whole scene as one UI-thread Picture. Every drawing decision lives in
+                buildFrame (#2564), built in the loop and tested there. */}
+            <Picture picture={picture} />
           </Group>
         </Canvas>
 
         {/* HUD overlay — React Native Text over the Skia canvas */}
         <View style={styles.hud} pointerEvents="none">
           <View style={styles.hudTop}>
-            <Text style={styles.hudText}>{`${t("hud.score")} ${state.score}`}</Text>
-            <Text style={styles.hudText}>{`${t("hud.best")} ${hs}`}</Text>
-            <Text style={styles.hudText}>{`${t("hud.wave")} ${state.wave}`}</Text>
+            <Text style={styles.hudText}>{t("hud.scoreValue", { score: hud.score })}</Text>
+            <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
+            <Text style={styles.hudText}>{t("hud.waveValue", { wave: hud.wave })}</Text>
           </View>
           <View style={styles.hudDifficulty}>
             <Text style={styles.hudDifficultyText}>
-              {`${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`}
+              {`${difficultyLabel(hud.difficulty)} ×${difficultyMultiplier(hud.difficulty)}`}
             </Text>
             {/* #2488 upgrade ladders */}
             <Text style={styles.hudDifficultyText}>
-              {`${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`}
+              {`${t("hud.guns")}${hud.guns} · ${t("hud.hull")} ${"◆".repeat(hud.hull) || "–"}`}
             </Text>
           </View>
 
-          {showBonusFlash && (
+          {hud.bonusFlash && (
             <View style={styles.bonusLifeOverlay} pointerEvents="none">
               <Text style={styles.bonusLifeText}>1UP</Text>
             </View>
           )}
 
-          {countdownDigit !== null && (
+          {hud.countdownDigit !== null && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              {waveBannerCountdown && (
-                <Text style={styles.waveIncomingText}>{`— ${t("hud.wave")} ${state.wave} —`}</Text>
+              {hud.waveBannerCountdown && (
+                <Text
+                  style={styles.waveIncomingText}
+                >{`— ${t("hud.waveValue", { wave: hud.wave })} —`}</Text>
               )}
-              <Text style={styles.countdownText}>{countdownDigit}</Text>
+              <Text style={styles.countdownText}>{hud.countdownDigit}</Text>
             </View>
           )}
 
@@ -1001,67 +691,58 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               a freeze. See showMissionCompleteBanner() for the full suppression rationale —
               also skipped while the pre-wave countdown overlay (above) is showing, since both
               render full-screen and centered and would otherwise garble together. */}
-          {showMissionCompleteBanner(state, countdownDigit !== null) && (
+          {hud.missionComplete && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              <Text
-                style={[
-                  styles.overlayTitle,
-                  { opacity: Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS) },
-                ]}
-              >
+              {/* #2566: the fade runs on the UI thread from a shared value */}
+              <Animated.Text style={[styles.overlayTitle, missionStyle]}>
                 {t("phase.missionComplete")}
-              </Text>
+              </Animated.Text>
             </View>
           )}
 
           {/* #2489: rout banner — up while grunts are running for the edge */}
-          {fleeingCount(state) > 0 && countdownDigit === null && (
+          {hud.rout && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.rout")}</Text>
             </View>
           )}
 
           {/* #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in */}
-          {isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null && (
+          {hud.bossWave && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.bossWave")}</Text>
             </View>
           )}
 
-          {state.phase === "GameOver" && (
-            <View style={[styles.phaseOverlay, styles.gameOverOverlay]}>
-              <Text style={styles.gameOverTitle}>{t("phase.gameOver")}</Text>
-              <Text style={styles.gameOverScore}>{`${t("hud.score")} ${state.score}`}</Text>
-            </View>
-          )}
+          {/* Game over is the shared result card in StarSwarmScreen (#2516); the
+              canvas keeps its final frame behind it. */}
         </View>
 
         {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
         <View style={styles.hudBottom} pointerEvents="none">
-          {Array.from({ length: player.lives }, (_, i) => (
+          {Array.from({ length: hud.lives }, (_, i) => (
             <View key={i} style={styles.lifeIndicator} />
           ))}
         </View>
 
         {/* Power-up indicator — outside hud for the same reason as lives */}
-        {state.activePowerUp !== null && (
+        {hud.powerUp !== null && (
           <View style={styles.powerUpIndicator} pointerEvents="none">
             <Text
               style={[
                 styles.powerUpLabel,
-                { color: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00" },
+                { color: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
               ]}
             >
-              {state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING"}
+              {hud.powerUp === "shield" ? "SHIELD" : "LIGHTNING"}
             </Text>
             <View style={styles.powerUpBarWrap}>
-              <View
+              {/* #2566: the bar drains on the UI thread from a shared value */}
+              <Animated.View
                 style={[
                   styles.powerUpBar,
-                  {
-                    width: 60 * (state.activePowerUp.remainingMs / POWERUP_DURATION),
-                    backgroundColor: state.activePowerUp.type === "shield" ? "#00aaff" : "#ffee00",
-                  },
+                  { backgroundColor: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
+                  powerUpBarStyle,
                 ]}
               />
             </View>
@@ -1121,13 +802,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   powerUpBarWrap: {
-    width: 60,
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: 3,
     overflow: "hidden",
   },
   powerUpBar: {
+    width: POWERUP_BAR_WIDTH,
     height: 6,
     borderRadius: 3,
   },
@@ -1160,22 +842,6 @@ const styles = StyleSheet.create({
     textShadowColor: "#00ffcc",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 24,
-  },
-  gameOverOverlay: {
-    backgroundColor: "rgba(0,0,0,0.65)",
-  },
-  gameOverTitle: {
-    color: "#ff4422",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  gameOverScore: {
-    color: "#ffffff",
-    fontSize: 18,
-    textAlign: "center",
-    marginTop: 16,
-    fontVariant: ["tabular-nums"],
   },
   bonusLifeOverlay: {
     position: "absolute",

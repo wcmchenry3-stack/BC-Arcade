@@ -30,6 +30,7 @@ import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
 import VsScorecard from "../components/yacht/VsScorecard";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
@@ -53,6 +54,15 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
 };
+
+/** Who won a finished vs-CPU game, from the player's side (#2505, #2517). */
+function vsOutcome(player: GameState, cpu: GameState): "win" | "loss" | "draw" {
+  return player.total_score > cpu.total_score
+    ? "win"
+    : player.total_score < cpu.total_score
+      ? "loss"
+      : "draw";
+}
 
 export default function GameScreen({ navigation, route }: Props) {
   const { t } = useTranslation(["yacht", "common"]);
@@ -174,13 +184,11 @@ export default function GameScreen({ navigation, route }: Props) {
     };
     // #2505: vs-mode games report who won once the CPU has finished.
     if (opponent?.game_over && outcome === "completed") {
+      const vsResult = vsOutcome(s, opponent);
       payload.opponent_score = opponent.total_score;
-      payload.vs_result =
-        s.total_score > opponent.total_score
-          ? "win"
-          : s.total_score < opponent.total_score
-            ? "loss"
-            : "draw";
+      payload.vs_result = vsResult;
+      // #2517: the row records who won (a tie is `push`), not just "completed".
+      payload.outcome = recordedOutcome(vsResult);
     }
     return payload;
   }
@@ -516,7 +524,10 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!aiDifficulty || !gameReallyOver || !aiGameState) return;
     syncComplete(
-      { finalScore: gameState.total_score, outcome: "completed" },
+      {
+        finalScore: gameState.total_score,
+        outcome: recordedOutcome(vsOutcome(gameState, aiGameState)),
+      },
       endedPayload(gameState, "completed", aiGameState)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps

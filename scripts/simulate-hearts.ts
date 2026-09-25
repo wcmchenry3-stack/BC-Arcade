@@ -12,6 +12,9 @@
  *   npx tsx scripts/simulate-hearts.ts --gate --group field    # one group (as CI's matrix does)
  *   npx tsx scripts/simulate-hearts.ts --gate --json out.json  # also write machine-readable results
  *   npx tsx scripts/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
+ *   npx tsx scripts/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
+ *   npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
+ *   npx tsx scripts/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
  *   npx tsx scripts/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
  *   npx tsx scripts/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
  *
@@ -39,7 +42,14 @@ import type {
   Card,
   HeartsState,
 } from "../frontend/src/game/hearts/types";
-import { runBlocks } from "../frontend/src/game/hearts/sim/harness";
+import { pimcPolicy, runBlocks } from "../frontend/src/game/hearts/sim/harness";
+import { DEFAULT_PIMC_CONFIG } from "../frontend/src/game/hearts/pimc/engine";
+import {
+  REGRET_PERSONAS,
+  formatRegretReport,
+  regretMatchup,
+  runRegretBlocks,
+} from "../frontend/src/game/hearts/sim/regret";
 import {
   GATE_GROUPS,
   GATE_MATCHUPS,
@@ -284,6 +294,47 @@ if (argv.includes("--update-baseline")) {
   for (const [id, e] of Object.entries(baseline.separations)) {
     console.log(`  ${id}: ${e.mean.toFixed(4)} ± ${e.se.toFixed(4)}`);
   }
+  process.exit(0);
+}
+
+if (argv.includes("--regret")) {
+  // Per-decision regret vs the perfect-information reference (#2239). A
+  // report, not a gate: it always exits 0.
+  const blocks = parseCount(argv, "--blocks") ?? 100;
+  const sampleEvery = parseCount(argv, "--sample-every") ?? 1;
+  if (blocks < 1 || sampleEvery < 1)
+    fail("--blocks and --sample-every must be positive integers");
+  const withOracle = argv.includes("--oracle-player");
+  const pimcSamples = parseCount(argv, "--pimc");
+  if (argv.includes("--pimc") && !(pimcSamples !== null && pimcSamples >= 1))
+    fail("--pimc needs a positive number of deals per move");
+  const pimc =
+    pimcSamples !== null
+      ? pimcPolicy("pimc", {
+          ...DEFAULT_PIMC_CONFIG,
+          samples: pimcSamples,
+          horizon: "hand",
+        })
+      : undefined;
+  const seed = seedArg ?? GATE_SEED;
+  const t0 = Date.now();
+  const results = runRegretBlocks(
+    regretMatchup(withOracle, pimc),
+    seed,
+    0,
+    blocks,
+    { sampleEvery },
+  );
+  const secs = (Date.now() - t0) / 1000;
+  const roles = [
+    ...REGRET_PERSONAS,
+    ...(pimc ? ["pimc"] : []),
+    ...(withOracle ? ["oracle"] : []),
+  ];
+  console.log(
+    `Hearts regret report — test seat vs a Schemer field, seed ${seed}, ${blocks} blocks, every ${sampleEvery === 1 ? "" : `${sampleEvery}th `}play graded (${secs.toFixed(0)}s)\n`,
+  );
+  console.log(formatRegretReport(results, roles, sampleEvery));
   process.exit(0);
 }
 

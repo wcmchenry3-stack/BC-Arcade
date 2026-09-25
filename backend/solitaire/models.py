@@ -36,7 +36,7 @@ class SolitaireResult(BaseModel):
 
     Distinct from the creation-time metadata model. Unknown keys are ignored so
     a newer app build never fails completion. ``won`` is the win signal for
-    goal evaluation — ``games.outcome`` is lifecycle-only.
+    goal evaluation — ``games.outcome`` stays ``completed`` for Solitaire.
     """
 
     won: bool

@@ -1,13 +1,13 @@
 /**
- * MahjongScreen — screen-level lifecycle, HUD, and win-modal tests.
+ * MahjongScreen — screen-level lifecycle, HUD, and result-card tests.
  *
  * Engine purity is tested in engine.test.ts (#891). These tests cover the
- * screen's mount/resume lifecycle, HUD wiring, undo affordance, score
- * submission via scoreQueue, and stats tracking.
+ * screen's mount/resume lifecycle, HUD wiring, undo affordance, the shared
+ * result card for a win or a deadlock (#2510), and stats tracking.
  */
 
 import React from "react";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import MahjongScreen from "../MahjongScreen";
@@ -24,18 +24,23 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Pressable, Text } = require("react-native");
   function MockGameCanvas({
-    onNewGamePress,
+    state,
+    onTilePress,
     hintIds,
   }: {
+    state: { tiles: readonly { id: number }[] };
     onTilePress: (id: number) => void;
-    onShufflePress: () => void;
-    onNewGamePress: () => void;
     hintIds: ReadonlySet<number>;
-    layout: object;
   }) {
     return (
       <View testID="game-canvas">
-        <Pressable accessibilityLabel="mock-new-game" onPress={onNewGamePress} />
+        {state.tiles.map((tile) => (
+          <Pressable
+            key={tile.id}
+            accessibilityLabel={`mock-tile-${tile.id}`}
+            onPress={() => onTilePress(tile.id)}
+          />
+        ))}
         <Text testID="hint-ids-size">{hintIds?.size ?? 0}</Text>
       </View>
     );
@@ -114,6 +119,13 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
+jest.mock("../../game/mahjong/api", () => ({
+  mahjongApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+}));
+
+import { mahjongApi } from "../../game/mahjong/api";
+import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -171,6 +183,13 @@ function makeWinState(overrides: Partial<MahjongState> = {}): MahjongState {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  resetDisplayNameCacheForTests();
+  (mahjongApi.submitScore as jest.Mock).mockReset();
+  (mahjongApi.submitScore as jest.Mock).mockResolvedValue({
+    player_name: "Riley",
+    score: 3700,
+    rank: 5,
+  });
   mockNavListeners.clear();
   mockAddListener.mockClear();
   mockStartGame.mockReset();
@@ -236,56 +255,99 @@ describe("MahjongScreen — save/resume lifecycle", () => {
 // Win modal
 // ---------------------------------------------------------------------------
 
-describe("MahjongScreen — win modal", () => {
-  async function mountAtWin() {
-    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
-    return await mount();
+describe("MahjongScreen — win result card (#2510)", () => {
+  /** One free pair left (two 1-bamboos at opposite ends of a row). */
+  function makeLastPairState(): MahjongState {
+    return makeWinState({
+      isComplete: false,
+      pairsRemoved: 71,
+      score: 3550,
+      currentLayoutId: "pyramid",
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
   }
 
-  it("shows the win modal when the game is complete", async () => {
-    const api = await mountAtWin();
-    expect(api.getByText("overlay.youWon")).toBeTruthy();
+  async function winNow() {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeLastPairState()));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-1"));
+    });
+    return api;
+  }
+
+  it("shows the card with the score, time and actions", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
+    const api = await mount();
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByTestId("mahjong-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText("All 72 pairs cleared")).toBeTruthy();
+    expect(card.getByText("3,600")).toBeTruthy();
+    expect(card.getByText("3:00")).toBeTruthy();
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Change Layout" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("enqueues the score via scoreQueue when name is submitted", async () => {
-    const api = await mountAtWin();
+  it("submits the score under the display name when the last pair is matched", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({ bestScore: 1000, bestTimeMs: 0, gamesPlayed: 3, gamesWon: 1 })
+    );
+    const api = await winNow();
+    const card = within(await api.findByTestId("mahjong-result"));
+    await waitFor(() =>
+      expect(card.getByText("Saved as Riley · #5 on the leaderboard")).toBeTruthy()
+    );
+    expect(mahjongApi.submitScore).toHaveBeenCalledTimes(1);
+    const [name, score] = (mahjongApi.submitScore as jest.Mock).mock.calls[0]!;
+    expect(name).toBe("Riley");
+    expect(score).toBeGreaterThan(1000);
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("does not resubmit a won game resumed from storage", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
+    const api = await mount();
+    await api.findByTestId("mahjong-result");
     await act(async () => {
-      await fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
+      await new Promise((r) => setTimeout(r, 50));
     });
+    expect(mahjongApi.submitScore).not.toHaveBeenCalled();
+  });
+
+  it("Play Again deals the same layout again", async () => {
+    const api = await winNow();
+    await api.findByTestId("mahjong-result");
     await act(async () => {
-      await fireEvent.press(api.getByLabelText(/submit score/i));
+      await fireEvent.press(api.getByRole("button", { name: "Play Again" }));
     });
-    await waitFor(() => {
-      expect(scoreQueue.enqueue).toHaveBeenCalledWith(
-        "mahjong",
-        expect.objectContaining({ player_name: "Alice", score: 3600 })
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    expect(api.getByTestId("game-canvas")).toBeTruthy();
+    await waitFor(async () => {
+      const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game")) ?? "null");
+      expect(saved).toEqual(
+        expect.objectContaining({ currentLayoutId: "pyramid", isComplete: false })
       );
     });
   });
 
-  it("shows submitted confirmation after successful enqueue", async () => {
-    const api = await mountAtWin();
+  it("Change Layout goes to layout select, and a pick starts a fresh game", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
+    const api = await mount();
     await act(async () => {
-      await fireEvent.changeText(api.getByLabelText(/enter your name/i), "Alice");
+      await fireEvent.press(await api.findByRole("button", { name: "Change Layout" }));
     });
-    // Wrap press + async handler resolution in a single act so setSubmitted(true)
-    // is flushed before we query the tree.
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText(/submit score/i));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(api.getByText(/Score saved/i)).toBeTruthy();
-  });
-
-  it("tapping New Game in the win modal navigates to layout select then starts a fresh game", async () => {
-    const api = await mountAtWin();
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("action.newGameLabel"));
-    });
-    // New Game goes to the layout select screen — win modal is gone.
-    expect(api.queryByText("overlay.youWon")).toBeNull();
-    // Pick a layout to start the fresh game.
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
     await act(async () => {
       await fireEvent.press(api.getByLabelText("layout.turtle"));
     });
@@ -473,7 +535,7 @@ describe("MahjongScreen — no-moves overlays", () => {
     expect(api.queryByText(/overlay\.shuffleButton/)).toBeTruthy();
   });
 
-  it("does not render the deadlock overlay immediately on mount", async () => {
+  it("does not show the deadlock card immediately on mount", async () => {
     jest.useFakeTimers();
     try {
       await AsyncStorage.setItem(
@@ -481,22 +543,177 @@ describe("MahjongScreen — no-moves overlays", () => {
         JSON.stringify(makeNoMovesState({ shufflesLeft: 0, isDeadlocked: true }))
       );
       const api = await mount();
-      expect(api.queryByText("overlay.deadlocked")).toBeNull();
+      expect(api.queryByTestId("mahjong-result")).toBeNull();
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it("renders the deadlock overlay after the delay elapses", async () => {
+  it("shows a You Lose card after the delay, and submits nothing (#2510)", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
     await AsyncStorage.setItem(
       "mahjong_game",
-      JSON.stringify(makeNoMovesState({ shufflesLeft: 0, isDeadlocked: true }))
+      JSON.stringify(makeNoMovesState({ shufflesLeft: 0, isDeadlocked: true, score: 900 }))
     );
     const api = await mount();
-    expect(api.queryByText("overlay.deadlocked")).toBeNull();
-    await waitFor(() => expect(api.getByText("overlay.deadlocked")).toBeTruthy(), {
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    const cardEl = await waitFor(() => api.getByTestId("mahjong-result"), {
       timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
     });
+    const card = within(cardEl);
+    expect(card.getByTestId("mahjong-result-title")).toHaveTextContent("You Lose");
+    expect(card.getByText("No free pairs remain")).toBeTruthy();
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Change Layout" })).toBeTruthy();
+    expect(card.queryByText(/Saved as/)).toBeNull();
+    // Nothing to undo in this deal, so the card offers no Undo.
+    expect(card.queryByTestId("mahjong-result-undo")).toBeNull();
+    expect(mahjongApi.submitScore).not.toHaveBeenCalled();
+  });
+
+  // #2569 review: the full-screen card must not take away the undo the header
+  // offered — a deadlock one undo away from a live board isn't final.
+  it("offers Undo on the deadlock card and returns to the board", async () => {
+    const beforeLastMatch = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      shufflesLeft: 0,
+      pairsRemoved: 39,
+      score: 600,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeNoMovesState({
+          shufflesLeft: 0,
+          isDeadlocked: true,
+          pairsRemoved: 40,
+          score: 640,
+          undoStack: [beforeLastMatch],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    const card = await waitFor(() => api.getByTestId("mahjong-result"), {
+      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+    });
+    await act(async () => {
+      await fireEvent.press(within(card).getByRole("button", { name: "Undo last move" }));
+    });
+
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    expect(api.getByLabelText("mock-tile-0")).toBeTruthy();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, DEADLOCK_OVERLAY_DELAY_MS + 100));
+    });
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2517 — a deadlock the player leaves is recorded as a loss
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
+  /** Two free, non-matching tiles and no shuffles: deadlocked, one pair undone behind it. */
+  function makeDeadlockState(): MahjongState {
+    const beforeLastMatch = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      shufflesLeft: 0,
+      pairsRemoved: 39,
+      score: 600,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    return makeWinState({
+      isComplete: false,
+      isDeadlocked: true,
+      shufflesLeft: 0,
+      pairsRemoved: 40,
+      score: 640,
+      accumulatedMs: 90000,
+      tiles: [
+        { id: 2, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 10, row: 0, layer: 0 },
+      ],
+      undoStack: [beforeLastMatch],
+    } as Partial<MahjongState>);
+  }
+
+  /** Loads the deadlocked board and taps a tile, which opens the sync session. */
+  async function mountDeadlockedWithSession() {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeDeadlockState()));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-2"));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const card = await waitFor(() => api.getByTestId("mahjong-result"), {
+      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+    });
+    return { api, card: within(card) };
+  }
+
+  function lastSummary() {
+    const call = mockCompleteGame.mock.calls.at(-1)!;
+    return { summary: call[1] as Record<string, unknown>, data: call[2] };
+  }
+
+  it("records a loss, with no score, when the player changes layout", async () => {
+    const { card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const { summary, data } = lastSummary();
+    expect(summary.outcome).toBe("loss");
+    // A loss counts (only abandons are excluded), and Mahjong's leaderboard
+    // ranks every scored row — so a deadlock must not carry a score.
+    expect(summary).not.toHaveProperty("finalScore");
+    expect(data).toEqual(expect.objectContaining({ won: false, pairs: 40 }));
+  });
+
+  // #2592 review: a lost board is finished. If CONTINUE could reopen it, each
+  // resume → tap → leave would record another loss (and earn XP again).
+  it("finishes the lost board: no CONTINUE, and the save is cleared", async () => {
+    const { api, card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
+    });
+    expect(api.getByLabelText("layout.turtle")).toBeTruthy(); // on layout select
+    expect(api.queryByLabelText("layoutSelect.continue")).toBeNull();
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
+  });
+
+  it("records a loss when the player leaves by navigating back, and clears the save", async () => {
+    await mountDeadlockedWithSession();
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(lastSummary().summary.outcome).toBe("loss");
+    // Next visit starts on layout select, not the same deadlocked board.
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
+  });
+
+  it("stays abandoned when the player undoes out of the deadlock first", async () => {
+    const { api, card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Undo last move" }));
+    });
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(lastSummary().summary.outcome).toBe("abandoned");
   });
 });
 

@@ -555,12 +555,12 @@ describe("Utility AI — noise determinism", () => {
   });
 
   it("different seeds produce different play decisions for cautious (probabilistic)", () => {
-    // With 35% noise, two different seeds should differ across many calls.
-    // Run 20 decisions with each seed; at least one should differ.
-    // All 13 cards are legal leads, so each seed picks the best card with
-    // p = 0.65 + 0.35/13 ≈ 0.68 and any other with 0.35/13. Two seeds agree on
-    // one decision with p ≈ 0.68² + 12·(0.35/13)² ≈ 0.47, so all 20 agree with
-    // p ≈ 0.47^20 ≈ 2×10⁻⁷ (and the seeds are fixed, so the result is stable).
+    // With 55% noise, two different seeds should differ across many calls.
+    // Run 20 decisions with each seed; at least one should differ. Each seed
+    // plays its best card with p = 0.45 and otherwise a near-best one
+    // (MISTAKE_SPREAD), so two seeds agree on one decision with p < 0.45² +
+    // 0.55² ≈ 0.51, and all 20 agree with p < 0.51^20 ≈ 10⁻⁶ (the seeds are
+    // fixed, so the result is stable).
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
@@ -577,5 +577,77 @@ describe("Utility AI — noise determinism", () => {
     const a = collectN(1);
     const b = collectN(2);
     expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
+  });
+});
+
+describe("Utility AI — plausible mistakes (#2283)", () => {
+  afterEach(() => setRng(Math.random));
+
+  const hand = [
+    c("spades", 3),
+    c("spades", 7),
+    c("hearts", 2),
+    c("hearts", 6),
+    c("diamonds", 4),
+    c("diamonds", 8),
+    c("clubs", 5),
+    c("clubs", 9),
+    c("clubs", 10),
+    c("clubs", 11),
+    c("diamonds", 10),
+    c("diamonds", 11),
+    c("diamonds", 12),
+  ];
+  const state = mkState({
+    playerHands: [[], hand, [], []],
+    currentTrick: [],
+    currentPlayerIndex: 1,
+    currentLeaderIndex: 1,
+    heartsBroken: true,
+  });
+  const key = (card: Card) => `${card.suit}:${card.rank}`;
+
+  /** An RNG whose noise gate always fires; the pick draws come from `seed`. */
+  function alwaysNoisy(seed: number): () => number {
+    const pick = createSeededRng(seed);
+    let gate = true;
+    return () => {
+      const v = gate ? 0 : pick();
+      gate = !gate;
+      return v;
+    };
+  }
+
+  it("a mistake never plays the best card, and favours near-best ones", () => {
+    setRng(() => 0.999); // no noise: the best card
+    const best = key(selectCardToPlayUtility(hand, [], state, 1, "cautious"));
+    const counts = new Map<string, number>();
+    for (let seed = 1; seed <= 300; seed++) {
+      setRng(alwaysNoisy(seed));
+      const card = key(selectCardToPlayUtility(hand, [], state, 1, "cautious"));
+      counts.set(card, (counts.get(card) ?? 0) + 1);
+    }
+    expect(counts.has(best)).toBe(false);
+    // Uniform noise would spread 300 mistakes over 12 cards (~25 each); the
+    // near-best weighting concentrates them.
+    expect(Math.max(...counts.values())).toBeGreaterThan(75);
+  });
+
+  it("a sloppy pass is 3 distinct eligible cards, weighted towards the normal pass", () => {
+    setRng(() => 0.999);
+    const normal = new Set(selectCardsToPassUtility(hand, "left", "cautious", 1).map(key));
+    let fromNormal = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      setRng(alwaysNoisy(seed));
+      const pass = selectCardsToPassUtility(hand, "left", "cautious", 1).map(key);
+      expect(new Set(pass).size).toBe(3);
+      for (const k of pass) {
+        expect(hand.map(key)).toContain(k);
+        expect(k).not.toBe("clubs:5"); // 2♣-5♣ are never passed
+        if (normal.has(k)) fromNormal++;
+      }
+    }
+    // Uniform noise would draw a normal-pass card 3/12 of the time (150 of 600).
+    expect(fromNormal).toBeGreaterThan(250);
   });
 });

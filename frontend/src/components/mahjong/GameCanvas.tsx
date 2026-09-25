@@ -10,7 +10,7 @@
  */
 
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Canvas, Fill, Group, ImageSVG, Rect, useSVG } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
@@ -20,9 +20,7 @@ import {
   MAHJONG_GLOW_BG,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
-  MAHJONG_OVERLAY_BTN_BG,
   MAHJONG_TILE_FACE_SELECTED,
-  MAHJONG_WIN_OVERLAY_BG,
 } from "../../theme/theme.constants";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -220,7 +218,6 @@ interface Props {
   hintIds?: ReadonlySet<number>;
   debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
-  onNewGamePress: () => void;
 }
 
 const EMPTY_SET: ReadonlySet<number> = new Set();
@@ -231,7 +228,6 @@ export default function GameCanvas({
   hintIds = EMPTY_SET,
   debugShowFree = false,
   onTilePress,
-  onNewGamePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
   const tileSvgs = useAllTileSVGs();
@@ -385,80 +381,6 @@ export default function GameCanvas({
       {gameActive && (
         <Pressable style={StyleSheet.absoluteFill} onPress={handleTap} accessibilityRole="none" />
       )}
-
-      {/* Win overlay */}
-      {state.isComplete && (
-        <View style={[styles.overlay, styles.winOverlay]}>
-          <Text style={styles.winTitle}>{t("overlay.youWon")}</Text>
-          <Text style={styles.overlayDetail}>
-            {t("overlay.youWonDetail", { count: state.pairsRemoved })}
-          </Text>
-          <Text style={styles.winScore}>{t("score.display", { score: state.score })}</Text>
-          <Pressable
-            style={styles.btn}
-            onPress={onNewGamePress}
-            accessibilityLabel={t("action.newGameLabel")}
-          >
-            <Text style={styles.btnText}>{t("overlay.levelSelectButton")}</Text>
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFill,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  winOverlay: {
-    backgroundColor: MAHJONG_WIN_OVERLAY_BG,
-  },
-  overlayTitle: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  overlayDetail: {
-    color: "#cccccc",
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  winTitle: {
-    color: "#ffd700",
-    fontSize: 30,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  winScore: {
-    color: "#ffffff",
-    fontSize: 18,
-    textAlign: "center",
-    marginBottom: 20,
-    fontVariant: ["tabular-nums"],
-  },
-  btn: {
-    backgroundColor: MAHJONG_OVERLAY_BTN_BG,
-    paddingVertical: 10,
-    paddingHorizontal: 28,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  btnText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-});

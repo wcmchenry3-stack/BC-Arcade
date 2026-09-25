@@ -371,8 +371,12 @@ All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
   2–4pp for behaviour rates), both directions, each side at α/2.
 - **Separation checks** (6) are signed hypotheses written into `gate.ts`
   _before_ a run, with the measurements behind them: "left − right ≈ +m"
-  (H0) against "no difference" (H1). A reversed or vanished separation fails;
-  a larger one passes. The report prints the difference with its CI.
+  (H0) against "no difference" (H1). `m` is the lower 95% bound of the
+  baseline measurement (mean − 2·SE, enforced by `gate.test.ts`): the
+  smallest separation the evidence supports. A point estimate overshoots
+  the truth half the time and turns noise into failures (#2235). A reversed
+  or vanished separation fails; a larger one passes. The report prints the
+  difference with its CI.
 
 All 20 checks are one family, **Bonferroni-corrected**: each runs at
 α = 0.05/20 = 0.0025 with β = 0.05, so a behaviour-neutral change fails the
@@ -430,8 +434,10 @@ npx tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware
 
 This re-measures every regression metric at a fixed sample size on a seed
 disjoint from the gate's (`BASELINE_SEED`), and records the reason, date,
-logged counts and SEs. The PR description must say which metrics moved and
-why; reviewers read the JSON diff. Never regenerate the baseline to make an
+logged counts and SEs. Then set each separation's `expected` in `gate.ts` to
+its new `separations` mean − 2·SE (`gate.test.ts` fails until you do). The PR
+description must say which metrics moved and why; reviewers read the JSON
+diff. Never regenerate the baseline to make an
 unexplained failure go away.
 
 **CI wiring and runtime budget.** `.github/workflows/hearts-sim-gate.yml`
@@ -442,13 +448,14 @@ directory or the script, plus nightly and on demand. Measured on a 4-core
 dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 (seed 2238) decided every check early:
 
-| Group     | Games per block | Stopped at (cap)     | Wall-clock |
-| --------- | --------------- | -------------------- | ---------- |
-| `presets` | 6               | 3,000 blocks (8,000) | ~2 min     |
-| `field`   | 9               | 400 blocks (6,000)   | ~0.5 min   |
+| Group     | Games per block | Stopped at (cap)      | Wall-clock |
+| --------- | --------------- | --------------------- | ---------- |
+| `presets` | 6               | 3,000 blocks (12,000) | ~2.5 min   |
+| `field`   | 9               | 400 blocks (6,000)    | ~0.5 min   |
 
-Worst case, with every check running to its cap (presets 8,000 blocks ×
-6 games, field 6,000 × 9), is about 12 min per group; the job timeout is
+Worst case, with every check running to its cap (presets 12,000 blocks ×
+6 games, field 6,000 × 9), is about 8.5–17 min per group at 7–14 ms a game
+(a full field-group baseline run measured ~14 ms); the job timeout is
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 
@@ -475,21 +482,38 @@ _increases_ variance, because they compete in the same zero-sum games —
 which is why persona-vs-persona separations come from the field matchup,
 not the mixed table.
 
-**What the gate measured (2026-09-24, after #2555 and #2234).** Baseline
+**What the gate measured (2026-09-24, after #2555, #2234, #2235, #2236 and the #2283 retune).** Baseline
 (`BASELINE_SEED`, presets 12,000 blocks, field 6,000; the full numbers with
 counts are in `baseline.json`):
 
-- The difficulty ladder holds at every step: the human stand-in wins 28.3%
-  at the all-Cautious table, 25.5% at all-Schemer and 19.3% at all-Daring
-  (24.0% at the mixed table). At the mixed table Daring wins 33.7%, Schemer
-  22.3%, Cautious 19.9%; in the field matchup Daring beats Schemer by
-  +7.3pp and Schemer beats Cautious by +3.2pp. All six steps are
-  separation checks.
+- The difficulty ladder holds at every step, on the targets the owner set
+  (#2283): the human stand-in wins 40.0% at the all-Cautious table, 25.3% at
+  all-Schemer and 16.3% at all-Daring (25.1% at the mixed table). At the
+  mixed table Daring wins 40.0%, Schemer 23.5%, Cautious 11.3%. In the field
+  matchup, Daring beats Schemer by +10.5pp and Schemer beats Cautious by
+  +11.9pp. All six steps are separation checks.
+- **Plausible mistakes (#2283).** A noise hit used to play a uniformly
+  random card. It now plays a near-best one: each other card is weighted
+  exp(−(best − score) / 0.1), in utility-score units (`MISTAKE_SPREAD`). A
+  sloppy pass draws its 3 cards the same way.
+  - Near-best mistakes cost fewer games, so the rates rose to hold the
+    ladder: Cautious 55%, Schemer 19%, Daring 0% (previously 38 / 10 / 0).
+  - Measured by the regret report on the same deals (60 blocks), a mistake
+    costs 1.27 points instead of 1.51 (Cautious) and 1.21 instead of 1.49
+    (Schemer). Blunders, Q♠-sized or worse, fell from 3.4% of mistakes to
+    2.6% (Cautious) and from 3.8% to 2.0% (Schemer).
+  - The per-play gain is modest because the AI's own scores rank the
+    alternatives only roughly. Better rankings are #2587's job (the strong
+    engine).
+  - Before this, #2236's tactics had widened the ladder to 43.4 / 26.0 /
+    16.5%: better deliberate play made random noise cost more.
 - Before #2555 (Cautious noise 25%) the bottom of the ladder was inverted:
   Cautious was the strongest persona (+2.75pp over Schemer in the field) and
   the all-Cautious table the hardest for the human (21.9%). Changing
   Cautious's play weights barely moved that; its noise rate did (30% → still
-  level with Schemer, 35% → the ladder above, 38% → a 30% human win share).
+  level with Schemer, 35% → a correct ladder). #2235's moon defense helped
+  Cautious slightly more than Schemer and thinned that step, so Cautious
+  noise went to 38% (and to 55% with #2283's plausible mistakes).
 - Before #2234 Daring's moon trigger cost it games (field +1.5pp over
   Schemer; the human won 23.9% at its table). The new trigger (`moonHand.ts`)
   attempts rarely from the opening hand and commits once Daring holds every
@@ -498,8 +522,25 @@ counts are in `baseline.json`):
   Daring commits mid-hand, so its attempt and paired-success rates — 14.4%
   and 10.3% after, 9.2% and 7.2% before — measure different populations and
   aren't directly comparable.)
-- 33% of Daring's Q♠ dumps land on the human (Schemer: 34%). Passes that
-  could void a suit do so 20% (Cautious), 65% (Schemer), 84% (Daring) of
+- #2235 made moon defense shooter-aware: a point card is scored by where
+  the trick's points will land — on the would-be shooter (feeding the moon)
+  or on someone else (breaking it) — using who still has to play, the cards
+  already in the trick, pass memory and known voids; the threat is graded
+  from 2 points instead of switching on at 4. Against a Schemer field,
+  Daring's paired moon success fell from 10.1% to 5.3% (moons per hand
+  1.47% → 0.76%).
+- #2236 added engine-level tactics (`rateTactics`), validated one at a time
+  head to head (a seat with the tactic against the same seat without it,
+  same cards, Schemer field): duck high (play the highest card that already
+  loses — #1500's rule) +30.5pp win share with its moon guard; forced/free
+  win with the highest card +4.1pp; low-spade flush leads +3.0pp. Keeping
+  low "exit" cards for the endgame cost 1.2-2.2pp in every variant and was
+  left out. Duck-high stands aside while a lone opponent holds every
+  point taken, and at least 2 of them: unguarded, defenders shed their
+  stoppers and Daring's moon success rose from 5% to 21%. At the
+  all-Daring table paired moon success is now 9.2%.
+- 35% of Daring's Q♠ dumps land on the human (Schemer: 33%). Passes that
+  could void a suit do so 23% (Cautious), 69% (Schemer), 84% (Daring) of
   the time.
 
 **Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
@@ -512,6 +553,113 @@ does better against Cautious players), pinned by `gate.test.ts`. The old six
 fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
 #2204's meaning (games per matchup), and `--log-games` (used by
 `hearts-analysis`) is unchanged.
+
+### Hearts AI regret metric — points lost vs a perfect-information reference (#2239)
+
+Win share mixes a persona's own play with its opponents'. The regret metric
+grades each card play instead, like chess's average centipawn loss: how many
+points worse the chosen card was than the best card, by a reference that
+sees all four hands. The AI only ever sees its own hand; the harness deals
+every hand, so it can grade a decision afterwards without giving the AI
+anything it didn't have.
+
+- **Reference (`sim/oracle.ts`).** For each graded play, every legal card is
+  tried on the true state and the hand is finished by a perfect-information
+  rollout for all four seats. The rollout is greedy and moon-aware: a lone
+  point-holder with 10+ points plays the moon out and the others try to take
+  a point off it. Each card's value is the average of 16 rollouts, one greedy
+  and 15 with ε = 0.2 random plays. Every card sees the same random streams,
+  and the seed comes from the cards in play, so results are repeatable.
+  - A card's cost is the acting seat's moon-adjusted hand score minus the
+    table mean. Without a moon, that is its own points − 6.5, so regret is in
+    plain points: Q♠ is 13, a heart 1. A moon counts −19.5 for the shooter
+    and +6.5 for everyone else.
+  - `oracle.ts` imports only the engine's rules, never `ai.ts`,
+    `aiConsiderations.ts` or `aiWeights.ts`, so it shares no heuristic or bug
+    with what it grades. A test pins this.
+- **Is it stronger than the AI?** A player that cheats with this reference
+  (`oraclePolicy`) wins 73% of games against a Schemer field, against
+  Daring's 34% on the same cards. A single greedy rollout managed only 49%,
+  and 8 rollouts at ε = 0.15 72.5%.
+- **What regret includes.** It is measured against a player that can see
+  every hand, so its absolute level (~10 points per hand) is mostly the value
+  of hidden information. Read the differences between personas on the same
+  cards, not the level. Each value is a sampled rollout average, so a single
+  decision's regret is an estimate; the report averages tens of thousands.
+- **Blunder bands** (`DEFAULT_REGRET_BANDS`, adjustable):
+
+  | Band      | Regret (points) | Roughly                   |
+  | --------- | --------------- | ------------------------- |
+  | `optimal` | `0`             | the reference's best card |
+  | `minor`   | `0 < r < 3`     | a stray heart or two      |
+  | `mistake` | `3 <= r < 10`   | several hearts            |
+  | `blunder` | `r >= 10`       | Q♠-sized, or a moon       |
+
+- **Noise split.** ai.ts's noise is one `rng() < NOISE_RATE` draw per play.
+  `sim/regret.ts` tags each graded play as noise or deliberate from that
+  draw, passing the RNG through unchanged; a test pins that grading and
+  tagging leave every game identical.
+
+**Run it.** It is a report, not a gate, and always exits 0:
+
+```bash
+npx tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
+npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
+npx tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+npx tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
+```
+
+Each persona takes the test seat against a Schemer field on the same deals,
+so per-block differences are paired as in the gate.
+
+- **Cost:** grading takes ~3.5 ms per play. 100 blocks grade ~130,000 plays
+  (~7.5 min), or ~10 min with `--oracle-player`, which runs the reference for
+  its own plays too.
+- **Sampling:** `--sample-every K` grades about one play in K, picked
+  pseudo-randomly per play so a K that divides 13 can't lock onto one trick
+  of every hand, and scales points lost back up by K.
+
+Unit tests: `sim/__tests__/oracle.test.ts` covers a known four-hand endgame
+where the reference must find the 13-point difference, rollout rules, hand
+cost and bands. `regret.test.ts` covers the tallies, the noise split, win
+share reported independently of regret, and the ladder check.
+
+**What it measured (2026-09-24, seed 2238, 100 blocks, every play graded — with the old uniform-random noise, before #2283):**
+
+| Persona         | Points lost / 100 hands | Per noise play | Per deliberate play | Blunders | Win share |
+| --------------- | ----------------------- | -------------- | ------------------- | -------- | --------- |
+| Cautious        | 1,095                   | 1.33           | 0.636               | 1.5%     | 10.7%     |
+| Schemer         | 966                     | 1.30           | 0.696               | 1.2%     | 24.8%     |
+| Daring          | 1,010                   | —              | 0.777               | 1.3%     | 33.8%     |
+| Oracle (cheats) | 0                       | —              | 0                   | 0%       | 73.0%     |
+
+- **The noise ladder holds.** On noise plays alone, Cautious loses 384 more
+  points per 100 hands than Schemer [359, 410], and Schemer 131 more than
+  Daring [120, 142].
+- **Noise varies in how often it fires, not in how bad each mistake is.** A
+  noise play costs ~1.3 points for both Cautious and Schemer, because it is a
+  uniform random card either way.
+- **Win share and regret disagree, as the metric allows.** In total,
+  Cautious loses more than Schemer (+131 [90, 171]). But Daring loses _more_
+  than Schemer (+55 [14, 95]) while winning 34% of games to Schemer's 25%.
+  Daring's deliberate plays are the least reference-like of the three
+  (0.777 points per play). Its moon attempts and aggressive dumps cost
+  expected hand points, and they pay off in games won. Cautious's deliberate
+  play is actually the closest to the reference; its weakness is almost all
+  noise.
+
+**After #2283's plausible mistakes** (same run settings; Cautious 55%,
+Schemer 19%):
+
+| Persona  | Points lost / 100 hands | Per noise play (blunders) | Per deliberate play | Win share |
+| -------- | ----------------------- | ------------------------- | ------------------- | --------- |
+| Cautious | 1,099                   | 1.28 (2.5%)               | 0.524               | 15.3%     |
+| Schemer  | 999                     | 1.20 (2.2%)               | 0.693               | 23.8%     |
+| Daring   | 1,018                   | —                         | 0.783               | 33.3%     |
+
+The noise ladder still holds on noise plays: Cautious − Schemer is +476
+[450, 503] and Schemer − Daring +232 [217, 246]. Each mistake is cheaper and
+less often a blunder; the personas simply make more of them.
 
 ## Manual repros
 
@@ -613,8 +761,9 @@ test (see "What's Tested" note above — no React/canvas coverage).
 
 The question the panel answers is "does the collision rate match the enemy's skill?" — the
 per-tier dodge odds are configuration; the panel shows what actually happened next to them. Dev
-builds only (the `DEV` button in the corner of the canvas; the whole panel is behind `__DEV__`, so
-store builds never carry it).
+builds and internal pre-launch builds only (the `DEV` button in the corner of the canvas). The
+panel is behind `DEV_TOOLS` in `StarSwarmScreen.tsx`, which is `__DEV__` or a build against the
+pre-launch API (#2567, as Hearts does), so store builds never show it.
 
 1. Start a run at the difficulty you are tuning (the _Difficulty_ section applies on New Game).
 2. Open the panel. Under _Run stats_ the tier table has one row per tier:
@@ -636,6 +785,39 @@ store builds never carry it).
 The same numbers reach Sentry as one `starswarm.run_stats` breadcrumb per finished run (counts,
 wave, difficulty, score) — look at the breadcrumbs on any Star Swarm event to compare real play
 against the panel. Unit coverage: `engine.test.ts` ("Run stats (#2491)") and `telemetry.test.ts`.
+
+### Star Swarm: reading the "Frame" readout (#2567)
+
+The readout answers "is the canvas keeping up, and is React out of the frame loop?". Turn on
+_Frame readout_ in the dev panel, then close the panel. A green line appears along the bottom
+edge of the game:
+
+```
+16.7 ms avg · 18.2 p95 · 60 f · 0 commits/s
+```
+
+- **`ms avg` and `p95`** are the mean and 95th-percentile interval between the game loop's
+  frames over the last second. At 60 Hz a healthy loop reads about 16.7 for both. A p95 well
+  above the average means occasional long frames (jank) even when the average looks fine. At
+  120 Hz the target is about 8.3.
+- **`f`** is the number of frames in that second: the frame rate the loop actually got.
+- **`commits/s`** is how many times React re-rendered the game canvas in that second. It should
+  be 0 while paused and only a few per second in play (score, wave and banner changes). The
+  removed legacy renderer re-rendered once per frame, so this read about the frame rate.
+
+Read it with the panel closed. The panel's own 4 Hz run-stats refresh re-renders the screen and
+the canvas with it, which adds 4 commits/s. The readout polls on its own timer and re-renders only
+itself, so it does not disturb what it measures.
+
+It measures the JavaScript thread, where the game loop runs. A slow UI thread (drawing the
+Picture) shows up as a lower `f` only when it holds up the loop's next frame. React Native's Perf
+Monitor (dev menu) shows the UI thread's frame rate separately in dev builds.
+
+Take real numbers from a release build (TestFlight or a Play test build against the pre-launch
+API). Dev builds run React in development mode and are much slower. The same summary is on the
+`__starswarm_getRunStats()` test hook as `frame` in E2E builds. The protocol and results table
+are in [`PERFORMANCE.md`](PERFORMANCE.md#star-swarm-native-renderer-2567). Unit coverage:
+`frameStats.test.ts` and `FrameStatsReadout.test.tsx`.
 
 ---
 

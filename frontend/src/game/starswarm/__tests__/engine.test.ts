@@ -3095,6 +3095,24 @@ describe("Carrier tier (#2484)", () => {
     expect(carrierOf(s)!.hp).toBe(7);
   });
 
+  it("a piercing shot damages an enemy only once across its whole flight, not once per tick it overlaps it", () => {
+    // Regression for the buddy-ship "one-shots a full-health Carrier" report: a piercing
+    // bullet is never consumed on hit, so a slow bullet parked on a big hitbox used to re-deal
+    // its damage on every tick it stayed inside it instead of just the first.
+    let s = settled();
+    const c = carrierOf(s)!;
+    s = {
+      ...s,
+      playerBullets: [shotAt(c.x, c.y, { piercing: true, damage: 1, width: 12, vx: 0, vy: 0 })],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(7);
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(7);
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(7);
+  });
+
   it("exposed: with all four escorts dead an ordinary shot damages it", () => {
     let s = withoutEscorts(settled());
     const c = carrierOf(s)!;

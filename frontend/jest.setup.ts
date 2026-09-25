@@ -228,6 +228,7 @@ import sort from "./src/i18n/locales/en/sort.json";
 import daily_word from "./src/i18n/locales/en/daily_word.json";
 import daily_challenge from "./src/i18n/locales/en/daily_challenge.json";
 import result from "./src/i18n/locales/en/result.json";
+import starswarm from "./src/i18n/locales/en/starswarm.json";
 
 i18n.use(initReactI18next).init({
   lng: "en",
@@ -249,6 +250,7 @@ i18n.use(initReactI18next).init({
     "daily_word",
     "daily_challenge",
     "result",
+    "starswarm",
   ],
   defaultNS: "common",
   resources: {
@@ -269,6 +271,7 @@ i18n.use(initReactI18next).init({
       daily_word,
       daily_challenge,
       result,
+      starswarm,
     },
   },
   interpolation: { escapeValue: false },

@@ -47,11 +47,14 @@ import {
   applyServerResult,
   markComplete,
   buildShareText,
+  guessCount as countGuesses,
+  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
@@ -433,6 +436,11 @@ const toastStyles = StyleSheet.create({
 // Main screen
 // ---------------------------------------------------------------------------
 
+/** A finished puzzle is a win or a loss on the games row (#2517), not just "completed". */
+function finishedOutcome(state: { won: boolean }) {
+  return recordedOutcome(state.won ? "win" : "loss");
+}
+
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
   const { t: tResult } = useTranslation("result");
@@ -720,6 +728,21 @@ export default function DailyWordScreen() {
       return;
     }
 
+    // #2197 — a word already on the board must not be submitted again. The
+    // server treats a repeat of a recorded guess as a replay (so a re-send
+    // after a lost response cannot rob a turn), which means a *deliberate*
+    // repeat would advance the board without spending a server-side guess.
+    // Six rows and five recorded guesses would then leave the player short of
+    // the answer they earned.
+    const alreadyGuessed = s.rows
+      .slice(0, s.current_row)
+      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
+    if (alreadyGuessed) {
+      showToast(t("error.alreadyGuessed"));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      return;
+    }
+
     const _devTs = __DEV__ ? Date.now() : 0;
     const _devBody = __DEV__
       ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
@@ -743,8 +766,19 @@ export default function DailyWordScreen() {
       if (!mountedRef.current) return;
       const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
 
-      const afterApply = applyServerResult(s, tileStates);
+      // #2541 — keep the server's count on the state; `guessCount` reads it.
+      const afterApply = withServerGuessCount(
+        applyServerResult(s, tileStates),
+        result.guesses_used
+      );
       const won = tileStates.every((tile) => tile.status === "correct");
+      // Deliberately the board's rows, not the server's `guesses_remaining`
+      // (#2541 review). A 200 can be a replay of a recorded guess — on a
+      // puzzle the server has as solved, or on a wiped board — and the 200
+      // carries no `solved` flag, so ending the game here would record a
+      // loss for a win, or a fresh completion for a finished puzzle. A board
+      // that is behind reaches its next guess, which the server refuses with
+      // a 403 that the recovery path below handles, guards included.
       const outOfGuesses = !won && afterApply.current_row >= 6;
 
       if (!syncGetGameId()) {
@@ -757,7 +791,10 @@ export default function DailyWordScreen() {
         finalState = markComplete(afterApply, won);
         // Daily Word has no numeric score: final_score stays null and the
         // challenge reads the result block instead.
-        syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finalState));
+        syncComplete(
+          { finalScore: null, outcome: finishedOutcome(finalState) },
+          sessionResult(finalState)
+        );
       }
 
       setState(finalState);
@@ -807,6 +844,79 @@ export default function DailyWordScreen() {
         }
       } else if (err instanceof ApiError && err.status === 429) {
         showToast(t("error.rateLimited"));
+      } else if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        (err.message === "no_guesses_remaining" || err.message === "already_solved")
+      ) {
+        // #2197 — the server says this puzzle is finished and the local board
+        // disagrees, which happens when a guess was recorded but its response
+        // never arrived. Trust the server: close the game out and reveal the
+        // answer it will now release, rather than stranding the player on a
+        // board that can never complete.
+        // Same guard as the success path: the player may have left while the
+        // guess was in flight, in which case useGameSync's unmount cleanup has
+        // already run and there is nothing left to close out.
+        const current = stateRef.current;
+        if (mountedRef.current && current) {
+          // `already_solved` means the server recorded a winning guess — the
+          // player won, and only the response was lost. Marking that a loss
+          // would persist won:false and show them the word they had already
+          // found.
+          const wonIt = err.message === "already_solved";
+          // The board is behind the server here by definition — that is why
+          // this 403 happened — so its row count is too low. Take the
+          // server's count from the refusal (#2541); `guessCount` falls back
+          // to the board if an older API sent none.
+          const finished = markComplete(
+            withServerGuessCount(current, err.body?.guesses_used),
+            wonIt
+          );
+
+          // Only report a session this visit actually played. `already_solved`
+          // is returned for *any* guess on a puzzle this session finished at
+          // any earlier time, and the board can be missing independently of
+          // the session id — they are separate AsyncStorage keys
+          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
+          // only the board on a corrupt payload. Without this guard, opening a
+          // wiped board and typing one word would fabricate a completed game
+          // for a puzzle finished hours ago, with a guesses_used taken from an
+          // empty board — free XP and a free "win in N guesses" goal credit.
+          const playedThisVisit = current.rows.some((r) => r.submitted);
+          if (playedThisVisit) {
+            // The session must be completed, or the unmount cleanup reports
+            // outcome:"abandoned" — and abandoned games earn no
+            // daily-challenge credit, no streak day and no XP (#2468/#2472).
+            if (!syncGetGameId()) {
+              syncStart(
+                { puzzle_id: current.puzzle_id },
+                { puzzle_id: current.puzzle_id, language: current.language }
+              );
+            }
+            syncMarkStarted();
+            syncComplete(
+              { finalScore: null, outcome: finishedOutcome(finished) },
+              sessionResult(finished)
+            );
+          }
+
+          setState(finished);
+          saveState(finished).catch(() => {});
+
+          if (wonIt) {
+            setWinModalVisible(true);
+          } else {
+            try {
+              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
+              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
+            } catch {
+              // Modal still opens; it just won't reveal the word.
+            }
+            if (!mountedRef.current) return;
+            setLossModalVisible(true);
+          }
+          startCountdown();
+        }
       } else {
         showToast(t("error.couldNotSubmit"));
       }
@@ -844,7 +954,7 @@ export default function DailyWordScreen() {
   // Render
   // ---------------------------------------------------------------------------
 
-  const guessCount = state ? state.rows.filter((r) => r.submitted).length : 0;
+  const guessCount = state ? countGuesses(state) : 0;
 
   async function handleShare() {
     if (!state) return;

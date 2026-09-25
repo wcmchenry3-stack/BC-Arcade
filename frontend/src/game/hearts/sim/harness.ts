@@ -41,6 +41,7 @@ import {
   dealGame,
   dealNextHand,
   detectMoon,
+  getRng,
   isQueenOfSpades,
   playCard,
   selectPassCard,
@@ -48,6 +49,7 @@ import {
 } from "../engine";
 import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "../types";
 import { createStream, deriveSeed } from "../../_shared/simRandom";
+import { DEFAULT_PIMC_CONFIG, pimcChooseCard, type PimcConfig } from "../pimc/engine";
 
 const DEAL_TAG = 0x4445414c; // "DEAL"
 const NOISE_TAG = 0x4e4f4953; // "NOIS"
@@ -71,6 +73,24 @@ export function personaPolicy(persona: AiPersona): HeartsPolicy {
     persona,
     pass: (hand, direction, _state, seat) => selectCardsToPass(hand, direction, persona, seat),
     play: (hand, trick, state, seat) => selectCardToPlay(hand, trick, state, seat, persona),
+  };
+}
+
+/**
+ * The PIMC engine (#2587) as a sim player: it plays with `pimcChooseCard`
+ * and passes like `passAs`. Its sampling draws from a stream seeded by one
+ * draw of the seat's noise stream, so games replay exactly.
+ */
+export function pimcPolicy(
+  label = "pimc",
+  config: PimcConfig = DEFAULT_PIMC_CONFIG,
+  passAs: AiPersona = "schemer"
+): HeartsPolicy {
+  return {
+    label,
+    pass: (hand, direction, _state, seat) => selectCardsToPass(hand, direction, passAs, seat),
+    play: (_hand, _trick, state) =>
+      pimcChooseCard(state, config, createStream(Math.floor(getRng()() * 2 ** 32))),
   };
 }
 
@@ -156,6 +176,12 @@ export type Policies = readonly [HeartsPolicy, HeartsPolicy, HeartsPolicy, Heart
 export interface PlayOptions {
   /** Keep every hand's opening deal on the record (tests only). */
   readonly recordDeals?: boolean;
+  /**
+   * Observe each card play before it is applied: the state the seat chose
+   * from, and its choice (the regret metric's hook, #2239). Must not touch
+   * the engine's RNG — the next seat's noise stream is switched in after it.
+   */
+  readonly onPlay?: (state: HeartsState, seat: number, card: Card) => void;
 }
 
 /** Final-score win shares: the lowest score wins; a tie splits the win. */
@@ -258,6 +284,7 @@ export function playGame(
       const trick = [...state.currentTrick];
       setRng(noise[seat]!);
       const card = policy.play(hand, [...trick], state, seat);
+      options.onPlay?.(state, seat, card);
       const tricksBefore = state.tricksPlayedInHand;
       state = playCard(state, seat, card);
       if (state.tricksPlayedInHand > tricksBefore) {

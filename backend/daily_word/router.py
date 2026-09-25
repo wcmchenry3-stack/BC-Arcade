@@ -1,29 +1,93 @@
-"""Daily Word REST endpoints — GET /today, POST /guess (#1190).
+"""Daily Word REST endpoints — GET /today, POST /guess, GET /answer (#1190).
+
+Guess state is server-side (#2197, ``daily_word.progress``). It has to be: the
+puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``, so
+nothing about the request itself can prove the caller has played. The rate
+limits below throttle volume only — they were never an integrity control, and
+before #2197 they were the *only* thing standing between a caller and both
+today's answer and an unlimited supply of scored guesses.
 
 Rate limits:
   GET /today   — 60/minute (IP-keyed, no auth)
   POST /guess  — 20/hour keyed by f"{session_id}:{puzzle_id}" (compound key
                  isolates by puzzle so the limit resets naturally each new day;
-                 20/hour gives 6 real guesses + room for invalid-word attempts
-                 and network retries without blocking a legitimate game)
+                 20/hour leaves room for invalid-word attempts and network
+                 retries on top of the 6 scored guesses, which are now capped
+                 by ``progress.MAX_GUESSES`` rather than by this limit)
+  GET /answer  — 20/minute, and gated on the caller's own guess record
+
+Availability posture (#2542): ``/guess`` degrades *open* if the guess record is
+unreachable — it scores the guess and skips the cap rather than failing, because
+``/today`` needs no DB and has already handed the player a board. ``/answer``
+stays closed: with no record there is nothing to check entitlement against, so
+it surfaces the DB failure (a 500) rather than releasing the word.
+
+Two accepted consequences of that pairing, both bounded by the outage:
+
+* Guesses spent while the record is unreachable leave no rows, so once the DB
+  recovers ``/answer`` refuses that puzzle for that session permanently — the
+  loss modal renders without the word. Both client call sites already handle a
+  missing answer, so this degrades quietly rather than breaking.
+* ``/answer`` failing as a 500 is sampled by the client's own error reporting.
+  ``/guess`` failures are throttled here (``_report_degraded_guess``); this path
+  is not, because it is only reached by players who already finished.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request
+import sentry_sdk
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
+from db.base import get_session_factory
 from limiter import _real_ip, limiter
 from session import get_session_id
 
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
 
+# Degrade-open reporting is throttled (#2542 review). The expected trigger is a
+# Postgres blip, and the IP backstop still allows 1200 guesses/hour/IP, so an
+# unsampled report per failing guess would ship thousands of events for one
+# outage — the same flood this repo already fixed twice on the client (#513's
+# 476-event issue, #2430's network-warning window). One Sentry event per window
+# is enough to tell us the cap has stopped applying; every failure is still
+# logged, just without a stack after the first.
+_DEGRADE_REPORT_WINDOW_S = 600.0
+_last_degrade_report: float | None = None
+
+
+def _report_degraded_guess(exc: BaseException) -> None:
+    """Report that the guess cap is not being enforced — at most once per window."""
+    global _last_degrade_report
+
+    now = time.monotonic()
+    first_in_window = (
+        _last_degrade_report is None or now - _last_degrade_report >= _DEGRADE_REPORT_WINDOW_S
+    )
+    if not first_in_window:
+        logger.warning("daily_word: guess state still unavailable (%s)", type(exc).__name__)
+        return
+
+    _last_degrade_report = now
+    logger.exception("daily_word: guess state unavailable, scoring without the cap")
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("subsystem", "daily_word.progress")
+        scope.fingerprint = ["daily-word-guess-state-unavailable"]
+        sentry_sdk.capture_message(
+            "daily_word guess state unavailable — cap not enforced", level="warning"
+        )
+
+
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _guess_key(request: Request) -> str:
@@ -115,8 +179,16 @@ async def get_today(
 
 @router.post("/guess")
 @limiter.limit("20/hour", key_func=_guess_key)
-async def post_guess(request: Request, body: GuessRequest) -> dict:
-    get_session_id(request)
+# An IP-keyed backstop *in addition to* the session key, because the session id
+# is self-asserted: without one, minting a fresh UUID bought another six
+# guesses and unbounded row insertion. Deliberately generous — `_real_ip`
+# resolves to a carrier NAT address that many subscribers share, and locking
+# real players out of a shipping free game is a worse outcome than the abuse it
+# prevents. This is a volume backstop, not a security boundary; it does not
+# stop a determined caller, which needs server-issued sessions (#1047).
+@limiter.limit("1200/hour")
+async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
+    sid = get_session_id(request)
 
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
@@ -149,7 +221,58 @@ async def post_guess(request: Request, body: GuessRequest) -> dict:
     if not is_valid_guess(guess, lang):
         raise HTTPException(status_code=422, detail="not_a_word")
 
-    result: dict = {"tiles": _score_guess(answer, guess)}
+    # #2197 — spend a guess server-side. Deliberately after the length and
+    # dictionary checks, so a typo or a non-word costs nothing, exactly as the
+    # client behaves. A guess already on record is re-scored without spending a
+    # turn, so a retried request cannot rob the player.
+    tiles = _score_guess(answer, guess)
+    # Compared, not inferred from the tiles: `_score_guess` builds one tile per
+    # code point of the *guess* and zips against the answer, while the length
+    # check above compares grapheme clusters. For a Hindi guess with matching
+    # clusters but fewer code points, every tile can read "correct" without the
+    # words being equal — which would persist solved=True and release the
+    # answer for a non-winning guess. No such pair exists in today's word
+    # lists, so this is latent rather than live, but equality is exact and free.
+    won = guess == answer
+
+    # Degrade open if the record cannot be reached (#2542). Daily Word is a
+    # free shipping game and the daily challenge's anchor, `/today` needs no DB
+    # so the player has already been handed a board, and prod Postgres is on a
+    # plan that pauses when idle — so a DB blip must not turn a playable game
+    # into an error mid-puzzle. The cap is deterrence and volume bounding, not
+    # a security boundary (sessions are self-asserted until #1047), so losing
+    # enforcement during an outage is the cheaper failure. Reported to Sentry so
+    # a permanent degrade is visible rather than a cap that quietly never
+    # applies. `/answer` stays closed: without the record there is nothing to
+    # check entitlement against.
+    outcome: GuessOutcome | None = None
+    try:
+        factory = get_session_factory()
+        async with factory() as db:
+            outcome = await record_guess(
+                db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
+            )
+    except Exception as exc:  # noqa: BLE001 — degrade open on *any* failure to reach the record
+        _report_degraded_guess(exc)
+
+    if outcome is not None and not outcome.allowed:
+        # #2541 — the server's count travels with the refusal. This 403 means
+        # the board is behind the record (a recorded guess whose response was
+        # lost), so the client must not count its own rows: that number is
+        # structurally low, and it feeds the "win within N guesses" goal and
+        # the share text. `detail` stays the bare code the client matches on.
+        # Set on the injected Response rather than raising HTTPException, whose
+        # body can only be `detail`; this keeps the route's `-> dict` contract.
+        response.status_code = 403
+        return {
+            "detail": "already_solved" if outcome.solved else "no_guesses_remaining",
+            "guesses_used": outcome.guesses_used,
+        }
+
+    result: dict = {"tiles": tiles}
+    if outcome is not None:
+        result["guesses_used"] = outcome.guesses_used
+        result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
     if lang == "hi":
         # clusters describe how to split the guess's code points into displayable tile units (not the answer)
         result["grapheme_clusters"] = _grapheme_clusters(guess)
@@ -162,9 +285,25 @@ async def get_answer_route(
     request: Request,
     puzzle_id: str = Query(...),
 ) -> dict:
-    """Return the answer for a puzzle — only called client-side after all guesses are exhausted."""
+    """Return the answer, but only to a session that has earned it (#2197).
+
+    ``puzzle_id`` is ``YYYY-MM-DD:{lang}`` and needs no discovery, so this used
+    to hand today's word to anyone who asked before making a single guess. The
+    gate is the caller's own guess record: solved, or all
+    ``MAX_GUESSES`` spent. A session that never played gets 403, which also
+    means past puzzles are not browsable.
+    """
+    # puzzle_id is validated before the session so a malformed id still answers
+    # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+
+    sid = get_session_id(request)
+    factory = get_session_factory()
+    async with factory() as db:
+        earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
+    if not earned:
+        raise HTTPException(status_code=403, detail="guesses_remaining")
     return {"answer": answer}

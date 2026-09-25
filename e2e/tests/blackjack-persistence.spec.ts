@@ -137,13 +137,13 @@ test.describe("Blackjack — state persistence", () => {
     expect(state.dealer_hand).toHaveLength(0);
   });
 
-  test("game-over state shows Out of Chips modal", async ({ page }) => {
+  test("game-over state shows the Out of Chips card", async ({ page }) => {
     await injectEngineState(page, gameOverState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    await expect(page.getByText("Out of Chips").first()).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      page.getByTestId("blackjack-result").getByText("Out of Chips"),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("chip balance persists across sessions (injected chips shown)", async ({

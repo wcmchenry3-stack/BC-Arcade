@@ -33,6 +33,7 @@ import {
 } from "../game/hearts/playerNames";
 import { heartsLeaderboard, heartsLeaderboardScore } from "../game/hearts/leaderboard";
 import { heartsResult } from "../game/hearts/result";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import {
   clearPendingSubmission,
   loadPendingSubmission,
@@ -54,6 +55,7 @@ import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/type
 import { resolvePersona } from "../game/hearts/types";
 import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
 import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
+import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
 
@@ -97,6 +99,10 @@ export default function HeartsScreen() {
 
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
   const debugMode = __DEV__;
+  // The debug panel also opens in internal test builds (never store builds),
+  // for its on-device PIMC timing (#2587); card reveals and hand logs stay
+  // __DEV__-only.
+  const showDebugPanel = __DEV__ || isPreLaunchApiBuild();
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -351,7 +357,12 @@ export default function HeartsScreen() {
     if (gameState?.phase !== "game_over") return;
     if (!syncGetGameId()) return;
     const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
-    syncComplete({ outcome: "completed", finalScore, durationMs: 0 }, { final_score: finalScore });
+    // #2517: record who won — the same outcome the result card shows.
+    const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
+    syncComplete(
+      { outcome: recordedOutcome(outcome), finalScore, durationMs: 0 },
+      { final_score: finalScore, vs_result: outcome }
+    );
   }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId]);
 
   useEffect(() => {
@@ -677,7 +688,7 @@ export default function HeartsScreen() {
           takerLabel={queenOfSpadesLabel}
           onAnimationEnd={() => setShowQueenOfSpades(false)}
         />
-        {__DEV__ && (
+        {showDebugPanel && (
           <Pressable
             style={[styles.devButton, { backgroundColor: colors.accent }]}
             onPress={() => setDebugPanelOpen((prev) => !prev)}
@@ -771,8 +782,8 @@ export default function HeartsScreen() {
         testID="hearts-result"
       />
 
-      {/* ── Hearts debug panel (__DEV__ only) ────────────────────── */}
-      {__DEV__ && (
+      {/* ── Hearts debug panel (dev + internal test builds) ──────── */}
+      {showDebugPanel && (
         <HeartsDebugPanel
           visible={debugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}

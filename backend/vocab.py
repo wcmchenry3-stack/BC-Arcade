@@ -44,7 +44,8 @@ class GameType(str, Enum):
 
 
 class GameOutcome(str, Enum):
-    # Result vocabulary — games with a concrete winner/loser (Blackjack).
+    # Result vocabulary — games with a concrete winner/loser: Blackjack, and (#2517)
+    # Yacht vs CPU, Hearts, Daily Word, Mahjong (deadlock → loss). A tie is PUSH.
     WIN = "win"
     LOSS = "loss"
     PUSH = "push"

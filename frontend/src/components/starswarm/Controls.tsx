@@ -186,20 +186,6 @@ export default function Controls({
             </Pressable>
           </View>
         )}
-
-        {/* Game-over new-game button */}
-        {isGameOver && (
-          <View style={styles.gameOverActions}>
-            <Pressable
-              style={styles.newGameBtn}
-              onPress={handleNewGame}
-              accessibilityLabel={t("controls.newGameLabel")}
-              accessibilityRole="button"
-            >
-              <Text style={styles.newGameBtnText}>{t("controls.newGame")}</Text>
-            </Pressable>
-          </View>
-        )}
       </View>
     </GestureDetector>
   );
@@ -208,11 +194,6 @@ export default function Controls({
 /** Call from StarSwarmScreen when the player is hit (short impact). */
 export function hapticPlayerHit() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-}
-
-/** Call from StarSwarmScreen on player death / game over (medium impact). */
-export function hapticPlayerDeath() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 }
 
 /** Call from StarSwarmScreen on wave clear (light notification). */
@@ -268,13 +249,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "normal",
     letterSpacing: 0,
-  },
-  gameOverActions: {
-    position: "absolute",
-    bottom: 100,
-    left: 0,
-    right: 0,
-    alignItems: "center",
   },
   newGameBtn: {
     paddingHorizontal: 32,

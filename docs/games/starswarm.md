@@ -185,7 +185,46 @@ identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also e
 ## Client-Side Engine
 
 - Location: `frontend/src/game/starswarm/` — check this directory for current engine structure
-- Rendering: `@shopify/react-native-skia`
+- Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
+
+### Native rendering pipeline (epic #2562)
+
+The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF loop. Every
+drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, starfield,
+{ loaded, width, height })` returns a flat, back-to-front display list of primitive ops (`fill`,
+`rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
+Carrier's armor ring, hit-flash bursts, the beam, harmless-bullet dimming, the invincibility
+blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
+`__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
+
+`render/publish.ts` gates when a frame is published at all (#2563): only when something drawn
+changed, so a paused or finished game does not re-render.
+
+Since #2565 the display list is drawn on the UI thread. Each published frame, the RAF loop builds
+the list and writes it into one Reanimated shared value; a `useDerivedValue` worklet replays it
+with `render/drawFrame.ts` into a Skia `Picture` (`createPicture`), and the canvas renders a single
+`<Picture>`. So the pipeline is engine → `buildFrame` (JS thread) → shared value → `drawFrame`
+(UI thread) → Picture. `drawFrame` decides nothing and is tested against a recording fake of the
+Skia API in `__tests__/drawFrame.test.ts`. A throw inside it is reported to Sentry once
+(`starswarm.drawFrame`) and never takes down the UI thread. Sprite images reach the worklet as a
+stable set that changes only when an image finishes loading.
+
+Since #2566 the HUD and overlays are the only React state the loop touches, and only on change.
+`render/hud.ts` derives a small `HudState` (score, wave, difficulty, guns and hull, lives, the
+countdown digit and each banner's visibility, the active power-up) from each published frame and
+the loop calls `setHud` only when `sameHud` says a field moved, so steady play with nothing
+scored re-renders React zero times. The two cues that do move every frame, the mission-complete
+fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
+thread. Gameplay is the Picture; the HUD is on-change React.
+
+The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
+and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (unmaintained) still
+derives the same rules itself.
+
+The dev panel's _Frame readout_ switch (#2567) shows frame-time average and p95 and the canvas's
+React commits per second over the game. See
+[`TESTING.md`](../TESTING.md#star-swarm-reading-the-frame-readout-2567) for how to read it and
+[`PERFORMANCE.md`](../PERFORMANCE.md#star-swarm-native-renderer-2567) for the measured numbers.
 
 ## Backend
 

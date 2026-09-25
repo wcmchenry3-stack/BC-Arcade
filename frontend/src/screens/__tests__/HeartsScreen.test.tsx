@@ -30,13 +30,16 @@ jest.mock("../../game/hearts/api", () => ({
   },
 }));
 
+// Shared so tests can assert how a finished game is recorded (#2517).
+const mockSyncComplete = jest.fn();
+const mockSyncGetGameId = jest.fn((): string | null => null);
 jest.mock("../../game/_shared/useGameSync", () => ({
   useGameSync: () => ({
     start: jest.fn(),
     markStarted: jest.fn(),
-    complete: jest.fn(),
+    complete: mockSyncComplete,
     restart: jest.fn(),
-    getGameId: jest.fn().mockReturnValue(null),
+    getGameId: mockSyncGetGameId,
   }),
 }));
 
@@ -575,6 +578,25 @@ describe("HeartsScreen — result card (#2506)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
     });
     expect(r.getByTestId("hearts-start-game")).toBeTruthy();
+  });
+
+  // #2517: the games row records who won — a tie is `push`.
+  it.each([
+    ["win", [45, 100, 63, 52]],
+    ["loss", [70, 100, 38, 52]],
+    ["push", [37, 100, 38, 52]],
+  ])("records a %s on the games row", async (recorded, scores) => {
+    mockSyncGetGameId.mockReturnValue("hearts-game");
+    try {
+      await finishGame(scores as number[]);
+      await waitFor(() => expect(mockSyncComplete).toHaveBeenCalled());
+      expect(mockSyncComplete.mock.calls[0]![0]).toEqual(
+        expect.objectContaining({ outcome: recorded })
+      );
+    } finally {
+      mockSyncGetGameId.mockReturnValue(null);
+      mockSyncComplete.mockClear();
+    }
   });
 
   it("Home returns to the lobby", async () => {

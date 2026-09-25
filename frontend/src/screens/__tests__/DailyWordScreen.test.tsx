@@ -425,6 +425,16 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     });
   }
 
+  /** Submit again, stepping past onSubmit's 500 ms Date.now()-based debounce. */
+  async function typeAndSubmitAgain(api: Awaited<ReturnType<typeof renderScreen>>, word: string) {
+    const spy = jest.spyOn(Date, "now").mockReturnValue(Date.now() + 5000);
+    try {
+      await typeAndSubmit(api, word);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
   it("does not start a session on load", async () => {
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
@@ -455,6 +465,151 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
+  // #2197 review — the server treats a repeat of a recorded guess as a replay
+  // (so a re-send after a lost response cannot rob a turn). A *deliberate*
+  // repeat would therefore advance the board without spending a server-side
+  // guess, leaving six rows against five recorded guesses and denying the
+  // player the answer they earned.
+  it("refuses a word already on the board instead of submitting it again", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1);
+
+    // Step past onSubmit's 500 ms double-tap debounce, which is keyed on
+    // Date.now() — otherwise the second submit is dropped before it reaches the
+    // duplicate check and this would pass for the wrong reason.
+    await typeAndSubmitAgain(api, "zzzzz");
+    expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1);
+    expect(await api.findByText("Already guessed")).toBeTruthy();
+  });
+
+  // #2197 review — a guess the server recorded whose response never arrived
+  // leaves the board one row behind. Without this the player is stranded on a
+  // board that can never complete, behind a generic toast.
+  it("closes the game out and reveals the answer when the server says guesses are spent", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(dailyWordApi.getAnswer).toHaveBeenCalledWith(TODAY_META.puzzle_id);
+    await expect(api.findByText(/The word was CRANE/i)).resolves.toBeTruthy();
+  });
+
+  // #2535 review — `already_solved` means the server recorded a winning guess
+  // and only the response was lost. Treating it as a loss persisted won:false
+  // and showed the player the word they had already found.
+  it("treats already_solved as the win it is, not a loss", async () => {
+    // One real guess first, so this is the genuine lost-response case rather
+    // than the wiped-board case covered above.
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    await typeAndSubmitAgain(api, "brick");
+
+    expect(await api.findByText("You Win!")).toBeTruthy();
+    expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    // #2517: a finished puzzle records a win or a loss, not just "completed".
+    expect(summary).toMatchObject({ outcome: "win", result: { won: true } });
+  });
+
+  // #2541 — the 403 means the board is behind the server, so the board's row
+  // count is too low. Here the winning (third) guess landed but its response
+  // was lost: the board shows one row, and the server says three. Reporting
+  // the board's count credited the "win within N guesses" goal for a longer
+  // win, and printed the short count on the result card and in the share.
+  it("reports the server's guess count from the 403, not the board's", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+    dailyWordApi.submitGuess.mockRejectedValue(
+      new ApiError("already_solved", 403, {
+        detail: "already_solved",
+        guesses_used: 3,
+        solved: true,
+      })
+    );
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    await typeAndSubmitAgain(api, "brick");
+
+    expect(await api.findByText("You Win!")).toBeTruthy();
+    expect(api.getByText("3/6")).toBeTruthy();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ result: { won: true, guesses_used: 3 } });
+  });
+
+  // #2541 review — a 200 can be a replay of a recorded guess, and it carries
+  // no `solved` flag. Here the server has six guesses on record (the puzzle
+  // may well be solved) and the replayed guess is not a winner: ending the
+  // game on `guesses_remaining: 0` would record a loss for a win, or a fresh
+  // completion on a wiped board. The game must stay open; the next guess gets
+  // the 403 whose recovery path handles both cases.
+  it("does not end the game on a 200's guesses_remaining alone", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({
+      tiles: tilesFor("zzzzz", "absent"),
+      guesses_used: 6,
+      guesses_remaining: 0,
+    });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    await waitFor(() => expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1));
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(api.queryByText("You Lose")).toBeNull();
+  });
+
+  // #2535 review — without syncComplete the session stays open and the unmount
+  // cleanup reports it abandoned. Abandoned games earn no daily-challenge
+  // credit, no streak day and no XP (#2468/#2472), so recovering this way
+  // would have silently cost the player their day.
+  it("completes the session so the recovery is not recorded as an abandon", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+    await typeAndSubmitAgain(api, "brick");
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ outcome: "loss", result: { won: false } });
+  });
+
+  // #2535 third review — `already_solved` is returned for any guess on a puzzle
+  // this session finished at any earlier time, and the board lives under a
+  // different AsyncStorage key than the session id, so it can be wiped on its
+  // own. Typing one word into a blank board must not fabricate a completed
+  // game (free XP) or a win with guesses_used taken from an empty board (free
+  // "win in N guesses" credit).
+  it("does not report a session when the board shows nothing was played", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("still closes the game out when the answer cannot be fetched", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
+    dailyWordApi.getAnswer.mockRejectedValue(new ApiError("guesses_remaining", 403));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await typeAndSubmit(api, "zzzzz");
+
+    // No crash, and the generic "could not submit" path is not what ran.
+    expect(dailyWordApi.getAnswer).toHaveBeenCalled();
+  });
+
   it("does not start a session when the guess is rejected by the server", async () => {
     dailyWordApi.submitGuess.mockRejectedValue(new Error("not_a_word"));
     const api = await renderScreen();
@@ -476,7 +631,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(gameId).toBe("game-1");
     expect(summary).toEqual({
       finalScore: null,
-      outcome: "completed",
+      outcome: "win",
       result: { is_complete: true, won: true, guesses_used: 1 },
     });
   });

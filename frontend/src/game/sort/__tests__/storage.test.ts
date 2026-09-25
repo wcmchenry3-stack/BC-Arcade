@@ -1,0 +1,44 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { recordLevelSolve } from "../storage";
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
+});
+
+describe("recordLevelSolve (#2512)", () => {
+  it("makes the first solve of a level its best", async () => {
+    await expect(recordLevelSolve(3, 20)).resolves.toEqual({
+      best: 20,
+      isNewBest: true,
+      firstSolve: true,
+    });
+  });
+
+  it("keeps the fewest moves per level, and marks later solves as repeats", async () => {
+    await recordLevelSolve(3, 20);
+    await expect(recordLevelSolve(3, 25)).resolves.toEqual({
+      best: 20,
+      isNewBest: false,
+      firstSolve: false,
+    });
+    await expect(recordLevelSolve(3, 14)).resolves.toEqual({
+      best: 14,
+      isNewBest: true,
+      firstSolve: false,
+    });
+  });
+
+  it("tracks each level separately", async () => {
+    await recordLevelSolve(3, 20);
+    await expect(recordLevelSolve(4, 30)).resolves.toEqual(
+      expect.objectContaining({ best: 30, firstSolve: true })
+    );
+  });
+
+  it("starts fresh when the stored bests are corrupt", async () => {
+    await AsyncStorage.setItem("@sort/best_moves", "not json");
+    await expect(recordLevelSolve(3, 20)).resolves.toEqual(
+      expect.objectContaining({ best: 20, isNewBest: true })
+    );
+  });
+});

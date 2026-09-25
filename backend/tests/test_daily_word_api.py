@@ -6,7 +6,7 @@ Covers:
   - Stale puzzle_id → 422
   - Grace-window edge cases (#1208)
   - Invalid word → 422 not_a_word
-  - Brute-force 7th guess → 429
+  - 7th guess → 403 no_guesses_remaining (#2197)
   - Missing X-Session-ID → 400
   - GET /answer happy path and invalid puzzle_id (#1208)
   - Answer-not-in-response security assertions (#1195)
@@ -309,15 +309,312 @@ def test_answer_not_in_post_guess_response(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_answer_returns_answer_for_valid_puzzle_id(client: TestClient) -> None:
-    """GET /answer returns {"answer": <word>} for today's valid puzzle_id."""
+def _guess(client: TestClient, headers: dict, puzzle_id: str, word: str):
+    return client.post(
+        "/daily-word/guess",
+        headers=headers,
+        json={"puzzle_id": puzzle_id, "guess": word, "tz_offset_minutes": 0},
+    )
+
+
+# Six valid five-letter guesses that are NOT in the answer pool, so they can
+# never accidentally solve the puzzle. The earlier picks included "crane",
+# "pilot" and "zesty", all of which *are* answers — on the days the scheduler
+# chose one of them, the first guess would win, every later guess would 403
+# already_solved, and four of the tests below would fail. A calendar-dependent
+# failure is the worst kind to debug, so the invariant is asserted rather than
+# assumed (test_guess_words_are_never_answers).
+_SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
+# A seventh, for testing the guess past the cap.
+_SEVENTH = "vozhd"
+
+
+def test_guess_degrades_open_when_the_record_is_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2542 — a DB outage must not turn a playable game into an error.
+
+    `/today` needs no DB, so the player already has a board in front of them.
+    Scoring keeps working and the cap is skipped for that request; the
+    alternative is a shipping free game breaking mid-puzzle on a blip.
+    """
+    import daily_word.router as router_mod
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+
+    headers = _sid_headers()
+    r = _guess(client, headers, _today_puzzle_id(), _SIX_WRONG[0])
+    assert r.status_code == 200, "the guess must still be scored"
+    body = r.json()
+    assert len(body["tiles"]) == 5
+    # No counts are claimed when they could not be read.
+    assert "guesses_used" not in body
+    assert "guesses_remaining" not in body
+
+
+def test_degraded_guesses_report_once_per_window(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2542 review — an outage must not ship one Sentry event per guess.
+
+    The IP backstop still allows 1200 guesses/hour/IP, so an unthrottled report
+    would flood on exactly the failure it exists to announce. Same class of bug
+    as #513 and #2430.
+    """
+    import daily_word.router as router_mod
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    sent: list[str] = []
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    monkeypatch.setattr(router_mod, "_last_degrade_report", None)
+    monkeypatch.setattr(
+        router_mod.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg)
+    )
+
+    headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
-    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}")
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    assert len(sent) == 1, f"expected one report for the window, got {len(sent)}"
+
+
+def test_answer_stays_closed_when_the_record_is_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of #2542: no record, no entitlement, no answer."""
+    import daily_word.router as router_mod
+
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+    assert (
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers).status_code == 200
+    )
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    # TestClient re-raises server exceptions rather than converting them; in
+    # production this surfaces as a 500. Either way the answer is not released,
+    # which is the property under test.
+    with pytest.raises(RuntimeError):
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+
+
+def test_guess_and_answer_keep_both_rate_limits() -> None:
+    """The session-keyed limit and the IP backstop must both stay registered.
+
+    `limiter` has no default_limits, so a route limit with a custom key_func
+    *replaces* the IP key rather than adding to it — which is how minting
+    session ids bought unbounded guesses in the first place. A silently dropped
+    decorator would restore that hole with every test still green, so the pair
+    is asserted directly (#2197 review).
+    """
+    import main  # noqa: F401  — importing the app registers the routes
+    from limiter import limiter
+
+    by_route = {
+        name: {(str(lim.limit), getattr(lim.key_func, "__name__", "")) for lim in lims}
+        for name, lims in limiter._route_limits.items()
+    }
+
+    guess = by_route["daily_word.router.post_guess"]
+    assert any(k == "_guess_key" for _, k in guess), "session-keyed guess limit is missing"
+    assert any(k == "_real_ip" for _, k in guess), "IP backstop on /guess is missing"
+
+    answer = by_route["daily_word.router.get_answer_route"]
+    assert any(k == "_real_ip" for _, k in answer), "IP limit on /answer is missing"
+
+
+def test_guess_words_are_never_answers() -> None:
+    """Guards the fixture above against a word-list change (#2197 review)."""
+    from daily_word.puzzle import _ANSWERS_EN, is_valid_guess
+
+    for word in [*_SIX_WRONG, _SEVENTH]:
+        assert is_valid_guess(word, "en"), f"{word} must be an accepted guess"
+        assert word not in _ANSWERS_EN, f"{word} can be an answer — pick another fixture word"
+    assert len(set(_SIX_WRONG)) == 6, "the six must be distinct or they replay instead of spending"
+
+
+def test_get_answer_refuses_a_session_that_has_not_played(client: TestClient) -> None:
+    """#2197 — this used to hand out today's word to anyone who asked.
+
+    `puzzle_id` is just "YYYY-MM-DD:{lang}", so there was nothing to discover
+    and nothing to authenticate against.
+    """
+    r = client.get(f"/daily-word/answer?puzzle_id={_today_puzzle_id()}", headers=_sid_headers())
+    assert r.status_code == 403
+    assert r.json()["detail"] == "guesses_remaining"
+
+
+def test_get_answer_refuses_a_session_partway_through(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG[:3]:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+    assert r.status_code == 403
+
+
+def test_get_answer_released_once_every_guess_is_spent(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
     assert r.status_code == 200
-    data = r.json()
-    assert "answer" in data
-    assert isinstance(data["answer"], str)
-    assert len(data["answer"]) > 0
+    assert isinstance(r.json()["answer"], str)
+    assert len(r.json()["answer"]) > 0
+
+
+def test_get_answer_released_once_the_puzzle_is_solved(client: TestClient) -> None:
+    """A winner gets the answer without burning all six guesses."""
+    from daily_word.puzzle import get_answer
+
+    puzzle_id = _today_puzzle_id()
+    headers = _sid_headers()
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=headers)
+    assert r.status_code == 200
+
+
+def test_get_answer_is_scoped_to_the_asking_session(client: TestClient) -> None:
+    """One player finishing must not unlock the answer for everyone else."""
+    puzzle_id = _today_puzzle_id()
+    played = _sid_headers()
+    for word in _SIX_WRONG:
+        _guess(client, played, puzzle_id, word)
+    assert (
+        client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=played).status_code == 200
+    )
+
+    bystander = _sid_headers()
+    r = client.get(f"/daily-word/answer?puzzle_id={puzzle_id}", headers=bystander)
+    assert r.status_code == 403
+
+
+def test_get_answer_requires_a_session(client: TestClient) -> None:
+    r = client.get(f"/daily-word/answer?puzzle_id={_today_puzzle_id()}")
+    assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Server-side guess cap (#2197)
+# ---------------------------------------------------------------------------
+
+
+def test_a_seventh_guess_is_refused(client: TestClient) -> None:
+    """The cap lived only in the client; the real ceiling was the 20/hour rate
+    limit, i.e. enough scored guesses to brute-force a five-letter word."""
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    r = _guess(client, headers, puzzle_id, _SEVENTH)
+    assert r.status_code == 403
+    assert r.json()["detail"] == "no_guesses_remaining"
+
+
+def test_guesses_remaining_counts_down(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for i, word in enumerate(_SIX_WRONG, start=1):
+        body = _guess(client, headers, puzzle_id, word).json()
+        assert body["guesses_used"] == i
+        assert body["guesses_remaining"] == 6 - i
+
+
+def test_no_further_guesses_once_solved(client: TestClient) -> None:
+    from daily_word.puzzle import get_answer
+
+    puzzle_id = _today_puzzle_id()
+    headers = _sid_headers()
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    r = _guess(client, headers, puzzle_id, _SIX_WRONG[0])
+    assert r.status_code == 403
+    assert r.json()["detail"] == "already_solved"
+
+
+# #2541 — a 403 means the board is behind the server's record, so the refusal
+# carries the server's count: the client's own row count is structurally low
+# there and would feed the "win within N guesses" goal and the share text.
+
+
+def test_no_guesses_remaining_carries_the_server_count(client: TestClient) -> None:
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+
+    body = _guess(client, headers, puzzle_id, _SEVENTH).json()
+    assert body == {"detail": "no_guesses_remaining", "guesses_used": 6}
+
+
+def test_already_solved_carries_the_winning_guess_count(client: TestClient) -> None:
+    """The lost-response win from #2541: solved on the third guess, so the
+    count is 3 — not the 2 a board missing its winning row would report."""
+    from daily_word.puzzle import get_answer
+
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    for word in _SIX_WRONG[:2]:
+        assert _guess(client, headers, puzzle_id, word).status_code == 200
+    assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
+
+    body = _guess(client, headers, puzzle_id, _SIX_WRONG[2]).json()
+    assert body == {"detail": "already_solved", "guesses_used": 3}
+
+
+def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:
+    """A guess re-typed after a lost response must not cost a second turn.
+
+    Manual re-entry, not an automatic retry: submitGuess is not wrapped in
+    withRetry. Paired with the client's duplicate-word guard — see progress.py.
+    """
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    first = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
+    again = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
+
+    assert first["tiles"] == again["tiles"]
+    assert again["guesses_used"] == 1, "a replay must not spend a second guess"
+
+
+def test_an_invalid_word_costs_nothing(client: TestClient) -> None:
+    """Rejected before the guess is recorded, matching the client's behaviour."""
+    headers = _sid_headers()
+    puzzle_id = _today_puzzle_id()
+    assert _guess(client, headers, puzzle_id, "zzzzz").status_code == 422
+
+    body = _guess(client, headers, puzzle_id, _SIX_WRONG[0]).json()
+    assert body["guesses_used"] == 1
+
+
+def test_guess_state_is_per_puzzle(client: TestClient) -> None:
+    """Spending today's guesses must not affect another puzzle."""
+    headers = _sid_headers()
+    today = _today_puzzle_id()
+    for word in _SIX_WRONG:
+        _guess(client, headers, today, word)
+    assert _guess(client, headers, today, _SEVENTH).status_code == 403
+
+    # A different language is a different puzzle_id, and a separate budget.
+    other = _today_puzzle_id(lang="hi")
+    r = client.get(f"/daily-word/answer?puzzle_id={other}", headers=headers)
+    assert r.status_code == 403, "the hi puzzle was never played"
 
 
 def test_get_answer_returns_422_for_invalid_puzzle_id(client: TestClient) -> None:
