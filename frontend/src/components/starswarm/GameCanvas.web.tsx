@@ -197,6 +197,8 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /** #2567: native-only frame sampling — always null on web. */
+  getFrameStats: () => null;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
 }
@@ -482,6 +484,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         getState() {
           return stateRef.current;
+        },
+        getFrameStats() {
+          return null;
         },
       }),
       []
