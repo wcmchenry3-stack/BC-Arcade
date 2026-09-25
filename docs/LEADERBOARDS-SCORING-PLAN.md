@@ -1,6 +1,6 @@
 # Leaderboards & Scoring — Streamlining Plan
 
-**Status:** owner decisions recorded 2026-09-25 (§8); ready to file as issues. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
+**Status:** owner decisions recorded 2026-09-25 (§8, twelve decisions); filed as issues under epic #2519. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
 **Scope:** how every game *reports* its result, how results are *stored and ranked*, and how results are *shown* (result card, per-game scoreboard, leaderboards, Profile stats). Game rules and scoring formulas stay game-specific and are out of scope.
 **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) §4/§9, [`GAME-CONTRACT.md`](GAME-CONTRACT.md), [`PRODUCT.md`](PRODUCT.md), [`RELEASE-PLAN-2026-10.md`](RELEASE-PLAN-2026-10.md).
 
@@ -131,6 +131,7 @@ board: BoardDefinition | None
 ```
 
 - One generic `GET /games/leaderboard/{game_type}?<partition>=…` and one generic rank helper (`compute_rank`, extended with direction) replace the nine routers. Exact rank is always returned; the "11" sentinel goes away.
+- **One entry per player** (§8 decision 12): a board shows each device session's best row only (best by direction, then tie-break, then earliest `completed_at`). A replay that doesn't beat the player's best never appears, and the rank returned to a player is the rank of their best row. A row needs a display name to appear on a board.
 - `stats_shape` uses `direction` to compute `best` correctly for FreeCell (fewest moves) and any future ↓ game. `best` is renamed in the API response to `best_value` with a `best_label_key`, so the client never has to know what the number means.
 - The board definition is exported to the frontend through the existing `gen_vocab_ts.py` path (or the catalog endpoint), so the leaderboard screen and result card are data-driven.
 
@@ -142,7 +143,7 @@ Initial definitions, as decided by the owner (§8):
 | Twenty48 | `final_score` | desc | — | — | — | none | **yes** |
 | Solitaire | `final_score` | desc | — | — (Draw-1/3 shared, per #591) | `draw_mode` | 52-card bound + 500 | yes |
 | FreeCell | `final_score` (moves) | **asc** | — | — | — | none | yes |
-| Mahjong | `final_score` | desc | — | — | `layout` (all 25 layouts are 144 tiles, same max) | 860 | yes |
+| Mahjong | `final_score` | desc | — | — | `layout` (all 25 layouts are 144 tiles, same max) | 1220 (72 pairs × 10 + 500) | yes |
 | Hearts | `final_score` (`100 − penalty`) | desc | — | — | `ai_difficulty` | 100 | yes |
 | Sudoku | `final_score` | desc | — | `difficulty`, `variant` | — | 300 | yes |
 | Cascade | `final_score` | desc | — | — | — | none | yes |
@@ -155,15 +156,17 @@ Initial definitions, as decided by the owner (§8):
 
 ### 4.3 One result envelope
 
-`PATCH /games/{id}/complete` keeps `outcome` as **lifecycle only** (`completed`, `abandoned`, `kept_playing`). The `result` block gains two normalised fields every `result_model` must accept:
+**Revised 2026-09-25 (§8 decision 11): the contract is the one PR #2592 shipped for #2517.** `games.outcome` carries the result for games with a winner, so there is no separate `won` field:
 
-```python
-won: bool | None        # None = this game has no win concept (Cascade, Sort, Star Swarm)
-duration_ms: int        # always populated; SyncWorker falls back to completed_at − started_at
-```
+| `outcome` | Meaning |
+|---|---|
+| `win` / `loss` / `push` | A finished game with a winner; `push` is a tie. Written through `frontend/src/game/_shared/recordedOutcome.ts` |
+| `completed` / `kept_playing` | A finished game with no win concept (score-only games) — win rate shows "—" |
+| `abandoned` | The player left; excluded from boards, stats and XP by `not_abandoned()` |
 
-- Hearts sends `won` from its existing `heartsResult()`; Yacht sends `won` from `vs_result` (null in solo mode); Blackjack sends `won = true` when the run reaches its goal (engine `phase === "victory"`), `won = false` when chips run out, and leaving mid-run is `abandoned`; Twenty48 sends `won = highest_tile >= 2048`; Mahjong deadlock becomes `completed, won=false` instead of "abandoned if the player backs out" (#2510).
-- The `win/loss/push/blackjack` members of `GameOutcome` are removed (Alembic rebuilds the CHECK constraint from the enum) and `GAME-CONTRACT.md §1.2` is corrected. The three frontend `GameOutcome` types collapse to `api/vocab.ts` (lifecycle) plus `GameResultModal`'s presentational `win | loss | draw | ended`.
+- Already on `dev` via #2592: Yacht vs computer, Hearts, Daily Word, Mahjong (deadlock is a `loss`). Still to adopt it: Blackjack (run goal reached = `win`, busted out = `loss`, leaving mid-run = `abandoned`) and Twenty48 (reaching 2048 = `win`).
+- The never-written `blackjack` member of `GameOutcome` is removed. `ARCHITECTURE.md §4`'s "outcome is lifecycle-only" line and `GAME-CONTRACT.md §1.2` are rewritten to match. The frontend's three `GameOutcome` types collapse to `api/vocab.ts` plus `GameResultModal`'s presentational `win | loss | draw | ended`.
+- `duration_ms` is always populated: `SyncWorker` falls back to `completed_at − started_at` when a game sends none or 0.
 - Abandon rules move fully into `useGameSync`: screens stop sending their own `beforeRemove` abandons with scores and zero durations; `restart()` checks `startedRef`; a `ProgressSnapshot` is registered by every game. A server-side sweep marks rows with `completed_at IS NULL AND started_at < now() − 24h` as `abandoned` so killed apps stop leaking sessions.
 
 ### 4.4 UI: three surfaces with clear jobs
@@ -187,10 +190,10 @@ duration_ms: int        # always populated; SyncWorker falls back to completed_a
 | Sessions ended | `played` (rows with `completed_at`) | rename to `sessions` in the response; Sort/Star Swarm on pipeline A; stale-row sweep |
 | Completed | `completed_played` (already computed) | **expose it** |
 | Abandoned / abandon rate | `sessions − completed` | falls out of the two above; `restart()` fix removes over-count |
-| Won / lost / n/a | `metadata.won` | normalise `won` (§4.3); count per game; return `null` for no-win games |
+| Won / lost / tied / n/a | `outcome` = `win` / `loss` / `push` | count per game; return `null` for games that never write a result outcome |
 | Time played | `duration_ms` sum, fallback `completed_at − started_at` | SyncWorker fallback; stop screens sending 0 |
 | Per-game best (never compared) | `best` with direction | `best_value` + `best_label_key` (§4.2) |
-| Streaks | `streak_days` exists (daily challenge) | **per-game win streaks are in scope** (§8 decision 10): current and best consecutive `won = true` among non-abandoned completions, ordered by `completed_at`; `null` for no-win games. Abandons do not break a streak (no penalty for leaving, per `PRODUCT.md`). Milestone badges stay out of scope. |
+| Streaks | `streak_days` exists (daily challenge) | **per-game win streaks are in scope** (§8 decision 10): current and best run of consecutive `win` outcomes, ordered by `completed_at`; `null` for no-win games. A `push` neither extends nor breaks a streak. Abandons do not break a streak (no penalty for leaving, per `PRODUCT.md`). Milestone badges stay out of scope. |
 
 `GameTypeStatsResponse` drops the hard-coded Blackjack columns in favour of a small `extras: dict` that `stats_shape` may fill (Blackjack's chips live there).
 
@@ -205,7 +208,7 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 | **2519** | [Placeholder] Unify scoring API and leaderboard behavior | The core placeholder; its five design questions are answered in §4/§8 | **Becomes the epic** (retitle, replace body with this plan's §4 and §7) |
 | **2500** | Epic: Normalize end-of-game outcomes | 12 of 17 children done | Keep open; remaining children (#2507, #2510, #2512, #2516) are Phase 2 of this plan |
 | 2507 / 2510 / 2512 / 2516 | Blackjack / Mahjong / Sort / Star Swarm → `GameResultModal` | Open; #2510 in PR #2569 | Keep; #2512 and #2516 gain "adopt `useGameSync`" acceptance criteria (they already mention it) |
-| **2517** | Record real win/loss/draw in `useGameSync` | Open | Keep, rescope to §4.3 (`won: bool | null` in every result model; Hearts, Yacht, Blackjack, Twenty48) |
+| **2517** | Record real win/loss/draw in `useGameSync` | Closed Sep 24 by PR #2592 | Its contract is adopted (§8 decision 11); Blackjack and Twenty48 adopt it in Phase 2 |
 | 2448 | Epic: result reporting / daily challenge / streak | Launch children shipped | Close as launch tracker, or keep for its post-launch tail (#2458–#2462, #2469, #2478) |
 | 2469 | result-envelope follow-ups | Open, low | **Absorb** into §4.3 story (one abandon path, snapshot boilerplate, validated results) |
 | 2446 | Daily Word / FreeCell record no session | Shipped in #2451/#2452 | **Close** |
@@ -218,7 +221,7 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 | 1130 | Star Swarm submission + top-10 (legacy) | Backend shipped | **Close** as superseded by #2516 |
 | 1131 | Twenty48 submission + top-10 (legacy) | Open | **Close** as superseded: Twenty48 gets a board (§8 decision 1) via a board definition, not a new router |
 | 1132 | Yacht submission + top-10 (legacy) | Orphaned backend router | **Close**; Yacht's board is a board definition on pipeline A; delete `backend/yacht/router.py` score routes |
-| 1499 | Daily Word streak (current + best) | Partially superseded by `streak_days` | Keep, low; depends on §4.3 `won` |
+| 1499 | Daily Word streak (current + best) | Partially superseded by `streak_days` | Keep, low; depends on §4.3 win/loss outcomes |
 | 2459 / 2462 | Streak grace days / milestone badges | Open, low | Untouched and out of scope; per-game win streaks are in this epic, badges are not |
 | 1914 | Guideline 4.2 cohesion tracker | Partially done | Update: "unified board" → per-game boards via §4.4; Game Center remains a separate decision |
 | 2201 | Win modals cover win animations | Probably fixed by `GameResultModal` celebration phase | **Verify on device and close** |
@@ -234,8 +237,8 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 Launch constraints from `RELEASE-PLAN-2026-10.md`: production API cutover Tue Sep 29, store submission Oct 9, **launch quality bar = crash/stability only**. Six of the twelve games are hidden in the store build. Therefore:
 
 - **Phase 0 — before submission: decisions only, no code.** Nothing in this plan is a stability fix. The one product-rule violation visible to store users (Profile Top score) is cosmetic and waits. §8 was answered on Sep 25; the issues can be filed now and picked up after submission.
-- **Phase 1 — backend contract (post-launch, first).** Board definitions, generic leaderboard/rank/name routes, `won`/`duration_ms` in the envelope, `completed_played` and win counts exposed, stale-row sweep, migration for `*-anon` rows, delete the nine routers. All behind existing tests plus the new ones in Appendix C. Frontend keeps working throughout because the old routes are removed only after Phase 2 ships (keep them one release as thin shims onto the generic route).
-- **Phase 2 — frontend reporting (per game, one PR each).** Sort and Star Swarm adopt `useGameSync`; Mahjong, Sort, Star Swarm, Blackjack adopt `GameResultModal` + `useLeaderboardSubmit` (finishing #2500); Hearts/Yacht/Blackjack/Twenty48 send `won`; screens drop their own abandon handlers; SyncWorker duration fallback. Free visible games first (Mahjong, FreeCell, Yacht, Twenty48, Solitaire), hidden premium games after.
+- **Phase 1 — backend contract (post-launch, first).** Board definitions, generic leaderboard/rank/name routes, `duration_ms` fallback in the envelope, `completed_played` and win counts exposed, stale-row sweep, migration for `*-anon` rows, delete the nine routers. All behind existing tests plus the new ones in Appendix C. Frontend keeps working throughout because the old routes are removed only after Phase 2 ships (keep them one release as thin shims onto the generic route).
+- **Phase 2 — frontend reporting (per game, one PR each).** Sort and Star Swarm adopt `useGameSync`; Mahjong, Sort, Star Swarm, Blackjack adopt `GameResultModal` + `useLeaderboardSubmit` (finishing #2500); Blackjack and Twenty48 record `win`/`loss` like the #2592 games; screens drop their own abandon handlers; SyncWorker duration fallback. Free visible games first (Mahjong, FreeCell, Yacht, Twenty48, Solitaire), hidden premium games after.
 - **Phase 3 — UI consolidation.** Generic `LeaderboardScreen` + "View leaderboard" action; Ranks tab retired; Scoreboard split into Scorecard (live) and `GameStatsScreen` (server-fed, with per-game win streaks); Profile rebuilt on comparable metrics; localisation of outcomes and the fallback string; i18n namespaces consolidated (`leaderboard.json`, `stats.json`).
 - **Phase 4 — clean-up and docs.** Appendix A and B; `GAME-CONTRACT.md` frontend §2 written for real (scoring, result, leaderboard contract + checklist items); `GAMEPLAY_STANDARDS.md §8` gains a "Reporting" checklist; Maestro flow for one result-card submission on iOS and Android.
 
@@ -245,15 +248,15 @@ Rough size: Phase 1 ≈ 1 week backend; Phase 2 ≈ 1–2 days per game; Phase 3
 
 ## 7. Proposed epic and stories
 
-To be filed with the `plan-issues` agent (it drafts, waits for confirmation, then creates). Labels: reuse `epic:leaderboards` as the umbrella label; add `backend`/`frontend`, per-game labels where they exist (note: no labels exist yet for cascade, twenty48, daily_word), and `priority:medium` unless stated. Each story links "Part of #2519".
+The filed issues under #2519 are authoritative where they differ from this list: they are written against `dev` after Sep 25 and include decisions 11–12 and three splits (stories 19, 22, 23). Originally drafted with the `plan-issues` process (it drafts, waits for confirmation, then creates). Labels: reuse `epic:leaderboards` as the umbrella label; add `backend`/`frontend`, per-game labels where they exist (note: no labels exist yet for cascade, twenty48, daily_word), and `priority:medium` unless stated. Each story links "Part of #2519".
 
 **Epic — #2519 retitled: "Leaderboards & scoring: one reporting contract per game"**
 
 Phase 1 — backend
 1. **Board definition on `GameModule`** — `BoardDefinition` model (metric, direction, tie-break, partitions, max, enabled), `board` attribute, protocol test, initial definitions per §4.2, exported to `frontend/src/api/vocab.ts` via `gen_vocab_ts.py`. Absorbs #2215.
 2. **Generic leaderboard, rank and name routes** — `GET /games/leaderboard/{game_type}`, `PATCH /games/{id}/name`, direction-aware `compute_rank`, session-keyed rate limit, entitlement check from the catalog. Absorbs #2217, #2272. Old routers become shims.
-3. **Result envelope: `won` and `duration_ms`** — add to every `result_model`; SyncWorker fallback; remove `win/loss/push/blackjack` from `GameOutcome` with migration; single abandon path in `useGameSync` (`restart()` guard). Absorbs #2469; rescopes #2517.
-4. **Expose comparable counts in `/stats/me`** — `sessions`, `completed`, `won`, `lost`, `current_win_streak`/`best_win_streak` (null for no-win games; abandons don't break a streak), `time_played_ms`, `best_value`/`best_label_key`, `extras`; drop hard-coded Blackjack columns; update `GAME-CONTRACT.md §1.5`.
+3. **Result envelope: `duration_ms` and one abandon path** — SyncWorker duration fallback; `restart()` guard; explicit result block; drop the unused `blackjack` outcome; outcome semantics per §4.3 (#2592's contract). Absorbs #2469 items 1–3.
+4. **Expose comparable counts in `/stats/me`** — `sessions`, `completed`, `wins`, `losses`, `ties` (from `outcome`), `current_win_streak`/`best_win_streak` (null for no-win games; abandons don't break a streak), `time_played_ms`, `best_value`/`best_label_key`, `extras`; drop hard-coded Blackjack columns; update `GAME-CONTRACT.md §1.5`.
 5. **Stale open session sweep** — mark `completed_at IS NULL AND started_at < now − 24h` as abandoned (scheduled task or on-read), test. Threshold decided: 24 h.
 6. **Delete `*-anon` leaderboard rows** — Alembic data migration plus a test that no board contains a sentinel session.
 7. **Register Twenty48 and Star Swarm modules** — metadata/result models, registry entries, `stats_shape`.
@@ -262,11 +265,11 @@ Phase 1 — backend
 Phase 2 — frontend reporting (one story per game; #2507, #2510, #2512, #2516 already exist and are extended)
 9. **Sort: adopt `useGameSync`, `GameResultModal`, `useLeaderboardSubmit`; send `total_moves` across cleared levels for the tie-break** (#2512 extended). Absorbs the Sort half of #2216's defect.
 10. **Star Swarm: adopt `useGameSync`, `GameResultModal`, `useLeaderboardSubmit`; offline queue; drop `"player"`** (#2516 extended). Closes #2216, #1130.
-11. **Mahjong: `GameResultModal` + `useLeaderboardSubmit`; deadlock → `completed, won=false`; record `layout` in metadata; fix broken Scoreboard route** (#2510 extended, PR #2569 in flight).
-12. **Blackjack: `GameResultModal` for victory and bust; `won` = reached the run goal, `false` on bust; server-side run summary in `extras`** (#2507 extended).
-13. **Hearts: send `won`; real `duration_ms`; remove `pendingSubmission.ts` in favour of `scoreQueue`; record `ai_difficulty` in metadata.**
-14. **Yacht: send `won` from `vs_result`; `duration_ms`; record `mode`/`difficulty` in metadata; delete orphaned `/yacht/score` routes; one board for all modes.** Closes #1132.
-15. **Twenty48: leaderboard submission via `useLeaderboardSubmit` and the result card's submission slot; `won = highest_tile >= 2048`.** Closes #1131.
+11. **Mahjong: `GameResultModal` + `useLeaderboardSubmit`; deadlock already a `loss` (#2592); record `layout` in metadata; fix broken Scoreboard route** (#2510 extended, PR #2569 in flight).
+12. **Blackjack: `GameResultModal` for victory and bust; run goal reached = `win`, bust = `loss`; server-side run summary in `extras`** (#2507 extended).
+13. **Hearts: real `duration_ms` (win/loss already recorded by #2592); remove `pendingSubmission.ts` in favour of `scoreQueue`; record `ai_difficulty` in metadata.**
+14. **Yacht: `duration_ms` (vs win/loss already recorded by #2592); record `mode`/`difficulty` in metadata; delete orphaned `/yacht/score` routes; one board for all modes.** Closes #1132.
+15. **Twenty48: leaderboard submission via `useLeaderboardSubmit` and the result card's submission slot; reaching 2048 records `win`.** Closes #1131.
 16. **Solitaire / Sudoku / Cascade / FreeCell / Daily Word: drop screen-level abandon handlers; FreeCell sends its score again on the session row; Solitaire records `draw_mode` in metadata.**
 
 Phase 3 — UI
@@ -296,7 +299,12 @@ Phase 4 — docs, tests, cleanup
 | 7 | Ranks tab | **Retire** | Boards open from the result card and game menu; app keeps three tabs |
 | 8 | Blackjack win | **Reached the run goal = win; busted out = loss; leaving mid-run = abandoned** | Uses the game's own victory condition |
 | 9 | Stale open session threshold | **24 hours after `started_at`** | Safe for long Hearts matches; matches entitlement TTL |
-| 10 | Per-game win streaks and badges | **Win streaks in this epic (Phase 1 story 4, Phase 3 story 19); badges later** | Streaks fall out of the normalised `won`; abandons don't break a streak |
+| 10 | Per-game win streaks and badges | **Win streaks in this epic (Phase 1 story 4, Phase 3 story 19); badges later** | Streaks fall out of the `win` outcomes; abandons don't break a streak |
+
+| 11 | Where the win is recorded | **Keep PR #2592's contract: `outcome` = `win` / `loss` / `push` for games with a winner; no separate `won` field** | Shipped and tested on `dev` on Sep 24; the read side already counts these rows; reverting would need a data migration for no user-visible gain |
+| 12 | How boards count players | **One entry per player: each session's best row only** | Stops Sort (one session per level) and frequent replayers from filling a top 10 |
+
+**`dev` moved while this plan was being decided (Sep 24–25).** PRs #2569 (Mahjong), #2576 (Sort), #2578 (Blackjack), #2580 (Star Swarm) and #2592 (win/loss/push) merged, closing #2507, #2510, #2512, #2516, #2517 and epic #2500. Sort and Star Swarm now record session rows (without a score) and auto-submit under the display name through the shared queue; Star Swarm's hard-coded `"player"` and Mahjong's typed-name modal are gone. The §2–§3 tables describe `dev` at `ca087331` and are kept as the baseline; the filed stories are written against current `dev`.
 
 **Corrections found while deciding:** the original draft said Sort's levels were randomised and Mahjong layouts had different tile counts. Both were wrong (`backend/sort/generate_levels.py` seeds its RNG; every entry in `frontend/src/game/mahjong/layouts/registry.ts` is 144 tiles). The recommendations above reflect the corrected facts.
 
