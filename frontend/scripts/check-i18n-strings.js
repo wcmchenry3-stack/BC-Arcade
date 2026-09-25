@@ -37,16 +37,10 @@ const LOCALES_DIR = join(__dirname, "../src/i18n/locales");
 const COPIES_PATH = join(__dirname, "i18n-english-copies.json");
 // Every namespace English has (#2194): a hand-kept list here drifted and missed
 // six games. A namespace in NOT_ALL_LOCALES may lack a file in some locales
-// (English is shown there, #2195); the files it does have are still checked.
-// Remove one once every locale has its file.
-const NOT_ALL_LOCALES = new Set([
-  "daily_challenge",
-  "daily_word",
-  "profile",
-  "result",
-  "sort",
-  "starswarm",
-]);
+// (English is shown there); the files it does have are still checked. Add a
+// new namespace here while it is being translated; remove it once every locale
+// has its file. Empty since #2195: every locale has every namespace.
+const NOT_ALL_LOCALES = new Set([]);
 const NAMESPACES = readdirSync(join(LOCALES_DIR, "en"))
   .filter((f) => f.endsWith(".json"))
   .map((f) => f.slice(0, -".json".length))
@@ -57,6 +51,7 @@ const SAME_EVERYWHERE = new Set([
   ...doNotTranslateTerms,
   "Blackjack",
   "FreeCell",
+  "Star Swarm",
   "Mahjong Solitaire",
   "BC Arcade Premium",
   "X-Wing",
@@ -149,7 +144,9 @@ function main() {
       const targetPath = join(LOCALES_DIR, code, `${ns}.json`);
 
       if (!existsSync(targetPath) && NOT_ALL_LOCALES.has(ns)) {
-        console.log(`… [${code}/${ns}.json] not translated yet (#2195); English is shown`);
+        console.log(
+          `… [${code}/${ns}.json] not translated yet (NOT_ALL_LOCALES); English is shown`
+        );
         continue;
       }
 

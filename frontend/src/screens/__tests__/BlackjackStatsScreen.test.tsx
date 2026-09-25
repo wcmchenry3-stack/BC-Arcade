@@ -133,13 +133,84 @@ describe("BlackjackStatsScreen — outcome badges", () => {
     expect(await screen.findByLabelText(/Comeback/)).toBeTruthy();
   });
 
-  it("shows Completed (not Comeback) when lowestChips is exactly 25% of startingChips", async () => {
+  // #2628: the badge uses the comeback unlock's rule (<= 25%), so a run the
+  // unlock counts as a comeback is badged as one.
+  it("shows Comeback when lowestChips is exactly 25% of startingChips, as the unlock does", async () => {
     (loadRuns as jest.Mock).mockResolvedValueOnce([
       makeRun({ completed: true, startingChips: 100, lowestChips: 25 }),
     ]);
     await renderScreen();
+    expect(await screen.findByLabelText(/Comeback/)).toBeTruthy();
+  });
+
+  it("shows Completed (not Comeback) when lowestChips is just above 25% of startingChips", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: true, startingChips: 100, lowestChips: 26 }),
+    ]);
+    await renderScreen();
     await screen.findByLabelText(/Completed/);
     expect(screen.queryByLabelText(/Comeback/)).toBeNull();
+  });
+
+  it("a run that kept playing past its goal and busted is not a comeback", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({
+        completed: true,
+        outcome: "win",
+        startingChips: 100,
+        finalChips: 0,
+        lowestChips: 0,
+        lowestChipsBeforeGoal: 80,
+      }),
+    ]);
+    await renderScreen();
+    await screen.findByLabelText(/Completed/);
+    expect(screen.queryByLabelText(/Comeback/)).toBeNull();
+    expect(screen.queryByText("Biggest Comeback")).toBeNull();
+  });
+
+  it("a comeback to the goal still counts after Keep Playing and a bust", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({
+        completed: true,
+        outcome: "win",
+        startingChips: 100,
+        finalChips: 0,
+        lowestChips: 0,
+        lowestChipsBeforeGoal: 15,
+      }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Comeback/)).toBeTruthy();
+    // The biggest comeback shows the low before the goal, not the bust's 0.
+    expect(screen.getByText("Biggest Comeback")).toBeTruthy();
+    expect(screen.getByText("15 chips low")).toBeTruthy();
+  });
+
+  // #2628 — the badge matches what the run recorded on the server.
+  it("shows Abandoned, not Busted, for a run left before its goal", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: false, outcome: "abandoned", finalChips: 600 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Abandoned/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Busted/)).toBeNull();
+  });
+
+  it("shows Busted for a run that recorded a loss", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: false, outcome: "loss", finalChips: 0 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Busted/)).toBeTruthy();
+  });
+
+  it("shows Completed for a run that reached its goal, then kept playing and busted", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: true, outcome: "win", finalChips: 0, lowestChips: 80 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Completed/)).toBeTruthy();
   });
 });
 

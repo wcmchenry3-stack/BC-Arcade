@@ -7,8 +7,11 @@ import {
   loadUnlocks,
   saveUnlocks,
   mergeUnlocks,
+  isComebackRun,
+  comebackLow,
 } from "../unlocks";
 import { RunRecord } from "../storage";
+import { tableForBetLimits } from "../tables";
 
 const UNLOCKS_KEY = "blackjack_unlocks_v1";
 
@@ -164,11 +167,76 @@ describe("evaluateUnlocks", () => {
     expect(evaluateUnlocks(runs, existing)).toHaveLength(0);
   });
 
+  // #2628: a run that reached its goal, kept playing and busted has
+  // lowestChips 0 — the comeback is judged on the low before the goal.
+  it("does not trigger comeback for a bust after Keep Playing", () => {
+    const existing: Unlock[] = [
+      {
+        id: "comeback_kid",
+        name: "Comeback Kid",
+        type: "chip_style",
+        conditionType: "comeback",
+        conditionValue: null,
+        unlocked: false,
+      },
+    ];
+    const runs = [
+      makeRun({ startingChips: 100, completed: true, lowestChips: 0, lowestChipsBeforeGoal: 80 }),
+    ];
+    expect(evaluateUnlocks(runs, existing)).toHaveLength(0);
+  });
+
+  it("triggers comeback from the low before the goal, whatever came after", () => {
+    const existing: Unlock[] = [
+      {
+        id: "comeback_kid",
+        name: "Comeback Kid",
+        type: "chip_style",
+        conditionType: "comeback",
+        conditionValue: null,
+        unlocked: false,
+      },
+    ];
+    const runs = [
+      makeRun({ startingChips: 100, completed: true, lowestChips: 0, lowestChipsBeforeGoal: 25 }),
+    ];
+    expect(evaluateUnlocks(runs, existing).map((u) => u.id)).toEqual(["comeback_kid"]);
+  });
+
   it("sets unlockedAt to a valid ISO date string", () => {
     const existing = INITIAL_UNLOCKS.map((u) => ({ ...u }));
     const runs = [makeRun({ table: "beginner", completed: true })];
     const triggered = evaluateUnlocks(runs, existing);
     expect(triggered[0]!.unlockedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+});
+
+describe("isComebackRun / comebackLow (#2628)", () => {
+  it("uses lowestChips for runs saved before lowestChipsBeforeGoal existed", () => {
+    const legacy = makeRun({ startingChips: 100, lowestChips: 25, completed: true });
+    expect(comebackLow(legacy)).toBe(25);
+    expect(isComebackRun(legacy)).toBe(true);
+  });
+
+  it("is never a comeback when the goal was not reached", () => {
+    expect(isComebackRun(makeRun({ completed: false, lowestChips: 1 }))).toBe(false);
+  });
+
+  it("prefers the low before the goal", () => {
+    const run = makeRun({ startingChips: 100, lowestChips: 0, lowestChipsBeforeGoal: 60 });
+    expect(comebackLow(run)).toBe(60);
+    expect(isComebackRun(run)).toBe(false);
+  });
+});
+
+describe("tableForBetLimits", () => {
+  it("finds the table whose bet limits match", () => {
+    expect(tableForBetLimits({ betMin: 10, betMax: 50 })?.id).toBe("intermediate");
+  });
+
+  it("matches no table for a fresh newGame()'s 5/500 limits, or no state", () => {
+    expect(tableForBetLimits({ betMin: 5, betMax: 500 })).toBeUndefined();
+    expect(tableForBetLimits(null)).toBeUndefined();
   });
 });
 

@@ -1,0 +1,22 @@
+{
+  "game.title": "每日猜词",
+  "game.description": "一个五个字母的单词，六次猜测机会，每天更新谜题。",
+  "game.playLabel": "玩每日猜词",
+  "hud.guessesLeft_one": "还剩 {{count}} 次猜测",
+  "hud.guessesLeft_other": "还剩 {{count}} 次猜测",
+  "hud.puzzleNumber": "第 {{number}} 期谜题",
+  "result.loss.answer": "答案是 {{answer}}",
+  "error.notAWord": "不是有效单词",
+  "error.alreadyGuessed": "已经猜过",
+  "error.tooShort": "字母数量不足",
+  "error.couldNotLoad": "无法加载今日谜题",
+  "error.couldNotSubmit": "无法提交你的猜测",
+  "error.stalePuzzle": "有新谜题啦 — 正在加载今日单词",
+  "error.wrongLength": "猜测的字母数与今日单词不符",
+  "error.rateLimited": "猜测次数过多，请稍后再试",
+  "keyboard.delete": "删除",
+  "keyboard.enter": "回车",
+  "result.countdown": "下一词：{{time}}",
+  "result.share": "分享",
+  "result.copied": "已复制！"
+}
