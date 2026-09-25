@@ -107,6 +107,33 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.hint": {
+    "component": "Controls",
+    "description": "Label on the hint button.",
+    "tone": "action, brief",
+    "characterLimit": 6,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.hintLabel": {
+    "component": "Controls",
+    "description": "Accessibility label for the hint button.",
+    "tone": "functional, descriptive",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.noHint": {
+    "component": "Controls",
+    "description": "Short message shown when there is no valid pair to hint at.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "overlay.noMoves": {
     "component": "GameCanvas",
     "description": "Large heading on the no-moves overlay when no tile pairs are available.",
@@ -128,15 +155,6 @@
   "overlay.shuffleButton": {
     "component": "GameCanvas",
     "description": "Button label on the no-moves overlay to trigger a shuffle.",
-    "tone": "action, brief",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "overlay.newGameButton": {
-    "component": "GameCanvas",
-    "description": "Button label on the win overlay to start a fresh game.",
     "tone": "action, brief",
     "characterLimit": 10,
     "placeholders": [],
@@ -187,6 +205,186 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Named after the four parallel vertical columns that resemble rivers. Translate naturally — 'four' + the word for rivers/streams."
+  },
+  "layout.butterfly": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Butterfly board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the butterfly shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.fish": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Fish board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the fish shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.spider": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Spider board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the spider shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.cat": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Cat board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the cat shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.snowflake": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Snowflake board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the snowflake shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.castle": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Castle board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the castle shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.bridge": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Bridge board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the bridge shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.gate": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Gate board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the gate shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.double_pyramid": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Double Pyramid board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the double pyramid shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.anchor": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Anchor board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the anchor shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.crown": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Crown board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the crown shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.shield": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Shield board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the shield shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.heart": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Heart board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the heart shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.hourglass": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Hourglass board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the hourglass shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.the_key": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the The Key board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the key shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.diamond": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Diamond board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the diamond (rhombus) shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.x_wing": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the X-Wing board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": ["X-Wing"],
+    "notes": "Keep \"X-Wing\" as is in every language. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.maze": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Maze board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the maze shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.zig_zag": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Zig-Zag board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the zig-zag shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
+  },
+  "layout.concentric_squares": {
+    "component": "LayoutSelectScreen",
+    "description": "Display name for the Concentric Squares board layout.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Named after the concentric squares shape formed by the tile arrangement. Translate naturally. Shown on its own full-width row in the layout list, where it can wrap; keep it short."
   },
   "layoutSelect.title": {
     "component": "LayoutSelectScreen",
@@ -256,6 +454,15 @@
     "description": "Empty state message when no scores have been submitted yet.",
     "tone": "encouraging, casual",
     "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overlay.newGameButton": {
+    "component": "GameCanvas",
+    "description": "Button label on the win overlay to start a fresh game.",
+    "tone": "action, brief",
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

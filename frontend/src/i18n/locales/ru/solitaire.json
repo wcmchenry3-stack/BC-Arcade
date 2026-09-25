@@ -31,11 +31,11 @@
   "a11y.invalidMove": "Неверный ход",
   "error.saveFailed": "Не удалось сохранить игру.",
   "error.loadFailed": "Не удалось загрузить сохранение.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "ВРЕМЯ",
+  "scoreboard.heroSub": "Ходов: {{moves}} · собрано баз: {{foundations}} из 4",
+  "scoreboard.heroSubEmpty": "Игр пока не было",
+  "scoreboard.bestTime": "Лучшее время",
+  "scoreboard.bestMoves": "Меньше всего ходов",
+  "scoreboard.gamesPlayed": "Сыграно игр",
+  "scoreboard.gamesWon": "Выиграно игр"
 }

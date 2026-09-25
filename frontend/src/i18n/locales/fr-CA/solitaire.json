@@ -31,11 +31,11 @@
   "a11y.invalidMove": "Coup invalide",
   "error.saveFailed": "Impossible de sauvegarder votre partie.",
   "error.loadFailed": "Impossible de reprendre la partie sauvegardée.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "TEMPS",
+  "scoreboard.heroSub": "{{moves}} coups · {{foundations}} sur 4 complétées",
+  "scoreboard.heroSubEmpty": "Aucune partie jouée pour l'instant",
+  "scoreboard.bestTime": "Meilleur temps",
+  "scoreboard.bestMoves": "Moins de coups",
+  "scoreboard.gamesPlayed": "Parties jouées",
+  "scoreboard.gamesWon": "Parties gagnées"
 }

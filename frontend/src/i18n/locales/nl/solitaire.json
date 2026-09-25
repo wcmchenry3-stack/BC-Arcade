@@ -31,11 +31,11 @@
   "a11y.invalidMove": "Ongeldige zet",
   "error.saveFailed": "Opslaan van je spel is mislukt.",
   "error.loadFailed": "Het opgeslagen spel kon niet worden hervat.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "TIJD",
+  "scoreboard.heroSub": "{{moves}} zetten · {{foundations}} van 4 compleet",
+  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
+  "scoreboard.bestTime": "Beste tijd",
+  "scoreboard.bestMoves": "Minste zetten",
+  "scoreboard.gamesPlayed": "Gespeelde spellen",
+  "scoreboard.gamesWon": "Gewonnen spellen"
 }
