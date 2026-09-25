@@ -4,12 +4,14 @@ import { useGameSync } from "../useGameSync";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockStartGame = jest.fn<string, any[]>(() => "test-game-id");
 const mockEnqueueEvent = jest.fn();
+const mockMarkStarted = jest.fn();
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => mockStartGame(...args),
+    markStarted: (...args: unknown[]) => mockMarkStarted(...args),
     enqueueEvent: (...args: unknown[]) => mockEnqueueEvent(...args),
     completeGame: (...args: unknown[]) => mockCompleteGame(...args),
     reportBug: (...args: unknown[]) => mockReportBug(...args),
@@ -402,6 +404,64 @@ describe("useGameSync", () => {
       result.current.enqueue({ type: "drop", data: { tier: 2 } });
     });
     expect(mockEnqueueEvent).toHaveBeenCalledWith("new-id", { type: "drop", data: { tier: 2 } });
+  });
+
+  // ---------------------------------------------------------------------------
+  // markStarted -> gameEventClient (#2654): the deferred create waits on it
+  // ---------------------------------------------------------------------------
+
+  it("markStarted() tells gameEventClient once per session", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.markStarted();
+    });
+    expect(mockMarkStarted).toHaveBeenCalledTimes(1);
+    expect(mockMarkStarted).toHaveBeenCalledWith("test-game-id");
+  });
+
+  it("markStarted() after restart() marks the new session", async () => {
+    mockStartGame.mockReturnValueOnce("first-id").mockReturnValueOnce("second-id");
+    const { result } = await renderHook(() => useGameSync("cascade"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.restart();
+      result.current.markStarted();
+    });
+    expect(mockMarkStarted.mock.calls).toEqual([["first-id"], ["second-id"]]);
+  });
+
+  it("markStarted() with no open session does not reach gameEventClient", async () => {
+    const { result } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
+      result.current.markStarted();
+    });
+    await act(() => {
+      result.current.start();
+      result.current.complete({ outcome: "completed" });
+      result.current.markStarted();
+    });
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+  });
+
+  it("a throwing gameEventClient.markStarted does not break the session", async () => {
+    mockMarkStarted.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { result, unmount } = await renderHook(() => useGameSync("yacht"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+    });
+    await unmount();
+    // Still counted as started: the unmount abandons it.
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "abandoned" },
+      { outcome: "abandoned" }
+    );
   });
 
   // ---------------------------------------------------------------------------

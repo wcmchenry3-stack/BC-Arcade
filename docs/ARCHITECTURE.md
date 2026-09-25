@@ -99,6 +99,20 @@ abandoned — on unmount or `restart()`. A game registers a progress snapshot so
 the hook's own abandon carries the result block, and any explicit abandon the
 screen still sends builds its result with the same helper.
 
+**Deferred create and killed sessions (#2654).** `startGame()` records the
+session on the device only. `SyncWorker` sends `POST /games` and the session's
+events once `markStarted()` (or a completion) marks it started, so a session the
+player never started never reaches the server. When the OS kills the app no
+unmount runs, so on the next launch `gameEventClient.init()` sweeps the pending
+games the earlier process left open — decided by where the record came from
+(read from disk, not created by this process), not by comparing clocks: a
+started one is completed as a bare `abandoned` with `completedAt` set to its
+last event (else its start), and its duration derived as above; an unstarted
+one is forgotten and its queued events deleted. A pending record saved by an
+older build has no `started` field and counts as started, so it is sent, never
+dropped. The server's 24 h stale-session sweep (#2621) remains the fallback for
+devices that never report back.
+
 **Duration.** `SyncWorker` sends the game's `durationMs` when it is a real
 value. When a game sends none, or 0, it sends `completedAt − startedAt` from the
 pending game instead, capped at 24 h (#2619) — so every row gets a play time,
@@ -478,4 +492,3 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
 **Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
-

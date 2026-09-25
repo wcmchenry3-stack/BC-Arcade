@@ -9,8 +9,13 @@
  *
  * Flush algorithm (one pass):
  *
- *   1. For each pending game with startedSynced=false:
+ *   0. Wait for the pending games to load from disk, so no queued event is
+ *      read as an orphan of a game that simply isn't loaded yet.
+ *
+ *   1. For each pending game with started=true and startedSynced=false:
  *        POST /games { id, game_type, metadata }
+ *        A game the player hasn't started (#2654) is skipped: its create and
+ *        events stay on the device until markStarted() or a completion.
  *        - 2xx → markStartedSynced
  *        - 404 → should not happen (we created the id); dead-letter + log
  *        - 4xx → dead-letter the pending game
@@ -145,6 +150,7 @@ export class SyncWorker {
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
+      await this.games.init();
 
       if (!(await this.flushGameCreations(result, now))) return result;
       if (!(await this.flushEvents(result, now))) return result;
@@ -167,6 +173,10 @@ export class SyncWorker {
   private async flushGameCreations(result: FlushResult, now: number): Promise<boolean> {
     for (const [gameId, game] of this.games.all()) {
       if (game.startedSynced) continue;
+      // Not started yet (#2654): the player never acted, so the server must
+      // not hear of this session. Its events wait with it (step 2 skips a
+      // game until startedSynced). A completion marks the game started.
+      if (game.started === false) continue;
       const res = await this.api.request(
         "POST",
         "/games",

@@ -3,15 +3,27 @@
  *
  * Each game has lifecycle state that lives outside the event queue:
  *   - gameType / metadata — needed by SyncWorker to POST /games
+ *   - started — has the player acted in this session (#2654)? SyncWorker
+ *     holds the POST /games create, and so every event, until it is true.
  *   - startedSynced — has POST /games returned 2xx?
- *   - nextEventIndex — monotonic counter used when enqueueing events
+ *   - nextEventIndex / lastEventAt — monotonic counter used when enqueueing
+ *     events, and when the last one was enqueued
  *   - completed / completeSummary / completeSynced / completeAttempts — for PATCH /complete
  *
  * Storage: in-memory map is authoritative; AsyncStorage persists the same
- * map under `pending_games_v1`. On init() we rehydrate from disk. The
- * in-memory copy lets enqueueEvent increment nextEventIndex synchronously,
- * which is what lets gameEventClient return a correct event_index without
- * awaiting storage.
+ * map under `pending_games_v1`. On init() we rehydrate from disk and merge
+ * the saved games under any this process already created. The in-memory copy
+ * lets enqueueEvent increment nextEventIndex synchronously, which is what lets
+ * gameEventClient return a correct event_index without awaiting storage.
+ * Every write waits for that first read, so a game started before init()
+ * resolves can neither be dropped by the load nor overwrite the saved games.
+ *
+ * Previous process (#2654): the games read from disk at init() — and not
+ * created by this process — belong to an earlier app process. Any of them
+ * still open was left behind when that process was killed;
+ * `previousProcessOpenGames()` lists them for gameEventClient's startup sweep.
+ * Origin, not a clock comparison, decides this, so a device clock change can
+ * never sweep a session the current process opened.
  *
  * Bounded maintenance: once SyncWorker confirms a game is fully synced
  * (started + completed + all events delivered), it calls `forget(gameId)`
@@ -43,17 +55,42 @@ export interface PendingGame {
   gameType: string;
   metadata: Record<string, unknown>;
   startedAt: number;
+  /**
+   * The player acted in this session (`markStarted`), or finished it (#2654).
+   * Until then the game stays on the device: no POST /games, no events.
+   * A record saved by an older build has no `started` field and is loaded as
+   * `true` — see `normalizeLoaded`.
+   */
+  started: boolean;
   startedSynced: boolean;
   nextEventIndex: number;
+  /**
+   * Epoch ms of the last event enqueued for this game (#2654) — the last time
+   * the device knows the session was alive. Absent on older builds' records.
+   */
+  lastEventAt?: number;
   completed: boolean;
   completedAt: number | null;
   completeSummary: CompleteSummary | null;
   completeSynced: boolean;
 }
 
+/**
+ * Fill in fields an older build's record lacks (#2654). An older build sent
+ * every game to the server as soon as it opened, so a record without `started`
+ * is treated as started whether or not it reached the server: it is sent and,
+ * if left open by a killed process, closed as abandoned — never dropped.
+ */
+function normalizeLoaded(game: PendingGame): PendingGame {
+  if (typeof game.started !== "boolean") game.started = true;
+  return game;
+}
+
 export class PendingGamesStore {
   private games: Map<string, PendingGame> = new Map();
   private ready: Promise<void> | null = null;
+  /** Ids read from disk at init() that this process did not create (#2654). */
+  private fromPreviousProcess: Set<string> = new Set();
 
   /**
    * Load persisted state. Safe to call multiple times; only the first
@@ -72,17 +109,25 @@ export class PendingGamesStore {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, PendingGame>;
-      this.games = new Map(Object.entries(parsed));
+      // Merge, don't replace: a game this process created while the read was
+      // in flight is already in memory and wins.
+      for (const [id, game] of Object.entries(parsed)) {
+        if (this.games.has(id) || !game || typeof game !== "object") continue;
+        this.games.set(id, normalizeLoaded(game));
+        this.fromPreviousProcess.add(id);
+      }
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "pendingGamesStore", op: "load" },
       });
-      this.games = new Map();
     }
   }
 
   private async persist(): Promise<void> {
     try {
+      // Never write before the saved games are loaded: the write would replace
+      // them on disk with only this process's games.
+      await this.init();
       const obj: Record<string, PendingGame> = {};
       for (const [k, v] of this.games) obj[k] = v;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
@@ -102,6 +147,7 @@ export class PendingGamesStore {
       gameType,
       metadata,
       startedAt: Date.now(),
+      started: false,
       startedSynced: false,
       nextEventIndex: 0,
       completed: false,
@@ -118,19 +164,40 @@ export class PendingGamesStore {
     if (!game || game.completed) return null;
     const idx = game.nextEventIndex;
     game.nextEventIndex = idx + 1;
+    game.lastEventAt = Date.now();
     // Fire and forget — persistence lag is acceptable here because the
     // event itself gets a durable write from eventStore.
     this.persist().catch(() => undefined);
     return idx;
   }
 
-  /** Mark a game as completed. Idempotent. */
-  complete(gameId: string, summary: CompleteSummary): Promise<void> {
+  /**
+   * The player acted in this session (#2654): SyncWorker may now create it on
+   * the server and send its events. Idempotent.
+   */
+  markStarted(gameId: string): Promise<void> {
+    const game = this.games.get(gameId);
+    if (!game || game.started) return Promise.resolve();
+    game.started = true;
+    return this.persist();
+  }
+
+  /**
+   * Mark a game as completed. Idempotent. Finishing is real activity, so an
+   * unstarted game is marked started too (#2654) — a game that ends on its
+   * first action still reaches the server. `completedAt` defaults to now.
+   */
+  complete(
+    gameId: string,
+    summary: CompleteSummary,
+    completedAt: number = Date.now()
+  ): Promise<void> {
     const game = this.games.get(gameId);
     if (!game) return Promise.resolve();
     if (game.completed) return Promise.resolve();
+    game.started = true;
     game.completed = true;
-    game.completedAt = Date.now();
+    game.completedAt = completedAt;
     game.completeSummary = summary;
     return this.persist();
   }
@@ -148,6 +215,20 @@ export class PendingGamesStore {
   /** Iterate pending games in insertion order (what SyncWorker walks). */
   all(): Array<[string, PendingGame]> {
     return Array.from(this.games.entries());
+  }
+
+  /**
+   * Games an earlier app process left open (#2654): read from disk at init(),
+   * not created by this process, and not completed. Empty until init()
+   * resolves. Never includes a game this process opened.
+   */
+  previousProcessOpenGames(): Array<[string, PendingGame]> {
+    const out: Array<[string, PendingGame]> = [];
+    for (const id of this.fromPreviousProcess) {
+      const game = this.games.get(id);
+      if (game && !game.completed) out.push([id, game]);
+    }
+    return out;
   }
 
   /** SyncWorker marks the server-side game created. */
@@ -168,7 +249,10 @@ export class PendingGamesStore {
 
   /** For tests. */
   async clearAll(): Promise<void> {
+    // Load first so the saved games can't be merged back in afterwards.
+    await this.init();
     this.games.clear();
+    this.fromPreviousProcess.clear();
     await AsyncStorage.removeItem(STORAGE_KEY);
   }
 }

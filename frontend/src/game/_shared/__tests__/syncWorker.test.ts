@@ -98,6 +98,13 @@ describe("SyncWorker", () => {
     worker.stop();
   });
 
+  /** Open a game the player has acted in (#2654), so SyncWorker will send it. */
+  function startPlayed(...args: Parameters<GameEventClientImpl["startGame"]>): string {
+    const gameId = client.startGame(...args);
+    client.markStarted(gameId);
+    return gameId;
+  }
+
   // -------------------------------------------------------------------------
   // Happy path
   // -------------------------------------------------------------------------
@@ -105,7 +112,7 @@ describe("SyncWorker", () => {
   it("happy path: start → events → complete → 3 POSTs + 1 PATCH, queue empties", async () => {
     api.defaultResponse = ok({ accepted: 2, duplicates: 0 });
     // 2xx for POST /games, for POST /events, for PATCH /complete — all default.
-    const gid = client.startGame("yacht", { seat: 1 });
+    const gid = startPlayed("yacht", { seat: 1 });
     client.enqueueEvent(gid, { type: "roll", data: { dice: [1, 2, 3, 4, 5] } });
     client.enqueueEvent(gid, { type: "score", data: { cat: "yacht" } });
     client.completeGame(gid, { finalScore: 312, outcome: "win" });
@@ -127,7 +134,7 @@ describe("SyncWorker", () => {
 
   it("step-1 POST /games body includes started_at ISO string", async () => {
     const before = Date.now();
-    const gid = client.startGame("yacht", {});
+    const gid = startPlayed("yacht", {});
     await flushMicro();
     await worker.flush();
     const createCall = api.calls.find((c) => c.method === "POST" && c.path === "/games");
@@ -142,7 +149,7 @@ describe("SyncWorker", () => {
 
   it("step-3 PATCH /complete body includes completed_at ISO string", async () => {
     api.defaultResponse = ok({ accepted: 1, duplicates: 0 });
-    const gid = client.startGame("yacht", {});
+    const gid = startPlayed("yacht", {});
     const before = Date.now();
     client.completeGame(gid, { finalScore: 50, outcome: "completed" });
     await flushMicro();
@@ -158,7 +165,7 @@ describe("SyncWorker", () => {
 
   it("batches 150 rapid events into a single POST", async () => {
     logConfig.GAME_EVENT_BATCH_SIZE = 200;
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     for (let i = 0; i < 150; i += 1) {
       client.enqueueEvent(gid, { type: "roll", data: { dice: i } });
     }
@@ -175,7 +182,7 @@ describe("SyncWorker", () => {
 
   it("429 on POST /games sets backoff from Retry-After and bails out", async () => {
     api.onNext((p) => p === "/games", err(429, 5000));
-    client.startGame("yacht");
+    startPlayed("yacht");
     await flushMicro();
 
     const result = await worker.flush(0);
@@ -192,7 +199,7 @@ describe("SyncWorker", () => {
   it("5xx on POST /games sets exponential backoff", async () => {
     logConfig.BACKOFF_BASE_MS = 1000;
     api.onNext((p) => p === "/games", err(500));
-    client.startGame("yacht");
+    startPlayed("yacht");
     await flushMicro();
 
     await worker.flush(0);
@@ -201,7 +208,7 @@ describe("SyncWorker", () => {
 
   it("network failure (status=0) sets backoff, preserves rows", async () => {
     api.onNext((p) => p === "/games", err(0));
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
 
@@ -217,7 +224,7 @@ describe("SyncWorker", () => {
 
   it("2xx on events deletes those rows from the store", async () => {
     api.defaultResponse = ok({ accepted: 3, duplicates: 0 });
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     for (let i = 0; i < 3; i += 1) {
       client.enqueueEvent(gid, { type: "roll", data: { i } });
     }
@@ -242,7 +249,7 @@ describe("SyncWorker", () => {
     api.onNext((p) => p === "/games", ok());
     api.onNext((p) => p.endsWith("/events"), err(500));
 
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     await worker.flush();
@@ -273,7 +280,7 @@ describe("SyncWorker", () => {
       body: { detail: { error: "unknown_event_type", rejected: ["game_ended"] } },
     });
 
-    const gid = client.startGame("hearts");
+    const gid = startPlayed("hearts");
     client.enqueueEvent(gid, { type: "game_ended" });
     await flushMicro();
     const result = await worker.flush();
@@ -304,7 +311,7 @@ describe("SyncWorker", () => {
       body: { detail: { error: "unknown_event_type", rejected: ["game_ended"] } },
     });
 
-    const gid = client.startGame("hearts");
+    const gid = startPlayed("hearts");
     client.enqueueEvent(gid, { type: "game_ended" });
     await flushMicro();
     await worker.flush();
@@ -334,7 +341,7 @@ describe("SyncWorker", () => {
       body: { detail: { error: "malformed_payload" } },
     });
 
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     const result = await worker.flush();
@@ -354,7 +361,7 @@ describe("SyncWorker", () => {
     api.onNext((p) => p === "/games", ok());
     api.onNext((p) => p.endsWith("/events"), err(400));
 
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     await worker.flush();
@@ -371,7 +378,7 @@ describe("SyncWorker", () => {
   it("403 on events dead-letters + logs high severity", async () => {
     api.onNext((p) => p === "/games", ok());
     api.onNext((p) => p.endsWith("/events"), err(403));
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     await worker.flush();
@@ -387,7 +394,7 @@ describe("SyncWorker", () => {
   it("404 on events re-flips started_synced and preserves events", async () => {
     api.onNext((p) => p === "/games", ok());
     api.onNext((p) => p.endsWith("/events"), err(404));
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     await worker.flush();
@@ -410,7 +417,7 @@ describe("SyncWorker", () => {
     api.onNext((p) => p.endsWith("/events"), ok({ accepted: 2, duplicates: 0 }));
     api.onNext((p) => p.endsWith("/events"), ok({ accepted: 2, duplicates: 0 }));
 
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     client.enqueueEvent(gid, { type: "roll" });
     client.enqueueEvent(gid, { type: "roll" });
@@ -426,7 +433,7 @@ describe("SyncWorker", () => {
     api.onNext((p) => p.endsWith("/events"), err(413));
     // Simulate a one-row batch by setting batch size to 1.
     logConfig.GAME_EVENT_BATCH_SIZE = 1;
-    client.startGame("yacht");
+    startPlayed("yacht");
     await flushMicro();
     await worker.flush();
 
@@ -442,7 +449,7 @@ describe("SyncWorker", () => {
     // POST /games ok; first POST /events returns 500 so events stay.
     api.onNext((p) => p === "/games", ok());
     api.onNext((p) => p.endsWith("/events"), err(500));
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     client.completeGame(gid, { finalScore: 100 });
     await flushMicro();
@@ -461,7 +468,7 @@ describe("SyncWorker", () => {
   // quietly re-introduce the bug.
   it("PATCH /complete body uses snake_case field names", async () => {
     api.defaultResponse = ok();
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.completeGame(gid, {
       finalScore: 312,
       outcome: "completed",
@@ -491,12 +498,12 @@ describe("SyncWorker", () => {
   // #2450: the per-game result block must reach the backend's result_model.
   it("PATCH /complete body carries summary.result, or {} when absent", async () => {
     api.defaultResponse = ok();
-    const withResult = client.startGame("solitaire");
+    const withResult = startPlayed("solitaire");
     client.completeGame(withResult, {
       outcome: "completed",
       result: { won: true, moves: 87 },
     });
-    const without = client.startGame("solitaire");
+    const without = startPlayed("solitaire");
     client.completeGame(without, { outcome: "abandoned" });
     await flushMicro();
     await worker.flush();
@@ -520,7 +527,7 @@ describe("SyncWorker", () => {
       durationMs: number | null | undefined
     ): Promise<string> {
       api.defaultResponse = ok();
-      const gid = client.startGame("yacht");
+      const gid = startPlayed("yacht");
       client.completeGame(
         gid,
         durationMs === undefined ? { outcome: "completed" } : { outcome: "completed", durationMs }
@@ -608,7 +615,7 @@ describe("SyncWorker", () => {
       retryAfterMs: null,
       body: { detail: "Invalid outcome: 'completed'" },
     });
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.completeGame(gid, { finalScore: 100, outcome: "completed" });
     await flushMicro();
     const result = await worker.flush();
@@ -637,7 +644,7 @@ describe("SyncWorker", () => {
     api.defaultResponse = ok();
     api.onNext((p) => p.endsWith("/complete"), err(403));
 
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.completeGame(gid, { finalScore: 100, outcome: "completed" });
     await flushMicro();
     const result = await worker.flush();
@@ -683,7 +690,7 @@ describe("SyncWorker", () => {
   it("offline queue persists; reconnect flushes in order", async () => {
     // First flush: everything fails with network error.
     api.onNext((p) => p === "/games", err(0));
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     await worker.flush(0);
@@ -751,13 +758,121 @@ describe("SyncWorker", () => {
   // -------------------------------------------------------------------------
 
   it("concurrent flush calls are a no-op beyond the first", async () => {
-    const gid = client.startGame("yacht");
+    const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
     const [a, b] = await Promise.all([worker.flush(), worker.flush()]);
     // Only one of the two should have actually attempted anything.
     expect(a.attempted + b.attempted).toBeGreaterThan(0);
     expect(Math.min(a.attempted, b.attempted)).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // #2654 — deferred create + killed-process sweep
+  // -------------------------------------------------------------------------
+
+  describe("deferred create (#2654)", () => {
+    const touching = (gid: string) =>
+      api.calls.filter(
+        (c) =>
+          c.path.includes(gid) ||
+          (c.path === "/games" && (c.body as { id?: string } | null)?.id === gid)
+      );
+
+    it("sends no POST /games and no events until markStarted", async () => {
+      const gid = client.startGame("yacht");
+      client.enqueueEvent(gid, { type: "deal" });
+      await flushMicro();
+
+      await worker.flush();
+      expect(touching(gid)).toEqual([]);
+      // The events wait on the device, not dead-lettered.
+      const held = await store.peek(100);
+      expect(held.filter((r) => r.log_type === "game_event")).toHaveLength(2);
+
+      client.markStarted(gid);
+      await worker.flush();
+      expect(touching(gid).map((c) => `${c.method} ${c.path}`)).toEqual([
+        "POST /games",
+        `POST /games/${gid}/events`,
+      ]);
+    });
+
+    it("a game completed before markStarted is still created, sent and completed", async () => {
+      const gid = client.startGame("yacht");
+      client.completeGame(gid, { outcome: "completed", finalScore: 7 });
+      await flushMicro();
+
+      await worker.flush();
+
+      expect(touching(gid).map((c) => `${c.method} ${c.path}`)).toEqual([
+        "POST /games",
+        `POST /games/${gid}/events`,
+        `PATCH /games/${gid}/complete`,
+      ]);
+      expect(games.get(gid)).toBeUndefined();
+    });
+
+    it("a killed process's games: started → abandoned on the server, unstarted → never sent", async () => {
+      const now = jest.spyOn(Date, "now").mockReturnValue(2_000_000);
+      try {
+        // Process 1, offline: one game played for 90 s, one opened and left untouched.
+        const played = startPlayed("yacht");
+        now.mockReturnValue(2_090_000);
+        client.enqueueEvent(played, { type: "roll" });
+        const untouched = client.startGame("twenty48");
+        await flushMicro();
+        // ...then the OS kills it. No unmount, no abandon.
+
+        // Process 2: new instances over the same device storage.
+        now.mockReturnValue(9_000_000);
+        const nextStore = new EventStore();
+        const nextGames = new PendingGamesStore();
+        const nextClient = new GameEventClientImpl(nextStore, nextGames, new BugReportLimiter());
+        const nextWorker = new SyncWorker(nextStore, nextGames, asSyncApi(api));
+        await nextClient.init();
+        await nextWorker.flush(9_000_000);
+
+        expect(touching(played).map((c) => `${c.method} ${c.path}`)).toEqual([
+          "POST /games",
+          `POST /games/${played}/events`,
+          `PATCH /games/${played}/complete`,
+        ]);
+        const patch = touching(played)[2]!.body as Record<string, unknown>;
+        expect(patch).toMatchObject({
+          outcome: "abandoned",
+          final_score: null,
+          duration_ms: 90_000,
+          completed_at: new Date(2_090_000).toISOString(),
+          result: {},
+        });
+        expect(touching(untouched)).toEqual([]);
+        expect(nextGames.all()).toEqual([]);
+        const left = await nextStore.peek(100, { includeDeadLettered: true, includeFuture: true });
+        expect(left.filter((r) => r.log_type === "game_event")).toEqual([]);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("a flush before the pending games load does not dead-letter their events", async () => {
+      const gid = startPlayed("yacht");
+      client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+
+      // Next process: the worker flushes before anyone called init().
+      const nextStore = new EventStore();
+      const nextGames = new PendingGamesStore();
+      const nextWorker = new SyncWorker(nextStore, nextGames, asSyncApi(api));
+      const result = await nextWorker.flush();
+
+      expect(result.deadLettered).toBe(0);
+      expect(touching(gid).map((c) => `${c.method} ${c.path}`)).toEqual([
+        "POST /games",
+        `POST /games/${gid}/events`,
+        `PATCH /games/${gid}/complete`,
+      ]);
+    });
   });
 });
 

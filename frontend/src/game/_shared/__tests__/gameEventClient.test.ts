@@ -187,6 +187,169 @@ describe("GameEventClient", () => {
   });
 
   // -------------------------------------------------------------------------
+  // #2654 — deferred create flag + startup sweep of a killed process's games
+  // -------------------------------------------------------------------------
+
+  describe("started flag (#2654)", () => {
+    it("startGame records the game as not started", () => {
+      const id = client.startGame("yacht");
+      expect(games.get(id)?.started).toBe(false);
+    });
+
+    it("markStarted marks the pending game started", () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      expect(games.get(id)?.started).toBe(true);
+    });
+
+    it("completeGame on an unstarted game marks it started", () => {
+      const id = client.startGame("yacht");
+      client.completeGame(id, { outcome: "completed", finalScore: 10 });
+      expect(games.get(id)?.started).toBe(true);
+      expect(games.get(id)?.completed).toBe(true);
+    });
+  });
+
+  describe("startup sweep (#2654)", () => {
+    /** A new app process on the same device storage. `init()` is not called. */
+    async function relaunch(): Promise<{
+      store: EventStore;
+      games: PendingGamesStore;
+      client: GameEventClientImpl;
+    }> {
+      await flushMicrotasks(); // let the killed process's writes land
+      const nextStore = new EventStore();
+      const nextGames = new PendingGamesStore();
+      return {
+        store: nextStore,
+        games: nextGames,
+        client: new GameEventClientImpl(nextStore, nextGames, new BugReportLimiter()),
+      };
+    }
+
+    async function eventTypes(s: EventStore, gameId: string): Promise<string[]> {
+      const rows = await s.peek(100, { includeDeadLettered: true, includeFuture: true });
+      return rows
+        .filter((r) => r.log_type === "game_event" && r.game_id === gameId)
+        .map((r) => (r.log_type === "game_event" ? r.event_type : ""));
+    }
+
+    let now: jest.SpyInstance<number, []>;
+    beforeEach(() => {
+      now = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    });
+    afterEach(() => {
+      now.mockRestore();
+    });
+
+    it("closes a started game as abandoned, at its last event", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      now.mockReturnValue(1_090_000);
+      client.enqueueEvent(id, { type: "roll" });
+      // The process is killed here; the next launch is a day later.
+      now.mockReturnValue(1_000_000 + 24 * 60 * 60 * 1000);
+
+      const next = await relaunch();
+      await next.client.init();
+
+      const g = next.games.get(id);
+      expect(g?.completed).toBe(true);
+      expect(g?.completeSummary).toEqual({ outcome: "abandoned" });
+      expect(g?.completedAt).toBe(1_090_000);
+      // peek() orders by priority tier, so compare as a set.
+      expect((await eventTypes(next.store, id)).sort()).toEqual([
+        "game_ended",
+        "game_started",
+        "roll",
+      ]);
+    });
+
+    it("drops an unstarted game and its events; nothing is recorded as abandoned", async () => {
+      const id = client.startGame("yacht");
+      client.enqueueEvent(id, { type: "deal" });
+
+      const next = await relaunch();
+      await next.client.init();
+
+      expect(next.games.get(id)).toBeUndefined();
+      expect(await eventTypes(next.store, id)).toEqual([]);
+      // Gone from disk too.
+      const after = await relaunch();
+      await after.games.init();
+      expect(after.games.get(id)).toBeUndefined();
+    });
+
+    it("closes an older build's open record (no `started`) instead of dropping it", async () => {
+      await AsyncStorage.setItem(
+        "pending_games_v1",
+        JSON.stringify({
+          legacy: {
+            gameType: "yacht",
+            metadata: {},
+            startedAt: 500_000,
+            startedSynced: false,
+            nextEventIndex: 1,
+            completed: false,
+            completedAt: null,
+            completeSummary: null,
+            completeSynced: false,
+          },
+        })
+      );
+      const next = await relaunch();
+      await next.client.init();
+
+      const g = next.games.get("legacy");
+      expect(g?.completed).toBe(true);
+      expect(g?.completeSummary).toEqual({ outcome: "abandoned" });
+      // No last-event time on an older record: its start is the last activity known.
+      expect(g?.completedAt).toBe(500_000);
+    });
+
+    it("leaves a completed game from the killed process as it was", async () => {
+      const id = client.startGame("yacht");
+      client.completeGame(id, { outcome: "completed", finalScore: 42 });
+
+      const next = await relaunch();
+      await next.client.init();
+
+      expect(next.games.get(id)?.completeSummary).toEqual({ outcome: "completed", finalScore: 42 });
+      expect(await eventTypes(next.store, id)).toEqual(["game_started", "game_ended"]);
+    });
+
+    it("does not sweep games started in this process before init() resolves", async () => {
+      const killed = client.startGame("yacht");
+      client.markStarted(killed);
+
+      const next = await relaunch();
+      const initDone = next.client.init();
+      const played = next.client.startGame("twenty48");
+      next.client.markStarted(played);
+      const untouched = next.client.startGame("sudoku");
+      await initDone;
+
+      expect(next.games.get(killed)?.completed).toBe(true);
+      expect(next.games.get(played)?.completed).toBe(false);
+      expect(next.games.get(untouched)).toBeDefined();
+      expect(next.games.get(untouched)?.completed).toBe(false);
+      expect(await eventTypes(next.store, played)).toEqual(["game_started"]);
+      expect(await eventTypes(next.store, untouched)).toEqual(["game_started"]);
+    });
+
+    it("sweeps once per process, however often init() is called", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+
+      const next = await relaunch();
+      await Promise.all([next.client.init(), next.client.init()]);
+      await next.client.init();
+
+      expect((await eventTypes(next.store, id)).filter((t) => t === "game_ended")).toHaveLength(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // generateUUID — crypto fallback (regression for Sentry issue: "Property
   // 'crypto' doesn't exist")
   // -------------------------------------------------------------------------

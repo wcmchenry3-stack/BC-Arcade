@@ -9,6 +9,12 @@
  *      sending POST /games/:id/events.
  *   3. Runaway caller protection — reportBug is gated by a per-source
  *      token bucket before anything touches the queue.
+ *   4. Only sessions the player played reach the server (#2654) — a new
+ *      game is held on the device until `markStarted()` (or a completion)
+ *      marks it started; SyncWorker creates it on the server only then.
+ *   5. Sessions a killed process left open are closed (#2654) — `init()`
+ *      sweeps them once per process: a started one is completed as
+ *      `abandoned`, an unstarted one is dropped from the device.
  *
  * Errors in the fire-and-forget persistence path go to Sentry, not
  * back to the caller (the caller long forgot about the call).
@@ -28,12 +34,15 @@ export interface EnqueueEventInput {
 }
 
 export interface GameEventClient {
+  /** Load pending games and sweep the ones a killed process left open. Once per process. */
   init(): Promise<void>;
   startGame(
     gameType: string,
     metadata?: Record<string, unknown>,
     eventData?: Record<string, unknown>
   ): string;
+  /** The player acted in this session: it may now be sent to the server (#2654). */
+  markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
   completeGame(gameId: string, summary: CompleteSummary, eventData?: Record<string, unknown>): void;
   reportBug(
@@ -47,14 +56,19 @@ export interface GameEventClient {
 }
 
 export class GameEventClientImpl implements GameEventClient {
+  private ready: Promise<void> | null = null;
+
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
     private readonly limiter: BugReportLimiter = bugReportLimiter
   ) {}
 
-  async init(): Promise<void> {
-    await this.games.init();
+  init(): Promise<void> {
+    if (!this.ready) {
+      this.ready = this.games.init().then(() => this.sweepPreviousProcess());
+    }
+    return this.ready;
   }
 
   /** Returns the new game id synchronously. */
@@ -68,13 +82,17 @@ export class GameEventClientImpl implements GameEventClient {
     // The event below grabs event_index 0 and we rely on the in-memory
     // counter being correct the moment startGame returns.
     this.fireAndForget(this.games.create(gameId, gameType, metadata), "startGame.create");
-    // Reserve event_index 0 for a game_started event so the SyncWorker
-    // can tell when a game was opened even before any play happened.
+    // Reserve event_index 0 for a game_started event. Like the create, it
+    // stays on the device until the player starts the game (#2654).
     this.enqueueEventInternal(gameId, {
       type: "game_started",
       data: eventData ?? { game_type: gameType, metadata },
     });
     return gameId;
+  }
+
+  markStarted(gameId: string): void {
+    this.fireAndForget(this.games.markStarted(gameId), "markStarted");
   }
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
@@ -133,6 +151,48 @@ export class GameEventClientImpl implements GameEventClient {
   // -------------------------------------------------------------------------
   // Internal
   // -------------------------------------------------------------------------
+
+  /**
+   * Close the sessions an earlier, killed process left open (#2654). Runs once,
+   * from init(), after the pending games are loaded. Only games read from disk
+   * that this process did not create are touched (see
+   * `PendingGamesStore.previousProcessOpenGames`), so a game started before
+   * init() resolves is never swept.
+   *
+   * - Started (or already on the server): completed as a bare `abandoned`,
+   *   the same as a useGameSync abandon with no progress snapshot. Its
+   *   `completedAt` is the last time the device saw the session alive — its
+   *   last event, else its start (older records have no `lastEventAt`) — not
+   *   the time of this launch, which could be days later. No `durationMs` is
+   *   sent, so SyncWorker derives it from those timestamps (#2619).
+   * - Unstarted: never reached the server, so it is forgotten and its queued
+   *   events are deleted. Nothing is recorded as abandoned.
+   *
+   * Errors are reported, not thrown: a failed sweep must not fail init().
+   */
+  private async sweepPreviousProcess(): Promise<void> {
+    try {
+      const unstarted: string[] = [];
+      for (const [gameId, game] of this.games.previousProcessOpenGames()) {
+        if (!game.started && !game.startedSynced) {
+          unstarted.push(gameId);
+          continue;
+        }
+        const completedAt = game.lastEventAt ?? game.startedAt;
+        this.enqueueEventInternal(gameId, {
+          type: "game_ended",
+          data: { outcome: "abandoned" },
+        });
+        await this.games.complete(gameId, { outcome: "abandoned" }, completedAt);
+      }
+      for (const gameId of unstarted) await this.games.forget(gameId);
+      await this.store.deleteGameEvents(unstarted);
+    } catch (e) {
+      Sentry.captureException(e, {
+        tags: { subsystem: "gameEventClient", op: "sweepPreviousProcess" },
+      });
+    }
+  }
 
   private enqueueEventInternal(gameId: string, event: EnqueueEventInput): void {
     const idx = this.games.nextEventIndex(gameId);

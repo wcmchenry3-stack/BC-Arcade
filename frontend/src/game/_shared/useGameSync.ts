@@ -44,6 +44,12 @@
  *
  * Only abandons the player caused count: the unmount and `restart()` paths
  * both skip a session that `markStarted()` was never called for.
+ *
+ * Deferred create (#2654): `markStarted()` also tells gameEventClient, which
+ * holds the session on the device until then — a session the player never
+ * started never reaches the server. A session left open when the process is
+ * killed (no unmount runs) is closed by gameEventClient's startup sweep on the
+ * next launch: abandoned if started, dropped if not.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -70,7 +76,10 @@ export interface UseGameSyncReturn {
   /**
    * Signal that the player has taken their first meaningful action. Must be
    * called before the unmount cleanup will fire an abandoned event, preventing
-   * false abandons on games the player never actually started.
+   * false abandons on games the player never actually started. Until it is
+   * called (or the session completes) the session is not sent to the server
+   * (#2654). Safe to call on every action — only the first one per session
+   * reaches gameEventClient.
    */
   markStarted: () => void;
   /** Enqueue a gameplay event. No-ops if no session is open. */
@@ -165,7 +174,15 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   );
 
   const markStarted = useCallback(() => {
+    if (startedRef.current) return;
     startedRef.current = true;
+    const gid = gameIdRef.current;
+    if (!gid || completedRef.current) return;
+    try {
+      gameEventClient.markStarted(gid);
+    } catch {
+      // Isolation.
+    }
   }, []);
 
   const enqueue = useCallback((event: EnqueueEventInput) => {
