@@ -29,6 +29,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from db.models import EventType, Game, GameEvent, GameType
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
+from games.leaderboard import check_completion_limits
+from games.protocol import GameModule
 from games.registry import get_module
 from vocab import GameOutcome
 
@@ -618,8 +620,19 @@ async def complete_game(
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
+    name = (
+        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
+    ).scalar_one()
+    mod = get_module(name)
     # The sweep flag is server-written only: a result must not set it (#2621).
-    validated_result = without_swept(await _validate_result(session, game, result))
+    validated_result = without_swept(await _validate_result(session, game, result, name, mod))
+    # The board's caps and value types (#2618, absorbs #2215).
+    violation = check_completion_limits(name, mod, game, final_score, validated_result)
+    if violation is not None:
+        _report_rejected_result(
+            violation.game_type, "over board limit", {"field": violation.metric}
+        )
+        raise GameServiceError(400, violation.detail)
 
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
@@ -643,23 +656,25 @@ async def complete_game(
 
 
 async def _validate_result(
-    session: AsyncSession, game: Game, result: dict[str, Any] | None
+    session: AsyncSession,
+    game: Game,
+    result: dict[str, Any] | None,
+    name: str,
+    mod: GameModule | None,
 ) -> dict:
     """Validate *result* against the game module's ``result_model`` (#2449).
 
-    Games without a registered module or a ``result_model`` accept any dict
-    unvalidated. Only fields the client actually sent are returned. Results over
-    ``_MAX_RESULT_BYTES`` are rejected — unvalidated games have no other bound.
+    ``name`` and ``mod`` are the game's type name and registered module, as
+    ``complete_game`` resolved them. Games without a registered module or a
+    ``result_model`` accept any dict unvalidated. Only fields the client
+    actually sent are returned. Results over ``_MAX_RESULT_BYTES`` are
+    rejected — unvalidated games have no other bound.
     """
     if not result:
         return {}
-    name = (
-        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
-    ).scalar_one()
     if len(json.dumps(result, default=str)) > _MAX_RESULT_BYTES:
         _report_rejected_result(name, "result too large", {"keys": sorted(result)[:20]})
         raise GameServiceError(400, "Result too large.")
-    mod = get_module(name)
     result_model = mod.result_model if mod is not None else None
     if result_model is None:
         return dict(result)

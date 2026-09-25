@@ -18,10 +18,16 @@
  *   // Record an event
  *   enqueue({ type: "roll", data: { dice: [1, 2, 3] } });
  *
- *   // Mark the session complete (prevents the unmount handler from firing)
- *   complete({ finalScore: 250, outcome: "completed" }, { final_score: 250 });
+ *   // Mark the session complete (prevents the unmount handler from firing).
+ *   // `result` is the PATCH result block; the second argument is only the
+ *   // analytics `game_ended` event payload.
+ *   complete(
+ *     { finalScore: 250, outcome: "completed", result: { final_score: 250 } },
+ *     { final_score: 250 }
+ *   );
  *
- *   // End the current session as abandoned and immediately start a fresh one
+ *   // End the current session (abandoned if the player started it, else
+ *   // discarded) and immediately start a fresh one
  *   restart({ initial_score: 0 });
  *
  * The unmount cleanup automatically abandons any open session, so callers
@@ -32,7 +38,14 @@
  * `{ outcome: "abandoned" }`. A game registers `setProgressSnapshot(getter)` so
  * the hook's own abandon paths (unmount, restart) can attach the per-game
  * result block at that moment. Games that never register a getter keep
- * the old behaviour and send no result.
+ * the old behaviour and send no result. A screen that also abandons explicitly
+ * (a "New game" button, `beforeRemove`) builds that abandon's result with the
+ * same helper its getter uses, so the two paths cannot drift apart (#2619).
+ *
+ * Only abandons the player caused count: the unmount and `restart()` paths
+ * both skip the abandon for a session that `markStarted()` was never called
+ * for. `restart()` discards that session (`gameEventClient.discardGame`) so it
+ * is not left pending when the new one replaces it.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -67,11 +80,18 @@ export interface UseGameSyncReturn {
   /**
    * Mark the session as complete. Prevents the unmount handler from firing
    * an abandoned event. Safe to call multiple times — only the first fires.
+   *
+   * `summary.result` is the PATCH `result` block and must be passed
+   * explicitly (#2619). `payload` is only the analytics `game_ended` event
+   * data — it is never copied into the result.
    */
   complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
   /**
-   * End the current session (as abandoned if still open) and immediately
-   * start a fresh one. Use this for New Game / theme-switch flows.
+   * End the current session and immediately start a fresh one. If the old
+   * session is still open, it is abandoned when the player started it
+   * (`markStarted()`, the same rule as the unmount path) and otherwise
+   * discarded via `gameEventClient.discardGame()`. Use this for
+   * New Game / theme-switch flows.
    */
   restart: (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => void;
   /** Delegate to gameEventClient.reportBug with try/catch isolation. */
@@ -164,14 +184,10 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const complete = useCallback((summary: CompleteSummary, payload?: Record<string, unknown>) => {
     const gid = gameIdRef.current;
     if (!gid || completedRef.current) return;
-    // The per-game payload doubles as the PATCH `result` block (#2450) unless
-    // the caller supplied an explicit summary.result.
-    const withResult: CompleteSummary =
-      summary.result === undefined && payload && Object.keys(payload).length > 0
-        ? { ...summary, result: payload }
-        : summary;
     try {
-      gameEventClient.completeGame(gid, withResult, payload ?? {});
+      // The result block is summary.result only (#2619) — the event payload is
+      // no longer copied into it.
+      gameEventClient.completeGame(gid, summary, payload ?? {});
     } catch {
       // Isolation.
     }
@@ -181,10 +197,20 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   const restart = useCallback(
     (newEventData?: Record<string, unknown>, newMetadata?: Record<string, unknown>) => {
-      // Close the current session if still open.
+      // Close the current session if still open. A session the player started
+      // is abandoned (the same guard as the unmount path); an untouched one is
+      // not an abandon, so it is discarded — never left pending (#2619).
       const gid = gameIdRef.current;
       if (gid && !completedRef.current) {
-        abandon(gid);
+        if (startedRef.current) {
+          abandon(gid);
+        } else {
+          try {
+            gameEventClient.discardGame(gid);
+          } catch {
+            // Isolation.
+          }
+        }
       }
       // Open a fresh session.
       gameIdRef.current = gameEventClient.startGame(

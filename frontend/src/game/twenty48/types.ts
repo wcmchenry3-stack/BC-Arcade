@@ -2,7 +2,7 @@
  * Twenty48 state types.
  */
 
-import type { GameOutcome, GameSession } from "../_shared/types";
+import type { GameSession } from "../_shared/types";
 
 export interface TileData {
   id: number;
@@ -37,9 +37,3 @@ export interface Twenty48State {
 }
 
 export type Twenty48Session = GameSession<Twenty48State>;
-
-/** Outcome for a completed Twenty48 game. */
-export interface Twenty48Outcome extends GameOutcome {
-  /** Whether the player reached the 2048 tile. */
-  hasWon: boolean;
-}

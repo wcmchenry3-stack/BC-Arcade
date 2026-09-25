@@ -85,6 +85,11 @@ const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
 
+/** The game's play timer so far: time banked plus the running segment. */
+function activeMs(state: SolitaireState, now: number = Date.now()): number {
+  return state.accumulatedMs + (state.startedAt !== null ? now - state.startedAt : 0);
+}
+
 /** What the result card shows for a finished game. */
 interface WinSummary {
   readonly timeMs: number;
@@ -156,10 +161,12 @@ export default function SolitaireScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("solitaire");
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the abandon result block (backend SolitaireResult). Both the
+  // hook's own abandon (unmount) and the beforeRemove abandon build it here.
+  const progressResult = useCallback(() => ({ won: false, moves: movesRef.current }), []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: { won: false, moves: movesRef.current } }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();
 
@@ -174,8 +181,7 @@ export default function SolitaireScreen() {
     const foundationsComplete = Object.values(state.foundations).filter(
       (cards) => cards.length === 13
     ).length;
-    const elapsedMs =
-      state.accumulatedMs + (state.startedAt !== null ? Date.now() - state.startedAt : 0);
+    const elapsedMs = activeMs(state);
     setScoreboardSnapshot({
       moves,
       elapsedMs,
@@ -267,7 +273,12 @@ export default function SolitaireScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       syncComplete(
-        { finalScore: state.score, outcome: "completed", durationMs: state.accumulatedMs },
+        {
+          finalScore: state.score,
+          outcome: "completed",
+          durationMs: state.accumulatedMs,
+          result: { won: true, moves: movesRef.current },
+        },
         { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
       );
       clearGame().catch(() => {});
@@ -321,13 +332,20 @@ export default function SolitaireScreen() {
       if (!syncGetGameId()) return;
       if (s !== null && s.isComplete) return;
       if (movesRef.current < 1) return;
+      const result = progressResult();
       syncComplete(
-        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
-        { outcome: "abandoned", won: false, moves: movesRef.current }
+        {
+          outcome: "abandoned",
+          finalScore: s?.score ?? 0,
+          // The game's own play timer (#2619), not wall-clock time.
+          durationMs: s ? activeMs(s) : null,
+          result,
+        },
+        { outcome: "abandoned", ...result }
       );
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [navigation, syncComplete, syncGetGameId, progressResult]);
 
   useEffect(() => {
     if (!state?.events) return;

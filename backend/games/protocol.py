@@ -62,6 +62,15 @@ class GameModule(Protocol):
         and describe creation-time state only.  The validated result is merged
         into ``games.metadata``.
 
+    has_winner:
+        ``True`` when this game can record ``win`` / ``loss`` / ``push`` —
+        set only once the client really writes them (a win included).
+        ``False`` for score-only games, which record ``completed`` /
+        ``kept_playing``.  It is a per-game capability, not a per-row fact:
+        a ``completed`` row from a game with ``has_winner = True`` (e.g. solo
+        Yacht) is not a win — it is a finish with no winner.  See
+        ``vocab.GameOutcome``.
+
     board:
         A ``BoardDefinition`` declaring how the game is ranked (metric,
         direction, tie-break, partitions and their legacy defaults, caps,
@@ -89,6 +98,7 @@ class GameModule(Protocol):
     game_type: GameType
     metadata_model: type[BaseModel]
     result_model: type[BaseModel] | None
+    has_winner: bool
     board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

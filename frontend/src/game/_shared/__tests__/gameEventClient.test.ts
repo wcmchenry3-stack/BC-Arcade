@@ -126,6 +126,45 @@ describe("GameEventClient", () => {
   });
 
   // -------------------------------------------------------------------------
+  // discardGame (#2619)
+  // -------------------------------------------------------------------------
+
+  it("discardGame forgets the pending record and drops only its queued events", async () => {
+    const discarded = client.startGame("cascade");
+    client.enqueueEvent(discarded, { type: "drop" });
+    const kept = client.startGame("cascade");
+    client.reportBug("warn", "src", "msg");
+    // Straight after startGame, before its events have landed — the discard
+    // must still remove game_started.
+    client.discardGame(discarded);
+    await flushMicrotasks();
+
+    expect(games.get(discarded)).toBeUndefined();
+    expect(games.get(kept)).toBeDefined();
+    const rows = await store.peek(20, { includeDeadLettered: true, includeFuture: true });
+    const gameIds = rows.flatMap((r) => (r.log_type === "game_event" ? [r.game_id] : []));
+    expect(gameIds).toEqual([kept]);
+    expect(rows.filter((r) => r.log_type === "bug_log")).toHaveLength(1);
+
+    // Persisted too: a fresh store rehydrated from AsyncStorage has no record.
+    const rehydrated = new PendingGamesStore();
+    await rehydrated.init();
+    expect(rehydrated.get(discarded)).toBeUndefined();
+    expect(rehydrated.get(kept)).toBeDefined();
+  });
+
+  it("enqueueEvent and completeGame after discardGame are dropped", async () => {
+    const id = client.startGame("cascade");
+    client.discardGame(id);
+    client.enqueueEvent(id, { type: "drop" });
+    client.completeGame(id, { outcome: "abandoned" });
+    await flushMicrotasks();
+
+    expect(games.get(id)).toBeUndefined();
+    expect(await store.peek(20)).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
   // reportBug — rate limiter integration
   // -------------------------------------------------------------------------
 

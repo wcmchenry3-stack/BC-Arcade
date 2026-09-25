@@ -148,7 +148,7 @@ def test_game_type_enum_values() -> None:
 
 def test_game_outcome_enum_values() -> None:
     """Regression guard — no value should be silently removed from GameOutcome."""
-    expected = {"win", "loss", "push", "blackjack", "completed", "abandoned", "kept_playing"}
+    expected = {"win", "loss", "push", "completed", "abandoned", "kept_playing"}
     assert {v.value for v in GameOutcome} == expected
 
 

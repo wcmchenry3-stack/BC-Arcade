@@ -485,6 +485,77 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
 
+  // #2469 item 3 / #2619 — the registered progress snapshot.
+  it("an unmount abandon carries the progress snapshot result and no score", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(201);
+    });
+    await injectMerge(3, 100, 200);
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary).not.toHaveProperty("finalScore");
+    // #2619 review: same keys as a completed row's result, minus `outcome`.
+    expect(summary.result).toEqual({
+      final_score: expect.any(Number),
+      duration_ms: expect.any(Number),
+      theme: "fruits",
+      total_drops: 1,
+      total_merges: 1,
+    });
+    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+  });
+
+  it("a mid-game New Game abandon keeps theme and final_score, but no outcome, in its result", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(201);
+    });
+    mockCompleteGame.mockClear();
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    )[0];
+    await act(() => {
+      shell?.props.onNewGame();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.result).toEqual({
+      final_score: expect.any(Number),
+      duration_ms: expect.any(Number),
+      theme: "fruits",
+      total_drops: 1,
+      total_merges: 0,
+    });
+    expect(summary.result).not.toHaveProperty("outcome");
+    expect(summary.durationMs).toBe(summary.result.duration_ms);
+    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+  });
+
+  it("game over still sends the full result block (#2619: explicit, unchanged)", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    mockCompleteGame.mockClear();
+    await injectGameOver();
+
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result).toEqual(eventData);
+    expect(summary.result).toEqual(
+      expect.objectContaining({ total_drops: 1, outcome: "completed" })
+    );
+  });
+
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {
     const renderer = await renderScreen();
     mockEnqueueEvent.mockImplementation(() => {

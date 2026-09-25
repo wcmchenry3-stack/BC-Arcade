@@ -60,6 +60,25 @@ export interface FlushResult {
   backoffMs: number;
 }
 
+/**
+ * The `duration_ms` sent on PATCH /complete (#2619). Only the game's own
+ * active-time measurement counts as play time: a reported duration > 0 is
+ * sent (rounded to whole ms, since the server field is an int). Anything
+ * else — 0, null, missing, negative or not finite — is sent as `null`,
+ * meaning "unknown".
+ *
+ * The duration is never derived from the pending game's `startedAt` /
+ * `completedAt`: wall-clock time counts idle and backgrounded time as play
+ * (a Daily Word left open all day would record 12 h). A negative value must
+ * never reach the server either — `duration_ms` is `Field(ge=0)`, so it would
+ * 400 the whole completion and lose the score.
+ */
+export function resolveDurationMs(durationMs: number | null | undefined): number | null {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
+  const ms = Math.round(durationMs);
+  return ms > 0 ? ms : null;
+}
+
 const EMPTY: FlushResult = {
   attempted: 0,
   accepted: 0,
@@ -344,7 +363,7 @@ export class SyncWorker {
       const body = {
         final_score: summary.finalScore ?? null,
         outcome: summary.outcome ?? null,
-        duration_ms: summary.durationMs ?? null,
+        duration_ms: resolveDurationMs(summary.durationMs),
         completed_at: game.completedAt != null ? new Date(game.completedAt).toISOString() : null,
         result: summary.result ?? {},
       };
