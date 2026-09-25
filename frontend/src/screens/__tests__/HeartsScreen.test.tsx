@@ -12,7 +12,7 @@ import {
   saveFinishedGameId,
   saveGame,
 } from "../../game/hearts/storage";
-import type { Card, HeartsState, Suit } from "../../game/hearts/types";
+import type { Card, HeartsState, SavedHeartsState, Suit } from "../../game/hearts/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { scoreQueue } from "../../game/_shared/scoreQueue";
@@ -50,8 +50,16 @@ jest.mock("../../game/_shared/displayNameSync", () => ({
 
 // A stand-in for useGameSync that keeps the real hook's session rules:
 // start() and a successful resume() open a session, complete() closes it
-// (getGameId() is null afterwards).
+// (getGameId() is null afterwards), and close() or unmounting abandons an
+// open one with the registered progress snapshot (recorded in mockAbandons).
 let mockOpenGameId: string | null = null;
+const mockAbandons: ProgressSnapshot[] = [];
+const mockSyncClose = jest.fn(() => {
+  if (mockOpenGameId === null) return;
+  mockOpenGameId = null;
+  const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)?.[0];
+  mockAbandons.push(getSnapshot ? getSnapshot() : {});
+});
 const mockSyncStart = jest.fn((_eventData?: unknown, _metadata?: unknown) => {
   mockOpenGameId = "hearts-game";
 });
@@ -64,17 +72,24 @@ const mockSyncResume = jest.fn(() => false);
 const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
 const mockSyncMarkStarted = jest.fn();
 const mockSyncRestart = jest.fn();
-jest.mock("../../game/_shared/useGameSync", () => ({
-  useGameSync: () => ({
-    start: mockSyncStart,
-    resume: mockSyncResume,
-    markStarted: mockSyncMarkStarted,
-    complete: mockSyncComplete,
-    restart: mockSyncRestart,
-    getGameId: mockSyncGetGameId,
-    setProgressSnapshot: mockSetProgressSnapshot,
-  }),
-}));
+jest.mock("../../game/_shared/useGameSync", () => {
+  const { useEffect } = jest.requireActual<typeof import("react")>("react");
+  return {
+    useGameSync: () => {
+      useEffect(() => () => mockSyncClose(), []);
+      return {
+        start: mockSyncStart,
+        resume: mockSyncResume,
+        markStarted: mockSyncMarkStarted,
+        complete: mockSyncComplete,
+        close: mockSyncClose,
+        restart: mockSyncRestart,
+        getGameId: mockSyncGetGameId,
+        setProgressSnapshot: mockSetProgressSnapshot,
+      };
+    },
+  };
+});
 
 /** The app was killed mid-game; reopening continues that session (#2654). */
 function resumeKilledSession() {
@@ -90,6 +105,8 @@ function resetSyncMocks() {
   mockSyncResume.mockReturnValue(false);
   mockSyncStart.mockClear();
   mockSyncComplete.mockClear();
+  mockSyncClose.mockClear();
+  mockAbandons.length = 0;
   mockSetProgressSnapshot.mockClear();
 }
 
@@ -653,7 +670,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     expect(durationMs).toBeGreaterThanOrEqual(601_200);
     expect(durationMs).toBeLessThan(610_000);
     // The final trick's save carries the play time, for a reopened game.
-    const saved = (saveGame as jest.Mock).mock.calls.at(-1)![0] as HeartsState;
+    const saved = (saveGame as jest.Mock).mock.calls.at(-1)![0] as SavedHeartsState;
     expect(saved.accumulatedMs).toBeGreaterThanOrEqual(601_200);
   });
 
@@ -733,6 +750,33 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     expect(mockSyncComplete).not.toHaveBeenCalled();
     expect(mockGetGameRank).not.toHaveBeenCalled();
     expect(saveFinishedGameId).not.toHaveBeenCalled();
+  });
+
+  // Review of #2701: a slow read of the old game's id must not take the new
+  // game's submission slot.
+  it("a finished-game id read that lands after Play Again asks for nothing", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockGetGameRank.mockResolvedValue(ranked(2));
+    let release: (id: string | null) => void = () => {};
+    (loadFinishedGameId as jest.Mock).mockReturnValue(
+      new Promise<string | null>((resolve) => {
+        release = resolve;
+      })
+    );
+    (loadGame as jest.Mock).mockResolvedValue(gameOverState());
+    const r = await renderScreen();
+    await r.findByTestId("hearts-result");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(r.queryByTestId("hearts-result")).toBeNull();
+    await act(async () => {
+      release("hearts-game");
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(mockGetGameRank).not.toHaveBeenCalled();
   });
 
   it("a finished game resumed from storage asks for its rank again, submitting nothing", async () => {
@@ -846,14 +890,17 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
 
 describe("HeartsScreen — game session (#2629)", () => {
   /** The human holds the last card of the hand; the AIs have played. */
-  function humanLastCardState(aiDifficulty: HeartsState["aiDifficulty"]): HeartsState {
+  function humanLastCardState(
+    aiDifficulty: HeartsState["aiDifficulty"],
+    cumulativeScores: number[] = [10, 20, 30, 40]
+  ): HeartsState {
     return {
       _v: 3,
       aiDifficulty,
       phase: "playing",
       handNumber: 3,
       passDirection: "none",
-      cumulativeScores: [10, 20, 30, 40],
+      cumulativeScores,
       handScores: [0, 0, 0, 0],
       scoreHistory: [
         [4, 6, 8, 8],
@@ -920,6 +967,7 @@ describe("HeartsScreen — game session (#2629)", () => {
       return { remove: jest.fn() };
     }) as unknown as typeof AppState.addEventListener;
     try {
+      resumeKilledSession();
       (loadGame as jest.Mock).mockResolvedValue({
         ...humanLastCardState("schemer"),
         accumulatedMs: 40_000,
@@ -934,7 +982,7 @@ describe("HeartsScreen — game session (#2629)", () => {
         listeners.forEach((l) => l("background"));
       });
       expect(saveGame).toHaveBeenCalledTimes(1);
-      const saved = (saveGame as jest.Mock).mock.calls[0]![0] as HeartsState;
+      const saved = (saveGame as jest.Mock).mock.calls[0]![0] as SavedHeartsState;
       expect(saved.accumulatedMs).toBeGreaterThanOrEqual(45_000);
 
       // An hour away, then back: the clock resumes where it stopped.
@@ -952,6 +1000,7 @@ describe("HeartsScreen — game session (#2629)", () => {
   });
 
   it("registers a progress snapshot for the hook's abandon: play time, no score", async () => {
+    resumeKilledSession();
     (loadGame as jest.Mock).mockResolvedValue({
       ...humanLastCardState("schemer"),
       accumulatedMs: 40_000,
@@ -987,11 +1036,84 @@ describe("HeartsScreen — game session (#2629)", () => {
       await fireEvent.press(r.getByLabelText("Start New")); // confirm the abandon dialog
     });
     expect(r.getByTestId("hearts-start-game")).toBeTruthy();
-    expect(mockSyncComplete).toHaveBeenCalledTimes(1);
-    expect(mockSyncComplete).toHaveBeenCalledWith(
-      { outcome: "abandoned", durationMs: 45_000, result: { hands_played: 2 } },
-      { hands_played: 2, outcome: "abandoned" }
-    );
+    // The hook abandons it (close()) with the registered snapshot.
+    expect(mockSyncClose).toHaveBeenCalledTimes(1);
+    expect(mockAbandons).toEqual([{ result: { hands_played: 2 }, durationMs: 45_000 }]);
+    expect(mockSyncComplete).not.toHaveBeenCalled();
+  });
+
+  // Review of #2701: leaving the screen abandons the session with its play
+  // time X, and the blur save keeps X. Back again, that session can't be
+  // continued, so a new one opens: X must not be counted a second time.
+  it("an abandoned session's play time is not counted again by the next one", async () => {
+    resumeKilledSession();
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...humanLastCardState("schemer", [10, 100, 30, 40]),
+      accumulatedMs: 40_000,
+    });
+    const first = await renderScreen();
+    await first.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    await first.unmount();
+    expect(mockAbandons).toHaveLength(1);
+    const abandoned = mockAbandons[0]!.durationMs!;
+    expect(abandoned).toBeGreaterThanOrEqual(45_000);
+
+    // Remount: the saved game carries X, and resuming its session fails.
+    resetSyncMocks();
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...humanLastCardState("schemer", [10, 100, 30, 40]),
+      accumulatedMs: abandoned,
+    });
+    const again = await renderScreen();
+    const slot = await again.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    // The last card opens a new session and ends the game.
+    await act(async () => {
+      fireEvent.press(within(slot).getByRole("button"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(mockSyncStart).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockSyncComplete).toHaveBeenCalledTimes(1));
+    const { durationMs } = mockSyncComplete.mock.calls[0]![0] as { durationMs: number };
+    expect(durationMs).toBeGreaterThanOrEqual(2_000);
+    expect(durationMs).toBeLessThan(abandoned);
+  });
+
+  it("iOS's inactive-then-background saves the game once", async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const real = AppState.addEventListener;
+    AppState.addEventListener = ((_type: string, handler: (state: string) => void) => {
+      listeners.push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof AppState.addEventListener;
+    const emit = async (state: string) => {
+      await act(async () => {
+        listeners.forEach((l) => l(state));
+      });
+    };
+    try {
+      (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+      const r = await renderScreen();
+      await r.findByTestId("hearts-hand-card-0");
+      (saveGame as jest.Mock).mockClear();
+      // The control centre: inactive and back, no write.
+      await emit("inactive");
+      await emit("active");
+      expect(saveGame).not.toHaveBeenCalled();
+      // Leaving the app: inactive, then background — one write.
+      await emit("inactive");
+      await emit("background");
+      expect(saveGame).toHaveBeenCalledTimes(1);
+    } finally {
+      AppState.addEventListener = real;
+    }
   });
 
   it("the source keeps no pendingSubmission queue or legacy Hearts API", () => {

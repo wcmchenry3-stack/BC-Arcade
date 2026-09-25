@@ -19,7 +19,11 @@ from fastapi.testclient import TestClient
 
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement
-from hearts.models import AI_DIFFICULTIES, HeartsMetadata
+from hearts.models import HeartsMetadata
+
+# The opponent styles the app offers: ``AI_PRESETS`` in
+# ``frontend/src/game/hearts/types.ts``.
+AI_DIFFICULTIES = ("cautious", "schemer", "daring", "mixed")
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),

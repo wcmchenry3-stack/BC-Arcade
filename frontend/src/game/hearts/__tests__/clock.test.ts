@@ -7,12 +7,6 @@ describe("Hearts play clock (#2629)", () => {
     expect(clockMs(pausedClock(), 5_000)).toBe(0);
   });
 
-  it("a bad stored total counts as 0", () => {
-    expect(pausedClock(-5).accumulatedMs).toBe(0);
-    expect(pausedClock(Number.NaN).accumulatedMs).toBe(0);
-    expect(pausedClock(Number.POSITIVE_INFINITY).accumulatedMs).toBe(0);
-  });
-
   it("adds up the running spans only", () => {
     let clock = runClock(pausedClock(1_000), 10_000);
     expect(clockMs(clock, 12_500)).toBe(3_500);
@@ -39,6 +33,7 @@ describe("Hearts play clock (#2629)", () => {
     const state = dealGame();
     const saved = withPlayTime(state, runClock(pausedClock(1_000.4), 0), 500);
     expect(saved.accumulatedMs).toBe(1_500);
-    expect({ ...saved, accumulatedMs: undefined }).toEqual({ ...state, accumulatedMs: undefined });
+    const { accumulatedMs: _ms, ...rest } = saved;
+    expect(rest).toEqual(state);
   });
 });

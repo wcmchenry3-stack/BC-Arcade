@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import type { AiPreset, HeartsState } from "./types";
+import type { AiPreset, HeartsState, SavedHeartsState } from "./types";
 import { AI_PRESETS } from "./types";
 
 const GAME_KEY = "hearts_game";
@@ -18,7 +18,8 @@ const LEGACY_PERSONA_MAP: Record<string, string> = {
   hard: "daring",
 };
 
-export async function saveGame(state: HeartsState): Promise<void> {
+/** Saves the game with its play time (`withPlayTime` in ./clock builds it). */
+export async function saveGame(state: SavedHeartsState): Promise<void> {
   try {
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify(state));
   } catch (e) {
@@ -26,7 +27,11 @@ export async function saveGame(state: HeartsState): Promise<void> {
   }
 }
 
-export async function loadGame(): Promise<HeartsState | null> {
+/**
+ * The saved game, or null. Its `accumulatedMs` is always a usable play time:
+ * 0 when an older save has none or the stored value is bad.
+ */
+export async function loadGame(): Promise<SavedHeartsState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
@@ -48,7 +53,7 @@ export async function loadGame(): Promise<HeartsState | null> {
       parsed["aiDifficulty"] = LEGACY_PERSONA_MAP[storedPersona];
     }
 
-    const p = parsed as Partial<HeartsState>;
+    const p = parsed as Partial<HeartsState> & { accumulatedMs?: unknown };
     if (
       p._v !== 3 ||
       !(AI_PRESETS as readonly string[]).includes(p.aiDifficulty as string) ||
@@ -87,7 +92,7 @@ export async function loadGame(): Promise<HeartsState | null> {
     // Play time (#2629): absent in older saves, and a bad value counts as none.
     const ms = p.accumulatedMs;
     const accumulatedMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
-    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as HeartsState;
+    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as SavedHeartsState;
   } catch (e) {
     Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
       level: "warning",

@@ -160,6 +160,7 @@ export default function HeartsScreen() {
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    close: syncClose,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("hearts");
@@ -174,9 +175,9 @@ export default function HeartsScreen() {
   /** Saves the game with its play time so far. */
   const persist = useCallback((s: HeartsState) => saveGame(withPlayTime(s, clockRef.current)), []);
 
-  // The hook abandons a started session itself when the screen unmounts; the
-  // abandon carries how many hands were played and the play time (#2629). No
-  // score: an abandon never ranks.
+  // The hook abandons a started session itself (unmount, and New Game /
+  // Change Difficulty through close()); the abandon carries how many hands
+  // were played and the play time (#2629). No score: an abandon never ranks.
   useEffect(() => {
     syncSetProgressSnapshot(() => {
       const s = gameStateRef.current;
@@ -184,20 +185,9 @@ export default function HeartsScreen() {
     });
   }, [syncSetProgressSnapshot]);
 
-  /**
-   * New Game / Change Difficulty while a game is in play abandons it now,
-   * with the same result the hook's abandon sends — not later, when the next
-   * game's first card would close the session with that game's state.
-   */
-  function abandonOpenGame() {
-    const s = gameStateRef.current;
-    if (!s || s.isComplete || !syncGetGameId()) return;
-    const result = progressResult(s);
-    syncComplete(
-      { outcome: "abandoned", durationMs: clockMs(clockRef.current), result },
-      { ...result, outcome: "abandoned" }
-    );
-  }
+  // Bumped when the player leaves this game for another (New Game, Change
+  // Difficulty): a slow read for the old game must not act on the new one.
+  const gameGenerationRef = useRef(0);
 
   // Keep ref in sync for use in event listeners.
   useEffect(() => {
@@ -223,17 +213,25 @@ export default function HeartsScreen() {
         // (or for the display name it still lacks) — nothing is submitted.
         if (saved.phase === "game_over") {
           gameOverFiredRef.current = true;
+          const generation = gameGenerationRef.current;
           loadFinishedGameId().then((gameId) => {
-            if (!unmountedRef.current && gameId) void submitRank({ gameId });
+            // Not once the player has moved on to another game.
+            if (unmountedRef.current || generation !== gameGenerationRef.current) return;
+            if (gameId) void submitRank({ gameId });
           });
         }
-        // Play time so far; the clock runs again from now (time away is not play).
-        clockRef.current = pausedClock(saved.accumulatedMs ?? 0);
-        updateClock(saved);
-        setGameState(saved);
-        setSelectedDifficulty(saved.aiDifficulty);
+        // The play time lives in the clock, not in the state (#2629).
+        const { accumulatedMs, ...state } = saved;
         // A restored game continues the session a killed app left open (#2654).
-        if (saved.phase !== "game_over") syncResume();
+        const resumed = state.phase !== "game_over" && syncResume();
+        // The saved play time belongs to that session: kept only when it is
+        // continued. Otherwise (it was abandoned when the screen was left) the
+        // next session starts from 0, so no minute is counted twice. Either
+        // way the clock runs again from now: time away is not play.
+        clockRef.current = pausedClock(resumed ? accumulatedMs : 0);
+        updateClock(state);
+        setGameState(state);
+        setSelectedDifficulty(state.aiDifficulty);
         if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
           // Best-effort: saved state doesn't preserve the original deal, so
           // playerHands approximates both initial and final hands for resumed games.
@@ -314,14 +312,20 @@ export default function HeartsScreen() {
   );
 
   // ─── Play clock: background time is not play time (#2629) ──────────────────
-  // Paused (and the game saved with its play time) when the app leaves the
-  // foreground, so a game killed in the background keeps what it had.
+  // Paused whenever the app is not active (iOS passes through "inactive" on
+  // the way out, and for the control centre). The game is saved with its play
+  // time once, on the move to "background", so a game killed there keeps it.
+  const appStateRef = useRef<AppStateStatus | null>(null);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      const previous = appStateRef.current;
+      appStateRef.current = next;
       appActiveRef.current = next === "active";
       const gs = gameStateRef.current;
       updateClock(gs);
-      if (next !== "active" && gs && !gs.isComplete) void persist(gs);
+      if (next === "background" && previous !== "background" && gs && !gs.isComplete) {
+        void persist(gs);
+      }
     });
     return () => sub.remove();
   }, [updateClock, persist]);
@@ -572,7 +576,10 @@ export default function HeartsScreen() {
   function handleStartGame(requested: AiPreset) {
     // A premium style starts at the default instead (#1129).
     const difficulty = rememberDifficulty(requested);
-    abandonOpenGame();
+    // The game in play is abandoned now (the hook's close(), with the progress
+    // snapshot), not when the next game's first card opens a session.
+    syncClose();
+    gameGenerationRef.current += 1;
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
@@ -602,7 +609,10 @@ export default function HeartsScreen() {
 
   /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
   function handleChangeDifficulty() {
-    abandonOpenGame();
+    // The game in play is abandoned now (the hook's close(), with the progress
+    // snapshot), not when the next game's first card opens a session.
+    syncClose();
+    gameGenerationRef.current += 1;
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);

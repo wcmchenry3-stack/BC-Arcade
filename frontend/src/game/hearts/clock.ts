@@ -9,12 +9,14 @@
  *
  * The screen keeps the clock in a ref rather than in `HeartsState`: the AI
  * turn loop writes back a state copied before its awaits, which would undo a
- * pause made meanwhile. Saves persist the total as `HeartsState.accumulatedMs`
+ * pause made meanwhile. Saves persist the total as `SavedHeartsState.accumulatedMs`
  * (see `withPlayTime`), so it survives a restore and a killed app; time spent
  * away from the app is never counted, since a restored clock starts a new span.
+ * The total belongs to one game session: the screen restores it only when it
+ * continues that session, and starts from 0 otherwise.
  */
 
-import type { HeartsState } from "./types";
+import type { HeartsState, SavedHeartsState } from "./types";
 
 export interface PlayClock {
   /** Play time of the finished spans. */
@@ -23,10 +25,9 @@ export interface PlayClock {
   readonly runningSince: number | null;
 }
 
-/** A paused clock holding `accumulatedMs` (a bad stored value counts as 0). */
+/** A paused clock holding `accumulatedMs` (`loadGame` sanitises a stored value). */
 export function pausedClock(accumulatedMs = 0): PlayClock {
-  const ms = Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? accumulatedMs : 0;
-  return { accumulatedMs: ms, runningSince: null };
+  return { accumulatedMs, runningSince: null };
 }
 
 /** Total play time, including the running span. */
@@ -50,6 +51,6 @@ export function withPlayTime(
   state: HeartsState,
   clock: PlayClock,
   now: number = Date.now()
-): HeartsState {
+): SavedHeartsState {
   return { ...state, accumulatedMs: Math.round(clockMs(clock, now)) };
 }

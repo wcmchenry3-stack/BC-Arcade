@@ -11,7 +11,7 @@ describe("hearts storage", () => {
   });
 
   it("saveGame serialises state to AsyncStorage", async () => {
-    const state = dealGame();
+    const state = { ...dealGame(), accumulatedMs: 1_500 };
     await saveGame(state);
     expect(AsyncStorage.setItem).toHaveBeenCalledWith("hearts_game", JSON.stringify(state));
   });

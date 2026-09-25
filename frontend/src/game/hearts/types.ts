@@ -115,13 +115,6 @@ export interface HeartsState {
   readonly isComplete: boolean;
   readonly winnerIndex: number | null;
   /**
-   * Active play time so far, in ms (#2629). Written by the screen when it
-   * saves (`withPlayTime` in ./clock) and read back on restore; the engine
-   * never sets it. Optional: saves from older builds have none (they count
-   * from 0 on restore), and a freshly dealt game starts at 0.
-   */
-  readonly accumulatedMs?: number;
-  /**
    * Per-player suits known to be void, inferred from off-suit discards (#2029).
    * knownVoids[playerIndex] is an array of suits that player is known to be void in.
    * Populated during trick resolution; reset to empty arrays each new hand.
@@ -143,3 +136,11 @@ export interface HeartsState {
   readonly passedAwayByPlayer?: readonly (readonly Card[])[];
   readonly receivedByPlayer?: readonly (readonly Card[])[];
 }
+
+/**
+ * A game as saved (#2629): the state plus its active play time so far, in ms.
+ * The play time only exists in the saved form: the screen's clock owns it in
+ * play (`withPlayTime` in ./clock adds it on save), and `loadGame` returns it
+ * as 0 for saves from older builds or a bad stored value.
+ */
+export type SavedHeartsState = HeartsState & { readonly accumulatedMs: number };
