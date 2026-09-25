@@ -16,17 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  AppState,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Animated, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -37,6 +27,14 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import {
+  ModalActions,
+  ModalCard,
+  ModalPrimaryButton,
+  ModalSecondaryButton,
+} from "../components/shared/ModalCard";
+import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
 import DifficultySelector from "../components/sudoku/DifficultySelector";
@@ -476,20 +474,14 @@ export default function SudokuScreen() {
 
   const headerRight = useMemo(() => {
     if (!state) return null;
-    const undoDisabled = state.undoStack.length === 0;
     return (
-      <Pressable
+      <PillButton
+        label={t("action.undo")}
         onPress={handleUndo}
-        disabled={undoDisabled}
-        style={[styles.headerBtn, { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 }]}
-        accessibilityRole="button"
-        accessibilityLabel={t("action.undo")}
-        accessibilityState={{ disabled: undoDisabled }}
-      >
-        <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-      </Pressable>
+        disabled={state.undoStack.length === 0}
+      />
     );
-  }, [state, colors, handleUndo, t]);
+  }, [state, handleUndo, t]);
 
   return (
     <GameShell
@@ -516,24 +508,26 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <View style={styles.hudRow} accessibilityRole="summary">
-            <Text style={[styles.hudText, { color: colors.text }]}>
-              {t(`difficulty.${state.difficulty}`)}
-            </Text>
-            <Text style={[styles.hudText, { color: colors.textMuted }]}>
-              {state.errorCount === 1
-                ? t("hud.errorsOne")
-                : t("hud.errors", { count: state.errorCount })}
-            </Text>
-            <Text
-              style={[styles.hudText, { color: colors.textMuted }]}
-              accessibilityLabel={t("hud.elapsed", {
-                time: formatElapsed(elapsed),
-              })}
-            >
-              {formatElapsed(elapsed)}
-            </Text>
-          </View>
+          <HudStatRow
+            style={styles.hudTight}
+            stats={[
+              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+              {
+                key: "errors",
+                text:
+                  state.errorCount === 1
+                    ? t("hud.errorsOne")
+                    : t("hud.errors", { count: state.errorCount }),
+                muted: true,
+              },
+              {
+                key: "elapsed",
+                text: formatElapsed(elapsed),
+                muted: true,
+                accessibilityLabel: t("hud.elapsed", { time: formatElapsed(elapsed) }),
+              },
+            ]}
+          />
 
           <View style={styles.gridWrap}>
             <SudokuGrid
@@ -653,12 +647,6 @@ function PreGame({
 }) {
   const { t } = useTranslation("sudoku");
   const { colors } = useTheme();
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
 
   return (
     <View style={styles.preGameWrap}>
@@ -678,17 +666,11 @@ function PreGame({
         <View style={[styles.preGameSelector, { marginTop: 8 }]}>
           <DifficultySelector value={difficulty} onChange={onChange} />
         </View>
-        <Pressable
+        <ModalPrimaryButton
           testID="sudoku-pregame-start"
+          label={t("action.start")}
           onPress={onStart}
-          style={[styles.preGameStart, gradient]}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.start")}
-        >
-          <Text style={[styles.preGameStartText, { color: colors.textOnAccent }]}>
-            {t("action.start")}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -761,58 +743,29 @@ function NewGameModal({
   readonly onStart: (d: Difficulty, v: Variant) => void;
 }) {
   const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
   const [pendingDifficulty, setPendingDifficulty] = useState(currentDifficulty);
   const [pendingVariant, setPendingVariant] = useState(currentVariant);
 
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
   return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("newGame.title")}
-          </Text>
-          <View style={styles.newGameSelector}>
-            <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
-          </View>
-          <View style={[styles.newGameSelector, { marginTop: 8 }]}>
-            <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
-          </View>
-          <Pressable
-            style={[styles.modalPrimary, gradient]}
-            onPress={() => onStart(pendingDifficulty, pendingVariant)}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.start")}
-          >
-            <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-              {t("action.start")}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onQuickRestart}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.quickRestart")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.quickRestart")}
-            </Text>
-          </Pressable>
-        </View>
+    <ModalCard visible title={t("newGame.title")}>
+      <View style={styles.newGameSelector}>
+        <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
       </View>
-    </Modal>
+      <View style={[styles.newGameSelector, { marginTop: 8 }]}>
+        <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
+      </View>
+      <ModalActions style={styles.newGameActions}>
+        <ModalPrimaryButton
+          label={t("action.start")}
+          onPress={() => onStart(pendingDifficulty, pendingVariant)}
+        />
+        <ModalSecondaryButton
+          tone="accent"
+          label={t("action.quickRestart")}
+          onPress={onQuickRestart}
+        />
+      </ModalActions>
+    </ModalCard>
   );
 }
 
@@ -829,31 +782,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 4,
+  // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
+  hudTight: {
     paddingVertical: 4,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    letterSpacing: 0.5,
   },
   gridWrap: {
     alignSelf: "stretch",
@@ -918,72 +849,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
-  preGameStart: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  preGameStartText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
   newGameSelector: {
     alignSelf: "stretch",
     marginBottom: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
+  newGameActions: {
     marginTop: 14,
-    marginBottom: 8,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginTop: 8,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
 });
