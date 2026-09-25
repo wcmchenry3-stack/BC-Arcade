@@ -10,24 +10,28 @@ Idempotency strategy:
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import case, func, select
+from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import EventType, Game, GameEvent, GameType
+from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import not_abandoned
 from games.leaderboard import check_completion_limits
 from games.protocol import GameModule
 from games.registry import get_module
 from vocab import GameOutcome
+from vocab import GameType as VocabGameType
 
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
@@ -238,6 +242,22 @@ class GameTypeStats:
     # aggregate query, never through stats_shape(): a game module must not be
     # able to shape how much XP it grants.
     completed_played: int = 0
+    # Comparable per-game fields (#2620). Like completed_played they come
+    # straight from the queries, never through stats_shape(), so every game
+    # reports them the same way. Meanings: GameTypeStatsResponse.
+    sessions: int = 0
+    won: int | None = None
+    lost: int | None = None
+    tied: int | None = None
+    current_win_streak: int | None = None
+    best_win_streak: int | None = None
+    time_played_ms: int = 0
+    best_value: int | float | None = None
+    best_label_key: str | None = None
+    # Game-specific figures from stats_shape()'s "extras" (Blackjack's chips).
+    extras: dict[str, Any] = field(default_factory=dict)
+    # Deprecated top-level aliases of Blackjack's extras, kept for app builds
+    # that read them (Profile reads best_chips) until #2644 removes them.
     best_chips: int | None = None
     current_chips: int | None = None
     best_run_chips: int | None = None
@@ -251,6 +271,174 @@ class StatsSummary:
     total_games: int
     by_game: dict[str, GameTypeStats]
     favorite_game: str | None
+
+
+# --- comparable per-game stats (#2620) -------------------------------------
+
+# Upper bound on what one row may add to time_played_ms: a sanity bound on the
+# reported duration_ms, not an estimate of play time.
+MAX_TIME_PLAYED_PER_GAME_MS = 24 * 60 * 60 * 1000
+
+# Used for best_value by games with no registered GameModule (Twenty48 and
+# Star Swarm until #2623): the legacy "highest final_score". Every registered
+# module declares a board (#2617).
+_DEFAULT_BOARD = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
+
+# Only these three outcomes count. The legacy ``blackjack`` outcome is not a
+# win here: #2619 (migration 0024_drop_blackjack_outcome) rewrites any stored
+# ``blackjack`` row to ``win`` and drops the value from the CHECK constraint.
+_WIN = GameOutcome.WIN.value
+_LOSS = GameOutcome.LOSS.value
+_PUSH = GameOutcome.PUSH.value
+
+
+def _dialect_name(session: AsyncSession) -> str:
+    return session.bind.dialect.name if session.bind else "postgresql"
+
+
+def _board_of(module: GameModule | None) -> BoardDefinition:
+    return module.board if module is not None else _DEFAULT_BOARD
+
+
+def _metadata_number(key: str, dialect: str) -> ColumnElement:
+    """``games.metadata[key]`` as a number, or NULL when it is not a JSON number.
+
+    Guarded by the JSON type so a malformed value (a game with no
+    ``result_model`` accepts any result block) yields NULL instead of a cast
+    error that would fail the whole ``/stats/me`` response.
+    """
+    if dialect == "sqlite":
+        path = f'$."{key}"'
+        return case(
+            (
+                func.json_type(Game.game_metadata, path).in_(("integer", "real")),
+                func.json_extract(Game.game_metadata, path),
+            )
+        )
+    value = Game.game_metadata[key]
+    return case((func.jsonb_typeof(value) == "number", value.as_float()))
+
+
+@functools.cache
+def _best_candidate(dialect: str) -> ColumnElement:
+    """Each row's board metric when the row can be its game's best, else NULL.
+
+    A row qualifies when it is not abandoned and, if its board sets
+    ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
+    only). The value is ``final_score`` or the metadata key the board names.
+
+    Boards are static, so the expression is built once per dialect and
+    reused by every request.
+    """
+    whens = []
+    for game_type in VocabGameType:
+        board = _board_of(get_module(game_type.value))
+        if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
+            continue  # the ELSE branch below
+        value = (
+            Game.final_score
+            if board.metric == SCORE_METRIC
+            else _metadata_number(board.metric, dialect)
+        )
+        if board.qualifying_outcomes is not None:
+            value = case((Game.outcome.in_(board.qualifying_outcomes), value))
+        whens.append((GameType.name == game_type.value, value))
+    per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
+    return case((not_abandoned(), per_game))
+
+
+# Each row's reported play time: duration_ms when it is > 0, capped at 24 h.
+# Rows with a null, 0 or negative duration_ms add nothing (SUM skips NULL).
+# There is deliberately no completed_at − started_at fallback: wall-clock time
+# counts idle and backgrounded hours, and rows swept to abandoned (#2621) would
+# add up to a day each.
+_REPORTED_TIME_MS = case(
+    (Game.duration_ms > MAX_TIME_PLAYED_PER_GAME_MS, MAX_TIME_PLAYED_PER_GAME_MS),
+    (Game.duration_ms > 0, Game.duration_ms),
+)
+
+
+def _comparable_columns(dialect: str) -> list[ColumnElement]:
+    """Conditional aggregates for the comparable fields, added to the stats query."""
+    candidate = _best_candidate(dialect)
+    return [
+        func.count(case((Game.outcome == _WIN, Game.id))).label("won"),
+        func.count(case((Game.outcome == _LOSS, Game.id))).label("lost"),
+        func.count(case((Game.outcome == _PUSH, Game.id))).label("tied"),
+        func.sum(_REPORTED_TIME_MS).label("time_played_ms"),
+        func.max(candidate).label("metric_max"),
+        func.min(candidate).label("metric_min"),
+    ]
+
+
+def _as_number(value: Any) -> int | float | None:
+    """DB numerics (Decimal, float) to int when integral, else float."""
+    if value is None:
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else number
+
+
+def win_streaks(outcomes: Iterable[str]) -> tuple[int, int]:
+    """``(current, best)`` runs of consecutive wins, oldest outcome first.
+
+    A ``loss`` ends a run. Every other outcome — ``push``, ``abandoned``,
+    ``completed``, ``kept_playing`` — neither extends nor breaks it.
+    """
+    current = best = 0
+    for outcome in outcomes:
+        if outcome == _WIN:
+            current += 1
+            best = max(best, current)
+        elif outcome == _LOSS:
+            current = 0
+    return current, best
+
+
+async def _win_streaks_by_game(
+    session: AsyncSession, *, session_id: str
+) -> dict[str, tuple[int, int]]:
+    """One ordered scan of the session's ``win``/``loss`` rows, all games at once.
+
+    Only those two outcomes can move a streak (see ``win_streaks``), so every
+    other row is left out of the scan.
+    """
+    rows = (
+        await session.execute(
+            select(GameType.name, Game.outcome)
+            .join(GameType, Game.game_type_id == GameType.id)
+            .where(
+                Game.session_id == session_id,
+                Game.completed_at.is_not(None),
+                Game.outcome.in_((_WIN, _LOSS)),
+            )
+            .order_by(GameType.name, Game.completed_at, Game.started_at, Game.id)
+        )
+    ).all()
+    outcomes_by_game: dict[str, list[str]] = {}
+    for name, outcome in rows:
+        outcomes_by_game.setdefault(name, []).append(outcome)
+    return {name: win_streaks(outcomes) for name, outcomes in outcomes_by_game.items()}
+
+
+def _comparable_fields(
+    row: Any, board: BoardDefinition, streak: tuple[int, int] | None
+) -> dict[str, Any]:
+    """The comparable GameTypeStats fields for one aggregate row."""
+    has_result = (row.won + row.lost + row.tied) > 0
+    current, best = streak or (0, 0)
+    best_value = row.metric_max if board.direction == "desc" else row.metric_min
+    return {
+        "sessions": row.played,
+        "won": row.won if has_result else None,
+        "lost": row.lost if has_result else None,
+        "tied": row.tied if has_result else None,
+        "current_win_streak": current if has_result else None,
+        "best_win_streak": best if has_result else None,
+        "time_played_ms": round(float(row.time_played_ms or 0)),
+        "best_value": _as_number(best_value),
+        "best_label_key": board.label_key,
+    }
 
 
 async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> StatsSummary:
@@ -268,6 +456,12 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
 
     Per-game stat shaping is delegated to each module's ``stats_shape()``
     method via the registry (#541).  No game-name branches live here.
+
+    The comparable fields (#2620: ``sessions``, ``won``/``lost``/``tied``,
+    win streaks, ``time_played_ms``, ``best_value``) are set from the queries
+    and the game's ``BoardDefinition``, never through ``stats_shape()``. They
+    add conditional aggregates to the one aggregate query plus, only when some
+    game has a ``win`` or ``loss``, one ordered scan for the win streaks.
     """
     # --- aggregate query -------------------------------------------------
     # Conditional aggregates keep this one round-trip: `case` with no `else`
@@ -282,6 +476,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 func.max(scored).label("best"),
                 func.avg(scored).label("avg"),
                 func.max(Game.completed_at).label("last_played_at"),
+                *_comparable_columns(_dialect_name(session)),
             )
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
@@ -292,6 +487,11 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             .group_by(GameType.name)
         )
     ).all()
+    streaks = (
+        await _win_streaks_by_game(session, session_id=session_id)
+        if any(row.won or row.lost for row in rows)
+        else {}
+    )
 
     # --- pre-fetch the latest row per game type --------------------------
     # Used by modules (e.g. Blackjack) that need the most-recent score or
@@ -348,7 +548,9 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     favorite: str | None = None
     favorite_count = -1
 
-    for name, played, completed_played, best, avg, last_played in rows:
+    for row in rows:
+        name, played, completed_played = row.name, row.played, row.completed_played
+        best, avg, last_played = row.best, row.avg, row.last_played_at
         total += played
 
         raw: dict = {
@@ -367,18 +569,22 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             else {k: v for k, v in raw.items() if k != "latest_score"}
         )
 
+        extras: dict[str, Any] = dict(shaped.get("extras") or {})
+
         by_game[name] = GameTypeStats(
             played=shaped.get("played", 0),
             best=shaped.get("best"),
             avg=shaped.get("avg"),
             last_played_at=shaped.get("last_played_at"),
-            best_chips=shaped.get("best_chips"),
-            current_chips=shaped.get("current_chips"),
-            best_run_chips=shaped.get("best_run_chips"),
-            total_runs=shaped.get("total_runs"),
-            runs_completed=shaped.get("runs_completed"),
-            current_table=shaped.get("current_table"),
+            extras=extras,
+            best_chips=extras.get("best_chips"),
+            current_chips=extras.get("current_chips"),
+            best_run_chips=extras.get("best_run_chips"),
+            total_runs=extras.get("total_runs"),
+            runs_completed=extras.get("runs_completed"),
+            current_table=extras.get("current_table"),
             completed_played=completed_played,
+            **_comparable_fields(row, _board_of(game_module), streaks.get(name)),
         )
 
         if played > favorite_count:
