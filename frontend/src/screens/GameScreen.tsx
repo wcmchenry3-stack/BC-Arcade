@@ -35,6 +35,7 @@ import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
+import { ModalCard } from "../components/shared/ModalCard";
 import { useTheme } from "../theme/ThemeContext";
 import {
   DEV_ACCENT,
@@ -761,89 +762,68 @@ export default function GameScreen({ navigation, route }: Props) {
 
       {/* Pre-game mode selector (shown once for each fresh game) */}
       {!difficultyChosen && (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          accessibilityViewIsModal
-          onRequestClose={handleChooseSolo}
-        >
-          <View style={[styles.modeOverlay, { backgroundColor: "rgba(0,0,0,0.80)" }]}>
-            <View
-              style={[
-                styles.modeCard,
-                {
-                  backgroundColor: colors.surfaceHigh,
-                  borderColor: colors.border,
-                  borderTopColor: colors.accent,
-                },
-              ]}
+        <ModalCard visible onRequestClose={handleChooseSolo} title={t("vsMode.title")} accentTop>
+          <View style={styles.modeContent}>
+            <Pressable
+              testID="yacht-mode-solo"
+              style={
+                pendingMode === "solo"
+                  ? [
+                      styles.modeBtn,
+                      styles.modeBtnPrimary,
+                      { borderColor: colors.accent, backgroundColor: colors.accent },
+                    ]
+                  : [styles.modeBtn, { borderColor: colors.border }]
+              }
+              onPress={handleChooseSolo}
+              accessibilityRole="button"
+              accessibilityLabel={t("vsMode.solo")}
+              accessibilityState={{ selected: pendingMode === "solo" }}
             >
-              <Text style={[styles.modeTitle, { color: colors.text }]} accessibilityRole="header">
-                {t("vsMode.title")}
-              </Text>
-
-              <Pressable
-                testID="yacht-mode-solo"
-                style={
-                  pendingMode === "solo"
-                    ? [
-                        styles.modeBtn,
-                        styles.modeBtnPrimary,
-                        { borderColor: colors.accent, backgroundColor: colors.accent },
-                      ]
-                    : [styles.modeBtn, { borderColor: colors.border }]
-                }
-                onPress={handleChooseSolo}
-                accessibilityRole="button"
-                accessibilityLabel={t("vsMode.solo")}
-                accessibilityState={{ selected: pendingMode === "solo" }}
+              <Text
+                style={[
+                  styles.modeBtnText,
+                  { color: pendingMode === "solo" ? colors.textOnAccent : colors.text },
+                ]}
               >
-                <Text
-                  style={[
-                    styles.modeBtnText,
-                    { color: pendingMode === "solo" ? colors.textOnAccent : colors.text },
-                  ]}
-                >
-                  {t("vsMode.solo")}
-                </Text>
-              </Pressable>
+                {t("vsMode.solo")}
+              </Text>
+            </Pressable>
 
-              <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
+            <View style={[styles.modeDivider, { backgroundColor: colors.border }]} />
 
-              <Text style={[styles.modeSubtitle, { color: colors.textMuted }]}>
+            <Text style={[styles.modeSubtitle, { color: colors.textMuted }]}>
+              {t("vsMode.vsComputer")}
+            </Text>
+
+            <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
+
+            <Pressable
+              style={
+                pendingMode === "vs"
+                  ? [
+                      styles.modeBtn,
+                      styles.modeBtnPrimary,
+                      { borderColor: colors.accent, backgroundColor: colors.accent },
+                    ]
+                  : [styles.modeBtn, { borderColor: colors.border }]
+              }
+              onPress={handleChooseVs}
+              accessibilityRole="button"
+              accessibilityLabel={t("vsMode.vsComputer")}
+              accessibilityState={{ selected: pendingMode === "vs" }}
+            >
+              <Text
+                style={[
+                  styles.modeBtnText,
+                  { color: pendingMode === "vs" ? colors.textOnAccent : colors.text },
+                ]}
+              >
                 {t("vsMode.vsComputer")}
               </Text>
-
-              <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
-
-              <Pressable
-                style={
-                  pendingMode === "vs"
-                    ? [
-                        styles.modeBtn,
-                        styles.modeBtnPrimary,
-                        { borderColor: colors.accent, backgroundColor: colors.accent },
-                      ]
-                    : [styles.modeBtn, { borderColor: colors.border }]
-                }
-                onPress={handleChooseVs}
-                accessibilityRole="button"
-                accessibilityLabel={t("vsMode.vsComputer")}
-                accessibilityState={{ selected: pendingMode === "vs" }}
-              >
-                <Text
-                  style={[
-                    styles.modeBtnText,
-                    { color: pendingMode === "vs" ? colors.textOnAccent : colors.text },
-                  ]}
-                >
-                  {t("vsMode.vsComputer")}
-                </Text>
-              </Pressable>
-            </View>
+            </Pressable>
           </View>
-        </Modal>
+        </ModalCard>
       )}
 
       {__DEV__ && (
@@ -1005,27 +985,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   // Pre-game mode selector modal
-  modeOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modeCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderTopWidth: 3,
-    padding: 24,
-    width: "86%",
-    maxWidth: 340,
+  // Stretch the mode buttons full width inside the centered card.
+  modeContent: {
+    alignSelf: "stretch",
     gap: 12,
-  },
-  modeTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    textAlign: "center",
-    marginBottom: 4,
   },
   modeSubtitle: {
     fontSize: 11,
