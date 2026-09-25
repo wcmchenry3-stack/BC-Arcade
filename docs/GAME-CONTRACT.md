@@ -376,23 +376,31 @@ negative) as `null`, meaning "unknown". It never derives a duration from the
 session's wall-clock start and end times: those count idle and backgrounded
 time as play.
 
-**Active-play clock (#2684).** A game that measures no active time of its own
-needs no code for a duration: `useGameSync` times each session's foreground
-play and fills in `durationMs` for it.
+**Active-play window (#2684).** A game that measures no active time of its own
+needs no code for a duration: `useGameSync` fills in `durationMs` with the
+foreground time on the game screen since the previous session ended, with each
+idle gap capped at 10 minutes; a game's own measured duration wins.
 
-- The clock starts at the session's first `markStarted()`, or at `resume()` for
-  a session continued after a killed process — time before the kill is lost
-  (an undercount, never an overcount).
-- It pauses while `AppState` is `background` or `inactive` and continues when
-  the app is `active` again. Time before `markStarted()` is not counted.
-- `start()` / `restart()` / `resume()` begin the new session's clock at zero;
-  the session they replace is abandoned with its own clock value first.
+- Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
+  counter that stops while `AppState` is `background` or `inactive`.
+- The window opens when the hook mounts and restarts when a session ends:
+  after `complete()`, and when an open session is abandoned or discarded
+  (unmount, `close()`, or `start()` / `restart()` / `resume()` replacing it),
+  after the abandon has read it. Opening a session with none open leaves it
+  alone, so the thinking time before the first move counts and a game won on
+  its first action still gets a duration.
+- Idle cap: player-activity pings — mount, `markStarted()`, `enqueue()`,
+  `complete()`, `resume()` — split the window into gaps, and each gap adds at
+  most `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an
+  in-app pause, stops counting there.
 - `complete()` sends the game's own `summary.durationMs` when it is > 0,
-  otherwise the clock's reading. The hook's own abandons (unmount, `start()` /
-  `restart()` over a started session) send `ProgressSnapshot.durationMs` when it
-  is > 0, otherwise the clock's reading.
-- A session never marked started reads 0, so it sends no duration — the same
-  `resolveDurationMs` rule: 0 means "unknown".
+  otherwise the window. The hook's own abandons send
+  `ProgressSnapshot.durationMs` when it is > 0, otherwise the window. A
+  discarded (never-started) session sends nothing.
+- A session resumed after a killed process counts from the relaunch; time
+  before the kill is lost (an undercount, never an overcount).
+- A window reading 0 sends no duration — the `resolveDurationMs` rule: 0 means
+  "unknown".
 
 ### 2.4 ESLint import zones _(TBD)_
 

@@ -37,6 +37,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// useGameSync's app-wide foreground clock (#2684) subscribes to AppState once,
+// on first use — whichever test that lands in. Stub it so the listener counts
+// below see only the screen's own listener, in any test order.
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => Date.now(),
+}));
+
 const ALL_NULL_SCORES = {
   ones: null,
   twos: null,
@@ -197,25 +204,21 @@ describe("GameScreen VS mode — AppState interruption + replay", () => {
     appStateListeners.forEach((h) => h(state));
   }
 
-  // The screen's own combined listener, plus useGameSync's one for its
-  // active-play clock (#2684).
-  const LISTENERS_ON_MOUNT = 2;
-
-  it("registers one screen AppState listener on mount (single combined listener)", async () => {
+  it("registers exactly one AppState listener on mount (single combined listener)", async () => {
     await renderVsGame();
-    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
+    expect(appStateListeners).toHaveLength(1);
   });
 
   it("no additional AppState listener is registered when an AI turn starts", async () => {
     const { getByRole } = await renderVsGame();
-    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
+    expect(appStateListeners).toHaveLength(1);
 
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
 
-    // Still the same listeners — no per-turn subscription added.
-    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
+    // Still exactly one listener — no per-turn subscription added.
+    expect(appStateListeners).toHaveLength(1);
   });
 
   it("backgrounding mid-AI-turn stops the animation loop (no further rolls)", async () => {

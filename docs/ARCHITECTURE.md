@@ -140,12 +140,16 @@ play, so a Daily Word left open all day would record 12 h. A negative value
 never reaches the server, where `duration_ms` is `ge=0` and would 400 the
 whole completion.
 
-A game with no timer of its own still reports one: `useGameSync` keeps an
-active-play clock per session (#2684). It starts at `markStarted()` (or
-`resume()`), pauses while the app is `background` or `inactive`, and restarts
-from zero with each new session. `complete()` and the hook's own abandons fill
-in `durationMs` from it unless the game (or its progress snapshot) passes a
-value > 0, which always wins. A resumed session counts only from the resume.
+A game with no timer of its own still reports one (#2684): `useGameSync` sends
+the foreground time on the game screen since the previous session ended, with
+each idle gap capped at 10 minutes; a game's own measured duration wins.
+Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
+counter with a single `AppState` subscription that stops while the app is
+`background` or `inactive`. The gaps are the stretches between player-activity
+pings (mount, `markStarted()`, `enqueue()`, `complete()`, `resume()`).
+`complete()` and the hook's own abandons use it unless the game (or its
+progress snapshot) passes a value > 0. A resumed session counts from the
+relaunch. Blackjack sends no duration of its own, so the shared one applies.
 
 **Deferred create and killed sessions (#2654).** `startGame()` records the
 session on the device only. `SyncWorker` sends `POST /games` and the session's

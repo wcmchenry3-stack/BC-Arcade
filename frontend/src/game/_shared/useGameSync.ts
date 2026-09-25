@@ -62,22 +62,30 @@
  * instead, or never reopens it within 24 h, gameEventClient abandons it; an
  * unstarted one is discarded at startup.
  *
- * Active-play clock (#2684): the hook times each session's foreground play, so
- * a game that does not measure its own active time still reports a duration.
- * The clock starts at `markStarted()` (or `resume()`), pauses while the app is
- * `background` or `inactive`, and starts again from zero for every new
- * session (`start()` / `restart()` / `resume()`). `complete()` sends the
- * game's own `summary.durationMs` when it is > 0, otherwise the clock's
- * reading. The hook's own abandons (unmount, and `start()` / `restart()` over
- * a started session) send the snapshot's `durationMs` when > 0, otherwise the
- * old session's clock. A never-started session reads 0 and sends no duration.
- * A session resumed after a killed process counts from the `resume()`: time
- * before the kill is lost (an undercount, never an overcount). It is never
- * wall-clock start-to-end time (#2619, `resolveDurationMs`).
+ * Active-play clock (#2684): a game that does not measure its own active time
+ * still reports a duration. A session's duration is the foreground time on the
+ * game screen since the previous session ended (or since the hook mounted),
+ * with each idle gap capped at `IDLE_GAP_CAP_MS` (10 minutes); a game's own
+ * measured duration wins. Foreground time comes from `foregroundNow()`, so time
+ * the app spends `background` or `inactive` is not counted. The gaps are the
+ * stretches between player-activity pings — mount, `markStarted()`,
+ * `enqueue()`, `complete()` and `resume()` — so a screen left awake and idle,
+ * or an in-app pause, adds at most the cap. The thinking time before the first
+ * move counts, and a game won on its first action still gets a duration.
+ *
+ * The window restarts when a session ends: after `complete()`, and when an
+ * open session is abandoned or discarded (unmount, `close()`, or `start()` /
+ * `restart()` / `resume()` replacing it) — after the abandon has read it.
+ * `complete()` sends the game's own `summary.durationMs` when it is > 0,
+ * otherwise the window. The hook's own abandons send the snapshot's
+ * `durationMs` when > 0, otherwise the window; a discarded (never-started)
+ * session sends nothing. A session resumed after a killed process counts from
+ * the relaunch (an undercount, never an overcount). It is never wall-clock
+ * start-to-end time (#2619, `resolveDurationMs`).
  */
 
 import { useCallback, useEffect, useRef } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { foregroundNow } from "./foregroundClock";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
@@ -95,19 +103,25 @@ export interface ProgressSnapshot {
   result?: Record<string, unknown>;
   /**
    * The game's own active play time, if it measures one. A value > 0 wins
-   * over the hook's active-play clock (#2684); anything else uses the clock.
+   * over the hook's active-play window (#2684); anything else uses the window.
    */
   durationMs?: number | null;
 }
+
+/**
+ * The most one gap between player-activity pings adds to a session's duration
+ * (#2684): a screen left awake and idle, or paused in-app, stops counting here.
+ */
+export const IDLE_GAP_CAP_MS = 10 * 60 * 1000;
 
 /** A duration SyncWorker would send: finite and > 0 once rounded (#2619). */
 function isKnownDuration(ms: number | null | undefined): ms is number {
   return typeof ms === "number" && Number.isFinite(ms) && Math.round(ms) > 0;
 }
 
-/** Only `background` and `inactive` pause the clock; anything else is foreground. */
-function isForeground(state: unknown): boolean {
-  return state !== "background" && state !== "inactive";
+/** Foreground time since `from`, at most one idle gap's worth. */
+function cappedGap(from: number): number {
+  return Math.min(Math.max(0, foregroundNow() - from), IDLE_GAP_CAP_MS);
 }
 
 export interface UseGameSyncReturn {
@@ -146,7 +160,7 @@ export interface UseGameSyncReturn {
    * data — it is never copied into the result.
    *
    * `summary.durationMs` > 0 (the game's own active time) is sent as given;
-   * otherwise the hook's active-play clock is sent in its place (#2684).
+   * otherwise the hook's active-play window is sent in its place (#2684).
    */
   complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
   /**
@@ -197,69 +211,31 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     gameTypeRef.current = gameType;
   }, [gameType]);
 
-  // Active-play clock (#2684): time banked from finished foreground segments,
-  // plus the running segment's start (null while paused or not running).
-  const clockBankedRef = useRef(0);
-  const clockSegmentStartRef = useRef<number | null>(null);
-  const clockRunningRef = useRef(false);
-  const foregroundRef = useRef<boolean | null>(null);
-  if (foregroundRef.current === null) {
-    let state: unknown = null;
-    try {
-      state = AppState.currentState;
-    } catch {
-      // Isolation: assume foreground.
-    }
-    foregroundRef.current = isForeground(state);
-  }
+  // Active-play window (#2684): foreground time banked up to the last
+  // player-activity ping (each gap capped), and foregroundNow() at that ping.
+  // Mounting is the first ping.
+  const windowBankedRef = useRef(0);
+  const fgAtLastPingRef = useRef<number | null>(null);
+  if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
 
-  const readClock = useCallback((): number => {
-    const segmentStart = clockSegmentStartRef.current;
-    const running = segmentStart !== null ? Math.max(0, Date.now() - segmentStart) : 0;
-    return clockBankedRef.current + running;
+  const ping = useCallback(() => {
+    windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
+    fgAtLastPingRef.current = foregroundNow();
   }, []);
 
-  const resetClock = useCallback(() => {
-    clockBankedRef.current = 0;
-    clockSegmentStartRef.current = null;
-    clockRunningRef.current = false;
-  }, []);
+  const readWindow = useCallback(
+    (): number => windowBankedRef.current + cappedGap(fgAtLastPingRef.current ?? foregroundNow()),
+    []
+  );
 
-  const startClock = useCallback(() => {
-    if (clockRunningRef.current) return;
-    clockRunningRef.current = true;
-    if (foregroundRef.current) clockSegmentStartRef.current = Date.now();
-  }, []);
-
-  // One subscription for the hook's lifetime: bank the running segment when
-  // the app leaves the foreground, open a new one when it comes back.
-  useEffect(() => {
-    let sub: { remove?: () => void } | undefined;
-    try {
-      sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-        if (isForeground(next)) {
-          foregroundRef.current = true;
-          if (clockRunningRef.current && clockSegmentStartRef.current === null) {
-            clockSegmentStartRef.current = Date.now();
-          }
-          return;
-        }
-        foregroundRef.current = false;
-        const segmentStart = clockSegmentStartRef.current;
-        if (segmentStart !== null) {
-          clockBankedRef.current += Math.max(0, Date.now() - segmentStart);
-          clockSegmentStartRef.current = null;
-        }
-      });
-    } catch {
-      // Isolation: without the subscription the clock never pauses.
-    }
-    return () => sub?.remove?.();
+  const resetWindow = useCallback(() => {
+    windowBankedRef.current = 0;
+    fgAtLastPingRef.current = foregroundNow();
   }, []);
 
   // Abandon the open session, attaching the game's progress snapshot if it
   // registered one. A throwing getter degrades to a bare abandon. The
-  // duration is the snapshot's own when > 0, otherwise the active-play clock.
+  // duration is the snapshot's own when > 0, otherwise the active-play window.
   const abandon = useCallback(
     (gid: string) => {
       let snapshot: ProgressSnapshot = {};
@@ -270,7 +246,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       const summary: CompleteSummary = { outcome: "abandoned" };
       if (snapshot.result) summary.result = snapshot.result;
-      const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readClock();
+      const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
       if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
       try {
         gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
@@ -278,35 +254,37 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
         // Isolation.
       }
     },
-    [readClock]
+    [readWindow]
   );
 
   // Close the open session, if any: abandoned when the player started it,
   // otherwise discarded — an untouched session is never left pending (#2619,
-  // #2654). Either way the hook has no open session afterwards.
+  // #2654). Either way the hook has no open session afterwards, and the
+  // active-play window restarts once the abandon has read it. With no session
+  // open nothing changes, so a screen that opens its session at the first move
+  // keeps the thinking time before it.
   const closeOpen = useCallback(() => {
     const gid = gameIdRef.current;
     gameIdRef.current = null;
     if (!gid || completedRef.current) return;
     if (startedRef.current) {
       abandon(gid);
-      return;
+    } else {
+      try {
+        gameEventClient.discardGame(gid);
+      } catch {
+        // Isolation.
+      }
     }
-    try {
-      gameEventClient.discardGame(gid);
-    } catch {
-      // Isolation.
-    }
-  }, [abandon]);
+    resetWindow();
+  }, [abandon, resetWindow]);
 
   // Close any open session on unmount.
   useEffect(() => closeOpen, [closeOpen]);
 
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {
-      // The old session's abandon reads its clock; only then is it reset.
       closeOpen();
-      resetClock();
       gameIdRef.current = gameEventClient.startGame(
         gameTypeRef.current,
         metadata ?? {},
@@ -315,7 +293,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = false;
       startedRef.current = false;
     },
-    [closeOpen, resetClock]
+    [closeOpen]
   );
 
   const resume = useCallback(
@@ -328,21 +306,21 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       if (!gid) return false;
       closeOpen();
+      // Play before the kill is unknown: the window counts from the relaunch's
+      // mount (an undercount, never an overcount).
+      ping();
       gameIdRef.current = gid;
       completedRef.current = false;
       startedRef.current = true;
-      // Play before the kill is unknown: count from now (undercount, never over).
-      resetClock();
-      startClock();
       return true;
     },
-    [closeOpen, resetClock, startClock]
+    [closeOpen, ping]
   );
 
   const markStarted = useCallback(() => {
+    ping();
     if (startedRef.current) return;
     startedRef.current = true;
-    startClock();
     const gid = gameIdRef.current;
     if (!gid) return;
     try {
@@ -350,28 +328,33 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     } catch {
       // Isolation.
     }
-  }, [startClock]);
+  }, [ping]);
 
-  const enqueue = useCallback((event: EnqueueEventInput) => {
-    const gid = gameIdRef.current;
-    if (!gid || completedRef.current) return;
-    try {
-      gameEventClient.enqueueEvent(gid, event);
-    } catch {
-      // Isolation.
-    }
-  }, []);
+  const enqueue = useCallback(
+    (event: EnqueueEventInput) => {
+      ping();
+      const gid = gameIdRef.current;
+      if (!gid || completedRef.current) return;
+      try {
+        gameEventClient.enqueueEvent(gid, event);
+      } catch {
+        // Isolation.
+      }
+    },
+    [ping]
+  );
 
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>) => {
       const gid = gameIdRef.current;
       if (!gid || completedRef.current) return;
-      // The game's own durationMs > 0 wins; otherwise the active-play clock
+      // The game's own durationMs > 0 wins; otherwise the active-play window
       // (#2684), once it has counted anything.
+      ping();
       let sent = summary;
       if (!isKnownDuration(summary.durationMs)) {
-        const clockMs = readClock();
-        if (isKnownDuration(clockMs)) sent = { ...summary, durationMs: clockMs };
+        const windowMs = readWindow();
+        if (isKnownDuration(windowMs)) sent = { ...summary, durationMs: windowMs };
       }
       try {
         // The result block is summary.result only (#2619) — the event payload is
@@ -382,9 +365,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       completedRef.current = true;
       gameIdRef.current = null;
-      resetClock();
+      resetWindow();
     },
-    [readClock, resetClock]
+    [ping, readWindow, resetWindow]
   );
 
   // Same as start(): it closes the open session before opening the new one.

@@ -6,6 +6,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
+import { __resetForegroundClockForTests } from "../../game/_shared/foregroundClock";
 
 // Shared result card for Yacht (#2505): vs outcomes, and the game-sync
 // session completing only once the CPU has finished its last turn.
@@ -137,6 +138,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A backgrounding test must not leave the shared foreground clock (#2684)
+  // paused for the next one.
+  __resetForegroundClockForTests();
   jest.useRealTimers();
 });
 
@@ -190,7 +194,7 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     const [, summary, payload] = completedCalls()[0]!;
     // #2517: the row records who won.
     expect(summary).toEqual(expect.objectContaining({ finalScore: 50, outcome: "win" }));
-    // #2684 — Yacht has no timer of its own: useGameSync's active-play clock
+    // #2684 — Yacht has no timer of its own: useGameSync's active-play window
     // supplies the duration.
     expect(summary.durationMs).toBeGreaterThan(0);
     expect(payload).toEqual(
