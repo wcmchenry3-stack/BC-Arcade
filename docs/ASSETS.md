@@ -69,8 +69,9 @@ screen. If a CC-BY (or similar) asset is ever added, the license-snapshot policy
 `src/__tests__/assetCredits.test.ts` fails if a Star Swarm sprite or sound ships without a
 credits entry.
 
-Star Swarm's asteroids and the #2488 salvage/hull pickups are drawn procedurally, so they have no
-files yet; sprites for them need Kenney source files supplied from outside the build container.
+The #2488 salvage/hull pickups are drawn procedurally, so they have no files yet; sprites for them
+need Kenney source files supplied from outside the build container (as errant-asteroid sprites
+were for #2573).
 
 ## Per-game asset registries
 

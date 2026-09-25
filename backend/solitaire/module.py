@@ -23,6 +23,7 @@ class SolitaireModule:
     result_model = SolitaireResult
     # Draw-1 and Draw-3 share one board (#591). The 1245 cap is recomputed from
     # the engine's scoring constants in tests/test_board_definitions.py.
+    # qualifying_outcomes stays None: only a won game is recorded ``completed``.
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1245
     )

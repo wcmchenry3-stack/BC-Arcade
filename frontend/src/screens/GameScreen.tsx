@@ -45,6 +45,7 @@ import {
   DEV_SURFACE_DIM,
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
+import { PillButton } from "../components/shared/PillButton";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -617,16 +618,7 @@ export default function GameScreen({ navigation, route }: Props) {
     >
       {/* New Game */}
       <View style={styles.actionRow}>
-        <Pressable
-          onPress={handleNewGamePress}
-          style={[styles.newGameBtn, { borderColor: colors.accent }]}
-          accessibilityRole="button"
-          accessibilityLabel={t("common:newGame.button")}
-        >
-          <Text style={[styles.newGameText, { color: colors.accent }]}>
-            {t("common:newGame.button")}
-          </Text>
-        </Pressable>
+        <PillButton label={t("common:newGame.button")} onPress={handleNewGamePress} />
       </View>
 
       {/* VS mode turn indicator */}
@@ -982,25 +974,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.8,
-  },
-  newGameBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  newGameText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  errorText: {
-    textAlign: "center",
-    fontSize: 13,
-    marginTop: 4,
   },
   scorecardContainer: {
     flex: 1,

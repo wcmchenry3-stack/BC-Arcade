@@ -1,18 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { statsApi } from "../api/stats";
@@ -20,7 +13,7 @@ import type { StatsResponse, GameRow } from "../api/types";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
-import OfflineBanner from "../components/OfflineBanner";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
 import DisplayNameField from "../components/shared/DisplayNameField";
 import { isGameVisible } from "../entitlements/gameVisibility";
@@ -226,28 +219,20 @@ export default function ProfileScreen() {
 
   let body: React.ReactNode;
   if (loading) {
-    body = (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" accessibilityLabel="Loading" />
-      </View>
-    );
+    body = <EmptyState kind="loading" />;
   } else if (error) {
     body = (
-      <View style={styles.center}>
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {t("recentGames.loadError")}
-        </Text>
-        <Pressable
-          onPress={() => {
+      <EmptyState
+        kind="error"
+        message={t("recentGames.loadError")}
+        retry={{
+          label: t("recentGames.retry"),
+          onPress: () => {
             setLoading(true);
             load().finally(() => setLoading(false));
-          }}
-          style={[styles.retryBtn, { borderColor: colors.accent }]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.retryText, { color: colors.accent }]}>{t("recentGames.retry")}</Text>
-        </Pressable>
-      </View>
+          },
+        }}
+      />
     );
   } else {
     body = (
@@ -258,9 +243,7 @@ export default function ProfileScreen() {
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           !gamesError ? (
-            <Text style={[styles.empty, { color: colors.textMuted }]}>
-              {t("recentGames.empty")}
-            </Text>
+            <EmptyState kind="empty" layout="inline" message={t("recentGames.empty")} />
           ) : null
         }
         refreshControl={
@@ -283,7 +266,7 @@ export default function ProfileScreen() {
       ]}
     >
       <AppHeader title={t("title")} />
-      <OfflineBanner />
+      <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
       <View
         style={[
           styles.displayNameCard,
@@ -303,6 +286,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  offlineBannerWrap: { marginHorizontal: 16, marginTop: 12 },
   displayNameCard: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -311,15 +295,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  errorText: { fontSize: 14, marginBottom: 12, textAlign: "center" },
-  retryBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  retryText: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
   bento: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -370,10 +345,4 @@ const styles = StyleSheet.create({
   rowGame: { fontSize: 14, flex: 1, fontWeight: "600" },
   rowScore: { fontSize: 14, fontVariant: ["tabular-nums"], fontWeight: "700" },
   rowOutcome: { fontSize: 16, width: 20, textAlign: "right" },
-  empty: {
-    fontSize: 14,
-    textAlign: "center",
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
 });

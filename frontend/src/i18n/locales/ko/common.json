@@ -12,6 +12,7 @@
   "theme.darkShort": "다크",
   "lang.switcherLabel": "언어 선택",
   "network.offlineBanner": "오프라인 상태 — 다시 연결되면 점수가 동기화됩니다",
+  "a11y.loading": "로딩 중",
   "brand.wordmark": "BC 아케이드",
   "nav.lobby": "로비",
   "nav.ranks": "랭킹",

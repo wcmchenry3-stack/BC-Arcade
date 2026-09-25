@@ -17,6 +17,8 @@ class MahjongModule:
     result_model = MahjongResult
     # 72 pairs x SCORE_PER_PAIR (10) + SCORE_COMPLETE_BONUS (500); every layout
     # is 144 tiles. Recomputed from the engine in tests/test_board_definitions.py.
+    # qualifying_outcomes stays None: a deadlocked game is recorded as a loss
+    # with no ``final_score``, so it can't rank on a ``final_score`` board anyway.
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1220
     )

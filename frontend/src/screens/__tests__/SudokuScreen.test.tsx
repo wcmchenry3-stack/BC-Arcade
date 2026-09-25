@@ -149,10 +149,25 @@ describe("SudokuScreen — mount resume", () => {
 });
 
 describe("SudokuScreen — in-game input", () => {
+  // These tests press a digit the number pad has left enabled (#2584). The
+  // screen picks an Easy puzzle with Math.random and the pad disables a digit
+  // once all nine are placed; 2 of the 1000 Easy puzzles give all nine 1s, so
+  // a hardcoded "enter digit 1" was a disabled no-op there, no session ever
+  // started, and the waitFor for it ran the test out — the "Exceeded timeout"
+  // these tests threw in CI about once in every few hundred runs. Choosing an
+  // enabled digit holds for any puzzle, however Start comes to pick it.
   async function startEasy() {
     const rendered = await renderAndAwaitLoad();
     await fireEvent.press(rendered.getByLabelText(/start/i));
     return rendered;
+  }
+
+  function enabledDigitButton(rendered: Awaited<ReturnType<typeof startEasy>>) {
+    for (let d = 1; d <= 9; d++) {
+      const button = rendered.getByLabelText(new RegExp(`enter digit ${d}`, "i"));
+      if (!button.props.accessibilityState?.disabled) return button;
+    }
+    throw new Error("every digit on the number pad is disabled");
   }
 
   it("disables Undo until a move is made", async () => {
@@ -170,7 +185,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("opens a useGameSync session on first digit placement", async () => {
-    const { getAllByRole, getByLabelText } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -178,7 +194,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 1/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     // ensureSyncStarted runs inside a setState updater; waitFor lets React 18
     // flush the batch before asserting.
@@ -187,7 +203,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("unmount after a digit abandons with a result block that satisfies SudokuResult, and no score (#2450)", async () => {
-    const { getAllByRole, getByLabelText, unmount } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole, unmount } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -195,7 +212,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 1/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
     mockCompleteGame.mockClear();
@@ -210,7 +227,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("persists state after digit input", async () => {
-    const { getAllByRole, getByLabelText } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -218,7 +236,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 5/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     await waitFor(async () => {
       const raw = await AsyncStorage.getItem("sudoku_game");
@@ -248,32 +266,39 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect(almostSolved.isComplete).toBe(false);
     await saveGame(almostSolved);
 
-    const rendered = await renderScreen();
-    await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
-
-    const emptyCells = rendered
-      .getAllByRole("button")
-      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
-    await act(async () => {
-      await fireEvent.press(emptyCells[0]!);
-    });
-
-    // The resumed game's clock started at mount; jump it forward.
-    const realNow = Date.now.bind(Date);
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + elapsedMs);
-    const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
+    // The clock is frozen from before mount until the win (#2584). The resumed
+    // game's clock starts at mount, so jumping only the winning press forward
+    // made the elapsed time `elapsedMs` *plus* however long the test really
+    // took from mount to that press: under load that crossed a second and the
+    // card read 01:06 instead of 01:05. (waitFor runs on setTimeout, not
+    // Date.now, so a frozen clock doesn't stall it.)
+    const mountedAt = Date.now();
+    let now = mountedAt;
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
     try {
+      const rendered = await renderScreen();
+      await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
+
+      const emptyCells = rendered
+        .getAllByRole("button")
+        .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+      await act(async () => {
+        await fireEvent.press(emptyCells[0]!);
+      });
+
+      now = mountedAt + elapsedMs;
+      const correctDigit = fresh.solution.charCodeAt(lastCell!.row * 9 + lastCell!.col) - 48;
       await act(async () => {
         await fireEvent.press(
           rendered.getByLabelText(new RegExp(`enter digit ${correctDigit}`, "i"))
         );
       });
+
+      await waitFor(() => expect(rendered.getByTestId("sudoku-result-title")).toBeTruthy());
+      return rendered;
     } finally {
       nowSpy.mockRestore();
     }
-
-    await waitFor(() => expect(rendered.getByTestId("sudoku-result-title")).toBeTruthy());
-    return rendered;
   }
 
   it("shows the shared win card with time, score and errors", async () => {

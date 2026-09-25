@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
+import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
@@ -62,7 +63,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   if (!engine && loading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
+        <EmptyState kind="loading" />
       </View>
     );
   }

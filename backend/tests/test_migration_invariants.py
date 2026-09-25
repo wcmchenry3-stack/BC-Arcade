@@ -12,6 +12,9 @@ Tests:
     + MID_EVENTS) must exist in at least one game's event_types rows across all
     migrations, so frontend-declared event names can never drift silently from
     the backend schema.
+
+  test_migrations_have_a_single_head — two migrations on the same parent make
+    `alembic upgrade head` refuse to run, failing the deploy (#2585).
 """
 
 from __future__ import annotations
@@ -144,6 +147,23 @@ def _parse_frontend_event_names() -> set[str]:
 
 
 _ALEMBIC_VERSION_MAX_LEN = 32  # alembic_version.version_num is VARCHAR(32)
+
+
+def test_migrations_have_a_single_head() -> None:
+    """Two migrations revising the same parent make `alembic upgrade head`
+    refuse to run, which fails the deploy's migration step (#2585; first seen
+    with #2535 vs 0020_swap_yacht_blackjack). When the suite provisions its own
+    DB, conftest stops the run on this before any test; this covers runs
+    against an externally provided DATABASE_URL, where conftest does not
+    migrate.
+
+    It sees only the tree it runs on: two PRs that each add a migration on the
+    same parent both pass here and collide only once both are merged, which
+    this repo's post-merge CI on dev catches (see #2616)."""
+    from tests._alembic_heads import multiple_heads_message, script_heads
+
+    heads = script_heads()
+    assert len(heads) == 1, multiple_heads_message(heads)
 
 
 def test_revision_ids_fit_in_alembic_version_column() -> None:

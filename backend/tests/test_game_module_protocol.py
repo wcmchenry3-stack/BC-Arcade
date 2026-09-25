@@ -131,15 +131,13 @@ def _carryable(mod, key: str) -> bool:
 @pytest.mark.parametrize("name,mod", _REGISTERED, ids=[n for n, _ in _REGISTERED])
 def test_module_satisfies_protocol_with_board(name, mod) -> None:
     assert isinstance(mod, GameModule), f"{name} does not satisfy the GameModule Protocol"
-    assert mod.board is None or isinstance(mod.board, BoardDefinition)
+    assert isinstance(mod.board, BoardDefinition), f"{name} must declare a BoardDefinition"
 
 
 @pytest.mark.parametrize("name,mod", _REGISTERED, ids=[n for n, _ in _REGISTERED])
 def test_board_keys_are_carried_by_the_module(name, mod) -> None:
     """Every metadata key a board ranks, breaks ties or partitions on can be stored."""
     board = mod.board
-    if board is None:
-        pytest.skip(f"{name} declares no board")
     keys = list(board.partitions)
     if board.tiebreak is not None:
         keys.append(board.tiebreak[0])

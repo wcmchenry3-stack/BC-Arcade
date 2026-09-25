@@ -24,6 +24,8 @@ class BlackjackModule:
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
     # No leaderboard: chips are a balance, not a score (#2519 §4.2).
+    # qualifying_outcomes stays None: every non-abandoned session's closing
+    # balance counts toward ``best_chips`` in stats, whatever its last hand was.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="chips", enabled=False)
 
     def stats_shape(self, raw_stats: dict) -> dict:

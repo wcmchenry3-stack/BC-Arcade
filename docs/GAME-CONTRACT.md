@@ -89,27 +89,52 @@ class GameModule(Protocol):
     game_type: GameType          # identifies this module in the registry
     metadata_model: type[BaseModel]  # Pydantic model for games.metadata validation
     result_model: type[BaseModel] | None  # result block on PATCH /games/{id}/complete
-    board: BoardDefinition | None     # how the game is ranked (#2617)
+    board: BoardDefinition            # how the game is ranked (#2617); required
 
     def stats_shape(self, raw_stats: dict) -> dict: ...
 ```
 
-**`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once: `metric` (`"final_score"` or a `games.metadata` key), `direction` (`desc` = higher is better, `asc` = lower is better), an optional `tiebreak` `(key, direction)`, `label_key` (i18n key for the metric's label), `partitions` (metadata keys that split the board), `max_value` (the highest legitimate value, `None` = uncapped) and `enabled` (`False` for games with no leaderboard). `completed_at asc` always breaks the final tie. The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`; `tests/test_vocab.py` fails on drift. No route reads them yet: the generic leaderboard, rank and stats code that uses them lands in #2618 and #2620 (epic #2519).
+**`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once. It is required: a game with no leaderboard declares a board with `enabled=False`, never `None`. Boards are shared class-level singletons, so the model is frozen and every container field is a tuple.
 
-| Game       | metric          | direction | tie-break         | partitions              | max_value | enabled |
-| ---------- | --------------- | --------- | ----------------- | ----------------------- | --------- | ------- |
-| Yacht      | `final_score`   | desc      | —                 | —                       | 400       | yes     |
-| Solitaire  | `final_score`   | desc      | —                 | —                       | 1245      | yes     |
-| FreeCell   | `final_score`   | asc       | —                 | —                       | —         | yes     |
-| Mahjong    | `final_score`   | desc      | —                 | —                       | 1220      | yes     |
-| Hearts     | `final_score`   | desc      | —                 | —                       | 100       | yes     |
-| Sudoku     | `final_score`   | desc      | —                 | `difficulty`, `variant` | 300       | yes     |
-| Cascade    | `final_score`   | desc      | —                 | —                       | —         | yes     |
-| Sort       | `level_reached` | desc      | `total_moves` asc | —                       | 23        | yes     |
-| Blackjack  | `final_score`   | desc      | —                 | —                       | —         | no      |
-| Daily Word | `guesses_used`  | asc       | —                 | —                       | —         | no      |
-| Twenty48   | `final_score`   | desc      | —                 | —                       | —         | yes     |
-| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier`       | —         | yes     |
+| Field                  | Type                               | Meaning                                                                                                                                                                                                                                 |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metric`               | `str`                              | What is ranked: `"final_score"` (the `games` column) or a `games.metadata` key.                                                                                                                                                         |
+| `direction`            | `"asc" \| "desc"`                  | `desc` = higher is better, `asc` = lower is better.                                                                                                                                                                                     |
+| `tiebreak`             | `tuple[str, Direction] \| None`    | Optional `(metadata key, direction)` applied before the final tie-break, `completed_at asc`, which every board uses.                                                                                                                    |
+| `label_key`            | `str`                              | i18n key for the metric's label.                                                                                                                                                                                                        |
+| `partitions`           | `tuple[str, ...]`                  | Metadata keys that split the game into one board per combination of values.                                                                                                                                                             |
+| `partition_defaults`   | `tuple[tuple[str, str], ...]`      | `(key, value)`: the value assumed when a row lacks that partition key or holds `null` (legacy rows). Keys must be in `partitions`, once each. Read with `partition_default(key)`.                                                       |
+| `max_value`            | `int \| None`                      | Highest legitimate `metric` value on any of the game's boards (absorbs #2215). `None` = no ceiling.                                                                                                                                     |
+| `partition_max_values` | `tuple[tuple[str, str, int], ...]` | `(key, value, cap)`: a tighter cap for rows in that partition. Keys must be in `partitions`, each `(key, value)` once, each cap at most `max_value` (which must be set). `max_value_for(metadata)` returns the effective cap for a row. |
+| `qualifying_outcomes`  | `tuple[str, ...] \| None`          | `games.outcome` values that count toward the board and the per-game "best" in stats. `None` = every non-abandoned row. Never includes `abandoned`.                                                                                      |
+| `enabled`              | `bool`                             | `False` for games with no leaderboard. Their `metric`, `direction`, `label_key` and `qualifying_outcomes` still define the "best" in stats.                                                                                             |
+
+The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`, every field camelCased (`tiebreak`, `labelKey`, `partitions`, `partitionDefaults`, `maxValue`, `partitionMaxValues`, `qualifyingOutcomes`, `enabled`); the pair and triple tuples become records (`{ variant: "classic" }`, `{ difficulty: { easy: 100, … } }`). `tests/test_vocab.py` fails on drift. No route reads them yet: the generic leaderboard, rank and stats code that uses them lands in #2618 and #2620 (epic #2519).
+
+| Game       | metric          | direction | tie-break         | partitions (default)                | max_value                            | qualifying outcomes | enabled |
+| ---------- | --------------- | --------- | ----------------- | ----------------------------------- | ------------------------------------ | ------------------- | ------- |
+| Yacht      | `final_score`   | desc      | —                 | —                                   | 1575                                 | any                 | yes     |
+| Solitaire  | `final_score`   | desc      | —                 | —                                   | 1245                                 | any                 | yes     |
+| FreeCell   | `final_score`   | asc       | —                 | —                                   | —                                    | any                 | yes     |
+| Mahjong    | `final_score`   | desc      | —                 | —                                   | 1220                                 | any                 | yes     |
+| Hearts     | `final_score`   | desc      | —                 | —                                   | 100                                  | any                 | yes     |
+| Sudoku     | `final_score`   | desc      | —                 | `difficulty`, `variant` (`classic`) | 300 (easy 100, medium 200, hard 300) | any                 | yes     |
+| Cascade    | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
+| Sort       | `level_reached` | desc      | `total_moves` asc | —                                   | 23                                   | any                 | yes     |
+| Blackjack  | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | no      |
+| Daily Word | `guesses_used`  | asc       | —                 | —                                   | —                                    | `win`               | no      |
+| Twenty48   | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
+| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier`                   | —                                    | any                 | yes     |
+
+"any" means every non-abandoned row. Notes on the declarations:
+
+- **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. The legacy `POST /yacht/score` bound of 400 applies to its `400 - raw` transform, not to a real game's total.
+- **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
+- **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
+- **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
+- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way.
+- **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
+- **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet, and Sort sends `level`/`moves` rather than `level_reached`/`total_moves`. Their Phase 2 stories (#2632, #2625) make the clients send the declared keys; the declarations stay as they are.
 
 Every `GameType` has a module since #2623, so no game exports `null`.
 

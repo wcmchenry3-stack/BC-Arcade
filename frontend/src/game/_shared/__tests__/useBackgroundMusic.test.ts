@@ -174,3 +174,57 @@ describe("useBackgroundMusic — newGameTick", () => {
     expect(mockPlay).not.toHaveBeenCalled();
   });
 });
+
+describe("useBackgroundMusic — paused", () => {
+  type Props = { active: boolean; tick: number; paused: boolean };
+  const render = (initialProps: Props) =>
+    renderHook(
+      ({ active, tick, paused }: Props) =>
+        useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active, tick, paused),
+      { wrapper, initialProps }
+    );
+  const { createAudioPlayer } = jest.requireMock("expo-audio") as {
+    createAudioPlayer: jest.Mock;
+  };
+
+  it("pauses the track when paused, and resumes the same track on unpause", async () => {
+    const { rerender } = await render({ active: true, tick: 0, paused: false });
+    expect(createAudioPlayer).toHaveBeenCalledTimes(1);
+    jest.clearAllMocks();
+
+    await rerender({ active: true, tick: 0, paused: true });
+    expect(mockPause).toHaveBeenCalledTimes(1);
+    expect(mockPlay).not.toHaveBeenCalled();
+
+    await rerender({ active: true, tick: 0, paused: false });
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+    expect(createAudioPlayer).not.toHaveBeenCalled(); // same track, not a new one
+  });
+
+  it("mounting paused (a restored run) loads a track but stays silent until unpaused", async () => {
+    const { rerender } = await render({ active: true, tick: 0, paused: true });
+    expect(createAudioPlayer).toHaveBeenCalledTimes(1);
+    expect(mockPlay).not.toHaveBeenCalled();
+
+    await rerender({ active: true, tick: 0, paused: false });
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new game from the pause screen starts a fresh track", async () => {
+    const { rerender } = await render({ active: true, tick: 1, paused: true });
+    jest.clearAllMocks();
+
+    await rerender({ active: true, tick: 2, paused: false });
+    expect(createAudioPlayer).toHaveBeenCalledTimes(1);
+    expect(mockPlay).toHaveBeenCalled();
+  });
+
+  it("unpausing after game over does not play", async () => {
+    const { rerender } = await render({ active: true, tick: 0, paused: true });
+    await rerender({ active: false, tick: 0, paused: true });
+    jest.clearAllMocks();
+
+    await rerender({ active: false, tick: 0, paused: false });
+    expect(mockPlay).not.toHaveBeenCalled();
+  });
+});
