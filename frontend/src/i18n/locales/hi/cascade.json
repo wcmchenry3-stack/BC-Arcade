@@ -12,11 +12,11 @@
   "theme.groupLabel": "फलों का थीम सेट",
   "theme.optionLabel": "{{label}} थीम",
   "event.merged": "मर्ज हो गया! {{fruit}} बना।",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "स्कोर",
+  "scoreboard.heroSub": "बेस्ट फल: {{bestFruit}} · {{merges}} मर्ज",
+  "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
+  "scoreboard.bestScore": "सर्वश्रेष्ठ",
+  "scoreboard.bestFruit": "सबसे बड़ा फल",
+  "scoreboard.gamesPlayed": "खेले गए गेम",
+  "scoreboard.totalMerges": "कुल मर्ज"
 }

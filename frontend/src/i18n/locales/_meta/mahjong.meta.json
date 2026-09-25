@@ -120,7 +120,7 @@
     "component": "Controls",
     "description": "Accessibility label for the hint button.",
     "tone": "functional, descriptive",
-    "characterLimit": 60,
+    "characterLimit": 65,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -454,15 +454,6 @@
     "description": "Empty state message when no scores have been submitted yet.",
     "tone": "encouraging, casual",
     "characterLimit": 45,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "overlay.newGameButton": {
-    "component": "GameCanvas",
-    "description": "Button label on the win overlay to start a fresh game.",
-    "tone": "action, brief",
-    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

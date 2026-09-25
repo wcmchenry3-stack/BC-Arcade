@@ -12,11 +12,11 @@
   "theme.groupLabel": "ערכת פירות",
   "theme.optionLabel": "ערכת {{label}}",
   "event.merged": "התמזגו! נוצר {{fruit}}.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "ניקוד",
+  "scoreboard.heroSub": "פרי מוביל: {{bestFruit}} · {{merges}} מיזוגים",
+  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
+  "scoreboard.bestScore": "שיא כל הזמנים",
+  "scoreboard.bestFruit": "הפרי הגבוה",
+  "scoreboard.gamesPlayed": "משחקים ששוחקו",
+  "scoreboard.totalMerges": "סך המיזוגים"
 }

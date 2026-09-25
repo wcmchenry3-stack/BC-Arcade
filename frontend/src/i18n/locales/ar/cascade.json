@@ -12,11 +12,11 @@
   "theme.groupLabel": "موضوع مجموعة الفواكه",
   "theme.optionLabel": "موضوع {{label}}",
   "event.merged": "تم الدمج! تم إنشاء {{fruit}}.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "النقاط",
+  "scoreboard.heroSub": "أفضل فاكهة: {{bestFruit}} · {{merges}} دمج",
+  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
+  "scoreboard.bestScore": "أفضل نتيجة",
+  "scoreboard.bestFruit": "أفضل فاكهة",
+  "scoreboard.gamesPlayed": "ألعاب ملعوبة",
+  "scoreboard.totalMerges": "إجمالي الدمج"
 }

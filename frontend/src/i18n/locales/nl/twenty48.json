@@ -13,13 +13,13 @@
   "swipe.hint": "Veeg om tegels te verplaatsen",
   "win.body": "Je hebt 2048 bereikt! Je kunt doorspelen voor een hogere score.",
   "controls.keyboardHint": "Of gebruik de pijltoetsen",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
+  "stats.highestTile": "Hoogste tegel",
+  "stats.timePlayed": "Speeltijd",
   "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroSub": "Beste tegel: {{bestTile}} · {{moves}} zetten",
+  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
+  "scoreboard.bestScore": "Beste score",
+  "scoreboard.bestTile": "Beste tegel",
+  "scoreboard.gamesPlayed": "Aantal spellen",
+  "scoreboard.gamesWon": "Gewonnen spellen"
 }

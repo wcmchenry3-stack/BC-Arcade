@@ -13,13 +13,13 @@
   "swipe.hint": "滑动以移动方块",
   "win.body": "你达到了2048！你可以继续游戏以获得更高分数。",
   "controls.keyboardHint": "或使用方向键",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "最高方块",
+  "stats.timePlayed": "游戏时长",
+  "scoreboard.heroLabel": "得分",
+  "scoreboard.heroSub": "最高方块：{{bestTile}} · {{moves}}步",
+  "scoreboard.heroSubEmpty": "暂无游戏记录",
+  "scoreboard.bestScore": "最高得分",
+  "scoreboard.bestTile": "最高方块",
+  "scoreboard.gamesPlayed": "游戏局数",
+  "scoreboard.gamesWon": "获胜局数"
 }
