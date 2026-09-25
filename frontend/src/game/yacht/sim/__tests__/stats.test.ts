@@ -196,6 +196,13 @@ describe("summarize", () => {
     expect(a.highUpperZeroShare.mean).toBeCloseTo(0.5, 10);
   });
 
+  it("gives the score SD a normal-theory SE over two dice streams per block", () => {
+    const { a } = report.players;
+    expect(a.scoreSdEst.mean).toBe(a.scoreSd);
+    expect(a.scoreSdEst.n).toBe(4); // 2 blocks × 2 streams
+    expect(a.scoreSdEst.se).toBeCloseTo(a.scoreSd / Math.sqrt(6), 10);
+  });
+
   it("mirrors exactly when the two players swap roles", () => {
     const swapped: MatchupRun = {
       a: "q",

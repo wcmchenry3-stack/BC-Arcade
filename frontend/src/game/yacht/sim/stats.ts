@@ -35,6 +35,13 @@ export interface PlayerStats {
   readonly meanScore: Estimate;
   /** Game-level standard deviation of final score (descriptive). */
   readonly scoreSd: number;
+  /**
+   * The same SD as an estimate, for gating. Its SE is the normal-theory
+   * SD / √(2(n−1)) with n = 2 × blocks: each block deals two dice streams,
+   * and a seat's games on the same stream aren't independent (self-play
+   * replays them exactly), so the game count would overstate the evidence.
+   */
+  readonly scoreSdEst: Estimate;
   readonly bonusRate: Estimate;
   readonly upperMean: Estimate;
   readonly belowParMean: Estimate;
@@ -196,10 +203,21 @@ function playerStats(
     })
     .filter((v): v is number => v !== null);
 
+  const nEff = 2 * blocks.length;
+  const sdSe = nEff > 1 ? scoreSd / Math.sqrt(2 * (nEff - 1)) : 0;
+  const scoreSdEst: Estimate = {
+    mean: scoreSd,
+    se: sdSe,
+    ciLow: scoreSd - 1.96 * sdSe,
+    ciHigh: scoreSd + 1.96 * sdSe,
+    n: nEff,
+  };
+
   return {
     label,
     meanScore: perBlock((p) => p.score),
     scoreSd,
+    scoreSdEst,
     bonusRate: perBlock((p) => (p.bonus ? 1 : 0)),
     upperMean: perBlock((p) => p.upperSubtotal),
     belowParMean: perBlock(belowParFills),

@@ -149,8 +149,11 @@ All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
 - `stats.ts` reports both players symmetrically: win rate (ties count half),
   win rate moving first and second, the order effect, the first-mover win
   rate, and per-player score, bonus rate, upper subtotal, below-par fills and
-  per-category mean/hit rate. Every value has a 95% CI computed **over blocks**
-  (games in a block share dice, so blocks are the independent unit).
+  per-category mean/hit rate. #2156 added score SD and 10th/50th/90th
+  percentiles, the Yacht-zero rate, the Joker (second Yacht) rate, the round
+  in which Chance is filled, and the share of zeroed upper boxes that were
+  Fours–Sixes. Every value has a 95% CI computed **over blocks** (games in a
+  block share dice, so blocks are the independent unit).
 - `gate.ts` holds the calibration gate: matchups, game counts and bands. It is
   the only place bands are defined.
 
@@ -163,7 +166,8 @@ small to see balance drift.
 **Layer 2: scheduled calibration gate.** `.github/workflows/yacht-sim-gate.yml`
 runs nightly, on demand (`workflow_dispatch`, with an optional games
 override), and on PRs that touch the AI, engine, oracle or gate. Its
-`bands` job runs the three `GATE_GROUPS` in parallel; its `regret` job runs
+`bands` job runs the four `GATE_GROUPS` in parallel (Medium-vs-Easy was
+added by #2156); its `regret` job runs
 `ai.calibrate.test.ts` (#2244, below). Run it locally from the repo root:
 
 ```bash
@@ -195,6 +199,30 @@ tiers ignore the opponent, so each player's game depends only on their own
 streams: the order effect is exactly 0 and the self-play first-mover rate
 exactly 50%. Those bands stay as a guard against an opponent-aware layer
 reintroducing a #2200-class artifact.
+
+**Variance and play-style metrics (#2156, measured 2026-09-25, self-play,
+1,000 games per tier):**
+
+| Tier   | Score SD | p10 / p50 / p90 | Yacht zero | Joker | Chance filled (round) | Zeroed upper boxes that were 4s–6s |
+| ------ | -------- | --------------- | ---------- | ----- | --------------------- | ---------------------------------- |
+| Easy   | 36.2     | 120 / 160 / 202 | 91.6%      | 1.2%  | 1.7                   | 23%                                |
+| Medium | 45.8     | 167 / 203 / 264 | 78.6%      | 3.6%  | 2.6                   | 4.6%                               |
+| Hard   | 56.3     | 187 / 241 / 308 | 69.2%      | 6.6%  | 6.6                   | 18% (±8)                           |
+
+- **Gated:** score SD orders Hard > Medium > Easy (+10.5 and +9.6). Hard's
+  SD is close to the ~60 of optimal play, which the dice fix. The Yacht-zero
+  rate orders Easy > Medium > Hard (+13.0pp and +9.4pp). The SD's SE is
+  normal-theory, SD / √(2(n−1)), with n = two dice streams per block, not
+  the game count.
+- **Reported, not gated:** percentiles, Joker rate, Chance timing and the
+  sacrifice share.
+  - Easy and Medium use Chance in round 2 on average, the beginner mistake
+    #2156 named. That is by design for those tiers.
+  - The sacrifice share doesn't back #2156's rule of thumb that the Ones and
+    Twos boxes should always go first: Hard plays optimally, and 18% of the
+    upper boxes it zeroes are Fours–Sixes.
+- **Medium vs Easy:** Medium wins 86.4% [84.3, 88.4], scoring 216.3 to 162.4.
+  Its band is ±5pp around that.
 
 **Sample size and power** (measured, 4 CPU cores, ~0.06s/game under `tsx`
 for the #2246 tiers; the first measurements below were taken on the older
