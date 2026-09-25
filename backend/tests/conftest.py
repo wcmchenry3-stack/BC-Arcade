@@ -151,6 +151,7 @@ async def _clean_db_tables():
             "game_entitlements",
             "bug_logs",
             "daily_challenge_days",
+            "players",
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
     yield

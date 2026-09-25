@@ -33,6 +33,7 @@ from limiter import _real_ip, limiter
 from logs.router import router as logs_router
 from mahjong.router import router as mahjong_router
 from me.router import router as me_router
+from players.router import router as players_router
 from solitaire.router import router as solitaire_router
 from sort.router import router as sort_router
 from starswarm.router import router as starswarm_router
@@ -112,6 +113,7 @@ app.include_router(yacht_router, prefix="/yacht")
 app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
 app.include_router(me_router, prefix="/me")
+app.include_router(players_router, prefix="/players")
 app.include_router(stats_router, prefix="/stats")
 
 # ---------------------------------------------------------------------------

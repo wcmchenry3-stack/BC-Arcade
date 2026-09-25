@@ -183,6 +183,41 @@ class GameEntitlement(Base):
     )
 
 
+PLAYER_DISPLAY_NAME_MAX_LENGTH = 32
+"""Longest display name (the ``PATCH /games/{id}/name`` ``player_name`` limit)."""
+
+
+class Player(Base):
+    """One display name per player (#2624, #2519 decision 17).
+
+    Keyed by the player's id: the app's ``X-Session-ID`` (one per install until
+    accounts, #1047). The name can change at any time and applies to all of the
+    player's history, since every board reads it from here rather than from the
+    game rows. No name history is kept. A player with no row has no name and
+    appears on no board (decision 18).
+
+    ``display_name`` is stored trimmed (the routes' validator does it); the CHECK
+    only guards the length, which is all SQLite and Postgres agree on.
+    """
+
+    __tablename__ = "players"
+    __table_args__ = (
+        CheckConstraint(
+            f"length(display_name) BETWEEN 1 AND {PLAYER_DISPLAY_NAME_MAX_LENGTH}",
+            name="ck_players_display_name_length",
+        ),
+    )
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class BugLog(Base):
     __tablename__ = "bug_logs"
     __table_args__ = (

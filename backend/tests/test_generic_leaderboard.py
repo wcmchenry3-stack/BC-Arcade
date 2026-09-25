@@ -2,8 +2,9 @@
 
 ``GET /games/leaderboard/{game_type}`` and ``PATCH /games/{id}/name`` serve
 every game from its ``BoardDefinition``. One entry per player (#2519 decision
-12): each session's best named row only; abandoned rows and sentinel
-``*-anon`` sessions never rank; ranks are exact and count players, not rows.
+12): each named player's best row only, under their current display name
+(#2624); abandoned rows and sentinel ``*-anon`` sessions never rank; ranks are
+exact and count players, not rows.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from db.base import get_session_factory, is_configured
-from db.models import Game, GameEntitlement, GameType
+from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
 from games.board import SCORE_METRIC
 from games.registry import get_module
@@ -103,11 +104,16 @@ async def _seed(
     outcome: str | None = "completed",
     meta: dict[str, Any] | None = None,
 ) -> uuid.UUID:
-    """Insert one finished row directly."""
+    """Insert one finished row directly.
+
+    A non-blank ``name`` becomes the player's display name (the latest call
+    wins, as a rename would). The row itself carries no name: boards read the
+    player's (#2624).
+    """
+    if name is not None and name.strip():
+        await _set_name(session_id, name)
     gt_id = await _game_type_id(game_type)
     metadata = dict(meta or {})
-    if name is not None:
-        metadata["player_name"] = name
     game_id = uuid.uuid4()
     factory = get_session_factory()
     async with factory() as db:
@@ -126,6 +132,18 @@ async def _seed(
         )
         await db.commit()
     return game_id
+
+
+async def _set_name(session_id: str, name: str) -> None:
+    """Store ``name`` as the player's display name, bypassing the validator."""
+    factory = get_session_factory()
+    async with factory() as db:
+        player = await db.get(Player, session_id)
+        if player is None:
+            db.add(Player(session_id=session_id, display_name=name))
+        else:
+            player.display_name = name
+        await db.commit()
 
 
 def _sid() -> str:
@@ -295,21 +313,26 @@ async def test_legacy_post_score_rows_never_appear(client: TestClient) -> None:
     assert _board(client, "solitaire")["entries"] == []
 
 
-async def test_unnamed_rows_excluded(client: TestClient) -> None:
+async def test_players_without_a_display_name_are_excluded(client: TestClient) -> None:
     await _seed("solitaire", _sid(), score=900, name=None)
-    await _seed("solitaire", _sid(), score=800, name="")
-    await _seed("solitaire", _sid(), score=700, name="   ")
     await _seed("solitaire", _sid(), score=100, name="Named")
     body = _board(client, "solitaire")
     assert _pairs(body) == [("Named", 100)]
     assert all(e["player_name"] != "anon" for e in body["entries"])
 
 
-async def test_best_is_taken_among_named_rows_only(client: TestClient) -> None:
+async def test_a_name_on_the_row_alone_does_not_rank(client: TestClient) -> None:
+    """``metadata.player_name`` (old rows, legacy routes) no longer gates ranking (#2624)."""
+    await _seed("solitaire", _sid(), score=900, name=None, meta={"player_name": "RowOnly"})
+    assert _board(client, "solitaire")["entries"] == []
+
+
+async def test_every_finished_game_of_a_named_player_counts(client: TestClient) -> None:
+    """Decision 18: the unnamed 900 used to be ignored; now it is the player's entry."""
     sid = _sid()
     await _seed("solitaire", sid, score=900, name=None)
     await _seed("solitaire", sid, score=200, name="Me", minutes=1)
-    assert _pairs(_board(client, "solitaire")) == [("Me", 200)]
+    assert _pairs(_board(client, "solitaire")) == [("Me", 900)]
 
 
 # ---------------------------------------------------------------------------
@@ -351,18 +374,20 @@ async def test_one_session_appears_once_with_its_best(client: TestClient) -> Non
     assert _pairs(_board(client, "solitaire")) == [("Me", 600)]
 
 
-async def test_name_shown_is_the_one_on_the_best_row(client: TestClient) -> None:
+async def test_name_shown_is_the_players_current_name(client: TestClient) -> None:
     sid = _sid()
     await _seed("solitaire", sid, score=500, name="OldName", minutes=1)
     await _seed("solitaire", sid, score=100, name="NewName", minutes=2)
-    assert _pairs(_board(client, "solitaire")) == [("OldName", 500)]
+    assert _pairs(_board(client, "solitaire")) == [("NewName", 500)]
 
 
 async def test_equal_bests_keep_the_earliest(client: TestClient) -> None:
     sid = _sid()
-    await _seed("solitaire", sid, score=500, name="First", minutes=1)
-    await _seed("solitaire", sid, score=500, name="Second", minutes=2)
-    assert _pairs(_board(client, "solitaire")) == [("First", 500)]
+    await _seed("solitaire", sid, score=500, name="Me", minutes=1)
+    await _seed("solitaire", sid, score=500, name="Me", minutes=2)
+    body = _board(client, "solitaire")
+    assert _pairs(body) == [("Me", 500)]
+    assert body["entries"][0]["completed_at"].startswith("2026-01-01T00:01")
 
 
 async def test_rank_counts_sessions_not_rows(client: TestClient) -> None:
@@ -945,13 +970,11 @@ async def test_qualifying_outcomes_are_honoured(
     assert r.status_code == 400, r.text
 
 
-async def test_long_metadata_names_are_trimmed_and_truncated(client: TestClient) -> None:
-    long_name = "  " + "A" * 31 + " " + "B" * 30 + "  "  # 64 characters inside the padding
-    await _seed("sudoku", _sid(), score=90, name=long_name, meta={"difficulty": "easy"})
-    await _seed("sudoku", _sid(), score=80, name="x" * 40, meta={"difficulty": "easy"})
-    await _seed("sudoku", _sid(), score=70, name="\t 　\n", meta={"difficulty": "easy"})
+async def test_stored_names_are_shown_trimmed(client: TestClient) -> None:
+    """Every write path trims; a name stored untrimmed (by hand) still shows trimmed."""
+    await _seed("sudoku", _sid(), score=90, name="\t Padded \u3000", meta={"difficulty": "easy"})
     names = [e["player_name"] for e in _board(client, "sudoku?difficulty=easy")["entries"]]
-    assert names == ["A" * 31, "x" * 32]
+    assert names == ["Padded"]
 
 
 # ---------------------------------------------------------------------------
@@ -967,20 +990,37 @@ def _db_error() -> Exception:
     return OperationalError("SELECT ... WHERE session_id = ?", {"sid": SECRET_SID}, Exception("x"))
 
 
+class _NoRow:
+    def scalar_one_or_none(self) -> None:
+        return None
+
+
 class _FailingDB:
-    def __init__(self, *, fail_commit: bool = False, fail_execute: bool = False) -> None:
+    bind = None
+
+    def __init__(
+        self,
+        *,
+        fail_commit: bool = False,
+        fail_execute: bool = False,
+        fail_execute_after_commit: bool = False,
+    ) -> None:
         self.fail_commit = fail_commit
         self.fail_execute = fail_execute
+        self.fail_execute_after_commit = fail_execute_after_commit
+        self.committed = False
         self.rolled_back = False
 
     async def execute(self, *_: Any, **__: Any) -> Any:
-        if self.fail_execute:
+        if self.fail_execute or (self.fail_execute_after_commit and self.committed):
             raise _db_error()
-        raise AssertionError("unexpected execute")
+        # The display-name upsert (#2624), before the commit.
+        return _NoRow()
 
     async def commit(self) -> None:
         if self.fail_commit:
             raise _db_error()
+        self.committed = True
 
     async def rollback(self) -> None:
         self.rolled_back = True
@@ -1053,7 +1093,7 @@ async def test_set_player_name_rank_error_is_logged_and_chained(
 
     with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
         await leaderboard.set_player_name(
-            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            _FailingDB(fail_execute_after_commit=True),  # type: ignore[arg-type]
             game=_finished_game("solitaire"),
             session_id=SECRET_SID,
             player_name="Me",

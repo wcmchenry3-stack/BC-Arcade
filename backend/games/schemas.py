@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.registry import get_module
+from players.schemas import DisplayName
 
 # ---------------------------------------------------------------------------
 # Shared sub-models
@@ -78,11 +79,13 @@ class CompleteGameRequest(BaseModel):
 
 
 class SetPlayerNameRequest(BaseModel):
-    """``PATCH /games/{id}/name`` (#2618). Surrounding whitespace is dropped."""
+    """``PATCH /games/{id}/name`` (#2618). Surrounding whitespace is dropped.
 
-    player_name: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
-    ]
+    Validated exactly like ``PUT /players/me``, since it now sets the same
+    per-player display name (#2624).
+    """
+
+    player_name: DisplayName
 
 
 # ---------------------------------------------------------------------------
