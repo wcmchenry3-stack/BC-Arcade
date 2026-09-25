@@ -1,7 +1,8 @@
 """Generic leaderboards, driven by each module's ``BoardDefinition`` (#2618).
 
-One query, one rank calculation and one name operation serve every game. They replace the per-game leaderboard routers, which stay in
-place (unchanged) until #2644 because v1.0 clients still call them.
+One query, one rank calculation and one name operation serve every game.
+They replace the per-game leaderboard routers, which stay in place
+(unchanged) until #2644 because v1.0 clients still call them.
 
 Rules every board follows
 -------------------------
