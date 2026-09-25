@@ -97,8 +97,9 @@ async def test_stopping_does_not_swallow_its_own_cancellation() -> None:
     await asyncio.gather(task, return_exceptions=True)
 
 
-async def test_stopping_absorbs_a_task_that_ends_in_an_error() -> None:
-    """Whatever the task ends with, shutdown completes (#2672 review)."""
+async def test_stopping_surfaces_a_task_that_crashed() -> None:
+    """A task that ends in an error is re-raised, as ``await task`` did (#2667),
+    rather than silently absorbed."""
     import main
 
     async def fails_on_cancel() -> None:
@@ -109,5 +110,25 @@ async def test_stopping_absorbs_a_task_that_ends_in_an_error() -> None:
 
     task = asyncio.create_task(fails_on_cancel())
     await asyncio.sleep(0)
-    await main._stop_daily_word_retention(task)  # must not raise
-    assert task.done()
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        await main._stop_daily_word_retention(task)
+
+
+def test_shutdown_resets_state_even_when_the_task_crashed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lifespan clears app.state.retention_task however stopping ends."""
+    import main
+    from daily_word import retention
+
+    async def crashes_on_cancel(_get_session_factory, **_kw) -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            raise RuntimeError("cleanup failed") from None
+
+    monkeypatch.setattr(retention, "run_retention_loop", crashes_on_cancel)
+
+    with pytest.raises(RuntimeError, match="cleanup failed"), TestClient(main.app):
+        assert main.app.state.retention_task is not None
+    assert main.app.state.retention_task is None

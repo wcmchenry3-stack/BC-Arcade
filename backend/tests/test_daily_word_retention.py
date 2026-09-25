@@ -6,6 +6,7 @@ import asyncio
 import logging
 import pathlib
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -94,12 +95,20 @@ async def test_prune_is_a_no_op_on_an_empty_or_current_table() -> None:
     assert await _remaining() == ["today"]
 
 
+# Upper bound on a loop task ending once cancelled. asyncio.wait, not
+# wait_for: on timeout wait_for cancels the task again and waits for *that*,
+# so a task stuck under the cancel would still hang the run (#2667).
+_STOP_TIMEOUT_S = 5.0
+
+
 async def _run_until(task: asyncio.Task, done) -> None:
     for _ in range(300):
         if done():
             break
         await asyncio.sleep(0.01)
     task.cancel()
+    finished, _ = await asyncio.wait({task}, timeout=_STOP_TIMEOUT_S)
+    assert finished, f"the loop did not stop within {_STOP_TIMEOUT_S}s of being cancelled"
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -193,6 +202,41 @@ def test_app_starts_the_loop_and_stops_it_on_shutdown() -> None:
     assert main.app.state.retention_task is None
     # cancelled() alone: done() would also be true for a loop that had crashed.
     assert task.cancelled()
+
+
+def test_shutdown_does_not_wait_forever_on_a_loop_that_will_not_stop(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Shutdown used to await the cancelled task with no bound, so a prune
+    stuck in the driver held shutdown — and a TestClient exit — for good: a
+    CI run hung ~28 min here (#2667). Now it waits a bounded time and says so."""
+    import main
+
+    async def stuck_loop(_get_session_factory, **_kw) -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            # Absorb the shutdown cancel, as SQLAlchemy does when a cancel
+            # lands mid-query: it invalidates the connection and awaits a
+            # shielded graceful close, which never finishes if the aiosqlite
+            # worker thread has died. A second cancel — the event loop's own
+            # teardown, once shutdown returns — force-closes it and ends the
+            # task (AsyncAdapt_terminate.terminate). The old hook never
+            # returned, so that second cancel never came.
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(retention, "run_retention_loop", stuck_loop)
+    monkeypatch.setattr(main, "RETENTION_STOP_TIMEOUT_SECONDS", 0.1)
+
+    with caplog.at_level(logging.WARNING, logger="daily_word.retention"):
+        with TestClient(main.app):
+            assert main.app.state.retention_task is not None
+            started = time.monotonic()
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5, f"shutdown took {elapsed:.1f}s"
+    assert main.app.state.retention_task is None
+    assert [r for r in caplog.records if "still running" in r.getMessage()]
 
 
 def test_app_still_starts_when_the_session_factory_cannot_be_built(

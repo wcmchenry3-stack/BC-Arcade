@@ -104,10 +104,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     steps run in their previous registration order.
 
     The Daily Word retention task is held in one place, ``app.state`` (which
-    tests read). The ``try`` opens as soon as it exists, so it is cancelled on
+    tests read). The ``try`` opens as soon as it exists, so it is stopped on
     every exit — including a startup that is cancelled or fails during the
     DB health check, which can take up to ``DB_PING_TIMEOUT_SECONDS`` (#2672
-    review).
+    review). Stopping is bounded (#2667), and the state is reset even when a
+    crashed task is re-raised.
     """
     _warn_if_dev_override_active()
     app.state.retention_task = _start_daily_word_retention()
@@ -115,8 +116,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _db_health_check()
         yield
     finally:
-        await _stop_daily_word_retention(app.state.retention_task)
-        app.state.retention_task = None
+        try:
+            await _stop_daily_word_retention(app.state.retention_task)
+        finally:
+            app.state.retention_task = None
 
 
 app = FastAPI(
@@ -306,18 +309,34 @@ def _start_daily_word_retention() -> asyncio.Task | None:
     return asyncio.create_task(run_retention_loop(get_session_factory))
 
 
-async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
-    """Cancel the retention task and wait for it to finish.
+RETENTION_STOP_TIMEOUT_SECONDS = 5.0
 
-    gather(return_exceptions=True) absorbs whatever the task ends with — its
-    own cancellation or any other exception — without catching a
-    CancelledError aimed at *this* coroutine: if shutdown itself is
-    cancelled, that still propagates (#2672 review).
+
+async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
+    """Cancel the retention task and wait for it — but only so long.
+
+    Bounded (#2667): a prune stuck in the driver can absorb the cancel, and an
+    unbounded wait held shutdown, and a TestClient exit, for good; CI hung
+    ~28 min on it. After the bound it warns and moves on.
+
+    asyncio.wait never raises the task's own outcome, so a CancelledError aimed
+    at *this* coroutine — shutdown itself being cancelled — still propagates
+    (#2672 review). A task that crashed is re-raised, as ``await task`` did;
+    the lifespan resets its state regardless.
     """
     if task is None:
         return
+    from daily_word.retention import logger as retention_logger
+
     task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
+    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
+    if not done:
+        retention_logger.warning(
+            "daily_word retention: task still running %.0fs after cancel; not waiting",
+            RETENTION_STOP_TIMEOUT_SECONDS,
+        )
+    elif not task.cancelled():
+        task.result()  # re-raises a crash, as `await task` did
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
