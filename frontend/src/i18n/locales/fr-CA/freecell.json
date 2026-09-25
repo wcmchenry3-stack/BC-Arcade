@@ -1,6 +1,6 @@
 {
   "game.title": "FreeCell",
-  "game.description": "Monte toutes les cartes aux fondations — planifie tes coups.",
+  "game.description": "Montez les cartes aux fondations — planifiez vos coups.",
   "game.playLabel": "Jouer à FreeCell",
   "action.undo": "Annuler",
   "action.hint": "Indice",

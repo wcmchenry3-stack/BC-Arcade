@@ -70,11 +70,12 @@ class GameOutcome(str, Enum):
 
 `games.outcome` carries the result (#2519 decision 11, PR #2592): games with a
 winner record `win` / `loss` / `push` — Yacht vs the computer, Hearts, Daily
-Word, and Mahjong's deadlock loss today; Mahjong's cleared board (#2627),
-Blackjack (#2628) and Twenty48 (#2631) move onto it next.
+Word, Blackjack (a run that reached its goal / ran out of chips, #2628),
+Twenty48 (the 2048 tile / a game over before it, #2631) and Mahjong's deadlock
+loss today; Mahjong's cleared board (#2627) moves onto it next.
 `GameModule.has_winner` means "this game can record win / loss / push" and is
 set only once the client really writes them, a win included: true for Yacht,
-Hearts and Daily Word; Mahjong and Blackjack flip with #2627 / #2628. It is a
+Hearts, Daily Word, Blackjack and Twenty48; Mahjong flips with #2627. It is a
 per-game flag, not a per-row fact — a `completed` row from a `has_winner` game
 (solo Yacht) is a finish with no winner, not a win. Score-only games
 record `completed` / `kept_playing`, which means "no win concept" (win rate
