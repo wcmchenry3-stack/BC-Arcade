@@ -7,7 +7,7 @@
  *
  * Flags:
  *   --locale     Target locale code (fr-CA | es | hi | ar | zh | ja | ko | pt | he | de | nl | ru)
- *   --namespace  Translation namespace (common | yacht | cascade | errors)
+ *   --namespace  Translation namespace (any file in locales/en)
  *   --model      OpenAI model to use (default: gpt-4o)
  *   --dry-run    Preview what would be sent; do not call API or write files
  *   --force      Re-translate ALL keys, not just __NEEDS_TRANSLATION__ ones

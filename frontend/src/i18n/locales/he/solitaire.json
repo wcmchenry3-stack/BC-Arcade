@@ -31,11 +31,11 @@
   "a11y.invalidMove": "מהלך לא חוקי",
   "error.saveFailed": "לא ניתן לשמור את המשחק.",
   "error.loadFailed": "לא ניתן לטעון את המשחק השמור.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "זמן",
+  "scoreboard.heroSub": "{{moves}} מהלכים · {{foundations}} מתוך 4 הושלמו",
+  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
+  "scoreboard.bestTime": "הזמן הטוב ביותר",
+  "scoreboard.bestMoves": "הכי מעט מהלכים",
+  "scoreboard.gamesPlayed": "משחקים ששוחקו",
+  "scoreboard.gamesWon": "משחקים שנוצחו"
 }

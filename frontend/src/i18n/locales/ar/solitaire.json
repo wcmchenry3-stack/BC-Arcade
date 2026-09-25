@@ -31,11 +31,11 @@
   "a11y.invalidMove": "حركة غير صالحة",
   "error.saveFailed": "تعذر حفظ لعبتك.",
   "error.loadFailed": "تعذر استئناف اللعبة المحفوظة.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "الوقت",
+  "scoreboard.heroSub": "{{moves}} حركة · {{foundations}} من 4 مكتملة",
+  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
+  "scoreboard.bestTime": "أفضل وقت",
+  "scoreboard.bestMoves": "أقل حركات",
+  "scoreboard.gamesPlayed": "المباريات الملعوبة",
+  "scoreboard.gamesWon": "المباريات الفائزة"
 }
