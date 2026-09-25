@@ -222,6 +222,11 @@ Dev builds keep the phase-2 declarative path behind the dev-panel "Legacy render
 side-by-side comparison until phase 5 (#2567) deletes it; only that path still pushes the whole
 frame through React state. The web renderer (unmaintained) still derives the same rules itself.
 
+The dev panel's _Frame readout_ switch (#2567) shows frame-time average and p95 and the canvas's
+React commits per second over the game. See
+[`TESTING.md`](../TESTING.md#star-swarm-reading-the-frame-readout-2567) for how to read it and
+[`PERFORMANCE.md`](../PERFORMANCE.md#star-swarm-native-renderer-2567) for the measured numbers.
+
 ## Backend
 
 - No `module.py` — Starswarm has a router-only backend

@@ -564,3 +564,45 @@ python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
 
 - `*-baked/` (`fruits-baked/`, `cosmos-baked/`) — Skia pipeline textures
 - `source-icons/` — local pipeline inputs, not bundled
+
+---
+
+## Star Swarm native renderer (#2567)
+
+Epic #2562 moved Star Swarm's native canvas off per-frame React state (#2198). The scene is one
+Skia Picture recorded on the UI thread, and the HUD re-renders only when a value in it changes.
+This section records what that bought on real hardware.
+
+### How to measure
+
+1. Use a release build against the pre-launch API: a Play test build via Gradle on a budget
+   Android phone, and a TestFlight build via Xcode Cloud on an older iPhone. Dev builds run React
+   in development mode and are not representative.
+2. Open the Star Swarm dev panel (`DEV` button) and turn on _Frame readout_. How to read it is in
+   [`TESTING.md`](TESTING.md#star-swarm-reading-the-frame-readout-2567).
+3. For each renderer (_Legacy renderer_ off, then on), record the readout after about ten seconds
+   in each scenario. Close the panel before reading.
+   - **Wave 1 idle:** set wave 1, New Game, don't fire.
+   - **Wave 5 boss:** set wave 5, New Game, hold fire.
+   - **Wave 9 lightning:** set wave 9, New Game, trigger _lightning_, hold fire.
+   - **Paused:** any wave, press pause.
+4. Memory: with the Picture renderer, play for ten minutes and compare the app's memory at the
+   start and end (Xcode's memory gauge, or Android Studio's profiler on a profileable build). It
+   should stay flat. A steady climb means Pictures are not being released.
+
+### Results
+
+Numbers are `avg / p95 ms · commits/s`. Filled in from the owner's device runs.
+
+| Device               | Scenario         | Legacy renderer | Picture renderer |
+| -------------------- | ---------------- | --------------- | ---------------- |
+| Budget Android (TBD) | Wave 1 idle      | —               | —                |
+| Budget Android (TBD) | Wave 5 boss      | —               | —                |
+| Budget Android (TBD) | Wave 9 lightning | —               | —                |
+| Budget Android (TBD) | Paused           | —               | —                |
+| Older iPhone (TBD)   | Wave 1 idle      | —               | —                |
+| Older iPhone (TBD)   | Wave 5 boss      | —               | —                |
+| Older iPhone (TBD)   | Wave 9 lightning | —               | —                |
+| Older iPhone (TBD)   | Paused           | —               | —                |
+
+Memory over ten minutes with the Picture renderer: — (Android), — (iPhone).
