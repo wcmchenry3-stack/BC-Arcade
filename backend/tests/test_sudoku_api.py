@@ -171,7 +171,7 @@ class TestSetPlayerName:
         other_session = str(uuid.uuid4())
         await _grant(other_session, "sudoku")
         gid = _create_game(session_id=other_session)
-        _complete_game(gid, 200, session_id=other_session)
+        _complete_game(gid, 100, session_id=other_session)
         res = client.patch(
             f"/sudoku/score/{gid}",
             json={"player_name": "Thief"},
@@ -294,7 +294,7 @@ class TestVariantIsolation:
         limiter.reset()
         _submit("Classic1", 100, "easy", "classic")
         limiter.reset()
-        _submit("Mini1", 200, "easy", "mini")
+        _submit("Mini1", 90, "easy", "mini")
 
         classic_names = {
             s["player_name"]
@@ -329,7 +329,7 @@ class TestSubmitRank:
 
         for i in range(10):
             limiter.reset()
-            _submit(f"Top{i}", 1000, "medium")
+            _submit(f"Top{i}", 200, "medium")
         limiter.reset()
         assert _submit("Lowly", 1, "medium").json()["rank"] == 11
 

@@ -19,7 +19,7 @@ from db.base import get_session_factory
 from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
-from games.ranking import compute_rank, ensure_scored
+from games.ranking import compute_legacy_rank, ensure_scored
 from limiter import limiter, session_key
 from session import get_session_id
 from vocab import GameType as GameTypeEnum
@@ -104,7 +104,7 @@ async def set_player_name(
             logger.error("cascade score commit failed for game %s: %s", game_id, exc)
             raise HTTPException(status_code=500, detail="Failed to save player name.")
 
-        rank = await compute_rank(
+        rank = await compute_legacy_rank(
             db,
             game_type_id=gt_id,
             score_val=game.final_score or 0,
