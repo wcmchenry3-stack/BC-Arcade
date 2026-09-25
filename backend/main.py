@@ -41,7 +41,6 @@ from sort.router import router as sort_router
 from starswarm.router import router as starswarm_router
 from stats.router import router as stats_router
 from sudoku.router import router as sudoku_router
-from yacht.router import router as yacht_router
 
 # ---------------------------------------------------------------------------
 # Audit logger — emits JSON lines; Render's log aggregator handles timestamps
@@ -141,7 +140,6 @@ app.include_router(solitaire_router, prefix="/solitaire")
 app.include_router(sort_router, prefix="/sort")
 app.include_router(starswarm_router, prefix="/starswarm")
 app.include_router(sudoku_router, prefix="/sudoku")
-app.include_router(yacht_router, prefix="/yacht")
 app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
 app.include_router(me_router, prefix="/me")

@@ -323,9 +323,8 @@ def test_sudoku_variant_defaults_to_classic_like_the_legacy_route() -> None:
 def test_existing_request_bounds_match_max_value() -> None:
     """The per-game submit bounds that exist today agree with the boards.
 
-    Yacht is left out on purpose: the legacy ``POST /yacht/score`` bound of 400
-    limits the input to its ``400 - raw`` transform, not a game's real total,
-    which can reach 1575 with bonus Yachts (see the recompute test below).
+    Yacht has no submit route: its legacy ``POST /yacht/score`` was removed
+    (#2630), and its 1575 cap is recomputed from the engine below.
     """
     from sort.models import ScoreSubmitRequest as SortSubmit
 

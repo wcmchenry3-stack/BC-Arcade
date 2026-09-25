@@ -1,30 +1,20 @@
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 AiDifficulty = Literal["easy", "medium", "hard"]
+YachtMode = Literal["solo", "vs"]
 
 
 class YachtMetadata(BaseModel):
+    """``games.metadata`` for a Yacht session, validated on ``POST /games``.
+
+    Recorded, not partitioned: solo and vs-the-computer games share one board
+    (#2519 decision 2). ``difficulty`` is the computer's, so only a vs game
+    has one. Both fields are optional because installed builds that predate
+    #2630 send ``{}``.
+    """
+
     model_config = ConfigDict(extra="forbid")
+    mode: YachtMode | None = None
     difficulty: AiDifficulty = Field(default="easy")
-
-
-class YachtScoreSubmitRequest(BaseModel):
-    player_name: str = Field(..., min_length=1, max_length=32)
-    score: int = Field(..., ge=0, le=400)
-    difficulty: AiDifficulty
-
-
-class ScoreEntry(BaseModel):
-    player_name: str
-    raw_score: int
-    score: int
-    difficulty: AiDifficulty
-    timestamp: datetime
-    rank: int
-
-
-class LeaderboardResponse(BaseModel):
-    scores: list[ScoreEntry]

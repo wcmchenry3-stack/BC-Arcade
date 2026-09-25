@@ -1,257 +1,230 @@
-"""Tests for /yacht/score and /yacht/scores (#1597).
+"""Yacht reporting on the generic session board (#2630).
 
-Mirrors test_hearts_api.py. Score transform is max(0, 400 - raw_score)
-so higher transformed score = better performance.
+Yacht ranks on ``GET /games/leaderboard/yacht`` like every other game: each
+finished session row of a named player counts, one entry per player (their
+best), with solo and vs-the-computer games on the same board (#2519
+decision 2). The session metadata records ``mode`` and ``difficulty`` without
+partitioning by them.
+
+The legacy ``POST /yacht/score`` / ``GET /yacht/scores`` routes (which stored
+``400 - raw`` under ``yacht-anon`` and had no caller) are gone.
 """
 
+from __future__ import annotations
+
+import os
 import uuid
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-import yacht.router as yacht_router_module
-from db.base import get_session_factory
-from db.models import GameEntitlement
-from main import app
+from db.base import get_session_factory, is_configured
+from db.models import Game
 
-client = TestClient(app)
-
-_SID = str(uuid.uuid4())
-_HEADERS = {"X-Session-ID": _SID}
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"),
+    reason="DATABASE_URL not set — skipping live API tests",
+)
 
 
-async def _grant(session_id: str, game_slug: str) -> None:
-    factory = get_session_factory()
-    async with factory() as db:
-        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
-        await db.commit()
+@pytest.fixture()
+def client() -> Iterator[TestClient]:
+    assert is_configured()
+    from main import app
+
+    with TestClient(app) as c:
+        yield c
 
 
-@pytest.fixture(autouse=True)
-async def _yacht_entitlement():
-    await _grant(_SID, "yacht")
+def _sid() -> str:
+    return str(uuid.uuid4())
 
 
-@pytest.fixture(autouse=True)
-def reset_leaderboard():
-    yacht_router_module.reset_leaderboard()
-    yield
-    yacht_router_module.reset_leaderboard()
+def _headers(sid: str) -> dict[str, str]:
+    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
-def _submit(player_name: str, score: int, difficulty: str = "easy"):
+def _name(client: TestClient, sid: str, name: str) -> None:
+    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    assert r.status_code == 200, r.text
+
+
+def _create(client: TestClient, sid: str, metadata: dict[str, Any]):
     return client.post(
-        "/yacht/score",
-        json={"player_name": player_name, "score": score, "difficulty": difficulty},
-        headers=_HEADERS,
+        "/games", headers=_headers(sid), json={"game_type": "yacht", "metadata": metadata}
     )
 
 
-# ---------------------------------------------------------------------------
-# POST /yacht/score
-# ---------------------------------------------------------------------------
+def _play(
+    client: TestClient,
+    sid: str,
+    score: int,
+    *,
+    metadata: dict[str, Any],
+    outcome: str = "completed",
+    duration_ms: int | None = 90_000,
+) -> str:
+    """Create and complete one Yacht game through the real session pipeline."""
+    r = _create(client, sid, metadata)
+    assert r.status_code == 200, r.text
+    game_id = r.json()["id"]
+    body: dict[str, Any] = {
+        "final_score": score,
+        "outcome": outcome,
+        "duration_ms": duration_ms,
+        "result": {"final_score": score, "upper_bonus": 0, "yacht_bonus_total": 0},
+    }
+    r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    return game_id
 
 
-class TestSubmitScore:
-    def test_valid_submission_returns_201(self):
-        res = _submit("Alice", 200)
-        assert res.status_code == 201
-        body = res.json()
-        assert body["player_name"] == "Alice"
-        assert body["rank"] == 1
-        assert "timestamp" in body
+def _board(client: TestClient, sid: str) -> list[tuple[str, int]]:
+    r = client.get("/games/leaderboard/yacht", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["partition"] == {}
+    assert body["label_key"] == "score"
+    return [(e["player_name"], e["value"]) for e in body["entries"]]
 
-    def test_zero_score_accepted(self):
-        res = _submit("Alice", 0)
-        assert res.status_code == 201
 
-    def test_missing_player_name_returns_422(self):
-        res = client.post(
-            "/yacht/score", json={"score": 200, "difficulty": "easy"}, headers=_HEADERS
-        )
-        assert res.status_code == 422
+async def _row(game_id: str) -> Game:
+    factory = get_session_factory()
+    async with factory() as db:
+        game = await db.get(Game, uuid.UUID(game_id))
+        assert game is not None
+        return game
 
-    def test_missing_score_returns_422(self):
-        res = client.post(
-            "/yacht/score", json={"player_name": "Bob", "difficulty": "easy"}, headers=_HEADERS
-        )
-        assert res.status_code == 422
 
-    def test_empty_player_name_returns_422(self):
-        res = _submit("", 200)
-        assert res.status_code == 422
+SOLO = {"mode": "solo"}
 
-    def test_name_too_long_returns_422(self):
-        res = _submit("x" * 33, 200)
-        assert res.status_code == 422
 
-    def test_negative_score_returns_422(self):
-        res = _submit("Alice", -1)
-        assert res.status_code == 422
-
-    def test_invalid_difficulty_returns_422(self):
-        res = client.post(
-            "/yacht/score",
-            json={"player_name": "Alice", "score": 200, "difficulty": "legendary"},
-            headers=_HEADERS,
-        )
-        assert res.status_code == 422
-
-    def test_missing_difficulty_returns_422(self):
-        res = client.post(
-            "/yacht/score",
-            json={"player_name": "Alice", "score": 200},
-            headers=_HEADERS,
-        )
-        assert res.status_code == 422
-
-    def test_score_over_400_returns_422(self):
-        res = _submit("Alice", 401)
-        assert res.status_code == 422
-
-    def test_difficulty_stored_and_returned(self):
-        res = _submit("Alice", 200, difficulty="hard")
-        assert res.status_code == 201
-        assert res.json()["difficulty"] == "hard"
+def _vs(difficulty: str) -> dict[str, str]:
+    return {"mode": "vs", "difficulty": difficulty}
 
 
 # ---------------------------------------------------------------------------
-# Score transform
+# Legacy routes removed
 # ---------------------------------------------------------------------------
 
 
-class TestScoreTransform:
-    def test_raw_300_transforms_to_100(self):
-        res = _submit("Alice", 300)
-        assert res.status_code == 201
-        body = res.json()
-        assert body["raw_score"] == 300
-        assert body["score"] == 100
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("post", "/yacht/score"), ("get", "/yacht/scores")],
+)
+def test_legacy_score_routes_are_gone(client: TestClient, method: str, path: str) -> None:
+    body = {"player_name": "Alice", "score": 200, "difficulty": "easy"}
+    kwargs: dict[str, Any] = {"json": body} if method == "post" else {}
+    r = getattr(client, method)(path, headers=_headers(_sid()), **kwargs)
+    assert r.status_code == 404, r.text
 
-    def test_raw_0_transforms_to_400(self):
-        res = _submit("Alice", 0)
-        assert res.status_code == 201
-        body = res.json()
-        assert body["raw_score"] == 0
-        assert body["score"] == 400
 
-    def test_transform_capped_at_400(self):
-        # Any raw_score >= 400 transforms to 0 (not negative)
-        res = _submit("Alice", 400)
-        assert res.status_code == 201
-        assert res.json()["score"] == 0
+def test_legacy_models_are_gone() -> None:
+    from yacht import models
 
-    def test_transform_appears_in_leaderboard(self):
-        _submit("Alice", 300)
-        scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
-        assert scores[0]["raw_score"] == 300
-        assert scores[0]["score"] == 100
+    for name in ("ScoreEntry", "LeaderboardResponse", "YachtScoreSubmitRequest"):
+        assert not hasattr(models, name), name
 
 
 # ---------------------------------------------------------------------------
-# GET /yacht/scores
+# Session metadata: mode and difficulty
 # ---------------------------------------------------------------------------
 
 
-class TestGetScores:
-    def test_empty_initially(self):
-        res = client.get("/yacht/scores", headers=_HEADERS)
-        assert res.status_code == 200
-        assert res.json()["scores"] == []
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        SOLO,
+        _vs("easy"),
+        _vs("medium"),
+        _vs("hard"),
+        {},  # installed builds that predate #2630
+    ],
+)
+async def test_metadata_accepted_and_stored(client: TestClient, metadata: dict) -> None:
+    sid = _sid()
+    game_id = _play(client, sid, 180, metadata=metadata)
+    row = await _row(game_id)
+    for key, value in metadata.items():
+        assert row.game_metadata[key] == value
 
-    def test_returns_submitted_entries(self):
-        _submit("Alice", 200)
-        _submit("Bob", 250)
-        scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
-        assert len(scores) == 2
 
-    def test_ordered_by_transformed_score_descending(self):
-        # Lower raw score = higher transformed score = ranked first
-        from limiter import limiter
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"mode": "duo"},
+        {"mode": "vs", "difficulty": "legendary"},
+        {"mode": "solo", "player_name": "Alice"},
+    ],
+)
+def test_invalid_metadata_is_422(client: TestClient, metadata: dict) -> None:
+    r = _create(client, _sid(), metadata)
+    assert r.status_code == 422, r.text
 
-        limiter.reset()
-        _submit("Carol", 300)  # transformed 100
-        limiter.reset()
-        _submit("Alice", 100)  # transformed 300
-        limiter.reset()
-        _submit("Bob", 200)  # transformed 200
-        scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
-        assert [s["score"] for s in scores] == [300, 200, 100]
 
-    def test_capped_at_ten_entries(self):
-        from limiter import limiter
-
-        for i in range(11):
-            limiter.reset()
-            _submit(f"Player{i}", i * 10)
-        scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
-        assert len(scores) == 10
-        # Top entry: raw=0 → transformed=400
-        assert scores[0]["score"] == 400
-        # Lowest included: raw=90 → transformed=310; raw=100 → 300 excluded
-        assert scores[-1]["score"] == 310
-        assert all(s["score"] != 300 for s in scores)
+async def test_duration_is_recorded(client: TestClient) -> None:
+    game_id = _play(client, _sid(), 150, metadata=SOLO, duration_ms=123_456)
+    assert (await _row(game_id)).duration_ms == 123_456
 
 
 # ---------------------------------------------------------------------------
-# Rank in submission response
+# One board: solo and vs mixed, one entry per player
 # ---------------------------------------------------------------------------
 
 
-class TestSubmitRank:
-    def test_first_submission_rank_1(self):
-        assert _submit("Alice", 100).json()["rank"] == 1
+async def test_solo_and_vs_games_share_one_board(client: TestClient) -> None:
+    solo, vs_win, vs_push = _sid(), _sid(), _sid()
+    _name(client, solo, "Solo")
+    _name(client, vs_win, "VsWin")
+    _name(client, vs_push, "VsPush")
+    _play(client, solo, 180, metadata=SOLO)
+    _play(client, vs_win, 250, metadata=_vs("hard"), outcome="win")
+    _play(client, vs_push, 120, metadata=_vs("easy"), outcome="push")
 
-    def test_lower_raw_score_ranked_higher(self):
-        from limiter import limiter
-
-        limiter.reset()
-        _submit("Alice", 100)  # transformed 300
-        limiter.reset()
-        body = _submit("Bob", 200).json()  # transformed 200 → rank 2
-        assert body["rank"] == 2
-
-    def test_off_leaderboard_returns_rank_11(self):
-        from limiter import limiter
-
-        for i in range(10):
-            limiter.reset()
-            _submit(f"Top{i}", 0)  # all transformed to 400
-        limiter.reset()
-        body = _submit("Lowly", 399).json()  # transformed 1 → off board
-        assert body["rank"] == 11
+    assert _board(client, solo) == [("VsWin", 250), ("Solo", 180), ("VsPush", 120)]
 
 
-# ---------------------------------------------------------------------------
-# Rate limiter
-# ---------------------------------------------------------------------------
+async def test_a_game_lost_to_the_computer_still_ranks(client: TestClient) -> None:
+    sid = _sid()
+    _name(client, sid, "Loser")
+    _play(client, sid, 210, metadata=_vs("medium"), outcome="loss")
+    assert _board(client, sid) == [("Loser", 210)]
 
 
-class TestRateLimit:
-    def test_sixth_submission_returns_429(self):
-        from limiter import limiter
+async def test_one_entry_per_player_their_best_game(client: TestClient) -> None:
+    other = _sid()
+    _name(client, other, "Other")
+    _play(client, other, 200, metadata=SOLO)
 
-        for i in range(5):
-            assert _submit(f"Player{i}", i * 10).status_code == 201
+    sid = _sid()
+    _name(client, sid, "Me")
+    ids = [
+        _play(client, sid, 150, metadata=SOLO),
+        _play(client, sid, 240, metadata=_vs("hard"), outcome="loss"),
+        _play(client, sid, 90, metadata=SOLO),
+    ]
 
-        assert _submit("Excess", 99).status_code == 429
-        limiter.reset()
+    assert _board(client, sid) == [("Me", 240), ("Other", 200)]
+
+    ranks = [client.get(f"/games/{g}/rank", headers=_headers(sid)).json() for g in ids]
+    assert [r["rank"] for r in ranks] == [1, 1, 1]
+    assert [r["is_best"] for r in ranks] == [False, True, False]
 
 
-# ---------------------------------------------------------------------------
-# Tie-break ordering — older entry wins
-# ---------------------------------------------------------------------------
+async def test_unnamed_player_does_not_rank(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _play(client, sid, 300, metadata=SOLO)
+    assert _board(client, sid) == []
+    r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ranked": False, "rank": None, "is_best": None, "reason": "no_name"}
 
 
-class TestTieBreak:
-    def test_older_score_ranks_higher_on_tie(self):
-        from limiter import limiter
-
-        limiter.reset()
-        _submit("Alice", 200)  # transformed 200, submitted first
-        limiter.reset()
-        _submit("Bob", 200)  # transformed 200, submitted second
-
-        scores = client.get("/yacht/scores", headers=_HEADERS).json()["scores"]
-        assert scores[0]["player_name"] == "Alice"
-        assert scores[1]["player_name"] == "Bob"
+async def test_abandoned_game_does_not_rank(client: TestClient) -> None:
+    sid = _sid()
+    _name(client, sid, "Quitter")
+    _play(client, sid, 300, metadata=SOLO, outcome="abandoned")
+    _play(client, sid, 100, metadata=SOLO)
+    assert _board(client, sid) == [("Quitter", 100)]

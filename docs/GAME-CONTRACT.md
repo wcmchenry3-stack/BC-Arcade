@@ -147,12 +147,12 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 
 "any" means every non-abandoned row. Notes on the declarations:
 
-- **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. The legacy `POST /yacht/score` bound of 400 applies to its `400 - raw` transform, not to a real game's total.
+- **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. Solo and vs-the-computer games share the board; the session metadata records `mode` (`solo` | `vs`) and, for a vs game, `difficulty` (#2630). The legacy `POST /yacht/score` and `GET /yacht/scores` were removed in #2630.
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
 - **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG`, the legacy `POST /starswarm/score` default.
-- **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
+- **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht's removed `POST /yacht/score` stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
 - **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet, and Sort sends `level`/`moves` rather than `level_reached`/`total_moves`. Their Phase 2 stories (#2632, #2625) make the clients send the declared keys; the declarations stay as they are.
 
 Every `GameType` has a module since #2623, so no game exports `null`.
