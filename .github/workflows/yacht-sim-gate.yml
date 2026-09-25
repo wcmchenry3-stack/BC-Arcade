@@ -47,7 +47,7 @@ jobs:
       matrix:
         # Keep in sync with GATE_GROUPS in frontend/src/game/yacht/sim/gate.ts
         # (gate.test.ts fails if a group listed there is missing here).
-        group: [hard-vs-easy, hard-vs-medium, self-play]
+        group: [hard-vs-easy, hard-vs-medium, medium-vs-easy, self-play]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
