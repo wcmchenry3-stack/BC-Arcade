@@ -33,15 +33,7 @@ export type HomeStackParamList = {
   Sort: undefined;
   DailyWord: undefined;
   Scoreboard: {
-    gameKey:
-      | "hearts"
-      | "yacht"
-      | "blackjack"
-      | "twenty48"
-      | "solitaire"
-      | "sudoku"
-      | "cascade"
-      | "mahjong";
+    gameKey: "hearts" | "yacht" | "blackjack" | "twenty48" | "solitaire" | "sudoku" | "cascade";
   };
 };
 

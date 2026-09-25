@@ -2,7 +2,7 @@
   "game.title": "Yacht",
   "game.description": "ارمِ النرد، سجل النقاط، وتفوق على نفسك!",
   "game.playLabel": "العب Yacht",
-  "round.header": "الجولة {{round}} / 13",
+  "round.header": "الجولة {{round}}/13",
   "section.upper": "القسم العلوي",
   "section.lower": "القسم السفلي",
   "section.total": "المجموع",

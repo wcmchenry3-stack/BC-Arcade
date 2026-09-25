@@ -102,6 +102,49 @@ class TestSubmitScore:
 
 
 # ---------------------------------------------------------------------------
+# GET /starswarm/leaderboard — session rows (#2626)
+# ---------------------------------------------------------------------------
+
+
+async def _session_run(session_id: str, score: int, name: str | None) -> None:
+    """A run as the app records it since #2626: a scored session row, no name in it."""
+    from tests.test_generic_leaderboard import _seed
+
+    await _seed(
+        "starswarm",
+        session_id,
+        score=score,
+        name=name,
+        meta={"difficulty_tier": "Commander", "wave_reached": 7},
+    )
+
+
+async def test_session_run_shows_under_the_players_display_name():
+    sid = str(uuid.uuid4())
+    await _session_run(sid, 4200, name="Riley")
+    scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
+    assert [
+        (e["player_id"], e["score"], e["wave_reached"], e["difficulty_tier"]) for e in scores
+    ] == [("Riley", 4200, 7, "Commander")]
+
+
+async def test_session_run_of_an_unnamed_player_stays_anon():
+    await _session_run(str(uuid.uuid4()), 4200, name=None)
+    scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
+    assert [e["player_id"] for e in scores] == ["anon"]
+
+
+async def test_legacy_row_keeps_the_name_it_was_posted_under():
+    """A legacy row's own name wins over the poster's current display name."""
+    from tests.test_generic_leaderboard import _set_name
+
+    assert _submit("OldName", 500).status_code == 200
+    await _set_name(_SID, "NewName")
+    scores = client.get("/starswarm/leaderboard", headers=_HEADERS).json()["scores"]
+    assert [e["player_id"] for e in scores] == ["OldName"]
+
+
+# ---------------------------------------------------------------------------
 # GET /starswarm/leaderboard
 # ---------------------------------------------------------------------------
 
@@ -250,10 +293,8 @@ class TestInternalHelpers:
         mock_game.game_metadata = {"player_name": "tester", "wave_reached": 5}
         mock_game.completed_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [mock_game]
         mock_execute_result = MagicMock()
-        mock_execute_result.scalars.return_value = mock_scalars
+        mock_execute_result.all.return_value = [(mock_game, None)]
 
         mock_session = AsyncMock()
         mock_session.execute.return_value = mock_execute_result
@@ -277,10 +318,8 @@ class TestInternalHelpers:
         mock_game.game_metadata = {}
         mock_game.completed_at = datetime(2024, 6, 1, tzinfo=timezone.utc)
 
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [mock_game]
         mock_execute_result = MagicMock()
-        mock_execute_result.scalars.return_value = mock_scalars
+        mock_execute_result.all.return_value = [(mock_game, None)]
 
         mock_session = AsyncMock()
         mock_session.execute.return_value = mock_execute_result
@@ -295,10 +334,8 @@ class TestInternalHelpers:
 
     async def test_top10_empty_when_no_rows(self):
         """Lines 74-86: _top10 returns [] when DB has no scores."""
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = []
         mock_execute_result = MagicMock()
-        mock_execute_result.scalars.return_value = mock_scalars
+        mock_execute_result.all.return_value = []
 
         mock_session = AsyncMock()
         mock_session.execute.return_value = mock_execute_result

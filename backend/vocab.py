@@ -63,15 +63,17 @@ class GameOutcome(str, Enum):
     * Hearts — ``win`` / ``loss`` / ``push`` when the match ends.
     * Daily Word — ``win`` when the word is solved, ``loss`` when the guesses
       run out.
-    * Mahjong — ``loss`` when the player leaves a deadlocked board. A cleared
-      board still records ``completed`` until #2627 makes it ``win``, so
-      Mahjong's ``has_winner`` stays false until then.
+    * Mahjong — ``win`` when the board is cleared (#2627), ``loss`` when the
+      player leaves a deadlocked board (#2592). Builds before #2627 recorded
+      a cleared board as ``completed``.
     * Blackjack — per run (#2628): ``win`` when the run reached its goal, at
       any point (Keep Playing and a later bust-out is still a win); ``loss``
       when the chips ran out before the goal; ``abandoned`` when the player
       left before the goal. Builds before #2628 recorded ``completed``.
-    * Twenty48 — records ``completed`` / ``kept_playing`` until #2631:
-      reaching 2048 becomes ``win``.
+    * Twenty48 — ``win`` when the 2048 tile appears (the row keeps the score
+      at that moment; Keep Playing after it is untracked), ``loss`` on a game
+      over without it (#2631). Older builds' ``completed`` / ``kept_playing``
+      rows stay valid.
 
     The client maps its result card to these values in one function,
     ``frontend/src/game/_shared/recordedOutcome.ts`` (win→win, loss→loss,
@@ -82,9 +84,10 @@ class GameOutcome(str, Enum):
     * ``completed`` — a finished game with no win concept (score-only games:
       Solitaire, FreeCell, Sudoku, Cascade, Sort, Star Swarm, solo Yacht).
       Win rate for these games is "—", never 0 %.
-    * ``kept_playing`` — also a finished game with no win concept: Twenty48's
-      "keep going" past 2048 closes the session and the board plays on in a
-      new one.
+    * ``kept_playing`` — legacy: Twenty48 builds before #2631 closed the
+      session this way when the player kept going past 2048. New builds record
+      ``win`` instead; older rows and builds that still send it stay valid,
+      and it counts as a finish with no winner.
     * ``abandoned`` — the player quit. Excluded from leaderboards, stats and
       XP by ``games.filters.not_abandoned()``.
 

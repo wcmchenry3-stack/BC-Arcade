@@ -31,7 +31,7 @@
     "description": "Displays the player's current chip count.",
     "tone": "neutral",
     "characterLimit": 20,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -40,7 +40,7 @@
     "description": "Screen reader label for chip count.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["chips"],
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -76,7 +76,7 @@
     "description": "Screen reader label for the current bet stepper value.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -94,7 +94,7 @@
     "description": "Accessibility label for the Deal button.",
     "tone": "functional",
     "characterLimit": 50,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -161,6 +161,33 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "actions.split": {
+    "component": "ActionButtons",
+    "description": "Button label to split a pair into two hands (enabled state).",
+    "tone": "action",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.splitLabel": {
+    "component": "ActionButtons",
+    "description": "Accessibility label for the Split button when splitting is available.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.splitDisabledLabel": {
+    "component": "ActionButtons",
+    "description": "Accessibility label for the Split button when splitting is not available.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "actions.nextHand": {
     "component": "BlackjackScreen",
     "description": "Button label to start the next hand after result.",
@@ -215,12 +242,30 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "hand.playerHand": {
+    "component": "BlackjackTable",
+    "description": "Label above each player hand when the hand has been split into multiple hands.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{number}}"],
+    "doNotTranslate": [],
+    "notes": "The limit counts the raw {{number}} placeholder."
+  },
+  "hand.activeIndicator": {
+    "component": "BlackjackTable",
+    "description": "Indicator shown under the hand currently being played when a split is active.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep the ● bullet or replace it with the locale's usual 'in progress' marker."
+  },
   "hand.value": {
     "component": "HandDisplay",
     "description": "Displays the numeric value of a hard hand.",
     "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": ["value"],
+    "characterLimit": 16,
+    "placeholders": ["{{value}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -228,10 +273,10 @@
     "component": "HandDisplay",
     "description": "Displays the numeric value of a soft hand (at least one Ace counted as 11).",
     "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": ["value"],
+    "characterLimit": 16,
+    "placeholders": ["{{value}}"],
     "doNotTranslate": [],
-    "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6."
+    "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6. Renders as e.g. 'Souple 17'; the limit counts the raw {{value}}."
   },
   "hand.valueHidden": {
     "component": "HandDisplay",
@@ -247,7 +292,7 @@
     "description": "Screen reader label for a visible playing card.",
     "tone": "functional",
     "characterLimit": 30,
-    "placeholders": ["rank", "suit"],
+    "placeholders": ["{{rank}}", "{{suit}}"],
     "doNotTranslate": [],
     "notes": "rank and suit are interpolated; suit uses card.suit.* keys."
   },
@@ -337,7 +382,7 @@
     "description": "Payout display when player wins chips (positive).",
     "tone": "celebratory",
     "characterLimit": 20,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": "Leading + sign should be preserved if possible."
   },
@@ -346,7 +391,7 @@
     "description": "Payout display when player loses chips (negative). amount is already negative.",
     "tone": "sympathetic",
     "characterLimit": 20,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -364,7 +409,7 @@
     "description": "Screen reader label for the payout value.",
     "tone": "functional",
     "characterLimit": 40,
-    "placeholders": ["amount"],
+    "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -401,6 +446,906 @@
     "tone": "sympathetic",
     "characterLimit": 16,
     "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "header.brandName": {
+    "component": "HudSidebar",
+    "description": "Brand wordmark intended for a Blackjack table header showing the app name.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade"],
+    "notes": "Currently unused in the app; reserved for a future table header. Do not translate the app name."
+  },
+  "header.bankrollLabel": {
+    "component": "HudSidebar",
+    "description": "Label for the player's chip bankroll, intended for a Blackjack table header.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Currently unused in the app; reserved for a future table header."
+  },
+  "header.bankrollAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the bankroll display, intended for a future Blackjack table header.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": "Currently unused in the app; the limit counts the raw {{chips}} placeholder."
+  },
+  "betting.clearBet": {
+    "component": "BettingPanel",
+    "description": "Button label to clear the current bet back to zero.",
+    "tone": "action",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "betting.clearBetLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the Clear bet button.",
+    "tone": "functional",
+    "characterLimit": 55,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "betting.tableLimits": {
+    "component": "BettingPanel",
+    "description": "Heading above the table's minimum and maximum bet range.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "betting.tableLimitsRange": {
+    "component": "BettingPanel",
+    "description": "Displays the table's minimum and maximum bet in chips.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{min}}", "{{max}}"],
+    "doNotTranslate": [],
+    "notes": "The limit counts the raw {{min}}/{{max}} placeholders."
+  },
+  "betting.tapToAdd": {
+    "component": "BettingCircle",
+    "description": "Instructional hint shown in the empty bet circle before any chips are added.",
+    "tone": "instructional",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "chip.addLabel": {
+    "component": "ChipButton",
+    "description": "Accessibility label for a chip button when it can be added to the bet.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "chip.disabledLabel": {
+    "component": "ChipButton",
+    "description": "Accessibility label for a chip button when it cannot be added (exceeds table max or bankroll).",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "chip.vipCredits": {
+    "component": "ChipButton",
+    "description": "Short badge marking a chip denomination as VIP-tier credits.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Currently unused in the app; reserved for a future VIP chip badge. 'VIP' is commonly kept untranslated as a borrowed term, but translate it if the locale uses a native equivalent."
+  },
+  "rules.title": {
+    "component": "BettingPanel",
+    "description": "Heading for the collapsible table rules panel.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.toggleLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the button that expands or collapses the table rules panel.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.dealerSoft17": {
+    "component": "BettingPanel",
+    "description": "Row label for the dealer's soft-17 rule setting.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.s17": {
+    "component": "BettingPanel",
+    "description": "Abbreviation for \"dealer stands on soft 17\", shown on a segmented control.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Standard blackjack rule abbreviation; keep it short and recognizable."
+  },
+  "rules.h17": {
+    "component": "BettingPanel",
+    "description": "Abbreviation for \"dealer hits on soft 17\", shown on a segmented control.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Standard blackjack rule abbreviation; keep it short and recognizable."
+  },
+  "rules.s17Label": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the S17 (dealer stands on soft 17) rule option.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.h17Label": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the H17 (dealer hits on soft 17) rule option.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.deckCount": {
+    "component": "BettingPanel",
+    "description": "Row label for the number of decks shuffled into the shoe.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.decreaseDeckLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the button that decreases the deck count.",
+    "tone": "functional",
+    "characterLimit": 38,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.increaseDeckLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the button that increases the deck count.",
+    "tone": "functional",
+    "characterLimit": 38,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.penetration": {
+    "component": "BettingPanel",
+    "description": "Row label for the shoe penetration percentage setting.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.decreasePenetrationLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the button that decreases shoe penetration.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.increasePenetrationLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the button that increases shoe penetration.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.soft17TooltipLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the info button that opens the dealer soft-17 rule tooltip.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.decksTooltipLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the info button that opens the deck-count tooltip.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.penetrationTooltipLabel": {
+    "component": "BettingPanel",
+    "description": "Accessibility label for the info button that opens the penetration tooltip.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.soft17Tooltip": {
+    "component": "BettingPanel",
+    "description": "Explanatory tooltip text describing the S17/H17 dealer rule and its effect on the odds.",
+    "tone": "instructional",
+    "characterLimit": 170,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.decksTooltip": {
+    "component": "BettingPanel",
+    "description": "Explanatory tooltip text describing how deck count affects the house edge and card counting.",
+    "tone": "instructional",
+    "characterLimit": 160,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.penetrationTooltip": {
+    "component": "BettingPanel",
+    "description": "Explanatory tooltip text describing shoe penetration and its effect on variance.",
+    "tone": "instructional",
+    "characterLimit": 190,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.heroLabel": {
+    "component": "BlackjackScoreboard",
+    "description": "Hero label above the primary scoreboard stat (net chip profit/loss for the session).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.plLine": {
+    "component": "BlackjackScoreboard",
+    "description": "Displays the session's net profit/loss in chips as the scoreboard hero value.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.subLine": {
+    "component": "BlackjackScoreboard",
+    "description": "Subtitle under the scoreboard hero showing hands played and win rate.",
+    "tone": "neutral",
+    "characterLimit": 65,
+    "placeholders": ["{{handsPlayed}}", "{{winRate}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.subLineEmpty": {
+    "component": "BlackjackScoreboard",
+    "description": "Subtitle shown when no hands have been played yet this session.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.chipBalance": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the player's current chip balance.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.biggestWin": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the biggest single-hand win this session.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.handsWon": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the number of hands won this session.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.handsLost": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the number of hands lost this session.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.blackjacks": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the number of natural blackjacks dealt this session.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack"],
+    "notes": null
+  },
+  "score.busts": {
+    "component": "BlackjackScoreboard",
+    "description": "Stat tile label for the number of hands that busted this session.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.goalProgressAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the run's goal progress bar.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{chips}}", "{{goal}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.criticalWarning": {
+    "component": "HudSidebar",
+    "description": "Warning shown in the HUD when the player's bankroll is critically low.",
+    "tone": "urgent",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep the ⚠ symbol or replace with the locale's usual warning symbol."
+  },
+  "hud.winStreakBadge": {
+    "component": "HudSidebar",
+    "description": "Badge shown in the HUD highlighting the player's current win streak.",
+    "tone": "celebratory",
+    "characterLimit": 45,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "Keep the 🔥 emoji; the limit counts the raw {{count}} placeholder."
+  },
+  "table.beginner": {
+    "component": "TableSelectPanel",
+    "description": "Name of the Beginner difficulty table on the table-select screen.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "table.beginner.subtitle": {
+    "component": "TableSelectPanel",
+    "description": "Short tagline under the Beginner table name.",
+    "tone": "casual",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "table.intermediate": {
+    "component": "TableSelectPanel",
+    "description": "Name of the Intermediate difficulty table on the table-select screen.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "table.intermediate.subtitle": {
+    "component": "TableSelectPanel",
+    "description": "Short tagline under the Intermediate table name.",
+    "tone": "casual",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "table.highRoller": {
+    "component": "TableSelectPanel",
+    "description": "Name of the High Roller difficulty table on the table-select screen.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "table.highRoller.subtitle": {
+    "component": "TableSelectPanel",
+    "description": "Short tagline under the High Roller table name.",
+    "tone": "casual",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.kicker": {
+    "component": "TableSelectPanel",
+    "description": "Small uppercase kicker above the table-select headline.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.tagline": {
+    "component": "TableSelectPanel",
+    "description": "Headline on the table-select screen.",
+    "tone": "casual, punchy",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.taglineSub": {
+    "component": "TableSelectPanel",
+    "description": "Explanatory subtitle under the table-select headline.",
+    "tone": "casual",
+    "characterLimit": 140,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.startChips": {
+    "component": "TableSelectPanel",
+    "description": "Stat label for a table's starting chip count.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.goal": {
+    "component": "TableSelectPanel",
+    "description": "Stat label for a table's chip goal.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.betRange": {
+    "component": "TableSelectPanel",
+    "description": "Stat label for a table's min–max bet range.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.locked": {
+    "component": "TableSelectPanel",
+    "description": "Hint on a locked table card naming the table that must be completed first.",
+    "tone": "neutral",
+    "characterLimit": 36,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.selectLabel": {
+    "component": "TableSelectPanel",
+    "description": "Accessibility label for an unlocked, selectable table card.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.lockedLabel": {
+    "component": "TableSelectPanel",
+    "description": "Accessibility label for a locked table card.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tableSelect.viewHistory": {
+    "component": "TableSelectPanel",
+    "description": "Link label that opens the run history/stats screen from table select.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "phase.victory": {
+    "component": "BlackjackScreen",
+    "description": "Phase indicator shown when the player reaches their run's chip goal.",
+    "tone": "celebratory",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.subtitle": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Subtitle on the victory screen naming the table just completed.",
+    "tone": "celebratory",
+    "characterLimit": 48,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.goalLine": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Displays the chip goal that was reached, on the victory screen.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["{{goal}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.keepPlaying": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Button label to keep playing the same table without a goal.",
+    "tone": "action",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.keepPlayingLabel": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Accessibility label for the Keep Playing button.",
+    "tone": "functional",
+    "characterLimit": 55,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.nextTable": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Button label to move up and play the next unlocked table.",
+    "tone": "action",
+    "characterLimit": 32,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.nextTableLabel": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Accessibility label for the button that moves up to the next table.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{table}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "victory.unlocked": {
+    "component": "BlackjackVictoryScreen",
+    "description": "Announces a card deck or reward unlocked by completing the run.",
+    "tone": "celebratory",
+    "characterLimit": 34,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "milestone.toast": {
+    "component": "BlackjackTableScreen",
+    "description": "Toast announcing a chip milestone reached during a run.",
+    "tone": "celebratory",
+    "characterLimit": 50,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.winStreakAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the win streak badge.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "comeback.banner": {
+    "component": "BlackjackTableScreen",
+    "description": "Banner celebrating a comeback after being critically low on chips.",
+    "tone": "celebratory",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "comeback.bannerAccessibilityLabel": {
+    "component": "BlackjackTableScreen",
+    "description": "Accessibility label for the comeback banner.",
+    "tone": "functional",
+    "characterLimit": 38,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "allIn.badge": {
+    "component": "BlackjackTableScreen",
+    "description": "Badge shown when the player bets their entire bankroll.",
+    "tone": "celebratory",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "allIn.badgeAccessibilityLabel": {
+    "component": "BlackjackTableScreen",
+    "description": "Accessibility label for the All In badge.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.title": {
+    "component": "BlackjackStatsScreen",
+    "description": "Title of the run statistics screen.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.currentRun": {
+    "component": "BlackjackStatsScreen",
+    "description": "Section heading for the in-progress run's stats.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.currentRunEmpty": {
+    "component": "BlackjackStatsScreen",
+    "description": "Empty-state text shown when there is no current run.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.chipsLabel": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the current chip count.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.handsLabel": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the hands-played and win-rate summary.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.chips": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays a chip count value.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.hands": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays a number of hands played.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{hands}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.winRate": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays a win-rate percentage.",
+    "tone": "neutral",
+    "characterLimit": 34,
+    "placeholders": ["{{winRate}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.biggestWin": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the biggest single-hand win in the current run.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.biggestWinAmount": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays the biggest win amount with a leading plus sign.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": "Leading + sign should be preserved if possible."
+  },
+  "stats.netPL": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the run's net profit/loss.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "P/L is a common finance abbreviation for profit/loss; adapt to the locale's usual short form."
+  },
+  "stats.netPLPositive": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays a positive net profit/loss amount.",
+    "tone": "celebratory",
+    "characterLimit": 28,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": "Leading + sign should be preserved if possible."
+  },
+  "stats.netPLNegative": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays a negative net profit/loss amount (amount is already negative).",
+    "tone": "sympathetic",
+    "characterLimit": 28,
+    "placeholders": ["{{amount}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.allTimeBest": {
+    "component": "BlackjackStatsScreen",
+    "description": "Section heading for all-time best stats across runs.",
+    "tone": "neutral",
+    "characterLimit": 36,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.allTimeBestRun": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the best completed run's final chip count.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.allTimeMostHands": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the run with the most hands played.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.allTimeBiggestComeback": {
+    "component": "BlackjackStatsScreen",
+    "description": "Stat label for the largest bankroll comeback across all runs.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.comebackLow": {
+    "component": "BlackjackStatsScreen",
+    "description": "Displays how low the bankroll got before the biggest comeback.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runHistory": {
+    "component": "BlackjackStatsScreen",
+    "description": "Section heading for the list of past runs.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.noRuns": {
+    "component": "BlackjackStatsScreen",
+    "description": "Empty-state text shown when there is no run history yet.",
+    "tone": "neutral",
+    "characterLimit": 65,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runOutcome.completed": {
+    "component": "BlackjackStatsScreen",
+    "description": "Outcome tag on a run-history row for a run that reached its goal.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runOutcome.busted": {
+    "component": "BlackjackStatsScreen",
+    "description": "Outcome tag on a run-history row for a run that ended in a bust.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runOutcome.comeback": {
+    "component": "BlackjackStatsScreen",
+    "description": "Outcome tag on a run-history row for a run that recovered from a critical low.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runOutcome.abandoned": {
+    "component": "BlackjackStatsScreen",
+    "description": "Outcome tag on a run-history row for a run the player left before reaching the goal or running out of chips.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.viewStats": {
+    "component": "BlackjackBettingScreen",
+    "description": "Link label that opens the run statistics screen.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.viewStatsLabel": {
+    "component": "BlackjackBettingScreen/TableSelectPanel",
+    "description": "Accessibility label for the link that opens the run statistics screen.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.runAccessibilityLabel": {
+    "component": "BlackjackStatsScreen",
+    "description": "Accessibility label summarizing a row in the run history list.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": ["{{table}}", "{{date}}", "{{chips}}", "{{outcome}}"],
     "doNotTranslate": [],
     "notes": null
   },

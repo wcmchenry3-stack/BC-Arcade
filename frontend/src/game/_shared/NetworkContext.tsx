@@ -15,11 +15,8 @@ import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
 import { registerCascadeScoreHandler } from "../cascade/scoreSync";
 import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
-import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
 import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
-import { registerHeartsScoreHandler } from "../hearts/scoreSync";
-import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import {
   flushDisplayNameSync,
   registerDisplayNameSync,
@@ -38,11 +35,8 @@ const NetworkContext = createContext<NetworkStatus>({
 // Register per-game handlers exactly once, module-load time.
 registerCascadeScoreHandler();
 registerSudokuScoreHandler();
-registerMahjongScoreHandler();
 registerSolitaireScoreHandler();
 registerFreeCellScoreHandler();
-registerHeartsScoreHandler();
-registerStarSwarmScoreHandler();
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
 

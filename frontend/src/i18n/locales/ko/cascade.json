@@ -12,11 +12,11 @@
   "theme.groupLabel": "과일 테마",
   "theme.optionLabel": "{{label}} 테마",
   "event.merged": "합쳐졌어요! {{fruit}} 생성.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "점수",
+  "scoreboard.heroSub": "최고 과일: {{bestFruit}} · 합체 {{merges}}회",
+  "scoreboard.heroSubEmpty": "아직 플레이 없음",
+  "scoreboard.bestScore": "역대 최고",
+  "scoreboard.bestFruit": "최고 과일",
+  "scoreboard.gamesPlayed": "플레이 횟수",
+  "scoreboard.totalMerges": "합체 횟수"
 }
