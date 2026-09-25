@@ -17,7 +17,8 @@ class HeartsModule:
     game_type = GameType.HEARTS
     metadata_model = HeartsMetadata
     result_model = None
-    # ``final_score`` is 100 - penalty points.
+    # ``final_score`` is 100 - penalty points. qualifying_outcomes stays None:
+    # a lost or drawn hand still has a real score, so win/loss/push all count.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score", max_value=100)
 
     def stats_shape(self, raw_stats: dict) -> dict:

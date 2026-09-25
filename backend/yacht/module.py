@@ -23,6 +23,11 @@ class YachtModule:
     # (recomputed from engine.ts in test_board_definitions.py). The legacy
     # POST /yacht/score cap of 400 applied to its `400 - raw` transform, not to
     # a real game's total.
+    # qualifying_outcomes stays None: a solo game is ``completed`` and a game
+    # lost to the computer still has a real total, so every outcome counts.
+    # Legacy rows: POST /yacht/score stored ``400 - raw`` in ``final_score``
+    # under the ``yacht-anon`` session. The generic board (#2657) excludes all
+    # ``*-anon`` rows, so those values never meet this declaration.
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1575
     )
