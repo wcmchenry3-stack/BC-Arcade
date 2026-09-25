@@ -68,6 +68,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// The app-wide foreground-time counter behind useGameSync's active-play window
+// (#2684), held still unless a test moves it — so summaries stay exact.
+let mockForegroundMs = 0;
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => mockForegroundMs,
+}));
+
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn().mockResolvedValue(undefined),
   notificationAsync: jest.fn().mockResolvedValue(undefined),
@@ -634,6 +641,21 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
       outcome: "win",
       result: { is_complete: true, won: true, guesses_used: 1 },
     });
+  });
+
+  // #2684 — Daily Word has no timer of its own: useGameSync's active-play
+  // window supplies the duration, and it counts the time spent thinking before
+  // the first guess, so a first-guess win still records one.
+  it("completes with the foreground time on the screen, thinking time included", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    mockForegroundMs += 45_000; // reading the board before the first guess
+    await typeAndSubmit(api, "crane");
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ outcome: "win", durationMs: 45_000 });
   });
 
   it("abandons on unmount with the guesses made so far", async () => {

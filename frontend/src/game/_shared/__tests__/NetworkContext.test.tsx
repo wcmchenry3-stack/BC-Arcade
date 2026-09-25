@@ -51,9 +51,6 @@ jest.mock("../../freecell/scoreSync", () => ({
 jest.mock("../../hearts/scoreSync", () => ({
   registerHeartsScoreHandler: jest.fn(),
 }));
-jest.mock("../../sort/scoreSync", () => ({
-  registerSortScoreHandler: jest.fn(),
-}));
 jest.mock("../../starswarm/scoreSync", () => ({
   registerStarSwarmScoreHandler: jest.fn(),
 }));
