@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -91,7 +93,31 @@ if _sentry_dsn:
 # prod, and they were unthrottled (#2464's route audit exempts FastAPI's own
 # doc routes, so this doesn't need a rate limit added).
 _is_production = os.environ.get("ENVIRONMENT") == "production"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Startup and shutdown for the API (#2668).
+
+    Replaces four ``@app.on_event`` hooks, which FastAPI deprecates — and which
+    it stops running once a lifespan is set, so they moved together. Startup
+    steps run in their previous registration order. The Daily Word retention
+    task is owned here: created before ``yield`` and always cancelled after it.
+    It is mirrored on ``app.state`` only so tests can observe it.
+    """
+    _warn_if_dev_override_active()
+    retention_task = _start_daily_word_retention()
+    app.state.retention_task = retention_task
+    await _db_health_check()
+    try:
+        yield
+    finally:
+        await _stop_daily_word_retention(retention_task)
+        app.state.retention_task = None
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="BC Arcade API",
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
@@ -259,8 +285,7 @@ async def request_logger(request: Request, call_next) -> Response:
     return response
 
 
-@app.on_event("startup")
-async def _dev_entitlement_override_warning() -> None:
+def _warn_if_dev_override_active() -> None:
     if is_dev_override_active():
         logging.getLogger("audit").warning(
             "DEV ENTITLEMENT OVERRIDE ACTIVE — all premium games unlocked for all sessions"
@@ -268,24 +293,17 @@ async def _dev_entitlement_override_warning() -> None:
 
 
 # Daily Word retention (#2544): prune guess records older than 14 days, at
-# startup and then daily. The task lives on app.state, not a module global, so
-# it belongs to the app that started it — test_security.py reloads this module,
-# which would otherwise rebind a global out from under a running task (#2661
-# review). Moving every hook to a lifespan handler is a separate change.
-@app.on_event("startup")
-async def _start_daily_word_retention() -> None:
-    app.state.retention_task = None
+# startup and then daily. Started and cancelled by `lifespan` above.
+def _start_daily_word_retention() -> asyncio.Task | None:
     if not is_configured():
-        return
+        return None
     from daily_word.retention import run_retention_loop
     from db.base import get_session_factory
 
-    app.state.retention_task = asyncio.create_task(run_retention_loop(get_session_factory))
+    return asyncio.create_task(run_retention_loop(get_session_factory))
 
 
-@app.on_event("shutdown")
-async def _stop_daily_word_retention() -> None:
-    task = getattr(app.state, "retention_task", None)
+async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
     if task is None:
         return
     task.cancel()
@@ -293,7 +311,6 @@ async def _stop_daily_word_retention() -> None:
         await task
     except asyncio.CancelledError:
         pass
-    app.state.retention_task = None
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
@@ -316,7 +333,6 @@ async def _ping_db() -> None:
     await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
 
 
-@app.on_event("startup")
 async def _db_health_check() -> None:
     """Log DB reachability on boot. Non-fatal if DATABASE_URL is unset."""
     if not is_configured():
