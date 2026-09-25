@@ -463,14 +463,22 @@ export default function StarSwarmScreen() {
     setIsPaused(false);
   }, []);
 
+  // Leaving the app mid-run pauses it, so the player returns to the pause overlay. The screen's
+  // `phase` is only ever SwoopIn / WaveClear / GameOver — the engine's "Playing" never reaches
+  // it — so a live run is any phase but GameOver, with the difficulty picker closed.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if ((next === "background" || next === "inactive") && phase === "Playing") {
+      if (
+        (next === "background" || next === "inactive") &&
+        phase !== "GameOver" &&
+        !showDifficultyPicker &&
+        !isPaused
+      ) {
         handlePause();
       }
     });
     return () => sub.remove();
-  }, [phase, handlePause]);
+  }, [phase, showDifficultyPicker, isPaused, handlePause]);
 
   const dynamicStyles = getStyles(colors);
 
