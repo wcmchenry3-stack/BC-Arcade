@@ -16,16 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  AppState,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Animated, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -38,6 +29,7 @@ import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
+  ModalActions,
   ModalCard,
   ModalPrimaryButton,
   ModalSecondaryButton,
@@ -655,12 +647,6 @@ function PreGame({
 }) {
   const { t } = useTranslation("sudoku");
   const { colors } = useTheme();
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
 
   return (
     <View style={styles.preGameWrap}>
@@ -680,17 +666,11 @@ function PreGame({
         <View style={[styles.preGameSelector, { marginTop: 8 }]}>
           <DifficultySelector value={difficulty} onChange={onChange} />
         </View>
-        <Pressable
+        <ModalPrimaryButton
           testID="sudoku-pregame-start"
+          label={t("action.start")}
           onPress={onStart}
-          style={[styles.preGameStart, gradient]}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.start")}
-        >
-          <Text style={[styles.preGameStartText, { color: colors.textOnAccent }]}>
-            {t("action.start")}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -774,16 +754,17 @@ function NewGameModal({
       <View style={[styles.newGameSelector, { marginTop: 8 }]}>
         <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
       </View>
-      <ModalPrimaryButton
-        label={t("action.start")}
-        onPress={() => onStart(pendingDifficulty, pendingVariant)}
-        style={styles.newGameStart}
-      />
-      <ModalSecondaryButton
-        tone="accent"
-        label={t("action.quickRestart")}
-        onPress={onQuickRestart}
-      />
+      <ModalActions style={styles.newGameActions}>
+        <ModalPrimaryButton
+          label={t("action.start")}
+          onPress={() => onStart(pendingDifficulty, pendingVariant)}
+        />
+        <ModalSecondaryButton
+          tone="accent"
+          label={t("action.quickRestart")}
+          onPress={onQuickRestart}
+        />
+      </ModalActions>
     </ModalCard>
   );
 }
@@ -868,24 +849,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
-  preGameStart: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  preGameStartText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
   newGameSelector: {
     alignSelf: "stretch",
     marginBottom: 4,
   },
-  newGameStart: {
+  newGameActions: {
     marginTop: 14,
   },
 });

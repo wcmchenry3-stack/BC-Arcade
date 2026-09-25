@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ModalCard, ModalPrimaryButton, ModalSecondaryButton } from "./ModalCard";
+import { ModalActions, ModalCard, ModalPrimaryButton, ModalSecondaryButton } from "./ModalCard";
 
 export interface ConfirmModalProps {
   visible: boolean;
@@ -11,7 +11,10 @@ export interface ConfirmModalProps {
   cancelLabel?: string;
   /** Confirm fills with the theme error color. */
   destructive?: boolean;
-  /** Put the safe (cancel) action above the confirm action. */
+  /**
+   * Put the safe (cancel) action above the confirm action. Defaults to
+   * `destructive`, so an irreversible action is never the first pill.
+   */
   cancelFirst?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -27,7 +30,7 @@ export function ConfirmModal({
   confirmLabel,
   cancelLabel,
   destructive = false,
-  cancelFirst = false,
+  cancelFirst = destructive,
   onConfirm,
   onCancel,
   testID,
@@ -49,7 +52,6 @@ export function ConfirmModal({
       label={cancelLabel ?? t("newGame.confirm.cancel")}
       onPress={onCancel}
       testID={testID ? `${testID}-cancel` : undefined}
-      style={cancelFirst ? { marginBottom: 10 } : undefined}
     />
   );
 
@@ -62,7 +64,7 @@ export function ConfirmModal({
       accentTop
       testID={testID}
     >
-      {cancelFirst ? [cancel, confirm] : [confirm, cancel]}
+      <ModalActions>{cancelFirst ? [cancel, confirm] : [confirm, cancel]}</ModalActions>
     </ModalCard>
   );
 }

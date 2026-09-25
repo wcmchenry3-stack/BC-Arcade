@@ -125,7 +125,6 @@ export function AppHeader({
     onNewGame?.();
   };
 
-  // Gradient "Start New" button uses secondary → accent on web; fallback on native.
   return (
     <View
       accessibilityRole="header"
@@ -483,5 +482,4 @@ const styles = StyleSheet.create({
     fontFamily: typography.bodyMedium,
     fontSize: 13,
   },
-  // ── Abandon dialog ──────────────────────────────────────────────────────
 });

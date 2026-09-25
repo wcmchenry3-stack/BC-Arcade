@@ -409,10 +409,6 @@ export default function HomeScreen() {
         }
       />
 
-      <ConnectedOfflineBanner
-        style={[styles.offlineBannerWrap, { top: APP_HEADER_HEIGHT + insets.top + 4 }]}
-      />
-
       <ScrollView
         contentContainerStyle={[
           styles.grid,
@@ -423,6 +419,7 @@ export default function HomeScreen() {
           },
         ]}
       >
+        <ConnectedOfflineBanner />
         <DailyChallengeCard />
         {numColumns === 1
           ? games.map((item, index) => (
@@ -469,13 +466,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-  },
-  // Floats just under the header, over the top of the grid.
-  offlineBannerWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 100,
   },
   grid: {
     gap: 16,

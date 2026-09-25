@@ -178,5 +178,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Two links share one row — keep it short."
+  },
+  "a11y.loading": {
+    "component": "EmptyState",
+    "description": "Screen-reader label for the loading spinner shown while a screen fetches data. Not shown visually.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Spoken by VoiceOver and TalkBack. Use the short progressive form, e.g. 'Loading'."
   }
 }

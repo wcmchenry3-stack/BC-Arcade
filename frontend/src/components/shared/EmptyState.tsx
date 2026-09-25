@@ -1,5 +1,6 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { PillButton } from "./PillButton";
 
@@ -20,13 +21,18 @@ export interface EmptyStateProps {
 /** Loading spinner, empty-list message, or error with retry (#2604). */
 export function EmptyState({ kind, message, retry, layout = "fill", testID }: EmptyStateProps) {
   const { colors } = useTheme();
+  const { t } = useTranslation("common");
 
   const color = kind === "error" ? colors.error : kind === "empty" ? colors.textMuted : colors.text;
 
   return (
     <View style={layout === "fill" ? styles.fill : styles.inline} testID={testID}>
       {kind === "loading" && (
-        <ActivityIndicator color={colors.accent} size="large" accessibilityLabel="Loading" />
+        <ActivityIndicator
+          color={colors.accent}
+          size="large"
+          accessibilityLabel={t("a11y.loading")}
+        />
       )}
       {message !== undefined && (
         <Text

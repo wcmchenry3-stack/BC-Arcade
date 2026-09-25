@@ -18,7 +18,11 @@ export interface ModalCardProps {
   onRequestClose?: () => void;
   title?: string;
   body?: string;
-  /** `sm` = compact dialog (86%, max 360). `md` = content panel (90%, max 420, scrolls). */
+  /**
+   * `sm` = compact dialog (86%, max 360). `md` = content panel (90%, max 420,
+   * capped at 85% height). ModalCard does not scroll: put long `md` content in
+   * a ScrollView.
+   */
   size?: "sm" | "md";
   /** 3pt accent rule along the top edge, used by confirm dialogs. */
   accentTop?: boolean;
@@ -30,8 +34,8 @@ export interface ModalCardProps {
 /**
  * Centered card over the theme's `overlay` backdrop. The one modal shell for
  * dialogs and pickers so they share backdrop, surface, radius and type
- * (#2601). Content goes in `children`; use ModalPrimaryButton and
- * ModalSecondaryButton for the action pills.
+ * (#2601). Content goes in `children`; put the action pills
+ * (ModalPrimaryButton, ModalSecondaryButton) in a ModalActions.
  */
 export function ModalCard({
   visible,
@@ -77,6 +81,17 @@ export function ModalCard({
       </View>
     </Modal>
   );
+}
+
+/** Vertical stack of modal action pills with even spacing and no trailing gap. */
+export function ModalActions({
+  style,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  return <View style={[styles.actions, style]}>{children}</View>;
 }
 
 interface ModalButtonProps {
@@ -203,11 +218,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: "center",
   },
+  actions: {
+    alignItems: "center",
+    gap: 10,
+  },
   primary: {
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 999,
-    marginBottom: 10,
     alignItems: "center",
     minWidth: 180,
   },

@@ -44,6 +44,11 @@ describe("ConfirmModal", () => {
     expect(buttonLabels()).toEqual(["Delete", "Keep"]);
   });
 
+  it("puts cancel above confirm by default when destructive", async () => {
+    await renderConfirm({ destructive: true });
+    expect(buttonLabels()).toEqual(["Keep", "Delete"]);
+  });
+
   it("puts cancel above confirm when cancelFirst is set", async () => {
     await renderConfirm({ cancelFirst: true });
     expect(buttonLabels()).toEqual(["Keep", "Delete"]);

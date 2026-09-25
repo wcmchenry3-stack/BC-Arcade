@@ -30,6 +30,7 @@ import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
+  ModalActions,
   ModalCard,
   ModalPrimaryButton,
   ModalSecondaryButton,
@@ -961,8 +962,14 @@ function PreGameModal({ onChoose }: { readonly onChoose: (mode: DrawMode) => voi
 
   return (
     <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")}>
-      <ModalPrimaryButton label={t("drawMode.one")} onPress={() => onChoose(1)} />
-      <ModalSecondaryButton tone="accent" label={t("drawMode.three")} onPress={() => onChoose(3)} />
+      <ModalActions>
+        <ModalPrimaryButton label={t("drawMode.one")} onPress={() => onChoose(1)} />
+        <ModalSecondaryButton
+          tone="accent"
+          label={t("drawMode.three")}
+          onPress={() => onChoose(3)}
+        />
+      </ModalActions>
     </ModalCard>
   );
 }
