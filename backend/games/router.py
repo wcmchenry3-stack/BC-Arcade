@@ -171,7 +171,10 @@ async def get_leaderboard(
     game_type: str,
     limit: int = Query(leaderboard.DEFAULT_LIMIT, ge=1, le=leaderboard.MAX_LIMIT),
 ) -> LeaderboardResponse:
-    """Top players on one board: one entry each (their best named row).
+    """Top players on one board: one entry each (their best row).
+
+    Only players with a display name (``PUT /players/me``) are listed, under
+    their current name (#2624).
 
     Partition values are query params named after ``board.partitions``, e.g.
     ``/games/leaderboard/sudoku?difficulty=hard&variant=mini``. 404 for an
@@ -345,10 +348,12 @@ async def complete_game(
 async def set_player_name(
     request: Request, game_id: uuid.UUID, body: SetPlayerNameRequest
 ) -> SetPlayerNameResponse:
-    """Put the caller's display name on one of their finished games (#2618).
+    """Set the caller's display name from one of their finished games (#2618).
 
+    Kept for installed builds: the name is the player's (#2624), so this
+    upserts it exactly like ``PUT /players/me`` and applies it to every board.
     Returns the rank of the caller's best entry in that game's partition and
-    whether this game is that entry. 400 if the game is unscored, 403 if
+    whether this game is that entry. 400 if the game could never rank, 403 if
     another session owns it, 404 if the game or its board doesn't exist.
     """
     sid = get_session_id(request)

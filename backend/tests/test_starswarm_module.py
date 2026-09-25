@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from db.base import get_session_factory
-from db.models import Game, GameEntitlement
+from db.models import Game, GameEntitlement, Player
 from db.models import GameType as GameTypeRow
 from games.board import SCORE_METRIC
 from games.protocol import GameModule
@@ -417,12 +417,15 @@ async def _seed(score: int, name: str, meta: dict) -> None:
         gt_id = (
             await db.execute(select(GameTypeRow.id).where(GameTypeRow.name == "starswarm"))
         ).scalar_one()
+        session_id = str(uuid.uuid4())
+        # Boards show the player's display name (#2624).
+        db.add(Player(session_id=session_id, display_name=name))
         db.add(
             Game(
                 id=uuid.uuid4(),
-                session_id=str(uuid.uuid4()),
+                session_id=session_id,
                 game_type_id=gt_id,
-                game_metadata={**meta, "player_name": name},
+                game_metadata=meta,
                 players=[],
                 final_score=score,
                 outcome="completed",

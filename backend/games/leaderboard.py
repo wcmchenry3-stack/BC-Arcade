@@ -1,8 +1,8 @@
 """Generic leaderboards, driven by each module's ``BoardDefinition`` (#2618).
 
-One query, one rank calculation and one "put my name on this game" operation
-serve every game. They replace the per-game leaderboard routers, which stay in
-place (unchanged) until #2644 because v1.0 clients still call them.
+One query, one rank calculation and one name operation serve every game.
+They replace the per-game leaderboard routers, which stay in place
+(unchanged) until #2644 because v1.0 clients still call them.
 
 Rules every board follows
 -------------------------
@@ -11,9 +11,12 @@ Rules every board follows
   board's metric in its direction, then its tie-break, then the earliest
   ``completed_at``. The same key orders the board and drives the rank, so a
   replay that doesn't beat a player's best never shows up.
-- **Only named rows rank**: a row needs a non-blank ``metadata.player_name``.
-  A player's best is taken among their named rows. The name shown is trimmed
-  and cut to ``MAX_NAME_LENGTH``, however long the stored one is.
+- **Only named players rank** (#2624, #2519 decisions 17-18): a session ranks
+  only if its player has a display name (a ``players`` row), and then **every**
+  eligible finished game of that player counts. The name shown is the
+  player's current one, looked up through ``players.names`` (the one place
+  #1047's accounts will change), so a rename shows on every entry at once.
+  ``metadata.player_name`` plays no part in ranking.
 - **Excluded**: abandoned rows (``not_abandoned()``), rows whose outcome is
   not in ``qualifying_outcomes`` (when the board sets it), and every sentinel
   ``*-anon`` session. Old clients keep writing those rows through
@@ -61,12 +64,14 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import FunctionElement
 
-from db.models import Game, GameType
+from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH, Game, GameType
 from games.board import SCORE_METRIC, BoardDefinition, Direction
 from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.ranking import compute_rank
 from games.registry import get_module
+from players import service as players_service
+from players.names import display_name_of, has_display_name
 from vocab import GameOutcome
 
 logger = logging.getLogger(__name__)
@@ -83,14 +88,9 @@ MAX_BOARD_VALUE = 2**31 - 1
 """Upper bound for any metric or tie-break value (the ``games.final_score``
 column is a 32-bit integer). Bounds uncapped boards and every tie-break."""
 
-MAX_NAME_LENGTH = 32
-"""Longest name a board shows. ``PATCH /games/{id}/name`` enforces it on
-write; creation-time metadata allows up to 64 (Sudoku, Cascade), so names are
-also cut on read."""
-
-# Every character ``str.strip()`` removes, so SQL's "has a non-blank name"
-# agrees with the name Python returns. All of them are below U+3001.
-_WHITESPACE = "".join(chr(i) for i in range(0x3001) if chr(i).isspace())
+MAX_NAME_LENGTH = PLAYER_DISPLAY_NAME_MAX_LENGTH
+"""Longest name a board shows. Every write path enforces it; names are also
+cut on read, so a longer stored name can never widen a board."""
 
 # A missing tie-break value sorts after every real one, whatever the direction.
 _WORST_TIEBREAK = {"asc": MAX_BOARD_VALUE + 1, "desc": -1}
@@ -258,10 +258,6 @@ def _metadata_count_sqlite(element: metadata_count, compiler: Any, **kw: Any) ->
     return compiler.process(expr, **kw)
 
 
-def _name_expr() -> ColumnElement:
-    return Game.game_metadata["player_name"].as_string()
-
-
 def display_name(stored: Any) -> str:
     """The name a board shows: trimmed, then cut to ``MAX_NAME_LENGTH``."""
     return str(stored).strip()[:MAX_NAME_LENGTH].rstrip()
@@ -313,8 +309,8 @@ def board_filters(
         Game.completed_at.is_not(None),
         not_abandoned(),
         Game.session_id.not_like(f"%{SENTINEL_SESSION_SUFFIX}"),
-        # Also false for a missing name (NULL).
-        func.trim(_name_expr(), literal(_WHITESPACE)) != "",
+        # Only players with a display name rank; all their games count (#2624).
+        has_display_name(Game.session_id),
     ]
     if board.metric == SCORE_METRIC:
         filters += [metric >= 0, metric <= cap]
@@ -337,7 +333,7 @@ def _best_rows(
     """Every eligible row with ``rn`` = its place within its own session.
 
     Kept narrow (no name) so the window's sort stays in memory on a large
-    board; ``top_entries`` joins the name back for the rows it returns.
+    board; ``top_statement`` looks the name up for the rows it returns.
     """
     tiebreak = tiebreak_expr(board)
     order = [_ordered(metric, board.direction)]
@@ -388,10 +384,8 @@ def top_statement(
         .limit(limit)
         .subquery("top_rows")
     )
-    return (
-        select(top, _name_expr().label("player_name"))
-        .join(Game, Game.id == top.c.game_id)
-        .order_by(*_board_order(board, top))
+    return select(top, display_name_of(top.c.session_id).label("player_name")).order_by(
+        *_board_order(board, top)
     )
 
 
@@ -486,11 +480,18 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
 async def set_player_name(
     db: AsyncSession, *, game: Game, session_id: str, player_name: str
 ) -> NameResult:
-    """Put ``player_name`` on a finished game and return the player's standing.
+    """``PATCH /games/{id}/name``: set the player's display name, return their standing.
 
-    ``game`` must be loaded with its ``game_type`` and owned by ``session_id``
-    (the router checks both). Returns the rank of the player's best entry in
-    the game's partition, and whether ``game`` is that best entry.
+    Kept for installed builds (#2624): the name is the player's, not the
+    game's, so this is ``PUT /players/me`` plus a rank. ``game`` must be
+    loaded with its ``game_type`` and owned by ``session_id`` (the router
+    checks both), and must be able to rank (else 400, as before). Returns the
+    rank of the player's best entry in the game's partition, and whether
+    ``game`` is that best entry.
+
+    The name is also written to ``metadata.player_name`` on ``game``: the
+    legacy per-game ``GET /<game>/scores`` routes still read it from session
+    rows until #2644 removes them. The generic boards never read it.
     """
     game_type = game.game_type.name
     board = enabled_board(game_type)
@@ -504,6 +505,7 @@ async def set_player_name(
     metadata = {**(game.game_metadata or {}), "player_name": player_name}
     game.game_metadata = metadata
     try:
+        await players_service.set_display_name(db, session_id, player_name)
         await db.commit()
     except SQLAlchemyError as exc:
         await db.rollback()

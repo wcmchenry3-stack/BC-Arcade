@@ -18,6 +18,8 @@ from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
 from limiter import limiter, session_key
+from players.service import remember_legacy_name
+from session import optional_session_id
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
 from vocab import GameType as GameTypeEnum
 
@@ -115,6 +117,8 @@ async def submit_score(request: Request, body: ScoreRequest) -> LeaderboardRespo
                 "difficulty_tier": body.difficulty_tier,
             },
         )
+        # The caller's display name too, for the generic boards (#2624).
+        await remember_legacy_name(db, optional_session_id(request), body.player_id)
         db.add(game)
         await db.commit()
         top = await _top10(db)

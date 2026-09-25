@@ -5,12 +5,23 @@
  * for any reason), the score is enqueued locally. The queue is flushed
  * automatically when network connectivity returns — see NetworkContext.
  *
- * Each pending item has a client-generated UUID v4 that will eventually
- * serve as the backend idempotency key (`game_id`, see issue #155) so
- * retries cannot create duplicate leaderboard rows. Until #155 lands,
- * the queue tracks its own `synced` flag (by removing items on success)
- * which is sufficient except in the rare case where a submission succeeds
- * but its response is lost — that case produces at most one duplicate row.
+ * Items are removed on success, so a replay only happens when a submission
+ * succeeds but its response is lost. What a replay does depends on the route:
+ *
+ * - **The display name is not in this queue.** It is one per player on the
+ *   server (`PUT /players/me`, #2624, synced by `displayNameSync.ts`) and every
+ *   board reads it from there, so there is no per-game name left to submit
+ *   twice. The name-attach handlers still queued here (Cascade's
+ *   `PATCH /cascade/score/{id}`, Sudoku's `PATCH /sudoku/score/{id}`) set a
+ *   name on an existing game row: a replay rewrites the same value.
+ * - **Lost-response duplicates (#155) remain only for the legacy per-game
+ *   `POST /<game>/score` handlers**, which insert a new leaderboard row on
+ *   every call: Mahjong (`/mahjong/score`), Solitaire (`/solitaire/score`),
+ *   FreeCell (`/freecell/score`), Hearts (`/hearts/score`), Sort
+ *   (`/sort/score`) and Star Swarm (`/starswarm/score`). A replay can add at
+ *   most one duplicate row to that game's legacy board (never to the generic
+ *   boards, which exclude those `*-anon` rows). Phase 2 of #2519 removes these
+ *   handlers and #2644 the routes.
  *
  * The queue is agnostic about per-game submission details: each game
  * registers a handler via `registerHandler()`. `flush()` looks up the

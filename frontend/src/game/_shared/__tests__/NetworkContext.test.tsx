@@ -66,11 +66,27 @@ jest.mock("../useNetworkStatus", () => ({
   useNetworkStatus: jest.fn(() => ({ isOnline: true, isInitialized: true })),
 }));
 
+jest.mock("../displayNameSync", () => ({
+  registerDisplayNameSync: jest.fn(),
+  syncDisplayNameOnLaunch: jest.fn().mockResolvedValue(true),
+  flushDisplayNameSync: jest.fn().mockResolvedValue(true),
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 import { syncWorker } from "../syncWorker";
+import { scoreQueue } from "../scoreQueue";
+import { useNetworkStatus } from "../useNetworkStatus";
+import {
+  flushDisplayNameSync,
+  registerDisplayNameSync,
+  syncDisplayNameOnLaunch,
+} from "../displayNameSync";
+
+// Read before any beforeEach clears the mocks' call records.
+const nameSyncRegistrationsAtLoad = (registerDisplayNameSync as jest.Mock).mock.calls.length;
 
 function getAppStateListener(): (s: AppStateStatus) => void {
   const mock = AppState.addEventListener as jest.Mock;
@@ -159,5 +175,61 @@ describe("NetworkContext — foreground flush (#1159)", () => {
         tags: { subsystem: "syncWorker", op: "flush-on-foreground" },
       })
     );
+  });
+});
+
+describe("NetworkContext — display name sync (#2624)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    (useNetworkStatus as jest.Mock).mockImplementation(() => ({
+      isOnline: true,
+      isInitialized: true,
+    }));
+  });
+
+  it("installs the save sync once, at module load", () => {
+    expect(nameSyncRegistrationsAtLoad).toBe(1);
+  });
+
+  it("syncs a never-synced stored name once on launch", async () => {
+    await renderProvider();
+    expect(syncDisplayNameOnLaunch).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes the pending name with the score queue on reconnect", async () => {
+    (useNetworkStatus as jest.Mock).mockImplementation(() => ({
+      isOnline: false,
+      isInitialized: true,
+    }));
+    const view = await renderProvider();
+    expect(flushDisplayNameSync).not.toHaveBeenCalled();
+
+    (useNetworkStatus as jest.Mock).mockImplementation(() => ({
+      isOnline: true,
+      isInitialized: true,
+    }));
+    await view.rerender(
+      <NetworkProvider>
+        <></>
+      </NetworkProvider>
+    );
+    expect(scoreQueue.flush).toHaveBeenCalledTimes(1);
+    expect(flushDisplayNameSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes the pending name with SyncWorker on foreground", async () => {
+    await renderProvider();
+    const listener = getAppStateListener();
+    await act(() => {
+      listener("background");
+    });
+    expect(flushDisplayNameSync).not.toHaveBeenCalled();
+    await act(() => {
+      listener("active");
+    });
+    expect(flushDisplayNameSync).toHaveBeenCalledTimes(1);
   });
 });

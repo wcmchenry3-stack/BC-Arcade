@@ -15,6 +15,8 @@ import { scoreQueue } from "../game/_shared/scoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
+import { clearDisplayName } from "../game/_shared/displayName";
+import { clearDisplayNameSync } from "../game/_shared/displayNameSync";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -54,8 +56,13 @@ export default function SettingsScreen() {
   const handleDeleteData = async () => {
     setDeleteConfirmVisible(false);
     try {
+      // First, so a name sync in flight can't recreate the player's name on
+      // the server after the delete (#2624).
+      await clearDisplayNameSync();
       await statsApi.deleteMyData();
       await Promise.all([
+        // The name too, or the next launch would send it again for the new session.
+        clearDisplayName(),
         clearSession(),
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),

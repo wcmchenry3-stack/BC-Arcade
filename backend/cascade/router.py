@@ -21,6 +21,7 @@ from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
 from games.ranking import compute_legacy_rank, ensure_scored
 from limiter import limiter, session_key
+from players.service import remember_legacy_name
 from session import get_session_id
 from vocab import GameType as GameTypeEnum
 
@@ -99,6 +100,8 @@ async def set_player_name(
         metadata["player_name"] = body.player_name
         game.game_metadata = metadata
         try:
+            # Also the player's display name, for the generic boards (#2624).
+            await remember_legacy_name(db, sid, body.player_name)
             await db.commit()
         except SQLAlchemyError as exc:
             logger.error("cascade score commit failed for game %s: %s", game_id, exc)

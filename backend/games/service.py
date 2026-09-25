@@ -35,6 +35,7 @@ from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without
 from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.protocol import GameModule
 from games.registry import get_module
+from players.service import remember_legacy_name
 from vocab import GameOutcome
 from vocab import GameType as VocabGameType
 
@@ -133,6 +134,9 @@ async def create_game(
     if valid_started_at is not None:
         game.started_at = valid_started_at
     session.add(game)
+    # A name in the creation metadata (builds before #2624) is also the
+    # player's display name, for the generic boards.
+    await remember_legacy_name(session, session_id, (metadata or {}).get("player_name"))
     await session.commit()
     await session.refresh(game)
     return game

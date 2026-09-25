@@ -22,6 +22,8 @@ from db.base import get_session_factory
 from db.models import Game, GameType
 from games.filters import not_abandoned
 from limiter import limiter
+from players.service import remember_legacy_name
+from session import optional_session_id
 from vocab import GameType as GameTypeEnum
 
 from .models import LeaderboardResponse, ScoreEntry, ScoreSubmitRequest
@@ -83,6 +85,8 @@ async def submit_score(request: Request, body: ScoreSubmitRequest) -> ScoreEntry
             completed_at=datetime.now(timezone.utc),
             game_metadata={"player_name": body.player_name},
         )
+        # The caller's display name too, for the generic boards (#2624).
+        await remember_legacy_name(db, optional_session_id(request), body.player_name)
         db.add(game)
         await db.commit()
 

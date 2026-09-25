@@ -4,7 +4,8 @@
  * Wraps the tree so any component can call `useNetwork()` to get
  * `{ isOnline, isInitialized }`. Internally watches for offline→online
  * transitions and flushes the pending score queue exactly once per
- * reconnect edge.
+ * reconnect edge. The display-name sync (#2624) flushes with it, on
+ * foreground with `SyncWorker`, and once at launch.
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
@@ -20,6 +21,11 @@ import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
 import { registerSortScoreHandler } from "../sort/scoreSync";
 import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
+import {
+  flushDisplayNameSync,
+  registerDisplayNameSync,
+  syncDisplayNameOnLaunch,
+} from "./displayNameSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -39,6 +45,14 @@ registerFreeCellScoreHandler();
 registerHeartsScoreHandler();
 registerSortScoreHandler();
 registerStarSwarmScoreHandler();
+// Every saved display name is also sent to the server (#2624).
+registerDisplayNameSync();
+
+function flushNameSync(op: string): void {
+  flushDisplayNameSync().catch((e) => {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op } });
+  });
+}
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const status = useNetworkStatus();
@@ -54,6 +68,11 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       });
     });
     syncWorker.start();
+    // A stored name the server has never been sent (set before #2624) is
+    // synced once; any pending name sync is retried.
+    syncDisplayNameOnLaunch().catch((e) => {
+      Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "launch" } });
+    });
     const unregisterTestHooks = registerLogstoreTestHooks();
     const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next === "background" || next === "inactive") {
@@ -70,6 +89,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
             tags: { subsystem: "syncWorker", op: "flush-on-foreground" },
           });
         });
+        flushNameSync("flush-on-foreground");
         Sentry.addBreadcrumb({
           category: "syncWorker",
           message: "resumed (active)",
@@ -96,6 +116,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       syncWorker.flush().catch((e) => {
         Sentry.captureException(e, { tags: { subsystem: "syncWorker", op: "flush-on-reconnect" } });
       });
+      flushNameSync("flush-on-reconnect");
     }
   }, [status.isOnline, status.isInitialized]);
 
