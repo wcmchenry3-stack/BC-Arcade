@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "הושלמה",
   "stats.runOutcome.busted": "פשט רגל",
   "stats.runOutcome.comeback": "חזרה",
+  "stats.runOutcome.abandoned": "ננטשה",
   "stats.viewStats": "סטטיסטיקות ריצה",
   "stats.viewStatsLabel": "הצג סטטיסטיקות ריצה",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

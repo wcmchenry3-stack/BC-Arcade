@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "Voltooid",
   "stats.runOutcome.busted": "Failliet",
   "stats.runOutcome.comeback": "Comeback",
+  "stats.runOutcome.abandoned": "Afgebroken",
   "stats.viewStats": "Rondestatistieken",
   "stats.viewStatsLabel": "Speelrondestatistieken bekijken",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

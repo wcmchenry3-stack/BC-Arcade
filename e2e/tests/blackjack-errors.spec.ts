@@ -129,10 +129,11 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await injectEngineState(page, gameOverState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    // The shared result card (#2507).
+    // The shared result card (#2507). Chips ran out before the run's goal, so
+    // the run is a loss, as its games row records (#2628).
     const card = page.getByTestId("blackjack-result");
     await expect(card).toBeVisible({ timeout: 5000 });
-    await expect(card.getByText("Game Over")).toBeVisible();
+    await expect(card.getByText("You Lose")).toBeVisible();
     await expect(card.getByText("Out of Chips")).toBeVisible();
     await expect(card.getByText("Hands", { exact: true })).toBeVisible();
     await expect(card.getByRole("button", { name: "Play Again" })).toBeVisible();

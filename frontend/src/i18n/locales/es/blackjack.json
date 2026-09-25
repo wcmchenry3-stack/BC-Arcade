@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "Completada",
   "stats.runOutcome.busted": "Eliminada",
   "stats.runOutcome.comeback": "Remontada",
+  "stats.runOutcome.abandoned": "Abandonada",
   "stats.viewStats": "Estadísticas de serie",
   "stats.viewStatsLabel": "Ver estadísticas de la serie",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

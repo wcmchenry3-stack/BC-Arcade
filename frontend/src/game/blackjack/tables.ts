@@ -52,6 +52,17 @@ export const TABLE_CONFIGS: readonly TableConfig[] = [
   },
 ] as const;
 
+/**
+ * The table a game is played at, from its bet limits, or undefined when they
+ * match no table (a fresh `newGame()` uses 5/500, which matches none).
+ */
+export function tableForBetLimits(
+  s: { readonly betMin: number; readonly betMax: number } | null | undefined
+): TableConfig | undefined {
+  if (!s) return undefined;
+  return TABLE_CONFIGS.find((c) => c.betMin === s.betMin && c.betMax === s.betMax);
+}
+
 /** Returns true if the table at tableIndex has been unlocked. */
 export function isTableUnlocked(tableIndex: number, runs: RunRecord[]): boolean {
   if (tableIndex === 0) return true;

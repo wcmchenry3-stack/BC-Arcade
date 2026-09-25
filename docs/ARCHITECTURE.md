@@ -125,7 +125,7 @@ win concept. `abandoned` is a quit. The per-game rules live in one place, the
 only a daily-challenge input, not the win signal.
 
 **Abandons.** Only a session the player started (`markStarted()`) is ever
-abandoned — on unmount, `start()` or `restart()` over an open session. Those
+abandoned — on unmount, `start()`, `restart()` or `close()` over an open session. Those
 same paths discard an untouched session instead (`gameEventClient.discardGame()`:
 the pending game and its queued events are dropped, so it is neither completed
 nor left pending). A game registers a progress snapshot so
