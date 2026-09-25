@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
+import i18next from "i18next";
+import resourcesToBackend from "i18next-resources-to-backend";
 import { LOCALES } from "../locales";
 import { NAMESPACES, loadLocaleNamespace, localeLoaders, type Namespace } from "../localeLoaders";
 
@@ -59,7 +61,7 @@ describe("localeLoaders (#2193)", () => {
     }
   });
 
-  it("loads a locale's own file, and English for a namespace it lacks", async () => {
+  it("loads a locale's own file, and nothing for a namespace it lacks", async () => {
     const own = jest
       .spyOn(localeLoaders.de!, "hearts")
       .mockResolvedValue({ default: { own: "de" } });
@@ -69,12 +71,30 @@ describe("localeLoaders (#2193)", () => {
       .mockResolvedValue({ default: { own: "en" } });
     try {
       expect((await loadLocaleNamespace("de", "hearts")).default).toEqual({ own: "de" });
-      expect((await loadLocaleNamespace("de", missing)).default).toEqual({ own: "en" });
+      // English comes from fallbackLng, not stored as German.
+      expect((await loadLocaleNamespace("de", missing)).default).toEqual({});
       expect(own).toHaveBeenCalledTimes(1);
-      expect(english).toHaveBeenCalledTimes(1);
+      expect(english).not.toHaveBeenCalled();
     } finally {
       own.mockRestore();
       english.mockRestore();
     }
+  });
+
+  it("shows English through fallbackLng for a namespace the locale lacks", async () => {
+    // The same shape as i18n.ts: German has no `extra` file, English does.
+    const load = (lng: string, ns: string) =>
+      Promise.resolve({
+        default: lng === "en" && ns === "extra" ? { hello: "Hello" } : { own: `${lng}:${ns}` },
+      });
+    const instance = i18next.createInstance();
+    await instance.use(resourcesToBackend(load)).init({
+      lng: "de",
+      fallbackLng: "en",
+      ns: ["extra"],
+      defaultNS: "extra",
+    });
+    expect(instance.t("hello")).toBe("Hello");
+    expect(instance.getResource("de", "extra", "hello")).toBeUndefined();
   });
 });

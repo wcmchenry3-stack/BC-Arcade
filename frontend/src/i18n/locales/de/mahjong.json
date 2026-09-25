@@ -15,7 +15,7 @@
   "action.hintLabel": "Tipp anzeigen — markiert 2 Sekunden lang ein gültiges Paar",
   "action.noHint": "Keine Tipps verfügbar",
   "overlay.noMoves": "KEINE ZÜGE",
-  "overlay.noMovesDetail": "Keine Paare mehr möglich. Mische, um weiterzuspielen.",
+  "overlay.noMovesDetail": "Keine Paare mehr. Mische, um weiterzuspielen.",
   "overlay.shuffleButton": "Mischen",
   "layout.turtle": "Schildkröte",
   "layout.pyramid": "Pyramide",

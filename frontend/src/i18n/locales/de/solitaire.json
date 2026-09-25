@@ -31,11 +31,11 @@
   "a11y.invalidMove": "Ungültiger Zug",
   "error.saveFailed": "Spiel konnte nicht gespeichert werden.",
   "error.loadFailed": "Gespeichertes Spiel konnte nicht geladen werden.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "ZEIT",
+  "scoreboard.heroSub": "{{moves}} Züge · {{foundations}} von 4 fertig",
+  "scoreboard.heroSubEmpty": "Noch keine Spiele gespielt",
+  "scoreboard.bestTime": "Bestzeit",
+  "scoreboard.bestMoves": "Wenigste Züge",
+  "scoreboard.gamesPlayed": "Gespielte Spiele",
+  "scoreboard.gamesWon": "Gewonnene Spiele"
 }

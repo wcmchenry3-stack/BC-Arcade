@@ -227,18 +227,11 @@ export const localeLoaders: Record<string, Loaders> = {
 };
 
 /**
- * The backend loader: the locale's file for `ns`, else the English one. The
- * English fallback is what `fallbackLng` would show anyway; loading it here
- * keeps a namespace with no translation yet from failing to load.
+ * The backend loader: the locale's own file for `ns`, or an empty bundle when
+ * the locale has none. i18next then shows English through `fallbackLng`,
+ * without English text being stored as that locale's own (#2678).
  */
 export function loadLocaleNamespace(lng: string, ns: string): TranslationModule {
-  const namespace = ns as Namespace;
-  const fallback: Loaders = localeLoaders["en"] ?? {};
-  const localeNamespaces: Loaders = localeLoaders[lng] ?? fallback;
-  const loader = localeNamespaces[namespace] ?? fallback[namespace];
-  if (!loader) {
-    // Should only happen if a namespace is referenced before it's registered.
-    return Promise.resolve({ default: {} });
-  }
-  return loader();
+  const loader = localeLoaders[lng]?.[ns as Namespace];
+  return loader ? loader() : Promise.resolve({ default: {} });
 }

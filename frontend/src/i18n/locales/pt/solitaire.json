@@ -31,11 +31,11 @@
   "a11y.invalidMove": "Jogada inválida",
   "error.saveFailed": "Não foi possível salvar o jogo.",
   "error.loadFailed": "Não foi possível retomar o jogo salvo.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "TEMPO",
+  "scoreboard.heroSub": "{{moves}} jogadas · {{foundations}} de 4 completas",
+  "scoreboard.heroSubEmpty": "Nenhuma partida jogada ainda",
+  "scoreboard.bestTime": "Melhor tempo",
+  "scoreboard.bestMoves": "Menos jogadas",
+  "scoreboard.gamesPlayed": "Partidas jogadas",
+  "scoreboard.gamesWon": "Partidas vencidas"
 }

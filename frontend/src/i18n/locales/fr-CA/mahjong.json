@@ -1,6 +1,6 @@
 {
   "game.title": "Mahjong Solitaire",
-  "game.description": "Associe des paires de tuiles libres pour vider le plateau.",
+  "game.description": "Associe les tuiles libres par paires pour vider le jeu.",
   "game.playLabel": "Jouer à Mahjong Solitaire",
   "game.canvasLabel": "Mahjong Solitaire — touche deux tuiles libres identiques pour les retirer.",
   "hud.score": "POINTS",
@@ -8,8 +8,8 @@
   "hud.time": "TEMPS",
   "hud.deal": "DONNE",
   "action.shuffle": "MÉLANGER",
-  "action.shuffleLabel": "Mélanger les tuiles restantes en une nouvelle disposition soluble",
-  "action.undo": "ANNULER",
+  "action.shuffleLabel": "Mélanger les tuiles en une nouvelle disposition soluble",
+  "action.undo": "RETOUR",
   "action.undoLabel": "Annuler la dernière paire",
   "action.hint": "INDICE",
   "action.hintLabel": "Afficher un indice — met une paire valide en évidence pendant 2 secondes",
@@ -42,12 +42,12 @@
   "layout.maze": "Labyrinthe",
   "layout.zig_zag": "Zigzag",
   "layout.concentric_squares": "Carrés concentriques",
-  "layoutSelect.title": "Choisis une disposition",
+  "layoutSelect.title": "Disposition",
   "layoutSelect.continue": "Continuer",
   "layoutSelect.lockedLayout": "{{name}} — verrouillé",
-  "scoreboard.title": "Meilleurs pointages",
+  "scoreboard.title": "Records",
   "scoreboard.rank": "Rang",
   "scoreboard.player": "Joueur",
   "scoreboard.score": "Pointage",
-  "scoreboard.empty": "Aucun pointage pour l'instant — sois le premier!"
+  "scoreboard.empty": "Aucun pointage — sois le premier!"
 }

@@ -9,7 +9,7 @@
   "hud.deal": "डील",
   "action.shuffle": "फेंटें",
   "action.shuffleLabel": "बची हुई टाइलों को एक नई हल होने वाली व्यवस्था में फेंटें",
-  "action.undo": "पूर्ववत",
+  "action.undo": "वापस",
   "action.undoLabel": "आखिरी जोड़ा पूर्ववत करें",
   "action.hint": "संकेत",
   "action.hintLabel": "संकेत दिखाएं — एक सही जोड़े को 2 सेकंड के लिए हाइलाइट करता है",

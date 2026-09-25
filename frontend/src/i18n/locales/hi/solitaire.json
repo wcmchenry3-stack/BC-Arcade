@@ -31,11 +31,11 @@
   "a11y.invalidMove": "अवैध चाल",
   "error.saveFailed": "आपका गेम सेव नहीं हो सका।",
   "error.loadFailed": "सेव किया हुआ गेम लोड नहीं हो सका।",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "scoreboard.heroLabel": "समय",
+  "scoreboard.heroSub": "{{moves}} चालें · 4 में से {{foundations}} पूरे",
+  "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
+  "scoreboard.bestTime": "सबसे अच्छा समय",
+  "scoreboard.bestMoves": "सबसे कम चालें",
+  "scoreboard.gamesPlayed": "खेले गए गेम",
+  "scoreboard.gamesWon": "जीते गए गेम"
 }
