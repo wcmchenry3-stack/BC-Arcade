@@ -92,7 +92,11 @@ def test_board_json_turns_pair_tuples_into_records() -> None:
     assert sort["tiebreak"] == ["total_moves", "asc"]
     assert sort["maxValue"] == 23
     assert gen.board_json(gen.board_for(GameType.DAILY_WORD))["qualifyingOutcomes"] == ["win"]
-    assert gen.board_json(gen.board_for(GameType.TWENTY48)) is None
+    starswarm = gen.board_json(gen.board_for(GameType.STARSWARM))
+    assert starswarm["partitions"] == ["difficulty_tier"]
+    assert starswarm["partitionDefaults"] == {}
+    # Every GameType has a module since #2623; a future one without is still null.
+    assert gen.board_json(None) is None
 
 
 def test_vocab_ts_matches_generator_output() -> None:

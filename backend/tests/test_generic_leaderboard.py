@@ -44,8 +44,14 @@ DISABLED_BOARDS = sorted(
 
 # Creation metadata each game's metadata_model requires, and the partition
 # query that board needs.
-CREATE_METADATA: dict[str, dict[str, Any]] = {"sudoku": {"difficulty": "easy"}}
-PARTITION_QUERY: dict[str, str] = {"sudoku": "?difficulty=easy"}
+CREATE_METADATA: dict[str, dict[str, Any]] = {
+    "sudoku": {"difficulty": "easy"},
+    "starswarm": {"difficulty_tier": "Captain"},
+}
+PARTITION_QUERY: dict[str, str] = {
+    "sudoku": "?difficulty=easy",
+    "starswarm": "?difficulty_tier=Captain",
+}
 
 
 @pytest.fixture()
@@ -311,7 +317,7 @@ async def test_best_is_taken_among_named_rows_only(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("game_type", [*DISABLED_BOARDS, "twenty48", "bogus"])
+@pytest.mark.parametrize("game_type", [*DISABLED_BOARDS, "bogus"])
 def test_disabled_or_unknown_board_is_404(client: TestClient, game_type: str) -> None:
     r = client.get(f"/games/leaderboard/{game_type}")
     assert r.status_code == 404, r.text

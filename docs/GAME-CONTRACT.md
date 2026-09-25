@@ -141,16 +141,20 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 | Sort       | `level_reached` | desc      | `total_moves` asc | —                                   | 23                                   | any                 | yes     |
 | Blackjack  | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | no      |
 | Daily Word | `guesses_used`  | asc       | —                 | —                                   | —                                    | `win`               | no      |
+| Twenty48   | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
+| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier`                   | —                                    | any                 | yes     |
 
 "any" means every non-abandoned row. Notes on the declarations:
 
 - **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. The legacy `POST /yacht/score` bound of 400 applies to its `400 - raw` transform, not to a real game's total.
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
+- **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
+- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way.
 - **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
 - **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet, and Sort sends `level`/`moves` rather than `level_reached`/`total_moves`. Their Phase 2 stories (#2632, #2625) make the clients send the declared keys; the declarations stay as they are.
 
-Twenty48 and Star Swarm have no module yet (their boards arrive with their modules in #2623) and export `null`.
+Every `GameType` has a module since #2623, so no game exports `null`.
 
 #### Leaderboard routes (#2618)
 
@@ -224,9 +228,9 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                             |
-| Starswarm   | —                   | No backend module; router-only                                                                                                                                     |
+| Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (max 32 chars). The router's own leaderboard rows (`POST /starswarm/score`) are written directly and hold `player_name`             |
 | Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                 |
-| Twenty48    | —                   | Frontend-only; no backend module                                                                                                                                   |
+| Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                 |
 | Yacht       | `YachtMetadata`     | `difficulty: Literal["easy","medium","hard"] = "easy"`                                                                                                             |
 
 **Adding a metadata model:**

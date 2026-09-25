@@ -662,6 +662,53 @@ def test_kept_playing_twenty48_counts(client: TestClient, fixed_template: Templa
     assert _goals_by_id(body)[_SCORE_2500.id]["completed"] is True
 
 
+_TILE_512 = FREE_GOAL_POOL["twenty48"][_MEDIUM]  # highest_tile >= 512
+
+
+@needs_db
+@pytest.mark.parametrize("outcome", ["completed", "kept_playing"])
+def test_twenty48_tile_goal_reads_the_validated_result(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """Twenty48's result block is validated since #2623; the goals still read it.
+
+    The body is ``endedPayload`` from ``Twenty48Screen.tsx``: ``highest_tile``
+    reaches the goal only through ``games.metadata``, so a result model that
+    dropped it would silently break the medium goal.
+    """
+    template = Template("twenty48_tile_for_tests", (_TILE_512, _SCORE_2500))
+    monkeypatch.setattr("daily_challenge.service.template_for", lambda _d, _s="free": template)
+    monkeypatch.setattr("daily_challenge.router.template_for", lambda _d, _s="free": template)
+    sid = str(uuid.uuid4())
+
+    ended = {"final_score": 1800, "highest_tile": 256, "move_count": 150, "duration_ms": 1000}
+    _play(
+        client,
+        sid,
+        game_type="twenty48",
+        final_score=1800,
+        outcome=outcome,
+        result={**ended, "outcome": outcome},
+    )
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_TILE_512.id]["completed"] is False
+    assert goals[_SCORE_2500.id]["best_score"] == 1800
+
+    ended = {**ended, "final_score": 3000, "highest_tile": 512}
+    _play(
+        client,
+        sid,
+        game_type="twenty48",
+        final_score=3000,
+        outcome=outcome,
+        result={**ended, "outcome": outcome},
+    )
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_TILE_512.id]["completed"] is True
+    assert goals[_SCORE_2500.id]["completed"] is True
+    assert goals[_SCORE_2500.id]["best_score"] == 3000
+
+
 @needs_db
 def test_other_sessions_and_other_games_do_not_count(
     client: TestClient, fixed_template: Template

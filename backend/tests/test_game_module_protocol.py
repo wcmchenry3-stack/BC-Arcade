@@ -74,6 +74,9 @@ _HAS_WINNER = {
     "sudoku": False,
     "cascade": False,
     "sort": False,
+    # Twenty48 flips to True when #2631 records reaching 2048 as a win.
+    "twenty48": False,
+    "starswarm": False,
 }
 
 
@@ -154,12 +157,9 @@ def test_registry_returns_none_for_unknown() -> None:
 _REGISTERED = [(gt.value, get_module(gt.value)) for gt in GameType if get_module(gt.value)]
 
 
-def test_ten_modules_registered() -> None:
-    """Twenty48 and Star Swarm have no module until #2623."""
-    assert {name for name, _ in _REGISTERED} == {gt.value for gt in GameType} - {
-        "twenty48",
-        "starswarm",
-    }
+def test_every_game_type_has_a_module() -> None:
+    """Twenty48 and Star Swarm were the last two without one (#2623)."""
+    assert {name for name, _ in _REGISTERED} == {gt.value for gt in GameType}
 
 
 def _carryable(mod, key: str) -> bool:

@@ -31,6 +31,8 @@ _GAMES = [
     "sort",
     "blackjack",
     "daily_word",
+    "twenty48",
+    "starswarm",
 ]
 
 
@@ -203,6 +205,8 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("sort", "level_reached", "desc", ("total_moves", "asc"), (), 23, None, True),
         ("blackjack", SCORE_METRIC, "desc", None, (), None, None, False),
         ("daily_word", "guesses_used", "asc", None, (), None, ("win",), False),
+        ("twenty48", SCORE_METRIC, "desc", None, (), None, None, True),
+        ("starswarm", SCORE_METRIC, "desc", None, ("difficulty_tier",), None, None, True),
     ],
 )
 def test_declared_board(
