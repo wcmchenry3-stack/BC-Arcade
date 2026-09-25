@@ -30,15 +30,22 @@ import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
-import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
+import { sortApi, type LevelData } from "../game/sort/api";
+import { statsApi, type GameLeaderboardEntry } from "../api/stats";
 import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";
 import {
+  applyLevelSolve,
+  highestSolvedLevel,
+  loadBestMoves,
   loadProgress,
+  mergeBestMoves,
+  saveBestMoves,
   saveProgress,
   loadLevelsCache,
-  recordLevelSolve,
   saveLevelsCache,
+  totalBestMoves,
+  type BestMoves,
   type SortProgress,
 } from "../game/sort/storage";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
@@ -49,10 +56,13 @@ import { useSortAudio } from "../game/sort/useSortAudio";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sortLeaderboard } from "../game/sort/leaderboard";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 
 type ScreenView = "loading" | "select" | "play";
 type SelectTab = "levels" | "leaderboard";
+
+/** The result card's rank lookup on Sort's session board (#2625, #2677). */
+const sortBoard = sessionBoardAdapter("sort");
 
 export default function SortScreen() {
   const { t } = useTranslation("sort");
@@ -72,7 +82,7 @@ export default function SortScreen() {
 
   // Level select tabs
   const [selectTab, setSelectTab] = useState<SelectTab>("levels");
-  const [leaderboard, setLeaderboard] = useState<ScoreEntry[]>([]);
+  const [leaderboard, setLeaderboard] = useState<readonly GameLeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // Active game
@@ -95,13 +105,13 @@ export default function SortScreen() {
   const [showWinModal, setShowWinModal] = useState(false);
   /** The solved level's best (fewest) moves, including this solve. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
-  const leaderboardSubmit = useLeaderboardSubmit(sortLeaderboard);
-  const { submit: submitScore, reset: resetSubmission } = leaderboardSubmit;
+  const leaderboardSubmit = useLeaderboardSubmit(sortBoard);
+  const { submit: submitRank, reset: resetSubmission } = leaderboardSubmit;
 
-  // Per-session `games` row (#2512), like every other game: XP, Profile history
-  // and SyncWorker. It never carries a score — Sort's leaderboard ranks every
-  // Sort row with a `final_score`, so a scored session would duplicate each
-  // solve there. The leaderboard entry is `sortLeaderboard`'s job.
+  // One `games` row per level played (#2512): XP, Profile history, stats and
+  // the leaderboard (#2625). Only the first solve of the player's frontier
+  // level is scored (see the solve effect); the board ranks those rows, one
+  // entry per named player.
   const {
     start: syncStart,
     resume: syncResume,
@@ -114,13 +124,21 @@ export default function SortScreen() {
   gameStateRef.current = gameState;
   const currentLevelIdRef = useRef<number | null>(null);
   currentLevelIdRef.current = currentLevelId;
-  /** Bumped whenever the played level changes, so a late solve result is dropped. */
+  /** Bumped whenever the played level changes, so a late hint is dropped. */
   const levelGenRef = useRef(0);
 
   const [isHinting, setIsHinting] = useState(false);
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
+  /**
+   * The best moves per level: the one source of truth for every solve's card
+   * and score, so the session completes before the player can move on.
+   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
+   */
+  const bestMovesRef = useRef<BestMoves>({});
+  /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
+  const bestsStoredRef = useRef(false);
 
   const audio = useSortAudio();
 
@@ -162,7 +180,7 @@ export default function SortScreen() {
   const loadScreen = useCallback(async () => {
     setLoadError(false);
     setView("loading");
-    const [levelsResult, prog] = await Promise.all([
+    const [levelsResult, prog, stored] = await Promise.all([
       withRetry(() => sortApi.getLevels())
         .then((result) => {
           // Cache the level definitions for offline use. Fire-and-forget —
@@ -175,7 +193,18 @@ export default function SortScreen() {
         // (e.g. entitlement expired) — falling back to cache would bypass that.
         .catch((e) => (isNetworkError(e) ? loadLevelsCache() : null)),
       loadProgress(),
+      loadBestMoves(),
     ]);
+    if (stored !== null) {
+      // Merge, never replace: a Retry must keep a best still only in memory
+      // (its write failed, or storage couldn't be read before).
+      const merged = mergeBestMoves(bestMovesRef.current, stored);
+      bestMovesRef.current = merged;
+      bestsStoredRef.current = true;
+      if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
+        void saveBestMoves(merged);
+      }
+    }
     if (!levelsResult) {
       setLoadError(true);
     } else {
@@ -226,35 +255,55 @@ export default function SortScreen() {
     // progressRef is a stable ref, so it doesn't belong in the dep array.
   }, [view, currentLevelId, gameState]);
 
-  // Unlock next level and show win modal as soon as the puzzle is solved.
-  // Unlocking is tied to solving, not to leaderboard submission, so players
-  // who skip score entry still progress.
+  // Unlock the next level, complete the session and show the result card as
+  // soon as the puzzle is solved. Nothing here waits on the network or on
+  // storage, so Next Level is available at once.
   useEffect(() => {
     if (!gameState?.isComplete || showWinModal) return;
     setShowWinModal(true);
     if (currentLevelId !== null) {
-      // Read before the unlock below moves it on.
-      const atFrontier = currentLevelId >= progressRef.current.unlockedLevel;
-      const payload = {
-        outcome: "completed",
-        won: true,
-        level: currentLevelId,
-        moves: gameState.moveCount,
-        undos: gameState.undosUsed,
-      };
-      syncComplete({ outcome: "completed", result: payload }, payload);
       const solvedLevel = currentLevelId;
-      const gen = levelGenRef.current;
-      void recordLevelSolve(solvedLevel, gameState.moveCount).then((solve) => {
-        // The player already moved on (Next Level / Change Level): don't let
-        // this solve land on the next level's card or submission.
-        if (gen !== levelGenRef.current) return;
-        setWinSummary(solve);
-        // The leaderboard is "highest level reached", and every POST adds a
-        // row — so only the first solve of the player's frontier level can
-        // raise it. Replays (incl. the last level's Play Again) submit nothing.
-        if (atFrontier && solve.firstSolve) submitScore({ level: solvedLevel });
-      });
+      const moves = gameState.moveCount;
+      // Decided now, from the bests in memory, so the session completes before
+      // the player can leave the card (#2625).
+      const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
+      bestMovesRef.current = bests;
+      setWinSummary(solve);
+      // Storage mirrors memory; skipped while it couldn't be read, so a failed
+      // read never overwrites the stored bests.
+      if (solve.isNewBest && bestsStoredRef.current) void saveBestMoves(bests);
+      // Every solve is scored with the player's standing after it (#2625): the
+      // highest level solved, and the sum of best moves up to it. A replay that
+      // lowers a best improves the tie-break; the board keeps each player's
+      // best row. `level`/`moves`/`undos` are the level actually played.
+      const frontier = Math.min(
+        Math.max(
+          solvedLevel,
+          progressRef.current.unlockedLevel - 1, // read before the unlock below
+          highestSolvedLevel(bests)
+        ),
+        // Never past the last level: the server rejects (and the sync worker
+        // would drop) a level_reached above its cap.
+        Math.max(levels.length, solvedLevel)
+      );
+      const result: Record<string, number | boolean> = {
+        won: true,
+        level: solvedLevel,
+        moves,
+        undos: gameState.undosUsed,
+        level_reached: frontier,
+      };
+      const totalMoves = totalBestMoves(bests, frontier);
+      if (totalMoves !== null) result.total_moves = totalMoves;
+      // complete() clears the id: read it first.
+      const gameId = syncGetGameId();
+      syncComplete(
+        { outcome: "completed", finalScore: frontier, result },
+        { outcome: "completed", ...result }
+      );
+      // The row ranks by itself under the player's name (#2624): the card
+      // only asks where it landed, or for a name if there is none.
+      if (gameId) void submitRank({ gameId });
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
@@ -276,7 +325,8 @@ export default function SortScreen() {
     currentLevelId,
     levels,
     syncComplete,
-    submitScore,
+    syncGetGameId,
+    submitRank,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -429,8 +479,9 @@ export default function SortScreen() {
   const handleLoadLeaderboard = useCallback(async () => {
     setLeaderboardLoading(true);
     try {
-      const res = await sortApi.getLeaderboard();
-      setLeaderboard(res.scores as ScoreEntry[]);
+      // The generic board (#2618); #2633's shared screen replaces this tab.
+      const res = await statsApi.getLeaderboard("sort");
+      setLeaderboard(res.entries);
     } catch {
       // keep stale data on error
     } finally {
@@ -498,12 +549,12 @@ export default function SortScreen() {
         data={leaderboard}
         keyExtractor={(_, i) => String(i)}
         contentContainerStyle={styles.leaderboardList}
-        renderItem={({ item, index }) => (
+        renderItem={({ item }) => (
           <View style={[styles.leaderboardRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.leaderboardRank, { color: colors.textMuted }]}>#{index + 1}</Text>
+            <Text style={[styles.leaderboardRank, { color: colors.textMuted }]}>#{item.rank}</Text>
             <Text style={[styles.leaderboardName, { color: colors.text }]}>{item.player_name}</Text>
             <Text style={[styles.leaderboardLevel, { color: colors.accent }]}>
-              {t("leaderboard.levelReached", { level: item.level_reached })}
+              {t("leaderboard.levelReached", { level: item.value })}
             </Text>
           </View>
         )}

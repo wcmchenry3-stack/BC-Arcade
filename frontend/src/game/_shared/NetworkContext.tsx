@@ -18,7 +18,6 @@ import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
 import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
 import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
-import { registerSortScoreHandler } from "../sort/scoreSync";
 import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import {
   flushDisplayNameSync,
@@ -41,7 +40,6 @@ registerSudokuScoreHandler();
 registerMahjongScoreHandler();
 registerSolitaireScoreHandler();
 registerFreeCellScoreHandler();
-registerSortScoreHandler();
 registerStarSwarmScoreHandler();
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();

@@ -65,6 +65,12 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
+// useGameSync's app-wide foreground clock (#2684), held still: Twenty48 sends
+// its own timer, and where that reads 0 (a fresh board) the hook's window would
+// otherwise fill in real elapsed test time.
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => 0,
+}));
 beforeEach(() => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");

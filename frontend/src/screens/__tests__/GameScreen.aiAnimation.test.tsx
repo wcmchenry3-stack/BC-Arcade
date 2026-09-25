@@ -37,6 +37,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// useGameSync's app-wide foreground clock (#2684) subscribes to AppState once,
+// on first use — whichever test that lands in. Stub it so the listener counts
+// below see only the screen's own listener, in any test order.
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => Date.now(),
+}));
+
 const ALL_NULL_SCORES = {
   ones: null,
   twos: null,

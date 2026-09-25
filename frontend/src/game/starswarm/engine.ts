@@ -208,7 +208,7 @@ const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
 export const REINFORCE_INTERVAL = 8000; // ms between launches while the Carrier lives
 const REINFORCE_MIN = 2;
 const REINFORCE_MAX = 4;
-export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys when the Carrier is alone
+export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys once the Carrier is unarmored
 const LONE_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 const BEAM_DIFFICULTY_CAP = 1.6; // paramScale is capped here for beam/lone-fire cadence
 
@@ -1597,18 +1597,19 @@ interface EnemyTickResult {
 interface CarrierCtx {
   /** Playing phase — beams and lone fire only happen mid-wave. */
   playing: boolean;
-  /** No other live enemy on the field (in-flight reinforcements count as alive). */
-  alone: boolean;
+  /** #2699: its four Boss escorts are dead, so its force field is down — twin lasers fire. */
+  unarmored: boolean;
   /** #2490: boss wave — the beam cadence is BOSS_WAVE_BEAM_SCALE× faster. */
   bossWave: boolean;
 }
-const NO_CARRIER_CTX: CarrierCtx = { playing: false, alone: false, bossWave: false };
+const NO_CARRIER_CTX: CarrierCtx = { playing: false, unarmored: false, bossWave: false };
 
 /**
  * #2485: the Carrier's own tick while holding station. Beam: idle → charge (telegraph) → fire →
- * idle on a difficulty-scaled cadence. Lone-ship lasers: once nothing else is alive it fires a
- * pair of aimed shots every LONE_FIRE_INTERVAL, so the player can't park off to one side and
- * plink it to death. Reinforcements live in tickEnemies (they need the whole roster).
+ * idle on a difficulty-scaled cadence. Twin-laser lasers: #2699 once its armor is down (its Boss
+ * escorts are dead) it fires a pair of aimed shots every LONE_FIRE_INTERVAL, so the player can't
+ * just plink an exposed Carrier from off to one side while grunts still live. Reinforcements live
+ * in tickEnemies (they need the whole roster).
  */
 function tickCarrier(
   enemy: Enemy,
@@ -1638,7 +1639,7 @@ function tickCarrier(
 
   let shootTimer = enemy.shootTimer;
   let bullets: Bullet[] | undefined;
-  if (ctx.alone) {
+  if (ctx.unarmored) {
     shootTimer -= dtMs;
     if (shootTimer <= 0) {
       shootTimer = LONE_FIRE_INTERVAL / cadence;
@@ -2226,10 +2227,11 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #2487: flak at rocks is outside the cap too
   let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless && !b.flak).length;
   const enemyBulletCap = bulletCap(state.wave, _ps);
-  // #2485: the Carrier fires its twin lasers only once nothing else is alive
+  // #2699: the Carrier fires its twin lasers once its armor is down (Boss escorts dead),
+  // not only once it's the sole enemy left alive.
   const carrierCtx: CarrierCtx = {
     playing: state.phase === "Playing",
-    alone: !state.enemies.some((e) => e.isAlive && e.tier !== "Carrier"),
+    unarmored: !carrierArmoredIn(state.enemies),
     bossWave: isBossWave(state.wave), // #2490
   };
   let routEscaped = 0; // #2489: fleeing grunts that reached the edge this tick

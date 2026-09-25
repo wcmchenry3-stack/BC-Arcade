@@ -154,7 +154,8 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
 - **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG`, the legacy `POST /starswarm/score` default.
 - **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
-- **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet, and Sort sends `level`/`moves` rather than `level_reached`/`total_moves`. Their Phase 2 stories (#2632, #2625) make the clients send the declared keys; the declarations stay as they are.
+- **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record, so the row ranks after equal levels that have one). The board keeps each player's best row, so a replay that lowers a best improves their rank. Abandons carry no score and never rank.
+- **Not yet sent by the client:** FreeCell session rows don't set `final_score` yet. Its Phase 2 story (#2632) makes the client send it; the declaration stays as it is.
 
 Every `GameType` has a module since #2623, so no game exports `null`.
 
@@ -375,6 +376,32 @@ value > 0 as `duration_ms` and sends anything else (0, null, missing,
 negative) as `null`, meaning "unknown". It never derives a duration from the
 session's wall-clock start and end times: those count idle and backgrounded
 time as play.
+
+**Active-play window (#2684).** A game that measures no active time of its own
+needs no code for a duration: `useGameSync` fills in `durationMs` with the
+foreground time on the game screen since the previous session ended, with each
+idle gap capped at 10 minutes; a game's own measured duration wins.
+
+- Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
+  counter that stops while `AppState` is `background` or `inactive`.
+- The window opens when the hook mounts and restarts when a session ends:
+  after `complete()`, and when an open session is abandoned or discarded
+  (unmount, `close()`, or `start()` / `restart()` / `resume()` replacing it),
+  after the abandon has read it. Opening a session with none open leaves it
+  alone, so the thinking time before the first move counts and a game won on
+  its first action still gets a duration.
+- Idle cap: player-activity pings — mount, `markStarted()`, `enqueue()`,
+  `complete()`, `resume()` — split the window into gaps, and each gap adds at
+  most `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an
+  in-app pause, stops counting there.
+- `complete()` sends the game's own `summary.durationMs` when it is > 0,
+  otherwise the window. The hook's own abandons send
+  `ProgressSnapshot.durationMs` when it is > 0, otherwise the window. A
+  discarded (never-started) session sends nothing.
+- A session resumed after a killed process counts from the relaunch; time
+  before the kill is lost (an undercount, never an overcount).
+- A window reading 0 sends no duration — the `resolveDurationMs` rule: 0 means
+  "unknown".
 
 ### 2.4 ESLint import zones _(TBD)_
 

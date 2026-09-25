@@ -17,10 +17,10 @@
  * - **Lost-response duplicates (#155) remain only for the legacy per-game
  *   `POST /<game>/score` handlers**, which insert a new leaderboard row on
  *   every call: Mahjong (`/mahjong/score`), Solitaire (`/solitaire/score`),
- *   FreeCell (`/freecell/score`), Sort (`/sort/score`) and Star Swarm
- *   (`/starswarm/score`). A replay can add at most one duplicate row to that
- *   game's legacy board (never to the generic boards, which exclude those
- *   `*-anon` rows). Phase 2 of #2519 removes these handlers (Hearts' is gone,
+ *   FreeCell (`/freecell/score`) and Star Swarm (`/starswarm/score`). A
+ *   replay can add at most one duplicate row to that game's legacy board
+ *   (never to the generic boards, which exclude those `*-anon` rows). Phase 2
+ *   of #2519 removes these handlers (Sort's went with #2625, Hearts' with
  *   #2629) and #2644 the routes. An item queued by an older build for a game
  *   whose handler is gone stays in the queue unsent.
  *
