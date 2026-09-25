@@ -21,9 +21,9 @@ def not_abandoned() -> ColumnElement[bool]:
     ``NULL != 'abandoned'`` evaluates to NULL, not true, so a bare ``!=`` would
     silently drop every one of those rows from leaderboards and stats.
 
-    Deliberately not ``outcome == COMPLETED``: ``kept_playing`` (Twenty48
-    continuing past 2048) and the Blackjack result vocabulary (``win`` /
-    ``loss`` / ``push`` / ``blackjack``) are legitimate finishes that must
-    still rank and count.
+    Deliberately not ``outcome == COMPLETED``: every other value — ``win`` /
+    ``loss`` / ``push`` and ``kept_playing`` — is a legitimate finish that must
+    still rank and count. What each value means is documented once, on
+    ``vocab.GameOutcome``.
     """
     return or_(Game.outcome.is_(None), Game.outcome != GameOutcome.ABANDONED.value)

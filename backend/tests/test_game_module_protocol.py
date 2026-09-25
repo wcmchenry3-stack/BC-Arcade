@@ -9,7 +9,7 @@ from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
 from games.board import SCORE_METRIC, BoardDefinition
 from games.protocol import GameModule
-from games.registry import get_module
+from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
 from mahjong.module import module as mahjong_module
 from solitaire.module import module as solitaire_module
@@ -56,6 +56,48 @@ def test_result_model_declared(mod, expects_model) -> None:
     assert (mod.result_model is not None) == expects_model
     if expects_model:
         assert mod.result_model is not mod.metadata_model
+
+
+# Games whose finished rows record ``win`` / ``loss`` / ``push`` (see
+# ``vocab.GameOutcome``). Twenty48 (true) and Star Swarm (false) join when #2623
+# registers them.
+# True only where the client writes win / loss / push today (#2619). Mahjong
+# flips with #2627 and Blackjack with #2628, when they start recording wins.
+_HAS_WINNER = {
+    "yacht": True,
+    "hearts": True,
+    "daily_word": True,
+    "mahjong": False,
+    "blackjack": False,
+    "solitaire": False,
+    "freecell": False,
+    "sudoku": False,
+    "cascade": False,
+    "sort": False,
+}
+
+
+@pytest.mark.parametrize("name", sorted(_REGISTRY))
+def test_has_winner_declared(name: str) -> None:
+    """Every registered module declares ``has_winner`` as a bool (#2619)."""
+    mod = _REGISTRY[name]
+    assert isinstance(
+        type(mod).__dict__.get("has_winner"), bool
+    ), f"{name} module must declare has_winner: bool as a class attribute"
+    assert name in _HAS_WINNER, f"add {name} to _HAS_WINNER (see vocab.GameOutcome)"
+    assert mod.has_winner is _HAS_WINNER[name]
+
+
+def test_module_without_has_winner_fails_protocol() -> None:
+    class _NoWinnerFlag:
+        game_type = GameType.YACHT
+        metadata_model = None
+        result_model = None
+
+        def stats_shape(self, raw_stats: dict) -> dict:
+            return raw_stats
+
+    assert not isinstance(_NoWinnerFlag(), GameModule)
 
 
 def test_daily_word_module_game_type() -> None:
@@ -160,7 +202,7 @@ def test_module_without_board_fails_protocol() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BlackjackModule.stats_shape — key renames and chip logic
+# BlackjackModule.stats_shape — chip figures under "extras" (#2620)
 # ---------------------------------------------------------------------------
 
 _RAW_BJ = {
@@ -174,7 +216,7 @@ _RAW_BJ = {
 
 def test_blackjack_stats_shape_renames_best_to_best_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["best_chips"] == 2400
+    assert shaped["extras"]["best_chips"] == 2400
     assert shaped.get("best") is None
 
 
@@ -185,7 +227,7 @@ def test_blackjack_stats_shape_drops_avg() -> None:
 
 def test_blackjack_stats_shape_maps_latest_score_to_current_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["current_chips"] == 2100
+    assert shaped["extras"]["current_chips"] == 2100
 
 
 def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
@@ -197,15 +239,15 @@ def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
 def test_blackjack_stats_shape_none_latest_score() -> None:
     raw = {**_RAW_BJ, "latest_score": None}
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["current_chips"] is None
+    assert shaped["extras"]["current_chips"] is None
 
 
 def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("total_runs") is None
-    assert shaped.get("runs_completed") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("total_runs") is None
+    assert shaped["extras"].get("runs_completed") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
@@ -219,16 +261,16 @@ def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
         },
     }
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["best_run_chips"] == 3000
-    assert shaped["total_runs"] == 12
-    assert shaped["runs_completed"] == 4
-    assert shaped["current_table"] == "intermediate"
+    assert shaped["extras"]["best_run_chips"] == 3000
+    assert shaped["extras"]["total_runs"] == 12
+    assert shaped["extras"]["runs_completed"] == 4
+    assert shaped["extras"]["current_table"] == "intermediate"
 
 
 def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 # ---------------------------------------------------------------------------

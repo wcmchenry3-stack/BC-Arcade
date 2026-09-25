@@ -15,14 +15,20 @@ class BlackjackModule:
     """GameModule implementation for Blackjack.
 
     Stats shape differences from the generic pattern:
-    - ``best``  → renamed to ``best_chips``
+    - ``best``  → moved to ``extras.best_chips``
     - ``avg``   → dropped (chip counts don't aggregate meaningfully)
-    - ``current_chips`` ← ``latest_score`` (chips at end of last session)
+    - ``extras.current_chips`` ← ``latest_score`` (chips at end of last session)
+    - ``extras`` also carries the run aggregates from the latest row's metadata
+      (#2620). ``games/service.py`` mirrors ``extras`` onto the deprecated
+      top-level ``best_chips`` … ``current_table`` fields until #2644.
     """
 
     game_type = GameType.BLACKJACK
     metadata_model = BlackjackMetadata
     result_model = BlackjackResult
+    # False until #2628 makes a run record ``win`` / ``loss``; today every
+    # finished run records ``completed``.
+    has_winner = False
     # No leaderboard: chips are a balance, not a score (#2519 §4.2).
     # qualifying_outcomes stays None: every non-abandoned session's closing
     # balance counts toward ``best_chips`` in stats, whatever its last hand was.
@@ -35,12 +41,14 @@ class BlackjackModule:
             "best": None,
             "avg": None,
             "last_played_at": raw_stats["last_played_at"],
-            "best_chips": raw_stats["best"],
-            "current_chips": raw_stats["latest_score"],
-            "best_run_chips": meta.get("best_run_chips"),
-            "total_runs": meta.get("total_runs"),
-            "runs_completed": meta.get("runs_completed"),
-            "current_table": meta.get("current_table"),
+            "extras": {
+                "best_chips": raw_stats["best"],
+                "current_chips": raw_stats["latest_score"],
+                "best_run_chips": meta.get("best_run_chips"),
+                "total_runs": meta.get("total_runs"),
+                "runs_completed": meta.get("runs_completed"),
+                "current_table": meta.get("current_table"),
+            },
         }
 
 

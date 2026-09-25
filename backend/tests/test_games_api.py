@@ -240,12 +240,16 @@ def test_complete_game_idempotent(client: TestClient, session_id: str) -> None:
     assert r2.json()["outcome"] == "win"
 
 
-def test_complete_game_rejects_invalid_outcome(client: TestClient, session_id: str) -> None:
+@pytest.mark.parametrize("outcome", ["bogus", "blackjack"])
+def test_complete_game_rejects_invalid_outcome(
+    client: TestClient, session_id: str, outcome: str
+) -> None:
+    # ``blackjack`` was a never-written GameOutcome member, removed in #2619.
     gid = _new_game(client, session_id)
     r = client.patch(
         f"/games/{gid}/complete",
         headers=_headers(session_id),
-        json={"outcome": "bogus"},
+        json={"outcome": outcome},
     )
     assert r.status_code == 400
 
@@ -432,7 +436,6 @@ def test_complete_game_null_result_treated_as_empty(client: TestClient, session_
         "win",
         "loss",
         "push",
-        "blackjack",
         # Lifecycle vocabulary (#514)
         "completed",
         "abandoned",

@@ -17,6 +17,7 @@ class HeartsModule:
     game_type = GameType.HEARTS
     metadata_model = HeartsMetadata
     result_model = None
+    has_winner = True
     # ``final_score`` is 100 - penalty points. qualifying_outcomes stays None:
     # a lost or drawn hand still has a real score, so win/loss/push all count.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score", max_value=100)

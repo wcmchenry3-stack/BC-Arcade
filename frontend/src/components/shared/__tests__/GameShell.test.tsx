@@ -1,5 +1,5 @@
 import React from "react";
-import { Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { render, screen } from "@testing-library/react-native";
 import { GameShell } from "../GameShell";
 
@@ -66,14 +66,28 @@ describe("GameShell", () => {
     expect(screen.getByText("game content")).toBeTruthy();
   });
 
-  it("renders a loading spinner and hides children when loading=true", async () => {
+  it("keeps the title and back button but hides children and the menu while loading", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} loading>
+      <GameShell title="Yacht" onBack={noop} onNewGame={noop} loading>
         <Text>game content</Text>
       </GameShell>
     );
     expect(screen.queryByText("game content")).toBeNull();
-    expect(screen.queryByText("Yacht")).toBeNull();
+    expect(screen.getByText("Yacht")).toBeTruthy();
+    expect(screen.getByTestId("nav-back")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "common:overflow.menu.label" })).toBeNull();
+    expect(screen.getByLabelText("a11y.loading")).toBeTruthy();
+  });
+
+  it("treats a caller paddingBottom as a minimum under the tab bar height", async () => {
+    await render(
+      <GameShell title="Yacht" onBack={noop} style={{ paddingBottom: 24 }}>
+        <Text>game content</Text>
+      </GameShell>
+    );
+    // Outside a tab navigator the tab bar height is 0, so the caller's 24 wins.
+    const root = screen.toJSON() as { props: { style: unknown } };
+    expect(StyleSheet.flatten(root.props.style as never).paddingBottom).toBe(24);
   });
 
   it("renders an error banner when error is a non-empty string", async () => {

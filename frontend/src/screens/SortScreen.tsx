@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  Alert,
   AppState,
   AppStateStatus,
   FlatList,
@@ -12,10 +11,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
@@ -45,6 +42,9 @@ import {
   type SortProgress,
 } from "../game/sort/storage";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
+import { GameShell } from "../components/shared/GameShell";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -58,8 +58,6 @@ export default function SortScreen() {
   const { t } = useTranslation("sort");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   // Top-level view
@@ -125,29 +123,26 @@ export default function SortScreen() {
 
   const audio = useSortAudio();
 
+  // #2619 — the abandon result block. Both the hook's own abandon (unmount) and
+  // abandonSession build it here.
+  const progressResult = useCallback(
+    () => ({
+      won: false,
+      level: currentLevelIdRef.current,
+      moves: gameStateRef.current?.moveCount ?? 0,
+    }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: {
-        won: false,
-        level: currentLevelIdRef.current,
-        moves: gameStateRef.current?.moveCount ?? 0,
-      },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   /** Closes an open, unfinished session as abandoned (a no-op otherwise). */
   const abandonSession = useCallback(() => {
     if (!syncGetGameId()) return;
-    syncComplete(
-      { outcome: "abandoned" },
-      {
-        outcome: "abandoned",
-        won: false,
-        level: currentLevelIdRef.current,
-        moves: gameStateRef.current?.moveCount ?? 0,
-      }
-    );
-  }, [syncGetGameId, syncComplete]);
+    const result = progressResult();
+    syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
+  }, [syncGetGameId, syncComplete, progressResult]);
 
   useEffect(() => {
     return () => {
@@ -239,16 +234,14 @@ export default function SortScreen() {
     if (currentLevelId !== null) {
       // Read before the unlock below moves it on.
       const atFrontier = currentLevelId >= progressRef.current.unlockedLevel;
-      syncComplete(
-        { outcome: "completed" },
-        {
-          outcome: "completed",
-          won: true,
-          level: currentLevelId,
-          moves: gameState.moveCount,
-          undos: gameState.undosUsed,
-        }
-      );
+      const payload = {
+        outcome: "completed",
+        won: true,
+        level: currentLevelId,
+        moves: gameState.moveCount,
+        undos: gameState.undosUsed,
+      };
+      syncComplete({ outcome: "completed", result: payload }, payload);
       const solvedLevel = currentLevelId;
       const gen = levelGenRef.current;
       void recordLevelSolve(solvedLevel, gameState.moveCount).then((solve) => {
@@ -369,9 +362,11 @@ export default function SortScreen() {
   async function handleHint() {
     if (!gameState || gameState.isComplete || isPouring || isHinting) return;
     setIsHinting(true);
+    const gen = levelGenRef.current;
     try {
       const hint = await getNextHintAsync(gameState);
-      if (hint) {
+      // Drop a hint computed for a board the player has since restarted or left.
+      if (hint && gen === levelGenRef.current) {
         setGameState((cur) =>
           cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
         );
@@ -413,6 +408,7 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
@@ -457,21 +453,15 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    // A pour whose animation is still finishing must not land on the fresh board.
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
     abandonSession();
+    levelGenRef.current += 1;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
-  }
-
-  function handleResetOrNew() {
-    if (isPouring) return;
-    Alert.alert(t("action.reset"), t("action.resetPrompt"), [
-      { text: t("action.resetLevel"), onPress: handleResetLevel },
-      { text: t("action.newGame"), onPress: handleBackToSelect },
-      { text: t("action.cancel"), style: "cancel" },
-    ]);
   }
 
   function handleNextLevel() {
@@ -523,30 +513,17 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return (
-      <View style={[styles.screen, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <GameShell key="loading" title={t("game.title")} loading />;
   }
 
   if (view === "select") {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={[styles.selectHeader, { borderBottomColor: colors.border }]}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.back")}
-          >
-            <Text style={[styles.backBtnText, { color: colors.accent }]}>‹</Text>
-          </Pressable>
-          <Text style={[styles.screenTitle, { color: colors.text }]}>{t("game.title")}</Text>
-          <View style={styles.backBtn} />
-        </View>
-
+      <GameShell
+        key="select"
+        title={t("game.title")}
+        requireBack
+        onBack={() => navigation.goBack()}
+      >
         {/* Error banner with retry */}
         {loadError && (
           <View style={styles.errorRow}>
@@ -607,82 +584,47 @@ export default function SortScreen() {
         ) : (
           <View style={styles.leaderboardContainer}>{renderLeaderboard()}</View>
         )}
-      </View>
+      </GameShell>
     );
   }
 
   // view === "play"
   return (
-    <View
-      style={[
-        styles.screen,
-        {
-          backgroundColor: colors.background,
-          paddingTop: insets.top,
-          paddingBottom: tabBarHeight,
-        },
-      ]}
+    <GameShell
+      key="play"
+      title={t("game.title")}
+      requireBack
+      onBack={handleBackToSelect}
+      backAccessibilityLabel={t("action.backToLevels")}
+      onNewGame={handleResetLevel}
+      onLevelSelect={handleBackToSelect}
+      rightSlot={
+        <View style={styles.headerBtnRow}>
+          <PillButton
+            label={t("action.hint")}
+            onPress={handleHint}
+            busy={isHinting}
+            disabled={isPouring || !!gameState?.isComplete}
+            color={colors.bonus}
+          />
+          <PillButton
+            label={t("action.undo")}
+            onPress={handleUndo}
+            disabled={history.length === 0}
+          />
+        </View>
+      }
     >
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
 
-      {/* HUD */}
-      <View style={[styles.hud, { borderBottomColor: colors.border }]}>
-        <Pressable
-          onPress={handleBackToSelect}
-          style={styles.hudBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.backToLevels")}
-        >
-          <Text style={[styles.hudBtnText, { color: colors.accent }]}>‹</Text>
-        </Pressable>
-
-        <View style={styles.hudCenter}>
-          <Text style={[styles.hudLevel, { color: colors.text }]}>
-            {t("hud.level", { level: currentLevelId })}
-          </Text>
-          <Text style={[styles.hudMeta, { color: colors.textMuted }]}>
-            {t("hud.moves", { moves: gameState?.moveCount ?? 0 })}
-            {"  "}
-            {t("hud.undos", { undos: gameState?.undosUsed ?? 0 })}
-          </Text>
-        </View>
-
-        <View style={styles.hudActions}>
-          <Pressable
-            onPress={handleUndo}
-            style={[styles.hudActionBtn, { opacity: history.length > 0 ? 1 : 0.35 }]}
-            disabled={history.length === 0}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.undo")}
-            accessibilityState={{ disabled: history.length === 0 }}
-          >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.undo")}</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleHint}
-            style={[styles.hudActionBtn, { opacity: isHinting ? 0.35 : 1 }]}
-            disabled={isHinting}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.hint")}
-            accessibilityState={{ busy: isHinting }}
-          >
-            {isHinting ? (
-              <ActivityIndicator size="small" color={colors.text} />
-            ) : (
-              <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.hint")}</Text>
-            )}
-          </Pressable>
-          <Pressable
-            onPress={handleResetOrNew}
-            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
-            disabled={isPouring}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.reset")}
-          >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
-          </Pressable>
-        </View>
-      </View>
+      <HudStatRow
+        style={styles.hud}
+        stats={[
+          { key: "level", text: t("hud.level", { level: currentLevelId }), bold: true },
+          { key: "moves", text: t("hud.moves", { moves: gameState?.moveCount ?? 0 }), muted: true },
+          { key: "undos", text: t("hud.undos", { undos: gameState?.undosUsed ?? 0 }), muted: true },
+        ]}
+      />
 
       {/* Board */}
       <View
@@ -757,32 +699,15 @@ export default function SortScreen() {
           testID="sort-result"
         />
       ) : null}
-    </View>
+    </GameShell>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  center: { alignItems: "center", justifyContent: "center" },
-
   offlineBannerWrap: { paddingHorizontal: 12, paddingTop: 4 },
+  headerBtnRow: { flexDirection: "row", gap: 6 },
+  hud: { paddingHorizontal: 12 },
 
-  // Select view
-  selectHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  backBtn: { width: 40, alignItems: "center" },
-  backBtnText: { fontSize: 28, lineHeight: 32, fontFamily: "System" },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: typography.heading,
-    fontSize: 18,
-  },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -826,29 +751,6 @@ const styles = StyleSheet.create({
     marginTop: 32,
     fontFamily: typography.body,
     fontSize: 14,
-  },
-
-  // Play view — HUD
-  hud: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 4,
-  },
-  hudBtn: { width: 36, alignItems: "center" },
-  hudBtnText: { fontSize: 28, lineHeight: 32 },
-  hudCenter: { flex: 1, alignItems: "center" },
-  hudLevel: { fontFamily: typography.heading, fontSize: 16 },
-  hudMeta: { fontFamily: typography.body, fontSize: 11 },
-  hudActions: { flexDirection: "row", gap: 4 },
-  hudActionBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  hudActionText: {
-    fontFamily: typography.label,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
 
   boardContainer: {

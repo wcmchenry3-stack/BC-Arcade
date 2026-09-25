@@ -62,6 +62,15 @@ class GameModule(Protocol):
         and describe creation-time state only.  The validated result is merged
         into ``games.metadata``.
 
+    has_winner:
+        ``True`` when this game can record ``win`` / ``loss`` / ``push`` —
+        set only once the client really writes them (a win included).
+        ``False`` for score-only games, which record ``completed`` /
+        ``kept_playing``.  It is a per-game capability, not a per-row fact:
+        a ``completed`` row from a game with ``has_winner = True`` (e.g. solo
+        Yacht) is not a win — it is a finish with no winner.  See
+        ``vocab.GameOutcome``.
+
     board:
         A ``BoardDefinition`` declaring how the game is ranked (metric,
         direction, tie-break, partitions and their legacy defaults, caps,
@@ -81,14 +90,20 @@ class GameModule(Protocol):
             avg            float | None (mean ``final_score``)
             last_played_at datetime | None
             latest_score   int | None   (``final_score`` of most-recent game)
+            metadata       dict         (``games.metadata`` of the latest row)
 
-        Return a dict whose keys are a subset of ``GameTypeStats`` fields.
-        Omitted keys default to ``None`` in the caller.
+        Return a dict with any of ``played``, ``best``, ``avg``,
+        ``last_played_at`` and ``extras`` (a dict of game-specific figures,
+        e.g. Blackjack's chips). Omitted keys default to ``None`` / ``{}``.
+        The comparable fields (``sessions``, ``completed``, win counts and
+        streaks, ``time_played_ms``, ``best_value``) are computed by the
+        service from the board and cannot be changed here (#2620).
     """
 
     game_type: GameType
     metadata_model: type[BaseModel]
     result_model: type[BaseModel] | None
+    has_winner: bool
     board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

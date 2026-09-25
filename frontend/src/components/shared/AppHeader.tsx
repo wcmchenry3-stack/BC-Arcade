@@ -24,6 +24,11 @@ export interface AppHeaderProps {
    * instead of stranding users on the screen. See GH #498.
    */
   requireBack?: boolean;
+  /**
+   * Screen-reader label for the back button when it does not go home, e.g.
+   * "Back to levels". Defaults to common:nav.backLabel.
+   */
+  backAccessibilityLabel?: string;
   /** When provided, shows the ⋯ menu with a Scoreboard item. See GH #711. */
   onOpenScoreboard?: () => void;
   /** When provided, shows the ⋯ menu with a New Game item (with abandon confirmation). See GH #711. */
@@ -39,6 +44,7 @@ export function AppHeader({
   rightSlot,
   onBack,
   requireBack = false,
+  backAccessibilityLabel,
   onOpenScoreboard,
   onNewGame,
   onLevelSelect,
@@ -166,7 +172,7 @@ export function AppHeader({
           <Pressable
             onPress={handleBackPress}
             accessibilityRole="button"
-            accessibilityLabel={t("common:nav.backLabel")}
+            accessibilityLabel={backAccessibilityLabel ?? t("common:nav.backLabel")}
             style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
             hitSlop={12}
             testID="nav-back"

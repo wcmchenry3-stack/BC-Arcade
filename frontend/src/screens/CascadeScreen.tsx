@@ -374,16 +374,22 @@ function CascadeGame() {
   const gameStartTimeRef = useRef<number>(Date.now());
   const mergeCountRef = useRef(0);
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the result block. The hook's own abandon (unmount) and
+  // endInstrumentedSession build it here, so completed and abandoned rows
+  // store the same metadata keys. `outcome` is left out: it is its own column.
+  const progressResult = useCallback(
+    () => ({
+      final_score: scoreRef.current,
+      duration_ms: Date.now() - gameStartTimeRef.current,
+      theme: activeFruitSetRef.current.id,
+      total_drops: dropCountRef.current,
+      total_merges: mergeCountRef.current,
+    }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: {
-        total_drops: dropCountRef.current,
-        total_merges: mergeCountRef.current,
-        duration_ms: Date.now() - gameStartTimeRef.current,
-      },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
 
   const lastSaveTimeRef = useRef<number>(0);
   const settlingTicksLeftRef = useRef<number>(0);
@@ -404,20 +410,22 @@ function CascadeGame() {
 
   const endInstrumentedSession = useCallback(
     (outcome: "completed" | "abandoned") => {
-      const durationMs = Date.now() - gameStartTimeRef.current;
+      // Built once: the analytics payload is the result plus its outcome. An
+      // abandon's result is the same block as the unmount snapshot; a
+      // completion's keeps `outcome`, as it always has.
+      const result = progressResult();
+      const payload = { ...result, outcome };
       syncComplete(
-        { finalScore: scoreRef.current, outcome, durationMs },
         {
-          final_score: scoreRef.current,
-          duration_ms: durationMs,
-          theme: activeFruitSetRef.current.id,
-          total_drops: dropCountRef.current,
-          total_merges: mergeCountRef.current,
+          finalScore: scoreRef.current,
           outcome,
-        }
+          durationMs: result.duration_ms,
+          result: outcome === "abandoned" ? result : payload,
+        },
+        payload
       );
     },
-    [syncComplete]
+    [syncComplete, progressResult]
   );
 
   // Pops queue.current, advances the queue, updates history. Returns the dropped tier.

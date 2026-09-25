@@ -13,7 +13,7 @@ import { EventStore, Row } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncApi, SyncResponse } from "../syncApi";
-import { SyncWorker, FlushResult } from "../syncWorker";
+import { SyncWorker, FlushResult, resolveDurationMs } from "../syncWorker";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 
@@ -508,6 +508,85 @@ describe("SyncWorker", () => {
     expect(bodyFor(without)["result"]).toEqual({});
   });
 
+  // #2619: only the game's own active-time measurement is play time. Anything
+  // but a positive duration is sent as null — never wall-clock time.
+  describe("duration_ms", () => {
+    const patchBody = (gid: string) =>
+      api.calls.find((c) => c.method === "PATCH" && c.path === `/games/${gid}/complete`)!
+        .body as Record<string, unknown>;
+
+    /** Complete a game whose pending row says it was open for `elapsedMs`. */
+    async function completeAfter(
+      elapsedMs: number,
+      durationMs: number | null | undefined
+    ): Promise<string> {
+      api.defaultResponse = ok();
+      const gid = client.startGame("yacht");
+      client.completeGame(
+        gid,
+        durationMs === undefined ? { outcome: "completed" } : { outcome: "completed", durationMs }
+      );
+      await flushMicro();
+      const g = games.get(gid)!;
+      g.startedAt = g.completedAt! - elapsedMs;
+      await worker.flush();
+      return gid;
+    }
+
+    it.each([
+      ["null", null],
+      ["0", 0],
+      ["missing", undefined],
+      ["negative", -5_000],
+    ])(
+      "sends null when the game sent %s, even though the session was open 12 h",
+      async (_label, durationMs) => {
+        const gid = await completeAfter(12 * 60 * 60 * 1000, durationMs);
+        expect(patchBody(gid)["duration_ms"]).toBeNull();
+      }
+    );
+
+    it("keeps a real duration the game sent", async () => {
+      const gid = await completeAfter(90_000, 45_000);
+      expect(patchBody(gid)["duration_ms"]).toBe(45_000);
+    });
+
+    // iOS/Android: a game queued by an older build (no durationMs in its summary)
+    // is rehydrated from AsyncStorage and still flushes, with an unknown duration.
+    it("flushes a pending game persisted by an older build", async () => {
+      const startedAt = 1_700_000_000_000;
+      const legacy = {
+        "legacy-game": {
+          gameType: "yacht",
+          metadata: {},
+          startedAt,
+          startedSynced: true,
+          nextEventIndex: 0,
+          completed: true,
+          completedAt: startedAt + 120_000,
+          completeSummary: { finalScore: 180, outcome: "completed" },
+          completeSynced: false,
+        },
+      };
+      await AsyncStorage.setItem("pending_games_v1", JSON.stringify(legacy));
+      const rehydrated = new PendingGamesStore();
+      await rehydrated.init();
+      const legacyWorker = new SyncWorker(new EventStore(), rehydrated, asSyncApi(api));
+      api.defaultResponse = ok();
+
+      const result = await legacyWorker.flush();
+
+      expect(result.accepted).toBe(1);
+      expect(patchBody("legacy-game")).toMatchObject({
+        final_score: 180,
+        outcome: "completed",
+        duration_ms: null,
+        result: {},
+      });
+      expect(rehydrated.get("legacy-game")).toBeUndefined();
+    });
+  });
+
   // #572/#553: 400 on PATCH /complete is now terminal — dead-letter immediately.
   // The backend has accepted "completed" since #514; a 400 is a permanent
   // bad-request that retrying cannot fix.
@@ -673,5 +752,28 @@ describe("SyncWorker", () => {
     // Only one of the two should have actually attempted anything.
     expect(a.attempted + b.attempted).toBeGreaterThan(0);
     expect(Math.min(a.attempted, b.attempted)).toBe(0);
+  });
+});
+
+describe("resolveDurationMs (#2619)", () => {
+  it("keeps a positive value", () => {
+    expect(resolveDurationMs(5_000)).toBe(5_000);
+    expect(resolveDurationMs(1)).toBe(1);
+  });
+
+  it("rounds to whole ms (the server field is an int)", () => {
+    expect(resolveDurationMs(1_234.6)).toBe(1_235);
+  });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["0", 0],
+    ["negative", -1],
+    ["rounds to 0", 0.4],
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("returns null for %s", (_label, value) => {
+    expect(resolveDurationMs(value)).toBeNull();
   });
 });

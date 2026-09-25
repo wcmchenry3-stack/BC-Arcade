@@ -46,18 +46,6 @@ export interface Player {
 }
 
 /**
- * The result of a completed game round.
- *
- * `winner` uses the house/player vocabulary from OutcomeVocabulary; null
- * means the outcome is not yet determined or the game type has no winner
- * concept (e.g. pure score-chase games).
- */
-export interface GameOutcome {
-  winner: "player" | "house" | "draw" | null;
-  finalScore: number | null;
-}
-
-/**
  * A live or completed game session bound to a specific game type.
  *
  * `TState`  — the game's server-side (or local) state snapshot.

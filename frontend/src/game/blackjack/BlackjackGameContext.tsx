@@ -77,17 +77,21 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     engineRef.current = engine;
   }, [engine]);
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the session's result block (backend BlackjackResult). The
+  // hook's own abandon (unmount) and endSession (completed or abandoned) both
+  // build it here. `finalChips` overrides engineRef for the chips-exhausted path.
+  const sessionResult = useCallback(
+    (finalChips?: number) => ({
+      hands_won: handsWonRef.current,
+      hands_played: totalHandsRef.current,
+      starting_chips: sessionStartChipsRef.current,
+      final_chips: finalChips ?? engineRef.current?.chips ?? null,
+    }),
+    []
+  );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: {
-        hands_won: handsWonRef.current,
-        hands_played: totalHandsRef.current,
-        starting_chips: sessionStartChipsRef.current,
-        final_chips: engineRef.current?.chips ?? null,
-      },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: sessionResult() }));
+  }, [syncSetProgressSnapshot, sessionResult]);
 
   const startSession = useCallback(
     async (startingChips: number, resuming = false, tableId?: string) => {
@@ -132,17 +136,14 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     async (outcome: "completed" | "abandoned", finalChips?: number) => {
       const durationMs = Date.now() - sessionStartedAtRef.current;
       const engine = engineRef.current;
+      const result = sessionResult(finalChips);
       syncComplete(
-        { outcome, durationMs },
+        { outcome, durationMs, result },
         {
           total_hands: totalHandsRef.current,
           duration_ms: durationMs,
           outcome,
-          // #2450 — backend BlackjackResult fields.
-          hands_won: handsWonRef.current,
-          hands_played: totalHandsRef.current,
-          starting_chips: sessionStartChipsRef.current,
-          final_chips: finalChips ?? engine?.chips ?? null,
+          ...result,
         }
       );
       // Persist a run record when the player actually played hands. Awaited so
@@ -163,7 +164,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         });
       }
     },
-    [syncComplete]
+    [syncComplete, sessionResult]
   );
 
   useEffect(() => {

@@ -21,6 +21,7 @@ class CascadeModule:
     game_type = GameType.CASCADE
     metadata_model = CascadeMetadata
     result_model = None
+    has_winner = False
     # No natural ceiling (#2519 decision 14). Every non-abandoned game counts.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 

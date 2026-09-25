@@ -9,6 +9,7 @@ class SortModule:
     game_type = GameType.SORT
     metadata_model = SortMetadata
     result_model = None
+    has_winner = False
     # Highest level cleared; fewest total moves breaks a tie (levels are seeded,
     # so every player gets the same 23). qualifying_outcomes stays None: a
     # solved level is recorded ``completed``, the only non-abandoned outcome.

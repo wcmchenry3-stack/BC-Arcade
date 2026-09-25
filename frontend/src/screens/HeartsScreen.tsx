@@ -238,6 +238,8 @@ export default function HeartsScreen() {
     const unsub = navigation.addListener("beforeRemove", () => {
       if (!syncGetGameId()) return;
       if (gameStateRef.current?.isComplete) return;
+      // No result block: Hearts registers no progress snapshot, so an abandon
+      // carries nothing but its outcome (#2619 — the event payload is not a result).
       syncComplete(
         { outcome: "abandoned", finalScore: 0, durationMs: 0 },
         { outcome: "abandoned" }
@@ -360,10 +362,8 @@ export default function HeartsScreen() {
     const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
     // #2517: record who won — the same outcome the result card shows.
     const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
-    syncComplete(
-      { outcome: recordedOutcome(outcome), finalScore, durationMs: 0 },
-      { final_score: finalScore, vs_result: outcome }
-    );
+    const result = { final_score: finalScore, vs_result: outcome };
+    syncComplete({ outcome: recordedOutcome(outcome), finalScore, durationMs: 0, result }, result);
   }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId]);
 
   useEffect(() => {
