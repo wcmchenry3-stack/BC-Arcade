@@ -8,6 +8,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, RunRecord } from "../game/blackjack/storage";
+import { comebackLow, isComebackRun } from "../game/blackjack/unlocks";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
 
@@ -24,7 +25,7 @@ type RunBadge = "comeback" | "completed" | "busted" | "abandoned";
  * `outcome` and keep their old badge.
  */
 function outcomeFor(r: RunRecord): RunBadge {
-  if (r.completed && r.lowestChips < r.startingChips * 0.25) return "comeback";
+  if (isComebackRun(r)) return "comeback";
   if (r.completed) return "completed";
   if (r.outcome === "abandoned") return "abandoned";
   return "busted";
@@ -51,7 +52,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       : 0;
 
   const completedRuns = runs.filter((r) => r.completed);
-  const comebackRuns = completedRuns.filter((r) => r.lowestChips < r.startingChips * 0.25);
+  const comebackRuns = runs.filter(isComebackRun);
 
   const bestRun = completedRuns.reduce<RunRecord | null>(
     (best, r) => (r.finalChips > (best?.finalChips ?? 0) ? r : best),
@@ -62,7 +63,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
     null
   );
   const biggestComebackRun = comebackRuns.reduce<RunRecord | null>(
-    (best, r) => (r.lowestChips < (best?.lowestChips ?? Infinity) ? r : best),
+    (best, r) => (comebackLow(r) < (best ? comebackLow(best) : Infinity) ? r : best),
     null
   );
 
@@ -197,7 +198,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                   </Text>
                   <Text style={[styles.statValue, { color: colors.accent }]}>
                     {t("stats.comebackLow", {
-                      chips: biggestComebackRun.lowestChips.toLocaleString(),
+                      chips: comebackLow(biggestComebackRun).toLocaleString(),
                     })}
                   </Text>
                 </View>

@@ -36,6 +36,13 @@ export interface RunRecord {
   handsPlayed: number;
   biggestWin: number;
   lowestChips: number;
+  /**
+   * The lowest chip count before the run reached its goal (#2628). A run that
+   * kept playing past its goal and then busted has `lowestChips` 0, which says
+   * nothing about a comeback to the goal. Absent before the goal is reached,
+   * and on runs saved by older builds.
+   */
+  lowestChipsBeforeGoal?: number;
   /** Unix ms timestamp when the session started. */
   startedAt: number;
   /** Unix ms timestamp when the session ended. */
