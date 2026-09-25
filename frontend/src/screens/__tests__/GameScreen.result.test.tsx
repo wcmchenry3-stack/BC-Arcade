@@ -5,7 +5,11 @@ import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
+import { newGame } from "../../game/yacht/engine";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
+import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { GameRankResponse } from "../../api/types";
 
 // Shared result card for Yacht (#2505): vs outcomes, and the game-sync
 // session completing only once the CPU has finished its last turn.
@@ -47,7 +51,21 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// The card's leaderboard line (#2630) reads the rank from the session board.
+const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+}));
+
 const completeGame = gameEventClient.completeGame as jest.Mock;
+const startGame = gameEventClient.startGame as jest.Mock;
 
 const CATEGORIES = [
   "ones",
@@ -85,25 +103,31 @@ function lastRound(open: string, dice: number[], rollsUsed: number): GameState {
 
 const mockNav = { navigate: jest.fn(), goBack: jest.fn(), popToTop: jest.fn() };
 
-async function renderVs(playerOpen: string, playerDice: number[], cpuOpen: string) {
+async function renderGame(params: Record<string, unknown>) {
   return await render(
     <ThemeProvider>
       <YachtScorecardProvider>
         <GameScreen
           navigation={mockNav as unknown as Parameters<typeof GameScreen>[0]["navigation"]}
-          route={
-            {
-              params: {
-                initialState: lastRound(playerOpen, playerDice, 1),
-                aiDifficulty: "easy" as const,
-                aiState: lastRound(cpuOpen, [0, 0, 0, 0, 0], 0),
-              },
-            } as unknown as Parameters<typeof GameScreen>[0]["route"]
-          }
+          route={{ params } as unknown as Parameters<typeof GameScreen>[0]["route"]}
         />
       </YachtScorecardProvider>
     </ThemeProvider>
   );
+}
+
+/** A restored vs game on its last round. */
+async function renderVs(playerOpen: string, playerDice: number[], cpuOpen: string) {
+  return await renderGame({
+    initialState: lastRound(playerOpen, playerDice, 1),
+    aiDifficulty: "easy" as const,
+    aiState: lastRound(cpuOpen, [0, 0, 0, 0, 0], 0),
+  });
+}
+
+/** A restored solo game on its last round. */
+async function renderSolo(open: string) {
+  return await renderGame({ initialState: lastRound(open, [6, 6, 6, 6, 6], 0) });
 }
 
 type Rendered = Awaited<ReturnType<typeof renderVs>>;
@@ -131,9 +155,13 @@ function completedCalls() {
   return completeGame.mock.calls.filter(([, summary]) => summary.outcome !== "abandoned");
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  await AsyncStorage.clear();
+  resetDisplayNameCacheForTests();
+  mockGetRank.mockReset();
+  mockGetRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
 });
 
 afterEach(() => {
@@ -306,5 +334,181 @@ describe("Yacht vs mode — app backgrounded during the CPU's last turn (#2543 r
     await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
     await fireAppState("background");
     expect(completeGame).not.toHaveBeenCalled();
+  });
+
+  it("the card still finds the game recorded on a background once the CPU finishes (#2630)", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+    // complete() runs here and clears the hook's game id.
+    await fireAppState("background");
+    await fireAppState("active");
+    await finishCpuTurn();
+    await settle();
+
+    expect(mockGetRank).toHaveBeenCalledWith("yacht-game-id");
+    expect(r.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reporting (#2630): mode metadata and the leaderboard line
+// ---------------------------------------------------------------------------
+
+/** Lets the card's rank lookup (a chain of promises) settle. */
+async function settle() {
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(0);
+    });
+  }
+}
+
+describe("Yacht reporting — mode metadata (#2630)", () => {
+  it.each([
+    ["solo", undefined, { mode: "solo" }],
+    ["vs", "hard", { mode: "vs", difficulty: "hard" }],
+  ])("a restored %s game starts its session with the mode", async (_mode, diff, expected) => {
+    await renderGame({
+      initialState: lastRound("yacht", [6, 6, 6, 6, 6], 0),
+      aiDifficulty: diff,
+      aiState: diff ? lastRound("chance", [0, 0, 0, 0, 0], 0) : undefined,
+    });
+    expect(startGame).toHaveBeenCalledWith("yacht", expected, {});
+  });
+
+  it("the mode picker starts a vs session with the chosen difficulty", async () => {
+    const r = await renderGame({ initialState: newGame() });
+    expect(startGame).not.toHaveBeenCalled();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /^vs computer$/i }));
+    });
+    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "vs", difficulty: "medium" }, {});
+  });
+
+  it("the mode picker starts a solo session", async () => {
+    const r = await renderGame({ initialState: newGame() });
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    });
+    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
+  });
+
+  it("Play Again in vs mode keeps the mode and difficulty", async () => {
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+    await finishCpuTurn();
+    startGame.mockClear();
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "vs", difficulty: "easy" }, {});
+  });
+});
+
+describe("Yacht reporting — result card leaderboard line (#2630)", () => {
+  it("a named player's solo game shows its rank", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderSolo("yacht");
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+
+    expect(mockGetRank).toHaveBeenCalledWith("yacht-game-id");
+    const card = within(r.getByTestId("yacht-result"));
+    expect(card.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
+  });
+
+  it("a vs game shows its rank once the CPU has finished", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+    // The card isn't up yet: no lookup while the CPU plays its last turn.
+    expect(mockGetRank).not.toHaveBeenCalled();
+
+    await finishCpuTurn();
+    await settle();
+
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("yacht-game-id");
+    const card = within(r.getByTestId("yacht-result"));
+    expect(card.getByTestId("yacht-result-title")).toHaveTextContent("You Win!");
+    expect(card.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
+  });
+
+  it("without a display name the card asks for one", async () => {
+    const r = await renderSolo("yacht");
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+
+    expect(mockGetRank).not.toHaveBeenCalled();
+    expect(within(r.getByTestId("yacht-result")).getByTestId("result-name-prompt")).toBeTruthy();
+  });
+
+  it("an unranked game shows no leaderboard line", async () => {
+    await saveDisplayName("Riley");
+    mockGetRank.mockResolvedValue({
+      ranked: false,
+      rank: null,
+      is_best: null,
+      reason: "board_disabled",
+    });
+    const r = await renderSolo("yacht");
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+
+    expect(mockGetRank).toHaveBeenCalled();
+    expect(within(r.getByTestId("yacht-result")).queryByText(/Saved as/)).toBeNull();
+  });
+
+  it("never looks up a rank for an abandoned game", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderSolo("yacht");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
+    });
+    // New Game mid-game abandons it.
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /new game/i }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /start new game/i }));
+    });
+    await settle();
+
+    expect(completeGame).toHaveBeenCalledTimes(1);
+    expect(completeGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("never looks up a rank when the player leaves mid-game", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderSolo("yacht");
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
+    });
+    await act(async () => {
+      await r.unmount();
+    });
+    await settle();
+
+    expect(completeGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("Play Again clears the line for the next game", async () => {
+    await saveDisplayName("Riley");
+    const r = await renderSolo("yacht");
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+    expect(r.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    await settle();
+    expect(r.queryByText(/Saved as Riley/)).toBeNull();
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
   });
 });

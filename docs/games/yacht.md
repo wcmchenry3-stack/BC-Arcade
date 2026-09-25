@@ -28,7 +28,7 @@ Maximum possible score: ~400 points (with bonus).
 
 ## AI Difficulty
 
-Three levels available, set at game start via `YachtMetadata.difficulty`:
+Three levels available in vs mode, recorded at game start in `YachtMetadata.difficulty`:
 
 | Level    | Behavior                                 |
 | -------- | ---------------------------------------- |
@@ -38,7 +38,9 @@ Three levels available, set at game start via `YachtMetadata.difficulty`:
 
 ## Scoring (Persistence)
 
-`final_score` = the player's total at game end (0–400+). The AI score is not persisted — only the human player's score is submitted. Leaderboard ranks by `final_score` per difficulty level.
+`final_score` = the player's total at game end (0–1575 with bonus Yachts). The session row goes through the generic `/games` pipeline; the computer's score is recorded only in the vs result block (`opponent_score`, `vs_result`).
+
+Yacht has **one leaderboard** (`GET /games/leaderboard/yacht`, #2630): solo and vs-the-computer games share it, ranked by `final_score` descending, one entry per named player (their best game). Every outcome except `abandoned` ranks: solo `completed`, and vs `win` / `loss` / `push`. The session metadata records `mode` (`solo` | `vs`) and, in vs mode, `difficulty`, without partitioning the board. The result card shows the game's rank via the shared `sessionBoardAdapter`. `duration_ms` comes from the shared foreground-time clock in `useGameSync` (#2684); Yacht never sends 0.
 
 ## Client-Side Engine
 
@@ -48,8 +50,8 @@ Three levels available, set at game start via `YachtMetadata.difficulty`:
 ## Backend
 
 - Module: `backend/yacht/module.py`
-- Endpoints: `backend/yacht/router.py`
-- Metadata model: `YachtMetadata` — `difficulty: Literal["easy","medium","hard"] = "easy"`
+- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /yacht/score` and `GET /yacht/scores` were removed in #2630.
+- Metadata model: `YachtMetadata` — `mode: Literal["solo","vs"] | None`, `difficulty: Literal["easy","medium","hard"] = "easy"` (sent only in vs mode)
 - Scoring: `final_score` = player's total points
 
 ## Entitlement

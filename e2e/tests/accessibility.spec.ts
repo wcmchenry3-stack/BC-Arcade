@@ -10,10 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import {
-  installYachtGameMock,
-  installEntitlementsMock,
-} from "./helpers/api-mock";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
 
@@ -51,7 +48,6 @@ test.describe("Accessibility — Yacht game screen", () => {
     page,
   }) => {
     await installEntitlementsMock(page);
-    await installYachtGameMock(page);
     await page.goto("/");
 
     await page.getByRole("button", { name: "Play Yacht" }).click();
@@ -67,7 +63,6 @@ test.describe("Accessibility — Yacht game screen", () => {
     page,
   }) => {
     await installEntitlementsMock(page);
-    await installYachtGameMock(page);
     await page.goto("/");
 
     await page.getByRole("button", { name: "Play Yacht" }).click();
