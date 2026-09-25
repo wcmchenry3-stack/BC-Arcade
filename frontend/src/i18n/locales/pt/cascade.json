@@ -15,7 +15,7 @@
   "scoreboard.heroLabel": "PONTOS",
   "scoreboard.heroSub": "Melhor fruta: {{bestFruit}} · {{merges}} fusões",
   "scoreboard.heroSubEmpty": "Nenhum jogo jogado ainda",
-  "scoreboard.bestScore": "Melhor de Todos",
+  "scoreboard.bestScore": "Recorde",
   "scoreboard.bestFruit": "Melhor Fruta",
   "scoreboard.gamesPlayed": "Jogos Jogados",
   "scoreboard.totalMerges": "Total Fusões"

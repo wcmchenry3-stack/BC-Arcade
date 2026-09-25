@@ -96,7 +96,7 @@
   "tableSelect.startChips": "התחלה",
   "tableSelect.goal": "יעד",
   "tableSelect.betRange": "הימורים",
-  "tableSelect.locked": "השלם את {{table}} קודם",
+  "tableSelect.locked": "השלם קודם את שולחן {{table}}",
   "tableSelect.selectLabel": "בחר שולחן {{table}}",
   "tableSelect.lockedLabel": "שולחן {{table}} נעול",
   "victory.nextTable": "שחק בשולחן {{table}}",
@@ -146,7 +146,7 @@
   "table.intermediate.subtitle": "הישאר במשחק.",
   "table.highRoller.subtitle": "הזדמנות אחת.",
   "tableSelect.kicker": "בחר שולחן",
-  "tableSelect.tagline": "שרוד את הסיבוב.",
+  "tableSelect.tagline": "שרוד את הריצה.",
   "tableSelect.taglineSub": "כל שולחן הוא קשת שלמה — יתרת פתיחה, יעד להגיע אליו ויציאה נקייה.",
   "tableSelect.viewHistory": "הצג היסטוריית סיבובים",
   "tableSelect.lastPlayed": "שוחק לאחרונה"

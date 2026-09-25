@@ -10,7 +10,7 @@
   "actions.newGameLabel": "एक नया 2048 खेल शुरू करें",
   "actions.keepPlaying": "खेलते रहें",
   "actions.keepPlayingLabel": "2048 तक पहुँचने के बाद खेलना जारी रखें",
-  "swipe.hint": "टाइलें हिलाने को स्वाइप करें",
+  "swipe.hint": "टाइल हिलाने के लिए स्वाइप करें",
   "win.body": "आप 2048 तक पहुँच गए! उच्च स्कोर के लिए खेलना जारी रख सकते हैं।",
   "controls.keyboardHint": "या तीर कुंजियों का उपयोग करें",
   "stats.highestTile": "सबसे बड़ी टाइल",
