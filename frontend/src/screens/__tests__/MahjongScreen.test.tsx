@@ -680,13 +680,27 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
     expect(data).toEqual(expect.objectContaining({ won: false, pairs: 40 }));
   });
 
-  it("records a loss when the player leaves by navigating back", async () => {
+  // #2592 review: a lost board is finished. If CONTINUE could reopen it, each
+  // resume → tap → leave would record another loss (and earn XP again).
+  it("finishes the lost board: no CONTINUE, and the save is cleared", async () => {
+    const { api, card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
+    });
+    expect(api.getByLabelText("layout.turtle")).toBeTruthy(); // on layout select
+    expect(api.queryByLabelText("layoutSelect.continue")).toBeNull();
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
+  });
+
+  it("records a loss when the player leaves by navigating back, and clears the save", async () => {
     await mountDeadlockedWithSession();
     await act(async () => {
       mockNavListeners.get("beforeRemove")?.forEach((h) => h());
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(lastSummary().summary.outcome).toBe("loss");
+    // Next visit starts on layout select, not the same deadlocked board.
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
   });
 
   it("stays abandoned when the player undoes out of the deadlock first", async () => {

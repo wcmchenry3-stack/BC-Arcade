@@ -768,8 +768,9 @@ export default function MahjongScreen() {
    * abandoned one: it was played to its end. Recorded on leaving rather than
    * at the deadlock, so "Undo last move" on the card can still rescue it.
    * No score: a loss counts everywhere (only abandons are excluded), and
-   * Mahjong's leaderboard ranks every scored row. Returns whether it closed
-   * the session.
+   * Mahjong's leaderboard ranks every scored row. The lost board is then
+   * finished: its save is cleared so CONTINUE can't reopen it and record the
+   * same board again (#2592 review). Returns whether it closed the session.
    */
   const recordDeadlockLoss = useCallback((): boolean => {
     const s = stateRef.current;
@@ -778,6 +779,8 @@ export default function MahjongScreen() {
       { outcome: "loss", durationMs: s.accumulatedMs },
       { outcome: "loss", won: false, pairs: s.pairsRemoved }
     );
+    clearGame().catch(() => {});
+    setHasSavedGame(false);
     return true;
   }, [syncGetGameId, syncComplete]);
 
@@ -884,7 +887,8 @@ export default function MahjongScreen() {
     winRecordedRef.current = false;
     prevCompleteRef.current = false;
     const s = stateRef.current;
-    setHasSavedGame(s !== null && !s.isComplete);
+    // A deadlocked board left this way is lost (#2517) — nothing to continue.
+    setHasSavedGame(s !== null && !s.isComplete && !s.isDeadlocked);
     setState(null);
     setView("select");
   }, [abandonOpenSession, resetSubmission]);
