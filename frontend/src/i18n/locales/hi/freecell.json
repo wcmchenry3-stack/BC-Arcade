@@ -16,5 +16,6 @@
   "pile.foundation.empty": "Empty {{suit}} foundation",
   "pile.freecell.empty": "Empty free cell {{cell}}",
   "a11y.boardRegion": "FreeCell board",
-  "score.moves": "Moves: {{moves}}"
+  "score.moves": "Moves: {{moves}}",
+  "error.supermoveRejected": "इस ढेर को हिलाने के लिए पर्याप्त खाली जगह नहीं है"
 }

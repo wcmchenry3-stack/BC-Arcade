@@ -6,7 +6,7 @@
  *   node scripts/check-i18n-strings.js [--namespace <ns>] [--locale <code>]
  *
  * Flags:
- *   --namespace  Filter to a single namespace (common | yacht | cascade | errors)
+ *   --namespace  Filter to a single namespace (any file in locales/en)
  *   --locale     Filter to a single locale code
  *
  * Exit codes:
@@ -14,23 +14,28 @@
  *   1 — missing or extra keys found (printed to stdout)
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { LOCALES } from "../src/i18n/locales.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, "../src/i18n/locales");
-const NAMESPACES = [
-  "common",
-  "yacht",
-  "cascade",
-  "errors",
-  "blackjack",
-  "twenty48",
-  "solitaire",
-  "sudoku",
-];
+// Every namespace English has (#2194): a hand-kept list here drifted and missed
+// six games. Namespaces with no translations yet are listed in UNTRANSLATED
+// and reported, not failed; remove one once its locale files exist (#2195).
+const UNTRANSLATED = new Set([
+  "daily_challenge",
+  "daily_word",
+  "profile",
+  "result",
+  "sort",
+  "starswarm",
+]);
+const NAMESPACES = readdirSync(join(LOCALES_DIR, "en"))
+  .filter((f) => f.endsWith(".json"))
+  .map((f) => f.slice(0, -".json".length))
+  .sort();
 const PLACEHOLDER = "__NEEDS_TRANSLATION__";
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -88,7 +93,12 @@ function main() {
   const targetLocales = LOCALES.filter(
     (l) => l.code !== "en" && (!filterLocale || l.code === filterLocale)
   );
-  const namespaces = filterNs ? [filterNs] : NAMESPACES;
+  const namespaces = filterNs ? [filterNs] : NAMESPACES.filter((ns) => !UNTRANSLATED.has(ns));
+  if (!filterNs) {
+    for (const ns of NAMESPACES.filter((n) => UNTRANSLATED.has(n))) {
+      console.log(`… [${ns}] not translated yet (#2195); English is shown`);
+    }
+  }
 
   let totalIssues = 0;
   let totalPending = 0;
