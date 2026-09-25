@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 
 class Base(DeclarativeBase):
@@ -54,11 +55,20 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         if not DATABASE_URL:
             raise RuntimeError("DATABASE_URL is not configured")
-        # SQLite uses NullPool under the async driver and rejects pool_size /
-        # max_overflow. Only pass connection-pool tuning to Postgres.
-        kwargs: dict = {"pool_pre_ping": True}
-        if not DATABASE_URL.startswith("sqlite"):
-            kwargs.update({"pool_size": 5, "max_overflow": 5})
+        # SQLite (tests, local dev) gets NullPool explicitly: since SQLAlchemy
+        # 2.0.38 a file DB defaults to AsyncAdaptedQueuePool, which shares
+        # aiosqlite connections across event loops — pytest's per-test loops
+        # and every TestClient's own. An aiosqlite connection whose loop closes
+        # with a call still in flight loses its worker thread, and any later
+        # call on it (a pool pre-ping included) waits forever: a CI run hung
+        # ~28 min in the retention tests (#2667). NullPool closes each
+        # connection on checkin, so none outlives the loop that opened it.
+        # Only Postgres gets connection-pool tuning.
+        kwargs: dict
+        if DATABASE_URL.startswith("sqlite"):
+            kwargs = {"poolclass": NullPool}
+        else:
+            kwargs = {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 5}
         _engine = create_async_engine(DATABASE_URL, **kwargs)
 
         # SQLite doesn't enforce foreign keys unless explicitly enabled per

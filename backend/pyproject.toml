@@ -6,6 +6,9 @@ testpaths = ["tests"]
 addopts = "--cov=. --cov-report=term-missing --cov-fail-under=80"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# A test running past this dumps every thread's traceback into the log (it is
+# not killed). The slowest test takes ~10 s; a CI hang (#2667) left no trace.
+faulthandler_timeout = 120
 
 [tool.coverage.run]
 core = "sysmon"
