@@ -267,6 +267,35 @@ async def _dev_entitlement_override_warning() -> None:
         )
 
 
+# Daily Word retention (#2544): prune guess records older than 14 days, at
+# startup and then daily. Held here so shutdown can cancel it cleanly.
+_retention_task: asyncio.Task | None = None
+
+
+@app.on_event("startup")
+async def _start_daily_word_retention() -> None:
+    global _retention_task
+    if not is_configured():
+        return
+    from daily_word.retention import run_retention_loop
+    from db.base import get_session_factory
+
+    _retention_task = asyncio.create_task(run_retention_loop(get_session_factory()))
+
+
+@app.on_event("shutdown")
+async def _stop_daily_word_retention() -> None:
+    global _retention_task
+    if _retention_task is None:
+        return
+    _retention_task.cancel()
+    try:
+        await _retention_task
+    except asyncio.CancelledError:
+        pass
+    _retention_task = None
+
+
 DB_PING_TIMEOUT_SECONDS = 5.0
 
 
