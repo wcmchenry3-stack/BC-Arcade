@@ -1,6 +1,6 @@
 {
   "title": "Tägliche Herausforderung",
-  "progress": "{{done}} von {{total}} erledigt",
+  "progress": "{{done}}/{{total}} erledigt",
   "allDone": "Alles erledigt! Morgen gibt's eine neue Herausforderung.",
   "goal.fallback": "Spiele {{game}}",
   "goal.daily_word.completed": "Beende das heutige {{game}}",
@@ -8,7 +8,7 @@
   "goal.daily_word.won_guesses_used_at_most_one": "Löse {{game}} in {{count}} Versuch",
   "goal.daily_word.won_guesses_used_at_most_other": "Löse {{game}} in max. {{count}} Versuchen",
   "goal.twenty48.final_score_at_least": "Hol {{target}}+ Punkte in {{game}}",
-  "goal.twenty48.highest_tile_at_least": "Erreiche Kachel {{target}} in {{game}}",
+  "goal.twenty48.highest_tile_at_least": "Erreiche {{target}} in {{game}}",
   "goal.yacht.final_score_at_least": "Hol {{target}}+ Punkte in {{game}}",
   "goal.sort.final_score_at_least": "Erreiche Level {{target}} in {{game}}",
   "goal.solitaire.moves_at_least_one": "Mach einen Zug in {{game}}",
