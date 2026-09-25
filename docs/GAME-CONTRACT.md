@@ -108,8 +108,10 @@ class GameModule(Protocol):
 | Sort       | `level_reached` | desc      | `total_moves` asc | —                       | 23        | yes     |
 | Blackjack  | `final_score`   | desc      | —                 | —                       | —         | no      |
 | Daily Word | `guesses_used`  | asc       | —                 | —                       | —         | no      |
+| Twenty48   | `final_score`   | desc      | —                 | —                       | —         | yes     |
+| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier`       | —         | yes     |
 
-Twenty48 and Star Swarm have no module yet (their boards arrive with their modules in #2623) and export `null`.
+Every `GameType` has a module since #2623, so no game exports `null`.
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
@@ -161,9 +163,9 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars)                                                                                                                             |
 | Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                             |
-| Starswarm   | —                   | No backend module; router-only                                                                                                                                     |
+| Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (max 32 chars). The router's own leaderboard rows (`POST /starswarm/score`) are written directly and hold `player_name`             |
 | Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                 |
-| Twenty48    | —                   | Frontend-only; no backend module                                                                                                                                   |
+| Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                 |
 | Yacht       | `YachtMetadata`     | `difficulty: Literal["easy","medium","hard"] = "easy"`                                                                                                             |
 
 **Adding a metadata model:**

@@ -84,6 +84,8 @@ def test_is_immutable() -> None:
         ("sort", "level_reached", "desc", ("total_moves", "asc"), [], 23, True),
         ("blackjack", SCORE_METRIC, "desc", None, [], None, False),
         ("daily_word", "guesses_used", "asc", None, [], None, False),
+        ("twenty48", SCORE_METRIC, "desc", None, [], None, True),
+        ("starswarm", SCORE_METRIC, "desc", None, ["difficulty_tier"], None, True),
     ],
 )
 def test_declared_board(game, metric, direction, tiebreak, partitions, max_value, enabled) -> None:

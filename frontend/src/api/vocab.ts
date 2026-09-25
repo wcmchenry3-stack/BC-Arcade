@@ -62,7 +62,13 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitions: [],
     enabled: true,
   },
-  twenty48: null,
+  twenty48: {
+    metric: "final_score",
+    direction: "desc",
+    labelKey: "score",
+    partitions: [],
+    enabled: true,
+  },
   blackjack: {
     metric: "final_score",
     direction: "desc",
@@ -105,7 +111,13 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitions: [],
     enabled: true,
   },
-  starswarm: null,
+  starswarm: {
+    metric: "final_score",
+    direction: "desc",
+    labelKey: "score",
+    partitions: ["difficulty_tier"],
+    enabled: true,
+  },
   freecell: {
     metric: "final_score",
     direction: "asc",
