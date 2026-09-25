@@ -3,7 +3,8 @@
  *
  * Engine purity is tested in engine.test.ts (#891). These tests cover the
  * screen's mount/resume lifecycle, HUD wiring, undo affordance, the shared
- * result card for a win or a deadlock (#2510), and stats tracking.
+ * result card for a win or a deadlock (#2510), what each game records
+ * (#2517, #2627), and stats tracking.
  */
 
 import React from "react";
@@ -119,11 +120,19 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
-jest.mock("../../game/mahjong/api", () => ({
-  mahjongApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+// The result card's rank lookup (sessionBoardAdapter, #2677).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: () => Promise.resolve(),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: () => Promise.resolve(true),
 }));
 
-import { mahjongApi } from "../../game/mahjong/api";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // ---------------------------------------------------------------------------
@@ -184,12 +193,8 @@ function makeWinState(overrides: Partial<MahjongState> = {}): MahjongState {
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
-  (mahjongApi.submitScore as jest.Mock).mockReset();
-  (mahjongApi.submitScore as jest.Mock).mockResolvedValue({
-    player_name: "Riley",
-    score: 3700,
-    rank: 5,
-  });
+  mockGetGameRank.mockReset();
+  mockGetGameRank.mockResolvedValue({ ranked: true, rank: 5, is_best: true, reason: null });
   mockNavListeners.clear();
   mockAddListener.mockClear();
   mockStartGame.mockReset();
@@ -295,26 +300,57 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("submits the score under the display name when the last pair is matched", async () => {
+  // #2627: a cleared board is a win, so Mahjong's win rate counts it.
+  it("completes a cleared board as a win, with its score and result block", async () => {
+    await winNow();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary, data] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-uuid-test");
+    expect(summary).toEqual(
+      expect.objectContaining({
+        outcome: "win",
+        finalScore: 4060, // 3550 + 10 for the pair + 500 for clearing the board
+        result: { won: true, pairs: 72 },
+      })
+    );
+    expect(summary.durationMs).toBeGreaterThanOrEqual(180_000);
+    expect(data).toEqual({ final_score: 4060, outcome: "win", won: true, pairs: 72 });
+  });
+
+  // #2627 / #2677: the finished game is the leaderboard entry. The card asks
+  // where it ranks; nothing is posted to the legacy /mahjong/score route.
+  it("shows the win's rank from the session board under the display name", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     await AsyncStorage.setItem(
       "mahjong_stats_v1",
       JSON.stringify({ bestScore: 1000, bestTimeMs: 0, gamesPlayed: 3, gamesWon: 1 })
     );
+    const fetchSpy = jest.spyOn(global, "fetch");
+    try {
+      const api = await winNow();
+      const card = within(await api.findByTestId("mahjong-result"));
+      await waitFor(() =>
+        expect(card.getByText("Saved as Riley · #5 on the leaderboard")).toBeTruthy()
+      );
+      expect(mockGetGameRank).toHaveBeenCalledTimes(1);
+      expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
+      expect(card.getByText("New best")).toBeTruthy();
+      expect(scoreQueue.enqueue).not.toHaveBeenCalled();
+      const urls = fetchSpy.mock.calls.map(([url]) => String(url));
+      expect(urls.filter((u) => u.includes("/mahjong/score"))).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("asks for a display name on the card when none is set", async () => {
     const api = await winNow();
     const card = within(await api.findByTestId("mahjong-result"));
-    await waitFor(() =>
-      expect(card.getByText("Saved as Riley · #5 on the leaderboard")).toBeTruthy()
-    );
-    expect(mahjongApi.submitScore).toHaveBeenCalledTimes(1);
-    const [name, score] = (mahjongApi.submitScore as jest.Mock).mock.calls[0]!;
-    expect(name).toBe("Riley");
-    expect(score).toBeGreaterThan(1000);
-    expect(card.getByText("New best")).toBeTruthy();
+    await waitFor(() => expect(card.getByTestId("result-name-prompt")).toBeTruthy());
     expect(scoreQueue.enqueue).not.toHaveBeenCalled();
   });
 
-  it("does not resubmit a won game resumed from storage", async () => {
+  it("does not look up a rank for a won game resumed from storage", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
     const api = await mount();
@@ -322,7 +358,8 @@ describe("MahjongScreen — win result card (#2510)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(mahjongApi.submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("Play Again deals the same layout again", async () => {
@@ -574,7 +611,7 @@ describe("MahjongScreen — no-moves overlays", () => {
     expect(card.queryByText(/Saved as/)).toBeNull();
     // Nothing to undo in this deal, so the card offers no Undo.
     expect(card.queryByTestId("mahjong-result-undo")).toBeNull();
-    expect(mahjongApi.submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
   });
 
   // #2569 review: the full-screen card must not take away the undo the header
@@ -699,16 +736,22 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
   });
 
   it("records a loss when the player leaves by navigating back, and clears the save", async () => {
-    await mountDeadlockedWithSession();
+    const { api } = await mountDeadlockedWithSession();
     await act(async () => {
       mockNavListeners.get("beforeRemove")?.forEach((h) => h());
     });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(lastSummary().summary.outcome).toBe("loss");
+    expect(lastSummary().summary).not.toHaveProperty("finalScore");
+    // The unmount that follows finds the session closed: no second row.
+    await api.unmount();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     // Next visit starts on layout select, not the same deadlocked board.
     await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
   });
 
+  // #2569 review: "Undo last move" on the card rescues the board, so leaving
+  // afterwards is an abandon, not a loss.
   it("stays abandoned when the player undoes out of the deadlock first", async () => {
     const { api, card } = await mountDeadlockedWithSession();
     await act(async () => {
@@ -718,6 +761,7 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
     await act(async () => {
       mockNavListeners.get("beforeRemove")?.forEach((h) => h());
     });
+    await api.unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(lastSummary().summary.outcome).toBe("abandoned");
   });
@@ -782,22 +826,22 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
   });
 
-  it("a back-navigation abandon sends the same result block as the snapshot", async () => {
-    await mountMidGameWithSession();
+  // #2627: back-navigation leaves the abandon to useGameSync's unmount, with
+  // the snapshot — no screen-level abandon carrying a score.
+  it("a back-navigation leaves the abandon to the hook's unmount", async () => {
+    const { unmount } = await mountMidGameWithSession();
     await act(async () => {
       mockNavListeners.get("beforeRemove")?.forEach((h) => h());
     });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
 
+    await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary.result).toEqual({ won: false, pairs: 12 });
-    // #2619: the game's own timer (60 s banked + the running segment), not 0.
-    expect(summary.durationMs).toBeGreaterThanOrEqual(60_000);
-    expect(summary.durationMs).toBeLessThan(70_000);
+    expect(summary).toEqual({ outcome: "abandoned", result: { won: false, pairs: 12 } });
   });
 
-  it("a New Game abandon sends the play timer as durationMs (#2619)", async () => {
+  it("a New Game abandon sends the play timer as durationMs and no score (#2619, #2627)", async () => {
     const api = await mountMidGameWithSession();
     await act(async () => {
       await fireEvent.press(api.getByLabelText("More options"));
@@ -815,8 +859,59 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
+    expect(summary).not.toHaveProperty("finalScore");
     expect(summary.result).toEqual({ won: false, pairs: 12 });
     expect(summary.durationMs).toBeGreaterThanOrEqual(60_000);
     expect(summary.durationMs).toBeLessThan(70_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2627 — the layout is row metadata; no Scoreboard dead end
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — layout metadata and menu (#2627)", () => {
+  it("starts the session with the layout as metadata", async () => {
+    const api = await mount(); // picks Turtle on layout select
+    await act(async () => {
+      await fireEvent.press(api.getAllByLabelText(/^mock-tile-/)[0]!);
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const [gameType, metadata, eventData] = mockStartGame.mock.calls[0]!;
+    expect(gameType).toBe("mahjong");
+    expect(metadata).toEqual({ layout: "turtle" });
+    expect(eventData).toEqual({ layout: "turtle" });
+  });
+
+  it("records the layout of a resumed board", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 3,
+          score: 30,
+          currentLayoutId: "four_rivers",
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    expect(mockStartGame.mock.calls[0]![1]).toEqual({ layout: "four_rivers" });
+  });
+
+  it("has no Scoreboard item in the overflow menu", async () => {
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    expect(api.getByText("New Game")).toBeTruthy();
+    expect(api.queryByText("Scoreboard")).toBeNull();
   });
 });
