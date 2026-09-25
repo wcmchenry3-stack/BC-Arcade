@@ -763,19 +763,38 @@ export default function MahjongScreen() {
     return () => navigation.setOptions({ gestureEnabled: true });
   }, [navigation]);
 
+  /**
+   * A deadlocked board the player leaves is a lost game (#2517), not an
+   * abandoned one: it was played to its end. Recorded on leaving rather than
+   * at the deadlock, so "Undo last move" on the card can still rescue it.
+   * No score: a loss counts everywhere (only abandons are excluded), and
+   * Mahjong's leaderboard ranks every scored row. Returns whether it closed
+   * the session.
+   */
+  const recordDeadlockLoss = useCallback((): boolean => {
+    const s = stateRef.current;
+    if (!syncGetGameId() || !s?.isDeadlocked || s.isComplete) return false;
+    syncComplete(
+      { outcome: "loss", durationMs: s.accumulatedMs },
+      { outcome: "loss", won: false, pairs: s.pairsRemoved }
+    );
+    return true;
+  }, [syncGetGameId, syncComplete]);
+
   // Abandon on back-navigation.
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", () => {
       if (!syncGetGameId()) return;
       const s = stateRef.current;
       if (s?.isComplete) return;
+      if (recordDeadlockLoss()) return;
       syncComplete(
         { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
         { outcome: "abandoned", won: false, pairs: s?.pairsRemoved ?? 0 }
       );
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [navigation, syncComplete, syncGetGameId, recordDeadlockLoss]);
 
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
@@ -844,15 +863,19 @@ export default function MahjongScreen() {
     });
   }, []);
 
-  /** Closes an open session as abandoned (a no-op after a win or before a move). */
+  /**
+   * Closes an open session: a loss for a deadlocked board, otherwise abandoned
+   * (a no-op after a win or before a move).
+   */
   const abandonOpenSession = useCallback(() => {
+    if (recordDeadlockLoss()) return;
     if (syncGetGameId()) {
       syncComplete(
         { outcome: "abandoned", finalScore: 0, durationMs: 0 },
         { outcome: "abandoned", won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }
       );
     }
-  }, [syncGetGameId, syncComplete]);
+  }, [syncGetGameId, syncComplete, recordDeadlockLoss]);
 
   const startNewGame = useCallback(() => {
     abandonOpenSession();

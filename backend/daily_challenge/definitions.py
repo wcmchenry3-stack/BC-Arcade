@@ -21,7 +21,8 @@ build it with ``game_facts``. A goal is met if *any one* of the player's games o
 that type today satisfies it; nothing is aggregated across games. Abandoned games
 count for progress goals (``moves_at_least`` and friends) because the game
 reports ``won: false`` plus its progress on abandon; only ``won`` goals need a
-win. ``games.outcome`` is lifecycle-only and is never read here.
+win. ``games.outcome`` is never read here (it records who won only for games
+with a winner, #2517; the result block is the one source for every game).
 
 Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
