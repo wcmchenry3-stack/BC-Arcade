@@ -177,6 +177,8 @@ function StarSwarmGame() {
   const [result, setResult] = useState<{
     score: number;
     wave: number;
+    /** The tier the run was played at — its board, which can differ from the picker's (#2567). */
+    tier: DifficultyTier;
     best: number;
     isNewBest: boolean;
   } | null>(null);
@@ -192,6 +194,7 @@ function StarSwarmGame() {
     complete: syncComplete,
     resume: syncResume,
     getGameId: syncGetGameId,
+    reportBug: syncReportBug,
   } = useGameSync("starswarm");
   const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
@@ -301,9 +304,15 @@ function StarSwarmGame() {
         setHighScore(finalScore);
         void saveBestScore(finalScore);
       }
-      setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
+      setResult({
+        score: finalScore,
+        wave,
+        tier,
+        best: Math.max(finalScore, priorBest),
+        isNewBest,
+      });
       // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
       // games.metadata (StarSwarmResult), where the board partitions on it.
       // Score-only: the outcome stays `completed`. No duration: the engine
@@ -314,7 +323,16 @@ function StarSwarmGame() {
       const gameId = syncGetGameId();
       syncComplete({ outcome, finalScore, result: payload }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
-      if (gameId) void submitRank({ gameId });
+      if (gameId) {
+        void submitRank({ gameId });
+      } else {
+        // No open session: the run gets no row and no rank. Say so.
+        syncReportBug("warn", "starswarm", "game over with no open session: run not recorded", {
+          score: finalScore,
+          wave,
+          difficulty_tier: tier,
+        });
+      }
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();
         if (state) {
@@ -323,7 +341,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncGetGameId, submitRank]
+    [playGameOver, difficulty, syncComplete, syncGetGameId, syncReportBug, submitRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -742,7 +760,7 @@ function StarSwarmGame() {
         <GameResultModal
           visible={result !== null && !showDifficultyPicker}
           outcome="ended"
-          eyebrow={`${t("game.title")} · ${difficultyLabel(difficulty)}`}
+          eyebrow={`${t("game.title")} · ${difficultyLabel(result?.tier ?? difficulty)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}
