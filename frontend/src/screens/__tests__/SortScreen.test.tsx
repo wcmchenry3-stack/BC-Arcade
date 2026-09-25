@@ -68,19 +68,40 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
 jest.mock("../../game/sort/api", () => ({
   sortApi: {
     getLevels: jest.fn(),
-    submitScore: jest.fn(),
-    getLeaderboard: jest.fn(),
   },
 }));
 
-jest.mock("../../game/sort/storage", () => ({
-  loadProgress: jest.fn(),
-  saveProgress: jest.fn(),
-  clearGame: jest.fn(),
-  saveLevelsCache: jest.fn().mockResolvedValue(undefined),
-  loadLevelsCache: jest.fn().mockResolvedValue(null), // cold cache by default
-  recordLevelSolve: jest.fn(),
+// The inline Leaderboard tab reads the generic board (#2625).
+jest.mock("../../api/stats", () => ({
+  statsApi: { getLeaderboard: jest.fn() },
 }));
+
+// The card's rank lookup (#2677): the real adapter's HTTP is covered by its own
+// tests; here we check Sort hands it the finished game.
+const mockRankSubmit = jest.fn();
+jest.mock("../../game/_shared/sessionBoardAdapter", () => ({
+  sessionBoardAdapter: jest.fn((gameType: string) => ({
+    gameType,
+    refetchOnReconnect: true,
+    submit: (...args: unknown[]) => mockRankSubmit(...args),
+  })),
+}));
+
+jest.mock("../../game/sort/storage", () => {
+  const actual = jest.requireActual("../../game/sort/storage");
+  return {
+    loadProgress: jest.fn(),
+    saveProgress: jest.fn(),
+    clearGame: jest.fn(),
+    saveLevelsCache: jest.fn().mockResolvedValue(undefined),
+    loadLevelsCache: jest.fn().mockResolvedValue(null), // cold cache by default
+    loadBestMoves: jest.fn(),
+    recordLevelSolve: jest.fn(),
+    // Pure helpers: the real ones.
+    applyLevelSolve: actual.applyLevelSolve,
+    totalBestMoves: actual.totalBestMoves,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Typed accessors for the mocked modules
@@ -89,16 +110,25 @@ jest.mock("../../game/sort/storage", () => ({
 const { sortApi } = jest.requireMock("../../game/sort/api") as {
   sortApi: {
     getLevels: jest.Mock;
-    submitScore: jest.Mock;
-    getLeaderboard: jest.Mock;
   };
 };
+
+const { statsApi } = jest.requireMock("../../api/stats") as {
+  statsApi: { getLeaderboard: jest.Mock };
+};
+
+const { sessionBoardAdapter } = jest.requireMock("../../game/_shared/sessionBoardAdapter") as {
+  sessionBoardAdapter: jest.Mock;
+};
+// SortScreen builds its adapter once, at import (before any clearAllMocks).
+const adapterGameTypes = sessionBoardAdapter.mock.calls.map((call) => call[0]);
 
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
   saveProgress: jest.Mock;
   saveLevelsCache: jest.Mock;
   loadLevelsCache: jest.Mock;
+  loadBestMoves: jest.Mock;
   recordLevelSolve: jest.Mock;
 };
 
@@ -139,8 +169,14 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
   sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
-  sortApi.submitScore.mockResolvedValue({ player_name: "Alice", level_reached: 1, rank: 1 });
-  sortApi.getLeaderboard.mockResolvedValue({ scores: [] });
+  statsApi.getLeaderboard.mockResolvedValue({
+    game_type: "sort",
+    partition: {},
+    label_key: "level",
+    entries: [],
+  });
+  mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 1 });
+  storage.loadBestMoves.mockResolvedValue({});
   storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
   storage.saveProgress.mockResolvedValue(undefined);
   storage.saveLevelsCache.mockResolvedValue(undefined);
@@ -312,18 +348,29 @@ describe("SortScreen — entering and playing a level", () => {
 });
 
 describe("SortScreen — leaderboard tab", () => {
-  it("fetches and displays leaderboard scores", async () => {
-    sortApi.getLeaderboard.mockResolvedValue({
-      scores: [{ player_name: "Alice", level_reached: 5, rank: 1 }],
+  it("fetches and displays the generic Sort board (#2625)", async () => {
+    statsApi.getLeaderboard.mockResolvedValue({
+      game_type: "sort",
+      partition: {},
+      label_key: "level",
+      entries: [
+        { rank: 1, player_name: "Alice", value: 23, completed_at: "2026-09-01T00:00:00Z" },
+        { rank: 1, player_name: "Bob", value: 23, completed_at: "2026-09-01T00:00:00Z" },
+        { rank: 3, player_name: "Cara", value: 5, completed_at: "2026-09-02T00:00:00Z" },
+      ],
     });
-    const { findByText } = await renderScreen();
+    const { findByText, getAllByText } = await renderScreen();
     await findByText("Choose a Level");
     const leaderboardTab = await findByText("Leaderboard");
     await act(async () => {
       await fireEvent.press(leaderboardTab);
     });
+    expect(statsApi.getLeaderboard).toHaveBeenCalledWith("sort");
     expect(await findByText("Alice")).toBeTruthy();
     expect(await findByText("Level 5")).toBeTruthy();
+    // The server's rank, so tied players share one.
+    expect(getAllByText("#1")).toHaveLength(2);
+    expect(await findByText("#3")).toBeTruthy();
   });
 
   it("shows empty state when leaderboard has no scores", async () => {
@@ -638,48 +685,105 @@ describe("SortScreen — result card (#2512)", () => {
     expect(card.queryByRole("button", { name: "Submit Score" })).toBeNull();
   });
 
-  it("submits the level reached under the display name", async () => {
+  function completion(n = 0) {
+    const [gameId, summary, payload] = mockCompleteGame.mock.calls[n]!;
+    return { gameId, summary, payload };
+  }
+
+  it("completes the frontier's first solve with its level as the score (#2625)", async () => {
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockStartGame.mock.calls[0]![0]).toBe("sort");
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const { gameId, summary } = completion();
+    expect(gameId).toBe("sort-game-id");
+    expect(summary).toEqual({
+      outcome: "completed",
+      finalScore: 1,
+      result: { level: 1, moves: 1, undos: 0, level_reached: 1, total_moves: 1 },
+    });
+  });
+
+  it("sends total_moves as the sum of the best moves up to the frontier", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+    // Level 1's best is 6; level 2 is solved in 1 move.
+    storage.loadBestMoves.mockResolvedValue({ "1": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 2);
+    const { summary } = completion();
+    expect(summary.finalScore).toBe(2);
+    expect(summary.result).toEqual({
+      level: 2,
+      moves: 1,
+      undos: 0,
+      level_reached: 2,
+      total_moves: 7,
+    });
+  });
+
+  it("leaves total_moves out when a lower level has no best on record", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    await solveLevel(r, 2);
+    const { summary } = completion();
+    expect(summary.finalScore).toBe(2);
+    expect(summary.result).toEqual({ level: 2, moves: 1, undos: 0, level_reached: 2 });
+  });
+
+  it("asks the generic board adapter for the rank of the finished game", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
-    sortApi.submitScore.mockResolvedValue({ player_name: "Riley", level_reached: 1, rank: 2 });
+    mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 2 });
     const r = await renderScreen();
     const card = await solveLevel(r, 1);
     await waitFor(() =>
       expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
     );
-    expect(sortApi.submitScore).toHaveBeenCalledTimes(1);
-    expect(sortApi.submitScore).toHaveBeenCalledWith("Riley", 1);
+    expect(adapterGameTypes).toEqual(["sort"]);
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+    expect(mockRankSubmit).toHaveBeenCalledWith("Riley", { gameId: "sort-game-id" });
   });
 
-  // #2576 review: POST /sort/score adds a row every time, and the top 10
-  // counts rows — so only the solve that raises "level reached" goes out.
-  it("does not submit a replay of a level below the frontier", async () => {
+  it("completes a replay below the frontier with no score and asks for no rank", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     storage.loadProgress.mockResolvedValue({
       unlockedLevel: 2,
       currentLevelId: null,
       currentState: null,
     });
+    storage.loadBestMoves.mockResolvedValue({ "1": 4 });
     const r = await renderScreen();
     const card = await solveLevel(r, 1);
     await waitFor(() => expect(storage.recordLevelSolve).toHaveBeenCalled());
     await act(async () => {});
-    expect(sortApi.submitScore).not.toHaveBeenCalled();
+    const { summary } = completion();
+    expect(summary).toEqual({
+      outcome: "completed",
+      result: { level: 1, moves: 1, undos: 0 },
+    });
+    expect(mockRankSubmit).not.toHaveBeenCalled();
     expect(card.queryByText(/Saved as/)).toBeNull();
   });
 
-  it("does not submit replays of the last level", async () => {
+  it("scores only the first solve of the last level, not its replays", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     storage.loadProgress.mockResolvedValue({
       unlockedLevel: 2,
       currentLevelId: null,
       currentState: null,
     });
-    storage.recordLevelSolve
-      .mockResolvedValueOnce({ best: 1, isNewBest: true, firstSolve: true })
-      .mockResolvedValue({ best: 1, isNewBest: false, firstSolve: false });
+    storage.loadBestMoves.mockResolvedValue({ "1": 4 });
     const r = await renderScreen();
     const card = await solveLevel(r, 2);
-    await waitFor(() => expect(sortApi.submitScore).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockRankSubmit).toHaveBeenCalledTimes(1));
 
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Play Again" }));
@@ -695,15 +799,35 @@ describe("SortScreen — result card (#2512)", () => {
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
     await r.findByTestId("sort-result");
-    await waitFor(() => expect(storage.recordLevelSolve).toHaveBeenCalledTimes(2));
     await act(async () => {});
-    expect(sortApi.submitScore).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    expect(completion(0).summary.finalScore).toBe(2);
+    expect(completion(1).summary).not.toHaveProperty("finalScore");
+    expect(completion(1).summary.result).toEqual({ level: 2, moves: 1, undos: 0 });
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  // #2576: Next Level is there at once, and the session is already complete,
+  // whatever the (async) best-moves write is doing.
+  it("completes the scored session before the player can move on", async () => {
+    storage.recordLevelSolve.mockReturnValue(new Promise(() => {}));
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(completion().summary.finalScore).toBe(1);
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Next Level" }));
+    });
+    expect(await r.findByText("Level 2")).toBeTruthy();
+    // Moving on doesn't abandon (or re-complete) the solved session.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
   it("drops a solve result that lands after the player moved to the next level", async () => {
-    await AsyncStorage.setItem("player_display_name", "Riley");
     let resolveSolve: (v: unknown) => void = () => {};
-    storage.recordLevelSolve.mockReturnValueOnce(new Promise((res) => (resolveSolve = res)));
+    storage.recordLevelSolve
+      .mockReturnValueOnce(new Promise((res) => (resolveSolve = res)))
+      .mockReturnValueOnce(new Promise(() => {}));
     const r = await renderScreen();
     const card = await solveLevel(r, 1);
     await act(async () => {
@@ -712,7 +836,25 @@ describe("SortScreen — result card (#2512)", () => {
     await act(async () => {
       resolveSolve({ best: 1, isNewBest: true, firstSolve: true });
     });
-    expect(sortApi.submitScore).not.toHaveBeenCalled();
+    // Level 2's card must not show level 1's best.
+    const next = within(
+      await (async () => {
+        await act(async () => {
+          await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+        });
+        await act(async () => {
+          await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+        });
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (global as any).__sortBoardLastProps?.onPourComplete?.();
+        });
+        return r.findByTestId("sort-result");
+      })()
+    );
+    expect(next.getByText("Sort Puzzle · Level 2")).toBeTruthy();
+    expect(next.queryByText("New best")).toBeNull();
+    expect(next.queryByText("Best")).toBeNull();
   });
 
   it("replays the last level with Play Again", async () => {
@@ -746,20 +888,6 @@ describe("SortScreen — result card (#2512)", () => {
       await fireEvent.press(card.getByRole("button", { name: "Home" }));
     });
     expect(mockPopToTop).toHaveBeenCalled();
-  });
-
-  it("records the solve as a completed session with no score", async () => {
-    const r = await renderScreen();
-    await solveLevel(r, 1);
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
-    expect(mockStartGame.mock.calls[0]![0]).toBe("sort");
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(gameId).toBe("sort-game-id");
-    expect(summary.outcome).toBe("completed");
-    expect(summary.result).toEqual(expect.objectContaining({ won: true, level: 1, moves: 1 }));
-    // Sort's leaderboard ranks every scored row — a session must never carry one.
-    expect(summary).not.toHaveProperty("finalScore");
   });
 
   it("abandons an unfinished session when the player leaves for level select", async () => {

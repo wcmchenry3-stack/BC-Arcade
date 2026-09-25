@@ -45,14 +45,17 @@ export async function loadLevelsCache(): Promise<LevelsResponse | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Best moves per level (#2512) — shown as "Best" on the result card.
+// Best moves per level (#2512) — shown as "Best" on the result card, and
+// summed into the leaderboard's `total_moves` tie-break (#2625).
 // ---------------------------------------------------------------------------
 
 const BEST_MOVES_KEY = "@sort/best_moves";
 
-type BestMoves = Record<string, number>;
+/** Fewest moves per solved level, keyed by level id. */
+export type BestMoves = Readonly<Record<string, number>>;
 
-async function loadBestMoves(): Promise<BestMoves> {
+/** The stored best moves (`@sort/best_moves`); empty when unreadable. */
+export async function loadBestMoves(): Promise<BestMoves> {
   try {
     const raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
@@ -71,17 +74,46 @@ export interface LevelSolve {
   readonly firstSolve: boolean;
 }
 
-/** Records a solve of `levelId` in `moves`. */
-export async function recordLevelSolve(levelId: number, moves: number): Promise<LevelSolve> {
-  const all = await loadBestMoves();
-  const previous = all[String(levelId)];
+/** A solve of `levelId` in `moves` against `bests`, and the bests after it. Pure. */
+export function applyLevelSolve(
+  bests: BestMoves,
+  levelId: number,
+  moves: number
+): { solve: LevelSolve; bests: BestMoves } {
+  const previous = bests[String(levelId)];
   const firstSolve = typeof previous !== "number";
   const isNewBest = firstSolve || moves < previous;
-  if (!isNewBest) return { best: previous, isNewBest, firstSolve };
+  if (!isNewBest) return { solve: { best: previous, isNewBest, firstSolve }, bests };
+  return {
+    solve: { best: moves, isNewBest, firstSolve },
+    bests: { ...bests, [String(levelId)]: moves },
+  };
+}
+
+/**
+ * The leaderboard tie-break (#2625): the sum of the best moves of every level
+ * from 1 to `throughLevel`. `null` when one of them has no best on record
+ * (progress made before #2512 kept bests): a partial sum would rank ahead of
+ * players who played every level, while a missing tie-break ranks last.
+ */
+export function totalBestMoves(bests: BestMoves, throughLevel: number): number | null {
+  let total = 0;
+  for (let level = 1; level <= throughLevel; level++) {
+    const best = bests[String(level)];
+    if (typeof best !== "number" || !Number.isInteger(best) || best < 0) return null;
+    total += best;
+  }
+  return total;
+}
+
+/** Records a solve of `levelId` in `moves` in `@sort/best_moves`. */
+export async function recordLevelSolve(levelId: number, moves: number): Promise<LevelSolve> {
+  const { solve, bests } = applyLevelSolve(await loadBestMoves(), levelId, moves);
+  if (!solve.isNewBest) return solve;
   try {
-    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify({ ...all, [levelId]: moves }));
+    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
   } catch {
     // Best-effort: the card still shows this solve as the best.
   }
-  return { best: moves, isNewBest, firstSolve };
+  return solve;
 }
