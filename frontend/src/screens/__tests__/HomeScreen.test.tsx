@@ -294,6 +294,26 @@ describe("HomeScreen — resuming a saved Yacht game (#2203)", () => {
     );
   });
 
+  it("passes the finished game's id on for its rank lookup (#2630)", async () => {
+    const human = { ...newGame(), round: 13, game_over: true };
+    const ai = { ...newGame(), round: 13, rolls_used: 2 };
+    storage.loadGame.mockResolvedValue({
+      state: human,
+      aiDifficulty: "hard",
+      aiState: ai,
+      finishedGameId: "game-1",
+    });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith(
+        "Game",
+        expect.objectContaining({ initialState: human, finishedGameId: "game-1" })
+      )
+    );
+  });
+
   it("starts a new game once both VS games are over", async () => {
     const over = { ...newGame(), round: 13, game_over: true };
     storage.loadGame.mockResolvedValue({ state: over, aiDifficulty: "hard", aiState: over });

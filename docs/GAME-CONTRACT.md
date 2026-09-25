@@ -70,12 +70,12 @@ class GameOutcome(str, Enum):
 
 `games.outcome` carries the result (#2519 decision 11, PR #2592): games with a
 winner record `win` / `loss` / `push` — Yacht vs the computer, Hearts, Daily
-Word, Blackjack (a run that reached its goal / ran out of chips, #2628) and
-Mahjong's deadlock loss today; Mahjong's cleared board (#2627) and Twenty48
-(#2631) move onto it next.
+Word, Blackjack (a run that reached its goal / ran out of chips, #2628),
+Mahjong (a cleared board is a `win` since #2627, a deadlock the player leaves
+a `loss`) and Twenty48 (the 2048 tile / a game over before it, #2631).
 `GameModule.has_winner` means "this game can record win / loss / push" and is
 set only once the client really writes them, a win included: true for Yacht,
-Hearts, Daily Word and Blackjack; Mahjong flips with #2627. It is a
+Hearts, Daily Word, Blackjack, Mahjong and Twenty48. It is a
 per-game flag, not a per-row fact — a `completed` row from a `has_winner` game
 (solo Yacht) is a finish with no winner, not a win. Score-only games
 record `completed` / `kept_playing`, which means "no win concept" (win rate
@@ -148,12 +148,12 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 
 "any" means every non-abandoned row. Notes on the declarations:
 
-- **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. The legacy `POST /yacht/score` bound of 400 applies to its `400 - raw` transform, not to a real game's total.
+- **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. Solo and vs-the-computer games share the board; the session metadata records `mode` (`solo` | `vs`) and, for a vs game, `difficulty` (#2630). The legacy `POST /yacht/score` and `GET /yacht/scores` were removed in #2630.
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
 - **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG`, the legacy `POST /starswarm/score` default.
-- **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
+- **Legacy rows:** the per-game routes wrote different values than the boards declare. Yacht's removed `POST /yacht/score` stored `400 - raw` in `final_score` under the `yacht-anon` session; Sort stored the level in `final_score` under `sort-anon`. The generic board (#2657) excludes every `*-anon` row, so these rows never meet the declarations.
 - **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record, so the row ranks after equal levels that have one). The board keeps each player's best row, so a replay that lowers a best improves their rank. Abandons carry no score and never rank.
 - **FreeCell** (#2632): a win sends `final_score = moveCount` (installed builds still send none). Abandons carry no score and never rank.
 
@@ -232,8 +232,8 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
 | Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                                       |
 | FreeCell    | `FreeCellMetadata`  | None (empty model). The per-session row (#2452) is separate from the legacy router's own rows (which hold `player_name`); since #2632 a win carries its move count as `final_score`                      |
-| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
-| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                   |
+| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars), `ai_difficulty: str \| None` (≤ 32 chars): the opponent style, recorded and not ranked on (`cautious`, `schemer`, `daring`, `mixed`)                             |
+| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                                  |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars), `draw_mode: Literal[1, 3] \| None` (#2632; recorded, not a partition: both modes share one board)                                                                |
 | Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                                                                   |
 | Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank. The router's own leaderboard rows (`POST /starswarm/score`) are written directly and hold `player_name` |

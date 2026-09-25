@@ -160,6 +160,7 @@ export default function HomeScreen() {
         initialState: saved.state,
         aiDifficulty: saved.aiDifficulty ?? undefined,
         aiState: saved.aiState ?? undefined,
+        finishedGameId: saved.finishedGameId,
       });
     } else {
       navigation.navigate("Game", { initialState: newYachtGame() });

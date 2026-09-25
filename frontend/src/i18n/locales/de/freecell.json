@@ -4,7 +4,7 @@
   "game.playLabel": "FreeCell spielen",
   "action.undo": "Rückgängig",
   "action.hint": "Hinweis",
-  "noMoves.message": "Keine Züge mehr — rückgängig machen zum Fortfahren?",
+  "noMoves.message": "Keine Züge mehr — Zug zurücknehmen?",
   "suit.spades": "Pik",
   "suit.hearts": "Herz",
   "suit.diamonds": "Karo",

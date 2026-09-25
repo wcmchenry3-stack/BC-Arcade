@@ -16,9 +16,10 @@ class MahjongModule:
     game_type = GameType.MAHJONG
     metadata_model = MahjongMetadata
     result_model = MahjongResult
-    # False until #2627: a cleared board still records ``completed``, so only
-    # the deadlock ``loss`` is written today and a win rate would read 0 %.
-    has_winner = False
+    # A cleared board records ``win`` (#2627) and a deadlock the player leaves
+    # records ``loss`` (#2592). Rows from builds before #2627 are
+    # ``completed``: no winner.
+    has_winner = True
     # 72 pairs x SCORE_PER_PAIR (10) + SCORE_COMPLETE_BONUS (500); every layout
     # is 144 tiles. Recomputed from the engine in tests/test_board_definitions.py.
     # qualifying_outcomes stays None: a deadlocked game is recorded as a loss

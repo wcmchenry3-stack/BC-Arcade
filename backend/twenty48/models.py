@@ -23,16 +23,17 @@ class Twenty48Metadata(BaseModel):
 class Twenty48Result(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2449).
 
-    Mirrors ``endedPayload`` in ``Twenty48Screen.tsx`` (game over, new game,
-    keep playing) and its abandon snapshot, which omits ``outcome``. The daily
-    challenge reads ``final_score`` and ``highest_tile`` from here: an abandon
-    leaves the ``final_score`` column null, so the result is its only score.
+    Mirrors ``progressResult`` in ``Twenty48Screen.tsx``: the finished game
+    (the 2048 win, or a game over without it) adds ``outcome``, and the
+    abandon snapshot omits it. The daily challenge reads ``final_score`` and
+    ``highest_tile`` from here: an abandon leaves the ``final_score`` column
+    null, so the result is its only score.
 
     Every field is optional and unknown keys are ignored, so no build the
     stores already have can fail completion and dead-letter the game.
-    ``outcome`` repeats the row's outcome (``completed``, ``abandoned``,
-    ``kept_playing``); it is a plain string so a newer build can send ``win``
-    or ``loss`` (#2631). A ``duration_ms`` of zero or less (a skewed clock) is
+    ``outcome`` repeats the row's outcome: ``win`` / ``loss`` since #2631, and
+    ``completed`` / ``kept_playing`` from older builds; it is a plain string
+    so none of them is rejected. A ``duration_ms`` of zero or less (a skewed clock) is
     stored as ``null``, "unknown", as the sync worker sends it on the row
     itself (``resolveDurationMs``): rejecting it would dead-letter the game.
     """

@@ -1,16 +1,25 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import type { AiPreset, HeartsState } from "./types";
+import type { AiPreset, HeartsState, SavedHeartsState } from "./types";
 import { AI_PRESETS } from "./types";
 
 const GAME_KEY = "hearts_game";
+/**
+ * The session id of the finished game whose result card is showing (#2629):
+ * a finished game is kept saved, so its card comes back when the app is
+ * reopened, and asks for the game's rank again with this id.
+ */
+const FINISHED_GAME_ID_KEY = "hearts_finished_game_id";
+/** Pre-#2629 builds' owed leaderboard score; nothing reads it any more. */
+const LEGACY_PENDING_SUBMISSION_KEY = "hearts_pending_submission";
 const LEGACY_PERSONA_MAP: Record<string, string> = {
   easy: "cautious",
   medium: "schemer",
   hard: "daring",
 };
 
-export async function saveGame(state: HeartsState): Promise<void> {
+/** Saves the game with its play time (`withPlayTime` in ./clock builds it). */
+export async function saveGame(state: SavedHeartsState): Promise<void> {
   try {
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify(state));
   } catch (e) {
@@ -18,7 +27,11 @@ export async function saveGame(state: HeartsState): Promise<void> {
   }
 }
 
-export async function loadGame(): Promise<HeartsState | null> {
+/**
+ * The saved game, or null. Its `accumulatedMs` is always a usable play time:
+ * 0 when an older save has none or the stored value is bad.
+ */
+export async function loadGame(): Promise<SavedHeartsState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
@@ -40,7 +53,7 @@ export async function loadGame(): Promise<HeartsState | null> {
       parsed["aiDifficulty"] = LEGACY_PERSONA_MAP[storedPersona];
     }
 
-    const p = parsed as Partial<HeartsState>;
+    const p = parsed as Partial<HeartsState> & { accumulatedMs?: unknown };
     if (
       p._v !== 3 ||
       !(AI_PRESETS as readonly string[]).includes(p.aiDifficulty as string) ||
@@ -76,7 +89,10 @@ export async function loadGame(): Promise<HeartsState | null> {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset } as HeartsState;
+    // Play time (#2629): absent in older saves, and a bad value counts as none.
+    const ms = p.accumulatedMs;
+    const accumulatedMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
+    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as SavedHeartsState;
   } catch (e) {
     Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
       level: "warning",
@@ -88,9 +104,31 @@ export async function loadGame(): Promise<HeartsState | null> {
   }
 }
 
+export async function saveFinishedGameId(gameId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(FINISHED_GAME_ID_KEY, gameId);
+  } catch {
+    // Best-effort: at worst a reopened card shows no rank.
+  }
+}
+
+export async function loadFinishedGameId(): Promise<string | null> {
+  try {
+    const id = await AsyncStorage.getItem(FINISHED_GAME_ID_KEY);
+    return id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Forgets the saved game and its finished-game id (new game). */
 export async function clearGame(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(GAME_KEY);
+    await Promise.all(
+      [GAME_KEY, FINISHED_GAME_ID_KEY, LEGACY_PENDING_SUBMISSION_KEY].map((key) =>
+        AsyncStorage.removeItem(key)
+      )
+    );
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "hearts.storage", op: "clear" } });
   }

@@ -449,7 +449,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   it("calls startGame('yacht') on mount", async () => {
     await renderScreen();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
+    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
   });
 
   it("does not start a new session when mounted with a game_over state", async () => {
@@ -610,7 +610,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       const soloBtn = queryByRole("button", { name: /^solo$/i });
       if (soloBtn) fireEvent.press(soloBtn);
     });
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
+    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {

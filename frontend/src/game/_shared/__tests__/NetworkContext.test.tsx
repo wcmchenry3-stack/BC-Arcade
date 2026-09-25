@@ -31,16 +31,6 @@ jest.mock("../testHooks", () => ({
   registerLogstoreTestHooks: jest.fn().mockReturnValue(() => {}),
 }));
 
-jest.mock("../../mahjong/scoreSync", () => ({
-  registerMahjongScoreHandler: jest.fn(),
-}));
-jest.mock("../../hearts/scoreSync", () => ({
-  registerHeartsScoreHandler: jest.fn(),
-}));
-jest.mock("../../starswarm/scoreSync", () => ({
-  registerStarSwarmScoreHandler: jest.fn(),
-}));
-
 jest.mock("../../../components/shared/CapacityWarningToast", () => ({
   CapacityWarningToast: () => null,
 }));

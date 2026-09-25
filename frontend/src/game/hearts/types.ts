@@ -136,3 +136,11 @@ export interface HeartsState {
   readonly passedAwayByPlayer?: readonly (readonly Card[])[];
   readonly receivedByPlayer?: readonly (readonly Card[])[];
 }
+
+/**
+ * A game as saved (#2629): the state plus its active play time so far, in ms.
+ * The play time only exists in the saved form: the screen's clock owns it in
+ * play (`withPlayTime` in ./clock adds it on save), and `loadGame` returns it
+ * as 0 for saves from older builds or a bad stored value.
+ */
+export type SavedHeartsState = HeartsState & { readonly accumulatedMs: number };

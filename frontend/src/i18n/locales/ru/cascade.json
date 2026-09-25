@@ -12,11 +12,11 @@
   "theme.groupLabel": "Тема фруктов",
   "theme.optionLabel": "Тема {{label}}",
   "event.merged": "Объединено! Создан {{fruit}}.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroLabel": "ОЧКИ",
+  "scoreboard.heroSub": "Лучший фрукт: {{bestFruit}} · слияний: {{merges}}",
+  "scoreboard.heroSubEmpty": "Игр пока не было",
+  "scoreboard.bestScore": "Рекорд",
+  "scoreboard.bestFruit": "Лучший фрукт",
+  "scoreboard.gamesPlayed": "Игр сыграно",
+  "scoreboard.totalMerges": "Всего слияний"
 }

@@ -16,11 +16,11 @@
  *   synced game's rank (`sessionBoardAdapter`).
  * - **Lost-response duplicates (#155) remain only for the legacy per-game
  *   `POST /<game>/score` handlers**, which insert a new leaderboard row on
- *   every call: Mahjong (`/mahjong/score`), Hearts (`/hearts/score`) and Star
- *   Swarm (`/starswarm/score`). A replay can add at most one duplicate row to
- *   that game's legacy board (never to the generic boards, which exclude those
- *   `*-anon` rows). Phase 2 of #2519 removes these handlers (Sort's went with
- *   #2625; Solitaire's and FreeCell's with #2632) and #2644 the routes.
+ *   every call. No game registers one any more: Phase 2 of #2519 removed them
+ *   (Sort's with #2625, Star Swarm's with #2626, Mahjong's with #2627, Hearts'
+ *   with #2629, Solitaire's and FreeCell's with #2632) and #2644 removes the
+ *   routes. An item queued by an older build for a game whose handler is gone
+ *   stays in the queue unsent (#2644 clears them).
  *
  * The queue is agnostic about per-game submission details: each game
  * registers a handler via `registerHandler()`. `flush()` looks up the

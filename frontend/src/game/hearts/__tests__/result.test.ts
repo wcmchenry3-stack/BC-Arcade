@@ -1,4 +1,4 @@
-import { heartsResult, heartsStandings } from "../result";
+import { heartsLeaderboardScore, heartsResult, heartsStandings } from "../result";
 
 describe("heartsResult (#2506)", () => {
   it("is a win when the human alone has the lowest score", () => {
@@ -36,5 +36,13 @@ describe("heartsStandings", () => {
       { seat: 0, score: 52, rank: 3 },
       { seat: 1, score: 100, rank: 4 },
     ]);
+  });
+});
+
+describe("heartsLeaderboardScore", () => {
+  it("scores 100 minus the player's points, never below zero", () => {
+    expect(heartsLeaderboardScore(46)).toBe(54);
+    expect(heartsLeaderboardScore(0)).toBe(100);
+    expect(heartsLeaderboardScore(118)).toBe(0);
   });
 });

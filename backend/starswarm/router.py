@@ -18,6 +18,7 @@ from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
 from limiter import limiter, session_key
+from players.names import display_name_of
 from players.service import remember_legacy_name
 from session import optional_session_id
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
@@ -67,28 +68,26 @@ async def _starswarm_game_type_id(db: AsyncSession) -> int:
 
 async def _top10(db: AsyncSession) -> list[LeaderboardEntry]:
     gt_id = await _starswarm_game_type_id(db)
+    # A legacy row holds the name it was posted under. A session row (#2626)
+    # holds none: it shows the player's current display name, or "anon".
     rows = (
-        (
-            await db.execute(
-                select(Game)
-                .where(
-                    Game.game_type_id == gt_id,
-                    Game.final_score.is_not(None),
-                    not_abandoned(),
-                )
-                .order_by(desc(Game.final_score), Game.completed_at.asc())
-                .limit(LEADERBOARD_LIMIT)
+        await db.execute(
+            select(Game, display_name_of(Game.session_id))
+            .where(
+                Game.game_type_id == gt_id,
+                Game.final_score.is_not(None),
+                not_abandoned(),
             )
+            .order_by(desc(Game.final_score), Game.completed_at.asc())
+            .limit(LEADERBOARD_LIMIT)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     entries: list[LeaderboardEntry] = []
-    for i, g in enumerate(rows):
+    for i, (g, current_name) in enumerate(rows):
         meta = g.game_metadata or {}
         entries.append(
             LeaderboardEntry(
-                player_id=str(meta.get("player_name") or "anon"),
+                player_id=str(meta.get("player_name") or current_name or "anon"),
                 score=int(g.final_score or 0),
                 wave_reached=int(meta.get("wave_reached") or 1),
                 difficulty_tier=str(meta.get("difficulty_tier") or DEFAULT_DIFFICULTY_TIER),

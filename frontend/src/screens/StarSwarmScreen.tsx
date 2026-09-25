@@ -47,10 +47,11 @@ import { reportRunStats } from "../game/starswarm/telemetry";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
-import { starSwarmLeaderboard } from "../game/starswarm/leaderboard";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../components/shared/usePremiumLevels";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -70,6 +71,9 @@ import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
  * release builds, and reaching wave 5 or 9 there needs the panel. Store builds never show it.
  */
 const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
+
+// #2626: the result card reads the run's rank on its tier's board (`GET /games/{id}/rank`).
+const STARSWARM_BOARD = sessionBoardAdapter("starswarm");
 
 // #2491: dev-panel run-stats view — a 4 Hz snapshot of the engine's counters.
 const DEV_STATS_POLL_MS = 250;
@@ -173,20 +177,24 @@ function StarSwarmGame() {
   const [result, setResult] = useState<{
     score: number;
     wave: number;
+    /** The tier the run was played at — its board, which can differ from the picker's (#2567). */
+    tier: DifficultyTier;
     best: number;
     isNewBest: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(starSwarmLeaderboard);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  const leaderboard = useLeaderboardSubmit(STARSWARM_BOARD);
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
 
   // Per-session `games` row (#2516), like every other game: XP, Profile history
-  // and SyncWorker. It never carries a score — Star Swarm's leaderboard ranks
-  // every scored Star Swarm row, so a scored session would list each run twice.
+  // and SyncWorker. Since #2626 the finished run carries its score and is the
+  // leaderboard entry itself, on its difficulty tier's board.
   const {
     restart: syncRestart,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     resume: syncResume,
+    getGameId: syncGetGameId,
+    reportBug: syncReportBug,
   } = useGameSync("starswarm");
   const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
@@ -296,13 +304,35 @@ function StarSwarmGame() {
         setHighScore(finalScore);
         void saveBestScore(finalScore);
       }
-      setResult({ score: finalScore, wave, best: Math.max(finalScore, priorBest), isNewBest });
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
-      // The starswarm router reads wave_reached / difficulty_tier from games.metadata.
-      const payload = { outcome: "completed", wave_reached: wave, difficulty_tier: tier };
-      syncComplete({ outcome: "completed", result: payload }, payload);
-      submitScore({ score: finalScore, wave, difficulty: tier });
+      setResult({
+        score: finalScore,
+        wave,
+        tier,
+        best: Math.max(finalScore, priorBest),
+        isNewBest,
+      });
+      // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
+      // games.metadata (StarSwarmResult), where the board partitions on it.
+      // Score-only: the outcome stays `completed`. No duration: the engine
+      // keeps no play clock, and a made-up 0 would read as a real time.
+      const outcome = recordedOutcome("ended");
+      const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
+      // complete() clears the id — read it first.
+      const gameId = syncGetGameId();
+      syncComplete({ outcome, finalScore, result: payload }, payload);
+      // The card reads the run's rank on its tier's board (shown when it is the player's best).
+      if (gameId) {
+        void submitRank({ gameId });
+      } else {
+        // No open session: the run gets no row and no rank. Say so.
+        syncReportBug("warn", "starswarm", "game over with no open session: run not recorded", {
+          score: finalScore,
+          wave,
+          difficulty_tier: tier,
+        });
+      }
       if (!runStatsReportedRef.current) {
         const state = canvasRef.current?.getState();
         if (state) {
@@ -311,7 +341,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, submitScore]
+    [playGameOver, difficulty, syncComplete, syncGetGameId, syncReportBug, submitRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -730,7 +760,7 @@ function StarSwarmGame() {
         <GameResultModal
           visible={result !== null && !showDifficultyPicker}
           outcome="ended"
-          eyebrow={`${t("game.title")} · ${difficultyLabel(difficulty)}`}
+          eyebrow={`${t("game.title")} · ${difficultyLabel(result?.tier ?? difficulty)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}

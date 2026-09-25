@@ -33,7 +33,7 @@
   "pass.direction.across": "Passar em frente",
   "pass.direction.none": "Sem passar nesta rodada",
   "pass.instructions": "Escolha 3 cartas para {{direction}}",
-  "pass.selected": "{{count}} de 3 selecionadas",
+  "pass.selected": "{{count}}/3 escolhidas",
   "pass.confirm": "Confirmar",
   "pass.confirmLabel": "Confirmar — passar {{count}} cartas selecionadas",
   "player.you": "Você",

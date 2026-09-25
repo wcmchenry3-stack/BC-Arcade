@@ -13,9 +13,6 @@ import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
-import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
-import { registerHeartsScoreHandler } from "../hearts/scoreSync";
-import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
 import {
   flushDisplayNameSync,
   registerDisplayNameSync,
@@ -31,12 +28,9 @@ const NetworkContext = createContext<NetworkStatus>({
   isInitialized: false,
 });
 
-// Register per-game handlers exactly once, module-load time. Solitaire, Sudoku,
-// FreeCell and Cascade have none since #2632: their result cards only read
-// the rank of the synced game (`sessionBoardAdapter`).
-registerMahjongScoreHandler();
-registerHeartsScoreHandler();
-registerStarSwarmScoreHandler();
+// No per-game score handlers are registered any more: since Phase 2 of #2519
+// every result card only reads the rank of the synced game
+// (`sessionBoardAdapter`).
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
 
