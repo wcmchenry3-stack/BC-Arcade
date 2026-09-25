@@ -13,13 +13,13 @@
   "swipe.hint": "Wische, um Kacheln zu bewegen",
   "win.body": "Du hast 2048 erreicht! Du kannst weiterspielen für einen höheren Punktestand.",
   "controls.keyboardHint": "Oder nutze die Pfeiltasten",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "Höchste Kachel",
+  "stats.timePlayed": "Spielzeit",
+  "scoreboard.heroLabel": "PUNKTE",
+  "scoreboard.heroSub": "Beste Kachel: {{bestTile}} · {{moves}} Züge",
+  "scoreboard.heroSubEmpty": "Noch keine Spiele gespielt",
+  "scoreboard.bestScore": "Beste Punktzahl",
+  "scoreboard.bestTile": "Beste Kachel",
+  "scoreboard.gamesPlayed": "Partien",
+  "scoreboard.gamesWon": "Gewonnene Spiele"
 }

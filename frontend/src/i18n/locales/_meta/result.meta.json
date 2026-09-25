@@ -1,0 +1,551 @@
+{
+  "title.win": {
+    "component": "GameResultModal",
+    "description": "Title of the shared end-of-game result card when the outcome is a win.",
+    "tone": "celebratory",
+    "characterLimit": 17,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "title.loss": {
+    "component": "GameResultModal",
+    "description": "Title of the shared end-of-game result card for an unnamed loss (e.g. a solo game ending badly).",
+    "tone": "neutral, gentle",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "title.lossNamed": {
+    "component": "GameResultModal",
+    "description": "Title of the result card when the player loses to a named opponent.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the winning opponent's display name, e.g. an AI difficulty persona or another seat's name."
+  },
+  "title.draw": {
+    "component": "GameResultModal",
+    "description": "Title of the result card for a tied outcome.",
+    "tone": "celebratory, light",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "title.ended": {
+    "component": "GameResultModal",
+    "description": "Title of the result card for a game that ended without a win/loss/draw outcome (e.g. no more moves, or leaving a session).",
+    "tone": "neutral",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hero.you": {
+    "component": "GameResultModal (Hero)",
+    "description": "Label for the player's own score in the head-to-head hero display of the result card.",
+    "tone": "neutral",
+    "characterLimit": 6,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hero.vs": {
+    "component": "GameResultModal (Hero)",
+    "description": "Short separator between the two scores in the head-to-head hero display.",
+    "tone": "neutral, abbreviated",
+    "characterLimit": 5,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Typically kept as-is across languages."
+  },
+  "newBest": {
+    "component": "GameResultModal",
+    "description": "Badge shown on the result card when the player's score beats their previous best.",
+    "tone": "celebratory, brief",
+    "characterLimit": 17,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.playAgain": {
+    "component": "GameResultModal",
+    "description": "Primary button on the result card to start a new game.",
+    "tone": "action",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.home": {
+    "component": "GameResultModal",
+    "description": "Button on the result card to return to the home screen.",
+    "tone": "action",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submission.saving": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card while the score is being submitted to the leaderboard.",
+    "tone": "functional",
+    "characterLimit": 31,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submission.saved": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card once the score has been saved to the leaderboard.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the display name the score was saved under."
+  },
+  "submission.savedRanked": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card once the score has been saved, including its leaderboard rank.",
+    "tone": "functional",
+    "characterLimit": 57,
+    "placeholders": ["{{name}}", "{{rank}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the display name the score was saved under; {{rank}} is a 1-based position."
+  },
+  "submission.offline": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card when the score was saved locally while offline, to sync later.",
+    "tone": "functional, reassuring",
+    "characterLimit": 71,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submission.error": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card when saving the score to the leaderboard failed.",
+    "tone": "apologetic, clear",
+    "characterLimit": 46,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "submission.retry": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Retry link next to the submission error line on the result card.",
+    "tone": "action",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "namePrompt.label": {
+    "component": "GameResultModal (SubmissionLine → DisplayNameField)",
+    "description": "Label for the one-time display-name prompt shown in the result card's submission slot, before a first score can be saved to a leaderboard.",
+    "tone": "neutral, inviting",
+    "characterLimit": 51,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "namePrompt.helper": {
+    "component": "GameResultModal (SubmissionLine → DisplayNameField)",
+    "description": "Helper text under the one-time display-name prompt on the result card.",
+    "tone": "neutral, reassuring",
+    "characterLimit": 68,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Refers to the Profile screen, where the name can be changed later."
+  },
+  "a11y.announce": {
+    "component": "GameResultModal (useResultFeedback)",
+    "description": "Accessibility label — combined screen-reader announcement of the result title and detail, read once when the card appears.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{title}}", "{{detail}}"],
+    "doNotTranslate": [],
+    "notes": "{{title}} and {{detail}} are other, already-translated strings joined together."
+  },
+  "a11y.heroScore": {
+    "component": "GameResultModal (useResultFeedback)",
+    "description": "Accessibility hint text — the score-hero's label and value, folded into the result announcement.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{label}}", "{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.heroVs": {
+    "component": "GameResultModal (useResultFeedback)",
+    "description": "Accessibility hint text — the versus-hero's two scores, folded into the result announcement.",
+    "tone": "functional",
+    "characterLimit": 90,
+    "placeholders": ["{{you}}", "{{opponent}}", "{{opponentScore}}"],
+    "doNotTranslate": [],
+    "notes": "{{opponent}} is the opponent's display label (e.g. an AI difficulty persona)."
+  },
+  "a11y.dismissCelebration": {
+    "component": "AnimationOverlay",
+    "description": "Accessibility label for the full-screen tap-to-skip area shown during a win celebration animation, before the result card appears.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.score": {
+    "component": "Game screens' result cards (Sudoku, 2048, Yacht, Star Swarm, Cascade, Solitaire, Mahjong)",
+    "description": "Stat label for the game's score, shown in the result card's hero or stat strip.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.time": {
+    "component": "Game screens' result cards (Sudoku, Solitaire, Mahjong)",
+    "description": "Stat label for elapsed time, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.errors": {
+    "component": "SudokuScreen (result card)",
+    "description": "Stat label for the number of mistakes made, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.best": {
+    "component": "Game screens' result cards (Sudoku, Sort Puzzle, FreeCell, Star Swarm, Cascade, Solitaire, Mahjong)",
+    "description": "Stat label for the player's best score or time to date, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.moves": {
+    "component": "Game screens' result cards (Sort Puzzle, FreeCell, Solitaire)",
+    "description": "Stat label for the number of moves made, shown in the result card's hero or stat strip.",
+    "tone": "functional",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.merges": {
+    "component": "CascadeScreen (result card)",
+    "description": "Stat label for the number of fruit merges made, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.changeDifficulty": {
+    "component": "Game screens' result cards (Sudoku, Yacht, Star Swarm, Hearts)",
+    "description": "Secondary button on the result card to go back and pick a different difficulty or opponent style.",
+    "tone": "action",
+    "characterLimit": 29,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "name.computer": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Stand-in opponent name used as the winner's name when the AI beats the player in Yacht vs mode.",
+    "tone": "neutral",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "margin.won_one": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Result card subtitle giving the winning margin when the player wins by exactly one point.",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "margin.won_other": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Result card subtitle giving the winning margin when the player wins by more than one point.",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "margin.lost_one": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Result card subtitle giving the losing margin when the player loses by exactly one point.",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "margin.lost_other": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Result card subtitle giving the losing margin when the player loses by more than one point.",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "margin.tied": {
+    "component": "GameScreen (Yacht vs-mode result card)",
+    "description": "Result card subtitle shown when both players finish Yacht with the same score.",
+    "tone": "neutral",
+    "characterLimit": 45,
+    "placeholders": ["{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.upper": {
+    "component": "GameScreen (Yacht result card)",
+    "description": "Stat label for the upper-section score, shown in the Yacht result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.lower": {
+    "component": "GameScreen (Yacht result card)",
+    "description": "Stat label for the lower-section score, shown in the Yacht result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.bonus": {
+    "component": "GameScreen (Yacht result card)",
+    "description": "Stat label for the upper-section bonus, shown in the Yacht result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.noMoves": {
+    "component": "Twenty48Screen (result card)",
+    "description": "Result card subtitle shown when the 2048 board has no more legal moves.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.guesses": {
+    "component": "DailyWordScreen (result card)",
+    "description": "Stat label for the number of guesses used, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.solvedIn_one": {
+    "component": "DailyWordScreen (result card)",
+    "description": "Result card subtitle for a win, singular form ({{count}} = 1 guess).",
+    "tone": "neutral",
+    "characterLimit": 35,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.solvedIn_other": {
+    "component": "DailyWordScreen (result card)",
+    "description": "Result card subtitle for a win, plural form.",
+    "tone": "neutral",
+    "characterLimit": 35,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.changeMode": {
+    "component": "SolitaireScreen (result card)",
+    "description": "Secondary button on the result card to go back and pick a different Solitaire mode.",
+    "tone": "action",
+    "characterLimit": 17,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.completedIn_one": {
+    "component": "FreeCellScreen (result card)",
+    "description": "Result card subtitle for a win, singular form ({{count}} = 1 move).",
+    "tone": "neutral",
+    "characterLimit": 37,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.completedIn_other": {
+    "component": "FreeCellScreen (result card)",
+    "description": "Result card subtitle for a win, plural form.",
+    "tone": "neutral",
+    "characterLimit": 37,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.reachedLimit": {
+    "component": "HeartsScreen (result card)",
+    "description": "Result card subtitle naming which player crossed the score limit that ended the Hearts game.",
+    "tone": "neutral",
+    "characterLimit": 61,
+    "placeholders": ["{{name}}", "{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "standings.label": {
+    "component": "HeartsFinalStandings (Hearts result card detail)",
+    "description": "Accessibility label for the ranked final-standings list on the Hearts result card.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "standings.row": {
+    "component": "HeartsFinalStandings (Hearts result card detail)",
+    "description": "Accessibility label for one row of the Hearts final-standings list.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{rank}}", "{{name}}", "{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.changeLayout": {
+    "component": "MahjongScreen (result card)",
+    "description": "Secondary button on the result card to go back and pick a different Mahjong layout.",
+    "tone": "action",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.pairsCleared_one": {
+    "component": "MahjongScreen (result card)",
+    "description": "Result card subtitle for a win, singular form ({{count}} = 1 pair).",
+    "tone": "neutral",
+    "characterLimit": 43,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.pairsCleared_other": {
+    "component": "MahjongScreen (result card)",
+    "description": "Result card subtitle for a win, plural form.",
+    "tone": "neutral",
+    "characterLimit": 43,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "subtitle.noFreePairs": {
+    "component": "MahjongScreen (result card)",
+    "description": "Result card subtitle shown when the Mahjong board has no more matchable pairs.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.undoLastMove": {
+    "component": "MahjongScreen (result card)",
+    "description": "Button (and its accessibility label) on the result card to undo the last move instead of ending the game.",
+    "tone": "action",
+    "characterLimit": 31,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.undos": {
+    "component": "SortScreen (result card)",
+    "description": "Stat label for the number of undos used, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.nextLevel": {
+    "component": "SortScreen (result card)",
+    "description": "Primary button on the result card to advance to the next Sort Puzzle level.",
+    "tone": "action",
+    "characterLimit": 19,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.changeLevel": {
+    "component": "SortScreen (result card)",
+    "description": "Secondary button on the result card to go back to the level-select screen.",
+    "tone": "action",
+    "characterLimit": 19,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.hands": {
+    "component": "BlackjackVictoryScreen / BlackjackTableScreen (result card)",
+    "description": "Stat label for the number of Blackjack hands played, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.biggestWin": {
+    "component": "BlackjackVictoryScreen / BlackjackTableScreen (result card)",
+    "description": "Stat label for the biggest single win of the session, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.winRate": {
+    "component": "BlackjackVictoryScreen / BlackjackTableScreen (result card)",
+    "description": "Stat label for the session's hand win rate, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stat.netPL": {
+    "component": "BlackjackVictoryScreen (result card)",
+    "description": "Stat label for the session's net profit/loss in chips, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 23,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "P/L is a common finance abbreviation for profit/loss; keep it short."
+  },
+  "a11y.cashOutHome": {
+    "component": "BlackjackVictoryScreen (result card Home button)",
+    "description": "Accessibility label for the Home button on the Blackjack victory result card, which cashes out the session and ends the run.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

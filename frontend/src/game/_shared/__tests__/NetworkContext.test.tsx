@@ -39,9 +39,6 @@ jest.mock("../../sudoku/scoreSync", () => ({
   registerSudokuScoreHandler: jest.fn(),
 }));
 
-jest.mock("../../mahjong/scoreSync", () => ({
-  registerMahjongScoreHandler: jest.fn(),
-}));
 jest.mock("../../solitaire/scoreSync", () => ({
   registerSolitaireScoreHandler: jest.fn(),
 }));

@@ -6,11 +6,13 @@
  *      undoMove) in response to GameCanvas callbacks; engine is pure and
  *      replaces state wholesale on every transition.
  *   2. Persistence — AsyncStorage save/resume on every mutation.
- *   3. Instrumentation — useGameSync session started on first tile tap,
- *      completed on win, abandoned on back-navigation.
- *   4. Result (#2510) — the shared GameResultModal on a win (submitting the
- *      score under the player's display name via useLeaderboardSubmit,
- *      queued when offline) and on a deadlock (a loss, nothing submitted).
+ *   3. Instrumentation — useGameSync session started on first tile tap (the
+ *      layout played is its metadata), completed as a `win` on a cleared
+ *      board, a `loss` when the player leaves a deadlock, abandoned otherwise
+ *      (#2627).
+ *   4. Result (#2510) — the shared GameResultModal on a win (the finished
+ *      game is the leaderboard entry; the card shows its rank through
+ *      `sessionBoardAdapter`, #2677) and on a deadlock (a loss, no rank).
  *   5. Audio + animations (#914) — SFX on every game event, lo-fi bg music,
  *      MatchBurst / DeadlockShake / ShufflePulse.
  */
@@ -85,12 +87,12 @@ import {
   type MahjongStats,
 } from "../game/mahjong/storage";
 import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
-import { useMahjongScoreboard } from "../game/mahjong/MahjongScoreboardContext";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
-import { mahjongLeaderboard } from "../game/mahjong/leaderboard";
 import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
 
 // ---------------------------------------------------------------------------
@@ -299,6 +301,9 @@ interface WinSummary {
   readonly isNewBest: boolean;
 }
 
+/** The result card's rank lookup on Mahjong's session board (#2677). */
+const mahjongBoard = sessionBoardAdapter("mahjong");
+
 export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
   const { t: tResult } = useTranslation("result");
@@ -313,8 +318,8 @@ export default function MahjongScreen() {
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
-  const leaderboard = useLeaderboardSubmit(mahjongLeaderboard);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  const leaderboard = useLeaderboardSubmit(mahjongBoard);
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -526,22 +531,25 @@ export default function MahjongScreen() {
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    close: syncClose,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("mahjong");
 
   // #2450 / #2619 — the unfinished-board result block (backend MahjongResult).
-  // The hook's own abandon (unmount), the explicit abandons and the deadlock
-  // loss all build it here.
+  // The hook's abandons (unmount, close()) and the deadlock loss build it here.
   const progressResult = useCallback(
     () => ({ won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }),
     []
   );
+  // The abandon also carries Mahjong's own play timer, which wins over the
+  // hook's foreground clock (#2684).
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      return { result: progressResult(), durationMs: s ? elapsedMs(s) : null };
+    });
   }, [syncSetProgressSnapshot, progressResult]);
-
-  const { setSnapshot: setScoreboardSnapshot } = useMahjongScoreboard();
 
   // Audio
   const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
@@ -588,23 +596,6 @@ export default function MahjongScreen() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // Scoreboard snapshot — updated on every state change.
-  useEffect(() => {
-    if (!state) return;
-    const elapsed = elapsedMs(state, Date.now());
-    setScoreboardSnapshot({
-      score: state.score,
-      pairsRemoved: state.pairsRemoved,
-      shufflesLeft: state.shufflesLeft,
-      elapsedMs: elapsed,
-      hasGame: true,
-      bestScore: stats.bestScore,
-      bestTimeMs: stats.bestTimeMs,
-      gamesPlayed: stats.gamesPlayed,
-      gamesWon: stats.gamesWon,
-    });
-  }, [state, stats, setScoreboardSnapshot]);
 
   // Mount: restore saved game or show layout select.
   useEffect(() => {
@@ -714,25 +705,31 @@ export default function MahjongScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
+      // Read before complete(), which closes the session and clears the id.
+      // Null for a won game restored from storage: its session already ended.
+      const gameId = syncGetGameId();
+      const outcome = recordedOutcome("win");
       syncComplete(
         {
           finalScore: state.score,
-          outcome: "completed",
+          outcome,
           // elapsedMs, not accumulatedMs: the running segment is only banked
           // on pause, so accumulatedMs alone misses the current play time.
           durationMs: elapsedMs(state),
           result: { won: true, pairs: state.pairsRemoved },
         },
-        { final_score: state.score, outcome: "completed", won: true, pairs: state.pairsRemoved }
+        { final_score: state.score, outcome, won: true, pairs: state.pairsRemoved }
       );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
-        const finalMs = state.accumulatedMs;
+        // The play timer, not accumulatedMs: the engine banks the running
+        // segment only on pause, so a board cleared in one sitting has 0 there.
+        const finalMs = elapsedMs(state);
         const finalScore = state.score;
-        // Submit only a win that happened this session, so a resumed won
-        // game can't post the same score twice.
-        submitScore({ score: finalScore });
+        // The finished game is the leaderboard entry (#2624): the card only
+        // asks where it ranks. Only a win completed in this session has one.
+        if (gameId) void submitRank({ gameId });
         const priorBest = statsRef.current.bestScore;
         setWinSummary({
           bestScore: Math.max(finalScore, priorBest),
@@ -770,7 +767,7 @@ export default function MahjongScreen() {
       setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  }, [state, syncComplete, syncGetGameId, submitRank]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.
@@ -801,32 +798,22 @@ export default function MahjongScreen() {
     return true;
   }, [syncGetGameId, syncComplete, progressResult]);
 
-  // Abandon on back-navigation.
+  // Leaving a deadlocked board records the loss. Any other open session is
+  // abandoned by useGameSync itself when the screen unmounts, with the
+  // progress snapshot as its result (#2619, #2627).
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", () => {
-      if (!syncGetGameId()) return;
-      const s = stateRef.current;
-      if (s?.isComplete) return;
-      if (recordDeadlockLoss()) return;
-      const result = progressResult();
-      syncComplete(
-        {
-          outcome: "abandoned",
-          finalScore: s?.score ?? 0,
-          // The game's own play timer (#2619), not wall-clock time.
-          durationMs: s ? elapsedMs(s) : null,
-          result,
-        },
-        { outcome: "abandoned", ...result }
-      );
+      recordDeadlockLoss();
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId, recordDeadlockLoss, progressResult]);
+  }, [navigation, recordDeadlockLoss]);
 
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
-      syncStart({ layout: s.currentLayoutId ?? "turtle" });
+      const layout = s.currentLayoutId ?? "turtle";
+      // Event data for the game_started event; metadata for the row (#2627).
+      syncStart({ layout }, { layout });
       syncMarkStarted();
       if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
@@ -891,26 +878,14 @@ export default function MahjongScreen() {
   }, []);
 
   /**
-   * Closes an open session: a loss for a deadlocked board, otherwise abandoned
-   * (a no-op after a win or before a move).
+   * Closes an open session: a loss for a deadlocked board, otherwise the
+   * hook's close() — abandoned with the progress snapshot if started,
+   * discarded if not (a no-op after a win or with no session open).
    */
   const abandonOpenSession = useCallback(() => {
     if (recordDeadlockLoss()) return;
-    if (syncGetGameId()) {
-      const s = stateRef.current;
-      const result = progressResult();
-      syncComplete(
-        {
-          outcome: "abandoned",
-          finalScore: 0,
-          // The game's own play timer (#2619), not wall-clock time.
-          durationMs: s ? elapsedMs(s) : null,
-          result,
-        },
-        { outcome: "abandoned", ...result }
-      );
-    }
-  }, [syncGetGameId, syncComplete, recordDeadlockLoss, progressResult]);
+    syncClose();
+  }, [recordDeadlockLoss, syncClose]);
 
   const startNewGame = useCallback(() => {
     abandonOpenSession();
@@ -935,6 +910,10 @@ export default function MahjongScreen() {
 
   const handleSelectLayout = useCallback(
     (layoutId: string) => {
+      // Level Select keeps the board's session open (so CONTINUE resumes it);
+      // a new deal closes it here, so the next tap opens a session with this
+      // layout (#2627).
+      abandonOpenSession();
       setWinSummary(null);
       resetSubmission();
       winRecordedRef.current = false;
@@ -958,14 +937,13 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [resetSubmission]
+    [abandonOpenSession, resetSubmission]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.
   const handlePlayAgain = useCallback(() => {
-    abandonOpenSession();
     handleSelectLayout(stateRef.current?.currentLayoutId ?? "turtle");
-  }, [abandonOpenSession, handleSelectLayout]);
+  }, [handleSelectLayout]);
 
   const handleContinue = useCallback(() => {
     loadGame()
@@ -1025,7 +1003,8 @@ export default function MahjongScreen() {
       }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
+      // No Scoreboard item (#2627): it led to an untranslated fallback. #2635
+      // brings it back, pointing at the game's stats screen.
       rightSlot={
         <View style={styles.hudGroup}>
           <PillButton

@@ -26,6 +26,33 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "hud.guessesLeft_one": {
+    "component": "DailyWordScreen",
+    "description": "HUD counter showing guesses left out of 6, singular form ({{count}} = 1).",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.guessesLeft_other": {
+    "component": "DailyWordScreen",
+    "description": "HUD counter showing guesses left out of 6, plural form.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.puzzleNumber": {
+    "component": "DailyWordScreen",
+    "description": "HUD text showing today's puzzle number.",
+    "tone": "functional",
+    "characterLimit": 23,
+    "placeholders": ["{{number}}"],
+    "doNotTranslate": [],
+    "notes": "{{number}} is the puzzle's sequential index, e.g. 142."
+  },
   "result.loss.answer": {
     "component": "DailyWordScreen LossModal",
     "description": "Shows the correct answer after a loss.",
@@ -40,6 +67,15 @@
     "description": "Toast shown when the guess is not in the word list.",
     "tone": "neutral",
     "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.alreadyGuessed": {
+    "component": "DailyWordScreen",
+    "description": "Toast shown when the player resubmits a guess they already made this puzzle.",
+    "tone": "neutral",
+    "characterLimit": 24,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -67,6 +103,51 @@
     "description": "Toast shown when the guess submission fails due to a network or server error.",
     "tone": "neutral, apologetic",
     "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.stalePuzzle": {
+    "component": "DailyWordScreen",
+    "description": "Toast shown when the app detects a new day's puzzle is available and reloads it.",
+    "tone": "neutral",
+    "characterLimit": 65,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.wrongLength": {
+    "component": "DailyWordScreen",
+    "description": "Toast shown when the server refuses a submitted guess for not matching today's word length.",
+    "tone": "neutral",
+    "characterLimit": 56,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.rateLimited": {
+    "component": "DailyWordScreen",
+    "description": "Toast shown when guess submission is rate-limited by the server.",
+    "tone": "neutral",
+    "characterLimit": 49,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "keyboard.delete": {
+    "component": "DailyWordScreen (on-screen keyboard)",
+    "description": "Accessibility label for the on-screen keyboard's Delete key.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "keyboard.enter": {
+    "component": "DailyWordScreen (on-screen keyboard)",
+    "description": "Accessibility label for the on-screen keyboard's Enter key.",
+    "tone": "functional",
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

@@ -15,7 +15,6 @@ import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
 import { registerCascadeScoreHandler } from "../cascade/scoreSync";
 import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
-import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
 import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
 import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
@@ -37,7 +36,6 @@ const NetworkContext = createContext<NetworkStatus>({
 // Register per-game handlers exactly once, module-load time.
 registerCascadeScoreHandler();
 registerSudokuScoreHandler();
-registerMahjongScoreHandler();
 registerSolitaireScoreHandler();
 registerFreeCellScoreHandler();
 registerHeartsScoreHandler();
