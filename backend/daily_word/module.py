@@ -23,9 +23,14 @@ class DailyWordModule:
     game_type = GameType.DAILY_WORD
     metadata_model = DailyWordMetadata
     result_model = DailyWordResult
-    # No leaderboard; fewest guesses is the per-game "best" in stats.
+    # No leaderboard; fewest guesses in a *won* game is the per-game "best" in
+    # stats. A loss uses every guess and is not a best, so only wins qualify.
     board = BoardDefinition(
-        metric="guesses_used", direction="asc", label_key="guesses", enabled=False
+        metric="guesses_used",
+        direction="asc",
+        label_key="guesses",
+        qualifying_outcomes=("win",),
+        enabled=False,
     )
 
     def stats_shape(self, raw_stats: dict) -> dict:

@@ -64,9 +64,9 @@ class GameModule(Protocol):
 
     board:
         A ``BoardDefinition`` declaring how the game is ranked (metric,
-        direction, tie-break, partitions, ``max_value``, ``enabled``), or
-        ``None`` if the game declares none (#2617). A game with no leaderboard
-        still declares one with ``enabled=False``.
+        direction, tie-break, partitions and their legacy defaults, caps,
+        qualifying outcomes, ``enabled``) (#2617). Required: a game with no
+        leaderboard declares one with ``enabled=False``, never ``None``.
 
     Methods
     -------
@@ -94,6 +94,6 @@ class GameModule(Protocol):
     game_type: GameType
     metadata_model: type[BaseModel]
     result_model: type[BaseModel] | None
-    board: BoardDefinition | None
+    board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...

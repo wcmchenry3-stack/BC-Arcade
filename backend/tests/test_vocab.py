@@ -12,7 +12,6 @@ actionable error message.
 from __future__ import annotations
 
 import importlib.util
-import json
 import re
 from pathlib import Path
 
@@ -55,43 +54,45 @@ def _load_generator():
 _REGEN = "Re-generate: python backend/scripts/gen_vocab_ts.py > frontend/src/api/vocab.ts"
 
 
-def _parse_ts_boards() -> dict[str, dict | None]:
-    """Parse the ``BOARDS`` object literal in vocab.ts into Python values."""
-    content = _VOCAB_TS.read_text(encoding="utf-8")
-    match = re.search(r"export const BOARDS\b[^=]*=\s*(\{.*?\n\});", content, re.DOTALL)
-    assert match, f"Could not find BOARDS in {_VOCAB_TS}. {_REGEN}"
-    literal = re.sub(r"^(\s*)(\w+):", r'\1"\2":', match.group(1), flags=re.MULTILINE)
-    literal = re.sub(r",(\s*[}\]])", r"\1", literal)
-    return json.loads(literal)
-
-
 def test_boards_ts_matches_modules() -> None:
-    """BOARDS in vocab.ts must match every registered GameModule's ``board`` (#2617)."""
-    from games.registry import get_module
+    """Each game's ``BOARDS`` entry in vocab.ts is what the generator serialises
+    from that game's ``GameModule.board`` (#2617)."""
+    gen = _load_generator()
+    content = _VOCAB_TS.read_text(encoding="utf-8")
+    stale = [
+        gt.value
+        for gt in GameType
+        if f"\n  {gt.value}: {gen.board_ts(gen.board_for(gt))},\n" not in content
+    ]
+    assert not stale, f"BOARDS in vocab.ts is stale for {stale}. {_REGEN}"
 
-    expected: dict[str, dict | None] = {}
-    for gt in GameType:
-        mod = get_module(gt.value)
-        board = mod.board if mod is not None else None
-        expected[gt.value] = (
-            None
-            if board is None
-            else {
-                "metric": board.metric,
-                "direction": board.direction,
-                "labelKey": board.label_key,
-                "partitions": board.partitions,
-                "enabled": board.enabled,
-            }
-        )
-    actual = _parse_ts_boards()
-    drift = {k: (expected.get(k), actual.get(k)) for k in expected.keys() | actual.keys()}
-    drift = {k: v for k, v in drift.items() if v[0] != v[1]}
-    assert not drift, (
-        "BOARDS in frontend/src/api/vocab.ts is out of sync with the backend modules.\n"
-        + "\n".join(f"  {k}: backend={e!r} ts={a!r}" for k, (e, a) in sorted(drift.items()))
-        + f"\n{_REGEN}"
-    )
+
+def test_generator_exports_every_board_field() -> None:
+    """No ``BoardDefinition`` field is left out of the export or the TS interface."""
+    from games.board import BoardDefinition
+
+    gen = _load_generator()
+    expected = {gen._camel(name) for name in BoardDefinition.model_fields}
+    sudoku = gen.board_json(gen.board_for(GameType.SUDOKU))
+    assert set(sudoku) == expected
+
+    content = _VOCAB_TS.read_text(encoding="utf-8")
+    interface = content[content.index("export interface BoardDefinition") :]
+    interface = interface[: interface.index("\n}")]
+    assert set(re.findall(r"^\s+readonly (\w+):", interface, re.MULTILINE)) == expected
+
+
+def test_board_json_turns_pair_tuples_into_records() -> None:
+    gen = _load_generator()
+    sudoku = gen.board_json(gen.board_for(GameType.SUDOKU))
+    assert sudoku["partitions"] == ["difficulty", "variant"]
+    assert sudoku["partitionDefaults"] == {"variant": "classic"}
+    assert sudoku["partitionMaxValues"] == {"difficulty": {"easy": 100, "medium": 200, "hard": 300}}
+    sort = gen.board_json(gen.board_for(GameType.SORT))
+    assert sort["tiebreak"] == ["total_moves", "asc"]
+    assert sort["maxValue"] == 23
+    assert gen.board_json(gen.board_for(GameType.DAILY_WORD))["qualifyingOutcomes"] == ["win"]
+    assert gen.board_json(gen.board_for(GameType.TWENTY48)) is None
 
 
 def test_vocab_ts_matches_generator_output() -> None:

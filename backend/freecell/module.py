@@ -27,7 +27,11 @@ class FreeCellModule:
     game_type = GameType.FREECELL
     metadata_model = FreeCellMetadata
     result_model = FreeCellResult
-    # Fewest moves wins.
+    # Fewest moves wins. qualifying_outcomes stays None: every non-abandoned
+    # FreeCell completion is a won game today (a game given up is abandoned).
+    # Session rows (POST /games) don't set ``final_score`` yet, so today only
+    # the legacy POST /freecell/score rows carry the metric; the Phase 2 story
+    # (#2632) makes the client send it. The declaration stays as it is.
     board = BoardDefinition(metric=SCORE_METRIC, direction="asc", label_key="moves")
 
     def stats_shape(self, raw_stats: dict) -> dict:
