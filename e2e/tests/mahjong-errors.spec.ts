@@ -13,6 +13,7 @@
 
 import { test, expect } from "@playwright/test";
 import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
 
@@ -72,6 +73,7 @@ test.describe("Mahjong — error paths", () => {
     await page.route(`${API_BASE}/mahjong/**`, async (route) => {
       await route.fulfill({ status: 500, body: "Internal Server Error" });
     });
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
@@ -99,6 +101,7 @@ test.describe("Mahjong — error paths", () => {
     await page.route(`${API_BASE}/mahjong/**`, async (route) => {
       await route.fulfill({ status: 500, body: "Internal Server Error" });
     });
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
@@ -130,6 +133,7 @@ test.describe("Mahjong — error paths", () => {
     page,
   }) => {
     await mockMahjongApi(page);
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.setItem("mahjong_game", "not-valid-json{{{");

@@ -19,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import GameEntitlement
 
-# Keep in sync with is_premium=True rows (migrations 0014, 0016, 0020) — update when
-# adding a premium game.
-_ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "sort", "starswarm", "sudoku"]
+# Keep in sync with is_premium=True rows (migrations 0014, 0016, 0020, 0022, 0023) —
+# update when adding a premium game.
+_ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"]
 
 TOKEN_TTL_HOURS = 24
 ALGORITHM = "RS256"
