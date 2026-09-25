@@ -1,6 +1,6 @@
 {
   "game.title": "Star Swarm",
-  "game.description": "Destruye oleadas de invasores alienígenas antes de que te alcancen.",
+  "game.description": "Destruye oleadas alienígenas antes que te alcancen.",
   "game.playLabel": "Jugar Star Swarm",
   "game.canvasLabel": "Star Swarm: desliza horizontalmente para mover tu nave y disparar a la formación alienígena.",
   "hud.scoreValue": "PUNTOS {{score}}",

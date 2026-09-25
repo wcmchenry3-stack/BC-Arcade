@@ -1,0 +1,22 @@
+{
+  "game.title": "Woord van de dag",
+  "game.description": "Eén woord van vijf letters. Zes pogingen. Elke dag nieuw.",
+  "game.playLabel": "Speel Woord van de dag",
+  "hud.guessesLeft_one": "{{count}} poging over",
+  "hud.guessesLeft_other": "{{count}} pogingen over",
+  "hud.puzzleNumber": "Puzzel #{{number}}",
+  "result.loss.answer": "Het woord was {{answer}}",
+  "error.notAWord": "Geen geldig woord",
+  "error.alreadyGuessed": "Al geraden",
+  "error.tooShort": "Niet genoeg letters",
+  "error.couldNotLoad": "Kon de puzzel van vandaag niet laden",
+  "error.couldNotSubmit": "Kon je poging niet versturen",
+  "error.stalePuzzle": "Nieuwe puzzel beschikbaar — het woord van vandaag wordt geladen",
+  "error.wrongLength": "Je poging heeft niet de juiste lengte",
+  "error.rateLimited": "Te veel pogingen — probeer het later opnieuw",
+  "keyboard.delete": "Verwijderen",
+  "keyboard.enter": "Enter",
+  "result.countdown": "Nieuw woord in {{time}}",
+  "result.share": "Delen",
+  "result.copied": "Gekopieerd!"
+}
