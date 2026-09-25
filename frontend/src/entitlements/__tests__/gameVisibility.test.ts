@@ -171,15 +171,44 @@ describe("gameVisibility", () => {
       expect(SHOW_HIDDEN_GAMES).toBe(false);
     });
 
-    it("the URL Xcode Cloud writes is either the pre-launch API or the production API", () => {
-      // ci_post_clone.sh force-writes .env on every Xcode Cloud build. Any third
-      // value would silently change which games ship — update this test and the
-      // release plan's launch-gating table together if one is ever needed.
-      const xcodeCloudUrl = apiUrlIn("ios/ci_scripts/ci_post_clone.sh");
-      expect([PRE_LAUNCH_API_URL, PRODUCTION_API_URL]).toContain(xcodeCloudUrl);
+    describe("Xcode Cloud (ios/ci_scripts/ci_post_clone.sh)", () => {
+      // The script force-writes .env on every Xcode Cloud build, choosing the URL
+      // from the workflow's BC_API_TARGET (docs/IOS.md). Any third URL, or a
+      // default other than production, would silently change which games ship —
+      // update this test and docs/IOS.md together if that is ever needed.
+      const script = fs.readFileSync(
+        path.join(frontendRoot, "ios/ci_scripts/ci_post_clone.sh"),
+        "utf-8"
+      );
 
-      const { SHOW_HIDDEN_GAMES } = loadWith({ dev: false, apiUrl: xcodeCloudUrl });
-      expect(SHOW_HIDDEN_GAMES).toBe(xcodeCloudUrl === PRE_LAUNCH_API_URL);
+      function assigned(name: string): string {
+        const value = script.match(new RegExp(`^${name}=(\\S+)$`, "m"))?.[1];
+        if (value === undefined) throw new Error(`ci_post_clone.sh does not set ${name}`);
+        return value;
+      }
+
+      it("writes only the URL chosen by BC_API_TARGET into .env", () => {
+        expect(script.match(/^EXPO_PUBLIC_API_URL=.*$/gm)).toEqual([
+          "EXPO_PUBLIC_API_URL=$API_URL",
+        ]);
+      });
+
+      it("knows exactly the pre-launch and the production API", () => {
+        expect(assigned("PRELAUNCH_API_URL")).toBe(PRE_LAUNCH_API_URL);
+        expect(assigned("PRODUCTION_API_URL")).toBe(PRODUCTION_API_URL);
+        expect(loadWith({ dev: false, apiUrl: PRE_LAUNCH_API_URL }).SHOW_HIDDEN_GAMES).toBe(true);
+        expect(loadWith({ dev: false, apiUrl: PRODUCTION_API_URL }).SHOW_HIDDEN_GAMES).toBe(false);
+      });
+
+      it("only BC_API_TARGET=prelaunch builds against the pre-launch API", () => {
+        expect(script).toMatch(/^\s*prelaunch\) API_URL=\$PRELAUNCH_API_URL ;;$/m);
+        expect(script.match(/\$PRELAUNCH_API_URL/g)).toHaveLength(1);
+      });
+
+      it("an unset BC_API_TARGET builds against production, an unknown one fails", () => {
+        expect(script).toMatch(/^\s*""\|production\) API_URL=\$PRODUCTION_API_URL ;;$/m);
+        expect(script).toMatch(/^\s*\*\)\n(?:\s*echo .*\n)?\s*exit 1\n\s*;;$/m);
+      });
     });
   });
 });

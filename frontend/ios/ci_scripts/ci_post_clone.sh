@@ -31,14 +31,34 @@ echo "export PATH=\"/usr/local/opt/node@22/bin:/usr/local/bin:/opt/homebrew/bin:
 
 # -------------------------------------------------------
 # 3. Write environment variables for the JS bundle
+#    The API URL decides whether this is a pre-launch or a store build
+#    (isPreLaunchApiBuild() in src/game/_shared/envFlags.ts: hidden games,
+#    debug panels, Sentry environment). The Xcode Cloud workflow's
+#    BC_API_TARGET environment variable picks it (docs/IOS.md):
+#      prelaunch      -> dev API (internal / TestFlight workflows only)
+#      unset or empty -> production API (App Store release workflows)
+#      production     -> production API
+#      anything else  -> build fails (a typo must not pick a side)
 #    Remove .env.production so Expo CLI does not load it and
-#    override the dev URL below (APP_ENV=production is set in
+#    override the URL below (APP_ENV=production is set in
 #    Xcode Cloud, causing .env.production to win otherwise).
 # -------------------------------------------------------
+PRELAUNCH_API_URL=https://dev-games-api.buffingchi.com
+PRODUCTION_API_URL=https://games-api.buffingchi.com
+case "${BC_API_TARGET:-}" in
+  prelaunch) API_URL=$PRELAUNCH_API_URL ;;
+  ""|production) API_URL=$PRODUCTION_API_URL ;;
+  *)
+    echo "error: BC_API_TARGET='$BC_API_TARGET' is not 'prelaunch' or 'production' — fix the Xcode Cloud workflow environment variable (docs/IOS.md)." >&2
+    exit 1
+    ;;
+esac
+echo "=== workflow '${CI_WORKFLOW:-unknown}': BC_API_TARGET='${BC_API_TARGET:-}' -> $API_URL ==="
+
 cd "$CI_PRIMARY_REPOSITORY_PATH/frontend"
 rm -f .env.production
-cat > .env <<'DOTENV'
-EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com
+cat > .env <<DOTENV
+EXPO_PUBLIC_API_URL=$API_URL
 EXPO_PUBLIC_SENTRY_DSN=https://4e8b2bd816cbce3f73b0cd6923530d53@o4511129011093504.ingest.us.sentry.io/4511129020334080
 DOTENV
 echo "=== .env written (.env.production removed) ==="

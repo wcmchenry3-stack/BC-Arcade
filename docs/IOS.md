@@ -37,6 +37,27 @@ iOS builds run via **Xcode Cloud** (App Store Connect), not GitHub Actions.
 GitHub Actions `ci.yml` does not include an iOS build step.
 The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner — not EAS.
 
+### API URL per workflow (pre-launch vs. App Store)
+
+The API URL a build is compiled against decides whether it is a pre-launch build or a store build. `isPreLaunchApiBuild()` (`frontend/src/game/_shared/envFlags.ts`) turns on the hidden premium games, the Hearts debug panel, the Star Swarm dev panel and Sentry's `development` environment for any bundle compiled against the dev API. The dev backend also grants every premium game for free (`ENTITLEMENT_DEV_OVERRIDE`). A build meant for the App Store must never use the dev URL.
+
+`frontend/ios/ci_scripts/ci_post_clone.sh` deletes `.env.production` and writes `frontend/.env` on every Xcode Cloud build. It picks the URL from the workflow's **`BC_API_TARGET`** environment variable (App Store Connect → Xcode Cloud → workflow → Environment → Environment Variables):
+
+| Workflow                           | `BC_API_TARGET`             | API URL baked into the bundle          | Build type                          |
+| ---------------------------------- | --------------------------- | -------------------------------------- | ----------------------------------- |
+| Internal / TestFlight (pre-launch) | `prelaunch`                 | `https://dev-games-api.buffingchi.com` | Pre-launch: all 12 games, dev tools |
+| App Store release                  | unset (or `production`)     | `https://games-api.buffingchi.com`     | Store: 6 games, no dev tools        |
+| Any workflow                       | anything else (e.g. a typo) | none: the build fails                  | none                                |
+
+Only the internal/TestFlight workflow sets the variable. A workflow without it, including any new or copied workflow, builds against production. This fails closed: forgetting the variable gives a TestFlight build that shows 6 games, never an App Store build with the dev tools.
+
+- The post-clone log shows the choice: `=== workflow '<name>': BC_API_TARGET='…' -> <url> ===`.
+- An archive from the TestFlight workflow is a pre-launch build. **Never submit it for App Store review.** Submit only archives built by the App Store release workflow.
+- Each workflow uses the same URL until launch and after it. Nobody needs to edit the script on launch day.
+- `frontend/src/entitlements/__tests__/gameVisibility.test.ts` reads the script. It fails if the script knows a third URL, if anything other than `prelaunch` selects the dev API, or if an unset variable stops meaning production.
+
+Android makes the same split differently. See [`ANDROID-CI.md`](ANDROID-CI.md), "API URL: store vs. pre-launch builds".
+
 ### Store-build guard (test hooks)
 
 `EXPO_PUBLIC_TEST_HOOKS=1` is inlined into the JS bundle and unhides the premium games that store builds must not show (`frontend/src/entitlements/gameVisibility.ts`, #2390). `frontend/ios/ci_scripts/ci_post_clone.sh` therefore fails the Xcode Cloud build when the flag is `1` in the workflow's environment variables or in any dotenv file Expo loads for a production bundle (`.env`, `.env.local`, `.env.production`, `.env.production.local`). A healthy build logs `=== test-hooks guard passed ===` in the post-clone step. If it fails, remove the variable from the Xcode Cloud workflow (App Store Connect → Xcode Cloud → workflow → Environment) or from the named file — do not weaken the check. Android has the equivalent guard in `frontend/android/app/build.gradle` (see [`ANDROID-CI.md`](ANDROID-CI.md)).

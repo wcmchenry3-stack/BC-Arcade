@@ -73,6 +73,28 @@ inlines the flag into the JS bundle, so the Play artifact is protected twice:
   `cacheVersion` re-transforms only when one changes, and covers iOS, web and CI
   as well as local Gradle builds.
 
+## API URL: store vs. pre-launch builds
+
+The API URL a bundle is compiled against decides whether it is a pre-launch or a
+store build (`isPreLaunchApiBuild()`; see [`IOS.md`](IOS.md), "API URL per
+workflow"). The Android split is:
+
+- **Default: store build.** A Gradle release build bundles JS in production
+  mode, so Expo loads the tracked `frontend/.env.production`
+  (`https://games-api.buffingchi.com`). No Android build step deletes it. A
+  plain `./gradlew bundleRelease` is therefore a store build.
+- **Pre-launch (Play internal testing): opt-in.** Export
+  `EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com` in the shell
+  before the release build. The process environment wins over dotenv files.
+  Metro's cache is keyed on `EXPO_PUBLIC_*` values, so the next build without
+  the export does not reuse the dev bundle.
+- **Gap: this is a manual step.** Unlike iOS, where the Xcode Cloud workflow
+  chooses the URL, nothing connects the URL to the Play track. An AAB bundled
+  against the dev API could still be promoted from internal testing to
+  production in Play Console. Build the production-track AAB in a fresh shell
+  without the export, and check the store build on a device before promoting
+  it: 6 tiles, 3 tabs, no debug panels.
+
 ## Windows build prerequisites
 
 Two machine-level fixes are needed before Gradle can build this app on Windows:
