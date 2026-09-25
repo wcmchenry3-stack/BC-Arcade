@@ -37,6 +37,7 @@ import i18n from "i18next";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -1266,7 +1267,7 @@ const styles = StyleSheet.create({
   },
   devOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: DEV_OVERLAY_BG,
     alignItems: "center",
     justifyContent: "center",
   },

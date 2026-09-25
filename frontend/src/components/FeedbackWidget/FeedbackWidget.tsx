@@ -278,7 +278,7 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     overlay: {
       flex: 1,
       justifyContent: "flex-end",
-      backgroundColor: "rgba(0,0,0,0.55)",
+      backgroundColor: colors.overlay,
     },
     sheet: {
       backgroundColor: colors.surface,

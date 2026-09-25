@@ -1,6 +1,6 @@
 import React from "react";
 import { render, fireEvent, act, within } from "@testing-library/react-native";
-import { AppState } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -255,6 +255,10 @@ describe("Yacht result card — actions (#2505)", () => {
     });
 
     expect(r.getByTestId("yacht-mode-solo")).toBeTruthy();
+    // The picker renders on the shared ModalCard: header title and accent top rule.
+    expect(r.getByRole("header", { name: "Choose Mode" })).toBeTruthy();
+    const card = StyleSheet.flatten(r.getByTestId("yacht-mode-card").props.style);
+    expect(card.borderTopWidth).toBe(3);
   });
 });
 
