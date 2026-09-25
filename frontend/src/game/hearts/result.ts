@@ -19,6 +19,14 @@ export function heartsResult(scores: readonly number[], human = 0): HeartsResult
   return { outcome, winnerIndex: leaders[0] ?? 0, limitIndex: scores.indexOf(high) };
 }
 
+/**
+ * The `final_score` a finished game records: 100 − the human's points, so
+ * higher is better on the leaderboard (fewer points is better in play).
+ */
+export function heartsLeaderboardScore(humanPoints: number): number {
+  return Math.max(0, 100 - humanPoints);
+}
+
 export interface Standing {
   readonly seat: number;
   readonly score: number;

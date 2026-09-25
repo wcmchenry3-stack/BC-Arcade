@@ -25,24 +25,25 @@ import {
 } from "../game/hearts/engine";
 import { selectCardToPlay, selectCardsToPass } from "../game/hearts/ai";
 import HeartsAiDifficultySelector from "../components/hearts/HeartsAiDifficultySelector";
-import { clearGame, loadGame, saveGame } from "../game/hearts/storage";
+import {
+  clearGame,
+  loadFinishedGameId,
+  loadGame,
+  saveFinishedGameId,
+  saveGame,
+} from "../game/hearts/storage";
 import {
   DEFAULT_NAMES,
   loadPlayerNames,
   savePlayerNames,
   validateName,
 } from "../game/hearts/playerNames";
-import { heartsLeaderboard, heartsLeaderboardScore } from "../game/hearts/leaderboard";
-import { heartsResult } from "../game/hearts/result";
+import { heartsLeaderboardScore, heartsResult } from "../game/hearts/result";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
-import {
-  clearPendingSubmission,
-  loadPendingSubmission,
-  savePendingSubmission,
-} from "../game/hearts/pendingSubmission";
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
@@ -61,6 +62,9 @@ import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
 
+// The result card asks the session board where the finished game ranks (#2629).
+const HEARTS_BOARD = sessionBoardAdapter("hearts");
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -74,6 +78,11 @@ function buildDebugTrick(plays: readonly TrickCard[], winnerIndex: number): Debu
   return { plays, winnerIndex, pointsWon };
 }
 
+/** An abandoned game's result block: the hands it got through. */
+function progressResult(s: HeartsState): Record<string, unknown> {
+  return { hands_played: s.scoreHistory.length };
+}
+
 type LastTrick = { readonly trick: readonly TrickCard[]; readonly winnerIndex: number } | null;
 
 export default function HeartsScreen() {
@@ -81,8 +90,8 @@ export default function HeartsScreen() {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const leaderboard = useLeaderboardSubmit(heartsLeaderboard);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  const leaderboard = useLeaderboardSubmit(HEARTS_BOARD);
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
@@ -134,7 +143,30 @@ export default function HeartsScreen() {
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("hearts");
+
+  // The hook abandons a started session itself when the screen unmounts; the
+  // abandon carries how many hands were played (#2629). No score: an abandon
+  // never ranks.
+  useEffect(() => {
+    syncSetProgressSnapshot(() => {
+      const s = gameStateRef.current;
+      return s ? { result: progressResult(s) } : {};
+    });
+  }, [syncSetProgressSnapshot]);
+
+  /**
+   * New Game / Change Difficulty while a game is in play abandons it now,
+   * with the same result the hook's abandon sends — not later, when the next
+   * game's first card would close the session with that game's state.
+   */
+  function abandonOpenGame() {
+    const s = gameStateRef.current;
+    if (!s || s.isComplete || !syncGetGameId()) return;
+    const result = progressResult(s);
+    syncComplete({ outcome: "abandoned", result }, { ...result, outcome: "abandoned" });
+  }
 
   // Keep ref in sync for use in event listeners.
   useEffect(() => {
@@ -156,12 +188,12 @@ export default function HeartsScreen() {
     loadGame().then((saved) => {
       if (!unmountedRef.current && saved) {
         // A finished game resumed from storage: its game-over sound played when
-        // it ended. Its score goes out only if that submission never completed
-        // (e.g. the app closed while the card asked for a display name).
+        // it ended, and its row synced itself. The card asks for its rank again
+        // (or for the display name it still lacks) — nothing is submitted.
         if (saved.phase === "game_over") {
           gameOverFiredRef.current = true;
-          loadPendingSubmission().then((pending) => {
-            if (!unmountedRef.current && pending) submitScore(pending);
+          loadFinishedGameId().then((gameId) => {
+            if (!unmountedRef.current && gameId) void submitRank({ gameId });
           });
         }
         setGameState(saved);
@@ -185,7 +217,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty]);
+  }, [syncResume, setSelectedDifficulty, submitRank]);
 
   // ─── Sync snapshot to shared rounds context (read by ScoreboardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -242,21 +274,6 @@ export default function HeartsScreen() {
     }, [])
   );
 
-  // ─── Abandon on back-navigation ───────────────────────────────────────────
-  useEffect(() => {
-    const unsub = navigation.addListener("beforeRemove", () => {
-      if (!syncGetGameId()) return;
-      if (gameStateRef.current?.isComplete) return;
-      // No result block: Hearts registers no progress snapshot, so an abandon
-      // carries nothing but its outcome (#2619 — the event payload is not a result).
-      syncComplete(
-        { outcome: "abandoned", finalScore: 0, durationMs: 0 },
-        { outcome: "abandoned" }
-      );
-    });
-    return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
-
   const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
   const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
   const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
@@ -294,9 +311,10 @@ export default function HeartsScreen() {
   const playerLabels = playerNames;
 
   // ─── Start sync on first card play ────────────────────────────────────────
-  function ensureSyncStarted() {
+  function ensureSyncStarted(aiDifficulty: AiPreset) {
     if (syncGetGameId()) return;
-    syncStart({ initial_score: 0 });
+    // The opponent style is recorded, not ranked on (#2629).
+    syncStart({ initial_score: 0 }, { ai_difficulty: aiDifficulty });
     syncMarkStarted();
   }
 
@@ -364,34 +382,30 @@ export default function HeartsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase, gameState?.currentPlayerIndex, gameState?.tricksPlayedInHand, lastTrick]);
 
-  // Complete sync when game is over.
+  // Complete sync when game is over, then show where the game ranks.
   useEffect(() => {
     if (gameState?.phase !== "game_over") return;
-    if (!syncGetGameId()) return;
+    // complete() closes the session, so read its id first.
+    const gameId = syncGetGameId();
+    if (!gameId) return;
     const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
     // #2517: record who won — the same outcome the result card shows.
     const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
     const result = { final_score: finalScore, vs_result: outcome };
-    syncComplete({ outcome: recordedOutcome(outcome), finalScore, durationMs: 0, result }, result);
-  }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId]);
+    // No duration: Hearts keeps no play clock, and 0 is not one (#2629).
+    syncComplete({ outcome: recordedOutcome(outcome), finalScore, result }, result);
+    // Kept beside the saved game-over state, so a reopened card asks again.
+    void saveFinishedGameId(gameId);
+    void submitRank({ gameId });
+  }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId, submitRank]);
 
   useEffect(() => {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       playGameOver();
-      const pending = { score: heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0) };
-      void savePendingSubmission(pending);
-      submitScore(pending);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);
-
-  // The owed score is settled once it's saved, or queued for the next flush.
-  useEffect(() => {
-    if (leaderboard.status === "saved" || leaderboard.status === "offline") {
-      void clearPendingSubmission();
-    }
-  }, [leaderboard.status]);
 
   // ─── Human card play ──────────────────────────────────────────────────────
   function handleCardPress(card: Card) {
@@ -402,7 +416,7 @@ export default function HeartsScreen() {
     // pending animation-resolver promise would never be fulfilled, leaving
     // loopActiveRef.current === true and freezing all subsequent AI turns.
     if (lastTrick !== null) return;
-    ensureSyncStarted();
+    ensureSyncStarted(gameState.aiDifficulty);
     if (isQueenOfSpades(card)) {
       humanJustPlayedQSRef.current = true;
       playQueenOfSpades();
@@ -503,12 +517,12 @@ export default function HeartsScreen() {
   function handleStartGame(requested: AiPreset) {
     // A premium style starts at the default instead (#1129).
     const difficulty = rememberDifficulty(requested);
+    abandonOpenGame();
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     resetSubmission();
-    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
@@ -530,12 +544,12 @@ export default function HeartsScreen() {
 
   /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
   function handleChangeDifficulty() {
+    abandonOpenGame();
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     resetSubmission();
-    void clearPendingSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});

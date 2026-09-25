@@ -5,17 +5,21 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, setRng } from "../../game/hearts/engine";
 import * as engine from "../../game/hearts/engine";
-import { loadGame } from "../../game/hearts/storage";
+import { loadFinishedGameId, loadGame, saveFinishedGameId } from "../../game/hearts/storage";
 import type { Card, HeartsState, Suit } from "../../game/hearts/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { heartsApi } from "../../game/hearts/api";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { scoreQueue } from "../../game/_shared/scoreQueue";
+import type { ProgressSnapshot } from "../../game/_shared/useGameSync";
+import type { GameRankResponse } from "../../api/types";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
+  loadFinishedGameId: jest.fn().mockResolvedValue(null),
+  saveFinishedGameId: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../../game/hearts/playerNames", () => ({
@@ -25,36 +29,73 @@ jest.mock("../../game/hearts/playerNames", () => ({
   validateName: jest.fn((v: string, def: string) => v.trim() || def),
 }));
 
-jest.mock("../../game/hearts/api", () => ({
-  heartsApi: {
-    submitScore: jest.fn().mockResolvedValue({ player_name: "test", score: 0, rank: 1 }),
-  },
+// The result card's rank lookup (#2677's sessionBoardAdapter, #2629).
+const mockGetGameRank = jest.fn<Promise<GameRankResponse>, [string]>();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: () => Promise.resolve(),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: () => Promise.resolve(true),
 }));
 
-// Shared so tests can assert how a finished game is recorded (#2517).
-const mockSyncComplete = jest.fn();
-const mockSyncGetGameId = jest.fn((): string | null => null);
-// No killed-process session to continue (#2654). Stable, like the real hook's.
+// A stand-in for useGameSync that keeps the real hook's session rules:
+// start() and a successful resume() open a session, complete() closes it
+// (getGameId() is null afterwards).
+let mockOpenGameId: string | null = null;
+const mockSyncStart = jest.fn((_eventData?: unknown, _metadata?: unknown) => {
+  mockOpenGameId = "hearts-game";
+});
+const mockSyncComplete = jest.fn((_summary: unknown, _payload?: unknown) => {
+  mockOpenGameId = null;
+});
+const mockSyncGetGameId = jest.fn((): string | null => mockOpenGameId);
+// No killed-process session to continue by default (#2654).
 const mockSyncResume = jest.fn(() => false);
+const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
+const mockSyncMarkStarted = jest.fn();
+const mockSyncRestart = jest.fn();
 jest.mock("../../game/_shared/useGameSync", () => ({
   useGameSync: () => ({
-    start: jest.fn(),
+    start: mockSyncStart,
     resume: mockSyncResume,
-    markStarted: jest.fn(),
+    markStarted: mockSyncMarkStarted,
     complete: mockSyncComplete,
-    restart: jest.fn(),
+    restart: mockSyncRestart,
     getGameId: mockSyncGetGameId,
+    setProgressSnapshot: mockSetProgressSnapshot,
   }),
 }));
 
+/** The app was killed mid-game; reopening continues that session (#2654). */
+function resumeKilledSession() {
+  mockSyncResume.mockImplementation(() => {
+    mockOpenGameId = "hearts-game";
+    return true;
+  });
+}
+
+function resetSyncMocks() {
+  mockOpenGameId = null;
+  mockSyncResume.mockReset();
+  mockSyncResume.mockReturnValue(false);
+  mockSyncStart.mockClear();
+  mockSyncComplete.mockClear();
+  mockSetProgressSnapshot.mockClear();
+}
+
 const mockNavigate = jest.fn();
 const mockPopToTop = jest.fn();
+const mockAddListener = jest.fn((_event: string, _cb: unknown) => jest.fn());
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     goBack: jest.fn(),
     popToTop: mockPopToTop,
     navigate: mockNavigate,
-    addListener: jest.fn(() => jest.fn()),
+    addListener: mockAddListener,
   }),
   // No-op stub: blur-time save behavior is verified via manual TESTING.md repro.
   useFocusEffect: jest.fn(),
@@ -429,12 +470,19 @@ describe("HeartsScreen — AI turn loop when an AI leads trick 1 (#2372 CI inves
 });
 
 // ---------------------------------------------------------------------------
-// #2506 — game over: the shared result card and leaderboard auto-submit
+// #2506 — game over: the shared result card; #2629 — it shows the session
+// board's rank for the finished game
 // ---------------------------------------------------------------------------
 
-describe("HeartsScreen — result card (#2506)", () => {
-  const submitScore = heartsApi.submitScore as jest.Mock;
+function ranked(rank: number, is_best = true): GameRankResponse {
+  return { rank, is_best, ranked: true, reason: null };
+}
 
+function noName(): GameRankResponse {
+  return { rank: null, is_best: null, ranked: false, reason: "no_name" };
+}
+
+describe("HeartsScreen — result card (#2506, #2629)", () => {
   /**
    * The last trick of a hand with West already at 100, so the hand's end ends
    * the game. The human led ♥5 and wins the trick (+1 point); the AIs follow
@@ -470,7 +518,12 @@ describe("HeartsScreen — result card (#2506)", () => {
     } as unknown as HeartsState;
   }
 
+  /**
+   * A reopened game (its killed session resumed, #2654) whose last trick the
+   * AIs play out, ending the game.
+   */
   async function finishGame(cumulativeScores: number[]) {
+    resumeKilledSession();
     (loadGame as jest.Mock).mockResolvedValue(lastTrickState(cumulativeScores));
     const r = await renderScreen();
     await waitFor(() => expect(loadGame).toHaveBeenCalled());
@@ -480,15 +533,43 @@ describe("HeartsScreen — result card (#2506)", () => {
     return r;
   }
 
+  function gameOverState(): HeartsState {
+    return {
+      ...lastTrickState([46, 100, 63, 52]),
+      phase: "game_over",
+      isComplete: true,
+      winnerIndex: 0,
+      currentTrick: [],
+      playerHands: [[], [], [], []],
+    } as unknown as HeartsState;
+  }
+
+  // Every request the app makes (only the display-name sync reaches it here).
+  const fetchMock = jest.fn((_input: unknown, _init?: unknown) =>
+    Promise.reject(new Error("no network in tests"))
+  );
+  const realFetch = global.fetch;
+  /** Requests to the legacy Hearts routes (`POST /hearts/score`). */
+  const heartsRequests = () =>
+    fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/hearts/"));
+
   beforeEach(async () => {
     await AsyncStorage.clear();
     resetDisplayNameCacheForTests();
-    submitScore.mockClear();
+    resetSyncMocks();
+    mockGetGameRank.mockReset();
+    mockGetGameRank.mockResolvedValue(noName());
+    (saveFinishedGameId as jest.Mock).mockClear();
+    (loadFinishedGameId as jest.Mock).mockResolvedValue(null);
     mockPopToTop.mockClear();
+    fetchMock.mockClear();
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
     (loadGame as jest.Mock).mockResolvedValue(null);
+    (loadFinishedGameId as jest.Mock).mockResolvedValue(null);
+    global.fetch = realFetch;
   });
 
   it("shows You Win with the standings when the human finishes lowest", async () => {
@@ -519,28 +600,78 @@ describe("HeartsScreen — result card (#2506)", () => {
     expect(card.getByTestId("hearts-result-title")).toHaveTextContent("It's a Tie!");
   });
 
-  it("submits 100 minus the human's points under the display name", async () => {
-    await AsyncStorage.setItem("player_display_name", "Riley");
-    submitScore.mockResolvedValueOnce({ player_name: "Riley", score: 54, rank: 4 });
-    const r = await finishGame([45, 100, 63, 52]);
-    await waitFor(() => expect(r.getByText("Saved as Riley · #4 on the leaderboard")).toBeTruthy());
-    expect(submitScore).toHaveBeenCalledTimes(1);
-    expect(submitScore).toHaveBeenCalledWith("Riley", 54);
-    expect(r.queryByPlaceholderText("Enter your name")).toBeNull();
+  // #2517: the games row records who won — a tie is `push`.
+  it.each([
+    ["win", [45, 100, 63, 52]],
+    ["loss", [70, 100, 38, 52]],
+    ["push", [37, 100, 38, 52]],
+  ])("records a %s on the games row", async (recorded, scores) => {
+    await finishGame(scores as number[]);
+    await waitFor(() => expect(mockSyncComplete).toHaveBeenCalled());
+    expect(mockSyncComplete.mock.calls[0]![0]).toEqual(
+      expect.objectContaining({ outcome: recorded })
+    );
   });
 
-  function gameOverState(): HeartsState {
-    return {
-      ...lastTrickState([46, 100, 63, 52]),
-      phase: "game_over",
-      isComplete: true,
-      winnerIndex: 0,
-      currentTrick: [],
-      playerHands: [[], [], [], []],
-    } as unknown as HeartsState;
-  }
+  // #2629: Hearts keeps no play clock, so it sends no duration — never 0.
+  it("records 100 minus the human's points with no zero duration", async () => {
+    await finishGame([45, 100, 63, 52]);
+    await waitFor(() => expect(mockSyncComplete).toHaveBeenCalledTimes(1));
+    const [summary, payload] = mockSyncComplete.mock.calls[0]!;
+    expect(summary).toEqual({
+      outcome: "win",
+      finalScore: 54,
+      result: { final_score: 54, vs_result: "win" },
+    });
+    expect(summary).not.toHaveProperty("durationMs");
+    expect(payload).toEqual({ final_score: 54, vs_result: "win" });
+  });
 
-  it("does not resubmit a finished game resumed from storage", async () => {
+  it("shows the finished game's rank under the display name, submitting nothing", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockGetGameRank.mockResolvedValue(ranked(4));
+    const r = await finishGame([45, 100, 63, 52]);
+    await waitFor(() => expect(r.getByText("Saved as Riley · #4 on the leaderboard")).toBeTruthy());
+    // The id is read before complete() closes the session.
+    expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
+    expect(r.queryByPlaceholderText("Enter your name")).toBeNull();
+    // No POST /hearts/score, and nothing queued for one.
+    expect(heartsRequests()).toEqual([]);
+    expect(await scoreQueue.peek()).toEqual([]);
+  });
+
+  it("keeps the finished game's id so a reopened card can ask again", async () => {
+    await finishGame([45, 100, 63, 52]);
+    await waitFor(() => expect(saveFinishedGameId).toHaveBeenCalledWith("hearts-game"));
+  });
+
+  it("a game over with no open session asks for no rank", async () => {
+    // No session to complete (e.g. an older build's saved game): no lookup.
+    (loadGame as jest.Mock).mockResolvedValue(lastTrickState([45, 100, 63, 52]));
+    const r = await renderScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(await r.findByTestId("hearts-result")).toBeTruthy();
+    expect(mockSyncComplete).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    expect(saveFinishedGameId).not.toHaveBeenCalled();
+  });
+
+  it("a finished game resumed from storage asks for its rank again, submitting nothing", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockGetGameRank.mockResolvedValue(ranked(2));
+    (loadFinishedGameId as jest.Mock).mockResolvedValue("hearts-game");
+    (loadGame as jest.Mock).mockResolvedValue(gameOverState());
+    const r = await renderScreen();
+    expect(await r.findByTestId("hearts-result")).toBeTruthy();
+    await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
+    expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
+    expect(mockSyncComplete).not.toHaveBeenCalled();
+    expect(heartsRequests()).toEqual([]);
+  });
+
+  it("a finished game resumed without a saved id shows no leaderboard line", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     (loadGame as jest.Mock).mockResolvedValue(gameOverState());
     const r = await renderScreen();
@@ -548,28 +679,24 @@ describe("HeartsScreen — result card (#2506)", () => {
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
-    expect(submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    expect(r.queryByText(/Saved as/)).toBeNull();
   });
 
-  it("clears the owed score once it is saved, so reopening sends nothing", async () => {
-    await AsyncStorage.setItem("player_display_name", "Riley");
-    const r = await finishGame([45, 100, 63, 52]);
-    await waitFor(() => expect(r.getByText(/Saved as Riley/)).toBeTruthy());
-    await waitFor(async () =>
-      expect(await AsyncStorage.getItem("hearts_pending_submission")).toBeNull()
-    );
-  });
-
-  // #2560 review: the app closed while the card still owed the score.
-  it("resumes an interrupted submission when the finished game is reopened", async () => {
-    // First visit: no display name, so the card asks for one — and the
-    // player leaves without answering.
+  // #2560 review, #2629: the app closed while the card asked for a display
+  // name. Nothing was owed — the row synced itself — so the reopened card
+  // just asks for the name again and then shows the rank; no scoreQueue item.
+  it("resumes the name prompt and the rank lookup after a remount", async () => {
     const first = await finishGame([45, 100, 63, 52]);
     expect(await first.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    await waitFor(() => expect(saveFinishedGameId).toHaveBeenCalledWith("hearts-game"));
     await first.unmount();
-    expect(submitScore).not.toHaveBeenCalled();
 
-    // Reopened: the saved game-over state loads and the prompt is back.
+    // Reopened: the saved game-over state and its game id load.
+    resetSyncMocks();
+    mockGetGameRank.mockReset();
+    mockGetGameRank.mockResolvedValue(ranked(1));
+    (loadFinishedGameId as jest.Mock).mockResolvedValue("hearts-game");
     (loadGame as jest.Mock).mockResolvedValue(gameOverState());
     const again = await renderScreen();
     const input = await again.findByLabelText("Pick a display name for leaderboards");
@@ -579,8 +706,14 @@ describe("HeartsScreen — result card (#2506)", () => {
     await act(async () => {
       await fireEvent.press(again.getByRole("button", { name: "Save" }));
     });
-    await waitFor(() => expect(submitScore).toHaveBeenCalledWith("Riley", 54));
-    expect(submitScore).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(again.getByText("Saved as Riley · #1 on the leaderboard")).toBeTruthy()
+    );
+    expect(mockGetGameRank).toHaveBeenCalledTimes(1);
+    expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
+    expect(mockSyncComplete).not.toHaveBeenCalled();
+    expect(await scoreQueue.peek()).toEqual([]);
+    expect(heartsRequests()).toEqual([]);
   });
 
   it("Play Again deals a new game at the same difficulty", async () => {
@@ -620,25 +753,6 @@ describe("HeartsScreen — result card (#2506)", () => {
     expect(r.getByTestId("hearts-start-game")).toBeTruthy();
   });
 
-  // #2517: the games row records who won — a tie is `push`.
-  it.each([
-    ["win", [45, 100, 63, 52]],
-    ["loss", [70, 100, 38, 52]],
-    ["push", [37, 100, 38, 52]],
-  ])("records a %s on the games row", async (recorded, scores) => {
-    mockSyncGetGameId.mockReturnValue("hearts-game");
-    try {
-      await finishGame(scores as number[]);
-      await waitFor(() => expect(mockSyncComplete).toHaveBeenCalled());
-      expect(mockSyncComplete.mock.calls[0]![0]).toEqual(
-        expect.objectContaining({ outcome: recorded })
-      );
-    } finally {
-      mockSyncGetGameId.mockReturnValue(null);
-      mockSyncComplete.mockClear();
-    }
-  });
-
   it("Home returns to the lobby", async () => {
     const r = await finishGame([45, 100, 63, 52]);
     await r.findByTestId("hearts-result");
@@ -646,5 +760,120 @@ describe("HeartsScreen — result card (#2506)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Home" }));
     });
     expect(mockPopToTop).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2629 — the session: ai_difficulty on start(), the hook's own abandon
+// ---------------------------------------------------------------------------
+
+describe("HeartsScreen — game session (#2629)", () => {
+  /** The human holds the last card of the hand; the AIs have played. */
+  function humanLastCardState(aiDifficulty: HeartsState["aiDifficulty"]): HeartsState {
+    return {
+      _v: 3,
+      aiDifficulty,
+      phase: "playing",
+      handNumber: 3,
+      passDirection: "none",
+      cumulativeScores: [10, 20, 30, 40],
+      handScores: [0, 0, 0, 0],
+      scoreHistory: [
+        [4, 6, 8, 8],
+        [6, 14, 2, 4],
+      ],
+      passSelections: [[], [], [], []],
+      passingComplete: true,
+      heartsBroken: true,
+      isComplete: false,
+      winnerIndex: null,
+      events: [],
+      tricksPlayedInHand: 12,
+      currentLeaderIndex: 1,
+      currentPlayerIndex: 0,
+      currentTrick: [
+        { card: { suit: "diamonds", rank: 7 }, playerIndex: 1 },
+        { card: { suit: "diamonds", rank: 8 }, playerIndex: 2 },
+        { card: { suit: "diamonds", rank: 9 }, playerIndex: 3 },
+      ],
+      playerHands: [[{ suit: "hearts", rank: 5 }], [], [], []],
+      wonCards: [[], [], [], []],
+    } as unknown as HeartsState;
+  }
+
+  beforeEach(() => {
+    resetSyncMocks();
+    mockAddListener.mockClear();
+  });
+
+  afterEach(() => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it.each(["cautious", "mixed"] as const)(
+    "the first card played starts the session with ai_difficulty %s",
+    async (difficulty) => {
+      (loadGame as jest.Mock).mockResolvedValue(humanLastCardState(difficulty));
+      const r = await renderScreen();
+      const slot = await r.findByTestId("hearts-hand-card-0");
+      await act(async () => {
+        fireEvent.press(within(slot).getByRole("button"));
+      });
+      expect(mockSyncStart).toHaveBeenCalledTimes(1);
+      expect(mockSyncStart).toHaveBeenCalledWith(
+        { initial_score: 0 },
+        { ai_difficulty: difficulty }
+      );
+      expect(mockSyncMarkStarted).toHaveBeenCalled();
+    }
+  );
+
+  it("leaves abandons to the hook: no beforeRemove listener", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+    const r = await renderScreen();
+    await r.findByTestId("hearts-hand-card-0");
+    expect(mockAddListener).not.toHaveBeenCalledWith("beforeRemove", expect.anything());
+  });
+
+  it("registers a progress snapshot for the hook's abandon, with no score", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+    const r = await renderScreen();
+    await r.findByTestId("hearts-hand-card-0");
+    expect(mockSetProgressSnapshot).toHaveBeenCalled();
+    const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
+    expect(getSnapshot()).toEqual({ result: { hands_played: 2 } });
+  });
+
+  it("New Game mid-game abandons the game in play with its own progress", async () => {
+    resumeKilledSession();
+    (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+    const r = await renderScreen();
+    await r.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start New")); // confirm the abandon dialog
+    });
+    expect(r.getByTestId("hearts-start-game")).toBeTruthy();
+    expect(mockSyncComplete).toHaveBeenCalledTimes(1);
+    expect(mockSyncComplete).toHaveBeenCalledWith(
+      { outcome: "abandoned", result: { hands_played: 2 } },
+      { hands_played: 2, outcome: "abandoned" }
+    );
+  });
+
+  it("the source keeps no pendingSubmission queue or legacy Hearts API", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as typeof import("path");
+    const src = fs.readFileSync(path.join(__dirname, "..", "HeartsScreen.tsx"), "utf8");
+    expect(src).not.toMatch(/pendingSubmission/);
+    expect(src).not.toMatch(/hearts\/(api|leaderboard|scoreSync)"/);
+    expect(src).not.toMatch(/durationMs:\s*0/);
   });
 });

@@ -1,14 +1,18 @@
 /**
- * hearts-leaderboard.spec.ts — GH #1142, #2506
+ * hearts-leaderboard.spec.ts — GH #1142, #2506, #2629
  *
  * Result card + leaderboard: inject the last trick of a hand with West
- * already at 100, let the AIs finish it (the human wins the trick, +1), and
- * verify the shared result card submits under the player's display name with
- * no name entry — or asks for one once when none is set. A finished game
- * resumed from storage shows the card without submitting again.
+ * already at 100 and the human holding the last card. Playing it starts the
+ * game's session (with the opponent style as `ai_difficulty`) and ends the
+ * game. The finished game syncs itself (`POST /games`, `PATCH
+ * /games/{id}/complete`) and the card shows where it ranks
+ * (`GET /games/{id}/rank`) under the player's display name — or asks for
+ * one once when none is set. Nothing goes to `POST /hearts/score` (#2629).
+ * A finished game resumed from storage shows the card without sending
+ * anything.
  *
- * Score submitted = Math.max(0, 100 − cumulativeScores[0]).
- * The human ends on 46: score = 54.
+ * final_score recorded = Math.max(0, 100 − cumulativeScores[0]).
+ * The human discards ♥5 onto East's winning ♦9 and ends on 45: 55.
  *
  * All backend calls are intercepted — no running backend needed.
  */
@@ -50,7 +54,8 @@ const GAME_OVER_STATE = {
   winnerIndex: 0, // Player 0 wins (lowest score)
 };
 
-// The last trick of hand 7: the human led ♥5, the AIs follow with diamonds.
+// The last trick of hand 7: West led ♦7, North and East followed; the human
+// holds only ♥5 and plays it.
 const LAST_TRICK_STATE = {
   ...GAME_OVER_STATE,
   _v: 3,
@@ -60,40 +65,70 @@ const LAST_TRICK_STATE = {
   winnerIndex: null,
   heartsBroken: true,
   tricksPlayedInHand: 12,
-  currentLeaderIndex: 0,
-  currentPlayerIndex: 1,
-  currentTrick: [{ card: { suit: "hearts", rank: 5 }, playerIndex: 0 }],
-  playerHands: [
-    [],
-    [{ suit: "diamonds", rank: 7 }],
-    [{ suit: "diamonds", rank: 8 }],
-    [{ suit: "diamonds", rank: 9 }],
+  currentLeaderIndex: 1,
+  currentPlayerIndex: 0,
+  currentTrick: [
+    { card: { suit: "diamonds", rank: 7 }, playerIndex: 1 },
+    { card: { suit: "diamonds", rank: 8 }, playerIndex: 2 },
+    { card: { suit: "diamonds", rank: 9 }, playerIndex: 3 },
   ],
+  playerHands: [[{ suit: "hearts", rank: 5 }], [], [], []],
 };
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
-/** Intercepts the Hearts API; returns the POST bodies the app sends. */
-async function routeHeartsApi(page: Page): Promise<Record<string, unknown>[]> {
-  const posts: Record<string, unknown>[] = [];
+interface Traffic {
+  /** Requests to the legacy Hearts routes (`/hearts/...`). */
+  hearts: string[];
+  /** `POST /games` bodies. */
+  creates: Record<string, unknown>[];
+  /** `PATCH /games/{id}/complete` bodies. */
+  completes: Record<string, unknown>[];
+  /** `GET /games/{id}/rank` calls. */
+  ranks: string[];
+}
+
+/** Intercepts the game sync, rank, player and legacy Hearts routes. */
+async function routeApi(page: Page): Promise<Traffic> {
+  const traffic: Traffic = {
+    hearts: [],
+    creates: [],
+    completes: [],
+    ranks: [],
+  };
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
   await page.route("**/hearts/**", async (route) => {
-    if (route.request().method() === "POST") {
-      const body = JSON.parse(route.request().postData() ?? "{}");
-      posts.push(body);
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...body, rank: 1 }),
-      });
+    traffic.hearts.push(`${route.request().method()} ${route.request().url()}`);
+    await route.fulfill(json({ scores: [] }));
+  });
+  await page.route("**/players/me", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    await route.fulfill(json({ display_name: body.display_name ?? null }));
+  });
+  await page.route("**/games**", async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    const body = JSON.parse(req.postData() ?? "{}");
+    if (req.method() === "POST" && path.endsWith("/games")) {
+      traffic.creates.push(body);
+      await route.fulfill(json({ id: body.id }));
+    } else if (req.method() === "PATCH" && path.endsWith("/complete")) {
+      traffic.completes.push(body);
+      await route.fulfill(json({ id: path.split("/").slice(-2)[0] }));
+    } else if (req.method() === "GET" && path.endsWith("/rank")) {
+      traffic.ranks.push(path);
+      await route.fulfill(
+        json({ rank: 1, is_best: true, ranked: true, reason: null }),
+      );
     } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
+      await route.fulfill(json({}));
     }
   });
-  return posts;
+  return traffic;
 }
 
 /** Opens a saved game, optionally under a display name. */
@@ -116,19 +151,20 @@ async function openGame(
     .waitFor({ timeout: 10_000 });
 }
 
-/** Lets the AIs play out the final trick, which ends the game. */
+/** Plays the human's last card, which ends the game. */
 async function finishGame(page: Page, displayName?: string): Promise<void> {
   await openGame(page, LAST_TRICK_STATE, displayName);
+  await page.getByTestId("hearts-hand-card-0").getByRole("button").click();
   await expect(page.getByTestId("hearts-result")).toBeVisible({
     timeout: 15_000,
   });
 }
 
 test.describe("Hearts — result card + leaderboard", () => {
-  test("submits under the saved display name with no name entry", async ({
+  test("shows the game's rank under the saved display name with no name entry", async ({
     page,
   }) => {
-    const posts = await routeHeartsApi(page);
+    const traffic = await routeApi(page);
     await finishGame(page, "Tester");
 
     const card = page.getByTestId("hearts-result");
@@ -140,7 +176,22 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_name: "Tester", score: 54 }]);
+
+    expect(traffic.creates).toHaveLength(1);
+    expect(traffic.creates[0]).toMatchObject({
+      game_type: "hearts",
+      metadata: { ai_difficulty: "schemer" },
+    });
+    expect(traffic.completes).toHaveLength(1);
+    expect(traffic.completes[0]).toMatchObject({
+      outcome: "win",
+      final_score: 55,
+      duration_ms: null,
+      result: { final_score: 55, vs_result: "win" },
+    });
+    expect(traffic.ranks).toEqual([`/games/${traffic.creates[0].id}/rank`]);
+    expect(traffic.hearts).toEqual([]);
+
     await expect(
       card.getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
@@ -150,17 +201,16 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("asks for a display name once when none is set, then submits", async ({
+  test("asks for a display name once when none is set, then shows the rank", async ({
     page,
   }) => {
-    const posts = await routeHeartsApi(page);
+    const traffic = await routeApi(page);
     await finishGame(page);
 
     const nameInput = page.getByLabel("Pick a display name for leaderboards");
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     const save = page.getByRole("button", { name: "Save" });
     await expect(save).toBeDisabled();
-    expect(posts).toEqual([]);
 
     await nameInput.fill("Tester");
     await save.click();
@@ -168,19 +218,20 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_name: "Tester", score: 54 }]);
+    expect(traffic.hearts).toEqual([]);
   });
 
-  test("a finished game resumed from storage shows the card without resubmitting", async ({
+  test("a finished game resumed from storage shows the card without sending anything", async ({
     page,
   }) => {
-    const posts = await routeHeartsApi(page);
+    const traffic = await routeApi(page);
     await openGame(page, GAME_OVER_STATE, "Tester");
 
     await expect(page.getByTestId("hearts-result")).toBeVisible({
       timeout: 5_000,
     });
     await page.waitForTimeout(1_000);
-    expect(posts).toEqual([]);
+    expect(traffic.hearts).toEqual([]);
+    expect(traffic.completes).toEqual([]);
   });
 });
