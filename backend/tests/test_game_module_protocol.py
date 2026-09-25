@@ -90,9 +90,9 @@ _HAS_WINNER = {
 def test_has_winner_declared(name: str) -> None:
     """Every registered module declares ``has_winner`` as a bool (#2619)."""
     mod = _REGISTRY[name]
-    assert isinstance(
-        type(mod).__dict__.get("has_winner"), bool
-    ), f"{name} module must declare has_winner: bool as a class attribute"
+    assert isinstance(type(mod).__dict__.get("has_winner"), bool), (
+        f"{name} module must declare has_winner: bool as a class attribute"
+    )
     assert name in _HAS_WINNER, f"add {name} to _HAS_WINNER (see vocab.GameOutcome)"
     assert mod.has_winner is _HAS_WINNER[name]
 
@@ -474,26 +474,40 @@ def _without_module(monkeypatch: pytest.MonkeyPatch, missing: str) -> None:
     monkeypatch.setattr(service, "get_module", lambda n: None if n == missing else real(n))
 
 
-def test_stats_for_a_game_without_a_module_fail_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No default board or stats shape is guessed for an unregistered game."""
+def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No board or stats shape is guessed for a game type with no module, and
+    it doesn't take /stats/me down either: it is reported and left out."""
     sid = str(uuid.uuid4())
     headers = {"X-Session-ID": sid, "Content-Type": "application/json"}
     client = TestClient(app)
-    gid = client.post("/games", headers=headers, json={"game_type": "twenty48"}).json()["id"]
-    r = client.patch(
-        f"/games/{gid}/complete", headers=headers, json={"final_score": 10, "outcome": "completed"}
-    )
-    assert r.status_code == 200, r.text
-    assert client.get("/stats/me", headers=headers).status_code == 200
+    for game_type, score in (("twenty48", 10), ("yacht", 20)):
+        gid = client.post("/games", headers=headers, json={"game_type": game_type}).json()["id"]
+        r = client.patch(
+            f"/games/{gid}/complete",
+            headers=headers,
+            json={"final_score": score, "outcome": "completed"},
+        )
+        assert r.status_code == 200, r.text
+    # Warm the (cached) best-value expression while every module is registered:
+    # it covers the vocab game types, which a test elsewhere keeps registered.
+    assert set(client.get("/stats/me", headers=headers).json()["by_game"]) == {
+        "twenty48",
+        "yacht",
+    }
 
-    service._best_candidate.cache_clear()
+    captured: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        service.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
+    )
     _without_module(monkeypatch, "twenty48")
-    try:
-        with pytest.raises(LookupError, match="twenty48"):
-            client.get("/stats/me", headers=headers)
-    finally:
-        monkeypatch.undo()
-        service._best_candidate.cache_clear()
+    r = client.get("/stats/me", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body["by_game"]) == {"yacht"}
+    assert body["total_games"] == 1
+    assert len(captured) == 1
+    assert "twenty48" in captured[0][0]
+    assert captured[0][1]["level"] == "error"
 
 
 def test_the_best_value_expression_fails_loudly_without_a_module(

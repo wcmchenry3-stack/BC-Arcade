@@ -29,9 +29,10 @@ DifficultyTier = Literal[
 
 Mirrors ``DIFFICULTY_TIERS`` in ``frontend/src/game/starswarm/engine.ts`` (the
 ``DifficultyTier`` union in ``types.ts``); ``tests/test_starswarm_module.py``
-parses both and fails on drift. Each tier is its own public board, so a value
-outside this list is rejected rather than opening a new one. A tier added to
-the app must be added here, in the same release, or its runs fail validation.
+parses both and fails on drift. Each tier is its own public board
+(``partition_values``), so a run on a tier outside this list is stored but
+never ranks and no board can be requested for it. A tier added to the app must
+be added here, in the same release, or its runs stay off the leaderboard.
 """
 
 DIFFICULTY_TIERS: tuple[str, ...] = get_args(DifficultyTier)
@@ -45,12 +46,13 @@ class StarSwarmMetadata(BaseModel):
     """Creation-time metadata for a Star Swarm game row.
 
     The app sends the run's ``difficulty_tier``, one of ``DIFFICULTY_TIERS``.
-    It may be omitted (the row then counts as ``DEFAULT_DIFFICULTY_TIER``);
-    any other value is rejected. ``extra="forbid"`` rejects unknown keys.
+    It may be omitted (the row then counts as ``DEFAULT_DIFFICULTY_TIER``).
+    Any other string is accepted, never ranked: rejecting it would dead-letter
+    the run in the app. ``extra="forbid"`` rejects unknown keys.
     """
 
     model_config = ConfigDict(extra="forbid")
-    difficulty_tier: DifficultyTier | None = None
+    difficulty_tier: str | None = Field(default=None, max_length=32)
 
 
 class StarSwarmResult(BaseModel):
@@ -59,11 +61,11 @@ class StarSwarmResult(BaseModel):
     Mirrors ``handleGameOver`` in ``StarSwarmScreen.tsx``:
     ``{outcome, wave_reached, difficulty_tier}``. ``difficulty_tier`` is
     declared so it survives validation into ``games.metadata``, where the board
-    partitions on it; like the metadata's, it must be one of
-    ``DIFFICULTY_TIERS``. Every field is optional and unknown keys are ignored,
-    so no current build can fail completion and dead-letter the run.
+    partitions on it; like the metadata's, only a value in
+    ``DIFFICULTY_TIERS`` ranks. Every field is optional and unknown keys are
+    ignored, so no current build can fail completion and dead-letter the run.
     """
 
     outcome: str | None = Field(default=None, max_length=32)
     wave_reached: int | None = Field(default=None, ge=0)
-    difficulty_tier: DifficultyTier | None = None
+    difficulty_tier: str | None = Field(default=None, max_length=32)

@@ -18,6 +18,7 @@ from db.models import Game, GameType
 from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
 from limiter import limiter, session_key
+from starswarm.models import DEFAULT_DIFFICULTY_TIER
 from vocab import GameType as GameTypeEnum
 
 router = APIRouter(dependencies=[Depends(require_entitlement("starswarm"))])
@@ -30,7 +31,7 @@ class ScoreRequest(BaseModel):
     player_id: str = Field(..., min_length=1, max_length=64)
     score: int = Field(..., ge=0)
     wave_reached: int = Field(..., ge=1)
-    difficulty_tier: str = Field(default="LieutenantJG", max_length=32)
+    difficulty_tier: str = Field(default=DEFAULT_DIFFICULTY_TIER, max_length=32)
 
 
 class LeaderboardEntry(BaseModel):
@@ -88,7 +89,7 @@ async def _top10(db: AsyncSession) -> list[LeaderboardEntry]:
                 player_id=str(meta.get("player_name") or "anon"),
                 score=int(g.final_score or 0),
                 wave_reached=int(meta.get("wave_reached") or 1),
-                difficulty_tier=str(meta.get("difficulty_tier") or "LieutenantJG"),
+                difficulty_tier=str(meta.get("difficulty_tier") or DEFAULT_DIFFICULTY_TIER),
                 timestamp=g.completed_at.isoformat() if g.completed_at else "",
                 rank=i + 1,
             )

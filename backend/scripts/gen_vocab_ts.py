@@ -86,7 +86,8 @@ def _ts(value: Any, indent: str, prefix: int = 0) -> str:
 
     *prefix* is how many characters precede the value on its line. An array
     stays on one line when it fits in ``_PRINT_WIDTH`` (with the trailing
-    comma), else it is expanded one item per line, as Prettier does.
+    comma), else it is expanded as Prettier does: one item per line, or, for
+    an array of numbers, as many per line as fit (``_fill``).
     Non-empty objects are expanded, one key per line, which Prettier
     preserves.
     """
@@ -104,9 +105,30 @@ def _ts(value: Any, indent: str, prefix: int = 0) -> str:
         if not value or prefix + len(one_line) + 1 <= _PRINT_WIDTH:
             return one_line
         inner = indent + "  "
+        if len(value) > 1 and all(_is_number(v) for v in value):
+            return "[\n" + _fill(value, inner) + f"\n{indent}]"
         items = "\n".join(f"{inner}{_ts(v, inner, len(inner))}," for v in value)
         return "[\n" + items + f"\n{indent}]"
     return json.dumps(value)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _fill(numbers: list[Any], indent: str) -> str:
+    """A long number array's items the way Prettier prints them ("fill"): as
+    many ``n,`` per line as fit in ``_PRINT_WIDTH``, not one per line."""
+    lines: list[str] = []
+    line = ""
+    for n in numbers:
+        item = f"{json.dumps(n)},"
+        if line and len(line) + 1 + len(item) > _PRINT_WIDTH:
+            lines.append(line)
+            line = ""
+        line = f"{line} {item}" if line else f"{indent}{item}"
+    lines.append(line)
+    return "\n".join(lines)
 
 
 def board_ts(board: BoardDefinition | None) -> str:

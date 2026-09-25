@@ -8,12 +8,15 @@ scoring constants so a constant change fails here until the cap is updated.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from db.models import Game
 from games.board import FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
+from games.leaderboard import _unrankable_reason
 from games.registry import get_module
 
 _FRONTEND_SRC = Path(__file__).parents[2] / "frontend" / "src"
@@ -272,12 +275,14 @@ def test_only_sudoku_and_starswarm_have_partition_rules(game: str) -> None:
 
 
 @pytest.mark.parametrize("game", _GAMES)
-def test_partition_values_are_exactly_what_the_models_accept(game: str) -> None:
-    """A row can only carry a value that has a board, and every board can fill.
+def test_partition_values_fill_every_board_and_nothing_else_ranks(game: str) -> None:
+    """Every board can fill, and a row outside ``partition_values`` never ranks.
 
     For each ``partition_values`` key, the metadata model (and the result
-    model, when it declares the key) accepts every allowed value and rejects
-    anything else, so a stored row never lands on a board nobody can request.
+    model, when it declares the key) accepts every allowed value. It also
+    accepts other values: rejecting one would dead-letter the game in the app.
+    Such a row is stored but can't be named (``_unrankable_reason``), so it
+    never lands on a board nobody can request.
     """
     mod = get_module(game)
     assert mod is not None
@@ -289,11 +294,21 @@ def test_partition_values_are_exactly_what_the_models_accept(game: str) -> None:
             assert key in model.model_fields, f"{game}: {model.__name__} lacks {key}"
             for value in values:
                 model.model_validate({key: value})
-            for bad in (values[0].lower(), values[0] + "x", "forged"):
-                if bad in values:
-                    continue
-                with pytest.raises(ValidationError):
-                    model.model_validate({key: bad})
+
+        def reason(value: str, key: str = key) -> str | None:
+            row = Game(
+                final_score=1,
+                outcome="completed",
+                completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                game_metadata={mod.board.metric: 1, key: value},
+            )
+            return _unrankable_reason(mod.board, row)
+
+        for value in values:
+            assert reason(value) is None, f"{game}: {key}={value} should rank"
+        for bad in (values[0].lower(), values[0] + "x", "forged"):
+            if bad not in values:
+                assert reason(bad) == "This game's board does not exist."
 
 
 def test_sudoku_variant_defaults_to_classic_like_the_legacy_route() -> None:

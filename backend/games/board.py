@@ -36,7 +36,9 @@ always live in ``games.metadata``. A row that predates a partition key is read
 with that key's ``partition_defaults`` value (Sudoku rows from before #748 have
 no ``variant`` and belong to ``classic``). A partition key listed in
 ``partition_values`` only has those boards: a request for any other value is
-rejected, so a typo or a forged value can't open a new public board.
+rejected, and a row holding one can't be named, so a typo or a forged value
+can't open a new public board. The row itself is still stored (a 4xx on
+create or completion would dead-letter the whole game in the app).
 """
 
 from __future__ import annotations
@@ -83,9 +85,9 @@ class BoardDefinition(BaseModel):
         ``partitions`` and appears once. Read it with ``partition_default``.
     partition_values:
         ``(partition key, allowed values)`` pairs: the only values that key
-        has a board for, e.g. Star Swarm's ten difficulty tiers. The metadata
-        and result models must accept exactly these values, so no row lands
-        on a board nobody can request. A key not listed accepts any value.
+        has a board for, e.g. Star Swarm's ten difficulty tiers. A row with
+        another value is stored but never ranks (``_unrankable_reason`` in
+        ``games/leaderboard.py``). A key not listed accepts any value.
         Every key is one of ``partitions`` and appears once; its values are
         non-empty and distinct, and its ``partition_defaults`` and
         ``partition_max_values`` values are among them. Read it with

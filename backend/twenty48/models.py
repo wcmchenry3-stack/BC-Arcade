@@ -32,9 +32,9 @@ class Twenty48Result(BaseModel):
     stores already have can fail completion and dead-letter the game.
     ``outcome`` repeats the row's outcome (``completed``, ``abandoned``,
     ``kept_playing``); it is a plain string so a newer build can send ``win``
-    or ``loss`` (#2631). A negative ``duration_ms`` (a skewed clock) is stored
-    as ``null``, "unknown", as the sync worker sends it on the row itself:
-    rejecting it would dead-letter the game.
+    or ``loss`` (#2631). A ``duration_ms`` of zero or less (a skewed clock) is
+    stored as ``null``, "unknown", as the sync worker sends it on the row
+    itself (``resolveDurationMs``): rejecting it would dead-letter the game.
     """
 
     final_score: int | None = Field(default=None, ge=0)
@@ -45,5 +45,5 @@ class Twenty48Result(BaseModel):
 
     @field_validator("duration_ms")
     @classmethod
-    def _negative_duration_is_unknown(cls, v: int | None) -> int | None:
-        return None if v is not None and v < 0 else v
+    def _no_duration_is_unknown(cls, v: int | None) -> int | None:
+        return None if v is not None and v <= 0 else v

@@ -294,8 +294,10 @@ def _dialect_name(session: AsyncSession) -> str:
 def _registered_module(name: str) -> GameModule:
     """The ``GameModule`` for game type *name*.
 
-    Every ``GameType`` has one since #2623. A game without one is a bug, so
-    this fails loudly instead of guessing a board or a stats shape for it.
+    Every vocab ``GameType`` has one since #2623 (a test checks it). A game
+    without one is a bug, so this fails loudly instead of guessing a board for
+    it. Only code-defined types reach it; a ``game_types`` row with no module
+    is left out of the stats instead (``get_stats_for_session``).
     """
     module = get_module(name)
     if module is None:
@@ -553,6 +555,15 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
 
     for row in rows:
         name, played, completed_played = row.name, row.played, row.completed_played
+        game_module = get_module(name)
+        if game_module is None:
+            # A game type with rows but no module is a bug, but it must not
+            # take /stats/me down for every player who played it: report it
+            # and leave that game out (it has no board or stats shape).
+            sentry_sdk.capture_message(
+                f"/stats: no GameModule for game type {name!r}; left out", level="error"
+            )
+            continue
         best, avg, last_played = row.best, row.avg, row.last_played_at
         total += played
 
@@ -565,7 +576,6 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             "metadata": latest_meta_by_name.get(name, {}),
         }
 
-        game_module = _registered_module(name)
         shaped = game_module.stats_shape(raw)
 
         extras: dict[str, Any] = dict(shaped.get("extras") or {})

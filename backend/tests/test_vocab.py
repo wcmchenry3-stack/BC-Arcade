@@ -117,12 +117,25 @@ def test_long_arrays_wrap_like_prettier() -> None:
     )
 
 
+def test_long_number_arrays_fill_like_prettier() -> None:
+    """Prettier fills a long array of numbers: as many per line as fit
+    (checked against Prettier with frontend/.prettierrc)."""
+    gen = _load_generator()
+    nums = list(range(100_000, 1_400_001, 100_000))
+    assert gen._ts(nums, "    ", len("    nums: ")) == (
+        "[\n"
+        "      100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000,\n"
+        "      1200000, 1300000, 1400000,\n"
+        "    ]"
+    )
+
+
 def test_vocab_ts_matches_generator_output() -> None:
     """The committed vocab.ts is byte-for-byte what the generator prints."""
     rendered = _load_generator().render() + "\n"
-    assert (
-        _VOCAB_TS.read_text(encoding="utf-8") == rendered
-    ), f"frontend/src/api/vocab.ts differs from the generator output. {_REGEN}"
+    assert _VOCAB_TS.read_text(encoding="utf-8") == rendered, (
+        f"frontend/src/api/vocab.ts differs from the generator output. {_REGEN}"
+    )
 
 
 def test_game_type_ts_in_sync() -> None:

@@ -153,19 +153,26 @@ def test_metadata_accepts_every_tier(tier: str) -> None:
     assert StarSwarmMetadata.model_validate({"difficulty_tier": tier}).difficulty_tier == tier
 
 
-_FORGED = ["captain", "CAPTAIN", "Cadet", "Captain ", "x" * 33, ""]
+_FORGED = ["captain", "CAPTAIN", "Cadet", "Captain ", ""]
 
 
 @pytest.mark.parametrize("tier", _FORGED)
-def test_metadata_rejects_a_tier_the_client_cannot_send(tier: str) -> None:
-    with pytest.raises(ValidationError):
-        StarSwarmMetadata.model_validate({"difficulty_tier": tier})
+def test_metadata_stores_a_tier_it_cannot_rank(tier: str) -> None:
+    """Rejecting it would dead-letter the run; it is kept and never ranks."""
+    assert StarSwarmMetadata.model_validate({"difficulty_tier": tier}).difficulty_tier == tier
 
 
 @pytest.mark.parametrize("tier", _FORGED)
-def test_result_rejects_a_tier_the_client_cannot_send(tier: str) -> None:
+def test_result_stores_a_tier_it_cannot_rank(tier: str) -> None:
+    result = StarSwarmResult.model_validate({"wave_reached": 3, "difficulty_tier": tier})
+    assert result.difficulty_tier == tier
+
+
+def test_models_reject_an_overlong_tier() -> None:
     with pytest.raises(ValidationError):
-        StarSwarmResult.model_validate({"wave_reached": 3, "difficulty_tier": tier})
+        StarSwarmMetadata.model_validate({"difficulty_tier": "x" * 33})
+    with pytest.raises(ValidationError):
+        StarSwarmResult.model_validate({"difficulty_tier": "x" * 33})
 
 
 def test_a_missing_or_null_tier_is_still_accepted() -> None:
@@ -318,24 +325,53 @@ def test_every_client_tier_is_accepted_at_creation_and_completion(tier: str) -> 
     assert metadata["difficulty_tier"] == tier
 
 
-def test_creation_with_a_forged_tier_is_rejected() -> None:
+def test_a_run_on_an_unknown_tier_is_kept_but_never_ranks() -> None:
+    """A tier the backend doesn't know (a forged value, or one a newer app
+    added first) is stored, so the run isn't dead-lettered, but it has no
+    board: naming it is refused and its board can't be requested."""
     r = client.post(
         "/games",
         headers=_headers(_SID),
-        json={"game_type": "starswarm", "metadata": {"difficulty_tier": "captain"}},
+        json={"game_type": "starswarm", "metadata": {"difficulty_tier": "Cadet"}},
     )
-    assert r.status_code == 422
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(_SID),
+        json={
+            "final_score": 900,
+            "outcome": "completed",
+            "result": {"wave_reached": 2, "difficulty_tier": "Cadet"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert (
+        client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]["difficulty_tier"]
+        == "Cadet"
+    )
+
+    r = client.patch(f"/games/{gid}/name", headers=_headers(_SID), json={"player_name": "Ace"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "This game's board does not exist."
+    r = client.get("/games/leaderboard/starswarm?difficulty_tier=Cadet", headers=_headers(_SID))
+    assert r.status_code == 400
 
 
-def test_completion_with_a_forged_tier_is_rejected() -> None:
+def test_a_forged_result_tier_does_not_replace_the_creation_tier() -> None:
     gid = _start(_SID, "Captain")
     r = client.patch(
         f"/games/{gid}/complete",
         headers=_headers(_SID),
-        json={"outcome": "completed", "result": {"wave_reached": 2, "difficulty_tier": "Cadet"}},
+        json={
+            "final_score": 700,
+            "outcome": "completed",
+            "result": {"wave_reached": 2, "difficulty_tier": "Cadet"},
+        },
     )
-    assert r.status_code == 400
-    assert client.get(f"/games/{gid}", headers=_headers(_SID)).json()["completed_at"] is None
+    assert r.status_code == 200, r.text
+    metadata = client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]
+    assert metadata["difficulty_tier"] == "Captain"
 
 
 # ---------------------------------------------------------------------------

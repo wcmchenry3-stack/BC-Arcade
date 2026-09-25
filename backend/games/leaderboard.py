@@ -472,7 +472,12 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
         return "Abandoned games are not ranked."
     if board.qualifying_outcomes is not None and game.outcome not in board.qualifying_outcomes:
         return "This game's outcome is not ranked."
-    cap = metric_cap(board, row_partition(board, game.game_metadata or {}))
+    partition = row_partition(board, game.game_metadata or {})
+    if any(v is not None and not board.is_allowed(k, v) for k, v in partition.items()):
+        # e.g. a Star Swarm tier the backend doesn't know yet: stored, so the
+        # run isn't lost, but there is no board to rank it on.
+        return "This game's board does not exist."
+    cap = metric_cap(board, partition)
     if not _is_count(value) or value > cap:
         return f"{board.metric} must be an integer from 0 to {cap} to be ranked."
     return None
