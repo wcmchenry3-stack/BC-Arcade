@@ -303,7 +303,7 @@ async def test_complete_game_merges_result_into_metadata(db):
         db,
         game_id=game.id,
         session_id=sid,
-        final_score=500,
+        final_score=250,
         outcome="completed",
         duration_ms=1000,
         result={"won": True, "errors": 2, "ignored_extra": 1},
