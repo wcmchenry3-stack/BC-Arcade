@@ -89,6 +89,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.hint": {
+    "component": "SolitaireScreen",
+    "description": "Button label that highlights a possible next move.",
+    "tone": "action",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.autoComplete": {
     "component": "SolitaireScreen",
     "description": "Button that finishes a trivially-winnable deal in one tap.",
@@ -219,7 +228,7 @@
     "component": "CardView",
     "description": "Accessibility label for a face-down card that is currently selected.",
     "tone": "functional",
-    "characterLimit": 32,
+    "characterLimit": 35,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -274,6 +283,69 @@
     "description": "Error message when restoring a saved game fails.",
     "tone": "apologetic, clear",
     "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scoreboard.heroLabel": {
+    "component": "SolitaireScoreboard",
+    "description": "Hero label above the primary scoreboard stat (elapsed time).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short, often uppercase, label."
+  },
+  "scoreboard.heroSub": {
+    "component": "SolitaireScoreboard",
+    "description": "Subtitle under the scoreboard hero showing moves made and foundations completed.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{moves}}", "{{foundations}}"],
+    "doNotTranslate": [],
+    "notes": "The '4' is the fixed number of foundation piles; keep it as a literal number."
+  },
+  "scoreboard.heroSubEmpty": {
+    "component": "SolitaireScoreboard",
+    "description": "Subtitle shown when no games have been played yet.",
+    "tone": "neutral",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scoreboard.bestTime": {
+    "component": "SolitaireScoreboard",
+    "description": "Stat tile label for the player's best (fastest) completed game.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scoreboard.bestMoves": {
+    "component": "SolitaireScoreboard",
+    "description": "Stat tile label for the player's fewest moves in a completed game.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scoreboard.gamesPlayed": {
+    "component": "SolitaireScoreboard",
+    "description": "Stat tile label for the total number of games played.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scoreboard.gamesWon": {
+    "component": "SolitaireScoreboard",
+    "description": "Stat tile label for the total number of games won.",
+    "tone": "neutral",
+    "characterLimit": 24,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

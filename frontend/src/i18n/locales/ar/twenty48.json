@@ -13,13 +13,13 @@
   "swipe.hint": "اسحب لتحريك البلاطات",
   "win.body": "وصلت إلى 2048! يمكنك الاستمرار للحصول على نتيجة أعلى.",
   "controls.keyboardHint": "أو استخدم مفاتيح الأسهم",
-  "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best tile: {{bestTile}} · {{moves}} moves",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "Best Score",
-  "scoreboard.bestTile": "Best Tile",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "stats.highestTile": "أعلى بلاطة",
+  "stats.timePlayed": "وقت اللعب",
+  "scoreboard.heroLabel": "النتيجة",
+  "scoreboard.heroSub": "أفضل بلاطة: {{bestTile}} · {{moves}} حركة",
+  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
+  "scoreboard.bestScore": "أفضل نتيجة",
+  "scoreboard.bestTile": "أفضل بلاطة",
+  "scoreboard.gamesPlayed": "المباريات الملعوبة",
+  "scoreboard.gamesWon": "المباريات الفائزة"
 }

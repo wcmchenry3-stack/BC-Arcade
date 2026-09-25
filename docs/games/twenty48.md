@@ -21,7 +21,12 @@ Each merge scores points equal to the value of the new (merged) tile. A 2+2 merg
 
 ## Scoring (Persistence)
 
-`final_score` = cumulative merge score at game over. Sessions are recorded through the shared `/games` pipeline (`useGameSync("twenty48")`) and validated by the backend module (see [Backend](#backend)).
+Sessions are recorded through the shared `/games` pipeline (`useGameSync("twenty48")`) and validated by the backend module (see [Backend](#backend)). One session per game, closed as (#2631):
+
+- `win` when the 2048 tile appears; `final_score` = the score at that moment. Keep Playing after it is untracked, so later points are not ranked.
+- `loss` on a game over without 2048; `final_score` = the score at game over.
+
+Older builds sent `completed` (game over) and `kept_playing` (Keep Playing); those rows stay valid. The result card shows the game's rank through the shared `sessionBoardAdapter` (`GET /games/{id}/rank`), once per session, never on an abandon.
 
 ## Client-Side Engine
 
@@ -37,7 +42,7 @@ Gameplay is fully client-side; sessions reach the server through the shared `Syn
 - Module: `backend/twenty48/module.py`, registered in `backend/games/registry.py` (#2623)
 - Metadata model: `Twenty48Metadata` in `backend/twenty48/models.py` — empty (extra keys forbidden); the opening board is event data
 - Result model: `Twenty48Result` — `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`, all optional; unknown keys are ignored. The daily challenge reads `final_score` and `highest_tile` from it
-- Board: `final_score` desc, one global board, no cap. `has_winner = False` until the app records `win`/`loss` (#2631); a `kept_playing` completion counts like `completed`
+- Board: `final_score` desc, one global board, no cap, one entry per player. `has_winner = True` (#2631); an older build's `kept_playing` completion counts like `completed`
 - Stats: default pass-through `stats_shape`
 
 ## Entitlement
@@ -46,4 +51,4 @@ Tier TBD. If free: no entitlement check — game is always accessible.
 
 ## Known Issues / Limitations
 
-- Board is declared, but no leaderboard submission or view yet
+- The result card shows the rank, but the app has no Twenty48 leaderboard view yet

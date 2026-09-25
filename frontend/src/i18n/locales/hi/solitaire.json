@@ -1,6 +1,6 @@
 {
   "game.title": "सॉलिटेयर",
-  "game.description": "ड्रा करें, स्टैक करें, और साफ करें — डेक को फाउंडेशन तक ले जाएं।",
+  "game.description": "ड्रा करें, स्टैक करें, साफ करें — पत्ते फाउंडेशन तक ले जाएं।",
   "game.playLabel": "सॉलिटेयर खेलें",
   "drawMode.title": "ड्रा मोड चुनें",
   "drawMode.body": "हर टैप पर कितने कार्ड पलटें?",
@@ -11,7 +11,7 @@
   "action.undo": "पूर्ववत",
   "action.hint": "सुझाव",
   "action.autoComplete": "ऑटो-कंप्लीट",
-  "action.dealAgain": "फिर से डील करें",
+  "action.dealAgain": "फिर डील करें",
   "stock.recycle": "दूसरी बार और बाद में रिसायकल करने पर 50 पॉइंट्स लगेंगे।",
   "pile.stock.label": "स्टॉक से {{count}} खींचें, {{remaining}} कार्ड्स बचे हैं",
   "pile.stock.empty": "वेस्ट को स्टॉक में रिसायकल करें (ड्रा {{count}})",

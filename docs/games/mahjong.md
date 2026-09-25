@@ -26,9 +26,16 @@ If a deadlock is detected, a shuffle option is offered. Shuffles may be limited 
 
 ## Scoring (Persistence)
 
-`final_score` = derived from number of moves, shuffles used, and completion time. A completed board is `COMPLETED`; a deadlocked/abandoned game is `ABANDONED`.
+`final_score` = 10 per pair removed + 500 for clearing the board (max 1220). What each game records (#2627):
 
-This game is **offline-capable** — the engine runs client-side and the board state persists to AsyncStorage. Scores are submitted to the server when online.
+- A cleared board completes with outcome `win`, its `final_score` and `result: { won: true, pairs }`.
+- A deadlocked board the player leaves completes with outcome `loss` and no score (#2592). "Undo last move" on the deadlock card rescues the board and records nothing.
+- Any other exit is `abandoned`, with the progress snapshot `result: { won: false, pairs }` and no score.
+- The layout played is creation metadata (`layout`). All layouts share one board.
+
+The finished session row is the leaderboard entry: a named player's best win ranks once, under their display name. The result card asks `GET /games/{id}/rank` (`sessionBoardAdapter`); the app no longer calls `POST /mahjong/score`, which stays for installed builds until #2644.
+
+This game is **offline-capable** — the engine runs client-side and the board state persists to AsyncStorage. Finished games upload through `SyncWorker` when online.
 
 ## Client-Side Engine
 
@@ -40,7 +47,7 @@ This game is **offline-capable** — the engine runs client-side and the board s
 
 - Module: `backend/mahjong/module.py`
 - Endpoints: `backend/mahjong/router.py`
-- Metadata model: `MahjongMetadata` — `player_name: str = ""` (max 64 chars)
+- Metadata model: `MahjongMetadata` — `player_name: str = ""` (max 64 chars), `layout: str | None` (layout id)
 - Scoring: `final_score` = score at game end
 
 ## Accessibility

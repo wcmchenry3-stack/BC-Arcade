@@ -1,10 +1,13 @@
 """Star Swarm metadata and result models (#2623).
 
 Star Swarm records a session row per run through the shared ``/games``
-pipeline (``useGameSync("starswarm")``, #2516). These models describe what the
-app sends today, so registering the module validates rows without rejecting
-any current build. The named leaderboard entry is still written by
-``POST /starswarm/score`` (``router.py``), which does not use them.
+pipeline (``useGameSync("starswarm")``, #2516). Since #2626 the app completes
+that row with the run's ``final_score``, and the row is the leaderboard entry
+on its ``difficulty_tier``'s board, under the player's display name. These
+models describe what the app sends, so no current build is rejected. Installed
+builds from before #2626 send a score-less session row and still post the
+named entry to the legacy ``POST /starswarm/score`` (``router.py``, until
+#2644), which writes its row directly and does not use these models.
 """
 
 from __future__ import annotations

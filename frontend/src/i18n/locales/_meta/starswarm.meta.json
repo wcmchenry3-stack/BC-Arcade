@@ -35,32 +35,41 @@
     "doNotTranslate": ["Star Swarm"],
     "notes": null
   },
-  "hud.score": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the current score in the HUD.",
-    "tone": "functional",
-    "characterLimit": 8,
-    "placeholders": [],
+  "hud.scoreValue": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "In-canvas HUD text showing the current score, top-left during play.",
+    "tone": "neutral, arcade",
+    "characterLimit": 20,
+    "placeholders": ["{{score}}"],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "All caps in English, matching hud.guns/hud.hull; the limit counts the raw {{score}}."
   },
-  "hud.best": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the high score in the HUD.",
-    "tone": "functional",
-    "characterLimit": 6,
-    "placeholders": [],
+  "hud.bestValue": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "In-canvas HUD text showing the player's best score, top-center during play.",
+    "tone": "neutral, arcade",
+    "characterLimit": 19,
+    "placeholders": ["{{best}}"],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "All caps in English, matching hud.guns/hud.hull."
   },
-  "hud.wave": {
-    "component": "GameCanvas",
-    "description": "Short uppercase label for the current wave number in the HUD.",
-    "tone": "functional",
-    "characterLimit": 6,
+  "hud.waveValue": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "In-canvas HUD text showing the current wave number, top-right during play, and again centered ('— WAVE {{wave}} —') on the wave-clear overlay.",
+    "tone": "neutral, arcade",
+    "characterLimit": 17,
+    "placeholders": ["{{wave}}"],
+    "doNotTranslate": [],
+    "notes": "All caps in English, matching hud.guns/hud.hull."
+  },
+  "phase.missionComplete": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Overlay banner shown when the player clears the final wave and wins the run.",
+    "tone": "dramatic, arcade",
+    "characterLimit": 19,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "All caps in English to match the other phase banners."
   },
   "phase.waveClear": {
     "component": "GameCanvas",
@@ -89,15 +98,6 @@
     "doNotTranslate": [],
     "notes": "A rout is a panicked retreat. All caps in English to match the other phase banners."
   },
-  "phase.gameOver": {
-    "component": "GameCanvas",
-    "description": "Large overlay text when the player loses all lives.",
-    "tone": "dramatic, classic arcade",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "score.display": {
     "component": "GameCanvas",
     "description": "Accessibility label for the score display.",
@@ -125,11 +125,20 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "controls.tapToResume": {
+  "controls.resume": {
     "component": "Controls",
-    "description": "Hint text under the PAUSED heading — instructs user to tap to resume.",
+    "description": "Text on the Resume button in the pause overlay.",
+    "tone": "neutral, arcade",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "controls.pauseLabel": {
+    "component": "StarSwarmScreen / Controls",
+    "description": "Accessibility label for the pause button while the game is running.",
     "tone": "functional",
-    "characterLimit": 20,
+    "characterLimit": 25,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -143,20 +152,119 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "controls.newGame": {
+  "controls.newGameFromPause": {
     "component": "Controls",
-    "description": "Label on the new-game button shown on the game-over screen.",
-    "tone": "action, brief",
-    "characterLimit": 10,
+    "description": "Text on the New Game button in the pause overlay, which discards the saved run.",
+    "tone": "neutral, arcade",
+    "characterLimit": 17,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "controls.newGameLabel": {
+  "controls.newGameFromPauseLabel": {
     "component": "Controls",
-    "description": "Accessibility label for the new-game button.",
+    "description": "Accessibility label for the New Game button in the pause overlay, warning that it discards the saved run.",
     "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.selectTitle": {
+    "component": "StarSwarmScreen",
+    "description": "Title of the pre-game difficulty picker.",
+    "tone": "neutral, direct",
     "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.start": {
+    "component": "StarSwarmScreen",
+    "description": "Button to start the game from the pre-game difficulty picker.",
+    "tone": "action, concise",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.title": {
+    "component": "LeaderboardScreen",
+    "description": "Header title of Star Swarm's leaderboard screen.",
+    "tone": "neutral, arcade",
+    "characterLimit": 35,
+    "placeholders": [],
+    "doNotTranslate": ["Star Swarm"],
+    "notes": "Do not translate the game name."
+  },
+  "leaderboard.colRank": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a leaderboard row's rank.",
+    "tone": "functional",
+    "characterLimit": 4,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.colScore": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a leaderboard row's score.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.colWave": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a leaderboard row's wave reached.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.colDifficulty": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a leaderboard row's difficulty tier.",
+    "tone": "functional",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.colDate": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a leaderboard row's date.",
+    "tone": "functional",
+    "characterLimit": 9,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.empty": {
+    "component": "LeaderboardScreen",
+    "description": "Message shown when Star Swarm's leaderboard has no scores yet.",
+    "tone": "casual, inviting",
+    "characterLimit": 44,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.error": {
+    "component": "LeaderboardScreen",
+    "description": "Error message shown when the leaderboard fails to load.",
+    "tone": "apologetic, clear",
+    "characterLimit": 41,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "leaderboard.retry": {
+    "component": "LeaderboardScreen",
+    "description": "Retry button shown with the leaderboard load error.",
+    "tone": "action",
+    "characterLimit": 18,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -229,7 +337,7 @@
     "description": "Screen-reader cue after collecting a salvage crate.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": "#2488."
   },
@@ -238,7 +346,7 @@
     "description": "Screen-reader cue when a lost life drops the gun level.",
     "tone": "neutral",
     "characterLimit": 35,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": "#2488."
   },
@@ -247,7 +355,7 @@
     "description": "Screen-reader cue after collecting hull plating.",
     "tone": "neutral",
     "characterLimit": 30,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": "#2488."
   },
@@ -259,5 +367,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "#2488."
+  },
+  "result.reachedWave": {
+    "component": "StarSwarmScreen (result card)",
+    "description": "Result card subtitle stating which wave the run reached.",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": ["{{wave}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.wave": {
+    "component": "StarSwarmScreen (result card)",
+    "description": "Stat label for the wave reached, shown in the result card's stat strip.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }
