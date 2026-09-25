@@ -127,13 +127,17 @@ class GameTypeStatsResponse(BaseModel):
       ``win`` rows in ``completed_at`` order. A ``loss`` ends a run; ``push``,
       ``abandoned``, ``completed`` and ``kept_playing`` rows are skipped (they
       neither extend nor break it). ``null`` when the win fields are ``null``.
-    - ``time_played_ms``: sum over ``sessions`` of ``duration_ms`` (a missing or
-      0 value falls back to ``completed_at − started_at``), each row capped at
-      24 h.
-    - ``best_value``: best non-abandoned value of the game's board metric, in
-      the board's direction (lowest moves for FreeCell). ``best_label_key`` is
+    - ``time_played_ms``: reported play time only. The sum over ``sessions``
+      of ``duration_ms`` where it is > 0, each row capped at 24 h as a sanity
+      bound. Rows with a null or 0 ``duration_ms`` add nothing: there is no
+      ``completed_at − started_at`` fallback, so idle or backgrounded time is
+      never counted. It undercounts until each game reports its active time.
+    - ``best_value``: best value of the game's board metric, in the board's
+      direction (lowest moves for FreeCell), over non-abandoned rows whose
+      ``outcome`` is in the board's ``qualifying_outcomes`` (any outcome when
+      that is ``None``; Daily Word counts wins only). ``best_label_key`` is
       the board's ``label_key`` (``"score"``, ``"moves"``, …) saying what the
-      number is. ``null`` value when no row carries the metric.
+      number is. ``null`` value when no qualifying row carries the metric.
     - ``extras``: game-specific figures from ``stats_shape()``, e.g.
       Blackjack's ``best_chips``, ``current_chips``, ``best_run_chips``,
       ``total_runs``, ``runs_completed``, ``current_table``.

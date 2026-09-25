@@ -10,6 +10,7 @@ Idempotency strategy:
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
 from collections.abc import Iterable
@@ -26,6 +27,7 @@ from sqlalchemy.orm import selectinload
 from db.models import EventType, Game, GameEvent, GameType
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import not_abandoned
+from games.protocol import GameModule
 from games.registry import get_module
 from vocab import GameOutcome
 from vocab import GameType as VocabGameType
@@ -272,14 +274,18 @@ class StatsSummary:
 
 # --- comparable per-game stats (#2620) -------------------------------------
 
-# Longest a single row may add to time_played_ms: a game left open overnight
-# must not count as a day of play.
+# Upper bound on what one row may add to time_played_ms: a sanity bound on the
+# reported duration_ms, not an estimate of play time.
 MAX_TIME_PLAYED_PER_GAME_MS = 24 * 60 * 60 * 1000
 
-# Used for best_value when a game declares no board (Twenty48 and Star Swarm
-# until #2623): the legacy "highest final_score".
+# Used for best_value by games with no registered GameModule (Twenty48 and
+# Star Swarm until #2623): the legacy "highest final_score". Every registered
+# module declares a board (#2617).
 _DEFAULT_BOARD = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
+# Only these three outcomes count. The legacy ``blackjack`` outcome is not a
+# win here: #2619 (migration 0024_drop_blackjack_outcome) rewrites any stored
+# ``blackjack`` row to ``win`` and drops the value from the CHECK constraint.
 _WIN = GameOutcome.WIN.value
 _LOSS = GameOutcome.LOSS.value
 _PUSH = GameOutcome.PUSH.value
@@ -289,10 +295,8 @@ def _dialect_name(session: AsyncSession) -> str:
     return session.bind.dialect.name if session.bind else "postgresql"
 
 
-def _board_for(name: str) -> BoardDefinition:
-    module = get_module(name)
-    board = module.board if module is not None else None
-    return board or _DEFAULT_BOARD
+def _board_of(module: GameModule | None) -> BoardDefinition:
+    return module.board if module is not None else _DEFAULT_BOARD
 
 
 def _metadata_number(key: str, dialect: str) -> ColumnElement:
@@ -314,47 +318,55 @@ def _metadata_number(key: str, dialect: str) -> ColumnElement:
     return case((func.jsonb_typeof(value) == "number", value.as_float()))
 
 
-def _board_metric(dialect: str) -> ColumnElement:
-    """Each row's board metric: ``final_score``, or the metadata key its board names."""
-    whens = [
-        (GameType.name == gt.value, _metadata_number(board.metric, dialect))
-        for gt in VocabGameType
-        if (board := _board_for(gt.value)).metric != SCORE_METRIC
-    ]
-    return case(*whens, else_=Game.final_score) if whens else Game.final_score
+@functools.cache
+def _best_candidate(dialect: str) -> ColumnElement:
+    """Each row's board metric when the row can be its game's best, else NULL.
 
+    A row qualifies when it is not abandoned and, if its board sets
+    ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
+    only). The value is ``final_score`` or the metadata key the board names.
 
-def _row_time_played_ms(dialect: str) -> ColumnElement:
-    """``duration_ms``, else ``completed_at − started_at``, clamped to [0, 24 h].
-
-    A ``duration_ms`` of 0 counts as missing: screens that send 0 are the bug
-    the client-side fallback fixes, not a zero-length game.
+    Boards are static, so the expression is built once per dialect and
+    reused by every request.
     """
-    if dialect == "sqlite":
-        # DateTime is stored as text in SQLite; julianday() parses it.
-        elapsed = (func.julianday(Game.completed_at) - func.julianday(Game.started_at)) * (
-            86_400_000.0
+    whens = []
+    for game_type in VocabGameType:
+        board = _board_of(get_module(game_type.value))
+        if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
+            continue  # the ELSE branch below
+        value = (
+            Game.final_score
+            if board.metric == SCORE_METRIC
+            else _metadata_number(board.metric, dialect)
         )
-    else:
-        elapsed = func.extract("epoch", Game.completed_at - Game.started_at) * 1000
-    ms = case((Game.duration_ms > 0, Game.duration_ms), else_=elapsed)
-    return case(
-        (ms < 0, 0),
-        (ms > MAX_TIME_PLAYED_PER_GAME_MS, MAX_TIME_PLAYED_PER_GAME_MS),
-        else_=ms,
-    )
+        if board.qualifying_outcomes is not None:
+            value = case((Game.outcome.in_(board.qualifying_outcomes), value))
+        whens.append((GameType.name == game_type.value, value))
+    per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
+    return case((not_abandoned(), per_game))
+
+
+# Each row's reported play time: duration_ms when it is > 0, capped at 24 h.
+# Rows with a null, 0 or negative duration_ms add nothing (SUM skips NULL).
+# There is deliberately no completed_at − started_at fallback: wall-clock time
+# counts idle and backgrounded hours, and rows swept to abandoned (#2621) would
+# add up to a day each.
+_REPORTED_TIME_MS = case(
+    (Game.duration_ms > MAX_TIME_PLAYED_PER_GAME_MS, MAX_TIME_PLAYED_PER_GAME_MS),
+    (Game.duration_ms > 0, Game.duration_ms),
+)
 
 
 def _comparable_columns(dialect: str) -> list[ColumnElement]:
     """Conditional aggregates for the comparable fields, added to the stats query."""
-    metric = case((not_abandoned(), _board_metric(dialect)))
+    candidate = _best_candidate(dialect)
     return [
         func.count(case((Game.outcome == _WIN, Game.id))).label("won"),
         func.count(case((Game.outcome == _LOSS, Game.id))).label("lost"),
         func.count(case((Game.outcome == _PUSH, Game.id))).label("tied"),
-        func.sum(_row_time_played_ms(dialect)).label("time_played_ms"),
-        func.max(metric).label("metric_max"),
-        func.min(metric).label("metric_min"),
+        func.sum(_REPORTED_TIME_MS).label("time_played_ms"),
+        func.max(candidate).label("metric_max"),
+        func.min(candidate).label("metric_min"),
     ]
 
 
@@ -408,9 +420,10 @@ async def _win_streaks_by_game(
     return {name: win_streaks(outcomes) for name, outcomes in outcomes_by_game.items()}
 
 
-def _comparable_fields(row: Any, streak: tuple[int, int] | None) -> dict[str, Any]:
+def _comparable_fields(
+    row: Any, board: BoardDefinition, streak: tuple[int, int] | None
+) -> dict[str, Any]:
     """The comparable GameTypeStats fields for one aggregate row."""
-    board = _board_for(row.name)
     has_result = (row.won + row.lost + row.tied) > 0
     current, best = streak or (0, 0)
     best_value = row.metric_max if board.direction == "desc" else row.metric_min
@@ -570,7 +583,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             runs_completed=extras.get("runs_completed"),
             current_table=extras.get("current_table"),
             completed_played=completed_played,
-            **_comparable_fields(row, streaks.get(name)),
+            **_comparable_fields(row, _board_of(game_module), streaks.get(name)),
         )
 
         if played > favorite_count:

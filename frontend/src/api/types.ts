@@ -53,9 +53,17 @@ export interface GameTypeStats {
    */
   current_win_streak?: number | null;
   best_win_streak?: number | null;
-  /** Sum of each game's duration (24 h cap per game). */
+  /**
+   * Reported play time only: the sum of each game's `duration_ms` where it is
+   * > 0 (24 h cap per game). Games with no reported duration add nothing, so
+   * idle or backgrounded time is never counted.
+   */
   time_played_ms?: number;
-  /** Best value of the game's board metric, in the board's direction. */
+  /**
+   * Best value of the game's board metric, in the board's direction, over
+   * games whose outcome qualifies for the board (Daily Word: wins only). Null
+   * when no qualifying game has the metric.
+   */
   best_value?: number | null;
   /** i18n key for what `best_value` counts: "score", "moves", "level", … */
   best_label_key?: string | null;

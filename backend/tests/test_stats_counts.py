@@ -192,6 +192,10 @@ async def test_win_fields_are_per_game() -> None:
         (["win", "win", "loss"], 0, 2),
         (["loss", "push"], 0, 0),
         ([], 0, 0),
+        # Legacy `blackjack` outcome: not a win, never moves a streak. #2619
+        # migrates stored rows to `win` and drops it from the CHECK constraint,
+        # so this is checked here rather than by inserting such a row.
+        (["win", "blackjack", "loss", "blackjack", "win"], 1, 1),
     ],
 )
 def test_win_streak_rules(outcomes: list[str], current: int, best: int) -> None:
@@ -294,6 +298,51 @@ async def test_metadata_metric_best_value_uses_the_board_metric_and_direction() 
     assert s.best is None
 
 
+async def test_daily_word_best_ignores_losses() -> None:
+    # qualifying_outcomes=("win",): the best is the fewest guesses in a won
+    # game. A loss is never a best, even with a lower guesses_used.
+    sid = _sid()
+    await _add(sid, "daily_word", at=0, outcome="win", metadata={"guesses_used": 5})
+    await _add(sid, "daily_word", at=1, outcome="loss", metadata={"guesses_used": 2})
+    await _add(sid, "daily_word", at=2, outcome=None, metadata={"guesses_used": 1})
+
+    assert (await _game(sid, "daily_word")).best_value == 5
+
+
+async def test_daily_word_with_only_losses_has_no_best() -> None:
+    sid = _sid()
+    await _add(sid, "daily_word", at=0, outcome="loss", metadata={"guesses_used": 6})
+    await _add(sid, "daily_word", at=1, outcome="loss", metadata={"guesses_used": 6})
+
+    s = await _game(sid, "daily_word")
+    assert s.best_value is None
+    assert s.best_label_key == "guesses"
+    assert (s.won, s.lost) == (0, 2)
+
+
+async def test_qualifying_outcomes_apply_to_a_score_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The rule is generic: a final_score board with qualifying_outcomes set
+    # takes its best from qualifying rows only.
+    from games import service
+    from hearts.module import module as hearts_module
+
+    board = hearts_module.board.model_copy(update={"qualifying_outcomes": ("win",)})
+    monkeypatch.setattr(hearts_module, "board", board)
+    service._best_candidate.cache_clear()
+    try:
+        sid = _sid()
+        await _add(sid, "hearts", at=0, outcome="win", final_score=40)
+        await _add(sid, "hearts", at=1, outcome="loss", final_score=90)
+        await _add(sid, "hearts", at=2, outcome="push", final_score=80)
+
+        assert (await _game(sid, "hearts")).best_value == 40
+    finally:
+        monkeypatch.undo()
+        service._best_candidate.cache_clear()
+
+
 async def test_a_malformed_metadata_metric_is_ignored() -> None:
     # Sort has no result_model, so any result block is stored as sent.
     sid = _sid()
@@ -341,27 +390,48 @@ async def test_time_played_sums_duration_ms() -> None:
 
 
 @pytest.mark.parametrize("duration_ms", [None, 0])
-async def test_time_played_falls_back_to_completed_minus_started(duration_ms: int | None) -> None:
+async def test_time_played_ignores_rows_without_reported_time(duration_ms: int | None) -> None:
+    # Only reported play time counts: no wall-clock completed_at − started_at
+    # fallback, so a game left open or backgrounded adds nothing.
     sid = _sid()
-    await _add(sid, "cascade", at=0, duration_ms=duration_ms, elapsed=timedelta(minutes=7))
+    await _add(sid, "cascade", at=0, duration_ms=duration_ms, elapsed=timedelta(hours=7))
     await _add(sid, "cascade", at=1, duration_ms=1_000)
 
-    assert (await _game(sid, "cascade")).time_played_ms == 7 * _MINUTE_MS + 1_000
+    assert (await _game(sid, "cascade")).time_played_ms == 1_000
+
+
+async def test_time_played_is_zero_when_no_row_reports_time() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, duration_ms=None, elapsed=timedelta(days=3))
+    await _add(sid, "cascade", at=1, duration_ms=0)
+
+    assert (await _game(sid, "cascade")).time_played_ms == 0
+
+
+async def test_swept_abandoned_rows_add_no_time() -> None:
+    # #2621 sweeps stale open games to abandoned with no duration_ms; their
+    # completed_at − started_at can be days, and none of it is play time.
+    sid = _sid()
+    await _add(
+        sid, "hearts", at=0, outcome="abandoned", duration_ms=None, elapsed=timedelta(days=2)
+    )
+    await _add(sid, "hearts", at=1, outcome="win", duration_ms=4_000)
+
+    assert (await _game(sid, "hearts")).time_played_ms == 4_000
 
 
 async def test_time_played_is_capped_at_24_hours_per_row() -> None:
     sid = _sid()
-    await _add(sid, "cascade", at=0, duration_ms=None, elapsed=timedelta(days=3))
-    await _add(sid, "cascade", at=1, duration_ms=10 * MAX_TIME_PLAYED_PER_GAME_MS)
+    await _add(sid, "cascade", at=0, duration_ms=10 * MAX_TIME_PLAYED_PER_GAME_MS)
+    await _add(sid, "cascade", at=1, duration_ms=MAX_TIME_PLAYED_PER_GAME_MS + 1)
     await _add(sid, "cascade", at=2, duration_ms=5_000)
 
     assert (await _game(sid, "cascade")).time_played_ms == 2 * MAX_TIME_PLAYED_PER_GAME_MS + 5_000
 
 
-async def test_time_played_never_goes_negative() -> None:
-    # A skewed client clock can put started_at after completed_at.
+async def test_negative_duration_adds_nothing() -> None:
     sid = _sid()
-    await _add(sid, "cascade", at=0, duration_ms=None, elapsed=timedelta(minutes=-10))
+    await _add(sid, "cascade", at=0, duration_ms=-5_000)
     await _add(sid, "cascade", at=1, duration_ms=2_000)
 
     assert (await _game(sid, "cascade")).time_played_ms == 2_000
