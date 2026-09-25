@@ -174,6 +174,7 @@ async function renderScreen() {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockForegroundMs = 0;
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
@@ -735,15 +736,25 @@ describe("SortScreen — result card (#2512)", () => {
     expect(payload).toEqual(expect.objectContaining({ outcome: "completed", won: true }));
   });
 
-  it("sends the shared play clock's time as the duration (#2684)", async () => {
+  it("sends the time played on the level as the duration (#2684)", async () => {
     const r = await renderScreen();
-    mockForegroundMs = 45_000;
-    try {
-      await solveLevel(r, 1);
-      expect(completion().summary.durationMs).toBe(45_000);
-    } finally {
-      mockForegroundMs = 0;
-    }
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    // Time passes while the player is on the level, not on the level grid.
+    mockForegroundMs += 45_000;
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    await r.findByTestId("sort-result");
+    expect(completion().summary.durationMs).toBe(45_000);
   });
 
   it("sends total_moves as the sum of the best moves up to the frontier", async () => {
