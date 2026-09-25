@@ -66,6 +66,12 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
+// useGameSync's app-wide foreground clock (#2684), held still: Twenty48 sends
+// its own timer, and where that reads 0 (a fresh board) the hook's window would
+// otherwise fill in real elapsed test time.
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => 0,
+}));
 // The result card's rank lookup (#2631, #2677): GET /games/{id}/rank.
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
 jest.mock("../../api/stats", () => ({
@@ -663,6 +669,18 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     );
     // …while summary.finalScore would become games.final_score and rank the game.
     expect(summary).not.toHaveProperty("finalScore");
+  });
+
+  it("unmount abandon's durationMs is the game's own timer, not the hook's clock (#2684)", async () => {
+    // A saved mid-game with 42 s banked and its timer paused.
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...NOOP_LEFT_STATE, accumulatedMs: 42_000 });
+    const { unmount } = await mountAndSettle();
+    mockCompleteGame.mockClear();
+    await unmount();
+    const summary = mockCompleteGame.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(summary["outcome"]).toBe("abandoned");
+    expect(summary["durationMs"]).toBe(42_000);
+    expect((summary["result"] as Record<string, unknown>)["duration_ms"]).toBe(42_000);
   });
 
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {

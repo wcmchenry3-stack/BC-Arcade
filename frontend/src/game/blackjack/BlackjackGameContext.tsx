@@ -208,7 +208,6 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         return;
       }
       const final = finalState ?? engineRef.current;
-      const durationMs = Date.now() - sessionStartedAtRef.current;
       const result = sessionResult(final?.chips);
       // #2628 / §8.8: a run that reached its goal is a win however it ends;
       // running out of chips before the goal is a loss; any other end before
@@ -218,11 +217,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // Every RunOutcome is a GameOutcome value as it stands.
       const outcome: GameOutcome = runOutcome;
       setRecordedResult(runOutcome);
+      // No durationMs of its own (#2684): wall-clock time since the session
+      // began would count backgrounded time, so useGameSync's active-play
+      // window supplies it.
       syncComplete(
-        { outcome, durationMs, result },
+        { outcome, result },
         {
           total_hands: totalHandsRef.current,
-          duration_ms: durationMs,
           outcome,
           ...result,
         }

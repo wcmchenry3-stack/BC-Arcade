@@ -126,7 +126,11 @@ export default function Twenty48Screen({ navigation }: Props) {
   useEffect(() => {
     syncSetProgressSnapshot(() => {
       const s = stateRef.current;
-      return s ? { result: progressResult(s) } : {};
+      if (!s) return {};
+      const result = progressResult(s);
+      // Twenty48's own timer, so the abandon's duration is the game's, not the
+      // hook's foreground window (#2684).
+      return { result, durationMs: result.duration_ms };
     });
   }, [syncSetProgressSnapshot, progressResult]);
 

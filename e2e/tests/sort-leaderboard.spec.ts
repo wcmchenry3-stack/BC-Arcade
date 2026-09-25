@@ -1,35 +1,35 @@
 /**
- * sort-leaderboard.spec.ts — GH #1255
+ * sort-leaderboard.spec.ts — GH #1255, #2625
  *
- * Leaderboard tab: renders top-10 scores from GET /sort/scores, shows player
- * names, levels reached, and correct rank ordering (#1 through #10).
+ * Leaderboard tab: renders the top 10 from the generic board
+ * (GET /games/leaderboard/sort), shows player names, levels reached, and the
+ * server's ranks (#1 through #10).
  */
 
 import { test, expect, type Page } from "@playwright/test";
 import { installEntitlementsMock } from "./helpers/api-mock";
+import { mockSortBoard } from "./helpers/sort";
 
 const TOP_10 = Array.from({ length: 10 }, (_, i) => ({
-  player_name: `Player${i + 1}`,
-  level_reached: 10 - i,
   rank: i + 1,
+  player_name: `Player${i + 1}`,
+  value: 10 - i,
+  completed_at: "2026-09-01T00:00:00Z",
 }));
 
-function installSortMock(page: Page, scores: unknown[]) {
-  return page.route("**/sort/**", async (route) => {
+async function installSortMock(page: Page, entries: unknown[]) {
+  await mockSortBoard(page, entries);
+  await page.route("**/sort/**", async (route) => {
     const url = route.request().url();
     if (url.includes("/sort/levels")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          levels: [{ id: 1, bottles: [["red", "red", "blue", "blue"], [], [], []] }],
+          levels: [
+            { id: 1, bottles: [["red", "red", "blue", "blue"], [], [], []] },
+          ],
         }),
-      });
-    } else if (url.includes("/sort/scores")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores }),
       });
     } else {
       await route.fulfill({
@@ -54,7 +54,9 @@ test.describe("Sort Puzzle — leaderboard", () => {
 
   test("renders top-10 player names", async ({ page }) => {
     // exact: "Player1" is otherwise also a substring of "Player10".
-    await expect(page.getByText("Player1", { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Player1", { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
     await expect(page.getByText("Player10")).toBeVisible({ timeout: 5_000 });
   });
 
@@ -68,11 +70,15 @@ test.describe("Sort Puzzle — leaderboard", () => {
 
   test("level reached is displayed for each entry", async ({ page }) => {
     // Player1 reached level 10
-    await expect(page.getByText("Level 10").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Level 10").first()).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });
 
-test("Sort Puzzle — empty leaderboard shows empty state message", async ({ page }) => {
+test("Sort Puzzle — empty leaderboard shows empty state message", async ({
+  page,
+}) => {
   await installEntitlementsMock(page);
   await installSortMock(page, []);
   await page.goto("/");
@@ -80,5 +86,7 @@ test("Sort Puzzle — empty leaderboard shows empty state message", async ({ pag
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
   await page.getByRole("tab", { name: /Leaderboard/i }).click();
-  await expect(page.getByText("No scores yet.")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("No scores yet.")).toBeVisible({
+    timeout: 5_000,
+  });
 });
