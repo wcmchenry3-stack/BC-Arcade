@@ -13,6 +13,7 @@ are unchanged and keep writing their own rows.
 from __future__ import annotations
 
 from freecell.models import FreeCellMetadata, FreeCellResult
+from games.board import SCORE_METRIC, BoardDefinition
 from vocab import GameType
 
 
@@ -26,6 +27,12 @@ class FreeCellModule:
     game_type = GameType.FREECELL
     metadata_model = FreeCellMetadata
     result_model = FreeCellResult
+    # Fewest moves wins. qualifying_outcomes stays None: every non-abandoned
+    # FreeCell completion is a won game today (a game given up is abandoned).
+    # Session rows (POST /games) don't set ``final_score`` yet, so today only
+    # the legacy POST /freecell/score rows carry the metric; the Phase 2 story
+    # (#2632) makes the client send it. The declaration stays as it is.
+    board = BoardDefinition(metric=SCORE_METRIC, direction="asc", label_key="moves")
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}
