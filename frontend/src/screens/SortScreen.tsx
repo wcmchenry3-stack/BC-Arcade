@@ -367,9 +367,11 @@ export default function SortScreen() {
   async function handleHint() {
     if (!gameState || gameState.isComplete || isPouring || isHinting) return;
     setIsHinting(true);
+    const gen = levelGenRef.current;
     try {
       const hint = await getNextHintAsync(gameState);
-      if (hint) {
+      // Drop a hint computed for a board the player has since restarted or left.
+      if (hint && gen === levelGenRef.current) {
         setGameState((cur) =>
           cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
         );
@@ -411,6 +413,7 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
@@ -455,10 +458,13 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    // A pour whose animation is still finishing must not land on the fresh board.
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
     abandonSession();
+    levelGenRef.current += 1;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
   }
@@ -512,16 +518,17 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return (
-      <GameShell title={t("game.title")} loading>
-        {null}
-      </GameShell>
-    );
+    return <GameShell key="loading" title={t("game.title")} loading />;
   }
 
   if (view === "select") {
     return (
-      <GameShell title={t("game.title")} requireBack onBack={() => navigation.goBack()}>
+      <GameShell
+        key="select"
+        title={t("game.title")}
+        requireBack
+        onBack={() => navigation.goBack()}
+      >
         {/* Error banner with retry */}
         {loadError && (
           <View style={styles.errorRow}>
@@ -589,6 +596,7 @@ export default function SortScreen() {
   // view === "play"
   return (
     <GameShell
+      key="play"
       title={t("game.title")}
       requireBack
       onBack={handleBackToSelect}
@@ -598,15 +606,16 @@ export default function SortScreen() {
       rightSlot={
         <View style={styles.headerBtnRow}>
           <PillButton
-            label={t("action.undo")}
-            onPress={handleUndo}
-            disabled={history.length === 0}
-          />
-          <PillButton
             label={t("action.hint")}
             onPress={handleHint}
             busy={isHinting}
+            disabled={isPouring || !!gameState?.isComplete}
             color={colors.bonus}
+          />
+          <PillButton
+            label={t("action.undo")}
+            onPress={handleUndo}
+            disabled={history.length === 0}
           />
         </View>
       }
@@ -748,8 +757,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     fontSize: 14,
   },
-
-  // Play view — HUD
 
   boardContainer: {
     flex: 1,

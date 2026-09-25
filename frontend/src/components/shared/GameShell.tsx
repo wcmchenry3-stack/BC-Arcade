@@ -18,13 +18,20 @@ export interface GameShellProps extends Pick<
   | "onLevelSelect"
   | "onEditPlayerNames"
 > {
-  /** When true renders a full-screen loading spinner instead of children. */
+  /**
+   * When true renders a loading spinner instead of children. The header keeps
+   * its title and back button so a slow load never strands the player; the ⋯
+   * menu is hidden until the game is ready.
+   */
   loading?: boolean;
   /** When non-empty renders an error banner above the game content. */
   error?: string | null;
-  /** Additional styles merged onto the outer container (e.g. paddingBottom). */
+  /**
+   * Additional styles merged onto the outer container. A `paddingBottom` here
+   * is a minimum: the container always clears the tab bar.
+   */
   style?: StyleProp<ViewStyle>;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 /**
@@ -51,14 +58,8 @@ export function GameShell({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
-
-  if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <EmptyState kind="loading" />
-      </View>
-    );
-  }
+  const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
+  const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
 
   return (
     <View
@@ -69,20 +70,29 @@ export function GameShell({
           paddingTop: APP_HEADER_HEIGHT + insets.top,
         },
         style,
-        { paddingBottom: tabBarHeight },
+        { paddingBottom: Math.max(tabBarHeight, callerPaddingBottom) },
       ]}
     >
-      <AppHeader
-        title={title}
-        onBack={onBack}
-        requireBack={requireBack}
-        backAccessibilityLabel={backAccessibilityLabel}
-        rightSlot={rightSlot}
-        onOpenScoreboard={onOpenScoreboard}
-        onNewGame={onNewGame}
-        onLevelSelect={onLevelSelect}
-        onEditPlayerNames={onEditPlayerNames}
-      />
+      {loading ? (
+        <AppHeader
+          title={title}
+          onBack={onBack}
+          requireBack={requireBack}
+          backAccessibilityLabel={backAccessibilityLabel}
+        />
+      ) : (
+        <AppHeader
+          title={title}
+          onBack={onBack}
+          requireBack={requireBack}
+          backAccessibilityLabel={backAccessibilityLabel}
+          rightSlot={rightSlot}
+          onOpenScoreboard={onOpenScoreboard}
+          onNewGame={onNewGame}
+          onLevelSelect={onLevelSelect}
+          onEditPlayerNames={onEditPlayerNames}
+        />
+      )}
       {!!error && (
         <Text
           style={[styles.errorBanner, { color: colors.error }]}
@@ -92,17 +102,12 @@ export function GameShell({
           {error}
         </Text>
       )}
-      {children}
+      {loading ? <EmptyState kind="loading" /> : children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   container: {
     flex: 1,
   },

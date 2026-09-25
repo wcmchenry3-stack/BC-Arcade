@@ -20,7 +20,7 @@ export interface PillButtonProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  /** Shows a spinner in place of the label and disables the pill. */
+  /** Shows a spinner over the label (same width) and disables the pill. */
   busy?: boolean;
   /** Border and text color. Defaults to the theme accent. */
   color?: string;
@@ -64,11 +64,9 @@ export function PillButton({
       accessibilityState={{ disabled: inactive, busy }}
       testID={testID}
     >
-      {busy ? (
-        <ActivityIndicator size="small" color={tint} />
-      ) : (
-        <Text style={[styles.label, { color: tint }]}>{label}</Text>
-      )}
+      {/* The label stays laid out while busy so the pill keeps its width. */}
+      <Text style={[styles.label, { color: tint }, busy && styles.hidden]}>{label}</Text>
+      {busy && <ActivityIndicator size="small" color={tint} style={StyleSheet.absoluteFill} />}
     </Pressable>
   );
 }
@@ -87,5 +85,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
     textTransform: "uppercase",
+  },
+  hidden: {
+    opacity: 0,
   },
 });

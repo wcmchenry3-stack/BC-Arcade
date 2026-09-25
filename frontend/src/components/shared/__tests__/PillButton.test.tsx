@@ -41,7 +41,8 @@ describe("PillButton", () => {
     await fireEvent.press(btn);
     expect(onPress).not.toHaveBeenCalled();
     expect(btn.props.accessibilityState).toEqual({ disabled: true, busy: true });
-    expect(screen.queryByText("Undo")).toBeNull();
+    // The label stays laid out (hidden) so the pill keeps its width.
+    expect(StyleSheet.flatten(screen.getByText("Undo").props.style).opacity).toBe(0);
   });
 
   it("tints border and label with the given color", async () => {
