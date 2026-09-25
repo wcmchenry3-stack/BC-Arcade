@@ -1,6 +1,6 @@
 # Leaderboards & Scoring — Streamlining Plan
 
-**Status:** owner decisions recorded 2026-09-25 (§8, twelve decisions); filed as issues under epic #2519. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
+**Status:** owner decisions recorded 2026-09-25 (§8, sixteen decisions); filed as issues under epic #2519. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
 **Scope:** how every game *reports* its result, how results are *stored and ranked*, and how results are *shown* (result card, per-game scoreboard, leaderboards, Profile stats). Game rules and scoring formulas stay game-specific and are out of scope.
 **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) §4/§9, [`GAME-CONTRACT.md`](GAME-CONTRACT.md), [`PRODUCT.md`](PRODUCT.md), [`RELEASE-PLAN-2026-10.md`](RELEASE-PLAN-2026-10.md).
 
@@ -141,7 +141,7 @@ Initial definitions, as decided by the owner (§8):
 |---|---|---|---|---|---|---|---|
 | Yacht | `final_score` | desc | — | — (solo and vs mixed) | `mode`, `difficulty` | 400 (joker rules permitting) | yes |
 | Twenty48 | `final_score` | desc | — | — | — | none | **yes** |
-| Solitaire | `final_score` | desc | — | — (Draw-1/3 shared, per #591) | `draw_mode` | 52-card bound + 500 | yes |
+| Solitaire | `final_score` | desc | — | — (Draw-1/3 shared, per #591) | `draw_mode` | 1245 (see §8 decision 13) | yes |
 | FreeCell | `final_score` (moves) | **asc** | — | — | — | none | yes |
 | Mahjong | `final_score` | desc | — | — | `layout` (all 25 layouts are 144 tiles, same max) | 1220 (72 pairs × 10 + 500) | yes |
 | Hearts | `final_score` (`100 − penalty`) | desc | — | — | `ai_difficulty` | 100 | yes |
@@ -303,6 +303,10 @@ Phase 4 — docs, tests, cleanup
 
 | 11 | Where the win is recorded | **Keep PR #2592's contract: `outcome` = `win` / `loss` / `push` for games with a winner; no separate `won` field** | Shipped and tested on `dev` on Sep 24; the read side already counts these rows; reverting would need a data migration for no user-visible gain |
 | 12 | How boards count players | **One entry per player: each session's best row only** | Stops Sort (one session per level) and frequent replayers from filling a top 10 |
+| 13 | Solitaire `max_value` | **1245, with a test that recomputes it from the engine's constants** | 24 stock cards × 15 + 28 dealt cards × 10 + 21 reveals × 5 + 500 win bonus; moving a card off a foundation costs more than returning it earns, so replays can't farm points |
+| 14 | Games with no natural maximum (Star Swarm, Cascade, Twenty48) | **No cap for now** | Rate limits plus one entry per player cap a fake score at one row per device; revisit when scores earn rewards |
+| 15 | Stale-session sweep mechanism | **On read, per player**, at the start of `/stats/me` and `/games/me` | No scheduler exists; a cron job can be added later if global analytics need it |
+| 16 | Blackjack's on-device run-history screen | **Keep it, linked as "Run history" from the shared stats screen** | Per-run details aren't on the server; counts and win rate come from `/stats/me` |
 
 **`dev` moved while this plan was being decided (Sep 24–25).** PRs #2569 (Mahjong), #2576 (Sort), #2578 (Blackjack), #2580 (Star Swarm) and #2592 (win/loss/push) merged, closing #2507, #2510, #2512, #2516, #2517 and epic #2500. Sort and Star Swarm now record session rows (without a score) and auto-submit under the display name through the shared queue; Star Swarm's hard-coded `"player"` and Mahjong's typed-name modal are gone. The §2–§3 tables describe `dev` at `ca087331` and are kept as the baseline; the filed stories are written against current `dev`.
 
