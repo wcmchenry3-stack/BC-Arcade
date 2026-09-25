@@ -793,18 +793,17 @@ _Frame readout_ in the dev panel, then close the panel. A green line appears alo
 edge of the game:
 
 ```
-picture · 16.7 ms avg · 18.2 p95 · 60 f · 0 commits/s
+16.7 ms avg · 18.2 p95 · 60 f · 0 commits/s
 ```
 
-- **`picture` / `legacy`** is the renderer drawing, set by the _Legacy renderer_ switch.
 - **`ms avg` and `p95`** are the mean and 95th-percentile interval between the game loop's
   frames over the last second. At 60 Hz a healthy loop reads about 16.7 for both. A p95 well
   above the average means occasional long frames (jank) even when the average looks fine. At
   120 Hz the target is about 8.3.
 - **`f`** is the number of frames in that second: the frame rate the loop actually got.
-- **`commits/s`** is how many times React re-rendered the game canvas in that second. With the
-  Picture renderer it should be 0 while paused and only a few per second in play (score, wave
-  and banner changes). With the legacy renderer it tracks the frame rate.
+- **`commits/s`** is how many times React re-rendered the game canvas in that second. It should
+  be 0 while paused and only a few per second in play (score, wave and banner changes). The
+  removed legacy renderer re-rendered once per frame, so this read about the frame rate.
 
 Read it with the panel closed. The panel's own 4 Hz run-stats refresh re-renders the screen and
 the canvas with it, which adds 4 commits/s. The readout polls on its own timer and re-renders only
