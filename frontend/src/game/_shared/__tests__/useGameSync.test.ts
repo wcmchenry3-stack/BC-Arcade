@@ -238,6 +238,24 @@ describe("useGameSync", () => {
     );
   });
 
+  it("a snapshot's play time goes out as the abandon's durationMs (#2629)", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({
+        result: { hands_played: 3 },
+        durationMs: 95_000,
+      }));
+    });
+    await unmount();
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "abandoned", result: { hands_played: 3 }, durationMs: 95_000 },
+      { hands_played: 3, outcome: "abandoned" }
+    );
+  });
+
   it("snapshot getter is read at abandon time, not registration time", async () => {
     let moves = 0;
     const { result, unmount } = await renderHook(() => useGameSync("solitaire"));

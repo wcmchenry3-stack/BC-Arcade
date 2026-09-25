@@ -115,6 +115,13 @@ export interface HeartsState {
   readonly isComplete: boolean;
   readonly winnerIndex: number | null;
   /**
+   * Active play time so far, in ms (#2629). Written by the screen when it
+   * saves (`withPlayTime` in ./clock) and read back on restore; the engine
+   * never sets it. Optional: saves from older builds have none (they count
+   * from 0 on restore), and a freshly dealt game starts at 0.
+   */
+  readonly accumulatedMs?: number;
+  /**
    * Per-player suits known to be void, inferred from off-suit discards (#2029).
    * knownVoids[playerIndex] is an array of suits that player is known to be void in.
    * Populated during trick resolution; reset to empty arrays each new hand.

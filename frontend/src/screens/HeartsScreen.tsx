@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import type { AppStateStatus } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -39,6 +40,14 @@ import {
   validateName,
 } from "../game/hearts/playerNames";
 import { heartsLeaderboardScore, heartsResult } from "../game/hearts/result";
+import {
+  clockMs,
+  pauseClock,
+  pausedClock,
+  runClock,
+  withPlayTime,
+  type PlayClock,
+} from "../game/hearts/clock";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -135,6 +144,15 @@ export default function HeartsScreen() {
   const trickAnimResolverRef = useRef<(() => void) | null>(null);
   const humanJustPlayedQSRef = useRef(false);
   const gameOverFiredRef = useRef(false);
+  // The play clock (#2629): active play time, sent as the game's durationMs.
+  // It runs while an unfinished game is on screen with the app in front.
+  const clockRef = useRef<PlayClock>(pausedClock());
+  const focusedRef = useRef(true);
+  // A screen being opened is in front unless the app says otherwise (the
+  // initial state can be unknown); AppState changes keep it current.
+  const appActiveRef = useRef(
+    AppState.currentState !== "background" && AppState.currentState !== "inactive"
+  );
   const reportIntegrity = useMemo(() => createIntegrityReporter(), []);
 
   const {
@@ -146,13 +164,23 @@ export default function HeartsScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("hearts");
 
+  /** Runs the clock while `s` is unfinished, focused and in front; else pauses it. */
+  const updateClock = useCallback((s: HeartsState | null) => {
+    const running =
+      !!s && !s.isComplete && s.phase !== "game_over" && focusedRef.current && appActiveRef.current;
+    clockRef.current = running ? runClock(clockRef.current) : pauseClock(clockRef.current);
+  }, []);
+
+  /** Saves the game with its play time so far. */
+  const persist = useCallback((s: HeartsState) => saveGame(withPlayTime(s, clockRef.current)), []);
+
   // The hook abandons a started session itself when the screen unmounts; the
-  // abandon carries how many hands were played (#2629). No score: an abandon
-  // never ranks.
+  // abandon carries how many hands were played and the play time (#2629). No
+  // score: an abandon never ranks.
   useEffect(() => {
     syncSetProgressSnapshot(() => {
       const s = gameStateRef.current;
-      return s ? { result: progressResult(s) } : {};
+      return s ? { result: progressResult(s), durationMs: clockMs(clockRef.current) } : {};
     });
   }, [syncSetProgressSnapshot]);
 
@@ -165,7 +193,10 @@ export default function HeartsScreen() {
     const s = gameStateRef.current;
     if (!s || s.isComplete || !syncGetGameId()) return;
     const result = progressResult(s);
-    syncComplete({ outcome: "abandoned", result }, { ...result, outcome: "abandoned" });
+    syncComplete(
+      { outcome: "abandoned", durationMs: clockMs(clockRef.current), result },
+      { ...result, outcome: "abandoned" }
+    );
   }
 
   // Keep ref in sync for use in event listeners.
@@ -196,6 +227,9 @@ export default function HeartsScreen() {
             if (!unmountedRef.current && gameId) void submitRank({ gameId });
           });
         }
+        // Play time so far; the clock runs again from now (time away is not play).
+        clockRef.current = pausedClock(saved.accumulatedMs ?? 0);
+        updateClock(saved);
         setGameState(saved);
         setSelectedDifficulty(saved.aiDifficulty);
         // A restored game continues the session a killed app left open (#2654).
@@ -217,7 +251,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, submitRank]);
+  }, [syncResume, setSelectedDifficulty, submitRank, updateClock]);
 
   // ─── Sync snapshot to shared rounds context (read by ScoreboardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -264,15 +298,33 @@ export default function HeartsScreen() {
   // Tab switches unmount the Lobby HomeStack; without this, mid-trick or
   // pass-phase state is lost (saveGame elsewhere only fires on trick complete
   // and hand transitions). Persisting on blur keeps full game continuity.
+  // The play clock stops while the screen is out of focus.
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
+      updateClock(gameStateRef.current);
       return () => {
+        focusedRef.current = false;
         const gs = gameStateRef.current;
+        updateClock(gs);
         if (!gs || gs.isComplete) return;
-        void saveGame(gs);
+        void persist(gs);
       };
-    }, [])
+    }, [updateClock, persist])
   );
+
+  // ─── Play clock: background time is not play time (#2629) ──────────────────
+  // Paused (and the game saved with its play time) when the app leaves the
+  // foreground, so a game killed in the background keeps what it had.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      appActiveRef.current = next === "active";
+      const gs = gameStateRef.current;
+      updateClock(gs);
+      if (next !== "active" && gs && !gs.isComplete) void persist(gs);
+    });
+    return () => sub.remove();
+  }, [updateClock, persist]);
 
   const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
   const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
@@ -348,7 +400,7 @@ export default function HeartsScreen() {
 
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
-            void saveGame(s);
+            void persist(s);
             if (__DEV__) {
               trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
             }
@@ -369,7 +421,7 @@ export default function HeartsScreen() {
         loopActiveRef.current = false;
       }
     },
-    [playCardPlay]
+    [playCardPlay, persist]
   );
 
   // Trigger AI loop when it's their turn; wait for lastTrick display first.
@@ -385,6 +437,8 @@ export default function HeartsScreen() {
   // Complete sync when game is over, then show where the game ranks.
   useEffect(() => {
     if (gameState?.phase !== "game_over") return;
+    // The game is over: its clock stops at its play time.
+    clockRef.current = pauseClock(clockRef.current);
     // complete() closes the session, so read its id first.
     const gameId = syncGetGameId();
     if (!gameId) return;
@@ -392,8 +446,9 @@ export default function HeartsScreen() {
     // #2517: record who won — the same outcome the result card shows.
     const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
     const result = { final_score: finalScore, vs_result: outcome };
-    // No duration: Hearts keeps no play clock, and 0 is not one (#2629).
-    syncComplete({ outcome: recordedOutcome(outcome), finalScore, result }, result);
+    // The play clock's active time (#2629); a 0 goes out as unknown (resolveDurationMs).
+    const durationMs = clockMs(clockRef.current);
+    syncComplete({ outcome: recordedOutcome(outcome), finalScore, durationMs, result }, result);
     // Kept beside the saved game-over state, so a reopened card asks again.
     void saveFinishedGameId(gameId);
     void submitRank({ gameId });
@@ -436,7 +491,7 @@ export default function HeartsScreen() {
           buildDebugTrick(completedTrick, newState.currentLeaderIndex)
         );
       }
-      void saveGame(newState);
+      void persist(newState);
       if (newState.phase === "playing") {
         setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
         setGameState(newState);
@@ -510,7 +565,7 @@ export default function HeartsScreen() {
       trickLogBufferRef.current = [];
     }
     setGameState(next);
-    void saveGame(next);
+    void persist(next);
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
@@ -539,6 +594,9 @@ export default function HeartsScreen() {
         : null;
       setHandNotes([]);
     }
+    // A new game's clock starts at 0.
+    clockRef.current = pausedClock();
+    updateClock(fresh);
     setGameState(fresh);
   }
 
@@ -559,6 +617,7 @@ export default function HeartsScreen() {
       dealSnapshotRef.current = null;
       setHandNotes([]);
     }
+    clockRef.current = pausedClock();
     setGameState(null);
   }
 

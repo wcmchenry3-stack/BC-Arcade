@@ -5,7 +5,13 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, setRng } from "../../game/hearts/engine";
 import * as engine from "../../game/hearts/engine";
-import { loadFinishedGameId, loadGame, saveFinishedGameId } from "../../game/hearts/storage";
+import { AppState } from "react-native";
+import {
+  loadFinishedGameId,
+  loadGame,
+  saveFinishedGameId,
+  saveGame,
+} from "../../game/hearts/storage";
 import type { Card, HeartsState, Suit } from "../../game/hearts/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
@@ -614,17 +620,88 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
   });
 
   // #2629: Hearts keeps no play clock, so it sends no duration — never 0.
-  it("records 100 minus the human's points with no zero duration", async () => {
+  // #2629: the play clock's active time, never a hard-coded 0.
+  it("records 100 minus the human's points with the game's play time", async () => {
     await finishGame([45, 100, 63, 52]);
     await waitFor(() => expect(mockSyncComplete).toHaveBeenCalledTimes(1));
     const [summary, payload] = mockSyncComplete.mock.calls[0]!;
     expect(summary).toEqual({
       outcome: "win",
       finalScore: 54,
+      durationMs: expect.any(Number),
       result: { final_score: 54, vs_result: "win" },
     });
-    expect(summary).not.toHaveProperty("durationMs");
+    // The AIs' three 400 ms turns ran on the clock (plus the test's own waits).
+    const { durationMs } = summary as { durationMs: number };
+    expect(durationMs).toBeGreaterThanOrEqual(1200);
+    expect(durationMs).toBeLessThan(10_000);
     expect(payload).toEqual({ final_score: 54, vs_result: "win" });
+  });
+
+  it("a restored game's play time carries on from its save", async () => {
+    resumeKilledSession();
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...lastTrickState([45, 100, 63, 52]),
+      accumulatedMs: 600_000,
+    });
+    await renderScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    await waitFor(() => expect(mockSyncComplete).toHaveBeenCalledTimes(1));
+    const { durationMs } = mockSyncComplete.mock.calls[0]![0] as { durationMs: number };
+    expect(durationMs).toBeGreaterThanOrEqual(601_200);
+    expect(durationMs).toBeLessThan(610_000);
+    // The final trick's save carries the play time, for a reopened game.
+    const saved = (saveGame as jest.Mock).mock.calls.at(-1)![0] as HeartsState;
+    expect(saved.accumulatedMs).toBeGreaterThanOrEqual(601_200);
+  });
+
+  /** Captures the screen's AppState listeners; call the returned restore after. */
+  function captureAppState() {
+    const listeners: ((state: string) => void)[] = [];
+    const real = AppState.addEventListener;
+    AppState.addEventListener = ((_type: string, handler: (state: string) => void) => {
+      listeners.push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof AppState.addEventListener;
+    return {
+      emit: (state: string) => listeners.forEach((l) => l(state)),
+      restore: () => {
+        AppState.addEventListener = real;
+      },
+    };
+  }
+
+  it("time with the app in the background is not play time", async () => {
+    const appState = captureAppState();
+    try {
+      resumeKilledSession();
+      let release: (s: HeartsState) => void = () => {};
+      (loadGame as jest.Mock).mockReturnValue(
+        new Promise<HeartsState>((resolve) => {
+          release = resolve;
+        })
+      );
+      await renderScreen();
+      // In the background before the saved game even loads: the ten minutes
+      // away (the AIs finish the game meanwhile) add nothing to its 60 s.
+      await act(async () => {
+        appState.emit("background");
+      });
+      await act(async () => {
+        release({ ...lastTrickState([45, 100, 63, 52]), accumulatedMs: 60_000 });
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(600_000);
+      });
+      await waitFor(() => expect(mockSyncComplete).toHaveBeenCalledTimes(1));
+      expect(mockSyncComplete.mock.calls[0]![0]).toEqual(
+        expect.objectContaining({ durationMs: 60_000 })
+      );
+    } finally {
+      appState.restore();
+    }
   });
 
   it("shows the finished game's rank under the display name, submitting nothing", async () => {
@@ -835,20 +912,71 @@ describe("HeartsScreen — game session (#2629)", () => {
     expect(mockAddListener).not.toHaveBeenCalledWith("beforeRemove", expect.anything());
   });
 
-  it("registers a progress snapshot for the hook's abandon, with no score", async () => {
-    (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+  it("going to the background saves the game with its play time and stops the clock", async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const real = AppState.addEventListener;
+    AppState.addEventListener = ((_type: string, handler: (state: string) => void) => {
+      listeners.push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof AppState.addEventListener;
+    try {
+      (loadGame as jest.Mock).mockResolvedValue({
+        ...humanLastCardState("schemer"),
+        accumulatedMs: 40_000,
+      });
+      const r = await renderScreen();
+      await r.findByTestId("hearts-hand-card-0");
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      (saveGame as jest.Mock).mockClear();
+      await act(async () => {
+        listeners.forEach((l) => l("background"));
+      });
+      expect(saveGame).toHaveBeenCalledTimes(1);
+      const saved = (saveGame as jest.Mock).mock.calls[0]![0] as HeartsState;
+      expect(saved.accumulatedMs).toBeGreaterThanOrEqual(45_000);
+
+      // An hour away, then back: the clock resumes where it stopped.
+      await act(async () => {
+        jest.advanceTimersByTime(3_600_000);
+      });
+      await act(async () => {
+        listeners.forEach((l) => l("active"));
+      });
+      const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
+      expect(getSnapshot().durationMs).toBe(saved.accumulatedMs);
+    } finally {
+      AppState.addEventListener = real;
+    }
+  });
+
+  it("registers a progress snapshot for the hook's abandon: play time, no score", async () => {
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...humanLastCardState("schemer"),
+      accumulatedMs: 40_000,
+    });
     const r = await renderScreen();
     await r.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
     expect(mockSetProgressSnapshot).toHaveBeenCalled();
     const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
-    expect(getSnapshot()).toEqual({ result: { hands_played: 2 } });
+    expect(getSnapshot()).toEqual({ result: { hands_played: 2 }, durationMs: 45_000 });
   });
 
   it("New Game mid-game abandons the game in play with its own progress", async () => {
     resumeKilledSession();
-    (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...humanLastCardState("schemer"),
+      accumulatedMs: 40_000,
+    });
     const r = await renderScreen();
     await r.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
     await act(async () => {
       await fireEvent.press(r.getByLabelText("More options"));
     });
@@ -861,7 +989,7 @@ describe("HeartsScreen — game session (#2629)", () => {
     expect(r.getByTestId("hearts-start-game")).toBeTruthy();
     expect(mockSyncComplete).toHaveBeenCalledTimes(1);
     expect(mockSyncComplete).toHaveBeenCalledWith(
-      { outcome: "abandoned", result: { hands_played: 2 } },
+      { outcome: "abandoned", durationMs: 45_000, result: { hands_played: 2 } },
       { hands_played: 2, outcome: "abandoned" }
     );
   });

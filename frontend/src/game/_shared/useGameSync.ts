@@ -37,7 +37,8 @@
  * Abandon data (#2450): an abandoned session would otherwise carry nothing but
  * `{ outcome: "abandoned" }`. A game registers `setProgressSnapshot(getter)` so
  * the hook's own abandon paths (unmount, restart) can attach the per-game
- * result block at that moment. Games that never register a getter keep
+ * result block at that moment, and a game that keeps its own play clock its
+ * `durationMs` too (#2629). Games that never register a getter keep
  * the old behaviour and send no result. A screen that also abandons explicitly
  * (a "New game" button, `beforeRemove`) builds that abandon's result with the
  * same helper its getter uses, so the two paths cannot drift apart (#2619).
@@ -76,6 +77,11 @@ import type { BugLevel } from "./eventQueueConfig";
 export interface ProgressSnapshot {
   /** Per-game result block — must satisfy the backend `result_model`, if any. */
   result?: Record<string, unknown>;
+  /**
+   * The game's own active play time so far, for games that keep a play clock
+   * (#2629). Sent as the abandon's `durationMs`; omit it when unknown.
+   */
+  durationMs?: number | null;
 }
 
 export interface UseGameSyncReturn {
@@ -164,6 +170,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     }
     const summary: CompleteSummary = { outcome: "abandoned" };
     if (snapshot.result) summary.result = snapshot.result;
+    if (snapshot.durationMs != null) summary.durationMs = snapshot.durationMs;
     try {
       gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
     } catch {

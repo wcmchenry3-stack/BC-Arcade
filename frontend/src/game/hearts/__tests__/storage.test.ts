@@ -134,6 +134,25 @@ describe("hearts storage", () => {
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
   });
 
+  // #2629: the play time survives a save and restore.
+  it("loadGame keeps a saved game's play time", async () => {
+    const state = { ...dealGame(), accumulatedMs: 125_000 };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    expect((await loadGame())?.accumulatedMs).toBe(125_000);
+  });
+
+  it.each([
+    ["an older save with none", undefined],
+    ["a negative value", -1],
+    ["a non-number", "12"],
+  ])("loadGame counts %s as no play time yet", async (_label, accumulatedMs) => {
+    const state = { ...dealGame(), accumulatedMs };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded?.accumulatedMs).toBe(0);
+  });
+
   // #2629: the reopened result card asks for the finished game's rank again.
   it("saves and loads the finished game's id", async () => {
     await saveFinishedGameId("g-1");

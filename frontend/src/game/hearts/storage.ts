@@ -84,7 +84,10 @@ export async function loadGame(): Promise<HeartsState | null> {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset } as HeartsState;
+    // Play time (#2629): absent in older saves, and a bad value counts as none.
+    const ms = p.accumulatedMs;
+    const accumulatedMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
+    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as HeartsState;
   } catch (e) {
     Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
       level: "warning",

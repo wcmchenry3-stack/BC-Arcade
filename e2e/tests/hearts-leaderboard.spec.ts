@@ -186,9 +186,10 @@ test.describe("Hearts — result card + leaderboard", () => {
     expect(traffic.completes[0]).toMatchObject({
       outcome: "win",
       final_score: 55,
-      duration_ms: null,
       result: { final_score: 55, vs_result: "win" },
     });
+    // The play clock's active time (#2629), never 0.
+    expect(traffic.completes[0].duration_ms).toBeGreaterThan(0);
     expect(traffic.ranks).toEqual([`/games/${traffic.creates[0].id}/rank`]);
     expect(traffic.hearts).toEqual([]);
 
