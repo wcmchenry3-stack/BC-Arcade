@@ -81,8 +81,8 @@ _HAS_WINNER = {
     "sudoku": False,
     "cascade": False,
     "sort": False,
-    # Twenty48 flips to True when #2631 records reaching 2048 as a win.
-    "twenty48": False,
+    # #2631: reaching 2048 records a win, a game over before it a loss.
+    "twenty48": True,
     "starswarm": False,
 }
 
