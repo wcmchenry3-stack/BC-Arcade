@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
@@ -31,6 +32,7 @@ import {
   difficultyLabel,
   difficultyMultiplier,
   dodgeRateByTier,
+  engineCounters,
 } from "../game/starswarm/engine";
 import type { TierDodgeRow } from "../game/starswarm/engine";
 import type {
@@ -54,6 +56,9 @@ import {
   getSavedPausedState,
   savePausedState,
   clearSavedPausedState,
+  hydratePausedState,
+  isPausedStateHydrated,
+  releaseSavedSession,
 } from "../game/starswarm/pauseStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
@@ -123,7 +128,37 @@ const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
 
 const DIFFICULTY_STORAGE_KEY = "starswarm.difficulty";
 
+/**
+ * A run paused by a previous process is on disk (#2645); the game reads the saved pause
+ * synchronously at mount, so it mounts once that's loaded — a few ms, once per process, and
+ * never more than HYDRATE_TIMEOUT_MS. Until then the header, its back button and a spinner are up.
+ */
 export default function StarSwarmScreen() {
+  const { t } = useTranslation("starswarm");
+  const { colors } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
+  const [hydrated, setHydrated] = useState(isPausedStateHydrated);
+  useEffect(() => {
+    if (hydrated) return;
+    let alive = true;
+    void hydratePausedState().then(() => {
+      if (alive) setHydrated(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hydrated]);
+  if (hydrated) return <StarSwarmGame />;
+  return (
+    <GameShell title={t("game.title")} requireBack onBack={() => navigation.popToTop()}>
+      <View style={styles.canvasOuter}>
+        <ActivityIndicator color={colors.accent} size="large" />
+      </View>
+    </GameShell>
+  );
+}
+
+function StarSwarmGame() {
   const { t } = useTranslation("starswarm");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
@@ -153,6 +188,7 @@ export default function StarSwarmScreen() {
     restart: syncRestart,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    getGameId: syncGetGameId,
   } = useGameSync("starswarm");
   const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
@@ -260,6 +296,7 @@ export default function StarSwarmScreen() {
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
       setIsGameOver(true);
+      clearSavedPausedState();
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
@@ -441,6 +478,7 @@ export default function StarSwarmScreen() {
   const handleNewGame = useCallback(
     (opts?: DevOptions) => {
       if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
+      clearSavedPausedState();
       beginRun(opts?.difficulty ?? difficulty);
       scoreRef.current = 0;
       setIsGameOver(false);
@@ -477,8 +515,29 @@ export default function StarSwarmScreen() {
     setIsPaused(true);
   }, []);
 
+  // The run is live again: a save of it is stale from here on.
   const handleResume = useCallback(() => {
+    clearSavedPausedState();
     setIsPaused(false);
+  }, []);
+
+  /**
+   * Saves the paused run, to survive navigation and, since #2645, the process. `gameId` is the
+   * session still open for it, which a restore after a cold start abandons.
+   */
+  const savePausedRun = useCallback((state: StarSwarmState, gameId: string | null) => {
+    // A finished run is never saved as a paused one.
+    if (state.phase === "GameOver") return;
+    // Already saved: a paused engine hands back the same state object, and iOS sends
+    // "inactive" then "background" for one trip to the home screen.
+    const saved = getSavedPausedState();
+    if (saved?.gameState === state && (saved.gameId ?? null) === gameId) return;
+    savePausedState({
+      gameState: state,
+      difficulty: state.difficulty,
+      gameId,
+      counters: engineCounters(),
+    });
   }, []);
 
   /** A run is on screen and not over — the only time pausing means anything. */
@@ -486,10 +545,16 @@ export default function StarSwarmScreen() {
   const isLiveRunRef = useRef(isLiveRun);
   isLiveRunRef.current = isLiveRun;
 
-  // Leaving the app mid-run pauses it, so the player returns to the pause overlay. Subscribed
-  // once; it reads the live run from a ref, and game over from the engine itself — the canvas
-  // stores the game-over state before React renders it, so a run that has just ended is never
-  // paused.
+  // Leaving the screen any way at all — the back button, the iOS swipe, Android's back —
+  // abandons the sync session on unmount, so a save must stop carrying it.
+  useEffect(() => () => releaseSavedSession(), []);
+
+  // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
+  // it (#2645): the OS may kill the app from here. "inactive" too — iOS's app switcher only
+  // makes the app inactive, and a swipe-away there kills it without reaching "background".
+  // Subscribed once; it reads the live run from a ref, and game over from the engine itself —
+  // the canvas stores the game-over state before React renders it, so a run that has just
+  // ended is never paused.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next !== "background" && next !== "inactive") return;
@@ -497,9 +562,10 @@ export default function StarSwarmScreen() {
       const state = canvasRef.current?.getState();
       if (!state || state.phase === "GameOver") return;
       handlePause();
+      savePausedRun(state, syncGetGameId());
     });
     return () => sub.remove();
-  }, [handlePause]);
+  }, [handlePause, savePausedRun, syncGetGameId]);
 
   const dynamicStyles = getStyles(colors);
 
@@ -518,9 +584,8 @@ export default function StarSwarmScreen() {
       onBack={() => {
         if (isPaused) {
           const state = canvasRef.current?.getState();
-          // A finished run is never saved as a paused one.
-          if (state && state.phase !== "GameOver")
-            savePausedState({ gameState: state, difficulty });
+          // Unmounting abandons the session, so the save carries none.
+          if (state) savePausedRun(state, null);
         }
         navigation.popToTop();
       }}
