@@ -108,7 +108,7 @@
   "victory.nextTableLabel": "Jugar mesa {{table}} — subir a la siguiente mesa",
   "victory.unlocked": "Desbloqueaste: {{name}}",
   "milestone.toast": "¡Hito alcanzado: {{chips}} fichas!",
-  "hud.winStreakAccessibilityLabel": "Racha de victorias: {{count}} victorias",
+  "hud.winStreakAccessibilityLabel": "Racha de victorias: {{count}}",
   "comeback.banner": "¡Qué remontada!",
   "comeback.bannerAccessibilityLabel": "Remontada: fichas recuperadas",
   "allIn.badge": "¡Todo o nada!",

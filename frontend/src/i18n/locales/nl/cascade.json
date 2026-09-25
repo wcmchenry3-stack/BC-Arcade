@@ -13,10 +13,10 @@
   "theme.optionLabel": "{{label}} thema",
   "event.merged": "Versmolten! {{fruit}} gemaakt.",
   "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "scoreboard.heroSub": "Beste fruit: {{bestFruit}} · {{merges}} combo's",
+  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
+  "scoreboard.bestScore": "Beste ooit",
+  "scoreboard.bestFruit": "Beste fruit",
+  "scoreboard.gamesPlayed": "Aantal spellen",
+  "scoreboard.totalMerges": "Totaal combo's"
 }
