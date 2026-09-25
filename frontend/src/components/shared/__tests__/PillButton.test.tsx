@@ -31,8 +31,17 @@ describe("PillButton", () => {
     const btn = screen.getByTestId("pill");
     await fireEvent.press(btn);
     expect(onPress).not.toHaveBeenCalled();
-    expect(btn.props.accessibilityState).toEqual({ disabled: true });
+    expect(btn.props.accessibilityState).toEqual({ disabled: true, busy: false });
     expect(StyleSheet.flatten(btn.props.style).opacity).toBe(PILL_DISABLED_OPACITY);
+  });
+
+  it("shows a spinner, reports busy, and ignores presses while busy", async () => {
+    const { onPress } = await renderPill({ busy: true });
+    const btn = screen.getByTestId("pill");
+    await fireEvent.press(btn);
+    expect(onPress).not.toHaveBeenCalled();
+    expect(btn.props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(screen.queryByText("Undo")).toBeNull();
   });
 
   it("tints border and label with the given color", async () => {

@@ -11,6 +11,7 @@ export interface GameShellProps extends Pick<
   | "title"
   | "onBack"
   | "requireBack"
+  | "backAccessibilityLabel"
   | "rightSlot"
   | "onOpenScoreboard"
   | "onNewGame"
@@ -36,6 +37,7 @@ export function GameShell({
   title,
   onBack,
   requireBack,
+  backAccessibilityLabel,
   rightSlot,
   onOpenScoreboard,
   onNewGame,
@@ -74,6 +76,7 @@ export function GameShell({
         title={title}
         onBack={onBack}
         requireBack={requireBack}
+        backAccessibilityLabel={backAccessibilityLabel}
         rightSlot={rightSlot}
         onOpenScoreboard={onOpenScoreboard}
         onNewGame={onNewGame}

@@ -244,6 +244,13 @@ describe("AppHeader", () => {
       expect(screen.queryByText("Scoreboard")).toBeNull();
     });
 
+    it("uses a custom back label when the back button does not go home", async () => {
+      await render(
+        <AppHeader title="Sort" onBack={jest.fn()} backAccessibilityLabel="Back to levels" />
+      );
+      expect(screen.getByRole("button", { name: "Back to levels" })).toBeTruthy();
+    });
+
     it("opens the abandon dialog when New Game is tapped", async () => {
       await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));

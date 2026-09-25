@@ -1,5 +1,12 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useTheme } from "../../theme/ThemeContext";
 
 /** Opacity for a disabled pill. One value across every game's toolbar. */
@@ -13,6 +20,8 @@ export interface PillButtonProps {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Shows a spinner in place of the label and disables the pill. */
+  busy?: boolean;
   /** Border and text color. Defaults to the theme accent. */
   color?: string;
   /** Screen-reader label. Defaults to `label`. */
@@ -30,6 +39,7 @@ export function PillButton({
   label,
   onPress,
   disabled = false,
+  busy = false,
   color,
   accessibilityLabel,
   testID,
@@ -37,23 +47,28 @@ export function PillButton({
 }: PillButtonProps) {
   const { colors } = useTheme();
   const tint = color ?? colors.accent;
+  const inactive = disabled || busy;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={inactive}
       hitSlop={HIT_SLOP}
       style={[
         styles.pill,
-        { borderColor: tint, opacity: disabled ? PILL_DISABLED_OPACITY : 1 },
+        { borderColor: tint, opacity: inactive ? PILL_DISABLED_OPACITY : 1 },
         style,
       ]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled: inactive, busy }}
       testID={testID}
     >
-      <Text style={[styles.label, { color: tint }]}>{label}</Text>
+      {busy ? (
+        <ActivityIndicator size="small" color={tint} />
+      ) : (
+        <Text style={[styles.label, { color: tint }]}>{label}</Text>
+      )}
     </Pressable>
   );
 }

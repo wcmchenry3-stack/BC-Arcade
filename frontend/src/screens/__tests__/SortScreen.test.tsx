@@ -195,6 +195,34 @@ describe("SortScreen — entering and playing a level", () => {
     expect(await findByText("Choose a Level")).toBeTruthy();
   });
 
+  it("New Game in the menu restarts the level after confirmation", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 3,/));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+    });
+    // Restarting abandons the open session and leaves the player on the board.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    expect(r.getByTestId("sort-board")).toBeTruthy();
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+  });
+
   it("undo button is disabled initially (no history)", async () => {
     const { findByLabelText } = await renderScreen();
     const levelCard = await findByLabelText("Level 1");
