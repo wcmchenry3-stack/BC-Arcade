@@ -15,9 +15,18 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackStats">;
 };
 
-function outcomeFor(r: RunRecord): "comeback" | "completed" | "busted" {
+type RunBadge = "comeback" | "completed" | "busted" | "abandoned";
+
+/**
+ * A run's badge, matching what the run recorded on the server (#2628): a
+ * reached goal (`win`) is completed or a comeback, a `loss` is busted, and a
+ * run left before its goal is abandoned. Runs saved before #2628 carry no
+ * `outcome` and keep their old badge.
+ */
+function outcomeFor(r: RunRecord): RunBadge {
   if (r.completed && r.lowestChips < r.startingChips * 0.25) return "comeback";
   if (r.completed) return "completed";
+  if (r.outcome === "abandoned") return "abandoned";
   return "busted";
 }
 
@@ -64,9 +73,10 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
     return config ? t(config.labelKey as Parameters<typeof t>[0]) : tableId;
   }
 
-  function outcomeColor(outcome: "comeback" | "completed" | "busted"): string {
+  function outcomeColor(outcome: RunBadge): string {
     if (outcome === "comeback") return colors.accent;
     if (outcome === "completed") return colors.bonus;
+    if (outcome === "abandoned") return colors.textMuted;
     return colors.error;
   }
 

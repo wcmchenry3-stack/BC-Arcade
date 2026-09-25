@@ -141,6 +141,32 @@ describe("BlackjackStatsScreen — outcome badges", () => {
     await screen.findByLabelText(/Completed/);
     expect(screen.queryByLabelText(/Comeback/)).toBeNull();
   });
+
+  // #2628 — the badge matches what the run recorded on the server.
+  it("shows Abandoned, not Busted, for a run left before its goal", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: false, outcome: "abandoned", finalChips: 600 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Abandoned/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Busted/)).toBeNull();
+  });
+
+  it("shows Busted for a run that recorded a loss", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: false, outcome: "loss", finalChips: 0 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Busted/)).toBeTruthy();
+  });
+
+  it("shows Completed for a run that reached its goal, then kept playing and busted", async () => {
+    (loadRuns as jest.Mock).mockResolvedValueOnce([
+      makeRun({ completed: true, outcome: "win", finalChips: 0, lowestChips: 80 }),
+    ]);
+    await renderScreen();
+    expect(await screen.findByLabelText(/Completed/)).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -17,7 +17,9 @@ import {
   reduceHandResolved,
 } from "./sessionStats";
 import { useGameSync } from "../_shared/useGameSync";
-import { TableConfig } from "./tables";
+import { recordedOutcome } from "../_shared/recordedOutcome";
+import type { GameOutcome } from "../../api/vocab";
+import { TABLE_CONFIGS, TableConfig } from "./tables";
 import { saveLastDifficulty } from "../_shared/lastDifficulty";
 import { isPremiumLevel } from "../../entitlements/premiumLevels";
 
@@ -45,6 +47,26 @@ function activeHand(s: EngineState, idx: number): Card[] {
   if (s.player_hands.length > 0 && s.player_hands[idx]) return s.player_hands[idx];
   return s.player_hand;
 }
+
+/** True when this state shows the run has reached its goal (#2628). */
+function hasReachedGoal(s: EngineState): boolean {
+  return s.phase === "victory" || s.reachedRunGoal != null;
+}
+
+/** The table a run is played at, from its bet limits (as the screens derive it). */
+function tableIdFor(s: EngineState): TableConfig["id"] {
+  const table = TABLE_CONFIGS.find((c) => c.betMin === s.betMin && c.betMax === s.betMax);
+  return table?.id ?? "beginner";
+}
+
+/**
+ * How a session ends: the chips ran out, the player cashed out, or the player
+ * left the run (New Game, Play Again).
+ */
+type SessionEnd = "out_of_chips" | "cash_out" | "left";
+
+/** What a run records on its `games` row (#2628, §8.8). */
+type RunOutcome = "win" | "loss" | "abandoned";
 
 const BlackjackGameContext = createContext<BlackjackGameContextValue | null>(null);
 
@@ -77,13 +99,21 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   const sessionStartChipsRef = useRef<number | null>(null);
   const lowestChipsRef = useRef(0);
   const biggestWinRef = useRef(0);
+  // #2628 — set the first time this run reaches its goal and kept until the
+  // session ends, so a player who chose Keep Playing and later ran out of chips
+  // still records a win (§8.8).
+  const goalReachedRef = useRef(false);
+  // True once endSession has closed this session. A bust-out ends the session
+  // and the Play Again that follows calls endSession again: that second call
+  // must not save the same run twice.
+  const sessionEndedRef = useRef(false);
   const engineRef = useRef<EngineState | null>(null);
   useEffect(() => {
     engineRef.current = engine;
   }, [engine]);
 
   // #2450 / #2619 — the session's result block (backend BlackjackResult). The
-  // hook's own abandon (unmount) and endSession (completed or abandoned) both
+  // hook's own abandon (unmount) and endSession (win, loss or abandoned) both
   // build it here. `finalChips` overrides engineRef for the chips-exhausted path.
   const sessionResult = useCallback(
     (finalChips?: number) => ({
@@ -99,13 +129,15 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   }, [syncSetProgressSnapshot, sessionResult]);
 
   const startSession = useCallback(
-    async (startingChips: number, resuming = false, tableId?: string) => {
+    async (startingChips: number, resuming = false, tableId?: string, goalReached = false) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
       handsWonRef.current = 0;
       sessionStartChipsRef.current = startingChips;
       lowestChipsRef.current = startingChips;
       biggestWinRef.current = 0;
+      goalReachedRef.current = goalReached;
+      sessionEndedRef.current = false;
       setSessionStats(initialSessionStats(startingChips));
       // A saved mid-game continues the session a killed app left open (#2654).
       if (resuming && syncResume()) return;
@@ -138,12 +170,26 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   );
 
   const endSession = useCallback(
-    // `finalChips` overrides engineRef for the chips-exhausted path, which runs
-    // inside emitTransitionEvents before engineRef catches up to `next`.
-    async (outcome: "completed" | "abandoned", finalChips?: number) => {
+    // `finalState` is the run's resolved final state. The chips-exhausted path
+    // must pass it: it runs inside emitTransitionEvents, before engineRef
+    // catches up to `next` (#2469 item 4). The other paths default to engineRef.
+    async (end: SessionEnd, finalState?: EngineState) => {
+      if (sessionEndedRef.current) return;
+      sessionEndedRef.current = true;
+      const final = finalState ?? engineRef.current;
       const durationMs = Date.now() - sessionStartedAtRef.current;
-      const engine = engineRef.current;
-      const result = sessionResult(finalChips);
+      const result = sessionResult(final?.chips);
+      // #2628 / §8.8: a run that reached its goal is a win however it ends;
+      // running out of chips before the goal is a loss; any other end before
+      // the goal (New Game, a cash-out) is an abandon.
+      const goalReached = goalReachedRef.current;
+      const runOutcome: RunOutcome = goalReached
+        ? "win"
+        : end === "out_of_chips"
+          ? "loss"
+          : "abandoned";
+      const outcome: GameOutcome =
+        runOutcome === "abandoned" ? "abandoned" : recordedOutcome(runOutcome);
       syncComplete(
         { outcome, durationMs, result },
         {
@@ -156,13 +202,15 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // Persist a run record when the player actually played hands. Awaited so
       // that the subsequent startSession call (in handlePlayAgain) sees the
       // newly saved run when it loads run history for aggregate metadata.
-      if (engine && totalHandsRef.current > 0) {
+      if (final && totalHandsRef.current > 0) {
         await saveRun({
-          table: "beginner",
-          startingChips: engine.startingChips,
-          finalChips: engine.chips,
-          runGoal: engine.runGoal,
-          completed: engine.phase === "victory",
+          table: tableIdFor(final),
+          startingChips: final.startingChips,
+          finalChips: final.chips,
+          // Keep Playing clears runGoal; the run's goal is kept in reachedRunGoal.
+          runGoal: final.runGoal ?? final.reachedRunGoal ?? null,
+          completed: goalReached,
+          outcome: runOutcome,
           handsPlayed: totalHandsRef.current,
           biggestWin: biggestWinRef.current,
           lowestChips: lowestChipsRef.current,
@@ -188,8 +236,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // Start an instrumented session unless table selection is pending or the
         // loaded state is already a chips-exhausted game-over state. Pass
         // resuming=true for saved mid-game states so syncMarkStarted fires after syncStart.
+        // A saved run that already reached its goal (victory, or Keep Playing)
+        // stays a win when it ends (#2628).
         if (!tableSelectPending && !(next.chips === 0 && next.phase === "result")) {
-          void startSession(next.chips, !!saved);
+          void startSession(next.chips, !!saved, undefined, hasReachedGoal(next));
         }
       })
       .finally(() => {
@@ -212,6 +262,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
 
   const emitTransitionEvents = useCallback(
     (prev: EngineState, next: EngineState, action: PlayerActionHint) => {
+      // #2628 — the run reached its goal. Kept for the rest of the session.
+      if (hasReachedGoal(next)) goalReachedRef.current = true;
+
       // bet_placed + hand_dealt: betting → player/result with a fresh deal.
       // Read chips_remaining from prev.chips, not next.chips — placeBet can
       // settle immediately on a natural blackjack, and next.chips would then
@@ -315,11 +368,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         }
       }
 
-      // game_ended: chips exhausted in result phase. Fire-and-forget — the
-      // next startSession (from handlePlayAgain) may see this run's saveRun
+      // game_ended: chips exhausted in result phase — a loss, or a win when
+      // the run reached its goal before Keep Playing (#2628). Fire-and-forget:
+      // the next startSession (from handlePlayAgain) may see this run's saveRun
       // slightly late, off by one, self-corrects on the following session.
       if (next.chips === 0 && next.phase === "result") {
-        void endSession("completed", next.chips);
+        void endSession("out_of_chips", next);
       }
     },
     [endSession, syncEnqueue, syncMarkStarted]
@@ -356,6 +410,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         milestones_reached: engine.milestones_reached,
         hitLowChips: engine.hitLowChips,
         comebackEmitted: engine.comebackEmitted,
+        reachedRunGoal: engine.reachedRunGoal,
       };
       setEngine(updated);
       saveGame(updated);
@@ -369,10 +424,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
 
   const handlePlayAgain = useCallback(async () => {
     // If a session is still open, close it out. When chips hit 0 mid-hand,
-    // game_ended was already emitted by emitTransitionEvents — syncComplete
-    // is idempotent and the guard in useGameSync makes this a no-op.
-    // Otherwise we're mid-game and the user pressed New Game (abandon).
-    await endSession("abandoned");
+    // game_ended was already emitted by emitTransitionEvents, so endSession
+    // does nothing. Otherwise we're mid-game and the user pressed New Game:
+    // an abandon, or a win if the run already reached its goal (#2628).
+    await endSession("left");
     // Create a fresh engine in table-select-pending state (runGoal=null).
     // startSession is deferred to handleTableSelect after the user picks a table.
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
@@ -382,7 +437,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   }, [engine, endSession]);
 
   const handleCashOut = useCallback(async () => {
-    await endSession("completed");
+    // Offered once the goal is reached, so this records a win (#2628).
+    await endSession("cash_out");
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
     saveGame(fresh);
@@ -391,7 +447,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
 
   const handleKeepPlaying = useCallback(() => {
     if (!engine) return;
-    const next = { ...newHand(engine), runGoal: null };
+    // The goal is cleared so play goes on past it; reachedRunGoal keeps the
+    // fact that this run was won, for saves and resumes (#2628).
+    const next: EngineState = {
+      ...newHand(engine),
+      runGoal: null,
+      reachedRunGoal: engine.reachedRunGoal ?? engine.runGoal ?? undefined,
+    };
     setEngine(next);
     saveGame(next);
     setError(null);

@@ -22,8 +22,17 @@ export interface RunRecord {
   startingChips: number;
   finalChips: number;
   runGoal: number | null;
-  /** True when the run ended in victory (chips >= runGoal). */
+  /**
+   * True when the run reached its goal at any point (#2628), even if the player
+   * chose Keep Playing and later ran out of chips.
+   */
   completed: boolean;
+  /**
+   * What the run recorded on the server (#2628): `win` (goal reached), `loss`
+   * (out of chips before the goal) or `abandoned` (left before the goal).
+   * Absent on runs saved by older builds.
+   */
+  outcome?: "win" | "loss" | "abandoned";
   handsPlayed: number;
   biggestWin: number;
   lowestChips: number;

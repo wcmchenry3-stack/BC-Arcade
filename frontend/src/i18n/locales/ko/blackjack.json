@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "완료",
   "stats.runOutcome.busted": "파산",
   "stats.runOutcome.comeback": "역전",
+  "stats.runOutcome.abandoned": "중단",
   "stats.viewStats": "런 통계",
   "stats.viewStatsLabel": "런 통계 보기",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",

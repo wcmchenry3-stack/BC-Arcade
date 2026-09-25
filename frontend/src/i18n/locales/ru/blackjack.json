@@ -136,6 +136,7 @@
   "stats.runOutcome.completed": "Завершён",
   "stats.runOutcome.busted": "Банкрот",
   "stats.runOutcome.comeback": "Возвращение",
+  "stats.runOutcome.abandoned": "Прерван",
   "stats.viewStats": "Статистика забега",
   "stats.viewStatsLabel": "Просмотр статистики забега",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
