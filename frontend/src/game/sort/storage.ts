@@ -47,6 +47,10 @@ export async function loadLevelsCache(): Promise<LevelsResponse | null> {
 // ---------------------------------------------------------------------------
 // Best moves per level (#2512) — shown as "Best" on the result card, and
 // summed into the leaderboard's `total_moves` tie-break (#2625).
+//
+// The screen keeps the bests in memory (loaded with it, merged on Retry) and
+// decides every solve from there; storage only mirrors them. Nothing reads
+// storage to decide a solve, so a failed read can never overwrite the bests.
 // ---------------------------------------------------------------------------
 
 const BEST_MOVES_KEY = "@sort/best_moves";
@@ -54,15 +58,53 @@ const BEST_MOVES_KEY = "@sort/best_moves";
 /** Fewest moves per solved level, keyed by level id. */
 export type BestMoves = Readonly<Record<string, number>>;
 
-/** The stored best moves (`@sort/best_moves`); empty when unreadable. */
-export async function loadBestMoves(): Promise<BestMoves> {
+function isMoveCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * The stored best moves (`@sort/best_moves`). `null` when storage could not
+ * be read: the caller must then not write over what it can't see. A missing
+ * or corrupt value reads as no bests, since nothing in it can be recovered.
+ */
+export async function loadBestMoves(): Promise<BestMoves | null> {
+  let raw: string | null;
   try {
-    const raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
+    raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
+  } catch {
+    return null;
+  }
+  try {
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === "object" ? (parsed as BestMoves) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const bests: Record<string, number> = {};
+    for (const [level, moves] of Object.entries(parsed)) {
+      if (isMoveCount(moves)) bests[level] = moves;
+    }
+    return bests;
   } catch {
     return {};
   }
+}
+
+/** Replaces the stored bests with `bests`. Best-effort: resolves false on failure. */
+export async function saveBestMoves(bests: BestMoves): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Both sets of bests in one: the lower value per level wins. Pure. */
+export function mergeBestMoves(a: BestMoves, b: BestMoves): BestMoves {
+  const merged: Record<string, number> = { ...a };
+  for (const [level, moves] of Object.entries(b)) {
+    const current = merged[level];
+    if (!isMoveCount(current) || moves < current) merged[level] = moves;
+  }
+  return merged;
 }
 
 export interface LevelSolve {
@@ -90,6 +132,16 @@ export function applyLevelSolve(
   };
 }
 
+/** The highest level id `bests` records a solve for, or 0. Pure. */
+export function highestSolvedLevel(bests: BestMoves): number {
+  let highest = 0;
+  for (const [level, moves] of Object.entries(bests)) {
+    const id = Number(level);
+    if (Number.isInteger(id) && id > highest && isMoveCount(moves)) highest = id;
+  }
+  return highest;
+}
+
 /**
  * The leaderboard tie-break (#2625): the sum of the best moves of every level
  * from 1 to `throughLevel`. `null` when one of them has no best on record
@@ -100,20 +152,8 @@ export function totalBestMoves(bests: BestMoves, throughLevel: number): number |
   let total = 0;
   for (let level = 1; level <= throughLevel; level++) {
     const best = bests[String(level)];
-    if (typeof best !== "number" || !Number.isInteger(best) || best < 0) return null;
+    if (!isMoveCount(best)) return null;
     total += best;
   }
   return total;
-}
-
-/** Records a solve of `levelId` in `moves` in `@sort/best_moves`. */
-export async function recordLevelSolve(levelId: number, moves: number): Promise<LevelSolve> {
-  const { solve, bests } = applyLevelSolve(await loadBestMoves(), levelId, moves);
-  if (!solve.isNewBest) return solve;
-  try {
-    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
-  } catch {
-    // Best-effort: the card still shows this solve as the best.
-  }
-  return solve;
 }

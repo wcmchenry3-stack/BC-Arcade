@@ -1,52 +1,72 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { applyLevelSolve, loadBestMoves, recordLevelSolve, totalBestMoves } from "../storage";
+import {
+  applyLevelSolve,
+  highestSolvedLevel,
+  loadBestMoves,
+  mergeBestMoves,
+  saveBestMoves,
+  totalBestMoves,
+} from "../storage";
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  jest.restoreAllMocks();
 });
 
-describe("recordLevelSolve (#2512)", () => {
-  it("makes the first solve of a level its best", async () => {
-    await expect(recordLevelSolve(3, 20)).resolves.toEqual({
-      best: 20,
-      isNewBest: true,
-      firstSolve: true,
-    });
-  });
-
-  it("keeps the fewest moves per level, and marks later solves as repeats", async () => {
-    await recordLevelSolve(3, 20);
-    await expect(recordLevelSolve(3, 25)).resolves.toEqual({
-      best: 20,
-      isNewBest: false,
-      firstSolve: false,
-    });
-    await expect(recordLevelSolve(3, 14)).resolves.toEqual({
-      best: 14,
-      isNewBest: true,
-      firstSolve: false,
-    });
-  });
-
-  it("tracks each level separately", async () => {
-    await recordLevelSolve(3, 20);
-    await expect(recordLevelSolve(4, 30)).resolves.toEqual(
-      expect.objectContaining({ best: 30, firstSolve: true })
-    );
-  });
-
-  it("starts fresh when the stored bests are corrupt", async () => {
-    await AsyncStorage.setItem("@sort/best_moves", "not json");
-    await expect(recordLevelSolve(3, 20)).resolves.toEqual(
-      expect.objectContaining({ best: 20, isNewBest: true })
-    );
-  });
-
-  it("stores the bests loadBestMoves reads back", async () => {
-    await recordLevelSolve(1, 8);
-    await recordLevelSolve(2, 11);
-    await recordLevelSolve(1, 9);
+describe("loadBestMoves / saveBestMoves (#2512, #2625)", () => {
+  it("reads back what was saved", async () => {
+    await expect(saveBestMoves({ "1": 8, "2": 11 })).resolves.toBe(true);
     await expect(loadBestMoves()).resolves.toEqual({ "1": 8, "2": 11 });
+  });
+
+  it("reads nothing stored as no bests", async () => {
+    await expect(loadBestMoves()).resolves.toEqual({});
+  });
+
+  it("reads corrupt bests as none, and drops values that aren't move counts", async () => {
+    await AsyncStorage.setItem("@sort/best_moves", "not json");
+    await expect(loadBestMoves()).resolves.toEqual({});
+    await AsyncStorage.setItem("@sort/best_moves", JSON.stringify({ "1": 5, "2": "x", "3": -1 }));
+    await expect(loadBestMoves()).resolves.toEqual({ "1": 5 });
+  });
+
+  it("is null when storage can't be read, so the caller doesn't overwrite it", async () => {
+    await saveBestMoves({ "1": 8 });
+    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
+    await expect(loadBestMoves()).resolves.toBeNull();
+    await expect(loadBestMoves()).resolves.toEqual({ "1": 8 });
+  });
+
+  it("saves the bests it is given, without reading storage", async () => {
+    await saveBestMoves({ "1": 8, "2": 11 });
+    const read = jest.spyOn(AsyncStorage, "getItem");
+    read.mockClear(); // the storage mock's own jest.fn keeps earlier calls
+    await saveBestMoves({ "1": 7, "2": 11 });
+    expect(read).not.toHaveBeenCalled();
+    await expect(loadBestMoves()).resolves.toEqual({ "1": 7, "2": 11 });
+  });
+
+  it("resolves false when the write fails", async () => {
+    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("full"));
+    await expect(saveBestMoves({ "1": 8 })).resolves.toBe(false);
+  });
+});
+
+describe("mergeBestMoves (#2625)", () => {
+  it("keeps the lower value per level and every level of both", () => {
+    expect(mergeBestMoves({ "1": 3, "2": 9 }, { "1": 9, "2": 5, "3": 7 })).toEqual({
+      "1": 3,
+      "2": 5,
+      "3": 7,
+    });
+  });
+});
+
+describe("highestSolvedLevel (#2625)", () => {
+  it("is the highest level with a best, or 0", () => {
+    expect(highestSolvedLevel({ "2": 5, "10": 7, "3": 1 })).toBe(10);
+    expect(highestSolvedLevel({})).toBe(0);
+    expect(highestSolvedLevel({ x: 4 })).toBe(0);
   });
 });
 

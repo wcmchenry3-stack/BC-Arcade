@@ -10,14 +10,16 @@ class SortResult(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2625).
 
     Mirrors ``SortScreen.tsx``. Every solved level is one session row with
-    ``level``, ``moves`` and ``undos``. Only the first solve of the player's
-    frontier level is scored: it also carries ``level_reached`` (the level,
-    also sent as ``final_score``) and ``total_moves``, the sum of the player's
-    best moves over every level up to it (omitted when a lower level has no
-    best on record). The board ranks ``level_reached`` desc, then
-    ``total_moves`` asc (``module.board``), so replays, which carry neither,
-    never rank. An abandon sends ``won: false`` with the level (``null`` if
-    none was open) and the moves so far.
+    ``won: true`` and the ``level`` actually played, its ``moves`` and
+    ``undos``. Every solve, replays included, is scored with the player's
+    standing after it: ``level_reached`` is the highest level solved (also
+    sent as ``final_score``) and ``total_moves`` the sum of the player's best
+    moves over levels 1 to it (omitted when one of them has no best on
+    record). The board ranks ``level_reached`` desc, then ``total_moves`` asc
+    (``module.board``) and keeps each player's best row, so a replay that
+    lowers a best improves the player's rank. An abandon sends ``won: false``
+    with the level (``null`` if none was open) and the moves so far, and no
+    score.
 
     Every field is optional and unknown keys are ignored, so no build the
     testers have can fail completion and dead-letter a solve. The two board

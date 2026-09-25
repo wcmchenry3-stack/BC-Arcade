@@ -1,10 +1,11 @@
 """Sort's result model and its board, through the shared ``/games`` path (#2625).
 
-Every solved level is a session row (``useGameSync("sort")``, #2512). Only the
-first solve of the player's frontier level is scored: ``final_score`` and
-``level_reached`` are the level, and ``total_moves`` (the sum of the player's
-best moves up to it) breaks a tie. The payloads below mirror ``SortScreen.tsx``;
-a rejection would dead-letter the solve, so every current one must pass.
+Every solved level is a session row (``useGameSync("sort")``, #2512), scored
+with the player's standing after it: ``final_score`` and ``level_reached`` are
+the highest level solved, and ``total_moves`` (the sum of the player's best
+moves up to it) breaks a tie. ``level``/``moves``/``undos`` are the level
+actually played. The payloads below mirror ``SortScreen.tsx``; a rejection
+would dead-letter the solve, so every current one must pass.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from daily_challenge.definitions import FREE_GOAL_POOL, game_facts
 from db.base import get_session_factory
 from db.models import GameEntitlement, Player
 from games.registry import get_module
@@ -34,17 +36,26 @@ def _sid() -> str:
     return str(uuid.uuid4())
 
 
-def _scored(level: int, total_moves: int, *, moves: int = 12, undos: int = 0) -> dict:
-    """The frontier first solve: ``finalScore`` + ``level_reached`` + ``total_moves``."""
+def _scored(
+    frontier: int,
+    total_moves: int,
+    *,
+    played: int | None = None,
+    moves: int = 12,
+    undos: int = 0,
+) -> dict:
+    """A solved level: ``played`` (default: the frontier itself), scored with the
+    standing after it, ``final_score``/``level_reached`` = frontier."""
     return {
-        "final_score": level,
+        "final_score": frontier,
         "outcome": "completed",
         "duration_ms": None,
         "result": {
-            "level": level,
+            "won": True,
+            "level": frontier if played is None else played,
             "moves": moves,
             "undos": undos,
-            "level_reached": level,
+            "level_reached": frontier,
             "total_moves": total_moves,
         },
     }
@@ -58,14 +69,10 @@ _CURRENT_COMPLETIONS: dict[str, dict[str, Any]] = {
         "final_score": 5,
         "outcome": "completed",
         "duration_ms": None,
-        "result": {"level": 5, "moves": 12, "undos": 1, "level_reached": 5},
+        "result": {"won": True, "level": 5, "moves": 12, "undos": 1, "level_reached": 5},
     },
-    "replay": {
-        "final_score": None,
-        "outcome": "completed",
-        "duration_ms": None,
-        "result": {"level": 3, "moves": 9, "undos": 2},
-    },
+    # Replaying level 3 with level 9 the highest solved.
+    "replay": _scored(9, 140, played=3, moves=9, undos=2),
     "abandon": {
         "final_score": None,
         "outcome": "abandoned",
@@ -201,6 +208,7 @@ async def test_the_scored_result_is_stored_where_the_board_reads_it() -> None:
     assert row["final_score"] == 7
     assert row["outcome"] == "completed"
     assert row["metadata"] == {
+        "won": True,
         "level": 7,
         "moves": 15,
         "undos": 2,
@@ -255,9 +263,11 @@ async def test_one_player_appears_once_at_their_highest_level() -> None:
     first = _play(sid, _scored(21, 300))
     _play(sid, _scored(22, 330))
     best = _play(sid, _scored(23, 360))
-    # Replays and abandons carry no level_reached, so they never rank.
-    _play(sid, _CURRENT_COMPLETIONS["replay"])
+    # A replay that doesn't lower the total, an abandon and an unscored
+    # (#2512 build) solve: none of them displaces the best row.
+    _play(sid, _scored(23, 360, played=4))
     _play(sid, _CURRENT_COMPLETIONS["abandon"])
+    _play(sid, _CURRENT_COMPLETIONS["installed-2512-solve"])
 
     mine = [p for p in _board(sid) if p[0] == "SortClimber"]
     assert mine == [("SortClimber", 23)]
@@ -269,9 +279,48 @@ async def test_one_player_appears_once_at_their_highest_level() -> None:
     assert older["rank"] == r["rank"]
 
 
+async def test_a_replay_that_lowers_the_total_improves_the_rank() -> None:
+    steady = await _player("SortSteady")
+    replayer = await _player("SortReplayer")
+    _play(steady, _scored(23, 450))
+    first = _play(replayer, _scored(23, 500))
+    names = {"SortSteady", "SortReplayer"}
+    assert [p for p in _board(steady) if p[0] in names] == [
+        ("SortSteady", 23),
+        ("SortReplayer", 23),
+    ]
+
+    # Level 5 replayed in far fewer moves: same frontier, total down to 400.
+    better = _play(replayer, _scored(23, 400, played=5, moves=8))
+    assert [p for p in _board(steady) if p[0] in names] == [
+        ("SortReplayer", 23),
+        ("SortSteady", 23),
+    ]
+    r = client.get(f"/games/{better}/rank", headers=_headers(replayer)).json()
+    assert r["ranked"] is True and r["is_best"] is True
+    old = client.get(f"/games/{first}/rank", headers=_headers(replayer)).json()
+    assert old["is_best"] is False and old["rank"] == r["rank"]
+
+
 async def test_an_unscored_solve_is_not_on_the_board() -> None:
     sid = await _player("SortReplayOnly")
-    replay = _play(sid, _CURRENT_COMPLETIONS["replay"])
+    solve = _play(sid, _CURRENT_COMPLETIONS["installed-2512-solve"])
     assert "SortReplayOnly" not in [name for name, _ in _board(sid)]
-    r = client.get(f"/games/{replay}/rank", headers=_headers(sid)).json()
+    r = client.get(f"/games/{solve}/rank", headers=_headers(sid)).json()
     assert r["ranked"] is False
+
+
+# ---------------------------------------------------------------------------
+# daily challenge: every solve carries the score its goals read
+# ---------------------------------------------------------------------------
+
+
+def test_a_replay_meets_the_sort_goals_up_to_the_frontier() -> None:
+    easy, medium, hard = FREE_GOAL_POOL["sort"]
+    body = _scored(15, 300, played=2)
+    metadata = SortResult.model_validate(body["result"]).model_dump(exclude_unset=True)
+    facts = game_facts(metadata, body["final_score"], None)
+    assert easy.evaluate(facts) and medium.evaluate(facts) and hard.evaluate(facts)
+    early = _scored(5, 60, played=1)
+    facts = game_facts(early["result"], early["final_score"], None)
+    assert easy.evaluate(facts) and not medium.evaluate(facts)

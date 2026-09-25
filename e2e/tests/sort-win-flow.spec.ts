@@ -149,6 +149,7 @@ test.describe("Sort Puzzle — win flow", () => {
       outcome: "completed",
       // First solve of level 1: its best (6 moves) is the whole total.
       result: {
+        won: true,
         level: 1,
         moves: 6,
         undos: 0,

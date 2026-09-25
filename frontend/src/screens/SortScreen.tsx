@@ -36,11 +36,13 @@ import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";
 import {
   applyLevelSolve,
+  highestSolvedLevel,
   loadBestMoves,
   loadProgress,
+  mergeBestMoves,
+  saveBestMoves,
   saveProgress,
   loadLevelsCache,
-  recordLevelSolve,
   saveLevelsCache,
   totalBestMoves,
   type BestMoves,
@@ -122,7 +124,7 @@ export default function SortScreen() {
   gameStateRef.current = gameState;
   const currentLevelIdRef = useRef<number | null>(null);
   currentLevelIdRef.current = currentLevelId;
-  /** Bumped whenever the played level changes, so a late solve result is dropped. */
+  /** Bumped whenever the played level changes, so a late hint is dropped. */
   const levelGenRef = useRef(0);
 
   const [isHinting, setIsHinting] = useState(false);
@@ -130,11 +132,13 @@ export default function SortScreen() {
   const progressRef = useRef(progress);
   progressRef.current = progress;
   /**
-   * `@sort/best_moves`, loaded with the screen and updated on every solve, so
-   * a solve's score is known at once and its session completes before the
-   * player can move on. `recordLevelSolve` writes the same bests to storage.
+   * The best moves per level: the one source of truth for every solve's card
+   * and score, so the session completes before the player can move on.
+   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
    */
   const bestMovesRef = useRef<BestMoves>({});
+  /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
+  const bestsStoredRef = useRef(false);
 
   const audio = useSortAudio();
 
@@ -176,7 +180,7 @@ export default function SortScreen() {
   const loadScreen = useCallback(async () => {
     setLoadError(false);
     setView("loading");
-    const [levelsResult, prog, bests] = await Promise.all([
+    const [levelsResult, prog, stored] = await Promise.all([
       withRetry(() => sortApi.getLevels())
         .then((result) => {
           // Cache the level definitions for offline use. Fire-and-forget —
@@ -191,7 +195,16 @@ export default function SortScreen() {
       loadProgress(),
       loadBestMoves(),
     ]);
-    bestMovesRef.current = bests;
+    if (stored !== null) {
+      // Merge, never replace: a Retry must keep a best still only in memory
+      // (its write failed, or storage couldn't be read before).
+      const merged = mergeBestMoves(bestMovesRef.current, stored);
+      bestMovesRef.current = merged;
+      bestsStoredRef.current = true;
+      if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
+        void saveBestMoves(merged);
+      }
+    }
     if (!levelsResult) {
       setLoadError(true);
     } else {
@@ -251,44 +264,46 @@ export default function SortScreen() {
     if (currentLevelId !== null) {
       const solvedLevel = currentLevelId;
       const moves = gameState.moveCount;
-      // Read before the unlock below moves it on.
-      const atFrontier = solvedLevel >= progressRef.current.unlockedLevel;
       // Decided now, from the bests in memory, so the session completes before
       // the player can leave the card (#2625).
       const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
       bestMovesRef.current = bests;
-      // The board ranks the highest level reached, fewest total moves first.
-      // Only the first solve of the frontier level raises it; replays
-      // (incl. the last level's Play Again) complete with no score.
-      const scored = atFrontier && solve.firstSolve;
-      const result: Record<string, number> = {
+      setWinSummary(solve);
+      // Storage mirrors memory; skipped while it couldn't be read, so a failed
+      // read never overwrites the stored bests.
+      if (solve.isNewBest && bestsStoredRef.current) void saveBestMoves(bests);
+      // Every solve is scored with the player's standing after it (#2625): the
+      // highest level solved, and the sum of best moves up to it. A replay that
+      // lowers a best improves the tie-break; the board keeps each player's
+      // best row. `level`/`moves`/`undos` are the level actually played.
+      const frontier = Math.min(
+        Math.max(
+          solvedLevel,
+          progressRef.current.unlockedLevel - 1, // read before the unlock below
+          highestSolvedLevel(bests)
+        ),
+        // Never past the last level: the server rejects (and the sync worker
+        // would drop) a level_reached above its cap.
+        Math.max(levels.length, solvedLevel)
+      );
+      const result: Record<string, number | boolean> = {
+        won: true,
         level: solvedLevel,
         moves,
         undos: gameState.undosUsed,
+        level_reached: frontier,
       };
-      if (scored) {
-        result.level_reached = solvedLevel;
-        const totalMoves = totalBestMoves(bests, solvedLevel);
-        if (totalMoves !== null) result.total_moves = totalMoves;
-      }
+      const totalMoves = totalBestMoves(bests, frontier);
+      if (totalMoves !== null) result.total_moves = totalMoves;
       // complete() clears the id: read it first.
       const gameId = syncGetGameId();
       syncComplete(
-        scored
-          ? { outcome: "completed", finalScore: solvedLevel, result }
-          : { outcome: "completed", result },
-        { outcome: "completed", won: true, ...result }
+        { outcome: "completed", finalScore: frontier, result },
+        { outcome: "completed", ...result }
       );
       // The row ranks by itself under the player's name (#2624): the card
       // only asks where it landed, or for a name if there is none.
-      if (scored && gameId) void submitRank({ gameId });
-      const gen = levelGenRef.current;
-      void recordLevelSolve(solvedLevel, moves).then((stored) => {
-        // The player already moved on (Next Level / Change Level): don't let
-        // this solve land on the next level's card.
-        if (gen !== levelGenRef.current) return;
-        setWinSummary(stored);
-      });
+      if (gameId) void submitRank({ gameId });
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
