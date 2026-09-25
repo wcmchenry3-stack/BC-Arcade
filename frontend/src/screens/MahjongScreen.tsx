@@ -531,19 +531,24 @@ export default function MahjongScreen() {
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    close: syncClose,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("mahjong");
 
   // #2450 / #2619 — the unfinished-board result block (backend MahjongResult).
-  // The hook's own abandon (unmount), the explicit abandons and the deadlock
-  // loss all build it here.
+  // The hook's abandons (unmount, close()) and the deadlock loss build it here.
   const progressResult = useCallback(
     () => ({ won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }),
     []
   );
+  // The abandon also carries Mahjong's own play timer, which wins over the
+  // hook's foreground clock (#2684).
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      return { result: progressResult(), durationMs: s ? elapsedMs(s) : null };
+    });
   }, [syncSetProgressSnapshot, progressResult]);
 
   // Audio
@@ -873,27 +878,14 @@ export default function MahjongScreen() {
   }, []);
 
   /**
-   * Closes an open session: a loss for a deadlocked board, otherwise abandoned
-   * (a no-op after a win or before a move). The screen stays mounted here, so
-   * it closes the session itself — with the snapshot's result block and no
-   * score, like the hook's own abandon (#2619, #2627).
+   * Closes an open session: a loss for a deadlocked board, otherwise the
+   * hook's close() — abandoned with the progress snapshot if started,
+   * discarded if not (a no-op after a win or with no session open).
    */
   const abandonOpenSession = useCallback(() => {
     if (recordDeadlockLoss()) return;
-    if (syncGetGameId()) {
-      const s = stateRef.current;
-      const result = progressResult();
-      syncComplete(
-        {
-          outcome: "abandoned",
-          // The game's own play timer (#2619), not wall-clock time.
-          durationMs: s ? elapsedMs(s) : null,
-          result,
-        },
-        { outcome: "abandoned", ...result }
-      );
-    }
-  }, [syncGetGameId, syncComplete, recordDeadlockLoss, progressResult]);
+    syncClose();
+  }, [recordDeadlockLoss, syncClose]);
 
   const startNewGame = useCallback(() => {
     abandonOpenSession();

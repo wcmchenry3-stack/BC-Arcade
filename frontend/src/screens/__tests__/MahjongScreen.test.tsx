@@ -15,6 +15,10 @@ import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongEngine from "../../game/mahjong/engine";
 import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
+
+// How long to wait for the deadlock card. Only an upper bound: generous so a
+// loaded parallel run (the card shows after DEADLOCK_OVERLAY_DELAY_MS) isn't flaky.
+const DEADLOCK_CARD_WAIT_MS = DEADLOCK_OVERLAY_DELAY_MS + 3000;
 import type { MahjongState } from "../../game/mahjong/types";
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,33 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
+// The app-wide foreground-time counter behind useGameSync's active-play window
+// (#2684), held still: Mahjong's own play timer is what the summaries carry.
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => 0,
+}));
+
+// The real hook, with close() counted so tests can tell the screen closed its
+// session through the hook instead of building the abandon itself (#2679).
+const mockClose = jest.fn();
+jest.mock("../../game/_shared/useGameSync", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useCallback } = require("react");
+  const actual = jest.requireActual("../../game/_shared/useGameSync");
+  return {
+    ...actual,
+    useGameSync: (gameType: string) => {
+      const sync = actual.useGameSync(gameType);
+      const realClose = sync.close;
+      const close = useCallback(() => {
+        mockClose();
+        realClose();
+      }, [realClose]);
+      return { ...sync, close };
+    },
+  };
+});
+
 // The result card's rank lookup (sessionBoardAdapter, #2677).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () => ({
@@ -199,6 +230,7 @@ beforeEach(async () => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
+  mockClose.mockClear();
   (scoreQueue.enqueue as jest.Mock).mockReset();
   (scoreQueue.enqueue as jest.Mock).mockResolvedValue({ id: "q-1" });
   (scoreQueue.flush as jest.Mock).mockReset();
@@ -626,7 +658,7 @@ describe("MahjongScreen — no-moves overlays", () => {
     const api = await mount();
     expect(api.queryByTestId("mahjong-result")).toBeNull();
     const cardEl = await waitFor(() => api.getByTestId("mahjong-result"), {
-      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+      timeout: DEADLOCK_CARD_WAIT_MS,
     });
     const card = within(cardEl);
     expect(card.getByTestId("mahjong-result-title")).toHaveTextContent("You Lose");
@@ -667,7 +699,7 @@ describe("MahjongScreen — no-moves overlays", () => {
     );
     const api = await mount();
     const card = await waitFor(() => api.getByTestId("mahjong-result"), {
-      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+      timeout: DEADLOCK_CARD_WAIT_MS,
     });
     await act(async () => {
       await fireEvent.press(within(card).getByRole("button", { name: "Undo last move" }));
@@ -724,7 +756,7 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     const card = await waitFor(() => api.getByTestId("mahjong-result"), {
-      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+      timeout: DEADLOCK_CARD_WAIT_MS,
     });
     return { api, card: within(card) };
   }
@@ -739,6 +771,8 @@ describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
     });
+    // The loss is recorded before any close(): the board isn't abandoned.
+    expect(mockClose).not.toHaveBeenCalled();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const { summary, data } = lastSummary();
     expect(summary.outcome).toBe("loss");
@@ -816,6 +850,18 @@ describe("MahjongScreen — useGameSync lifecycle", () => {
 // abandon built from the same helper. MahjongResult requires `won` + `pairs`;
 // a wrong shape is a 400 the sync worker dead-letters.
 describe("MahjongScreen — progress snapshot (#2619)", () => {
+  // Date.now held still, so the board's play timer (elapsedMs) is exactly its
+  // banked 60 s: the first tap starts the running segment at the same instant.
+  const NOW = 1_800_000_000_000;
+  const PLAY_MS = 60_000;
+  let dateNow: jest.SpyInstance;
+  beforeEach(() => {
+    dateNow = jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    dateNow.mockRestore();
+  });
+
   /** A board in progress with a free matching pair: not deadlocked. */
   async function mountMidGameWithSession() {
     const inProgress = makeWinState({
@@ -823,7 +869,7 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
       isDeadlocked: false,
       pairsRemoved: 12,
       score: 240,
-      accumulatedMs: 60000,
+      accumulatedMs: PLAY_MS,
       tiles: [
         { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
         { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
@@ -839,15 +885,19 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     return api;
   }
 
-  it("an unmount abandon carries the snapshot result and no score", async () => {
+  // #2684: the snapshot's durationMs (Mahjong's own play timer) wins over the
+  // hook's foreground clock.
+  it("an unmount abandon carries the snapshot result, the play timer and no score", async () => {
     const { unmount } = await mountMidGameWithSession();
     await unmount();
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary, data] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary).not.toHaveProperty("finalScore");
-    expect(summary.result).toEqual({ won: false, pairs: 12 });
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { won: false, pairs: 12 },
+      durationMs: PLAY_MS,
+    });
     expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
   });
 
@@ -863,10 +913,16 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary).toEqual({ outcome: "abandoned", result: { won: false, pairs: 12 } });
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { won: false, pairs: 12 },
+      durationMs: PLAY_MS,
+    });
   });
 
-  it("a New Game abandon sends the play timer as durationMs and no score (#2619, #2627)", async () => {
+  // #2679: New Game closes the session through the hook's close(), which
+  // abandons it with the snapshot — the screen builds no summary of its own.
+  it("New Game closes the session through the hook, with the snapshot", async () => {
     const api = await mountMidGameWithSession();
     await act(async () => {
       await fireEvent.press(api.getByLabelText("More options"));
@@ -881,13 +937,16 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
       });
     }
 
+    expect(mockClose).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary).not.toHaveProperty("finalScore");
-    expect(summary.result).toEqual({ won: false, pairs: 12 });
-    expect(summary.durationMs).toBeGreaterThanOrEqual(60_000);
-    expect(summary.durationMs).toBeLessThan(70_000);
+    const [gameId, summary, data] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-uuid-test");
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { won: false, pairs: 12 },
+      durationMs: PLAY_MS,
+    });
+    expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
   });
 });
 
@@ -994,7 +1053,9 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
         await fireEvent.press(api.getByLabelText("Pyramid"));
       });
 
-      // The turtle session is closed as abandoned, with its own progress.
+      // The turtle session is closed through the hook's close(), abandoned
+      // with its own progress.
+      expect(mockClose).toHaveBeenCalledTimes(1);
       expect(mockCompleteGame).toHaveBeenCalledTimes(1);
       const [turtleId, turtleSummary] = mockCompleteGame.mock.calls[0]!;
       expect(turtleId).toBe("turtle-game");
