@@ -65,7 +65,23 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
-beforeEach(() => {
+// The result card's rank lookup (#2631, #2677): GET /games/{id}/rank.
+const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+}));
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { GameRankResponse } from "../../api/types";
+import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+
+beforeEach(async () => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
@@ -73,6 +89,10 @@ beforeEach(() => {
   mockResumeGame.mockReset();
   mockResumeGame.mockReturnValue(null);
   mockMarkStarted.mockReset();
+  mockGetRank.mockReset();
+  mockGetRank.mockResolvedValue({ rank: 3, is_best: true, ranked: true, reason: null });
+  await AsyncStorage.clear();
+  resetDisplayNameCacheForTests();
 });
 
 function mockNav() {
@@ -593,14 +613,17 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     const completeCall = mockCompleteGame.mock.calls[0];
     if (completeCall === undefined) throw new Error("Expected completeGame call");
     const [, summary, eventData] = completeCall;
-    expect(summary.outcome).toBe("completed");
+    // A game over without the 2048 tile is a loss (#2631).
+    expect(summary.outcome).toBe("loss");
+    expect(summary.finalScore).toBe(1234);
+    expect(summary.result).toEqual(eventData);
     expect(eventData).toEqual(
       expect.objectContaining({
         final_score: 1234,
         highest_tile: expect.any(Number),
         move_count: 1,
         duration_ms: expect.any(Number),
-        outcome: "completed",
+        outcome: "loss",
       })
     );
     expect(eventData.highest_tile).toBeGreaterThan(0);
@@ -611,31 +634,6 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 200));
     });
-  });
-
-  it("fires completeGame with 'kept_playing' outcome when Keep Playing is pressed", async () => {
-    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
-    const { getByLabelText } = await mountAndSettle();
-    mockCompleteGame.mockClear();
-
-    await act(async () => {
-      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
-    });
-
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const keptPlayingCall = mockCompleteGame.mock.calls[0];
-    if (keptPlayingCall === undefined) throw new Error("Expected completeGame call");
-    const [, summary, eventData] = keptPlayingCall;
-    expect(summary.outcome).toBe("kept_playing");
-    expect(eventData.outcome).toBe("kept_playing");
-    expect(eventData).toEqual(
-      expect.objectContaining({
-        final_score: expect.any(Number),
-        highest_tile: expect.any(Number),
-        move_count: expect.any(Number),
-        duration_ms: expect.any(Number),
-      })
-    );
   });
 
   it("fires completeGame with 'abandoned' outcome on unmount mid-game", async () => {
@@ -666,12 +664,17 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
   });
 
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {
-    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
-    const { getByLabelText, unmount } = await mountAndSettle();
-    await act(async () => {
-      await fireEvent.press(getByLabelText("Continue playing after reaching 2048"));
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const { unmount } = await mountAndSettle();
+    mockedEngineMove.mockImplementationOnce(() => ({ ...GAME_OVER_STATE, score: 1234 }));
+    await act(() => {
+      dispatchKey("ArrowLeft");
     });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     mockCompleteGame.mockClear();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
     await unmount();
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
@@ -846,5 +849,228 @@ describe("Twenty48Screen — result card (#2513)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 200));
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2631 — 2048 is a win, a game over before it a loss; the card's leaderboard
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", () => {
+  // The move that makes the 2048 tile.
+  const WIN_BOARD = [
+    [2048, 4, 2, 0],
+    [8, 16, 0, 0],
+    [32, 64, 0, 0],
+    [128, 256, 0, 0],
+  ];
+  const WIN_MOVE: Twenty48State = {
+    board: WIN_BOARD,
+    tiles: tilesFor(WIN_BOARD),
+    score: 20_480,
+    scoreDelta: 2048,
+    game_over: false,
+    has_won: true,
+    startedAt: null,
+    accumulatedMs: 90_000,
+  };
+  // A game over on a board that has 2048 (after Keep Playing, or on the win move).
+  const OVER_WITH_2048_BOARD = [
+    [2048, 4, 2, 4],
+    [4, 2, 4, 2],
+    [2, 4, 2, 4],
+    [4, 2, 4, 2],
+  ];
+  const OVER_WITH_2048: Twenty48State = {
+    ...GAME_OVER_STATE,
+    board: OVER_WITH_2048_BOARD,
+    tiles: tilesFor(OVER_WITH_2048_BOARD),
+    score: 30_000,
+    has_won: true,
+  };
+  const SAVED_RANK_3 = "Saved as Riley · #3 on the leaderboard";
+
+  const releaseMoveLock = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+
+  async function playMove(result: Twenty48State) {
+    mockedEngineMove.mockImplementationOnce(() => result);
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    await releaseMoveLock();
+  }
+
+  const outcomes = () => mockCompleteGame.mock.calls.map((c) => c[1].outcome);
+
+  const pressKeepPlaying = (r: Awaited<ReturnType<typeof mountAndSettle>>) =>
+    act(async () => {
+      await fireEvent.press(r.getByLabelText("Continue playing after reaching 2048"));
+    });
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("reaching 2048 completes the session as a win at that moment's score", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+
+    await playMove(WIN_MOVE);
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-uuid-test");
+    expect(summary).toEqual(
+      expect.objectContaining({ outcome: "win", finalScore: 20_480, durationMs: 90_000 })
+    );
+    expect(summary.result).toEqual(
+      expect.objectContaining({ final_score: 20_480, highest_tile: 2048, outcome: "win" })
+    );
+    expect(eventData.outcome).toBe("win");
+    // The win card shows, with this game's rank.
+    await waitFor(() => expect(r.getByText("You Win!")).toBeTruthy());
+    await r.findByText(SAVED_RANK_3);
+  });
+
+  it("the submission renders once: one rank lookup for the session, one line on the card", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+
+    await playMove(WIN_MOVE);
+    const card = within(await r.findByTestId("twenty48-result"));
+    await waitFor(() => expect(card.getAllByText(SAVED_RANK_3)).toHaveLength(1));
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("game-uuid-test");
+  });
+
+  it("asks for a display name on the win card when the player has none", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+
+    await playMove(WIN_MOVE);
+    expect(await r.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    // No name yet: nothing to look up.
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("Keep Playing sends no completion; a later game over neither completes nor submits", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    await playMove(WIN_MOVE);
+    await r.findByText(SAVED_RANK_3);
+    mockCompleteGame.mockClear();
+
+    await pressKeepPlaying(r);
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+
+    // Play after 2048 is untracked: no completion, no second rank lookup.
+    await playMove(OVER_WITH_2048);
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+    const card = within(await r.findByTestId("twenty48-result"));
+    await waitFor(() => expect(card.getByText("Game Over")).toBeTruthy());
+    expect(card.queryByText(SAVED_RANK_3)).toBeNull();
+
+    await r.unmount();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("a game over without 2048 completes as a loss and shows the rank", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+
+    await playMove({ ...GAME_OVER_STATE, score: 1234 });
+
+    expect(outcomes()).toEqual(["loss"]);
+    expect(mockCompleteGame.mock.calls[0]![1].finalScore).toBe(1234);
+    await r.findByText(SAVED_RANK_3);
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+  });
+
+  it("a game over on the same move that reaches 2048 is a win", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    await mountAndSettle();
+
+    await playMove({ ...OVER_WITH_2048, score: 20_480 });
+
+    expect(outcomes()).toEqual(["win"]);
+    expect(mockCompleteGame.mock.calls[0]![1].finalScore).toBe(20_480);
+  });
+
+  it("new builds never write kept_playing or completed", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    await playMove(WIN_MOVE);
+    await pressKeepPlaying(r);
+    await playMove(OVER_WITH_2048);
+    // Play Again after the game over: that session is already finished.
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    await r.unmount();
+    expect(outcomes()).toEqual(["win"]);
+  });
+
+  it("a resumed game that already won does not complete again", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByText("You Win!")).toBeTruthy());
+    // It was finished at the win: no session to continue or open.
+    expect(mockResumeGame).not.toHaveBeenCalled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+
+    await pressKeepPlaying(r);
+    await playMove(OVER_WITH_2048);
+    await r.unmount();
+
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("no submit on an abandon: leaving mid-game", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const r = await mountAndSettle();
+    await playMove({ ...NOOP_LEFT_STATE, score: 64 });
+
+    await r.unmount();
+    expect(outcomes()).toEqual(["abandoned"]);
+    expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("no submit on an abandon: New Game mid-game; the next game submits afresh", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    await playMove({ ...NOOP_LEFT_STATE, score: 64 });
+
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start a new 2048 game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start new game" }));
+    });
+    expect(outcomes()).toEqual(["abandoned"]);
+    expect(mockGetRank).not.toHaveBeenCalled();
+
+    await playMove({ ...GAME_OVER_STATE, score: 512 });
+    await r.findByText(SAVED_RANK_3);
+    expect(outcomes()).toEqual(["abandoned", "loss"]);
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+  });
+
+  it("a saved game-over board shows no leaderboard line and looks nothing up", async () => {
+    await saveDisplayName("Riley");
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await mountAndSettle();
+    const card = within(await r.findByTestId("twenty48-result"));
+    expect(card.queryByText(/Saved as/)).toBeNull();
+    expect(mockGetRank).not.toHaveBeenCalled();
   });
 });

@@ -31,7 +31,7 @@ def _headers(sid: str) -> dict[str, str]:
 
 
 def _ended(outcome: str, *, score: int = 2400, tile: int = 256) -> dict:
-    """``endedPayload(s, outcome)`` — game over, new game, keep playing."""
+    """``{...progressResult(s), outcome}`` — the win, a game over, a new game."""
     return {
         "final_score": score,
         "highest_tile": tile,
@@ -50,9 +50,23 @@ _ABANDON_SNAPSHOT = {
     "duration_ms": 20_000,
 }
 
-# (PATCH /complete body, as SyncWorker serialises it) for every path the app has.
+# (PATCH /complete body, as SyncWorker serialises it) for every path the app
+# has: this build's (#2631: ``win`` / ``loss``) and the store builds' before it
+# (``completed`` / ``kept_playing``), which stay valid.
 _CURRENT_COMPLETIONS = {
-    "game-over": {
+    "reached-2048-win": {
+        "final_score": 20_480,
+        "outcome": "win",
+        "duration_ms": 600_000,
+        "result": _ended("win", score=20_480, tile=2048),
+    },
+    "game-over-loss": {
+        "final_score": 2400,
+        "outcome": "loss",
+        "duration_ms": 95_000,
+        "result": _ended("loss"),
+    },
+    "older-build-game-over": {
         "final_score": 2400,
         "outcome": "completed",
         "duration_ms": 95_000,
@@ -64,7 +78,7 @@ _CURRENT_COMPLETIONS = {
         "duration_ms": 40_000,
         "result": _ended("abandoned", score=800, tile=64),
     },
-    "keep-playing": {
+    "older-build-keep-playing": {
         "final_score": 20_480,
         "outcome": "kept_playing",
         "duration_ms": 600_000,
@@ -113,9 +127,9 @@ def test_board_is_one_global_score_board() -> None:
     assert board.enabled is True
 
 
-def test_has_no_winner_until_the_app_records_win_or_loss() -> None:
-    # The app sends completed / kept_playing / abandoned today; #2631 flips this.
-    assert twenty48_module.has_winner is False
+def test_has_a_winner_now_that_the_app_records_win_or_loss() -> None:
+    # #2631: reaching 2048 records ``win``, a game over before it ``loss``.
+    assert twenty48_module.has_winner is True
 
 
 def test_stats_shape_is_pass_through_without_latest_score() -> None:
@@ -150,8 +164,9 @@ def test_result_ignores_unknown_keys_so_a_newer_build_still_completes() -> None:
     assert dumped == _ended("completed")
 
 
-def test_result_accepts_a_future_win_outcome() -> None:
-    assert Twenty48Result.model_validate(_ended("win")).outcome == "win"
+@pytest.mark.parametrize("outcome", ["win", "loss", "completed", "kept_playing"])
+def test_result_accepts_new_and_older_build_outcomes(outcome: str) -> None:
+    assert Twenty48Result.model_validate(_ended(outcome)).outcome == outcome
 
 
 @pytest.mark.parametrize(
@@ -257,12 +272,52 @@ def test_a_kept_playing_completion_from_an_older_build_still_counts() -> None:
     sid = str(uuid.uuid4())
     gid = _start(sid)
     r = client.patch(
-        f"/games/{gid}/complete", headers=_headers(sid), json=_CURRENT_COMPLETIONS["keep-playing"]
+        f"/games/{gid}/complete",
+        headers=_headers(sid),
+        json=_CURRENT_COMPLETIONS["older-build-keep-playing"],
     )
     assert r.status_code == 200, r.text
     stats = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["twenty48"]
     assert stats["played"] == 1
     assert stats["best"] == 20_480
+
+
+def test_a_win_and_a_loss_count_as_won_and_lost() -> None:
+    """#2631: win rate is meaningful — the 2048 win and a game over before it."""
+    sid = str(uuid.uuid4())
+    for name in ("reached-2048-win", "game-over-loss"):
+        gid = _start(sid)
+        r = client.patch(
+            f"/games/{gid}/complete", headers=_headers(sid), json=_CURRENT_COMPLETIONS[name]
+        )
+        assert r.status_code == 200, r.text
+    stats = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["twenty48"]
+    assert (stats["won"], stats["lost"]) == (1, 1)
+    assert stats["best"] == 20_480
+
+
+def test_a_named_players_win_and_loss_leave_one_board_entry() -> None:
+    """The 2048 win ranks at its score; the player's worse loss adds no entry."""
+    sid = str(uuid.uuid4())
+    name = f"T48-{uuid.uuid4().hex[:8]}"
+    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    assert r.status_code == 200, r.text
+    ids = {}
+    for key in ("reached-2048-win", "game-over-loss"):
+        ids[key] = gid = _start(sid)
+        r = client.patch(
+            f"/games/{gid}/complete", headers=_headers(sid), json=_CURRENT_COMPLETIONS[key]
+        )
+        assert r.status_code == 200, r.text
+
+    board = client.get("/games/leaderboard/twenty48")
+    assert board.status_code == 200, board.text
+    mine = [e["value"] for e in board.json()["entries"] if e["player_name"] == name]
+    assert mine == [20_480]
+    win = client.get(f"/games/{ids['reached-2048-win']}/rank", headers=_headers(sid)).json()
+    loss = client.get(f"/games/{ids['game-over-loss']}/rank", headers=_headers(sid)).json()
+    assert win["ranked"] and win["is_best"]
+    assert loss["ranked"] and not loss["is_best"]
 
 
 # ---------------------------------------------------------------------------
