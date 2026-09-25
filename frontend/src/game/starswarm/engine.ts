@@ -419,6 +419,46 @@ export function _resetIds(): void {
   _nextId = 1;
 }
 
+/**
+ * The module-level counters a run depends on (#2645). A new process starts them over — ids
+ * from 1, the rng from the default seed — so a run restored after a cold start carries them.
+ */
+export interface EngineCounters {
+  readonly nextId: number;
+  readonly seed: number;
+}
+
+export function engineCounters(): EngineCounters {
+  return { nextId: _nextId, seed: _seed };
+}
+
+/**
+ * Continue a restored run's counters. Ids only move forward: never back onto an id this
+ * process has already issued, nor onto one the restored run holds.
+ */
+export function restoreEngineCounters(counters: EngineCounters): void {
+  _nextId = Math.max(_nextId, Math.floor(counters.nextId));
+  _seed = counters.seed >>> 0;
+}
+
+/** Top-level and player keys: enough to tell a state saved by a build with another shape. */
+export function stateShape(state: StarSwarmState): string {
+  return `${Object.keys(state).sort().join(",")}|${Object.keys(state.player).sort().join(",")}`;
+}
+
+let _buildShape: string | null = null;
+
+/** {@link stateShape} of this build's StarSwarmState, from a fresh state (counters untouched). */
+export function buildStateShape(): string {
+  if (_buildShape === null) {
+    const counters = engineCounters();
+    _buildShape = stateShape(initStarSwarm(CANVAS_W, CANVAS_H));
+    _nextId = counters.nextId;
+    _seed = counters.seed;
+  }
+  return _buildShape;
+}
+
 // ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------

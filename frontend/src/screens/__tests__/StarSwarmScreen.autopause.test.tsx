@@ -5,12 +5,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import StarSwarmScreen from "../StarSwarmScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
-import { clearSavedPausedState, savePausedState } from "../../game/starswarm/pauseStore";
+import {
+  PAUSED_RUN_STORAGE_KEY,
+  _resetPauseStoreForTests,
+  clearSavedPausedState,
+  savePausedState,
+} from "../../game/starswarm/pauseStore";
+import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { StarSwarmState } from "../../game/starswarm/types";
 
 // Leaving the app mid-run pauses Star Swarm, so the player returns to the pause
 // overlay. The Skia canvas is mocked (its isPaused prop is the game's paused
-// state, and getState() returns the engine's phase); Controls is real, so the
+// state, and getState() returns an engine state); Controls is real, so the
 // overlay itself is asserted.
 
 jest.mock("expo-blur", () => ({
@@ -31,6 +37,7 @@ jest.mock("@react-navigation/native", () => ({
 let mockCanvasProps: any = null;
 // What the engine holds — the canvas stores game over before React hears of it.
 let mockEnginePhase = "SwoopIn";
+let mockEngineState: StarSwarmState | null = null;
 jest.mock("../../components/starswarm/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -39,7 +46,9 @@ jest.mock("../../components/starswarm/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const MockCanvas = React.forwardRef((props: any, ref: any) => {
     mockCanvasProps = props;
-    React.useImperativeHandle(ref, () => ({ getState: () => ({ phase: mockEnginePhase }) }));
+    React.useImperativeHandle(ref, () => ({
+      getState: () => ({ ...mockEngineState, phase: mockEnginePhase }),
+    }));
     return React.createElement(View, { testID: "starswarm-canvas" });
   });
   MockCanvas.displayName = "MockCanvas";
@@ -95,9 +104,11 @@ async function renderScreen() {
       <StarSwarmScreen />
     </ThemeProvider>
   );
-  // Give the canvas container a size so the canvas mounts.
+  // Give the canvas container a size so the canvas mounts. The game mounts once any
+  // run a previous process saved has loaded (#2645).
+  const outer = await r.findByTestId("starswarm-canvas-outer");
   await act(async () => {
-    await fireEvent(r.getByTestId("starswarm-canvas-outer"), "layout", {
+    await fireEvent(outer, "layout", {
       nativeEvent: { layout: { width: 400, height: 700 } },
     });
   });
@@ -129,6 +140,7 @@ beforeEach(async () => {
   mockCanvasProps = null;
   mockAudioArgs = [];
   mockEnginePhase = "SwoopIn";
+  mockEngineState = { ...initStarSwarm(CANVAS_W, CANVAS_H, 3, 7, "Commander"), score: 2500 };
   clearSavedPausedState();
   appStateListeners = [];
   jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
@@ -271,5 +283,113 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     expect(screen.queryByText("PAUSED")).toBeNull();
     await startRun();
     expectRunning();
+  });
+});
+
+describe("StarSwarmScreen — a paused run survives the process (#2645)", () => {
+  const flush = () => act(async () => new Promise((r) => setImmediate(r)));
+  async function persisted() {
+    const raw = await AsyncStorage.getItem(PAUSED_RUN_STORAGE_KEY);
+    return raw == null ? null : JSON.parse(raw);
+  }
+
+  it("backgrounding saves the run, with its session and the engine's counters", async () => {
+    await renderScreen();
+    await startRun();
+    await setAppState("background");
+    await flush();
+
+    const saved = await persisted();
+    expect(saved).not.toBeNull();
+    expect(saved.gameState.score).toBe(2500);
+    expect(saved.difficulty).toBe("Commander");
+    expect(saved.gameId).toBe("starswarm-game-id");
+    expect(saved.counters).toEqual({ nextId: expect.any(Number), seed: expect.any(Number) });
+  });
+
+  it("resuming clears the save — the run is live again", async () => {
+    await renderScreen();
+    await startRun();
+    await setAppState("inactive");
+    await flush();
+    expect(await persisted()).not.toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    await flush();
+    expect(await persisted()).toBeNull();
+  });
+
+  it("game over clears the save", async () => {
+    await renderScreen();
+    await startRun();
+    await setAppState("background");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    // Saved again, then the run ends before the player comes back to it.
+    await setAppState("background");
+    await flush();
+    expect(await persisted()).not.toBeNull();
+    await act(async () => {
+      mockCanvasProps.onGameOver(4200, 7);
+    });
+    await flush();
+    expect(await persisted()).toBeNull();
+  });
+
+  it("after a cold start, reopens straight onto the paused run and closes the dead session", async () => {
+    const run = mockEngineState!;
+    savePausedState({
+      gameState: run,
+      difficulty: "Commander",
+      gameId: "dead-process-game",
+      counters: { nextId: 9000, seed: 5 },
+    });
+    await flush();
+    _resetPauseStoreForTests(); // the OS killed the app
+
+    await renderScreen();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(mockCanvasProps.initialState).toEqual(JSON.parse(JSON.stringify(run)));
+    expect(mockCanvasProps.difficulty).toBe("Commander");
+
+    // The dead process's session is abandoned; the restored run gets a session of its own.
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "dead-process-game",
+      { outcome: "abandoned" },
+      { outcome: "abandoned" }
+    );
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+  });
+
+  it("backing out of a paused run saves it without a session — unmounting abandons that", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Pause game" }));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-back"));
+    });
+    await flush();
+    const saved = await persisted();
+    expect(saved.gameState.score).toBe(2500);
+    expect(saved.gameId).toBeNull();
+    expect(mockPopToTop).toHaveBeenCalled();
+  });
+
+  it("a cold start with nothing saved opens the difficulty picker as usual", async () => {
+    _resetPauseStoreForTests();
+    await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 });
