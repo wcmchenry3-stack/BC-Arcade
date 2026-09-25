@@ -293,11 +293,13 @@ async def _stop_daily_word_retention() -> None:
     task = getattr(app.state, "retention_task", None)
     if task is None:
         return
+    from daily_word.retention import logger as retention_logger
+
     task.cancel()
     done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
     app.state.retention_task = None
     if not done:
-        logging.getLogger("daily_word.retention").warning(
+        retention_logger.warning(
             "daily_word retention: task still running %.0fs after cancel; not waiting",
             RETENTION_STOP_TIMEOUT_SECONDS,
         )

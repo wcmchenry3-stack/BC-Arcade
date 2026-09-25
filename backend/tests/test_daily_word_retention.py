@@ -216,8 +216,13 @@ def test_shutdown_does_not_wait_forever_on_a_loop_that_will_not_stop(
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
-            # Swallow the shutdown cancel, as a call stuck in the driver would.
-            # The event loop's own teardown cancels this second sleep.
+            # Absorb the shutdown cancel, as SQLAlchemy does when a cancel
+            # lands mid-query: it invalidates the connection and awaits a
+            # shielded graceful close, which never finishes if the aiosqlite
+            # worker thread has died. A second cancel — the event loop's own
+            # teardown, once shutdown returns — force-closes it and ends the
+            # task (AsyncAdapt_terminate.terminate). The old hook never
+            # returned, so that second cancel never came.
             await asyncio.sleep(3600)
 
     monkeypatch.setattr(retention, "run_retention_loop", stuck_loop)
