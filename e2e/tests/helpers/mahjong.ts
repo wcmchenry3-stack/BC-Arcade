@@ -3,6 +3,7 @@
  */
 
 import { Page } from "@playwright/test";
+import { installEntitlementsMock } from "./api-mock";
 
 const API_BASE = "http://localhost:8000";
 
@@ -19,6 +20,7 @@ export async function mockMahjongApi(page: Page): Promise<void> {
 
 /** Navigate from Home to Mahjong and wait for the board canvas to be ready. */
 export async function gotoMahjong(page: Page): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
   await page
@@ -44,6 +46,7 @@ export async function injectMahjongState(
   page: Page,
   partial: Record<string, unknown>,
 ): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.evaluate(
     ([key, state]) =>
@@ -58,6 +61,7 @@ export async function injectMahjongProgress(
   page: Page,
   progress: Record<string, unknown>,
 ): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.evaluate(
     ([key, data]) => localStorage.setItem(key as string, JSON.stringify(data)),
@@ -73,6 +77,7 @@ export async function injectMahjongFull(
   state: Record<string, unknown>,
   progress: Record<string, unknown>,
 ): Promise<void> {
+  await installEntitlementsMock(page);
   await page.goto("/");
   await page.evaluate(
     ([gameState, progressData]) => {

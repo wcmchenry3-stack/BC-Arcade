@@ -232,8 +232,9 @@ exist in this build at all?" and lives separately in
 
 v1.0 ships with the six premium games hidden entirely — no tile, no route, no
 locked screen — until IAP lands (epic #822). Since 2026-09-23 those are blackjack,
-cascade, hearts, sudoku, starswarm and sort (Blackjack and Yacht swapped tiers, so
-the store build carries no simulated gambling). `isGameVisible(slug)` filters:
+cascade, hearts, sudoku, starswarm and mahjong (Blackjack and Yacht swapped tiers
+on 2026-09-23 so the store build carries no simulated gambling; Mahjong and Sort
+swapped tiers on 2026-09-24, owner decision). `isGameVisible(slug)` filters:
 
 - the Home grid and chunk prefetch (`HomeScreen.tsx`);
 - route and tab registration — `App.tsx` registers premium screens from the

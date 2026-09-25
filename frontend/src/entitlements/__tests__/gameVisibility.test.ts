@@ -9,8 +9,8 @@ import * as path from "path";
 
 import { PREMIUM_GAMES } from "../EntitlementContext";
 
-const PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"];
-const FREE_SLUGS = ["yacht", "solitaire", "freecell", "mahjong", "daily_word", "twenty48"];
+const PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "mahjong"];
+const FREE_SLUGS = ["yacht", "solitaire", "freecell", "sort", "daily_word", "twenty48"];
 
 const PRE_LAUNCH_API_URL = "https://dev-games-api.buffingchi.com";
 const PRODUCTION_API_URL = "https://games-api.buffingchi.com";

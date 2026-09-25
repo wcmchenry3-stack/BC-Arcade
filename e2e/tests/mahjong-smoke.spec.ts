@@ -9,10 +9,12 @@
 
 import { test, expect } from "@playwright/test";
 import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Mahjong — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
     await mockMahjongApi(page);
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
@@ -68,4 +70,13 @@ test.describe("Mahjong — smoke tests", () => {
     await expect(page.getByRole("alert")).not.toBeVisible();
     await expect(canvas).toBeVisible();
   });
+});
+
+test("Mahjong Solitaire card shows premium gate on home screen when not entitled", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: /Mahjong Solitaire — Coming soon/ }),
+  ).toBeVisible({ timeout: 10_000 });
 });

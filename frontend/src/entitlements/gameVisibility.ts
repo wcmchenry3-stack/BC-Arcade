@@ -37,7 +37,7 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
   "hearts",
   "sudoku",
   "starswarm",
-  "sort",
+  "mahjong",
 ]);
 
 /**

@@ -10,10 +10,14 @@ sitting. Privacy forms (Apple App Privacy, Play Data safety, #2014) are already 
 > each console's rating preview before saving.**
 
 **What the rating covers:** the v1.0 store build, which ships six games — Yacht, Solitaire,
-FreeCell, Mahjong, Daily Word, 2048. The six premium games are compiled out of store builds
+FreeCell, Sort, Daily Word, 2048. The six premium games are compiled out of store builds
 (`gameVisibility.ts`), so they are not rated now. **When a premium game ships (IAP, #822), redo both
 questionnaires** — Blackjack adds simulated gambling (§1), Star Swarm cartoon/fantasy violence, and
 Hearts needs a fresh look.
+
+**Amended 2026-09-24 (owner): Mahjong and Sort swapped tiers** — Mahjong is now premium (migration
+`0022_swap_mahjong_sort` flips `game_types.is_premium`), Sort is free. Sort's daily-challenge goals
+take Mahjong's slot in the free pool; Mahjong's goals wait for #2458 alongside Blackjack's.
 
 ---
 
@@ -153,7 +157,7 @@ BC Arcade is a small arcade of classic games built for short moments — open it
 SIX GAMES
 • Solitaire — Klondike with draw-3 and unlimited undo
 • FreeCell — every card face-up; nearly every deal can be won
-• Mahjong — classic tile-matching solitaire on the Turtle layout
+• Bottle Sort — pour and sort colored liquid layers to clear every bottle
 • Daily Word — one word puzzle a day, six guesses, the same word for everyone (English and Hindi)
 • 2048 — slide and merge tiles to reach 2048 and beyond
 • Yacht — roll five dice, fill 13 scoring boxes, and try to beat the computer
@@ -192,7 +196,7 @@ Three new goals every day across six classic games. Keep your streak alive — n
 **Keywords** (100 max, comma-separated, no spaces after commas, don't repeat the name or category):
 
 ```
-solitaire,freecell,mahjong,dice,word,2048,daily,klondike,cards,tiles,offline,streak,classic,casual
+solitaire,freecell,puzzle,dice,word,2048,daily,klondike,cards,tiles,offline,streak,classic,casual
 ```
 
 _(Avoid `casino` and `poker`, even when Blackjack returns: they invite gambling-app scrutiny.)_

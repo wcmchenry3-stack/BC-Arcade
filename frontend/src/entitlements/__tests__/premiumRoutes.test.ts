@@ -27,7 +27,7 @@ describe("premiumRoutes", () => {
       "StarSwarm",
       "Hearts",
       "Sudoku",
-      "Sort",
+      "Mahjong",
     ]);
     expect(visiblePremiumTabs().map((t) => t.tab)).toEqual(["Ranks"]);
   });

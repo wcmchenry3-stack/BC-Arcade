@@ -142,7 +142,7 @@ def test_stats_me_reports_arcade_xp_and_level(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     for _ in range(3):
         _create_and_complete(client, sid, game_type="twenty48", final_score=2048)
-    _create_and_complete(client, sid, game_type="mahjong", final_score=1500)
+    _create_and_complete(client, sid, game_type="sort", final_score=1500)
     # Started but never completed — must not earn XP.
     r = client.post("/games", headers=_headers(sid), json={"game_type": "solitaire"})
     assert r.status_code == 200, r.text

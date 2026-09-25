@@ -168,7 +168,7 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "daily_word",
         "twenty48",
         "solitaire",
-        "mahjong",
+        "sort",
         "freecell",
         "yacht",
     }
@@ -243,8 +243,6 @@ _LUCK_DEPENDENT = {
     "daily_word:won_guesses_used_at_most:4",
     "solitaire:won",
     "solitaire:won_moves_at_most:120",
-    "mahjong:won",
-    "mahjong:won_duration_ms_at_most:480000",
     "freecell:won",
     "freecell:won_moves_at_most:100",
 }
@@ -278,7 +276,6 @@ def test_win_limits_are_above_the_physical_minimum() -> None:
     minimum = {
         ("solitaire", "won_moves_at_most"): 52,  # 52 cards to the foundations
         ("freecell", "won_moves_at_most"): 52,
-        ("mahjong", "won_duration_ms_at_most"): 72 * 2_000,  # 72 pairs, 2 s each
         ("daily_word", "won_guesses_used_at_most"): 1,
     }
     for goals in PREMIUM_GOAL_POOL.values():
@@ -327,14 +324,13 @@ _EVALUATION_CASES = [
     ("solitaire", _HARD, {"won": True, "moves": 120}, True),
     ("solitaire", _HARD, {"won": True, "moves": 121}, False),
     ("solitaire", _HARD, {"won": False, "moves": 20}, False),
-    # mahjong — duration_ms comes from the column
-    ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
-    ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
-    ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),
-    ("mahjong", _MEDIUM, {"won": False, "pairs": 60}, False),
-    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_000}, True),
-    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_001}, False),
-    ("mahjong", _HARD, {"won": False, "pairs": 40, "duration_ms": 1_000}, False),
+    # sort — final_score = level reached (pour puzzle, 20 levels)
+    ("sort", _EASY, {"final_score": 3}, True),
+    ("sort", _EASY, {"final_score": 2}, False),
+    ("sort", _MEDIUM, {"final_score": 8}, True),
+    ("sort", _MEDIUM, {"final_score": 7}, False),
+    ("sort", _HARD, {"final_score": 15}, True),
+    ("sort", _HARD, {"final_score": 14}, False),
     # freecell
     ("freecell", _EASY, {"won": False, "moves": 5}, True),
     ("freecell", _EASY, {"won": False, "moves": 4}, False),
@@ -357,6 +353,14 @@ _EVALUATION_CASES = [
     ("blackjack", _MEDIUM, {"final_chips": 1500}, False),
     ("blackjack", _HARD, {"hands_won": 3}, True),
     ("blackjack", _HARD, {"hands_won": 2}, False),
+    # mahjong — premium, pending #2458 (PENDING_PREMIUM_GOALS); duration_ms comes from the column
+    ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
+    ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
+    ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),
+    ("mahjong", _MEDIUM, {"won": False, "pairs": 60}, False),
+    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_000}, True),
+    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_001}, False),
+    ("mahjong", _HARD, {"won": False, "pairs": 40, "duration_ms": 1_000}, False),
 ]
 
 
@@ -417,7 +421,7 @@ def test_a_goal_is_met_by_any_one_game_not_a_sum() -> None:
 
 def test_service_ignores_other_games_and_reports_best_score_only_for_score_goals() -> None:
     score = FREE_GOAL_POOL["twenty48"][_EASY]
-    win = FREE_GOAL_POOL["mahjong"][_MEDIUM]
+    win = PENDING_PREMIUM_GOALS["mahjong"][_MEDIUM]
     ended = [("mahjong", {"won": True, "final_score": 9999}), ("twenty48", {"final_score": 200})]
     assert not evaluate_goal(score, ended).completed
     assert evaluate_goal(score, ended).best_score == 200
@@ -436,8 +440,8 @@ needs_db = pytest.mark.skipif(
 )
 
 _SCORE_2500 = FREE_GOAL_POOL["twenty48"][_HARD]  # final_score >= 2500
-_WIN_MAHJONG = FREE_GOAL_POOL["mahjong"][_MEDIUM]  # won
-_FIXED = Template("fixed_for_tests", (_SCORE_2500, _WIN_MAHJONG))
+_SORT_MEDIUM = FREE_GOAL_POOL["sort"][_MEDIUM]  # final_score >= 8
+_FIXED = Template("fixed_for_tests", (_SCORE_2500, _SORT_MEDIUM))
 
 
 @pytest.fixture()
@@ -588,7 +592,7 @@ def test_finishing_the_games_completes_the_challenge(
     assert body["completed_goals"] == 1
     assert body["completed"] is False
 
-    _play(client, sid, game_type="mahjong", final_score=350, result={"won": True, "pairs": 72})
+    _play(client, sid, game_type="sort", final_score=10)
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     assert body["completed_goals"] == 2
     assert body["completed"] is True
@@ -602,13 +606,12 @@ def test_abandoned_and_unfinished_games_do_not_count(
     _play(
         client,
         sid,
-        game_type="mahjong",
+        game_type="sort",
         final_score=0,
         outcome="abandoned",
-        result={"won": False, "pairs": 12},
     )
     _play(client, sid, game_type="twenty48", final_score=None, outcome="abandoned")
-    for game_type in ("mahjong", "twenty48"):
+    for game_type in ("sort", "twenty48"):
         r = client.post("/games", headers=_headers(sid), json={"game_type": game_type})
         assert r.status_code == 200  # started, never finished
 
@@ -621,24 +624,22 @@ def test_abandoned_and_unfinished_games_do_not_count(
 def test_an_abandoned_game_satisfies_no_goal(client: TestClient, fixed_template: Template) -> None:
     """The challenge is an accomplishment, so quitting earns nothing (#2468/#2472).
 
-    Both rows carry genuine progress — a 9,000-point Twenty48 run and 30 Mahjong
-    pairs. The score goal used to clear on the abandoned run; `won`-style goals
-    were already safe because the abandon result block reports `won: false`.
+    Both rows carry genuine progress — a 9,000-point Twenty48 run and a
+    level-10 Sort run — well past either goal's threshold if it counted.
     """
     sid = str(uuid.uuid4())
     _play(client, sid, game_type="twenty48", final_score=9000, outcome="abandoned")
     _play(
         client,
         sid,
-        game_type="mahjong",
-        final_score=400,
+        game_type="sort",
+        final_score=10,
         outcome="abandoned",
-        result={"won": False, "pairs": 30},
     )
     goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
     assert goals[_SCORE_2500.id]["completed"] is False
     assert goals[_SCORE_2500.id]["best_score"] is None
-    assert goals[_WIN_MAHJONG.id]["completed"] is False
+    assert goals[_SORT_MEDIUM.id]["completed"] is False
 
 
 @needs_db
@@ -666,7 +667,7 @@ def test_other_sessions_and_other_games_do_not_count(
     client: TestClient, fixed_template: Template
 ) -> None:
     sid, other = str(uuid.uuid4()), str(uuid.uuid4())
-    _play(client, other, game_type="mahjong", final_score=300, result={"won": True, "pairs": 72})
+    _play(client, other, game_type="sort", final_score=10)
     _play(client, sid, game_type="solitaire", final_score=500, result={"won": True, "moves": 90})
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     assert body["completed_goals"] == 0
@@ -687,13 +688,13 @@ async def test_only_games_inside_the_local_day_count(fixed_template: Template) -
 
     before, first, last, after = (str(uuid.uuid4()) for _ in range(4))
     await _insert_finished_game(
-        before, game_type="mahjong", completed_at=day.start_utc - timedelta(seconds=1)
+        before, game_type="sort", completed_at=day.start_utc - timedelta(seconds=1)
     )
-    await _insert_finished_game(first, game_type="mahjong", completed_at=day.start_utc)
+    await _insert_finished_game(first, game_type="sort", completed_at=day.start_utc)
     await _insert_finished_game(
-        last, game_type="mahjong", completed_at=day.end_utc - timedelta(seconds=1)
+        last, game_type="sort", completed_at=day.end_utc - timedelta(seconds=1)
     )
-    await _insert_finished_game(after, game_type="mahjong", completed_at=day.end_utc)
+    await _insert_finished_game(after, game_type="sort", completed_at=day.end_utc)
 
     assert await completed_goals(before) == 0
     assert await completed_goals(first) == 1

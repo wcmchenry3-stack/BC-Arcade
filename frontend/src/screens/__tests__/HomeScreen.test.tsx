@@ -7,8 +7,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
-import i18n from "i18next";
-import mahjongEn from "../../i18n/locales/en/mahjong.json";
 import type { StatsResponse } from "../../api/types";
 
 // ---------------------------------------------------------------------------
@@ -176,14 +174,6 @@ describe("HomeScreen — game cards", () => {
   });
 
   describe("store build — premium games hidden (#2390)", () => {
-    beforeAll(() => {
-      // jest.setup.ts's i18n fixtures omit the mahjong namespace (other suites
-      // assert on its raw keys), so load it here to match the card by label.
-      i18n.addResourceBundle("en", "mahjong", mahjongEn, true, true);
-    });
-    afterAll(() => {
-      i18n.removeResourceBundle("en", "mahjong");
-    });
     beforeEach(() => {
       // Real isGameVisible, answering as a store build (Jest itself is a dev build).
       __forceStoreBuildForTests(true);
@@ -198,7 +188,7 @@ describe("HomeScreen — game cards", () => {
       expect(getByLabelText("Play 2048")).toBeTruthy();
       expect(getByLabelText("Play Solitaire")).toBeTruthy();
       expect(getByLabelText("Play FreeCell")).toBeTruthy();
-      expect(getByLabelText("Play Mahjong Solitaire")).toBeTruthy();
+      expect(getByLabelText("Play Sort Puzzle")).toBeTruthy();
       expect(getByLabelText("Play Daily Word")).toBeTruthy();
       expect(
         getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
@@ -216,7 +206,7 @@ describe("HomeScreen — game cards", () => {
         "Hearts",
         "Sudoku",
         "Star Swarm",
-        "Sort Puzzle",
+        "Mahjong Solitaire",
       ]) {
         expect(queryByLabelText(`Play ${title}`)).toBeNull();
         expect(queryByText(title)).toBeNull();

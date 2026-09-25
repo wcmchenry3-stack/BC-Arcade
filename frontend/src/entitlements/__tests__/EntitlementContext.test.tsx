@@ -135,7 +135,7 @@ describe("EntitlementProvider", () => {
 
     it("returns true for free games regardless of entitlement state", async () => {
       await renderProvider();
-      for (const slug of ["yacht", "twenty48", "solitaire", "mahjong", "freecell"]) {
+      for (const slug of ["yacht", "twenty48", "solitaire", "sort", "freecell"]) {
         expect(ctx.canPlay(slug)).toBe(true);
       }
     });
@@ -153,7 +153,7 @@ describe("EntitlementProvider", () => {
 
     it("covers exactly the premium game slugs", () => {
       expect(PREMIUM_GAMES).toEqual(
-        new Set(["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"])
+        new Set(["blackjack", "cascade", "hearts", "sudoku", "starswarm", "mahjong"])
       );
     });
   });
@@ -275,7 +275,7 @@ describe("EntitlementProvider", () => {
   // ---------------------------------------------------------------------------
 
   describe("dev-override cache persistence (Sentry GAMESAPI-4D9816B4)", () => {
-    const ALL_PREMIUM = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "sort"];
+    const ALL_PREMIUM = ["blackjack", "cascade", "hearts", "sudoku", "starswarm", "mahjong"];
 
     it("all-games token from dev-override period still grants access on cold-launch network failure within grace period", async () => {
       // Simulate a device that cached an all-games token while ENTITLEMENT_DEV_OVERRIDE was active

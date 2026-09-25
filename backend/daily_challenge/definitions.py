@@ -27,11 +27,13 @@ Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    mahjong     won, pairs, duration_ms (column)       (MahjongResult)
+    sort        final_score (level reached)            (already sent)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
                 — premium since 2026-09-23, so not in the free pool (see below)
+    mahjong     won, pairs, duration_ms (column)       (MahjongResult)
+                — premium since 2026-09-24, so not in the free pool (see below)
 
 Slates
 ------
@@ -241,11 +243,12 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _won("solitaire", "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
-    # 72 pairs to clear; the hard limit is minutes, not seconds (duration_ms).
-    "mahjong": (
-        _at_least("mahjong", "pairs", 10, "easy"),
-        _won("mahjong", "medium"),
-        _won_within("mahjong", "duration_ms", 480_000, "hard"),
+    # final_score = highest level reached (20 levels total). Sort sends no result
+    # block beyond the score column, same shape as Yacht.
+    "sort": (
+        _at_least("sort", "final_score", 3, "easy"),
+        _at_least("sort", "final_score", 8, "medium"),
+        _at_least("sort", "final_score", 15, "hard"),
     ),
     "freecell": (
         _at_least("freecell", "moves", 5, "easy"),
@@ -262,14 +265,20 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
 }
 
 # Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
-# app's age rating). Its goals are kept here, outside every live pool, so they
-# join PREMIUM_GOAL_POOL with the other premium games in #2458. Days frozen
-# before the move still rebuild through ``goal_from_spec``.
+# app's age rating); Mahjong moved to premium on 2026-09-24 (owner decision,
+# traded for Sort going free). Their goals are kept here, outside every live
+# pool, so they join PREMIUM_GOAL_POOL with the other premium games in #2458.
+# Days frozen before either move still rebuild through ``goal_from_spec``.
 PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     "blackjack": (
         _at_least("blackjack", "hands_played", 3, "easy"),
         _chips_gained("blackjack", "medium"),
         _at_least("blackjack", "hands_won", 3, "hard"),
+    ),
+    "mahjong": (
+        _at_least("mahjong", "pairs", 10, "easy"),
+        _won("mahjong", "medium"),
+        _won_within("mahjong", "duration_ms", 480_000, "hard"),
     ),
 }
 

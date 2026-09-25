@@ -1,7 +1,7 @@
 """App-wide streak (#2456): consecutive days with >= 2 of 3 daily goals met.
 
 The template is pinned so the tests do not depend on the calendar. A "qualifying"
-day is two goals met (twenty48 score + mahjong pairs); a "partial" day is one.
+day is two goals met (twenty48 score + sort level); a "partial" day is one.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ _NOW = datetime(2026, 10, 9, 15, 0, tzinfo=timezone.utc)
 _TODAY = _NOW.date()
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
-_PAIRS = FREE_GOAL_POOL["mahjong"][0]  # pairs >= 10
+_LEVEL = FREE_GOAL_POOL["sort"][0]  # final_score >= 3
 _MOVES = FREE_GOAL_POOL["solitaire"][0]  # moves >= 10
-_TEMPLATE = Template("streak_for_tests", (_SCORE, _PAIRS, _MOVES))
+_TEMPLATE = Template("streak_for_tests", (_SCORE, _LEVEL, _MOVES))
 
 
 @pytest.fixture(autouse=True)
@@ -68,9 +68,9 @@ async def _add(sid: str, game_type: str, when: datetime, **fields) -> None:
 
 
 async def _qualifying_day(sid: str, day: date, hour: int = 12) -> None:
-    """Two goals met: a twenty48 score and mahjong pairs."""
+    """Two goals met: a twenty48 score and a sort level."""
     await _add(sid, "twenty48", _at(day, hour), final_score=600)
-    await _add(sid, "mahjong", _at(day, hour), metadata={"won": False, "pairs": 12})
+    await _add(sid, "sort", _at(day, hour), final_score=12)
 
 
 async def _partial_day(sid: str, day: date) -> None:
@@ -159,14 +159,12 @@ async def test_a_missed_yesterday_ends_the_streak_at_zero() -> None:
 async def test_progress_goals_do_not_credit_an_abandoned_game() -> None:
     """A streak day has to be earned by games the player finished (#2468/#2472).
 
-    These abandons do report real progress — pairs >= 10, moves >= 10 — and
+    These abandons do report real progress — level 10, moves >= 10 — and
     used to earn the day. They no longer do: the streak is an accomplishment,
     so quitting must not advance it.
     """
     sid = str(uuid.uuid4())
-    await _add(
-        sid, "mahjong", _at(_ago(1)), outcome="abandoned", metadata={"won": False, "pairs": 10}
-    )
+    await _add(sid, "sort", _at(_ago(1)), outcome="abandoned", final_score=10)
     await _add(
         sid, "solitaire", _at(_ago(1)), outcome="abandoned", metadata={"won": False, "moves": 10}
     )
@@ -177,9 +175,7 @@ async def test_progress_goals_do_not_credit_an_abandoned_game() -> None:
 async def test_the_same_progress_credits_the_day_when_the_games_are_finished() -> None:
     """The mirror of the test above — proves the filter keys on outcome alone."""
     sid = str(uuid.uuid4())
-    await _add(
-        sid, "mahjong", _at(_ago(1)), outcome="completed", metadata={"won": False, "pairs": 10}
-    )
+    await _add(sid, "sort", _at(_ago(1)), outcome="completed", final_score=10)
     await _add(
         sid, "solitaire", _at(_ago(1)), outcome="completed", metadata={"won": False, "moves": 10}
     )
@@ -213,7 +209,7 @@ async def test_days_are_the_players_local_days() -> None:
     late = datetime(2026, 10, 9, 3, 0, tzinfo=timezone.utc)
     for when in (late, _at(_ago(1))):  # _ago(1) is Oct 8 12:00 UTC: Oct 8 in both zones
         await _add(sid, "twenty48", when, final_score=600)
-        await _add(sid, "mahjong", when, metadata={"won": False, "pairs": 12})
+        await _add(sid, "sort", when, final_score=12)
     # UTC: the late games are today, the others yesterday — two qualifying days.
     assert await _streak(sid, tz=0) == 2
     # UTC-7: all four games fall on Oct 8 — one qualifying day, and today (08:00) is empty.
@@ -225,13 +221,13 @@ async def test_a_game_at_local_midnight_belongs_to_the_new_day() -> None:
     sid = str(uuid.uuid4())
     midnight = datetime(2026, 10, 8, 7, 0, tzinfo=timezone.utc)  # 00:00 Oct 8 in UTC-7
     await _add(sid, "twenty48", midnight, final_score=600)
-    await _add(sid, "mahjong", midnight, metadata={"won": False, "pairs": 12})
+    await _add(sid, "sort", midnight, final_score=12)
     # Oct 8 local is yesterday for a player at UTC-7 whose now is Oct 9 08:00.
     assert await _streak(sid, tz=-420) == 1
     just_before = midnight - timedelta(seconds=1)  # 23:59:59 Oct 7 local
     other = str(uuid.uuid4())
     await _add(other, "twenty48", just_before, final_score=600)
-    await _add(other, "mahjong", just_before, metadata={"won": False, "pairs": 12})
+    await _add(other, "sort", just_before, final_score=12)
     assert await _streak(other, tz=-420) == 0  # Oct 7 local, and Oct 8 has nothing
 
 
