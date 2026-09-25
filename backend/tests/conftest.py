@@ -50,18 +50,35 @@ def pytest_configure(config: pytest.Config) -> None:
     _TEST_DB_FILE = db_path
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
 
+    # Two heads make `alembic upgrade head` refuse to run, and with its output
+    # captured that surfaced as a bare CalledProcessError before any test ran.
+    # Name the heads instead (#2585).
+    from tests._alembic_heads import multiple_heads_message, script_heads
+
+    heads = script_heads()
+    if len(heads) != 1:
+        pytest.exit(multiple_heads_message(heads), returncode=1)
+
     # Run alembic upgrade head using the sync sqlite URL (env.py strips the
     # +aiosqlite driver). We invoke the CLI so the stock alembic.ini loads.
     backend = Path(__file__).resolve().parent.parent
     env = os.environ.copy()
     env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=backend,
         env=env,
-        check=True,
+        check=False,  # handled below, with Alembic's stderr in the message
         capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        # The output is captured, so without this a failing migration shows
+        # only an exit status. Stop the run with Alembic's own error.
+        pytest.exit(
+            f"`alembic upgrade head` failed (exit {result.returncode}):\n{result.stderr}",
+            returncode=1,
+        )
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
