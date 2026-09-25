@@ -77,7 +77,10 @@ def _report_degraded_guess(exc: BaseException) -> None:
         return
 
     _last_degrade_report = now
-    logger.exception("daily_word: guess state unavailable, scoring without the cap")
+    # WARNING with the stack, not logger.exception: sentry-sdk's default
+    # logging integration turns ERROR records into events, so the capture below
+    # was the second event for every window (#2661 review).
+    logger.warning("daily_word: guess state unavailable, scoring without the cap", exc_info=exc)
     with sentry_sdk.new_scope() as scope:
         scope.set_tag("subsystem", "daily_word.progress")
         scope.fingerprint = ["daily-word-guess-state-unavailable"]

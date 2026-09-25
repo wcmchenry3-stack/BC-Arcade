@@ -384,6 +384,30 @@ def test_degraded_guesses_report_once_per_window(
     assert len(sent) == 1, f"expected one report for the window, got {len(sent)}"
 
 
+def test_degraded_guess_logs_at_warning_so_sentry_gets_one_event(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#2661 review — logger.exception is an ERROR record, which sentry-sdk's
+    default logging integration turns into a second event beside the explicit
+    capture. The degrade report must log below ERROR."""
+    import logging
+
+    import daily_word.router as router_mod
+
+    def boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    monkeypatch.setattr(router_mod, "_last_degrade_report", None)
+    monkeypatch.setattr(router_mod.sentry_sdk, "capture_message", lambda msg, **kw: None)
+
+    with caplog.at_level(logging.INFO, logger="daily_word.router"):
+        assert _guess(client, _sid_headers(), _today_puzzle_id(), _SIX_WRONG[0]).status_code == 200
+
+    assert [r for r in caplog.records if "guess state unavailable" in r.getMessage()]
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
 def test_answer_stays_closed_when_the_record_is_unreachable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
