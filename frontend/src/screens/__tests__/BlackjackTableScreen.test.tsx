@@ -49,6 +49,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// The app-wide foreground-time counter behind useGameSync's active-play window
+// (#2684), held still unless a test moves it.
+let mockForegroundMs = 0;
+jest.mock("../../game/_shared/foregroundClock", () => ({
+  foregroundNow: () => mockForegroundMs,
+}));
+
 function mockNav() {
   return {
     navigate: jest.fn(),
@@ -543,10 +550,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     expect(eventData).toEqual(
       expect.objectContaining({
         total_hands: expect.any(Number),
-        duration_ms: expect.any(Number),
         outcome: "loss",
       })
     );
+    // No wall-clock duration of its own (#2684).
+    expect(eventData).not.toHaveProperty("duration_ms");
     expect(eventData.total_hands).toBeGreaterThanOrEqual(1);
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
@@ -562,6 +570,42 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
         final_chips: 0,
       })
     );
+  });
+
+  // #2684 — Blackjack used to send Date.now() minus the session start, which
+  // counts backgrounded time and beat the shared clock. It now sends none, so
+  // useGameSync's active-play window (foreground time only) applies.
+  it("sends no wall-clock duration of its own: the shared active-play window applies", async () => {
+    const lowChip: EngineState = {
+      ...engineNewGame(),
+      chips: 50,
+      bet: 50,
+      phase: "player",
+      player_hand: [card("10", "♠"), card("6", "♥")],
+      dealer_hand: [card("10", "♦"), card("9", "♣")],
+    };
+    const wallStart = Date.now();
+    const nowSpy = jest.spyOn(Date, "now");
+    try {
+      await renderWithConsumer(lowChip);
+      await settle();
+      mockCompleteGame.mockClear();
+
+      // An hour of wall-clock time passes with only 7 s of it in the foreground.
+      nowSpy.mockReturnValue(wallStart + 60 * 60 * 1000);
+      mockForegroundMs += 7_000;
+      await act(() => {
+        getCtx().apply(stand, "stand");
+      });
+
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+      expect(summary.outcome).toBe("loss");
+      expect(summary.durationMs).toBe(7_000);
+      expect(eventData).not.toHaveProperty("duration_ms");
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("counts a won hand and carries hands_won/chips on an unmount abandon (#2450)", async () => {

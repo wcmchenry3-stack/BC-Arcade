@@ -29,7 +29,7 @@ Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    sort        final_score (level reached)            (already sent)
+    sort        final_score (highest level solved)     (every solve, #2625)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
@@ -245,8 +245,8 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _won("solitaire", "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
-    # final_score = highest level reached (20 levels total). Sort sends no result
-    # block beyond the score column, same shape as Yacht.
+    # final_score = the player's highest level solved (23 levels), sent on every
+    # solved level, replays included (#2625). Abandons carry no score.
     "sort": (
         _at_least("sort", "final_score", 3, "easy"),
         _at_least("sort", "final_score", 8, "medium"),

@@ -42,3 +42,22 @@ describe("statsApi.getGameRank (#2677)", () => {
     expect(mockRequest).toHaveBeenCalledWith("/games/abc-123/rank");
   });
 });
+
+describe("statsApi.getLeaderboard (#2625)", () => {
+  afterEach(() => mockRequest.mockClear());
+
+  it("GETs a board without partitions", async () => {
+    const body = { game_type: "sort", partition: {}, label_key: "level", entries: [] };
+    mockRequest.mockResolvedValueOnce(body);
+    await expect(statsApi.getLeaderboard("sort")).resolves.toEqual(body);
+    expect(mockRequest).toHaveBeenCalledWith("/games/leaderboard/sort");
+  });
+
+  it("sends the partition as query params", async () => {
+    mockRequest.mockResolvedValueOnce({});
+    await statsApi.getLeaderboard("sudoku", { difficulty: "hard", variant: "mini" });
+    expect(mockRequest).toHaveBeenCalledWith(
+      "/games/leaderboard/sudoku?difficulty=hard&variant=mini"
+    );
+  });
+});
