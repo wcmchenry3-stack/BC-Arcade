@@ -87,9 +87,14 @@ import { starSwarmApi } from "../../game/starswarm/api";
 
 const mockStartGame = jest.fn(() => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
+// The killed process's session a restore can continue (#2654); none by default.
+const mockResumeGame = jest.fn((): string | null => null);
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
+    markStarted: jest.fn(),
+    discardGame: jest.fn(),
     enqueueEvent: jest.fn(),
     completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -303,7 +308,7 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     return raw == null ? null : JSON.parse(raw);
   }
 
-  it("backgrounding saves the run, with its session and the engine's counters", async () => {
+  it("backgrounding saves the run and the engine's counters, and no session", async () => {
     await renderScreen();
     await startRun();
     await setAppState("background");
@@ -313,7 +318,7 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(saved).not.toBeNull();
     expect(saved.gameState.score).toBe(2500);
     expect(saved.difficulty).toBe("Commander");
-    expect(saved.gameId).toBe("starswarm-game-id");
+    expect(saved).not.toHaveProperty("gameId");
     expect(saved.counters).toEqual({ nextId: expect.any(Number), seed: expect.any(Number) });
   });
 
@@ -349,16 +354,21 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(await persisted()).toBeNull();
   });
 
-  it("after a cold start, reopens straight onto the paused run and closes the dead session", async () => {
+  async function saveAndKill() {
     const run = mockEngineState!;
     savePausedState({
       gameState: run,
       difficulty: "Commander",
-      gameId: "dead-process-game",
       counters: { nextId: 9000, seed: 5 },
     });
     await flush();
     _resetPauseStoreForTests(); // the OS killed the app
+    return run;
+  }
+
+  it("after a cold start, reopens straight onto the paused run and continues its session", async () => {
+    mockResumeGame.mockReturnValueOnce("dead-process-game");
+    const run = await saveAndKill();
 
     await renderScreen();
     expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
@@ -366,21 +376,37 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(mockCanvasProps.initialState).toEqual(JSON.parse(JSON.stringify(run)));
     expect(mockCanvasProps.difficulty).toBe("Commander");
 
-    // The dead process's session is abandoned; the restored run gets a session of its own.
-    expect(mockCompleteGame).toHaveBeenCalledWith(
-      "dead-process-game",
-      { outcome: "abandoned" },
-      { outcome: "abandoned" }
-    );
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    // One run, one session (#2654): the killed process's session goes on — nothing is
+    // abandoned and no second session is opened.
+    expect(mockResumeGame).toHaveBeenCalledWith("starswarm", undefined);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
 
     await act(async () => {
       await fireEvent.press(screen.getByText("RESUME"));
     });
     expectRunning();
+
+    // Its game over completes that same session.
+    await act(async () => {
+      mockCanvasProps.onGameOver(4200, 7);
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "dead-process-game",
+      expect.objectContaining({ outcome: "completed" }),
+      expect.anything()
+    );
   });
 
-  it("backing out of a paused run saves it without a session — unmounting abandons that", async () => {
+  it("after a cold start with no session left to continue, the restored run gets a new one", async () => {
+    await saveAndKill();
+    await renderScreen();
+    expectPaused();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("backing out of a paused run keeps it saved", async () => {
     await renderScreen();
     await startRun();
     await act(async () => {
@@ -392,7 +418,6 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     await flush();
     const saved = await persisted();
     expect(saved.gameState.score).toBe(2500);
-    expect(saved.gameId).toBeNull();
     expect(mockPopToTop).toHaveBeenCalled();
   });
 
@@ -407,21 +432,23 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(writes() - before).toBe(1);
   });
 
-  it("leaving the screen any way drops the session from the save — unmounting abandons it", async () => {
+  it("leaving the screen any way keeps the saved run and abandons its session", async () => {
     const r = await renderScreen();
     await startRun();
     await setAppState("background");
     await flush();
-    expect((await persisted()).gameId).toBe("starswarm-game-id");
 
     // e.g. the iOS swipe-back, which never calls onBack
     await act(async () => {
       r.unmount();
     });
     await flush();
-    const saved = await persisted();
-    expect(saved.gameId).toBeNull();
-    expect(saved.gameState.score).toBe(2500); // the run itself is kept
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "starswarm-game-id",
+      expect.objectContaining({ outcome: "abandoned" }),
+      expect.anything()
+    );
   });
 
   it("while a previous process's save loads, the header and back button are up", async () => {
