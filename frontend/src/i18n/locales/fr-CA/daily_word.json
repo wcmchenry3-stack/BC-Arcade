@@ -1,0 +1,22 @@
+{
+  "game.title": "Mot du jour",
+  "game.description": "Un mot de cinq lettres. Six essais. Un nouveau chaque jour.",
+  "game.playLabel": "Jouer au Mot du jour",
+  "hud.guessesLeft_one": "{{count}} essai restant",
+  "hud.guessesLeft_other": "{{count}} essais restants",
+  "hud.puzzleNumber": "Mot #{{number}}",
+  "result.loss.answer": "Le mot était {{answer}}",
+  "error.notAWord": "Mot inconnu",
+  "error.alreadyGuessed": "Déjà essayé",
+  "error.tooShort": "Pas assez de lettres",
+  "error.couldNotLoad": "Impossible de charger le mot du jour",
+  "error.couldNotSubmit": "Impossible d'envoyer votre essai",
+  "error.stalePuzzle": "Nouveau mot disponible — chargement en cours",
+  "error.wrongLength": "La longueur ne correspond pas au mot du jour",
+  "error.rateLimited": "Trop d'essais — réessayez plus tard",
+  "keyboard.delete": "Effacer",
+  "keyboard.enter": "Entrée",
+  "result.countdown": "Prochain mot : {{time}}",
+  "result.share": "Partager",
+  "result.copied": "Copié!"
+}

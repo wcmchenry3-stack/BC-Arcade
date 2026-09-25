@@ -61,18 +61,19 @@ describe("localeLoaders (#2193)", () => {
     }
   });
 
-  it("loads a locale's own file, and nothing for a namespace it lacks", async () => {
+  it("loads a locale's own file, and nothing for one it lacks", async () => {
     const own = jest
       .spyOn(localeLoaders.de!, "hearts")
       .mockResolvedValue({ default: { own: "de" } });
-    const missing = NAMESPACES.find((ns) => !filesOf("de").includes(ns))!;
     const english = jest
-      .spyOn(localeLoaders.en!, missing)
+      .spyOn(localeLoaders.en!, "common")
       .mockResolvedValue({ default: { own: "en" } });
     try {
       expect((await loadLocaleNamespace("de", "hearts")).default).toEqual({ own: "de" });
-      // English comes from fallbackLng, not stored as German.
-      expect((await loadLocaleNamespace("de", missing)).default).toEqual({});
+      // A locale or namespace with no file loads nothing; English comes from
+      // fallbackLng, not stored as that locale's own.
+      expect((await loadLocaleNamespace("xx", "common")).default).toEqual({});
+      expect((await loadLocaleNamespace("de", "not-a-namespace")).default).toEqual({});
       expect(own).toHaveBeenCalledTimes(1);
       expect(english).not.toHaveBeenCalled();
     } finally {

@@ -1,6 +1,6 @@
 {
   "game.title": "Mahjong Solitaire",
-  "game.description": "Associe les tuiles libres par paires pour vider le jeu.",
+  "game.description": "Associez les tuiles libres par paires et videz le jeu.",
   "game.playLabel": "Jouer à Mahjong Solitaire",
   "game.canvasLabel": "Mahjong Solitaire — touche deux tuiles libres identiques pour les retirer.",
   "hud.score": "POINTS",
@@ -12,7 +12,7 @@
   "action.undo": "RETOUR",
   "action.undoLabel": "Annuler la dernière paire",
   "action.hint": "INDICE",
-  "action.hintLabel": "Afficher un indice — met une paire valide en évidence pendant 2 secondes",
+  "action.hintLabel": "Afficher un indice — surligne une paire valide 2 secondes",
   "action.noHint": "Aucun indice disponible",
   "overlay.noMoves": "AUCUN COUP",
   "overlay.noMovesDetail": "Aucune paire possible. Mélange pour continuer.",
@@ -49,5 +49,5 @@
   "scoreboard.rank": "Rang",
   "scoreboard.player": "Joueur",
   "scoreboard.score": "Pointage",
-  "scoreboard.empty": "Aucun pointage — sois le premier!"
+  "scoreboard.empty": "Aucun pointage — soyez le premier!"
 }
