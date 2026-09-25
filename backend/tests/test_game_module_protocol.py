@@ -205,7 +205,7 @@ def test_module_without_board_fails_protocol() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BlackjackModule.stats_shape — key renames and chip logic
+# BlackjackModule.stats_shape — chip figures under "extras" (#2620)
 # ---------------------------------------------------------------------------
 
 _RAW_BJ = {
@@ -219,7 +219,7 @@ _RAW_BJ = {
 
 def test_blackjack_stats_shape_renames_best_to_best_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["best_chips"] == 2400
+    assert shaped["extras"]["best_chips"] == 2400
     assert shaped.get("best") is None
 
 
@@ -230,7 +230,7 @@ def test_blackjack_stats_shape_drops_avg() -> None:
 
 def test_blackjack_stats_shape_maps_latest_score_to_current_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["current_chips"] == 2100
+    assert shaped["extras"]["current_chips"] == 2100
 
 
 def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
@@ -242,15 +242,15 @@ def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
 def test_blackjack_stats_shape_none_latest_score() -> None:
     raw = {**_RAW_BJ, "latest_score": None}
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["current_chips"] is None
+    assert shaped["extras"]["current_chips"] is None
 
 
 def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("total_runs") is None
-    assert shaped.get("runs_completed") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("total_runs") is None
+    assert shaped["extras"].get("runs_completed") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
@@ -264,16 +264,16 @@ def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
         },
     }
     shaped = blackjack_module.stats_shape(raw)
-    assert shaped["best_run_chips"] == 3000
-    assert shaped["total_runs"] == 12
-    assert shaped["runs_completed"] == 4
-    assert shaped["current_table"] == "intermediate"
+    assert shaped["extras"]["best_run_chips"] == 3000
+    assert shaped["extras"]["total_runs"] == 12
+    assert shaped["extras"]["runs_completed"] == 4
+    assert shaped["extras"]["current_table"] == "intermediate"
 
 
 def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
     shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
-    assert shaped.get("best_run_chips") is None
-    assert shaped.get("current_table") is None
+    assert shaped["extras"].get("best_run_chips") is None
+    assert shaped["extras"].get("current_table") is None
 
 
 # ---------------------------------------------------------------------------
