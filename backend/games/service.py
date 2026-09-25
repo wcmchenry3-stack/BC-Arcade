@@ -21,13 +21,14 @@ from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, case, func, literal, select, update
+from sqlalchemy import Text, case, func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from db.models import EventType, Game, GameEvent, GameType
-from games.filters import not_abandoned
+from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.registry import get_module
 from vocab import GameOutcome
 
@@ -118,7 +119,8 @@ async def create_game(
         id=client_id or uuid.uuid4(),
         session_id=session_id,
         game_type_id=gt.id,
-        game_metadata=metadata or {},
+        # The sweep flag is server-written only (#2621).
+        game_metadata=without_swept(metadata),
         players=players,
     )
     valid_started_at = _validate_client_timestamp(started_at, now) if started_at else None
@@ -130,8 +132,14 @@ async def create_game(
     return game
 
 
-async def _get_owned_game(session: AsyncSession, game_id: uuid.UUID, session_id: str) -> Game:
-    game = (await session.execute(select(Game).where(Game.id == game_id))).scalar_one_or_none()
+async def _get_owned_game(
+    session: AsyncSession, game_id: uuid.UUID, session_id: str, *, for_update: bool = False
+) -> Game:
+    stmt = select(Game).where(Game.id == game_id)
+    if for_update:
+        # Postgres: hold the row until commit. SQLite renders no FOR UPDATE.
+        stmt = stmt.with_for_update()
+    game = (await session.execute(stmt)).scalar_one_or_none()
     if game is None:
         raise GameServiceError(404, "Game not found.")
     if game.session_id != session_id:
@@ -164,7 +172,7 @@ async def append_events(
     game = await _get_owned_game(session, game_id, session_id)
     # A swept row is still open as far as the device is concerned: a long-offline
     # queue flushes its events before the completion that replaces the sweep.
-    if game.completed_at is not None and not _is_swept(game):
+    if game.completed_at is not None and not is_swept(game.game_metadata):
         raise GameServiceError(409, "Game is already completed.")
 
     event_type_map = await _load_event_type_map(session, game.game_type_id)
@@ -234,19 +242,9 @@ async def append_events(
 # ---------------------------------------------------------------------------
 
 # A game still open this long after it started was left by killing the app.
+# The sweep marks what it closes with metadata[SWEPT_KEY] = true (games.filters),
+# which lets a real completion that arrives later replace it (complete_game).
 STALE_GAME_AFTER = timedelta(hours=24)
-# Metadata flag on a row the sweep closed. It marks the row as overwritable by a
-# real completion that arrives later (see complete_game).
-SWEPT_KEY = "swept"
-
-
-def _is_swept(game: Game) -> bool:
-    return bool((game.game_metadata or {}).get(SWEPT_KEY))
-
-
-def not_swept() -> ColumnElement[bool]:
-    """NULL-safe "the sweep did not close this row" (the flag is absent on most rows)."""
-    return Game.game_metadata[SWEPT_KEY].as_boolean().is_not(True)
 
 
 async def sweep_stale_games(
@@ -266,9 +264,17 @@ async def sweep_stale_games(
     now = now or datetime.now(timezone.utc)
     dialect = session.bind.dialect.name if session.bind else "postgresql"
     if dialect == "sqlite":
-        # SQLite stores DateTime as text: do the date math and the JSON merge with
-        # its own functions. strftime keeps the fractional seconds.
-        completed_at = func.strftime("%Y-%m-%d %H:%M:%f", Game.started_at, "+24 hours")
+        # SQLite stores DateTime as text, and the ORM writes it as
+        # 'YYYY-MM-DD HH:MM:SS.ffffff'. Build exactly that, so text comparisons
+        # against ORM-written timestamps order correctly: date math on the whole
+        # seconds (SQLite's own %f has only milliseconds), then the original
+        # microseconds, padded for a started_at stored without a fraction.
+        fraction = func.substr(Game.started_at, 21, type_=Text) + "000000"
+        completed_at = (
+            func.strftime("%Y-%m-%d %H:%M:%S", Game.started_at, "+24 hours", type_=Text)
+            + "."
+            + func.substr(fraction, 1, 6, type_=Text)
+        )
         metadata = func.json_set(Game.game_metadata, f"$.{SWEPT_KEY}", func.json("true"))
     else:
         completed_at = Game.started_at + STALE_GAME_AFTER
@@ -295,13 +301,17 @@ async def sweep_stale_games(
 async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) -> None:
     """Run the sweep without ever failing the read it precedes.
 
-    A failure is logged at ERROR (Sentry's logging integration captures it; no
-    session id, per the privacy policy) and rolled back so the read can go on.
+    A failure is logged at ERROR (Sentry's logging integration captures it) and
+    rolled back so the read can go on. The log carries the exception class only:
+    a DBAPI error's text includes the statement's bound parameters, session id
+    among them, and the privacy policy keeps identifiers out of crash reports.
     """
     try:
         await sweep_stale_games(session, session_id=session_id)
-    except Exception:
-        logger.exception("stale-session sweep failed; serving the read unswept")
+    except Exception as exc:  # noqa: BLE001 — a sweep failure must never fail the read
+        logger.error(
+            "stale-session sweep failed (%s); serving the read unswept", type(exc).__name__
+        )
         with contextlib.suppress(Exception):
             await session.rollback()
 
@@ -343,7 +353,8 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     played/best/avg so the leaderboard stays stable until a game finishes.
 
     Abandoned games (#2468 / #2472) are counted but not scored. ``played`` and
-    ``last_played_at`` are lifecycle facts and still include them; every score
+    ``last_played_at`` are lifecycle facts and still include them (though not
+    ``last_played_at`` for a row the stale-session sweep closed); every score
     aggregate (``best`` / ``avg`` / ``latest_score``) and ``completed_played``
     — the count XP is derived from — excludes them, because the frontend
     abandon paths do send a ``final_score`` (Sudoku sends the full completion
@@ -364,7 +375,9 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 func.count(case((not_abandoned(), Game.id))).label("completed_played"),
                 func.max(scored).label("best"),
                 func.avg(scored).label("avg"),
-                func.max(Game.completed_at).label("last_played_at"),
+                # Swept rows (#2621) carry a synthetic completed_at
+                # (started_at + 24 h), not a time the player played.
+                func.max(case((not_swept(), Game.completed_at))).label("last_played_at"),
             )
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
@@ -384,43 +397,50 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     #   score    — skips abandons (#2468). Blackjack reads current_chips
     #              through it, so an abandoned table must not become the
     #              player's live chip balance.
-    #   metadata — takes the latest row whatever its outcome. Blackjack writes
-    #              its cumulative run aggregates (best_run_chips, total_runs,
-    #              runs_completed, current_table) at session *start*, so the
-    #              newest row always holds the freshest figures even when that
-    #              session was later abandoned — and "New Game" and unmount are
-    #              both abandon paths, so filtering here would blank the run
-    #              history for anyone who has not just cashed out or busted.
-    #              Swept rows (#2621) are the exception: their completed_at is
-    #              started_at + 24 h, which can postdate newer games and would
-    #              surface stale run aggregates.
-    def _latest_row_query(*extra_filters):
-        latest_sq = (
+    #   metadata — takes the latest row whatever its outcome, latest by
+    #              *start*. Blackjack writes its cumulative run aggregates
+    #              (best_run_chips, total_runs, runs_completed, current_table)
+    #              at session start, so the newest session always holds the
+    #              freshest figures even when it was later abandoned — and "New
+    #              Game" and unmount are both abandon paths, so filtering here
+    #              would blank the run history for anyone who has not just
+    #              cashed out or busted. Ordering by started_at also keeps a
+    #              swept row (#2621) in its place: its completed_at is a
+    #              synthetic started_at + 24 h that can postdate newer games,
+    #              while it still wins when it really is the newest session.
+    #
+    # Ties (SQLite's server-default started_at has one-second resolution) fall
+    # back to completed_at, then id, so exactly one row per game type wins.
+    def _latest_row_query(order_by, *extra_filters):
+        ranked = (
             select(
-                Game.game_type_id,
-                func.max(Game.completed_at).label("max_completed_at"),
+                Game.id,
+                func.row_number()
+                .over(
+                    partition_by=Game.game_type_id,
+                    order_by=(*order_by, Game.id.desc()),
+                )
+                .label("rn"),
             )
             .where(
                 Game.session_id == session_id,
                 Game.completed_at.is_not(None),
                 *extra_filters,
             )
-            .group_by(Game.game_type_id)
             .subquery()
         )
         return (
             select(GameType.name, Game.final_score, Game.game_metadata)
             .join(GameType, Game.game_type_id == GameType.id)
-            .join(
-                latest_sq,
-                (Game.game_type_id == latest_sq.c.game_type_id)
-                & (Game.completed_at == latest_sq.c.max_completed_at),
-            )
-            .where(Game.session_id == session_id, *extra_filters)
+            .join(ranked, (Game.id == ranked.c.id) & (ranked.c.rn == 1))
         )
 
-    latest_score_rows = (await session.execute(_latest_row_query(not_abandoned()))).all()
-    latest_meta_rows = (await session.execute(_latest_row_query(not_swept()))).all()
+    latest_score_rows = (
+        await session.execute(_latest_row_query((Game.completed_at.desc(),), not_abandoned()))
+    ).all()
+    latest_meta_rows = (
+        await session.execute(_latest_row_query((Game.started_at.desc(), Game.completed_at.desc())))
+    ).all()
     latest_score_by_name: dict[str, int | None] = {
         name: (int(score) if score is not None else None) for name, score, _ in latest_score_rows
     }
@@ -589,15 +609,17 @@ async def complete_game(
     completed_at: datetime | None = None,
     result: dict[str, Any] | None = None,
 ) -> Game:
-    game = await _get_owned_game(session, game_id, session_id)
-    swept = _is_swept(game)
-    if game.completed_at is not None and not swept:
+    # FOR UPDATE: on Postgres a concurrent sweep waits for this completion, then
+    # finds the row no longer open (#2621).
+    game = await _get_owned_game(session, game_id, session_id, for_update=True)
+    if game.completed_at is not None and not is_swept(game.game_metadata):
         return game  # idempotent — do not overwrite
 
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
-    validated_result = await _validate_result(session, game, result)
+    # The sweep flag is server-written only: a result must not set it (#2621).
+    validated_result = without_swept(await _validate_result(session, game, result))
 
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
@@ -605,14 +627,16 @@ async def complete_game(
     game.final_score = final_score
     game.outcome = outcome
     game.duration_ms = duration_ms
-    if swept or validated_result:
-        # A late real completion replaces the sweep (#2621): drop the flag so the
-        # row is back under "first completion wins".
-        metadata = {k: v for k, v in (game.game_metadata or {}).items() if k != SWEPT_KEY}
-        # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
-        # Creation-time keys win: leaderboards read player_name / raw_score /
-        # difficulty from here, and a result must never rewrite them.
-        game.game_metadata = {**validated_result, **metadata}
+    # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
+    # Creation-time keys win: leaderboards read player_name / raw_score /
+    # difficulty from here, and a result must never rewrite them.
+    game.game_metadata = {**validated_result, **without_swept(game.game_metadata)}
+    # Always write metadata, in this same UPDATE, even when it looks unchanged:
+    # a sweep that committed after the row was read (where FOR UPDATE is not
+    # available — SQLite) set the flag in the database, and the completion must
+    # still leave the row finished and unflagged. A real completion replaces a
+    # sweep and puts the row back under "first completion wins" (#2621).
+    flag_modified(game, "game_metadata")
     await session.commit()
     await session.refresh(game)
     return game
