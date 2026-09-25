@@ -46,12 +46,14 @@ import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
 import {
+  DEV_ACCENT,
   MAHJONG_HINT_COLOR,
   MAHJONG_NO_MOVES_OVERLAY_BG,
   MAHJONG_OVERLAY_BTN_BG,
 } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import { useMahjongCamera } from "../game/mahjong/layout";
@@ -994,39 +996,21 @@ export default function MahjongScreen() {
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
       rightSlot={
         <View style={styles.hudGroup}>
-          <Pressable
+          <PillButton
+            label={t("action.undo")}
+            accessibilityLabel={t("action.undoLabel")}
             onPress={handleUndo}
             disabled={undoDisabled}
-            style={[
-              styles.headerBtn,
-              { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.undoLabel")}
-            accessibilityState={{ disabled: undoDisabled }}
             testID="mahjong-undo-button"
-          >
-            <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleHint}
-            disabled={state?.isComplete || state?.isDeadlocked}
-            style={[
-              styles.headerBtn,
-              {
-                borderColor: MAHJONG_HINT_COLOR,
-                opacity: state?.isComplete || state?.isDeadlocked ? 0.3 : 1,
-              },
-            ]}
-            accessibilityRole="button"
+          />
+          <PillButton
+            label={t("action.hint")}
             accessibilityLabel={t("action.hintLabel")}
-            accessibilityState={{ disabled: state?.isComplete || state?.isDeadlocked }}
+            onPress={handleHint}
+            disabled={!!(state?.isComplete || state?.isDeadlocked)}
+            color={MAHJONG_HINT_COLOR}
             testID="mahjong-hint-button"
-          >
-            <Text style={[styles.headerBtnText, { color: MAHJONG_HINT_COLOR }]}>
-              {t("action.hint")}
-            </Text>
-          </Pressable>
+          />
         </View>
       }
     >
@@ -1050,40 +1034,24 @@ export default function MahjongScreen() {
               </Text>
             </View>
             <View style={styles.hudGroup}>
-              <Pressable
+              <PillButton
+                label={`${t("action.shuffle")} ${state.shufflesLeft}`}
+                accessibilityLabel={t("action.shuffleLabel")}
                 onPress={handleShuffle}
                 disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-                style={[
-                  styles.headerBtn,
-                  {
-                    borderColor: "#ffd700",
-                    opacity:
-                      state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t("action.shuffleLabel")}
-                accessibilityState={{
-                  disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
-                }}
+                color="#ffd700"
                 testID="mahjong-shuffle-button"
-              >
-                <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
-                  {t("action.shuffle")} {state.shufflesLeft}
-                </Text>
-              </Pressable>
+              />
               <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
                 {t("hud.deal")} #{state.dealId}
               </Text>
               {__DEV__ && (
-                <Pressable
-                  onPress={() => setDevPanelOpen((o) => !o)}
-                  style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
-                  accessibilityRole="button"
+                <PillButton
+                  label="DEV"
                   accessibilityLabel="Toggle dev panel"
-                >
-                  <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
-                </Pressable>
+                  onPress={() => setDevPanelOpen((o) => !o)}
+                  color={DEV_ACCENT}
+                />
               )}
             </View>
           </View>
@@ -1285,20 +1253,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     textDecorationLine: "underline",
-  },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
   },
   hudRow: {
     flexDirection: "row",

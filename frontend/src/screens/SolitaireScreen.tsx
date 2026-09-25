@@ -37,6 +37,8 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import { PillButton } from "../components/shared/PillButton";
 import TableauPile from "../game/solitaire/components/TableauPile";
 import FoundationPile from "../game/solitaire/components/FoundationPile";
 import StockWastePile from "../game/solitaire/components/StockWastePile";
@@ -786,37 +788,18 @@ export default function SolitaireScreen() {
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
         rightSlot={
           <View style={styles.headerBtnRow}>
-            <Pressable
+            <PillButton
               testID="solitaire-hint-button"
+              label={t("solitaire:action.hint")}
               onPress={handleHint}
               disabled={hintDisabled}
-              style={[
-                styles.headerBtn,
-                { borderColor: colors.bonus, opacity: hintDisabled ? 0.4 : 1 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={t("solitaire:action.hint")}
-              accessibilityState={{ disabled: hintDisabled }}
-            >
-              <Text style={[styles.headerBtnText, { color: colors.bonus }]}>
-                {t("solitaire:action.hint")}
-              </Text>
-            </Pressable>
-            <Pressable
+              color={colors.bonus}
+            />
+            <PillButton
+              label={t("solitaire:action.undo")}
               onPress={handleUndo}
               disabled={undoDisabled}
-              style={[
-                styles.headerBtn,
-                { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={t("solitaire:action.undo")}
-              accessibilityState={{ disabled: undoDisabled }}
-            >
-              <Text style={[styles.headerBtnText, { color: colors.accent }]}>
-                {t("solitaire:action.undo")}
-              </Text>
-            </Pressable>
+            />
           </View>
         }
       >
@@ -825,20 +808,13 @@ export default function SolitaireScreen() {
         ) : (
           <CardSizeContext.Provider value={cardSize}>
             <DragContainer style={styles.body as ViewStyle}>
-              <View style={styles.hudRow} accessibilityRole="summary">
-                <Text
-                  style={[styles.hudText, { color: colors.text }]}
-                  accessibilityLabel={t("solitaire:score.label", { score: state.score })}
-                >
-                  {t("solitaire:score.label", { score: state.score })}
-                </Text>
-                <Text
-                  style={[styles.hudText, { color: colors.textMuted }]}
-                  accessibilityLabel={t("solitaire:score.moves", { moves })}
-                >
-                  {t("solitaire:score.moves", { moves })}
-                </Text>
-              </View>
+              <HudStatRow
+                size="lg"
+                stats={[
+                  { key: "score", text: t("solitaire:score.label", { score: state.score }) },
+                  { key: "moves", text: t("solitaire:score.moves", { moves }), muted: true },
+                ]}
+              />
 
               <View
                 style={[styles.board, { width: boardWidth }]}
@@ -1042,34 +1018,9 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
   },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
   headerBtnRow: {
     flexDirection: "row",
     gap: 8,
-  },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 16,
-    letterSpacing: 0.5,
   },
   board: {
     alignSelf: "flex-start",

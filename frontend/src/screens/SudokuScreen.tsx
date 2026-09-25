@@ -37,6 +37,8 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
 import DifficultySelector from "../components/sudoku/DifficultySelector";
@@ -476,20 +478,14 @@ export default function SudokuScreen() {
 
   const headerRight = useMemo(() => {
     if (!state) return null;
-    const undoDisabled = state.undoStack.length === 0;
     return (
-      <Pressable
+      <PillButton
+        label={t("action.undo")}
         onPress={handleUndo}
-        disabled={undoDisabled}
-        style={[styles.headerBtn, { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 }]}
-        accessibilityRole="button"
-        accessibilityLabel={t("action.undo")}
-        accessibilityState={{ disabled: undoDisabled }}
-      >
-        <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-      </Pressable>
+        disabled={state.undoStack.length === 0}
+      />
     );
-  }, [state, colors, handleUndo, t]);
+  }, [state, handleUndo, t]);
 
   return (
     <GameShell
@@ -516,24 +512,26 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <View style={styles.hudRow} accessibilityRole="summary">
-            <Text style={[styles.hudText, { color: colors.text }]}>
-              {t(`difficulty.${state.difficulty}`)}
-            </Text>
-            <Text style={[styles.hudText, { color: colors.textMuted }]}>
-              {state.errorCount === 1
-                ? t("hud.errorsOne")
-                : t("hud.errors", { count: state.errorCount })}
-            </Text>
-            <Text
-              style={[styles.hudText, { color: colors.textMuted }]}
-              accessibilityLabel={t("hud.elapsed", {
-                time: formatElapsed(elapsed),
-              })}
-            >
-              {formatElapsed(elapsed)}
-            </Text>
-          </View>
+          <HudStatRow
+            style={styles.hudTight}
+            stats={[
+              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+              {
+                key: "errors",
+                text:
+                  state.errorCount === 1
+                    ? t("hud.errorsOne")
+                    : t("hud.errors", { count: state.errorCount }),
+                muted: true,
+              },
+              {
+                key: "elapsed",
+                text: formatElapsed(elapsed),
+                muted: true,
+                accessibilityLabel: t("hud.elapsed", { time: formatElapsed(elapsed) }),
+              },
+            ]}
+          />
 
           <View style={styles.gridWrap}>
             <SudokuGrid
@@ -829,31 +827,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 4,
+  // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
+  hudTight: {
     paddingVertical: 4,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    letterSpacing: 0.5,
   },
   gridWrap: {
     alignSelf: "stretch",

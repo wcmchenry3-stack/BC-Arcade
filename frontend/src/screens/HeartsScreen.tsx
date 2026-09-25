@@ -942,14 +942,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  headerBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  headerBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
   humanLabel: {
     fontSize: 12,
     fontWeight: "600",
