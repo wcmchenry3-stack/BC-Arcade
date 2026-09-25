@@ -68,6 +68,9 @@ jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
 
+// The hook's foreground clock (#2684) adds nothing, so the summaries below
+// carry only what the screen sends: its own play timer.
+jest.mock("../../game/_shared/foregroundClock", () => ({ foregroundNow: () => 0 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
@@ -277,12 +280,19 @@ describe("SudokuScreen — in-game input", () => {
     await act(async () => {
       await fireEvent.press(emptyCells[0]!);
     });
-    await act(async () => {
-      await fireEvent.press(enabledDigitButton(rendered));
-    });
-    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
-    mockCompleteGame.mockClear();
-    await unmount();
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(enabledDigitButton(rendered)); // the puzzle's timer starts
+      });
+      await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+      mockCompleteGame.mockClear();
+      now += 45_000;
+      await unmount();
+    } finally {
+      nowSpy.mockRestore();
+    }
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
@@ -290,6 +300,8 @@ describe("SudokuScreen — in-game input", () => {
     // that the sync worker dead-letters.
     expect(summary["result"]).toEqual({ won: false, errors: expect.any(Number) });
     expect(summary).not.toHaveProperty("finalScore");
+    // #2684: the puzzle's own play timer, not the hook's foreground clock.
+    expect(summary["durationMs"]).toBe(45_000);
   });
 
   // #2632: no screen-level beforeRemove abandon. It sent the full completion
@@ -400,24 +412,33 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
     const hard = almostSolved("hard"); // built before the spy replaces loadPuzzle
     const r = await renderAndAwaitLoad();
     await fireEvent.press(r.getByLabelText(/start/i)); // Easy: game-1
-    await enterFirstEnabledDigit(r);
-    await waitFor(() => expect(mockMarkStarted).toHaveBeenCalledWith("game-1"));
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await enterFirstEnabledDigit(r);
+      await waitFor(() => expect(mockMarkStarted).toHaveBeenCalledWith("game-1"));
+      now += 20_000;
 
-    await openNewGameModal(r);
-    await act(async () => {
-      await fireEvent.press(r.getByRole("radio", { name: /hard/i }));
-    });
-    loadSpy = jest.spyOn(sudokuEngine, "loadPuzzle").mockReturnValue(hard.state);
-    await act(async () => {
-      await fireEvent.press(r.getByText("Start"));
-    });
+      await openNewGameModal(r);
+      await act(async () => {
+        await fireEvent.press(r.getByRole("radio", { name: /hard/i }));
+      });
+      loadSpy = jest.spyOn(sudokuEngine, "loadPuzzle").mockReturnValue(hard.state);
+      await act(async () => {
+        await fireEvent.press(r.getByText("Start"));
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
 
-    // The Easy puzzle's session is closed with its own progress, and no score.
+    // The Easy puzzle's session is closed with its own progress and play
+    // time, and no score.
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
     expect(mockCompleteGame.mock.calls[0]![1]).toEqual({
       outcome: "abandoned",
       result: { won: false, errors: expect.any(Number) },
+      durationMs: 20_000,
     });
     expect(mockStartGame.mock.calls[1]![1]).toEqual({ difficulty: "hard", variant: "classic" });
 

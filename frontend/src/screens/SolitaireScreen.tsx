@@ -172,7 +172,11 @@ export default function SolitaireScreen() {
   // screen unmounts, and that abandon carries no score (#2632).
   const progressResult = useCallback(() => ({ won: false, moves: movesRef.current }), []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+    syncSetProgressSnapshot(() => {
+      // The game's own play timer (#2684) wins over the hook's foreground clock.
+      const s = stateRef.current;
+      return { result: progressResult(), durationMs: s ? activeMs(s) : null };
+    });
   }, [syncSetProgressSnapshot, progressResult]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();

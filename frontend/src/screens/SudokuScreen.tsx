@@ -155,9 +155,16 @@ export default function SudokuScreen() {
     () => ({ won: false, errors: stateRef.current?.errorCount ?? 0 }),
     []
   );
+  // The puzzle's own play timer (#2684), which wins over the hook's foreground
+  // clock: time since the first input, with backgrounded time taken out (the
+  // start moves forward on resume, and a pause in progress stops the count).
+  const playedMs = useCallback((): number | null => {
+    if (startMsRef.current === null) return null;
+    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
+  }, []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
-  }, [syncSetProgressSnapshot, progressResult]);
+    syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
+  }, [syncSetProgressSnapshot, progressResult, playedMs]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
 

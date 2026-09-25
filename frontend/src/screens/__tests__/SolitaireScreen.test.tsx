@@ -96,6 +96,9 @@ jest.mock("../../api/stats", () => ({
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
+// The hook's foreground clock (#2684) adds nothing, so the summaries below
+// carry only what the screen sends: its own play timer.
+jest.mock("../../game/_shared/foregroundClock", () => ({ foregroundNow: () => 0 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
@@ -406,20 +409,33 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
 
   // Regression (#2632): back-navigation unmounts the screen, and the hook's own
   // abandon records the game with the progress snapshot and no score.
-  it("back-navigation mid-game abandons via the hook with the snapshot and no score", async () => {
+  // #2684: the abandon carries the game's own play timer (activeMs), not 0 or
+  // the hook's foreground clock.
+  it("back-navigation mid-game abandons via the hook with the snapshot, its play time and no score", async () => {
     const api = await mount();
     await chooseDraw1(api);
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
-    });
-    await act(async () => {
-      api.unmount();
-    });
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      });
+      now += 30_000; // the game's timer started at the first move
+      await act(async () => {
+        api.unmount();
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [gameId, summary] = mockCompleteGame.mock.calls[0];
     expect(gameId).toBe("game-uuid-test");
     // #2450 — the result block satisfies backend SolitaireResult (won + moves).
-    expect(summary).toEqual({ outcome: "abandoned", result: { won: false, moves: 1 } });
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { won: false, moves: 1 },
+      durationMs: 30_000,
+    });
   });
 
   it("does not record an abandon before any moves are made", async () => {
@@ -507,17 +523,24 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
   it("New Game mid-game abandons the old session; the next win completes a new one with its own draw mode", async () => {
     const api = await mount();
     await chooseDraw1(api); // game-1, draw 1
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
-    });
-
-    await newGameFromMenu(api);
-    // Closed before the picker, with this game's own progress.
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      });
+      now += 12_000;
+      await newGameFromMenu(api);
+    } finally {
+      nowSpy.mockRestore();
+    }
+    // Closed before the picker, with this game's own progress and play time.
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
     expect(mockCompleteGame.mock.calls[0]![1]).toEqual({
       outcome: "abandoned",
       result: { won: false, moves: 1 },
+      durationMs: 12_000,
     });
     // The close opens nothing: the picker has no session until a mode is chosen.
     expect(mockStartGame).toHaveBeenCalledTimes(1);
@@ -720,8 +743,12 @@ describe("SolitaireScreen — result card (#2509)", () => {
   it("completes the win with the score before the card reads its rank", async () => {
     await AsyncStorage.setItem("player_display_name", "Alice");
     await winNow();
-    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalled());
+    // A loaded CI runner can take a while to reach the lookup (it flushes first).
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalled(), { timeout: 5000 });
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockGetGameRank.mock.invocationCallOrder[0]!
+    );
     const [gameId, summary] = mockCompleteGame.mock.calls[0];
     expect(gameId).toBe("game-uuid-test");
     expect(summary).toEqual(
