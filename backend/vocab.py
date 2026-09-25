@@ -63,9 +63,9 @@ class GameOutcome(str, Enum):
     * Hearts — ``win`` / ``loss`` / ``push`` when the match ends.
     * Daily Word — ``win`` when the word is solved, ``loss`` when the guesses
       run out.
-    * Mahjong — ``loss`` when the player leaves a deadlocked board. A cleared
-      board still records ``completed`` until #2627 makes it ``win``, so
-      Mahjong's ``has_winner`` stays false until then.
+    * Mahjong — ``win`` when the board is cleared (#2627), ``loss`` when the
+      player leaves a deadlocked board (#2592). Builds before #2627 recorded
+      a cleared board as ``completed``.
     * Blackjack — per run (#2628): ``win`` when the run reached its goal, at
       any point (Keep Playing and a later bust-out is still a win); ``loss``
       when the chips ran out before the goal; ``abandoned`` when the player
