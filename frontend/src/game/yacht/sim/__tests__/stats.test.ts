@@ -1,6 +1,16 @@
 import { CATEGORIES, type Category } from "../../engine";
 import type { BlockRecord, GameRecord, MatchupRun, PlayerResult } from "../harness";
-import { aOutcome, belowParFills, difference, estimate, formatReport, summarize } from "../stats";
+import {
+  aOutcome,
+  belowParFills,
+  difference,
+  estimate,
+  fillRound,
+  formatReport,
+  quantile,
+  summarize,
+  upperZeros,
+} from "../stats";
 
 // ---------------------------------------------------------------------------
 // Synthetic game logs with hand-countable stats
@@ -9,7 +19,13 @@ import { aOutcome, belowParFills, difference, estimate, formatReport, summarize 
 function player(
   label: string,
   score: number,
-  opts: { bonus?: boolean; upper?: number; cats?: Partial<Record<Category, number>> } = {}
+  opts: {
+    bonus?: boolean;
+    upper?: number;
+    cats?: Partial<Record<Category, number>>;
+    jokers?: number;
+    fillOrder?: Category[];
+  } = {}
 ): PlayerResult {
   const categories = {} as Record<Category, number>;
   for (const cat of CATEGORIES) categories[cat] = opts.cats?.[cat] ?? 0;
@@ -18,8 +34,9 @@ function player(
     score,
     upperSubtotal: opts.upper ?? 0,
     bonus: opts.bonus ?? false,
-    yachtBonusCount: 0,
+    yachtBonusCount: opts.jokers ?? 0,
     categories,
+    fillOrder: opts.fillOrder ?? [...CATEGORIES],
   };
 }
 
@@ -103,6 +120,30 @@ describe("aOutcome / belowParFills", () => {
   });
 });
 
+describe("quantile / fillRound / upperZeros", () => {
+  it("takes nearest-rank quantiles of sorted values", () => {
+    const v = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+    expect(quantile(v, 0.1)).toBe(10);
+    expect(quantile(v, 0.5)).toBe(50);
+    expect(quantile(v, 0.9)).toBe(90);
+    expect(quantile([], 0.5)).toBe(0);
+  });
+
+  it("finds the round a category was filled", () => {
+    const order = [...CATEGORIES].reverse();
+    const p = player("p", 0, { fillOrder: order });
+    expect(fillRound(p, CATEGORIES[CATEGORIES.length - 1]!)).toBe(1);
+    expect(fillRound(p, CATEGORIES[0]!)).toBe(13);
+  });
+
+  it("counts zeroed upper boxes and how many were Fours-Sixes", () => {
+    const p = player("p", 0, {
+      cats: { ones: 0, twos: 4, threes: 0, fours: 0, fives: 15, sixes: 0 },
+    });
+    expect(upperZeros(p)).toEqual([2, 4]); // zeroed: ones, threes, fours, sixes
+  });
+});
+
 describe("summarize", () => {
   const report = summarize(run);
 
@@ -141,6 +182,27 @@ describe("summarize", () => {
     expect(pooled.bonusRate.mean).toBeCloseTo(4 / 16, 10);
   });
 
+  it("reports the #2156 metrics: percentiles, yacht zeros, jokers, chance timing", () => {
+    const { a, b } = report.players;
+    // A's scores sorted: 120 140 150 180 200 210 230 250.
+    expect(a.scorePercentiles).toEqual({ p10: 120, p50: 180, p90: 250 });
+    // One game in eight scored the yacht box, for each player.
+    expect(a.yachtZeroRate.mean).toBeCloseTo(7 / 8, 10);
+    expect(b.yachtZeroRate.mean).toBeCloseTo(7 / 8, 10);
+    expect(a.jokerRate.mean).toBe(0);
+    // Default fill order is CATEGORIES order.
+    expect(a.chanceRound.mean).toBe(CATEGORIES.indexOf("chance") + 1);
+    // Every fixture player zeroes all six upper boxes except where set: 3 of 6 are high.
+    expect(a.highUpperZeroShare.mean).toBeCloseTo(0.5, 10);
+  });
+
+  it("gives the score SD a normal-theory SE over two dice streams per block", () => {
+    const { a } = report.players;
+    expect(a.scoreSdEst.mean).toBe(a.scoreSd);
+    expect(a.scoreSdEst.n).toBe(4); // 2 blocks × 2 streams
+    expect(a.scoreSdEst.se).toBeCloseTo(a.scoreSd / Math.sqrt(6), 10);
+  });
+
   it("mirrors exactly when the two players swap roles", () => {
     const swapped: MatchupRun = {
       a: "q",
@@ -164,5 +226,8 @@ describe("summarize", () => {
     expect(text).toContain("p (A) vs q (B) — paired dice, 2 blocks × 4 = 8 games");
     expect(text).toContain("order effect");
     expect(text).toContain("yacht");
+    for (const label of ["score p10 / p50 / p90", "yacht zero rate", "joker", "chance filled"]) {
+      expect(text).toContain(label);
+    }
   });
 });

@@ -13,11 +13,16 @@ const BG_VOLUME = 0.2;
 // some native audio sessions.  The [newGameTick] effect runs before [active] so that
 // when both fire in the same React commit the [active] resume-branch plays the track
 // that [newGameTick] already started rather than launching a second session.
+//
+// paused: hold the current track (e.g. while the game is paused) and resume it — the same
+// track, from where it stopped — when paused goes false. Unlike active, it never picks a
+// new track.
 export function useBackgroundMusic(
   keys: string[],
   registry: Record<string, number>,
   active: boolean,
-  newGameTick?: number
+  newGameTick?: number,
+  paused = false
 ): void {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -25,6 +30,7 @@ export function useBackgroundMusic(
   const keysRef = useRef(keys);
   const registryRef = useRef(registry);
   const prevActiveRef = useRef<boolean | null>(null);
+  const pausedRef = useRef(paused);
 
   useEffect(() => {
     mutedRef.current = muted;
@@ -37,6 +43,23 @@ export function useBackgroundMusic(
   useEffect(() => {
     registryRef.current = registry;
   }, [registry]);
+
+  // Declared before [newGameTick] and [active] so pausedRef is current when they run in the
+  // same commit (a new game started from the pause screen unpauses and ticks together).
+  useEffect(() => {
+    pausedRef.current = paused;
+    const player = playerRef.current;
+    if (!player) return;
+    if (paused) {
+      player.pause();
+    } else if (prevActiveRef.current && !mutedRef.current) {
+      try {
+        player.play();
+      } catch {
+        // web AudioContext suspended — fail silently
+      }
+    }
+  }, [paused]);
 
   // Force a new session on every new-game tick.
   // IMPORTANT: keep this effect declared before [active]. When both deps change in the
@@ -57,7 +80,7 @@ export function useBackgroundMusic(
       playerRef.current = null;
       return;
     }
-    pickAndPlay(playerRef, keysRef, registryRef, mutedRef);
+    pickAndPlay(playerRef, keysRef, registryRef, mutedRef.current || pausedRef.current);
     // active intentionally omitted: we read its value at call-time when newGameTick fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newGameTick]);
@@ -74,7 +97,7 @@ export function useBackgroundMusic(
 
     if (wasActive === true) {
       // Resuming (e.g. unpause) or continuing after a newGameTick session — play existing.
-      if (!mutedRef.current && playerRef.current) {
+      if (!mutedRef.current && !pausedRef.current && playerRef.current) {
         try {
           playerRef.current.play();
         } catch {
@@ -85,7 +108,7 @@ export function useBackgroundMusic(
     }
 
     // New session (null→true on mount, or false→true after game over): pick a new track.
-    pickAndPlay(playerRef, keysRef, registryRef, mutedRef);
+    pickAndPlay(playerRef, keysRef, registryRef, mutedRef.current || pausedRef.current);
   }, [active]);
 
   // React to mute toggle independently of active.
@@ -94,7 +117,7 @@ export function useBackgroundMusic(
     if (!player) return;
     if (muted) {
       player.pause();
-    } else if (prevActiveRef.current) {
+    } else if (prevActiveRef.current && !pausedRef.current) {
       try {
         player.play();
       } catch {
@@ -120,7 +143,7 @@ function pickAndPlay(
   playerRef: { current: AudioPlayer | null },
   keysRef: { current: string[] },
   registryRef: { current: Record<string, number> },
-  mutedRef: { current: boolean }
+  silent: boolean
 ): void {
   try {
     playerRef.current?.remove();
@@ -139,7 +162,7 @@ function pickAndPlay(
   player.volume = BG_VOLUME;
   playerRef.current = player;
 
-  if (!mutedRef.current) {
+  if (!silent) {
     try {
       player.play();
     } catch {
