@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, StyleSheet, Platform, Pressable, Modal, ViewStyle } from "react-native";
+import { View, Text, Image, StyleSheet, Platform, Pressable, Modal } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
+import { ConfirmModal } from "./ConfirmModal";
 import logoSource from "../../../assets/logo.png";
 
 export const APP_HEADER_HEIGHT = 64;
@@ -125,13 +126,6 @@ export function AppHeader({
   };
 
   // Gradient "Start New" button uses secondary → accent on web; fallback on native.
-  const startNewBg: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.secondary };
-
   return (
     <View
       accessibilityRole="header"
@@ -366,67 +360,16 @@ export function AppHeader({
       </Modal>
 
       {/* ─── Abandon dialog ────────────────────────────────────────────────── */}
-      <Modal
+      <ConfirmModal
         visible={abandonVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAbandonVisible(false)}
-        accessibilityViewIsModal
-      >
-        <View
-          style={[
-            styles.abandonOverlay,
-            Platform.select({
-              web: {
-                backdropFilter: "blur(4px)",
-                WebkitBackdropFilter: "blur(4px)",
-              } as object,
-            }),
-          ]}
-        >
-          <View
-            style={[
-              styles.abandonCard,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.abandonTitle, { color: colors.text }]} accessibilityRole="header">
-              {t("common:overflow.abandon.title")}
-            </Text>
-            <Text style={[styles.abandonBody, { color: colors.textMuted }]}>
-              {t("common:overflow.abandon.body")}
-            </Text>
-
-            {/* Keep Playing — outline pill (safe action first) */}
-            <Pressable
-              style={[styles.keepPlayingBtn, { borderColor: colors.border }]}
-              onPress={() => setAbandonVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel={t("common:overflow.abandon.keepPlaying")}
-            >
-              <Text style={[styles.keepPlayingText, { color: colors.text }]}>
-                {t("common:overflow.abandon.keepPlaying")}
-              </Text>
-            </Pressable>
-
-            {/* Start New — gradient pill */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.startNewBtn,
-                startNewBg,
-                { transform: [{ scale: pressed ? 0.96 : 1 }] },
-              ]}
-              onPress={handleAbandonConfirm}
-              accessibilityRole="button"
-              accessibilityLabel={t("common:overflow.abandon.startNew")}
-            >
-              <Text style={[styles.startNewText, { color: colors.textOnAccent }]}>
-                {t("common:overflow.abandon.startNew")}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        title={t("common:overflow.abandon.title")}
+        body={t("common:overflow.abandon.body")}
+        confirmLabel={t("common:overflow.abandon.startNew")}
+        cancelLabel={t("common:overflow.abandon.keepPlaying")}
+        cancelFirst
+        onConfirm={handleAbandonConfirm}
+        onCancel={() => setAbandonVisible(false)}
+      />
     </View>
   );
 }
@@ -541,61 +484,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   // ── Abandon dialog ──────────────────────────────────────────────────────
-  abandonOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  abandonCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 320,
-  },
-  abandonTitle: {
-    fontFamily: typography.heading,
-    fontSize: 17,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  abandonBody: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    lineHeight: 19.5,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  keepPlayingBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginBottom: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  keepPlayingText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  startNewBtn: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    width: "100%",
-    alignItems: "center",
-  },
-  startNewText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
 });

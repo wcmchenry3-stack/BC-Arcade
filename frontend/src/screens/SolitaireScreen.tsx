@@ -18,16 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -38,6 +29,11 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { HudStatRow } from "../components/shared/HudStatRow";
+import {
+  ModalCard,
+  ModalPrimaryButton,
+  ModalSecondaryButton,
+} from "../components/shared/ModalCard";
 import { PillButton } from "../components/shared/PillButton";
 import TableauPile from "../game/solitaire/components/TableauPile";
 import FoundationPile from "../game/solitaire/components/FoundationPile";
@@ -962,51 +958,12 @@ export default function SolitaireScreen() {
 
 function PreGameModal({ onChoose }: { readonly onChoose: (mode: DrawMode) => void }) {
   const { t } = useTranslation("solitaire");
-  const { colors } = useTheme();
-
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
 
   return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("drawMode.title")}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>{t("drawMode.body")}</Text>
-          <Pressable
-            style={[styles.modalPrimary, gradient]}
-            onPress={() => onChoose(1)}
-            accessibilityRole="button"
-            accessibilityLabel={t("drawMode.one")}
-          >
-            <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-              {t("drawMode.one")}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={() => onChoose(3)}
-            accessibilityRole="button"
-            accessibilityLabel={t("drawMode.three")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("drawMode.three")}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+    <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")}>
+      <ModalPrimaryButton label={t("drawMode.one")} onPress={() => onChoose(1)} />
+      <ModalSecondaryButton tone="accent" label={t("drawMode.three")} onPress={() => onChoose(3)} />
+    </ModalCard>
   );
 }
 
@@ -1060,60 +1017,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   autoBtnText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginBottom: 10,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  modalSecondaryText: {
     fontSize: 13,
     fontWeight: "800",
     letterSpacing: 1,

@@ -17,7 +17,7 @@ async function renderPill(props: Partial<React.ComponentProps<typeof PillButton>
 describe("PillButton", () => {
   it("renders its label and fires onPress", async () => {
     const { onPress } = await renderPill();
-    fireEvent.press(screen.getByRole("button", { name: "Undo" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Undo" }));
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
@@ -29,7 +29,7 @@ describe("PillButton", () => {
   it("does not fire and dims when disabled", async () => {
     const { onPress } = await renderPill({ disabled: true });
     const btn = screen.getByTestId("pill");
-    fireEvent.press(btn);
+    await fireEvent.press(btn);
     expect(onPress).not.toHaveBeenCalled();
     expect(btn.props.accessibilityState).toEqual({ disabled: true });
     expect(StyleSheet.flatten(btn.props.style).opacity).toBe(PILL_DISABLED_OPACITY);

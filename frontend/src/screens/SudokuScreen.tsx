@@ -19,7 +19,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Animated,
   AppState,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -38,6 +37,11 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { HudStatRow } from "../components/shared/HudStatRow";
+import {
+  ModalCard,
+  ModalPrimaryButton,
+  ModalSecondaryButton,
+} from "../components/shared/ModalCard";
 import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
@@ -759,58 +763,28 @@ function NewGameModal({
   readonly onStart: (d: Difficulty, v: Variant) => void;
 }) {
   const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
   const [pendingDifficulty, setPendingDifficulty] = useState(currentDifficulty);
   const [pendingVariant, setPendingVariant] = useState(currentVariant);
 
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
   return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("newGame.title")}
-          </Text>
-          <View style={styles.newGameSelector}>
-            <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
-          </View>
-          <View style={[styles.newGameSelector, { marginTop: 8 }]}>
-            <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
-          </View>
-          <Pressable
-            style={[styles.modalPrimary, gradient]}
-            onPress={() => onStart(pendingDifficulty, pendingVariant)}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.start")}
-          >
-            <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-              {t("action.start")}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onQuickRestart}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.quickRestart")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.quickRestart")}
-            </Text>
-          </Pressable>
-        </View>
+    <ModalCard visible title={t("newGame.title")}>
+      <View style={styles.newGameSelector}>
+        <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
       </View>
-    </Modal>
+      <View style={[styles.newGameSelector, { marginTop: 8 }]}>
+        <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
+      </View>
+      <ModalPrimaryButton
+        label={t("action.start")}
+        onPress={() => onStart(pendingDifficulty, pendingVariant)}
+        style={styles.newGameStart}
+      />
+      <ModalSecondaryButton
+        tone="accent"
+        label={t("action.quickRestart")}
+        onPress={onQuickRestart}
+      />
+    </ModalCard>
   );
 }
 
@@ -911,55 +885,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     marginBottom: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
+  newGameStart: {
     marginTop: 14,
-    marginBottom: 8,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginTop: 8,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
 });
