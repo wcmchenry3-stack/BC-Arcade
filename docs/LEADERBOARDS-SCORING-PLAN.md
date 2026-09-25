@@ -1,6 +1,6 @@
 # Leaderboards & Scoring — Streamlining Plan
 
-**Status:** proposal for owner review (2026-09-24). Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
+**Status:** owner decisions recorded 2026-09-25 (§8); ready to file as issues. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
 **Scope:** how every game *reports* its result, how results are *stored and ranked*, and how results are *shown* (result card, per-game scoreboard, leaderboards, Profile stats). Game rules and scoring formulas stay game-specific and are out of scope.
 **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) §4/§9, [`GAME-CONTRACT.md`](GAME-CONTRACT.md), [`PRODUCT.md`](PRODUCT.md), [`RELEASE-PLAN-2026-10.md`](RELEASE-PLAN-2026-10.md).
 
@@ -15,7 +15,7 @@
 5. [Existing issues — disposition](#5-existing-issues--disposition)
 6. [Sequencing](#6-sequencing)
 7. [Proposed epic and stories](#7-proposed-epic-and-stories)
-8. [Decisions needed from the owner](#8-decisions-needed-from-the-owner)
+8. [Owner decisions](#8-owner-decisions-recorded-2026-09-25)
 9. [Appendix A — docs that are wrong today](#appendix-a--docs-that-are-wrong-today)
 10. [Appendix B — dead code and cleanup](#appendix-b--dead-code-and-cleanup)
 11. [Appendix C — test safety net and gaps](#appendix-c--test-safety-net-and-gaps)
@@ -111,7 +111,7 @@ Principles, then the concrete contract. Everything below respects `PRODUCT.md`: 
 - Every game — including Sort and Star Swarm — records sessions through pipeline A (`useGameSync`). Twenty48 and Star Swarm get backend modules and registry entries.
 - Leaderboard entry is **pattern C everywhere**: the display name is attached to the player's own session row (`PATCH /games/{id}/name`, one generic route replacing nine per-game routers). No separate leaderboard rows; no sentinel sessions. This removes the duplicate-row bug structurally and lets FreeCell send its score again.
 - Auto-submission under the saved display name through `useLeaderboardSubmit` (#2503) is the only submission flow. Mahjong, Sort and Star Swarm migrate; the typed-name `TextInput` disappears. `scoreQueue` stays as the offline queue for the name attach; the generic sync already handles the score.
-- Migration: existing `*-anon` rows are either deleted or kept but excluded from boards by a `session_id NOT LIKE '%-anon'` filter until the next schema clean-up. Owner decision (§8).
+- Migration: existing `*-anon` rows are **deleted** in one Alembic data migration (§8 decision 6).
 
 ### 4.2 A declared board definition per game
 
@@ -121,6 +121,7 @@ Each backend `GameModule` declares how its game is ranked, so the server, the fr
 class BoardDefinition(BaseModel):
     metric: Literal["final_score"] | str      # column or metadata key
     direction: Literal["asc", "desc"]
+    tiebreak: tuple[str, Literal["asc", "desc"]] | None = None  # e.g. ("total_moves", "asc") for Sort; completed_at asc always breaks the final tie
     label_key: str                            # i18n key for the column header, e.g. "moves", "score", "level"
     partitions: list[str] = []                # metadata keys, e.g. ["difficulty", "variant"]
     max_value: int | None = None              # upper bound for submission validation (#2215)
@@ -133,22 +134,24 @@ board: BoardDefinition | None
 - `stats_shape` uses `direction` to compute `best` correctly for FreeCell (fewest moves) and any future ↓ game. `best` is renamed in the API response to `best_value` with a `best_label_key`, so the client never has to know what the number means.
 - The board definition is exported to the frontend through the existing `gen_vocab_ts.py` path (or the catalog endpoint), so the leaderboard screen and result card are data-driven.
 
-Proposed initial definitions (owner to confirm, §8):
+Initial definitions, as decided by the owner (§8):
 
-| Game | metric | dir | partitions | max | enabled |
-|---|---|---|---|---|---|
-| Yacht | `final_score` | desc | `difficulty` (vs-mode only) or none | 400 (joker rules permitting) | yes |
-| Twenty48 | `final_score` | desc | — | none | **decision** |
-| Solitaire | `final_score` | desc | — (Draw-1/3 shared, per #591) | 52-card bound + 500 | yes |
-| FreeCell | `final_score` (moves) | **asc** | — | none | yes |
-| Mahjong | `final_score` | desc | `layout` (**decision**) | 860 | yes |
-| Hearts | `final_score` (`100 − penalty`) | desc | `ai_difficulty` (**decision**) | 100 | yes |
-| Sudoku | `final_score` | desc | `difficulty`, `variant` | 300 | yes |
-| Cascade | `final_score` | desc | — | none | yes |
-| Sort | `level_reached` | desc | — | 23 | **decision** (#2231: random levels make it a pile of ties) |
-| Star Swarm | `final_score` | desc | `difficulty_tier` | none | yes |
-| Blackjack | — | — | — | — | **no** (chips are a balance, not a score) |
-| Daily Word | — | — | — | — | **no** |
+| Game | metric | dir | tie-break | partitions | recorded, not partitioned | max | enabled |
+|---|---|---|---|---|---|---|---|
+| Yacht | `final_score` | desc | — | — (solo and vs mixed) | `mode`, `difficulty` | 400 (joker rules permitting) | yes |
+| Twenty48 | `final_score` | desc | — | — | — | none | **yes** |
+| Solitaire | `final_score` | desc | — | — (Draw-1/3 shared, per #591) | `draw_mode` | 52-card bound + 500 | yes |
+| FreeCell | `final_score` (moves) | **asc** | — | — | — | none | yes |
+| Mahjong | `final_score` | desc | — | — | `layout` (all 25 layouts are 144 tiles, same max) | 860 | yes |
+| Hearts | `final_score` (`100 − penalty`) | desc | — | — | `ai_difficulty` | 100 | yes |
+| Sudoku | `final_score` | desc | — | `difficulty`, `variant` | — | 300 | yes |
+| Cascade | `final_score` | desc | — | — | — | none | yes |
+| Sort | `level_reached` | desc | `total_moves` asc | — | — | 23 | yes |
+| Star Swarm | `final_score` | desc | — | `difficulty_tier` | — | none | yes |
+| Blackjack | — | — | — | — | — | — | **no** (chips are a balance, not a score) |
+| Daily Word | — | — | — | — | — | — | **no** |
+
+"Recorded, not partitioned" fields go into `games.metadata` so a board can be split later without a backfill. Sort's levels are generated with a fixed seed (`backend/sort/generate_levels.py`), so every player gets the same 23 levels and `total_moves` across cleared levels is a fair tie-break; Sort must start sending it.
 
 ### 4.3 One result envelope
 
@@ -159,7 +162,7 @@ won: bool | None        # None = this game has no win concept (Cascade, Sort, St
 duration_ms: int        # always populated; SyncWorker falls back to completed_at − started_at
 ```
 
-- Hearts sends `won` from its existing `heartsResult()`; Yacht sends `won` from `vs_result` (null in solo mode); Blackjack sends `won = final_chips > starting_chips`; Twenty48 sends `won = highest_tile >= 2048`; Mahjong deadlock becomes `completed, won=false` instead of "abandoned if the player backs out" (#2510).
+- Hearts sends `won` from its existing `heartsResult()`; Yacht sends `won` from `vs_result` (null in solo mode); Blackjack sends `won = true` when the run reaches its goal (engine `phase === "victory"`), `won = false` when chips run out, and leaving mid-run is `abandoned`; Twenty48 sends `won = highest_tile >= 2048`; Mahjong deadlock becomes `completed, won=false` instead of "abandoned if the player backs out" (#2510).
 - The `win/loss/push/blackjack` members of `GameOutcome` are removed (Alembic rebuilds the CHECK constraint from the enum) and `GAME-CONTRACT.md §1.2` is corrected. The three frontend `GameOutcome` types collapse to `api/vocab.ts` (lifecycle) plus `GameResultModal`'s presentational `win | loss | draw | ended`.
 - Abandon rules move fully into `useGameSync`: screens stop sending their own `beforeRemove` abandons with scores and zero durations; `restart()` checks `startedRef`; a `ProgressSnapshot` is registered by every game. A server-side sweep marks rows with `completed_at IS NULL AND started_at < now() − 24h` as `abandoned` so killed apps stop leaking sessions.
 
@@ -168,8 +171,8 @@ duration_ms: int        # always populated; SyncWorker falls back to completed_a
 | Surface | Job | Design |
 |---|---|---|
 | **Result card** (`GameResultModal`) | End of *this* game | Already the standard (#2500). Finish Blackjack (#2507), Mahjong (#2510), Sort (#2512), Star Swarm (#2516). Add a **"View leaderboard"** secondary action whenever the game's board is enabled, so submissions are never write-only. |
-| **Leaderboard** (new generic `LeaderboardScreen`) | Top N for *one* game, one partition | Parameterised by `gameType` and a partition picker (chips for difficulty/variant/tier). Columns from the board definition: rank, name, metric (labelled), date. Shows "Your best: #rank" from the session's own row. Reached from the result card and from the game's overflow menu. **The "Ranks" bottom tab is retired** (it was Star Swarm-only and is already hidden in store builds); if the owner wants a tab, it becomes a game picker that opens the same screen — still per-game, never a merged board. |
-| **Game stats** (rename of the "Scoreboard" overflow) | *My* history for *this* game | Split the two things it currently conflates. (a) **Live in-match views** (Hearts rounds table, Yacht scorecard, Blackjack session P/L) stay bespoke and move under a "Scorecard"/"Rounds" menu label — they are gameplay UI. (b) **Per-game stats** become one shared `GameStatsScreen` fed by `/stats/me` for that game (played, completed, won/lost or n/a, best with its label, time played, last played) plus the game's leaderboard link. Device-local stat stores (`*_stats_v1`) are retired as a source of truth; local best remains a cache for the "New best" badge. Mahjong, FreeCell, Daily Word, Sort and Star Swarm gain the screen for free. |
+| **Leaderboard** (new generic `LeaderboardScreen`) | Top N for *one* game, one partition | Parameterised by `gameType` and a partition picker (chips for difficulty/variant/tier). Columns from the board definition: rank, name, metric (labelled), date. Shows "Your best: #rank" from the session's own row. Reached from the result card and from the game's overflow menu. **The "Ranks" bottom tab is retired** (it was Star Swarm-only and is already hidden in store builds); the app keeps three tabs. |
+| **Game stats** (rename of the "Scoreboard" overflow) | *My* history for *this* game | Split the two things it currently conflates. (a) **Live in-match views** (Hearts rounds table, Yacht scorecard, Blackjack session P/L) stay bespoke and move under a "Scorecard"/"Rounds" menu label — they are gameplay UI. (b) **Per-game stats** become one shared `GameStatsScreen` fed by `/stats/me` for that game (played, completed, won/lost or n/a, current and best win streak for games with a win concept, best with its label, time played, last played) plus the game's leaderboard link. Device-local stat stores (`*_stats_v1`) are retired as a source of truth; local best remains a cache for the "New best" badge. Mahjong, FreeCell, Daily Word, Sort and Star Swarm gain the screen for free. |
 
 **Profile** becomes the cross-game *personal* dashboard and only shows comparable things:
 
@@ -187,7 +190,7 @@ duration_ms: int        # always populated; SyncWorker falls back to completed_a
 | Won / lost / n/a | `metadata.won` | normalise `won` (§4.3); count per game; return `null` for no-win games |
 | Time played | `duration_ms` sum, fallback `completed_at − started_at` | SyncWorker fallback; stop screens sending 0 |
 | Per-game best (never compared) | `best` with direction | `best_value` + `best_label_key` (§4.2) |
-| Streaks | `streak_days` exists (daily challenge) | per-game win streaks are computable once `won` is normalised; **not** in scope unless the owner wants them |
+| Streaks | `streak_days` exists (daily challenge) | **per-game win streaks are in scope** (§8 decision 10): current and best consecutive `won = true` among non-abandoned completions, ordered by `completed_at`; `null` for no-win games. Abandons do not break a streak (no penalty for leaving, per `PRODUCT.md`). Milestone badges stay out of scope. |
 
 `GameTypeStatsResponse` drops the hard-coded Blackjack columns in favour of a small `extras: dict` that `stats_shape` may fill (Blackjack's chips live there).
 
@@ -210,13 +213,13 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 | 2215 | Score submission upper bounds | Open | **Absorb** into board definition (`max_value`) |
 | 2217 | Leaderboard GETs rate-limited by IP | Open | **Absorb** into the single generic leaderboard route |
 | 2270 | DECISION: finish or delete abandoned sync layer (`useLeaderboard`, unused `GameSession` types) | Open | **Decide here:** delete `useLeaderboard` and the unused `_shared/types.ts` aspirational types; the new leaderboard screen uses a fresh hook against the generic route |
-| 2231 | Product decisions incl. Sort `level_reached` comparability | Open | Sort item → §8 decision; rest untouched |
+| 2231 | Product decisions incl. Sort `level_reached` comparability | Open | Sort item answered by §8 decision 5 (levels are seeded, so comparable; tie-break on total moves); rest untouched |
 | 2272 | `reset_leaderboard()` stubs in 6 routers | Open | **Absorb**: the routers are deleted with pattern C |
 | 1130 | Star Swarm submission + top-10 (legacy) | Backend shipped | **Close** as superseded by #2516 |
-| 1131 | Twenty48 submission + top-10 (legacy) | Open | **Close** pending §8 decision; if enabled it is a one-line board definition, not a new router |
+| 1131 | Twenty48 submission + top-10 (legacy) | Open | **Close** as superseded: Twenty48 gets a board (§8 decision 1) via a board definition, not a new router |
 | 1132 | Yacht submission + top-10 (legacy) | Orphaned backend router | **Close**; Yacht's board is a board definition on pipeline A; delete `backend/yacht/router.py` score routes |
 | 1499 | Daily Word streak (current + best) | Partially superseded by `streak_days` | Keep, low; depends on §4.3 `won` |
-| 2459 / 2462 | Streak grace days / milestone badges | Open, low | Untouched; benefit from §4.5 |
+| 2459 / 2462 | Streak grace days / milestone badges | Open, low | Untouched and out of scope; per-game win streaks are in this epic, badges are not |
 | 1914 | Guideline 4.2 cohesion tracker | Partially done | Update: "unified board" → per-game boards via §4.4; Game Center remains a separate decision |
 | 2201 | Win modals cover win animations | Probably fixed by `GameResultModal` celebration phase | **Verify on device and close** |
 | 2226 | Docs truth-sync incl. ARCHITECTURE §9 | Open | Feed Appendix A into it |
@@ -230,10 +233,10 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 
 Launch constraints from `RELEASE-PLAN-2026-10.md`: production API cutover Tue Sep 29, store submission Oct 9, **launch quality bar = crash/stability only**. Six of the twelve games are hidden in the store build. Therefore:
 
-- **Phase 0 — before submission: decisions only, no code.** Nothing in this plan is a stability fix. The one product-rule violation visible to store users (Profile Top score) is cosmetic and waits. Owner answers §8 during the review-wait window (Oct 10–15), which the release plan already reserves for architecture review and per-game documentation.
+- **Phase 0 — before submission: decisions only, no code.** Nothing in this plan is a stability fix. The one product-rule violation visible to store users (Profile Top score) is cosmetic and waits. §8 was answered on Sep 25; the issues can be filed now and picked up after submission.
 - **Phase 1 — backend contract (post-launch, first).** Board definitions, generic leaderboard/rank/name routes, `won`/`duration_ms` in the envelope, `completed_played` and win counts exposed, stale-row sweep, migration for `*-anon` rows, delete the nine routers. All behind existing tests plus the new ones in Appendix C. Frontend keeps working throughout because the old routes are removed only after Phase 2 ships (keep them one release as thin shims onto the generic route).
 - **Phase 2 — frontend reporting (per game, one PR each).** Sort and Star Swarm adopt `useGameSync`; Mahjong, Sort, Star Swarm, Blackjack adopt `GameResultModal` + `useLeaderboardSubmit` (finishing #2500); Hearts/Yacht/Blackjack/Twenty48 send `won`; screens drop their own abandon handlers; SyncWorker duration fallback. Free visible games first (Mahjong, FreeCell, Yacht, Twenty48, Solitaire), hidden premium games after.
-- **Phase 3 — UI consolidation.** Generic `LeaderboardScreen` + "View leaderboard" action; Ranks tab retired; Scoreboard split into Scorecard (live) and `GameStatsScreen` (server-fed); Profile rebuilt on comparable metrics; localisation of outcomes and the fallback string; i18n namespaces consolidated (`leaderboard.json`, `stats.json`).
+- **Phase 3 — UI consolidation.** Generic `LeaderboardScreen` + "View leaderboard" action; Ranks tab retired; Scoreboard split into Scorecard (live) and `GameStatsScreen` (server-fed, with per-game win streaks); Profile rebuilt on comparable metrics; localisation of outcomes and the fallback string; i18n namespaces consolidated (`leaderboard.json`, `stats.json`).
 - **Phase 4 — clean-up and docs.** Appendix A and B; `GAME-CONTRACT.md` frontend §2 written for real (scoring, result, leaderboard contract + checklist items); `GAMEPLAY_STANDARDS.md §8` gains a "Reporting" checklist; Maestro flow for one result-card submission on iOS and Android.
 
 Rough size: Phase 1 ≈ 1 week backend; Phase 2 ≈ 1–2 days per game; Phase 3 ≈ 1–2 weeks; Phase 4 ≈ 3 days. Phases 1 and 2 can overlap once the generic route exists.
@@ -242,55 +245,60 @@ Rough size: Phase 1 ≈ 1 week backend; Phase 2 ≈ 1–2 days per game; Phase 3
 
 ## 7. Proposed epic and stories
 
-To be filed with the `plan-issues` agent after owner confirmation (it drafts, waits for confirmation, then creates). Labels: reuse `epic:leaderboards` as the umbrella label; add `backend`/`frontend`, per-game labels where they exist (note: no labels exist yet for cascade, twenty48, daily_word), and `priority:medium` unless stated. Each story links "Part of #2519".
+To be filed with the `plan-issues` agent (it drafts, waits for confirmation, then creates). Labels: reuse `epic:leaderboards` as the umbrella label; add `backend`/`frontend`, per-game labels where they exist (note: no labels exist yet for cascade, twenty48, daily_word), and `priority:medium` unless stated. Each story links "Part of #2519".
 
 **Epic — #2519 retitled: "Leaderboards & scoring: one reporting contract per game"**
 
 Phase 1 — backend
-1. **Board definition on `GameModule`** — `BoardDefinition` model, `board` attribute, protocol test, initial definitions per §4.2, exported to `frontend/src/api/vocab.ts` via `gen_vocab_ts.py`. Absorbs #2215.
+1. **Board definition on `GameModule`** — `BoardDefinition` model (metric, direction, tie-break, partitions, max, enabled), `board` attribute, protocol test, initial definitions per §4.2, exported to `frontend/src/api/vocab.ts` via `gen_vocab_ts.py`. Absorbs #2215.
 2. **Generic leaderboard, rank and name routes** — `GET /games/leaderboard/{game_type}`, `PATCH /games/{id}/name`, direction-aware `compute_rank`, session-keyed rate limit, entitlement check from the catalog. Absorbs #2217, #2272. Old routers become shims.
 3. **Result envelope: `won` and `duration_ms`** — add to every `result_model`; SyncWorker fallback; remove `win/loss/push/blackjack` from `GameOutcome` with migration; single abandon path in `useGameSync` (`restart()` guard). Absorbs #2469; rescopes #2517.
-4. **Expose comparable counts in `/stats/me`** — `sessions`, `completed`, `won`, `lost`, `time_played_ms`, `best_value`/`best_label_key`, `extras`; drop hard-coded Blackjack columns; update `GAME-CONTRACT.md §1.5`.
-5. **Stale open session sweep** — mark `completed_at IS NULL AND started_at < now − 24h` as abandoned (scheduled task or on-read), test.
-6. **Migrate `*-anon` leaderboard rows** — decision-dependent (§8 Q6); Alembic data migration plus a test that no board contains a sentinel session.
+4. **Expose comparable counts in `/stats/me`** — `sessions`, `completed`, `won`, `lost`, `current_win_streak`/`best_win_streak` (null for no-win games; abandons don't break a streak), `time_played_ms`, `best_value`/`best_label_key`, `extras`; drop hard-coded Blackjack columns; update `GAME-CONTRACT.md §1.5`.
+5. **Stale open session sweep** — mark `completed_at IS NULL AND started_at < now − 24h` as abandoned (scheduled task or on-read), test. Threshold decided: 24 h.
+6. **Delete `*-anon` leaderboard rows** — Alembic data migration plus a test that no board contains a sentinel session.
 7. **Register Twenty48 and Star Swarm modules** — metadata/result models, registry entries, `stats_shape`.
 8. **Server-side idempotency for completion and name attach** — client id already exists on `POST /games`; make `PATCH …/complete` and `PATCH …/name` idempotent; test.
 
 Phase 2 — frontend reporting (one story per game; #2507, #2510, #2512, #2516 already exist and are extended)
-9. **Sort: adopt `useGameSync`, `GameResultModal`, `useLeaderboardSubmit`** (#2512 extended). Absorbs the Sort half of #2216's defect.
+9. **Sort: adopt `useGameSync`, `GameResultModal`, `useLeaderboardSubmit`; send `total_moves` across cleared levels for the tie-break** (#2512 extended). Absorbs the Sort half of #2216's defect.
 10. **Star Swarm: adopt `useGameSync`, `GameResultModal`, `useLeaderboardSubmit`; offline queue; drop `"player"`** (#2516 extended). Closes #2216, #1130.
-11. **Mahjong: `GameResultModal` + `useLeaderboardSubmit`; deadlock → `completed, won=false`; fix broken Scoreboard route** (#2510 extended, PR #2569 in flight).
-12. **Blackjack: `GameResultModal` for bust and cash-out; `won` from chips; server-side run summary in `extras`** (#2507 extended).
+11. **Mahjong: `GameResultModal` + `useLeaderboardSubmit`; deadlock → `completed, won=false`; record `layout` in metadata; fix broken Scoreboard route** (#2510 extended, PR #2569 in flight).
+12. **Blackjack: `GameResultModal` for victory and bust; `won` = reached the run goal, `false` on bust; server-side run summary in `extras`** (#2507 extended).
 13. **Hearts: send `won`; real `duration_ms`; remove `pendingSubmission.ts` in favour of `scoreQueue`; record `ai_difficulty` in metadata.**
-14. **Yacht: send `won` from `vs_result`; `duration_ms`; delete orphaned `/yacht/score` routes; board per §8 Q2.** Closes #1132.
-15. **Solitaire / Sudoku / Cascade / FreeCell / Twenty48 / Daily Word: drop screen-level abandon handlers; FreeCell sends its score again on the session row; Twenty48 board per §8 Q1.** Closes #1131 either way.
+14. **Yacht: send `won` from `vs_result`; `duration_ms`; record `mode`/`difficulty` in metadata; delete orphaned `/yacht/score` routes; one board for all modes.** Closes #1132.
+15. **Twenty48: leaderboard submission via `useLeaderboardSubmit` and the result card's submission slot; `won = highest_tile >= 2048`.** Closes #1131.
+16. **Solitaire / Sudoku / Cascade / FreeCell / Daily Word: drop screen-level abandon handlers; FreeCell sends its score again on the session row; Solitaire records `draw_mode` in metadata.**
 
 Phase 3 — UI
-16. **Generic `LeaderboardScreen` + `useLeaderboardData` hook** — parameterised by game and partition; "Your best"; reached from result card ("View leaderboard" action) and overflow menu. Deletes `useLeaderboard.ts` (#2270 decided).
-17. **Retire the Ranks tab** (or convert to a game picker per §8 Q7); update `premiumRoutes.ts`, `BottomTabBar`, tests, release-plan "3 tabs" check.
-18. **Split Scoreboard into Scorecard (live) and `GameStatsScreen` (server-fed)** — shared screen for all 12 games; retire `*_stats_v1` as a source of truth; fix Mahjong/FreeCell/Daily Word/Sort/Star Swarm gaps; translate the fallback.
-19. **Profile on comparable metrics** — remove cross-game Top score; add completion rate, time played, per-game best-with-label and win rate; localise outcomes in recent games and `GameDetailScreen`.
-20. **i18n consolidation** — `leaderboard.json`, `stats.json`; remove orphaned `mahjong.scoreboard.*`, duplicate `gamesPlayed` keys.
+17. **Generic `LeaderboardScreen` + `useLeaderboardData` hook** — parameterised by game and partition; "Your best"; reached from result card ("View leaderboard" action) and overflow menu. Deletes `useLeaderboard.ts` (#2270 decided).
+18. **Retire the Ranks tab** — update `premiumRoutes.ts`, `BottomTabBar`, `App.tsx`, tests; the release plan's "3 tabs" check holds in every build.
+19. **Split Scoreboard into Scorecard (live) and `GameStatsScreen` (server-fed)** — shared screen for all 12 games, including current and best win streak for games with a win concept; retire `*_stats_v1` as a source of truth; fix Mahjong/FreeCell/Daily Word/Sort/Star Swarm gaps; translate the fallback.
+20. **Profile on comparable metrics** — remove cross-game Top score; add completion rate, time played, per-game best-with-label and win rate; localise outcomes in recent games and `GameDetailScreen`.
+21. **i18n consolidation** — `leaderboard.json`, `stats.json`; remove orphaned `mahjong.scoreboard.*`, duplicate `gamesPlayed` keys.
 
 Phase 4 — docs, tests, cleanup
-21. **`GAME-CONTRACT.md` frontend contract §2** — `useGameSync`, result envelope, `LeaderboardAdapter`, board definition, checklist items; fix §1.2/§1.3/§1.5. Also `ARCHITECTURE.md §4/§9/§12`, `GAMEPLAY_STANDARDS.md §8`, all 12 `docs/games/*.md` scoring sections (Appendix A). Feeds #2226.
-22. **Tests** — no-duplicate-row test for every game; direction test per board; Mahjong Scoreboard route test; `ProfileScreen` test updated; one Maestro result-submission flow on iOS and Android (Appendix C).
-23. **Dead code removal** — Appendix B.
+22. **`GAME-CONTRACT.md` frontend contract §2** — `useGameSync`, result envelope, `LeaderboardAdapter`, board definition, checklist items; fix §1.2/§1.3/§1.5. Also `ARCHITECTURE.md §4/§9/§12`, `GAMEPLAY_STANDARDS.md §8`, all 12 `docs/games/*.md` scoring sections (Appendix A). Feeds #2226.
+23. **Tests** — no-duplicate-row test for every game; direction and tie-break test per board; win-streak tests (abandons don't break a streak); Mahjong Scoreboard route test; `ProfileScreen` test updated; one Maestro result-submission flow on iOS and Android (Appendix C).
+24. **Dead code removal** — Appendix B.
 
 ---
 
-## 8. Decisions needed from the owner
+## 8. Owner decisions (recorded 2026-09-25)
 
-1. **Twenty48 leaderboard: yes or no?** It is a free, visible game with a comparable score and full session data; a board is a one-line definition. Recommendation: **yes**.
-2. **Yacht partition:** one board, or one per AI difficulty in vs-mode (solo scores on a separate "Solo" board)? The score formula is the same in every mode; difficulty only changes the opponent. Recommendation: **one board, solo and vs mixed**, since the player's own score is what is ranked.
-3. **Mahjong partition by layout?** Layouts have different tile counts, so max score differs. Recommendation: **partition by layout**, record `layout` in metadata.
-4. **Hearts partition by AI difficulty?** Recommendation: **record it, do not partition** until there is evidence the boards diverge.
-5. **Sort's ranking metric.** `level_reached` capped at 23 with randomised levels is a pile of ties (#2231). Options: disable the board; rank by total moves across cleared levels ↓; rank by best level then fewest moves. Recommendation: **disable until levels are deterministic**, keep stats.
-6. **Existing `*-anon` rows:** delete, or keep and filter? They carry no session and cannot be attributed. Recommendation: **delete in a data migration** (prod went live on Sep 22 as a fresh database, so this only affects dev and pre-launch test plays).
-7. **Ranks tab:** retire, or convert to a per-game picker? Recommendation: **retire**; the result card and overflow menu are the entry points, and the release plan's "3 tabs" check stays true.
-8. **Blackjack "win":** `final_chips > starting_chips` per run, or no win concept? Recommendation: **`final_chips > starting_chips`**, so its win rate is meaningful on Profile.
-9. **Stale-row threshold:** 24 hours after `started_at`? Recommendation: **24 h**, matching the entitlement TTL.
-10. **Per-game win streaks and badges (#2459, #2462):** in this epic or later? Recommendation: **later**; this epic makes them computable.
+| # | Question | Decision | Why |
+|---|---|---|---|
+| 1 | Twenty48 leaderboard? | **Yes, one global board by score** | Free, visible, comparable score; sessions already reach the server |
+| 2 | Yacht partition | **One board, solo and vs mixed**; record `mode` and `difficulty` | Difficulty only changes the opponent; the player's own score is ranked |
+| 3 | Mahjong partition by layout | **One board; record `layout`** | All 25 layouts are 144 tiles, so the max score is identical. Split later if boards diverge |
+| 4 | Hearts partition by AI difficulty | **Record `ai_difficulty`, don't partition** | Split only if scores clearly differ |
+| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** | Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve |
+| 6 | Existing `*-anon` rows | **Delete in a data migration** | Cannot be attributed to a player; the store build is unreleased, so they are test plays |
+| 7 | Ranks tab | **Retire** | Boards open from the result card and game menu; app keeps three tabs |
+| 8 | Blackjack win | **Reached the run goal = win; busted out = loss; leaving mid-run = abandoned** | Uses the game's own victory condition |
+| 9 | Stale open session threshold | **24 hours after `started_at`** | Safe for long Hearts matches; matches entitlement TTL |
+| 10 | Per-game win streaks and badges | **Win streaks in this epic (Phase 1 story 4, Phase 3 story 19); badges later** | Streaks fall out of the normalised `won`; abandons don't break a streak |
+
+**Corrections found while deciding:** the original draft said Sort's levels were randomised and Mahjong layouts had different tile counts. Both were wrong (`backend/sort/generate_levels.py` seeds its RNG; every entry in `frontend/src/game/mahjong/layouts/registry.ts` is 144 tiles). The recommendations above reflect the corrected facts.
 
 ---
 
