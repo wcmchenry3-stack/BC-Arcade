@@ -25,6 +25,7 @@ from .schemas import (
     GameDetailResponse,
     GameEventResponse,
     GameHistoryResponse,
+    GameRankResponse,
     GameRowResponse,
     GameStateResponse,
     GameTypeOut,
@@ -46,6 +47,9 @@ CATALOG_RATE_LIMIT = "60/minute"
 LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
 LEADERBOARD_IP_RATE_LIMIT = "300/minute"
 SET_NAME_RATE_LIMIT = "10/minute"
+# GET /games/{id}/rank (#2677): a read, limited like the leaderboard.
+RANK_SESSION_RATE_LIMIT = "60/minute"
+RANK_IP_RATE_LIMIT = "300/minute"
 
 
 def _to_state(game) -> GameStateResponse:
@@ -215,6 +219,35 @@ async def get_leaderboard(
             )
             for e in entries
         ],
+    )
+
+
+@router.get("/{game_id}/rank", response_model=GameRankResponse)
+@limiter.limit(RANK_IP_RATE_LIMIT)
+@limiter.limit(RANK_SESSION_RATE_LIMIT, key_func=session_key)
+async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankResponse:
+    """Where one of the caller's games puts them on its board (#2677). Read-only.
+
+    The result card's call: the rank of the caller's best entry in the game's
+    partition and whether this game is that entry, computed exactly as
+    ``PATCH /games/{id}/name`` and the board compute it. ``ranked: false``
+    with ``reason`` ``no_name`` / ``not_rankable`` / ``board_disabled`` (rank
+    and is_best null) when there is no standing to report. 403 if another
+    session owns the game (or a premium game isn't entitled), 404 if the game
+    or its board definition doesn't exist.
+    """
+    sid = get_session_id(request)
+    factory = get_session_factory()
+    async with factory() as db:
+        game = await leaderboard.load_game(db, game_id)
+        if game is None:
+            raise HTTPException(status_code=404, detail="Game not found.")
+        if game.session_id != sid:
+            raise HTTPException(status_code=403, detail="Game belongs to a different session.")
+        await check_entitlement(db, sid, game.game_type.name)  # no-op for free games
+        result = await leaderboard.game_rank(db, game=game, session_id=sid)
+    return GameRankResponse(
+        rank=result.rank, is_best=result.is_best, ranked=result.ranked, reason=result.reason
     )
 
 

@@ -1,7 +1,8 @@
 """Generic leaderboards, driven by each module's ``BoardDefinition`` (#2618).
 
-One query, one rank calculation and one name operation serve every game.
-They replace the per-game leaderboard routers, which stay in place
+One query, one rank calculation (``player_standing``, behind both
+``PATCH /games/{id}/name`` and ``GET /games/{id}/rank``) and one name
+operation serve every game. They replace the per-game leaderboard routers, which stay in place
 (unchanged) until #2644 because v1.0 clients still call them.
 
 Rules every board follows
@@ -42,7 +43,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from sqlalchemy import (
@@ -109,9 +110,29 @@ class BoardEntry:
 
 
 @dataclass(frozen=True)
-class NameResult:
+class Standing:
+    """Where a player stands on one board: the exact rank of their best entry,
+    and whether a given game is that entry."""
+
     rank: int
     is_best: bool
+
+
+RankReason = Literal["no_name", "not_rankable", "board_disabled"]
+
+
+@dataclass(frozen=True)
+class GameRank:
+    """``GET /games/{id}/rank``: the caller's standing, or why they have none.
+
+    ``rank`` and ``is_best`` are set exactly when ``ranked`` is true;
+    ``reason`` exactly when it is false.
+    """
+
+    ranked: bool
+    rank: int | None = None
+    is_best: bool | None = None
+    reason: RankReason | None = None
 
 
 @dataclass(frozen=True)
@@ -477,42 +498,21 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
     return None
 
 
-async def set_player_name(
-    db: AsyncSession, *, game: Game, session_id: str, player_name: str
-) -> NameResult:
-    """``PATCH /games/{id}/name``: set the player's display name, return their standing.
+async def player_standing(
+    db: AsyncSession, *, board: BoardDefinition, game: Game, session_id: str
+) -> Standing | None:
+    """The player's standing in ``game``'s partition (``session_id`` owns ``game``).
 
-    Kept for installed builds (#2624): the name is the player's, not the
-    game's, so this is ``PUT /players/me`` plus a rank. ``game`` must be
-    loaded with its ``game_type`` and owned by ``session_id`` (the router
-    checks both), and must be able to rank (else 400, as before). Returns the
-    rank of the player's best entry in the game's partition, and whether
-    ``game`` is that best entry.
-
-    The name is also written to ``metadata.player_name`` on ``game``: the
-    legacy per-game ``GET /<game>/scores`` routes still read it from session
-    rows until #2644 removes them. The generic boards never read it.
+    The one standing calculation: ``PATCH /games/{id}/name`` and
+    ``GET /games/{id}/rank`` both call it, so they can't disagree, and it uses
+    the board's own filters and order, so it agrees with the listed board.
+    Returns the exact rank of the player's best entry in that partition and
+    whether ``game`` is that entry, or ``None`` when the player has no entry
+    there (no display name, or no eligible row). Reads only; a DB error is a
+    clean 500.
     """
     game_type = game.game_type.name
-    board = enabled_board(game_type)
-    if board is None:
-        raise LeaderboardError(404, f"{game_type} has no leaderboard.")
-    reason = _unrankable_reason(board, game)
-    if reason is not None:
-        raise LeaderboardError(400, reason)
-
-    # Reassign (never mutate in place): the JSONB column isn't a MutableDict.
-    metadata = {**(game.game_metadata or {}), "player_name": player_name}
-    game.game_metadata = metadata
-    try:
-        await players_service.set_display_name(db, session_id, player_name)
-        await db.commit()
-    except SQLAlchemyError as exc:
-        await db.rollback()
-        _log_db_error("player name commit", game_type, exc)
-        raise LeaderboardError(500, "Failed to save player name.") from exc
-
-    partition = row_partition(board, metadata)
+    partition = row_partition(board, game.game_metadata or {})
     filters = board_filters(board, game.game_type_id, partition)
     metric = metric_expr(board, metric_cap(board, partition))
     try:
@@ -520,8 +520,8 @@ async def set_player_name(
     except SQLAlchemyError as exc:
         _log_db_error("player best query", game_type, exc)
         raise LeaderboardError(500, "Failed to calculate rank.") from exc
-    if best is None:  # pragma: no cover - the row just named is eligible
-        raise LeaderboardError(500, "Failed to calculate rank.")
+    if best is None:
+        return None
 
     tiebreak_arg = None
     if board.tiebreak is not None:
@@ -538,7 +538,85 @@ async def set_player_name(
         filters=filters,
         game_label=game_type,
     )
-    return NameResult(rank=rank, is_best=best.game_id == game.id)
+    return Standing(rank=rank, is_best=best.game_id == game.id)
+
+
+async def set_player_name(
+    db: AsyncSession, *, game: Game, session_id: str, player_name: str
+) -> Standing:
+    """``PATCH /games/{id}/name``: set the player's display name, return their standing.
+
+    Kept for installed builds (#2624): the name is the player's, not the
+    game's, so this is ``PUT /players/me`` plus a rank. ``game`` must be
+    loaded with its ``game_type`` and owned by ``session_id`` (the router
+    checks both), and must be able to rank (else 400, as before). Returns
+    ``player_standing`` once the name is saved.
+
+    The name is also written to ``metadata.player_name`` on ``game``: the
+    legacy per-game ``GET /<game>/scores`` routes still read it from session
+    rows until #2644 removes them. The generic boards never read it.
+    """
+    game_type = game.game_type.name
+    board = enabled_board(game_type)
+    if board is None:
+        raise LeaderboardError(404, f"{game_type} has no leaderboard.")
+    reason = _unrankable_reason(board, game)
+    if reason is not None:
+        raise LeaderboardError(400, reason)
+
+    # Reassign (never mutate in place): the JSONB column isn't a MutableDict.
+    game.game_metadata = {**(game.game_metadata or {}), "player_name": player_name}
+    try:
+        await players_service.set_display_name(db, session_id, player_name)
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        _log_db_error("player name commit", game_type, exc)
+        raise LeaderboardError(500, "Failed to save player name.") from exc
+
+    standing = await player_standing(db, board=board, game=game, session_id=session_id)
+    if standing is None:  # pragma: no cover - the row just named is eligible
+        raise LeaderboardError(500, "Failed to calculate rank.")
+    return standing
+
+
+async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRank:
+    """``GET /games/{id}/rank``: where ``game`` puts its player (#2677). Writes nothing.
+
+    ``game`` must be loaded with its ``game_type`` and owned by ``session_id``
+    (the router checks both). 404 when the game has no board definition at
+    all. Otherwise the standing ``PATCH /games/{id}/name`` would report, or
+    ``ranked: false`` with the first reason that applies:
+
+    - ``board_disabled``: the game has no leaderboard (Blackjack, Daily Word);
+    - ``not_rankable``: this game can't be on its board (unfinished,
+      abandoned, a non-qualifying outcome, over the cap, a partition value
+      with no board, ...). Checked before the name, so a result card never
+      asks for a name the game couldn't use;
+    - ``no_name``: the player has no display name, so no board shows them and
+      no rank is computed.
+    """
+    game_type = game.game_type.name
+    board = _module_board(get_module(game_type))
+    if board is None:
+        raise LeaderboardError(404, f"{game_type} has no leaderboard.")
+    if not board.enabled:
+        return GameRank(ranked=False, reason="board_disabled")
+    if _unrankable_reason(board, game) is not None:
+        return GameRank(ranked=False, reason="not_rankable")
+    try:
+        name = await players_service.get_display_name(db, session_id)
+    except SQLAlchemyError as exc:
+        _log_db_error("player name query", game_type, exc)
+        raise LeaderboardError(500, "Failed to calculate rank.") from exc
+    if name is None:
+        return GameRank(ranked=False, reason="no_name")
+    standing = await player_standing(db, board=board, game=game, session_id=session_id)
+    if standing is None:
+        # Named and rankable by the row check, yet off the board (e.g. a
+        # sentinel ``*-anon`` session): report what the board shows.
+        return GameRank(ranked=False, reason="not_rankable")
+    return GameRank(ranked=True, rank=standing.rank, is_best=standing.is_best)
 
 
 async def load_game(db: AsyncSession, game_id: uuid.UUID) -> Game | None:
