@@ -2477,17 +2477,27 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
 
   // ── Player bullets ↔ enemies ──────────────────────────────────────────────
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
-  const piercingHits = new Set<string>(); // `${bulletId}:${enemyId}` — prevents double-hit
+  // Piercing bullets aren't consumed on hit, so a slow bullet can keep overlapping a big
+  // hitbox across several ticks. New hits are staged here and merged into each bullet's
+  // persistent `hitEnemyIds` after the pass, so a bullet can never damage the same enemy twice
+  // across its whole flight — not just within this one tick.
+  const newPiercingHits = new Map<number, number[]>(); // bulletId -> enemy ids newly hit this tick
   let enemies = state.enemies.map((enemy) => {
     if (!enemy.isAlive) return enemy;
 
     for (const b of state.playerBullets) {
       if (!b.piercing && hitBulletIds.has(b.id)) continue;
-      if (b.piercing && piercingHits.has(`${b.id}:${enemy.id}`)) continue;
+      if (b.piercing) {
+        const alreadyHit = b.hitEnemyIds?.includes(enemy.id);
+        const hitThisTick = newPiercingHits.get(b.id)?.includes(enemy.id);
+        if (alreadyHit || hitThisTick) continue;
+      }
       if (!aabb(b.x, b.y, b.width, b.height, enemy.x, enemy.y, enemy.width, enemy.height)) continue;
 
       if (b.piercing) {
-        piercingHits.add(`${b.id}:${enemy.id}`);
+        const hits = newPiercingHits.get(b.id);
+        if (hits) hits.push(enemy.id);
+        else newPiercingHits.set(b.id, [enemy.id]);
       } else {
         hitBulletIds.add(b.id);
       }
@@ -2527,7 +2537,13 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
   if (routCaught > 0) runStats = bumpRun(runStats, { routCaught });
 
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
-  let playerBullets: Bullet[] = state.playerBullets.filter((b) => !hitBulletIds.has(b.id));
+  let playerBullets: Bullet[] = state.playerBullets
+    .filter((b) => !hitBulletIds.has(b.id))
+    .map((b) => {
+      const hits = newPiercingHits.get(b.id);
+      if (!hits) return b;
+      return { ...b, hitEnemyIds: [...(b.hitEnemyIds ?? []), ...hits] };
+    });
 
   // #2486: rocks are cover — any shot that reaches one is spent on it (piercing shots included),
   // then rocks ram whatever they fly into. Nobody scores for any of it.
