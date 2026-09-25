@@ -44,52 +44,92 @@ describe("CapacityWarningToast", () => {
     expect(getByText("Clear it in Settings to keep the app running smoothly.")).toBeTruthy();
   });
 
-  it("calls markShown and hides the banner when dismissed", async () => {
-    const markShown = jest.fn().mockResolvedValue(undefined);
-    const { findByTestId, queryByTestId, getByTestId } = await renderWith(
-      () => Promise.resolve(true),
-      markShown
-    );
-    await findByTestId("capacity-warning-toast");
+  /**
+   * A check/markShown pair that behaves like eventStore (#2584): once the
+   * warning is marked shown, the check stops asking for it.
+   */
+  function suppressedAfterMark() {
+    let marked = false;
+    return {
+      check: () => Promise.resolve(!marked),
+      markShown: jest.fn(async () => {
+        marked = true;
+      }),
+    };
+  }
+
+  /** Let pending check promises and the state updates they cause settle. */
+  async function flush() {
     await act(async () => {
-      await fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    // Banner is gone.
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
-    // Side effect fired.
-    expect(markShown).toHaveBeenCalledTimes(1);
+  }
+
+  it("hides the banner on dismiss, marks it shown, and keeps it hidden while the check says no", async () => {
+    jest.useFakeTimers();
+    try {
+      const { check, markShown } = suppressedAfterMark();
+      const { getByTestId, queryByTestId } = await renderWith(check, markShown);
+      await flush();
+      expect(getByTestId("capacity-warning-toast")).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      });
+      expect(markShown).toHaveBeenCalledTimes(1);
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+
+      // Several poll cycles, deterministically: still hidden.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+      await flush();
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it("stays hidden after dismiss even if a later check still returns true", async () => {
-    // shouldShow always returns true — but once dismissed, the toast
-    // should not reappear on the same mount. (Re-appearance after 24 h
-    // is enforced by eventStore.markWarningShown, which is not tested
-    // here; that's covered by eventStore.test.ts.)
-    let dismissed = false;
-    const { findByTestId, getByTestId, queryByTestId } = await renderWith(
-      () => Promise.resolve(true),
-      async () => {
-        dismissed = true;
-      }
-    );
-    await findByTestId("capacity-warning-toast");
-    await act(async () => {
-      await fireEvent.press(getByTestId("capacity-warning-dismiss"));
-    });
-    expect(dismissed).toBe(true);
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
+  it("ignores a check that was already running when the banner was dismissed", async () => {
+    // The real eventStore check waits on a lock and a storage read, so a poll
+    // can be in flight across the dismiss (#2584 review). It must not bring
+    // the banner back when it resolves.
+    jest.useFakeTimers();
+    try {
+      let resolveInFlight: (show: boolean) => void = () => {};
+      const check = jest
+        .fn<Promise<boolean>, []>()
+        .mockResolvedValueOnce(true) // mount: show
+        .mockImplementationOnce(
+          () =>
+            new Promise<boolean>((resolve) => {
+              resolveInFlight = resolve;
+            })
+        ) // first poll: still running at dismiss time
+        .mockResolvedValue(false); // later polls: suppressed
+      const { getByTestId, queryByTestId } = await renderWith(check);
+      await flush();
+      expect(getByTestId("capacity-warning-toast")).toBeTruthy();
 
-    // Wait a poll cycle and confirm it stays hidden. The real eventStore
-    // would return false here (suppression window active); in this test
-    // we rely on setVisible(false) from dismiss taking effect.
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 80));
-    });
-    // It WILL re-appear because the stub still returns true — that's a
-    // known behavior. What we're asserting here is that the immediate
-    // dismiss transition worked and we saw the hidden state before the
-    // next poll. The 24 h suppression belongs to eventStore's unit
-    // tests, not this one.
+      await act(async () => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(check).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      });
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+
+      await act(async () => {
+        resolveInFlight(true);
+      });
+      await flush();
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("polls the check function at the configured interval", async () => {

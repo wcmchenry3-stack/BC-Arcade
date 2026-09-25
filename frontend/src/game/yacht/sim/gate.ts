@@ -35,6 +35,7 @@ export interface GateMatchup {
 export const GATE_MATCHUPS: readonly GateMatchup[] = [
   { id: "hard-vs-easy", a: "hard", b: "easy", seed: 11, games: 2000 },
   { id: "hard-vs-medium", a: "hard", b: "medium", seed: 12, games: 2000 },
+  { id: "medium-vs-easy", a: "medium", b: "easy", seed: 16, games: 2000 },
   { id: "easy-self", a: "easy", b: "easy", seed: 13, games: 1000 },
   { id: "medium-self", a: "medium", b: "medium", seed: 14, games: 1000 },
   { id: "hard-self", a: "hard", b: "hard", seed: 15, games: 1000 },
@@ -48,6 +49,7 @@ export const GATE_MATCHUPS: readonly GateMatchup[] = [
 export const GATE_GROUPS: Readonly<Record<string, readonly string[]>> = {
   "hard-vs-easy": ["hard-vs-easy"],
   "hard-vs-medium": ["hard-vs-medium"],
+  "medium-vs-easy": ["medium-vs-easy"],
   "self-play": ["easy-self", "medium-self", "hard-self"],
 };
 
@@ -177,6 +179,10 @@ export const GATE_BANDS: readonly Band[] = [
     percent: true,
   },
 
+  // medium-vs-easy (#2156) — measured: Medium 86.4% [84.3, 88.4], order 0,
+  // scores 216.3 / 162.4.
+  ...matchupBands("medium-vs-easy", 0.81, 0.91, "Medium beats Easy (measured 86.4%)"),
+
   // self-play — measured pooled scores 161.6 / 211.8 / 245.2, bonus
   // 0.6% / 13.4% / 63.0%, below-par fills 5.12 / 4.05 / 2.14.
   tierScoreBand("easy-self", 150, 172, "Easy's mean score, target ~160 (measured 161.6)"),
@@ -228,6 +234,39 @@ export const GATE_BANDS: readonly Band[] = [
     "medium-self",
     "hard-self",
     (p) => p.belowParMean
+  ),
+  // #2156: variance and the Yacht box. Measured SDs 36.2 / 45.8 / 56.3
+  // (optimal play's is ~60, fixed by the dice) and Yacht-zero rates
+  // 91.6% / 78.6% / 69.2%.
+  ordering(
+    "order:hard-over-medium-sd",
+    "Hard's scores spread wider than Medium's (measured SD +10.5)",
+    "hard-self",
+    "medium-self",
+    (p) => p.scoreSdEst
+  ),
+  ordering(
+    "order:medium-over-easy-sd",
+    "Medium's scores spread wider than Easy's (measured SD +9.6)",
+    "medium-self",
+    "easy-self",
+    (p) => p.scoreSdEst
+  ),
+  ordering(
+    "order:easy-over-medium-yacht-zero",
+    "Easy zeroes the Yacht box more often than Medium (measured +13.0pp)",
+    "easy-self",
+    "medium-self",
+    (p) => p.yachtZeroRate,
+    true
+  ),
+  ordering(
+    "order:medium-over-hard-yacht-zero",
+    "Medium zeroes the Yacht box more often than Hard (measured +9.4pp)",
+    "medium-self",
+    "hard-self",
+    (p) => p.yachtZeroRate,
+    true
   ),
 ];
 

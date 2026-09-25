@@ -7,6 +7,7 @@ import {
   CANVAS_W,
   CANVAS_H,
   HIT_FLASH_DURATION,
+  ASTEROID_HIT_FLASH_MS,
   BEAM_CHARGE_MS,
   BEAM_FIRE_MS,
   BEAM_HALF_WIDTH,
@@ -21,6 +22,7 @@ import {
   EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
+  ASTEROID_SPRITES,
   type DrawOp,
   type LoadedSprites,
 } from "../render/frame";
@@ -38,6 +40,10 @@ const ALL: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
+  asteroid1: true,
+  asteroid2: true,
+  asteroid3: true,
+  asteroid4: true,
   explosion: Array.from({ length: 20 }, () => true),
 };
 const NONE: LoadedSprites = {
@@ -52,11 +58,28 @@ const NONE: LoadedSprites = {
   puBomb: false,
   puBuddy: false,
   puLightning: false,
+  asteroid1: false,
+  asteroid2: false,
+  asteroid3: false,
+  asteroid4: false,
   explosion: Array.from({ length: 20 }, () => false),
 };
 /** An empty starfield keeps these lists short and readable. */
 const NO_STARS = { ...initStarfield(CANVAS_W, CANVAS_H), stars: [] };
 const OPTS = { loaded: ALL, width: CANVAS_W, height: CANVAS_H };
+/** Every sprite loaded except the meteor designs — isolates the pre-#2573 procedural rock path. */
+const NO_ASTEROID_SPRITES: LoadedSprites = {
+  ...ALL,
+  asteroid1: false,
+  asteroid2: false,
+  asteroid3: false,
+  asteroid4: false,
+};
+const OPTS_NO_ASTEROID_SPRITES = {
+  loaded: NO_ASTEROID_SPRITES,
+  width: CANVAS_W,
+  height: CANVAS_H,
+};
 
 /** A settled-looking state with nothing on screen but what each test adds. */
 function blank(over: Partial<StarSwarmState> = {}): StarSwarmState {
@@ -147,7 +170,7 @@ describe("buildFrame — scene order and background", () => {
       explosions: [{ id: 4, x: 10, y: 10, frame: 0, frameTimer: 0 }],
       bombFlashTimer: 100,
     });
-    const ops = buildFrame(s, sf, OPTS);
+    const ops = buildFrame(s, sf, OPTS_NO_ASTEROID_SPRITES);
     expect(ops[0]).toEqual({ k: "fill", key: "bg", color: "#000010" });
     expect(ops.slice(1, 1 + sf.stars.length).every((o) => o.key.startsWith("star-"))).toBe(true);
     expect(keys(ops).filter((k) => !k.startsWith("star-") && k !== "bg")).toEqual([
@@ -175,7 +198,7 @@ describe("buildFrame — scene order and background", () => {
     const lit = buildFrame(
       { ...s, activePowerUp: { type: "lightning", remainingMs: 5000, shieldAbsorbed: 0 } },
       sf,
-      OPTS
+      OPTS_NO_ASTEROID_SPRITES
     );
     const k = keys(lit);
     expect(k.indexOf("hull-flash")).toBeLessThan(k.indexOf("lightning"));
@@ -540,7 +563,7 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     expect(bolt && bolt.k === "poly" && bolt.points.length).toBe(12);
   });
 
-  it("asteroids: filled outline (lighter while flashing) then a stroked edge", () => {
+  it("asteroids: fallback while sprites load — filled outline (lighter while flashing), then a stroked edge", () => {
     const rock = {
       id: 10,
       kind: "large" as const,
@@ -555,7 +578,7 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
       hitFlashTimer: 0,
       hitEnemyIds: [],
     };
-    const ops = buildFrame(blank({ asteroids: [rock] }), NO_STARS, OPTS);
+    const ops = buildFrame(blank({ asteroids: [rock] }), NO_STARS, OPTS_NO_ASTEROID_SPRITES);
     const body = byKey(ops, "rock-10");
     expect(body).toMatchObject({ k: "poly", color: "#8b6a47" });
     expect(body && body.k === "poly" && body.points.length).toBe(18); // 9 vertices
@@ -563,13 +586,117 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     const flashing = buildFrame(
       blank({ asteroids: [{ ...rock, hitFlashTimer: 50 }] }),
       NO_STARS,
-      OPTS
+      OPTS_NO_ASTEROID_SPRITES
     );
     expect(byKey(flashing, "rock-10")).toMatchObject({ color: "#e8d3b8" });
     // outline vertices are rounded to 0.1 px, as the path always was
     const pts = body && body.k === "poly" ? body.points : [];
     expect(pts.length).toBe(18);
     expect(pts.every((v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9)).toBe(true);
+  });
+
+  it("asteroids: a random meteor sprite, sized to 2×radius, centred, rotated by `rotation`, when loaded (#2573)", () => {
+    const rock = {
+      id: 10,
+      kind: "large" as const,
+      x: 80,
+      y: 80,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0.75,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+    const ops = buildFrame(blank({ asteroids: [rock] }), NO_STARS, OPTS);
+    const body = byKey(ops, "rock-10");
+    expect(body).toMatchObject({
+      k: "image",
+      x: 80 - 22,
+      y: 80 - 22,
+      w: 44,
+      h: 44,
+      fit: "fill",
+      rotate: 0.75,
+    });
+    expect(body && body.k === "image" && ASTEROID_SPRITES).toContain(
+      body && body.k === "image" ? body.sprite : undefined
+    );
+    expect(byKey(ops, "rock-10-edge")).toBeUndefined();
+    // a small rock gets the same treatment at its own size — same design reused, not a second file
+    const small = { ...rock, id: 10, kind: "small" as const, radius: 12 };
+    const smallOps = buildFrame(blank({ asteroids: [small] }), NO_STARS, OPTS);
+    expect(byKey(smallOps, "rock-10")).toMatchObject({ w: 24, h: 24 });
+  });
+
+  it("asteroids: hit flash is a white ring while using a sprite, not the procedural tint", () => {
+    const rock = {
+      id: 10,
+      kind: "large" as const,
+      x: 80,
+      y: 80,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 50,
+      hitEnemyIds: [],
+    };
+    const ops = buildFrame(blank({ asteroids: [rock] }), NO_STARS, OPTS);
+    expect(byKey(ops, "rock-10")).toMatchObject({ k: "image" });
+    const flash = byKey(ops, "rock-10-flash");
+    expect(flash).toMatchObject({ k: "circle", cx: 80, cy: 80, stroke: 2 });
+    // normalized against ASTEROID_HIT_FLASH_MS (120), not the ships' HIT_FLASH_DURATION (250) —
+    // a rock's flash timer never reaches 250, so the wrong constant would under-scale every value
+    expect(flash).toMatchObject({ r: expect.closeTo(47.08, 2) });
+    expect(flash && flash.k === "circle" && flash.color).toBe("rgba(255,255,255,0.313)");
+    // fresh off a hit (timer === ASTEROID_HIT_FLASH_MS) the ring starts at full intensity, exactly
+    // like a ship's fresh flash does at HIT_FLASH_DURATION
+    const fresh = byKey(
+      buildFrame(
+        blank({ asteroids: [{ ...rock, hitFlashTimer: ASTEROID_HIT_FLASH_MS }] }),
+        NO_STARS,
+        OPTS
+      ),
+      "rock-10-flash"
+    );
+    expect(fresh && fresh.k === "circle" && fresh.color).toBe("rgba(255,255,255,0.750)");
+    const calm = buildFrame(blank({ asteroids: [{ ...rock, hitFlashTimer: 0 }] }), NO_STARS, OPTS);
+    expect(byKey(calm, "rock-10-flash")).toBeUndefined();
+  });
+
+  it("asteroids: the sprite pick is stable per id and draws from all 4 designs", () => {
+    const rockAt = (id: number) => ({
+      id,
+      kind: "large" as const,
+      x: 80,
+      y: 80,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    });
+    const spriteFor = (id: number) => {
+      const op = byKey(
+        buildFrame(blank({ asteroids: [rockAt(id)] }), NO_STARS, OPTS),
+        `rock-${id}`
+      );
+      return op && op.k === "image" ? op.sprite : undefined;
+    };
+    // deterministic: the same rock id always picks the same design
+    expect(spriteFor(10)).toBe(spriteFor(10));
+    // varied: enough distinct ids exercise more than one of the 4 designs
+    const picks = new Set(Array.from({ length: 40 }, (_, i) => spriteFor(i + 1)));
+    expect(picks.size).toBeGreaterThan(1);
+    for (const s of picks) expect(ASTEROID_SPRITES).toContain(s);
   });
 
   it("explosions use the frame sprite, or a fading procedural burst while frames load", () => {
