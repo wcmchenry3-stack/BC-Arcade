@@ -51,12 +51,13 @@ const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteAr
 // A killed process's session to continue (#2654) — none unless a test says so.
 const mockResumeGame = jest.fn() as unknown as jest.Mock<string | null, [string, unknown?]>;
 const mockMarkStarted = jest.fn() as unknown as jest.Mock<undefined, [string]>;
+const mockDiscardGame = jest.fn() as unknown as jest.Mock<undefined, [string]>;
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
     resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
     markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: jest.fn(),
+    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -89,6 +90,7 @@ beforeEach(async () => {
   mockResumeGame.mockReset();
   mockResumeGame.mockReturnValue(null);
   mockMarkStarted.mockReset();
+  mockDiscardGame.mockReset();
   mockGetRank.mockReset();
   mockGetRank.mockResolvedValue({ rank: 3, is_best: true, ranked: true, reason: null });
   await AsyncStorage.clear();
@@ -679,28 +681,56 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
-  it("New Game on a fresh board abandons the old session and starts a new one", async () => {
-    // score=0 → handleNewGamePress skips the confirm modal and calls
-    // resetGame directly, which exercises the abandon→restart path without
-    // modal-ambiguity in the test.
+  it("New Game on an untouched board discards the old session instead of abandoning it", async () => {
+    // score=0 → handleNewGamePress skips the confirm modal.
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const { getByLabelText } = await mountAndSettle();
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
-    mockCompleteGame.mockClear();
 
     await act(async () => {
       await fireEvent.press(getByLabelText("Start a new 2048 game"));
     });
 
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+    // Never started: no abandoned row, just dropped from the device.
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockDiscardGame).toHaveBeenCalledWith("game-uuid-test");
     expect(mockStartGame).toHaveBeenCalledWith("twenty48", {}, expect.any(Object));
-    // #2619: the result is built once; the analytics payload is it plus outcome.
-    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.result).not.toHaveProperty("outcome");
+  });
+
+  it("New Game mid-game abandons the old session once, with its progress snapshot", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    mockedEngineMove.mockImplementationOnce(() => ({ ...NOOP_LEFT_STATE, score: 64 }));
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    mockStartGame.mockReturnValue("game-uuid-test-2");
+
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start a new 2048 game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start new game" }));
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("game-uuid-test");
+    expect(summary.outcome).toBe("abandoned");
+    // The old game's snapshot, taken before the screen reset its move count.
+    expect(summary.result).toEqual(
+      expect.objectContaining({ final_score: 64, highest_tile: 256, move_count: 1 })
+    );
+    // #2468: an abandon never carries the ranked score.
+    expect(summary).not.toHaveProperty("finalScore");
+    // #2619: the analytics payload is the result plus outcome.
     expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
-    expect(summary.durationMs).toBe(summary.result.duration_ms);
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    expect(mockStartGame).toHaveBeenLastCalledWith("twenty48", {}, expect.any(Object));
   });
 
   it("capture ordering: move events are emitted in direction sequence", async () => {
@@ -1021,8 +1051,8 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const r = await mountAndSettle();
     await waitFor(() => expect(r.getByText("You Win!")).toBeTruthy());
-    // It was finished at the win: no session to continue or open.
-    expect(mockResumeGame).not.toHaveBeenCalled();
+    // It was finished at the win: nothing left open to adopt, and no new session.
+    expect(mockResumeGame).toHaveBeenCalledWith("twenty48", undefined);
     expect(mockStartGame).not.toHaveBeenCalled();
 
     await pressKeepPlaying(r);
@@ -1031,6 +1061,86 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
 
     expect(mockCompleteGame).not.toHaveBeenCalled();
     expect(mockGetRank).not.toHaveBeenCalled();
+  });
+
+  it("a won save whose session an older build left open records it as the win", async () => {
+    // A pre-#2631 build closed the session only on Keep Playing; the app was
+    // killed with the win card up.
+    await saveDisplayName("Riley");
+    mockResumeGame.mockReturnValueOnce("old-build-session");
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...WON_STATE, accumulatedMs: 60_000 });
+    const r = await mountAndSettle();
+
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("old-build-session");
+    expect(summary).toEqual(
+      expect.objectContaining({ outcome: "win", finalScore: 2048, durationMs: 60_000 })
+    );
+    expect(summary.result).toEqual(
+      expect.objectContaining({ final_score: 2048, highest_tile: 2048, outcome: "win" })
+    );
+    await r.findByText(SAVED_RANK_3);
+    expect(mockGetRank).toHaveBeenCalledWith("old-build-session");
+
+    // Play after it stays untracked.
+    await pressKeepPlaying(r);
+    await playMove(OVER_WITH_2048);
+    await r.unmount();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
+  });
+
+  it("a move queued during the winning move is dropped, not played behind the win card", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    mockedEngineMove.mockClear();
+    (saveGame as jest.Mock).mockClear();
+
+    // Two quick swipes: the second lands inside the first's 120 ms move lock.
+    mockedEngineMove.mockImplementationOnce(() => WIN_MOVE);
+    await act(() => {
+      dispatchKey("ArrowLeft");
+      dispatchKey("ArrowRight");
+    });
+    await releaseMoveLock();
+
+    expect(mockedEngineMove).toHaveBeenCalledTimes(1);
+    expect((saveGame as jest.Mock).mock.calls.at(-1)?.[0]?.board).toEqual(WIN_BOARD);
+    const card = within(await r.findByTestId("twenty48-result"));
+    expect(card.getByText("You Win!")).toBeTruthy();
+    expect(card.getAllByText("20,480").length).toBeGreaterThan(0);
+  });
+
+  it("when the 2048 move also ends the game, the card is the win without Keep Playing", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+
+    await playMove({ ...OVER_WITH_2048, score: 20_480 });
+
+    const card = within(await r.findByTestId("twenty48-result"));
+    expect(card.getByText("You Win!")).toBeTruthy();
+    expect(card.queryByText("Game Over")).toBeNull();
+    expect(card.getByText("No more moves")).toBeTruthy();
+    expect(card.queryByLabelText("Continue playing after reaching 2048")).toBeNull();
+    expect(card.getByTestId("game-result-primary")).toHaveTextContent("Play Again");
+  });
+
+  it("New Game after the win starts a new game without asking to abandon", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    await playMove(WIN_MOVE);
+    await pressKeepPlaying(r);
+    mockStartGame.mockClear();
+
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start a new 2048 game"));
+    });
+
+    expect(r.queryByText("Start new game?")).toBeNull();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(outcomes()).toEqual(["win"]);
   });
 
   it("no submit on an abandon: leaving mid-game", async () => {

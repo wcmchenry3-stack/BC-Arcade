@@ -64,6 +64,8 @@ export default function Twenty48Screen({ navigation }: Props) {
   const [state, setState] = useState<Twenty48State | null>(null);
   const [loading, setLoading] = useState(true);
   const [winDismissed, setWinDismissed] = useState(false);
+  /** The move that made 2048 also ended the game: the card is still the win. */
+  const [wonOnLastMove, setWonOnLastMove] = useState(false);
   const [bestScore, setBestScore] = useState(0);
   // Best score before the current game began: bestScore rises live with the
   // score, so "New Best" compares against this instead (#2513).
@@ -169,9 +171,14 @@ export default function Twenty48Screen({ navigation }: Props) {
       setBestScore(best);
       setBestAtGameStart(best);
       setLoading(false);
-      // A saved game past 2048 was finished at the win (#2631): the rest of it
-      // is untracked, so it opens no session.
-      if (!next.game_over && !next.has_won) {
+      if (!next.game_over && next.has_won) {
+        // A saved game past 2048 was finished at the win (#2631): the rest of
+        // it is untracked, so it opens no session. A build from before #2631
+        // left its session open while the win card was up, though; if the app
+        // was killed then, record that session now as the win it was.
+        moveCountRef.current = 0;
+        if (saved && syncResume()) finishSession(next, "win");
+      } else if (!next.game_over) {
         moveCountRef.current = 0;
         // A saved mid-game continues the session a killed app left open (#2654).
         if (!(saved && syncResume())) {
@@ -292,10 +299,14 @@ export default function Twenty48Screen({ navigation }: Props) {
       // over after it (Keep Playing) has no session left to finish.
       if (justWon) finishSession(next, "win");
       else if (next.game_over && !next.has_won) finishSession(next, "loss");
+      // The card shows the win even when this move also left no moves.
+      if (justWon && next.game_over) setWonOnLastMove(true);
       // Hold the lock for the slide animation duration, then fire any queued move.
       setTimeout(() => {
         movingRef.current = false;
-        const queued = pendingMove.current;
+        // A move queued during the winning move would play behind the win
+        // card (handleMove's guard only sees moves made after it shows): drop it.
+        const queued = justWon ? null : pendingMove.current;
         pendingMove.current = null;
         if (queued) {
           setState((s) => {
@@ -328,36 +339,30 @@ export default function Twenty48Screen({ navigation }: Props) {
     pendingMove.current = null;
     winRecordedRef.current = false;
     setWinDismissed(false);
+    setWonOnLastMove(false);
     setBestAtGameStart((prevBest) => Math.max(prevBest, stateRef.current?.score ?? 0));
     resetLeaderboard();
-    // Abandon the previous session if it is still open. A game over already
-    // finished it, and so did reaching 2048 (#2631): syncComplete is then a
-    // no-op.
-    const prev = stateRef.current;
-    if (prev && !prev.game_over) {
-      const outcome = "abandoned";
-      // Built once: the analytics payload is the result plus its outcome. An
-      // abandon's result is the same block as the unmount snapshot.
-      const result = progressResult(prev);
-      syncComplete(
-        { finalScore: prev.score, outcome, durationMs: result.duration_ms, result },
-        { ...result, outcome }
-      );
-    }
     const next = newGame();
+    // syncStart closes the open session first, if any: abandoned with the
+    // progress snapshot when the player moved, discarded when they never did.
+    // A game over or the 2048 win already finished it (#2631). It runs before
+    // moveCountRef resets, so the snapshot still counts the old game's moves
+    // (stateRef still holds the old board until the next render).
+    syncStart({ initial_board: flattenBoard(next.board) });
     setState(next);
     saveGame(next);
     moveCountRef.current = 0;
-    syncStart({ initial_board: flattenBoard(next.board) });
     setStats((prev) => {
       const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
       saveStats(updated);
       return updated;
     });
-  }, [progressResult, syncComplete, syncStart, resetLeaderboard]);
+  }, [syncStart, resetLeaderboard]);
 
   const handleNewGamePress = useCallback(() => {
-    if (state && state.score > 0 && !state.game_over) {
+    // Only a game still in progress is lost: after the 2048 win its session
+    // is already recorded, and after a game over there is nothing to lose.
+    if (state && state.score > 0 && !state.game_over && !state.has_won) {
       setConfirmNewGameVisible(true);
     } else {
       resetGame();
@@ -432,8 +437,11 @@ export default function Twenty48Screen({ navigation }: Props) {
   // card, and the rest of the game is untracked (#2631).
   const handleKeepPlaying = useCallback(() => setWinDismissed(true), []);
 
-  const showWinOverlay = state?.has_won && !winDismissed && !state.game_over;
-  const showGameOverOverlay = state?.game_over;
+  // The win card, until Keep Playing. When the 2048 move also left no moves,
+  // it is still the win card, just without Keep Playing (#2631).
+  const showWinOverlay = !!state?.has_won && !winDismissed && (!state.game_over || wonOnLastMove);
+  const showGameOverOverlay = !!state?.game_over && !showWinOverlay;
+  const canKeepPlaying = showWinOverlay && !state?.game_over;
 
   return (
     <GameShell
@@ -504,13 +512,13 @@ export default function Twenty48Screen({ navigation }: Props) {
       <GameResultModal
         // Remount on a win → game-over switch so the new outcome is announced.
         key={showGameOverOverlay ? "game-over" : "win"}
-        visible={!!showWinOverlay || !!showGameOverOverlay}
+        visible={showWinOverlay || showGameOverOverlay}
         outcome={showGameOverOverlay ? "ended" : "win"}
         eyebrow={t("twenty48:game.title")}
-        subtitle={showGameOverOverlay ? tResult("subtitle.noMoves") : t("twenty48:win.body")}
+        subtitle={canKeepPlaying ? t("twenty48:win.body") : tResult("subtitle.noMoves")}
         hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
         isNewBest={
-          !!showGameOverOverlay && bestAtGameStart > 0 && (state?.score ?? 0) > bestAtGameStart
+          !!state?.game_over && bestAtGameStart > 0 && (state?.score ?? 0) > bestAtGameStart
         }
         stats={
           state
@@ -521,19 +529,17 @@ export default function Twenty48Screen({ navigation }: Props) {
             : []
         }
         primaryAction={
-          showGameOverOverlay
-            ? undefined
-            : {
+          canKeepPlaying
+            ? {
                 label: t("twenty48:actions.keepPlaying"),
                 accessibilityLabel: t("twenty48:actions.keepPlayingLabel"),
                 onPress: handleKeepPlaying,
               }
+            : undefined
         }
         onPlayAgain={resetGame}
         secondaryAction={
-          showGameOverOverlay
-            ? undefined
-            : { label: tResult("action.playAgain"), onPress: resetGame }
+          canKeepPlaying ? { label: tResult("action.playAgain"), onPress: resetGame } : undefined
         }
         // The session's leaderboard line. A game over after Keep Playing is
         // untracked, so its card has none.

@@ -297,7 +297,11 @@ def test_a_win_and_a_loss_count_as_won_and_lost() -> None:
 
 
 def test_a_named_players_win_and_loss_leave_one_board_entry() -> None:
-    """The 2048 win ranks at its score; the player's worse loss adds no entry."""
+    """The 2048 win is the player's one entry; their worse loss is not another.
+
+    Asserted through the rank route, which reports this player's own entry
+    whatever else is on the shared global board.
+    """
     sid = str(uuid.uuid4())
     name = f"T48-{uuid.uuid4().hex[:8]}"
     r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
@@ -310,14 +314,13 @@ def test_a_named_players_win_and_loss_leave_one_board_entry() -> None:
         )
         assert r.status_code == 200, r.text
 
-    board = client.get("/games/leaderboard/twenty48")
-    assert board.status_code == 200, board.text
-    mine = [e["value"] for e in board.json()["entries"] if e["player_name"] == name]
-    assert mine == [20_480]
     win = client.get(f"/games/{ids['reached-2048-win']}/rank", headers=_headers(sid)).json()
     loss = client.get(f"/games/{ids['game-over-loss']}/rank", headers=_headers(sid)).json()
+    # The win (20,480) is the player's best entry; the loss (2,400) is not an
+    # entry of its own: it reports the same rank, that of the player's best.
     assert win["ranked"] and win["is_best"]
-    assert loss["ranked"] and not loss["is_best"]
+    assert loss["ranked"] and loss["is_best"] is False
+    assert loss["rank"] == win["rank"]
 
 
 # ---------------------------------------------------------------------------
