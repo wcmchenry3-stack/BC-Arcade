@@ -60,10 +60,9 @@ _game_events = sa.table("game_events", sa.column("game_id"))
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
     sentinel_game_ids = sa.select(_games.c.id).where(_games.c.session_id.in_(_SENTINEL_SESSIONS))
-    bind.execute(_game_events.delete().where(_game_events.c.game_id.in_(sentinel_game_ids)))
-    bind.execute(_games.delete().where(_games.c.session_id.in_(_SENTINEL_SESSIONS)))
+    op.execute(_game_events.delete().where(_game_events.c.game_id.in_(sentinel_game_ids)))
+    op.execute(_games.delete().where(_games.c.session_id.in_(_SENTINEL_SESSIONS)))
 
 
 def downgrade() -> None:
