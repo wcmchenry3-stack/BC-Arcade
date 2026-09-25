@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Sentry from "@sentry/react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
+  NeedsDisplayNameError,
   retryUntilGameSynced,
+  SyncPendingError,
   topTenRank,
   useLeaderboardSubmit,
   type LeaderboardAdapter,
+  type RankOnlyLeaderboardAdapter,
 } from "../useLeaderboardSubmit";
 import { resetDisplayNameCacheForTests, saveDisplayName, loadDisplayName } from "../displayName";
 import { scoreQueue } from "../scoreQueue";
@@ -75,6 +79,169 @@ describe("retryUntilGameSynced", () => {
     const fn = jest.fn().mockRejectedValue(new ApiError("Forbidden.", 403));
     await expect(retryUntilGameSynced(fn, fast)).rejects.toThrow("Forbidden.");
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a result `notSynced` flags, then returns the next one (#2677)", async () => {
+    const fn = jest.fn().mockResolvedValueOnce("pending").mockResolvedValueOnce("done");
+    await expect(
+      retryUntilGameSynced(fn, { ...fast, notSynced: (r) => r === "pending" })
+    ).resolves.toBe("done");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the last flagged result once the attempts run out", async () => {
+    const fn = jest.fn().mockResolvedValue("pending");
+    await expect(
+      retryUntilGameSynced(fn, { ...fast, notSynced: (r) => r === "pending" })
+    ).resolves.toBe("pending");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("useLeaderboardSubmit with a rank-only adapter (#2677)", () => {
+  function rankOnly(submit: jest.Mock): RankOnlyLeaderboardAdapter<Payload> {
+    return { gameType: "sudoku", submit, refetchOnReconnect: true };
+  }
+
+  async function setupRankOnly(submit: jest.Mock) {
+    const adapter = rankOnly(submit);
+    return renderHook(() => useLeaderboardSubmit(adapter));
+  }
+
+  beforeEach(async () => {
+    jest.mocked(Sentry.captureException).mockClear();
+    await saveDisplayName("Riley");
+  });
+
+  it("reports the rank without queuing anything", async () => {
+    const submit = jest.fn().mockResolvedValue(2);
+    const { result } = await setupRankOnly(submit);
+    await act(() => result.current.submit({ score: 1 }));
+    expect(submit).toHaveBeenCalledWith("Riley", { score: 1 });
+    expect(result.current).toMatchObject({ status: "saved", rank: 2, playerName: "Riley" });
+    expect(await scoreQueue.peek()).toEqual([]);
+  });
+
+  it("offline: no queue item; fetches on reconnect while mounted", async () => {
+    mockNetwork.isOnline = false;
+    const enqueue = jest.spyOn(scoreQueue, "enqueue");
+    const submit = jest.fn().mockResolvedValue(1);
+    const { result, rerender } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("offline");
+    expect(submit).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+
+    // A render while still offline does nothing.
+    await act(async () => rerender({}));
+    expect(submit).not.toHaveBeenCalled();
+
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(result.current.rank).toBe(1);
+
+    // Later reconnects don't fetch again.
+    mockNetwork.isOnline = false;
+    await act(async () => rerender({}));
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+    expect(submit).toHaveBeenCalledTimes(1);
+    enqueue.mockRestore();
+  });
+
+  it("a network failure shows offline and fetches again on reconnect", async () => {
+    const submit = jest
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(3);
+    const { result, rerender } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("offline");
+    expect(await scoreQueue.peek()).toEqual([]);
+
+    mockNetwork.isOnline = false;
+    await act(async () => rerender({}));
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(result.current.rank).toBe(3);
+  });
+
+  it("a SyncPendingError shows offline", async () => {
+    const { result } = await setupRankOnly(
+      jest.fn().mockRejectedValue(new SyncPendingError("name pending"))
+    );
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("offline");
+  });
+
+  it("an HTTP error is an error (not reported to Sentry), and retry() asks again", async () => {
+    const submit = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError("not_entitled", 403))
+      .mockResolvedValueOnce(4);
+    const { result } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("error");
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+
+    await act(() => result.current.retry());
+    expect(result.current).toMatchObject({ status: "saved", rank: 4 });
+  });
+
+  it("an unexpected error is reported", async () => {
+    const { result } = await setupRankOnly(jest.fn().mockRejectedValue(new Error("bug")));
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("error");
+    expect(Sentry.captureException).toHaveBeenCalled();
+  });
+
+  it("NeedsDisplayNameError asks for a name; provideName fetches again", async () => {
+    const submit = jest
+      .fn()
+      .mockRejectedValueOnce(new NeedsDisplayNameError())
+      .mockResolvedValue(1);
+    const { result } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    expect(result.current.status).toBe("needsName");
+
+    await act(async () => {
+      await result.current.provideName("Robin");
+    });
+    expect(submit).toHaveBeenLastCalledWith("Robin", { score: 1 });
+    expect(result.current).toMatchObject({ status: "saved", rank: 1, playerName: "Robin" });
+  });
+
+  it("reset() cancels the fetch waiting for a reconnect", async () => {
+    mockNetwork.isOnline = false;
+    const submit = jest.fn().mockResolvedValue(1);
+    const { result, rerender } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    await act(async () => result.current.reset());
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("idle");
+  });
+
+  it("does nothing on reconnect once unmounted", async () => {
+    mockNetwork.isOnline = false;
+    const submit = jest.fn().mockResolvedValue(1);
+    const { result, unmount } = await setupRankOnly(submit);
+
+    await act(() => result.current.submit({ score: 1 }));
+    await act(async () => unmount());
+    mockNetwork.isOnline = true;
+
+    expect(submit).not.toHaveBeenCalled();
   });
 });
 
@@ -245,6 +412,20 @@ describe("useLeaderboardSubmit", () => {
     expect(result.current.status).toBe("offline");
     await waitFor(() => expect(flush).toHaveBeenCalled());
     flush.mockRestore();
+  });
+
+  it("legacy adapters don't refetch on reconnect: the queue sends the score", async () => {
+    await saveDisplayName("Riley");
+    mockNetwork.isOnline = false;
+    const { result, submit, rerender } = await setup();
+
+    await act(() => result.current.submit({ score: 500 }));
+    expect(result.current.status).toBe("offline");
+
+    mockNetwork.isOnline = true;
+    await act(async () => rerender({}));
+    expect(submit).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("offline");
   });
 
   it("leaves the queue for the reconnect flush while offline", async () => {
