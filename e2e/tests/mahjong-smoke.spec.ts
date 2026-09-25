@@ -2,7 +2,7 @@
  * mahjong-smoke.spec.ts — GH #913
  *
  * Smoke tests for Mahjong Solitaire: navigation, board render, HUD display,
- * scoreboard accessibility, and crash-free board interaction.
+ * the overflow menu, and crash-free board interaction.
  *
  * All mahjong API calls are intercepted via page.route() — no backend needed.
  */
@@ -44,15 +44,17 @@ test.describe("Mahjong — smoke tests", () => {
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible();
   });
 
-  test("scoreboard screen is accessible via overflow menu", async ({
-    page,
-  }) => {
+  // #2627: the Scoreboard item led to an untranslated "No scoreboard
+  // available" fallback. It is hidden until #2635 points it at the stats screen.
+  test("overflow menu has no Scoreboard item", async ({ page }) => {
     await gotoMahjong(page);
     await page.getByRole("button", { name: "More options" }).click();
-    await page.getByRole("menuitem", { name: "Scoreboard" }).click();
     await expect(
-      page.getByRole("heading", { name: "Scoreboard", exact: true }),
-    ).toBeVisible({ timeout: 5_000 });
+      page.getByRole("menuitem", { name: "New Game" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Scoreboard" }),
+    ).toHaveCount(0);
   });
 
   test("interacting with the board does not crash the app", async ({

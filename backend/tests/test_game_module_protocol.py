@@ -67,13 +67,13 @@ def test_result_model_declared(mod, expects_model) -> None:
 # Games whose finished rows record ``win`` / ``loss`` / ``push`` (see
 # ``vocab.GameOutcome``). Twenty48 (true) and Star Swarm (false) join when #2623
 # registers them.
-# True only where the client writes win / loss / push today (#2619). Mahjong
-# flips with #2627, when it starts recording wins.
+# True only where the client writes win / loss / push today (#2619).
 _HAS_WINNER = {
     "yacht": True,
     "hearts": True,
     "daily_word": True,
-    "mahjong": False,
+    # A cleared board records win, a deadlock left by the player loss (#2627).
+    "mahjong": True,
     # A run records win (goal reached) / loss (out of chips) since #2628.
     "blackjack": True,
     "solitaire": False,
