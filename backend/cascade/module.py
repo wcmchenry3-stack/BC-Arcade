@@ -21,7 +21,7 @@ class CascadeModule:
     game_type = GameType.CASCADE
     metadata_model = CascadeMetadata
     result_model = None
-    # No natural ceiling (#2519 decision 14).
+    # No natural ceiling (#2519 decision 14). Every non-abandoned game counts.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 
     def stats_shape(self, raw_stats: dict) -> dict:

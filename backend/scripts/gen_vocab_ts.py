@@ -4,16 +4,18 @@
 Usage (run from repo root):
     python backend/scripts/gen_vocab_ts.py > frontend/src/api/vocab.ts
 
-``BOARDS`` comes from each registered ``GameModule``'s ``board`` (#2617);
-a game type with no registered module, or a module whose ``board`` is
-``None``, is exported as ``null``.
+``BOARDS`` comes from each registered ``GameModule``'s ``board`` (#2617). Every
+``BoardDefinition`` field is exported, camelCased; tuple-of-pairs fields become
+records. A game type with no registered module yet is exported as ``null``.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
+from typing import Any
 
 # Allow importing from backend/ without installing the package.
 sys.path.insert(0, str(Path(__file__).parents[1]))
@@ -24,32 +26,83 @@ from vocab import GameOutcome, GameType
 
 
 def board_for(game_type: GameType) -> BoardDefinition | None:
-    """The board a game type declares, or ``None`` if it has none yet."""
+    """The board a game type declares, or ``None`` if it has no module yet."""
     mod = get_module(game_type.value)
     return mod.board if mod is not None else None
 
 
-def _board_ts(board: BoardDefinition | None) -> str:
-    """One ``BOARDS`` value, formatted the way Prettier formats it."""
+def _camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(part.title() for part in rest)
+
+
+def _record(pairs: tuple[tuple[str, str], ...]) -> dict[str, str]:
+    return dict(pairs)
+
+
+def _nested_record(triples: tuple[tuple[str, str, int], ...]) -> dict[str, dict[str, int]]:
+    nested: dict[str, dict[str, int]] = {}
+    for key, value, cap in triples:
+        nested.setdefault(key, {})[value] = cap
+    return nested
+
+
+# Fields stored as tuples of pairs/triples (immutable on the backend) that the
+# app reads as records. Every other field is exported as-is.
+_AS_RECORD = {
+    "partition_defaults": _record,
+    "partition_max_values": _nested_record,
+}
+
+
+def board_json(board: BoardDefinition | None) -> dict[str, Any] | None:
+    """One ``BOARDS`` value as plain JSON data: every field, camelCased."""
     if board is None:
-        return "null"
-    partitions = ", ".join(json.dumps(p) for p in board.partitions)
-    return (
-        "{\n"
-        f"    metric: {json.dumps(board.metric)},\n"
-        f"    direction: {json.dumps(board.direction)},\n"
-        f"    labelKey: {json.dumps(board.label_key)},\n"
-        f"    partitions: [{partitions}],\n"
-        f"    enabled: {json.dumps(board.enabled)},\n"
-        "  }"
-    )
+        return None
+    out: dict[str, Any] = {}
+    for name in BoardDefinition.model_fields:
+        value = getattr(board, name)
+        if name in _AS_RECORD:
+            value = _AS_RECORD[name](value)
+        elif isinstance(value, tuple):
+            value = list(value)
+        out[_camel(name)] = value
+    return out
+
+
+_IDENT = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+
+def _ts(value: Any, indent: str) -> str:
+    """*value* as a TypeScript literal, formatted the way Prettier formats it.
+
+    Arrays stay on one line (they are short). Non-empty objects are expanded,
+    one key per line, which Prettier preserves.
+    """
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        inner = indent + "  "
+        lines = [
+            f"{inner}{k if _IDENT.match(k) else json.dumps(k)}: {_ts(v, inner)},"
+            for k, v in value.items()
+        ]
+        return "{\n" + "\n".join(lines) + f"\n{indent}}}"
+    if isinstance(value, list):
+        return "[" + ", ".join(_ts(v, indent) for v in value) + "]"
+    return json.dumps(value)
+
+
+def board_ts(board: BoardDefinition | None) -> str:
+    """One ``BOARDS`` value as it appears in vocab.ts."""
+    return _ts(board_json(board), "  ")
 
 
 def render() -> str:
     """The full contents of ``frontend/src/api/vocab.ts``."""
     types = "\n".join(f'  "{v.value}",' for v in GameType)
     outcomes = "\n".join(f'  "{v.value}",' for v in GameOutcome)
-    boards = "\n".join(f"  {v.value}: {_board_ts(board_for(v))}," for v in GameType)
+    boards = "\n".join(f"  {v.value}: {board_ts(board_for(v))}," for v in GameType)
     return f"""\
 /**
  * Shared vocabulary constants — DO NOT edit by hand.
@@ -81,10 +134,20 @@ export interface BoardDefinition {{
   readonly metric: string;
   /** "desc": higher is better. "asc": lower is better. */
   readonly direction: "asc" | "desc";
+  /** [metadata key, direction] applied before the final completed_at-asc tie-break. */
+  readonly tiebreak: readonly [string, "asc" | "desc"] | null;
   /** i18n key for the metric's label, e.g. "score", "moves", "level". */
   readonly labelKey: string;
   /** Metadata keys that split the game into separate boards. */
   readonly partitions: readonly string[];
+  /** Partition key -> value assumed when a row lacks that key (legacy rows). */
+  readonly partitionDefaults: Readonly<Record<string, string>>;
+  /** Highest legitimate metric value on any board; null = no ceiling. */
+  readonly maxValue: number | null;
+  /** Partition key -> partition value -> tighter cap for that partition. */
+  readonly partitionMaxValues: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /** Outcomes that count toward the board and "best"; null = any non-abandoned row. */
+  readonly qualifyingOutcomes: readonly GameOutcome[] | null;
   /** False for games with no leaderboard. */
   readonly enabled: boolean;
 }}
