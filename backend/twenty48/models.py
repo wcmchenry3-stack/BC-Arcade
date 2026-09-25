@@ -7,7 +7,7 @@ so registering the module validates rows without rejecting any current build.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Twenty48Metadata(BaseModel):
@@ -32,7 +32,9 @@ class Twenty48Result(BaseModel):
     stores already have can fail completion and dead-letter the game.
     ``outcome`` repeats the row's outcome (``completed``, ``abandoned``,
     ``kept_playing``); it is a plain string so a newer build can send ``win``
-    or ``loss`` (#2631).
+    or ``loss`` (#2631). A negative ``duration_ms`` (a skewed clock) is stored
+    as ``null``, "unknown", as the sync worker sends it on the row itself:
+    rejecting it would dead-letter the game.
     """
 
     final_score: int | None = Field(default=None, ge=0)
@@ -40,3 +42,8 @@ class Twenty48Result(BaseModel):
     move_count: int | None = Field(default=None, ge=0)
     duration_ms: int | None = None
     outcome: str | None = Field(default=None, max_length=32)
+
+    @field_validator("duration_ms")
+    @classmethod
+    def _negative_duration_is_unknown(cls, v: int | None) -> int | None:
+        return None if v is not None and v < 0 else v

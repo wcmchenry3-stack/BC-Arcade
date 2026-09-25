@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from freecell.models import FreeCellMetadata, FreeCellResult
 from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from vocab import GameType
 
 
@@ -36,7 +37,7 @@ class FreeCellModule:
     board = BoardDefinition(metric=SCORE_METRIC, direction="asc", label_key="moves")
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = FreeCellModule()

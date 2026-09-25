@@ -27,7 +27,7 @@ from sqlalchemy.orm import selectinload
 from db.models import EventType, Game, GameEvent, GameType
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import not_abandoned
-from games.leaderboard import check_completion_limits
+from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.protocol import GameModule
 from games.registry import get_module
 from vocab import GameOutcome
@@ -279,11 +279,6 @@ class StatsSummary:
 # reported duration_ms, not an estimate of play time.
 MAX_TIME_PLAYED_PER_GAME_MS = 24 * 60 * 60 * 1000
 
-# Used for best_value by games with no registered GameModule (Twenty48 and
-# Star Swarm until #2623): the legacy "highest final_score". Every registered
-# module declares a board (#2617).
-_DEFAULT_BOARD = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
-
 # Only these three outcomes count. The legacy ``blackjack`` outcome is not a
 # win here: #2619 (migration 0024_drop_blackjack_outcome) rewrites any stored
 # ``blackjack`` row to ``win`` and drops the value from the CHECK constraint.
@@ -296,8 +291,16 @@ def _dialect_name(session: AsyncSession) -> str:
     return session.bind.dialect.name if session.bind else "postgresql"
 
 
-def _board_of(module: GameModule | None) -> BoardDefinition:
-    return module.board if module is not None else _DEFAULT_BOARD
+def _registered_module(name: str) -> GameModule:
+    """The ``GameModule`` for game type *name*.
+
+    Every ``GameType`` has one since #2623. A game without one is a bug, so
+    this fails loudly instead of guessing a board or a stats shape for it.
+    """
+    module = get_module(name)
+    if module is None:
+        raise LookupError(f"No GameModule registered for game type {name!r}")
+    return module
 
 
 def _metadata_number(key: str, dialect: str) -> ColumnElement:
@@ -332,7 +335,7 @@ def _best_candidate(dialect: str) -> ColumnElement:
     """
     whens = []
     for game_type in VocabGameType:
-        board = _board_of(get_module(game_type.value))
+        board = _registered_module(game_type.value).board
         if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
             continue  # the ELSE branch below
         value = (
@@ -562,12 +565,8 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             "metadata": latest_meta_by_name.get(name, {}),
         }
 
-        game_module = get_module(name)
-        shaped = (
-            game_module.stats_shape(raw)
-            if game_module is not None
-            else {k: v for k, v in raw.items() if k != "latest_score"}
-        )
+        game_module = _registered_module(name)
+        shaped = game_module.stats_shape(raw)
 
         extras: dict[str, Any] = dict(shaped.get("extras") or {})
 
@@ -584,7 +583,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             runs_completed=extras.get("runs_completed"),
             current_table=extras.get("current_table"),
             completed_played=completed_played,
-            **_comparable_fields(row, _board_of(game_module), streaks.get(name)),
+            **_comparable_fields(row, game_module.board, streaks.get(name)),
         )
 
         if played > favorite_count:
@@ -737,9 +736,9 @@ async def complete_game(
     game.duration_ms = duration_ms
     if validated_result:
         # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
-        # Creation-time keys win: leaderboards read player_name / raw_score /
-        # difficulty from here, and a result must never rewrite them.
-        game.game_metadata = {**validated_result, **(game.game_metadata or {})}
+        # Creation-time keys win unless they hold null (merge_result_metadata);
+        # the limit check above merged the same way.
+        game.game_metadata = merge_result_metadata(game.game_metadata, validated_result)
     await session.commit()
     await session.refresh(game)
     return game

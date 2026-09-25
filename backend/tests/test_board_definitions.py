@@ -52,6 +52,7 @@ def test_defaults() -> None:
     assert board.tiebreak is None
     assert board.partitions == ()
     assert board.partition_defaults == ()
+    assert board.partition_values == ()
     assert board.max_value is None
     assert board.partition_max_values == ()
     assert board.qualifying_outcomes is None
@@ -86,6 +87,24 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
             "partition_max_values": (("difficulty", "easy", 100), ("difficulty", "easy", 90)),
         },
         {**_PARTITIONED, "max_value": None, "partition_max_values": (("difficulty", "easy", 1),)},
+        {"partition_values": (("variant", ("classic",)),)},
+        {**_PARTITIONED, "partition_values": (("mode", ("classic",)),)},
+        {
+            **_PARTITIONED,
+            "partition_values": (("variant", ("classic",)), ("variant", ("mini",))),
+        },
+        {**_PARTITIONED, "partition_values": (("variant", ()),)},
+        {**_PARTITIONED, "partition_values": (("variant", ("mini", "mini")),)},
+        {
+            **_PARTITIONED,
+            "partition_defaults": (("variant", "classic"),),
+            "partition_values": (("variant", ("mini",)),),
+        },
+        {
+            **_PARTITIONED,
+            "partition_max_values": (("difficulty", "extreme", 300),),
+            "partition_values": (("difficulty", ("easy", "hard")),),
+        },
         {"qualifying_outcomes": ()},
         {"qualifying_outcomes": ("abandoned",)},
         {"qualifying_outcomes": ("victory",)},
@@ -107,6 +126,13 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
         "negative-cap",
         "duplicate-cap",
         "cap-without-max-value",
+        "values-without-partition",
+        "values-key-not-a-partition",
+        "duplicate-values-key",
+        "empty-values",
+        "duplicate-value",
+        "default-not-allowed",
+        "cap-value-not-allowed",
         "empty-qualifying-outcomes",
         "abandoned-qualifies",
         "unknown-outcome",
@@ -169,6 +195,21 @@ def test_max_value_for_applies_defaults_and_takes_the_tightest_cap() -> None:
     assert board.max_value_for({"variant": "mini"}) == 50  # no per-partition cap
 
 
+def test_allowed_values() -> None:
+    board = BoardDefinition(
+        metric=SCORE_METRIC,
+        direction="desc",
+        label_key="score",
+        partitions=("difficulty", "variant"),
+        partition_values=(("variant", ("classic", "mini")),),
+    )
+    assert board.allowed_values("variant") == ("classic", "mini")
+    assert board.allowed_values("difficulty") is None
+    assert board.is_allowed("variant", "mini")
+    assert not board.is_allowed("variant", "Mini")
+    assert board.is_allowed("difficulty", "anything")  # no allow-list for this key
+
+
 def test_max_value_for_uncapped_board_is_none() -> None:
     assert _board("cascade").max_value_for({}) is None
 
@@ -222,11 +263,37 @@ def test_declared_board(
     assert board.enabled is enabled
 
 
-@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku"}))
-def test_only_sudoku_has_partition_rules(game: str) -> None:
+@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku", "starswarm"}))
+def test_only_sudoku_and_starswarm_have_partition_rules(game: str) -> None:
     board = _board(game)
     assert board.partition_defaults == ()
+    assert board.partition_values == ()
     assert board.partition_max_values == ()
+
+
+@pytest.mark.parametrize("game", _GAMES)
+def test_partition_values_are_exactly_what_the_models_accept(game: str) -> None:
+    """A row can only carry a value that has a board, and every board can fill.
+
+    For each ``partition_values`` key, the metadata model (and the result
+    model, when it declares the key) accepts every allowed value and rejects
+    anything else, so a stored row never lands on a board nobody can request.
+    """
+    mod = get_module(game)
+    assert mod is not None
+    for key, values in mod.board.partition_values:
+        models = [mod.metadata_model]
+        if mod.result_model is not None and key in mod.result_model.model_fields:
+            models.append(mod.result_model)
+        for model in models:
+            assert key in model.model_fields, f"{game}: {model.__name__} lacks {key}"
+            for value in values:
+                model.model_validate({key: value})
+            for bad in (values[0].lower(), values[0] + "x", "forged"):
+                if bad in values:
+                    continue
+                with pytest.raises(ValidationError):
+                    model.model_validate({key: bad})
 
 
 def test_sudoku_variant_defaults_to_classic_like_the_legacy_route() -> None:
