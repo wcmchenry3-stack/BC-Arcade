@@ -579,6 +579,8 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 func.count(Game.id).label("played"),
                 func.count(case((not_abandoned(), Game.id))).label("completed_played"),
                 func.max(scored).label("best"),
+                # The legacy ``best`` of an ascending board (FreeCell's moves).
+                func.min(scored).label("best_asc"),
                 func.avg(scored).label("avg"),
                 # Swept rows (#2621) carry a synthetic completed_at
                 # (started_at + 24 h), not a time the player played.
@@ -676,7 +678,11 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 f"/stats: no GameModule for game type {name!r}; left out", level="error"
             )
             continue
-        best, avg, last_played = row.best, row.avg, row.last_played_at
+        # The deprecated ``best`` is the best final_score in the board's
+        # direction (#2632): FreeCell's session rows carry moves, fewer is
+        # better, so its highest final_score is the player's worst game.
+        best = row.best_asc if game_module.board.direction == "asc" else row.best
+        avg, last_played = row.avg, row.last_played_at
         total += played
 
         raw: dict = {

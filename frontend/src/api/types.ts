@@ -23,8 +23,9 @@ export type GameStatsExtras = Record<string, number | string | boolean | null>;
  */
 export interface GameTypeStats {
   // Deprecated aliases (#2620), kept for current store builds until #2644:
-  // `played` (= `sessions`), `best` (highest final_score, whatever the
-  // direction), `avg`, and Blackjack's `best_chips` / `current_chips`, which
+  // `played` (= `sessions`), `best` (the best final_score in the board's
+  // direction: FreeCell's fewest moves, #2632; the highest elsewhere), `avg`,
+  // and Blackjack's `best_chips` / `current_chips`, which
   // mirror `extras`. New code reads the comparable fields below.
   played: number;
   best: number | null;

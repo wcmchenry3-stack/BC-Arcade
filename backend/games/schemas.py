@@ -193,9 +193,10 @@ class GameTypeStatsResponse(BaseModel):
       ``total_runs``, ``runs_completed``, ``current_table``.
 
     Deprecated (kept for app builds already in the stores; #2644 removes them
-    once #2637 ships): ``played`` (= ``sessions``), ``best`` (highest
-    ``final_score`` whatever the direction), ``avg``, and the top-level
-    Blackjack fields, which mirror ``extras``.
+    once #2637 ships): ``played`` (= ``sessions``), ``best`` (the best
+    ``final_score`` in the board's direction: the lowest for an ascending
+    board such as FreeCell's moves, #2632, else the highest), ``avg``, and the
+    top-level Blackjack fields, which mirror ``extras``.
     """
 
     played: int
