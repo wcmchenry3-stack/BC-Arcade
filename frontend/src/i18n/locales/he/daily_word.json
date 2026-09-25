@@ -1,0 +1,23 @@
+{
+  "game.title": "מילה יומית",
+  "game.description": "מילה אחת בת חמש אותיות. שישה ניחושים. חידה חדשה בכל יום.",
+  "game.playLabel": "שחקו במילה היומית",
+  "hud.guessesLeft_one": "ניחוש אחד נותר",
+  "hud.guessesLeft_two": "שני ניחושים נותרו",
+  "hud.guessesLeft_other": "{{count}} ניחושים נותרו",
+  "hud.puzzleNumber": "חידה #{{number}}",
+  "result.loss.answer": "המילה הייתה {{answer}}",
+  "error.notAWord": "לא ברשימת המילים",
+  "error.alreadyGuessed": "כבר ניחשת",
+  "error.tooShort": "אין מספיק אותיות",
+  "error.couldNotLoad": "לא ניתן לטעון את חידת היום",
+  "error.couldNotSubmit": "לא ניתן לשלוח את הניחוש",
+  "error.stalePuzzle": "חידה חדשה זמינה — טוען את מילת היום",
+  "error.wrongLength": "אורך הניחוש לא תואם את מילת היום",
+  "error.rateLimited": "יותר מדי ניחושים — נסה שוב מאוחר יותר",
+  "keyboard.delete": "מחק",
+  "keyboard.enter": "אישור",
+  "result.countdown": "המילה הבאה בעוד {{time}}",
+  "result.share": "שיתוף",
+  "result.copied": "הועתק!"
+}

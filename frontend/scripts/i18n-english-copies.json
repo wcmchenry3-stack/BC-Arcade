@@ -1,6 +1,13 @@
 {
   "_about": "Locale values that equal the English text. `accepted`: the word really is the same in that language (reviewed). `pending`: not translated yet; may only shrink (see scripts/check-i18n-strings.js, #2681). Namespace -> locale -> keys.",
   "accepted": {
+    "blackjack": {
+      "nl": ["betting.tableLimitsRange"]
+    },
+    "daily_word": {
+      "de": ["keyboard.enter"],
+      "nl": ["keyboard.enter"]
+    },
     "freecell": {
       "nl": ["action.hint"]
     },
@@ -15,10 +22,36 @@
       "nl": ["hud.score", "action.hint", "layout.arena", "scoreboard.score"],
       "pt": ["layout.arena"]
     },
+    "profile": {
+      "ar": ["level.xpTotal"],
+      "de": ["level.value", "level.xpTotal"],
+      "es": ["level.xpTotal"],
+      "fr-CA": ["level.xpTotal"],
+      "hi": ["level.xpTotal"],
+      "nl": ["level.xpTotal"],
+      "pt": ["level.xpTotal"],
+      "ru": ["level.xpTotal"]
+    },
+    "result": {
+      "de": ["hero.vs", "name.computer", "stat.bonus"],
+      "es": ["hero.vs"],
+      "fr-CA": ["hero.vs", "stat.bonus", "standings.row"],
+      "nl": ["hero.vs", "stat.score", "name.computer", "stat.bonus"],
+      "ru": ["hero.vs"]
+    },
     "solitaire": {
       "de": ["game.title"],
       "fr-CA": ["game.title"],
       "nl": ["score.label"]
+    },
+    "sort": {
+      "de": ["hud.level", "color.gold", "color.indigo", "leaderboard.levelReached"],
+      "fr-CA": ["color.indigo"],
+      "nl": ["action.hint", "color.indigo"]
+    },
+    "starswarm": {
+      "fr-CA": ["leaderboard.colDate"],
+      "nl": ["hud.scoreValue", "score.display", "leaderboard.colScore"]
     }
   },
   "pending": {

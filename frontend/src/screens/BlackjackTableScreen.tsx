@@ -23,7 +23,7 @@ import {
   toViewState,
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
-import { TABLE_CONFIGS } from "../game/blackjack/tables";
+import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
@@ -68,7 +68,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   // includes insets.bottom, so it must not be subtracted again here.
   const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
   const isCompact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
-  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats } =
+  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats, runResult } =
     useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
@@ -211,9 +211,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }, [handlePlayAgain, navigation]);
 
   // Derive active table config so the HUD can show the right accent colour and milestones.
-  const activeTable =
-    TABLE_CONFIGS.find((c) => c.betMin === engine?.betMin && c.betMax === engine?.betMax) ??
-    TABLE_CONFIGS[0]!;
+  const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
 
   const isSplit = (state?.player_hands?.length ?? 0) > 1;
@@ -370,7 +368,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       {state && (
         <GameResultModal
           visible={state.game_over}
-          outcome="ended"
+          // The result the run recorded (#2628): a win if it reached its goal
+          // before Keep Playing, else a loss.
+          outcome={runResult ?? "ended"}
           eyebrow={`${t("game.title")} · ${t(activeTable.labelKey as Parameters<typeof t>[0])}`}
           subtitle={t("gameOver.title")}
           stats={[

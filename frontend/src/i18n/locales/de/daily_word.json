@@ -1,0 +1,22 @@
+{
+  "game.title": "Wort des Tages",
+  "game.description": "Ein 5-Buchstaben-Wort. Sechs Versuche. Jeden Tag neu.",
+  "game.playLabel": "Wort des Tages spielen",
+  "hud.guessesLeft_one": "{{count}} Versuch übrig",
+  "hud.guessesLeft_other": "{{count}} Versuche übrig",
+  "hud.puzzleNumber": "Rätsel #{{number}}",
+  "result.loss.answer": "Das Wort war {{answer}}",
+  "error.notAWord": "Nicht in der Wortliste",
+  "error.alreadyGuessed": "Bereits geraten",
+  "error.tooShort": "Nicht genug Buchstaben",
+  "error.couldNotLoad": "Rätsel konnte nicht geladen werden",
+  "error.couldNotSubmit": "Versuch konnte nicht gesendet werden",
+  "error.stalePuzzle": "Neues Rätsel verfügbar — heutiges Wort wird geladen",
+  "error.wrongLength": "Dein Versuch hat nicht die richtige Länge",
+  "error.rateLimited": "Zu viele Versuche — später erneut versuchen",
+  "keyboard.delete": "Löschen",
+  "keyboard.enter": "Enter",
+  "result.countdown": "Neues Wort in {{time}}",
+  "result.share": "Teilen",
+  "result.copied": "Kopiert!"
+}

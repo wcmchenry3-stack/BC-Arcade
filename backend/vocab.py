@@ -66,9 +66,10 @@ class GameOutcome(str, Enum):
     * Mahjong — ``win`` when the board is cleared (#2627), ``loss`` when the
       player leaves a deadlocked board (#2592). Builds before #2627 recorded
       a cleared board as ``completed``.
-    * Blackjack — records ``completed`` until #2628: a run reaching its goal
-      becomes ``win``, busting out becomes ``loss``. ``has_winner`` is false
-      until then.
+    * Blackjack — per run (#2628): ``win`` when the run reached its goal, at
+      any point (Keep Playing and a later bust-out is still a win); ``loss``
+      when the chips ran out before the goal; ``abandoned`` when the player
+      left before the goal. Builds before #2628 recorded ``completed``.
     * Twenty48 — records ``completed`` / ``kept_playing`` until #2631:
       reaching 2048 becomes ``win``.
 
