@@ -46,9 +46,7 @@ describe("CapacityWarningToast", () => {
 
   /**
    * A check/markShown pair that behaves like eventStore (#2584): once the
-   * warning is marked shown, the check stops asking for it. With a check that
-   * always said "show", the 50 ms poll could fire between the dismiss and the
-   * assertion under load and put the banner straight back.
+   * warning is marked shown, the check stops asking for it.
    */
   function suppressedAfterMark() {
     let marked = false;
@@ -60,40 +58,78 @@ describe("CapacityWarningToast", () => {
     };
   }
 
-  it("calls markShown and hides the banner when dismissed", async () => {
-    const { check, markShown } = suppressedAfterMark();
-    const { findByTestId, queryByTestId, getByTestId } = await renderWith(check, markShown);
-    await findByTestId("capacity-warning-toast");
+  /** Let pending check promises and the state updates they cause settle. */
+  async function flush() {
     await act(async () => {
-      await fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    // Banner is gone.
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
-    // Side effect fired.
-    expect(markShown).toHaveBeenCalledTimes(1);
+  }
+
+  it("hides the banner on dismiss, marks it shown, and keeps it hidden while the check says no", async () => {
+    jest.useFakeTimers();
+    try {
+      const { check, markShown } = suppressedAfterMark();
+      const { getByTestId, queryByTestId } = await renderWith(check, markShown);
+      await flush();
+      expect(getByTestId("capacity-warning-toast")).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      });
+      expect(markShown).toHaveBeenCalledTimes(1);
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+
+      // Several poll cycles, deterministically: still hidden.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+      await flush();
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it("stays hidden after dismiss even if a later check still returns true", async () => {
-    // shouldShow always returns true — but once dismissed, the toast
-    // should not reappear on the same mount. (Re-appearance after 24 h
-    // is enforced by eventStore.markWarningShown, which is not tested
-    // here; that's covered by eventStore.test.ts.)
-    const { check, markShown } = suppressedAfterMark();
-    const { findByTestId, getByTestId, queryByTestId } = await renderWith(check, markShown);
-    await findByTestId("capacity-warning-toast");
-    await act(async () => {
-      await fireEvent.press(getByTestId("capacity-warning-dismiss"));
-    });
-    expect(markShown).toHaveBeenCalledTimes(1);
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
+  it("ignores a check that was already running when the banner was dismissed", async () => {
+    // The real eventStore check waits on a lock and a storage read, so a poll
+    // can be in flight across the dismiss (#2584 review). It must not bring
+    // the banner back when it resolves.
+    jest.useFakeTimers();
+    try {
+      let resolveInFlight: (show: boolean) => void = () => {};
+      const check = jest
+        .fn<Promise<boolean>, []>()
+        .mockResolvedValueOnce(true) // mount: show
+        .mockImplementationOnce(
+          () =>
+            new Promise<boolean>((resolve) => {
+              resolveInFlight = resolve;
+            })
+        ) // first poll: still running at dismiss time
+        .mockResolvedValue(false); // later polls: suppressed
+      const { getByTestId, queryByTestId } = await renderWith(check);
+      await flush();
+      expect(getByTestId("capacity-warning-toast")).toBeTruthy();
 
-    // Let a few poll cycles run: with the suppression in place (as eventStore
-    // applies for 24 h), the banner must stay hidden. The 24 h window itself
-    // belongs to eventStore's unit tests.
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 200));
-    });
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(check).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        fireEvent.press(getByTestId("capacity-warning-dismiss"));
+      });
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+
+      await act(async () => {
+        resolveInFlight(true);
+      });
+      await flush();
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("polls the check function at the configured interval", async () => {

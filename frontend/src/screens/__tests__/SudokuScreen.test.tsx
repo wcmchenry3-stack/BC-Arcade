@@ -149,32 +149,25 @@ describe("SudokuScreen — mount resume", () => {
 });
 
 describe("SudokuScreen — in-game input", () => {
-  // Start pins the puzzle (#2584). The screen picks an Easy puzzle with
-  // Math.random, and the number pad disables a digit once all nine are placed:
-  // 2 of the 1000 Easy puzzles give all nine 1s, so "enter digit 1" was a
-  // disabled no-op there, no session ever started, and the waitFor below ran
-  // out the whole test — the "Exceeded timeout of 5000 ms" these tests threw
-  // in CI about once in every few hundred runs. Forcing puzzle 479 reproduced
-  // it exactly.
-  const PINNED = loadPuzzle("easy", "classic", () => 0);
-
-  it("pins a puzzle where the digits these tests press are still open", () => {
-    // Guards the pin against a puzzle-bank change: fail here, loudly, rather
-    // than as a timeout in the tests below.
-    for (const digit of ["1", "5"]) {
-      expect(PINNED.puzzle.split("").filter((ch) => ch === digit).length).toBeLessThan(9);
-    }
-  });
-
+  // These tests press a digit the number pad has left enabled (#2584). The
+  // screen picks an Easy puzzle with Math.random and the pad disables a digit
+  // once all nine are placed; 2 of the 1000 Easy puzzles give all nine 1s, so
+  // a hardcoded "enter digit 1" was a disabled no-op there, no session ever
+  // started, and the waitFor for it ran the test out — the "Exceeded timeout"
+  // these tests threw in CI about once in every few hundred runs. Choosing an
+  // enabled digit holds for any puzzle, however Start comes to pick it.
   async function startEasy() {
     const rendered = await renderAndAwaitLoad();
-    const random = jest.spyOn(Math, "random").mockReturnValue(0);
-    try {
-      await fireEvent.press(rendered.getByLabelText(/start/i));
-    } finally {
-      random.mockRestore();
-    }
+    await fireEvent.press(rendered.getByLabelText(/start/i));
     return rendered;
+  }
+
+  function enabledDigitButton(rendered: Awaited<ReturnType<typeof startEasy>>) {
+    for (let d = 1; d <= 9; d++) {
+      const button = rendered.getByLabelText(new RegExp(`enter digit ${d}`, "i"));
+      if (!button.props.accessibilityState?.disabled) return button;
+    }
+    throw new Error("every digit on the number pad is disabled");
   }
 
   it("disables Undo until a move is made", async () => {
@@ -192,7 +185,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("opens a useGameSync session on first digit placement", async () => {
-    const { getAllByRole, getByLabelText } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -200,7 +194,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 1/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     // ensureSyncStarted runs inside a setState updater; waitFor lets React 18
     // flush the batch before asserting.
@@ -209,7 +203,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("unmount after a digit abandons with a result block that satisfies SudokuResult, and no score (#2450)", async () => {
-    const { getAllByRole, getByLabelText, unmount } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole, unmount } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -217,7 +212,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 1/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
     mockCompleteGame.mockClear();
@@ -232,7 +227,8 @@ describe("SudokuScreen — in-game input", () => {
   });
 
   it("persists state after digit input", async () => {
-    const { getAllByRole, getByLabelText } = await startEasy();
+    const rendered = await startEasy();
+    const { getAllByRole } = rendered;
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
@@ -240,7 +236,7 @@ describe("SudokuScreen — in-game input", () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      await fireEvent.press(getByLabelText(/enter digit 5/i));
+      await fireEvent.press(enabledDigitButton(rendered));
     });
     await waitFor(async () => {
       const raw = await AsyncStorage.getItem("sudoku_game");
