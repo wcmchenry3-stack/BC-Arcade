@@ -615,6 +615,109 @@ describe("MahjongScreen — no-moves overlays", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #2517 — a deadlock the player leaves is recorded as a loss
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
+  /** Two free, non-matching tiles and no shuffles: deadlocked, one pair undone behind it. */
+  function makeDeadlockState(): MahjongState {
+    const beforeLastMatch = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      shufflesLeft: 0,
+      pairsRemoved: 39,
+      score: 600,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    return makeWinState({
+      isComplete: false,
+      isDeadlocked: true,
+      shufflesLeft: 0,
+      pairsRemoved: 40,
+      score: 640,
+      accumulatedMs: 90000,
+      tiles: [
+        { id: 2, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 10, row: 0, layer: 0 },
+      ],
+      undoStack: [beforeLastMatch],
+    } as Partial<MahjongState>);
+  }
+
+  /** Loads the deadlocked board and taps a tile, which opens the sync session. */
+  async function mountDeadlockedWithSession() {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeDeadlockState()));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-2"));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const card = await waitFor(() => api.getByTestId("mahjong-result"), {
+      timeout: DEADLOCK_OVERLAY_DELAY_MS + 200,
+    });
+    return { api, card: within(card) };
+  }
+
+  function lastSummary() {
+    const call = mockCompleteGame.mock.calls.at(-1)!;
+    return { summary: call[1] as Record<string, unknown>, data: call[2] };
+  }
+
+  it("records a loss, with no score, when the player changes layout", async () => {
+    const { card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const { summary, data } = lastSummary();
+    expect(summary.outcome).toBe("loss");
+    // A loss counts (only abandons are excluded), and Mahjong's leaderboard
+    // ranks every scored row — so a deadlock must not carry a score.
+    expect(summary).not.toHaveProperty("finalScore");
+    expect(data).toEqual(expect.objectContaining({ won: false, pairs: 40 }));
+  });
+
+  // #2592 review: a lost board is finished. If CONTINUE could reopen it, each
+  // resume → tap → leave would record another loss (and earn XP again).
+  it("finishes the lost board: no CONTINUE, and the save is cleared", async () => {
+    const { api, card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Layout" }));
+    });
+    expect(api.getByLabelText("layout.turtle")).toBeTruthy(); // on layout select
+    expect(api.queryByLabelText("layoutSelect.continue")).toBeNull();
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
+  });
+
+  it("records a loss when the player leaves by navigating back, and clears the save", async () => {
+    await mountDeadlockedWithSession();
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(lastSummary().summary.outcome).toBe("loss");
+    // Next visit starts on layout select, not the same deadlocked board.
+    await waitFor(async () => expect(await AsyncStorage.getItem("mahjong_game")).toBeNull());
+  });
+
+  it("stays abandoned when the player undoes out of the deadlock first", async () => {
+    const { api, card } = await mountDeadlockedWithSession();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Undo last move" }));
+    });
+    expect(api.queryByTestId("mahjong-result")).toBeNull();
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(lastSummary().summary.outcome).toBe("abandoned");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // useGameSync lifecycle
 // ---------------------------------------------------------------------------
 

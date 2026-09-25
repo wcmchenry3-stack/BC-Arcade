@@ -240,6 +240,46 @@ async def test_non_abandoned_outcomes_still_score(client: TestClient, outcome: s
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("game_type", "outcome", "final_score"),
+    [
+        ("yacht", "win", 260),  # vs CPU
+        ("yacht", "push", 240),  # vs CPU, a tie
+        ("hearts", "loss", 38),
+        ("daily_word", "win", None),  # no numeric score
+        ("daily_word", "loss", None),
+        ("mahjong", "loss", None),  # a deadlock, recorded without a score
+    ],
+)
+async def test_games_with_a_winner_record_it_and_still_count(
+    client: TestClient, game_type: str, outcome: str, final_score: int | None
+) -> None:
+    """#2517: Yacht vs CPU, Hearts, Daily Word and Mahjong now record who won.
+
+    Each is a finished game, so it keeps its XP and its `played` count exactly
+    as a `completed` row did — only `abandoned` drops out (games/filters.py).
+    """
+    sid = str(uuid.uuid4())
+    await _grant(sid, game_type)
+    start: dict = {"game_type": game_type}
+    if game_type == "daily_word":
+        start["metadata"] = {"puzzle_id": "2026-09-25"}
+    r = client.post("/games", headers=_headers(sid), json=start)
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    body: dict = {"outcome": outcome, "duration_ms": 10_000}
+    if final_score is not None:
+        body["final_score"] = final_score
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["outcome"] == outcome
+
+    stats = client.get("/stats/me", headers=_headers(sid)).json()
+    assert stats["by_game"][game_type]["played"] == 1
+    assert stats["arcade_xp"] == BASE_XP_PER_GAME + VARIETY_BONUS_PER_GAME_TYPE
+
+
+@pytest.mark.asyncio
 async def test_abandoned_session_does_not_blank_blackjack_current_chips(
     client: TestClient,
 ) -> None:

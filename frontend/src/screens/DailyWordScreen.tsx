@@ -52,6 +52,7 @@ import {
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
@@ -433,6 +434,11 @@ const toastStyles = StyleSheet.create({
 // Main screen
 // ---------------------------------------------------------------------------
 
+/** A finished puzzle is a win or a loss on the games row (#2517), not just "completed". */
+function finishedOutcome(state: { won: boolean }) {
+  return recordedOutcome(state.won ? "win" : "loss");
+}
+
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
   const { t: tResult } = useTranslation("result");
@@ -772,7 +778,10 @@ export default function DailyWordScreen() {
         finalState = markComplete(afterApply, won);
         // Daily Word has no numeric score: final_score stays null and the
         // challenge reads the result block instead.
-        syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finalState));
+        syncComplete(
+          { finalScore: null, outcome: finishedOutcome(finalState) },
+          sessionResult(finalState)
+        );
       }
 
       setState(finalState);
@@ -865,7 +874,10 @@ export default function DailyWordScreen() {
               );
             }
             syncMarkStarted();
-            syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finished));
+            syncComplete(
+              { finalScore: null, outcome: finishedOutcome(finished) },
+              sessionResult(finished)
+            );
           }
 
           setState(finished);

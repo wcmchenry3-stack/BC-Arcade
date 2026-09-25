@@ -515,7 +515,8 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(await api.findByText("You Win!")).toBeTruthy();
     expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
     const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary).toMatchObject({ outcome: "completed", result: { won: true } });
+    // #2517: a finished puzzle records a win or a loss, not just "completed".
+    expect(summary).toMatchObject({ outcome: "win", result: { won: true } });
   });
 
   // #2535 review — without syncComplete the session stays open and the unmount
@@ -533,7 +534,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary).toMatchObject({ outcome: "completed", result: { won: false } });
+    expect(summary).toMatchObject({ outcome: "loss", result: { won: false } });
   });
 
   // #2535 third review — `already_solved` is returned for any guess on a puzzle
@@ -584,7 +585,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(gameId).toBe("game-1");
     expect(summary).toEqual({
       finalScore: null,
-      outcome: "completed",
+      outcome: "win",
       result: { is_complete: true, won: true, guesses_used: 1 },
     });
   });

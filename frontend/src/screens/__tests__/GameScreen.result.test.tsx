@@ -126,8 +126,9 @@ async function finishCpuTurn() {
   }
 }
 
+/** Sessions closed as a finished game — any outcome but "abandoned" (#2517). */
 function completedCalls() {
-  return completeGame.mock.calls.filter(([, summary]) => summary.outcome === "completed");
+  return completeGame.mock.calls.filter(([, summary]) => summary.outcome !== "abandoned");
 }
 
 beforeEach(() => {
@@ -186,15 +187,32 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     await finishCpuTurn();
 
     expect(completedCalls()).toHaveLength(1);
-    const [, , payload] = completedCalls()[0]!;
+    const [, summary, payload] = completedCalls()[0]!;
+    // #2517: the row records who won.
+    expect(summary).toEqual(expect.objectContaining({ finalScore: 50, outcome: "win" }));
     expect(payload).toEqual(
       expect.objectContaining({
         final_score: 50,
-        outcome: "completed",
+        outcome: "win",
         opponent_score: 30,
         vs_result: "win",
       })
     );
+  });
+
+  it.each([
+    // Player: Ones with 6s = 0; CPU: Chance with 6s = 30.
+    ["loss", "ones", "chance"],
+    // Both score 0 in their last category: a tie is recorded as push.
+    ["push", "ones", "ones"],
+  ])("records a %s on the games row", async (recorded, playerOpen, cpuOpen) => {
+    const r = await renderVs(playerOpen, [6, 6, 6, 6, 6], cpuOpen);
+    await playLastTurn(r, playerOpen === "ones" ? /^Ones/i : /^Yacht/i);
+    await finishCpuTurn();
+
+    expect(completedCalls()).toHaveLength(1);
+    const [, summary] = completedCalls()[0]!;
+    expect(summary.outcome).toBe(recorded);
   });
 
   it("records a finished game as completed if the player leaves during the CPU's last turn", async () => {

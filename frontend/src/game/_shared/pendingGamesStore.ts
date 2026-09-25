@@ -22,12 +22,14 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
+import type { GameOutcome } from "../../api/vocab";
 
 const STORAGE_KEY = "pending_games_v1";
 
 export interface CompleteSummary {
   finalScore?: number | null;
-  outcome?: string | null;
+  /** A backend `GameOutcome` (#2517) — see `recordedOutcome` for games with a winner. */
+  outcome?: GameOutcome | null;
   durationMs?: number | null;
   /**
    * Per-game result block sent as `result` on PATCH /games/:id/complete (#2450).

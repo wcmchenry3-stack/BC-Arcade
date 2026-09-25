@@ -36,6 +36,7 @@ import { logConfig, resetLogConfig, LogConfig, Priority } from "./eventQueueConf
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
+import type { CompleteSummary } from "./pendingGamesStore";
 import { areTestHooksEnabled } from "./envFlags";
 
 interface SeedEventSpec {
@@ -182,8 +183,10 @@ export function registerLogstoreTestHooks(): () => void {
   };
   g.__gameEventClient_startGame = (gameType, metadata) =>
     gameEventClient.startGame(gameType, metadata);
+  // E2E may send any outcome string (e.g. to exercise a 400), so the hook stays
+  // looser than CompleteSummary's GameOutcome (#2517).
   g.__gameEventClient_completeGame = (gameId, summary) =>
-    gameEventClient.completeGame(gameId, summary);
+    gameEventClient.completeGame(gameId, summary as CompleteSummary);
   g.__eventStore_sweepTTL = (now?: number) => eventStore.sweepTTL(now);
   g.__eventStore_setSyntheticDelay = (ms: number) => eventStore.setSyntheticDelay(ms);
 

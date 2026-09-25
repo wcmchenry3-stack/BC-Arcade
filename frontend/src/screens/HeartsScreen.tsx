@@ -33,6 +33,7 @@ import {
 } from "../game/hearts/playerNames";
 import { heartsLeaderboard, heartsLeaderboardScore } from "../game/hearts/leaderboard";
 import { heartsResult } from "../game/hearts/result";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import {
   clearPendingSubmission,
   loadPendingSubmission,
@@ -356,7 +357,12 @@ export default function HeartsScreen() {
     if (gameState?.phase !== "game_over") return;
     if (!syncGetGameId()) return;
     const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
-    syncComplete({ outcome: "completed", finalScore, durationMs: 0 }, { final_score: finalScore });
+    // #2517: record who won — the same outcome the result card shows.
+    const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
+    syncComplete(
+      { outcome: recordedOutcome(outcome), finalScore, durationMs: 0 },
+      { final_score: finalScore, vs_result: outcome }
+    );
   }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId]);
 
   useEffect(() => {
