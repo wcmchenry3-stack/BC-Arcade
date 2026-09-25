@@ -7,7 +7,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, RunRecord } from "../game/blackjack/storage";
-import { TABLE_CONFIGS } from "../game/blackjack/tables";
+import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
@@ -40,9 +40,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
     engine.bet === 0;
 
   // Derive active table config from engine's betMin/betMax (set by handleTableSelect).
-  const activeTable =
-    TABLE_CONFIGS.find((t) => t.betMin === engine?.betMin && t.betMax === engine?.betMax) ??
-    TABLE_CONFIGS[0]!;
+  const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
 
   // Redirect when loaded mid-hand or into victory (app restart, injected state).

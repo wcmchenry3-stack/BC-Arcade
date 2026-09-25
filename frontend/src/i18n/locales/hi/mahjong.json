@@ -12,7 +12,7 @@
   "action.undo": "वापस",
   "action.undoLabel": "आखिरी जोड़ा पूर्ववत करें",
   "action.hint": "संकेत",
-  "action.hintLabel": "संकेत दिखाएं — एक सही जोड़े को 2 सेकंड के लिए हाइलाइट करता है",
+  "action.hintLabel": "संकेत दिखाएं — एक सही जोड़ा 2 सेकंड हाइलाइट होगा",
   "action.noHint": "कोई संकेत उपलब्ध नहीं",
   "overlay.noMoves": "कोई चाल नहीं",
   "overlay.noMovesDetail": "कोई जोड़ा उपलब्ध नहीं। जारी रखने के लिए फेंटें।",
