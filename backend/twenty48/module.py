@@ -7,6 +7,7 @@ structural subtyping — no inheritance required.
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from twenty48.models import Twenty48Metadata, Twenty48Result
 from vocab import GameType
 
@@ -29,7 +30,7 @@ class Twenty48Module:
     has_winner = False
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = Twenty48Module()

@@ -365,8 +365,9 @@ async def test_best_value_is_null_without_the_metric() -> None:
     assert s.best_label_key == "level"
 
 
-async def test_a_game_without_a_board_falls_back_to_highest_score() -> None:
-    # Twenty48 has no module (and so no board) until #2623.
+async def test_twenty48_best_value_is_its_highest_score() -> None:
+    # Twenty48's board (#2623) ranks final_score desc. A game with no module
+    # has no fallback: see test_game_module_protocol.py.
     sid = _sid()
     await _add(sid, "twenty48", at=0, final_score=2048)
     await _add(sid, "twenty48", at=1, final_score=1024)

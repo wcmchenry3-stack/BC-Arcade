@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from daily_word.models import DailyWordMetadata, DailyWordResult
 from daily_word.progress import recorded_guess_count
 from games.board import BoardDefinition
+from games.protocol import default_stats_shape
 from vocab import GameType
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class DailyWordModule:
     )
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
     async def reconcile_result(
         self, session: AsyncSession, game: Game, result: dict[str, Any]

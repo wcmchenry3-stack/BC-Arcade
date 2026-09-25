@@ -40,6 +40,10 @@ def _record(pairs: tuple[tuple[str, str], ...]) -> dict[str, str]:
     return dict(pairs)
 
 
+def _list_record(pairs: tuple[tuple[str, tuple[str, ...]], ...]) -> dict[str, list[str]]:
+    return {key: list(values) for key, values in pairs}
+
+
 def _nested_record(triples: tuple[tuple[str, str, int], ...]) -> dict[str, dict[str, int]]:
     nested: dict[str, dict[str, int]] = {}
     for key, value, cap in triples:
@@ -51,6 +55,7 @@ def _nested_record(triples: tuple[tuple[str, str, int], ...]) -> dict[str, dict[
 # app reads as records. Every other field is exported as-is.
 _AS_RECORD = {
     "partition_defaults": _record,
+    "partition_values": _list_record,
     "partition_max_values": _nested_record,
 }
 
@@ -72,25 +77,58 @@ def board_json(board: BoardDefinition | None) -> dict[str, Any] | None:
 
 _IDENT = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 
+# frontend/.prettierrc
+_PRINT_WIDTH = 100
 
-def _ts(value: Any, indent: str) -> str:
+
+def _ts(value: Any, indent: str, prefix: int = 0) -> str:
     """*value* as a TypeScript literal, formatted the way Prettier formats it.
 
-    Arrays stay on one line (they are short). Non-empty objects are expanded,
-    one key per line, which Prettier preserves.
+    *prefix* is how many characters precede the value on its line. An array
+    stays on one line when it fits in ``_PRINT_WIDTH`` (with the trailing
+    comma), else it is expanded as Prettier does: one item per line, or, for
+    an array of numbers, as many per line as fit (``_fill``).
+    Non-empty objects are expanded, one key per line, which Prettier
+    preserves.
     """
     if isinstance(value, dict):
         if not value:
             return "{}"
         inner = indent + "  "
-        lines = [
-            f"{inner}{k if _IDENT.match(k) else json.dumps(k)}: {_ts(v, inner)},"
-            for k, v in value.items()
-        ]
+        lines = []
+        for k, v in value.items():
+            head = f"{inner}{k if _IDENT.match(k) else json.dumps(k)}: "
+            lines.append(f"{head}{_ts(v, inner, len(head))},")
         return "{\n" + "\n".join(lines) + f"\n{indent}}}"
     if isinstance(value, list):
-        return "[" + ", ".join(_ts(v, indent) for v in value) + "]"
+        one_line = "[" + ", ".join(_ts(v, indent) for v in value) + "]"
+        if not value or prefix + len(one_line) + 1 <= _PRINT_WIDTH:
+            return one_line
+        inner = indent + "  "
+        if len(value) > 1 and all(_is_number(v) for v in value):
+            return "[\n" + _fill(value, inner) + f"\n{indent}]"
+        items = "\n".join(f"{inner}{_ts(v, inner, len(inner))}," for v in value)
+        return "[\n" + items + f"\n{indent}]"
     return json.dumps(value)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _fill(numbers: list[Any], indent: str) -> str:
+    """A long number array's items the way Prettier prints them ("fill"): as
+    many ``n,`` per line as fit in ``_PRINT_WIDTH``, not one per line."""
+    lines: list[str] = []
+    line = ""
+    for n in numbers:
+        item = f"{json.dumps(n)},"
+        if line and len(line) + 1 + len(item) > _PRINT_WIDTH:
+            lines.append(line)
+            line = ""
+        line = f"{line} {item}" if line else f"{indent}{item}"
+    lines.append(line)
+    return "\n".join(lines)
 
 
 def board_ts(board: BoardDefinition | None) -> str:
@@ -142,6 +180,8 @@ export interface BoardDefinition {{
   readonly partitions: readonly string[];
   /** Partition key -> value assumed when a row lacks that key (legacy rows). */
   readonly partitionDefaults: Readonly<Record<string, string>>;
+  /** Partition key -> the only values it has a board for; a key not listed takes any value. */
+  readonly partitionValues: Readonly<Record<string, readonly string[]>>;
   /** Highest legitimate metric value on any board; null = no ceiling. */
   readonly maxValue: number | null;
   /** Partition key -> partition value -> tighter cap for that partition. */

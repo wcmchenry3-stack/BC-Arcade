@@ -10,8 +10,8 @@ Adding a new game
 2. Register it in ``backend/games/registry.py``.
 3. Implement ``stats_shape`` to transform the raw aggregate dict into the
    game's final API shape.  See ``backend/blackjack/module.py`` for an
-   example that renames keys; see ``backend/cascade/module.py`` for the
-   default pass-through pattern.
+   example that renames keys; most games return ``default_stats_shape``
+   (below), the pass-through pattern.
 4. Define a ``metadata_model`` Pydantic ``BaseModel`` subclass (in the
    game's ``models.py``) and assign it as a class variable.  The generic
    ``POST /games`` endpoint validates incoming ``metadata`` against it.
@@ -107,3 +107,13 @@ class GameModule(Protocol):
     board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...
+
+
+def default_stats_shape(raw_stats: dict) -> dict:
+    """The pass-through ``stats_shape``: every raw field except ``latest_score``.
+
+    ``latest_score`` is an input for games that shape it (Blackjack's current
+    chips), not an API field. A module with no game-specific figures returns
+    this from its ``stats_shape``.
+    """
+    return {k: v for k, v in raw_stats.items() if k != "latest_score"}

@@ -643,6 +643,69 @@ async def test_complete_allows_uncapped_board(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Merging the result into the creation-time metadata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "created,result,merged",
+    [
+        # A creation-time value wins over the result's.
+        ({"difficulty": "easy"}, {"difficulty": "hard"}, {"difficulty": "easy"}),
+        # A key only one side has is kept.
+        ({"difficulty": "easy"}, {"errors": 2}, {"difficulty": "easy", "errors": 2}),
+        ({}, {"errors": 2}, {"errors": 2}),
+        (None, {"errors": 2}, {"errors": 2}),
+        # A creation-time null is no value: the result's value fills it (#2623).
+        ({"difficulty_tier": None}, {"difficulty_tier": "Captain"}, {"difficulty_tier": "Captain"}),
+        # A null in the result never clears a creation-time value.
+        ({"difficulty_tier": "Ensign"}, {"difficulty_tier": None}, {"difficulty_tier": "Ensign"}),
+        (
+            {"best_run_chips": None},
+            {"hands_played": 4},
+            {"best_run_chips": None, "hands_played": 4},
+        ),
+    ],
+    ids=[
+        "creation-wins",
+        "result-only-key",
+        "empty-creation",
+        "no-creation",
+        "null-creation-is-filled",
+        "null-result-does-not-clear",
+        "untouched-null-stays",
+    ],
+)
+def test_merge_result_metadata(created, result, merged) -> None:
+    assert leaderboard.merge_result_metadata(created, result) == merged
+
+
+def test_merge_result_metadata_does_not_mutate_its_inputs() -> None:
+    created = {"difficulty_tier": None}
+    result = {"difficulty_tier": "Captain"}
+    leaderboard.merge_result_metadata(created, result)
+    assert created == {"difficulty_tier": None}
+    assert result == {"difficulty_tier": "Captain"}
+
+
+def test_completion_limits_see_the_tier_a_null_creation_value_would_hide() -> None:
+    """The cap check merges exactly as the stored row does."""
+    game = Game(game_metadata={"difficulty": None})
+    mod = get_module("sudoku")
+    board = mod.board
+    # A "hard" result under a null creation difficulty is checked against hard's cap.
+    assert (
+        leaderboard.check_completion_limits("sudoku", mod, game, 300, {"difficulty": "hard"})
+        is None
+    )
+    violation = leaderboard.check_completion_limits(
+        "sudoku", mod, game, 150, {"difficulty": "easy"}
+    )
+    assert violation is not None
+    assert board.max_value_for({"difficulty": "easy"}) == 100
+
+
+# ---------------------------------------------------------------------------
 # No duplicates, per enabled game (end to end through the session pipeline)
 # ---------------------------------------------------------------------------
 

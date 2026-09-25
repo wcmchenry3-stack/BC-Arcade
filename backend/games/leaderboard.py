@@ -154,7 +154,9 @@ def resolve_partition(
     Every partition key is required unless the board declares a default for
     it (``board.partition_default``; e.g. a Sudoku request without ``variant``
     means ``classic``, as on ``GET /sudoku/scores/{difficulty}``). Unknown or
-    repeated keys are rejected so a typo can't silently show the wrong board.
+    repeated keys are rejected so a typo can't silently show the wrong board,
+    and so is a value outside the key's ``partition_values`` (Star Swarm's
+    tiers): there is no board for it.
     """
     given: dict[str, str] = {}
     for key, value in params:
@@ -164,6 +166,8 @@ def resolve_partition(
             raise LeaderboardError(400, f"Partition {key!r} given more than once.")
         if not value or len(value) > MAX_PARTITION_VALUE_LENGTH:
             raise LeaderboardError(400, f"Invalid value for partition {key!r}.")
+        if not board.is_allowed(key, value):
+            raise LeaderboardError(400, f"Unknown value for partition {key!r} of {game_type}.")
         given[key] = value
     partition: dict[str, str] = {}
     for key in board.partitions:
@@ -468,7 +472,12 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
         return "Abandoned games are not ranked."
     if board.qualifying_outcomes is not None and game.outcome not in board.qualifying_outcomes:
         return "This game's outcome is not ranked."
-    cap = metric_cap(board, row_partition(board, game.game_metadata or {}))
+    partition = row_partition(board, game.game_metadata or {})
+    if any(v is not None and not board.is_allowed(k, v) for k, v in partition.items()):
+        # e.g. a Star Swarm tier the backend doesn't know yet: stored, so the
+        # run isn't lost, but there is no board to rank it on.
+        return "This game's board does not exist."
+    cap = metric_cap(board, partition)
     if not _is_count(value) or value > cap:
         return f"{board.metric} must be an integer from 0 to {cap} to be ranked."
     return None
@@ -598,6 +607,26 @@ def board_limit_violation(
     return None
 
 
+def merge_result_metadata(
+    metadata: Mapping[str, Any] | None, result: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The row's ``games.metadata`` once a validated *result* is merged in.
+
+    Creation-time keys win: leaderboards read ``player_name``, ``difficulty``
+    and the like from here, and a result must never rewrite them. A creation
+    key holding ``null`` has no value to protect, so it doesn't win: it reads
+    exactly like a missing key everywhere else (``row_partition``, the board
+    filters), and letting it win would drop a real value the result carries,
+    e.g. a Star Swarm run created with ``difficulty_tier: null`` would lose
+    the tier its completion reports and fall off every board.
+    """
+    merged = dict(metadata or {})
+    for key, value in result.items():
+        if merged.get(key) is None:
+            merged[key] = value
+    return merged
+
+
 def check_completion_limits(
     game_type: str,
     mod: GameModule | None,
@@ -609,5 +638,5 @@ def check_completion_limits(
 
     ``game_type`` and ``mod`` are the ones ``complete_game`` already resolved.
     """
-    merged = {**result, **(game.game_metadata or {})}
+    merged = merge_result_metadata(game.game_metadata, result)
     return board_limit_violation(game_type, _module_board(mod), final_score, merged)

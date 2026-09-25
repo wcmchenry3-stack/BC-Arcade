@@ -52,6 +52,8 @@ export interface BoardDefinition {
   readonly partitions: readonly string[];
   /** Partition key -> value assumed when a row lacks that key (legacy rows). */
   readonly partitionDefaults: Readonly<Record<string, string>>;
+  /** Partition key -> the only values it has a board for; a key not listed takes any value. */
+  readonly partitionValues: Readonly<Record<string, readonly string[]>>;
   /** Highest legitimate metric value on any board; null = no ceiling. */
   readonly maxValue: number | null;
   /** Partition key -> partition value -> tighter cap for that partition. */
@@ -71,6 +73,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: 1575,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -83,6 +86,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -95,6 +99,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "chips",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -107,6 +112,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -119,6 +125,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: 1245,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -131,6 +138,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: 100,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -145,6 +153,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {
       variant: "classic",
     },
+    partitionValues: {},
     maxValue: 300,
     partitionMaxValues: {
       difficulty: {
@@ -163,6 +172,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "score",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: 1220,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -174,7 +184,23 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     tiebreak: null,
     labelKey: "score",
     partitions: ["difficulty_tier"],
-    partitionDefaults: {},
+    partitionDefaults: {
+      difficulty_tier: "LieutenantJG",
+    },
+    partitionValues: {
+      difficulty_tier: [
+        "Ensign",
+        "LieutenantJG",
+        "Lieutenant",
+        "LieutenantCommander",
+        "Commander",
+        "Captain",
+        "RearAdmiral",
+        "ViceAdmiral",
+        "Admiral",
+        "FleetAdmiral",
+      ],
+    },
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -187,6 +213,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "moves",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -199,6 +226,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "level",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: 23,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
@@ -211,6 +239,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     labelKey: "guesses",
     partitions: [],
     partitionDefaults: {},
+    partitionValues: {},
     maxValue: null,
     partitionMaxValues: {},
     qualifyingOutcomes: ["win"],

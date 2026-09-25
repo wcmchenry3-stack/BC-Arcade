@@ -1,4 +1,5 @@
 import { BOARDS, GAME_OUTCOMES, GAME_TYPES, type BoardDefinition, type GameType } from "../vocab";
+import { DIFFICULTY_TIERS } from "../../game/starswarm/engine";
 
 // Type-level: BOARDS must be keyed by exactly the GameType union (#2617).
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -11,6 +12,7 @@ const BOARD_FIELDS = [
   "labelKey",
   "partitions",
   "partitionDefaults",
+  "partitionValues",
   "maxValue",
   "partitionMaxValues",
   "qualifyingOutcomes",
@@ -41,8 +43,14 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
     }
     expect(board.labelKey).not.toHaveLength(0);
     expect(Array.isArray(board.partitions)).toBe(true);
-    for (const key of Object.keys(board.partitionDefaults)) {
+    for (const [key, value] of Object.entries(board.partitionDefaults)) {
       expect(board.partitions).toContain(key);
+      if (key in board.partitionValues) expect(board.partitionValues[key]).toContain(value);
+    }
+    for (const [key, values] of Object.entries(board.partitionValues)) {
+      expect(board.partitions).toContain(key);
+      expect(values.length).toBeGreaterThan(0);
+      expect(new Set(values).size).toBe(values.length);
     }
     if (board.maxValue !== null) expect(board.maxValue).toBeGreaterThanOrEqual(0);
     for (const [key, caps] of Object.entries(board.partitionMaxValues)) {
@@ -78,5 +86,11 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
 
   it("exports Sort's tie-break", () => {
     expect(BOARDS.sort?.tiebreak).toEqual(["total_moves", "asc"]);
+  });
+
+  it("has a Star Swarm board for exactly the engine's tiers, LieutenantJG by default", () => {
+    const starswarm = BOARDS.starswarm;
+    expect(starswarm?.partitionValues).toEqual({ difficulty_tier: [...DIFFICULTY_TIERS] });
+    expect(starswarm?.partitionDefaults).toEqual({ difficulty_tier: "LieutenantJG" });
   });
 });

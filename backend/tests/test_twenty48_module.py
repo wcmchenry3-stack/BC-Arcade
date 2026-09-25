@@ -263,3 +263,42 @@ def test_a_kept_playing_completion_from_an_older_build_still_counts() -> None:
     stats = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["twenty48"]
     assert stats["played"] == 1
     assert stats["best"] == 20_480
+
+
+# ---------------------------------------------------------------------------
+# duration_ms — zero or less is "unknown", never a rejection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("duration", [0, -1, -95_000])
+def test_a_duration_of_zero_or_less_is_stored_as_unknown(duration: int) -> None:
+    # A 400 here would dead-letter a free game's result. The sync worker sends
+    # the row's own duration_ms as null when it is not positive.
+    dumped = Twenty48Result.model_validate(
+        {**_ended("completed"), "duration_ms": duration}
+    ).model_dump(exclude_unset=True)
+    assert dumped == {**_ended("completed"), "duration_ms": None}
+
+
+@pytest.mark.parametrize("duration", [1, 95_000, None])
+def test_a_positive_or_null_duration_is_kept(duration: int | None) -> None:
+    assert Twenty48Result.model_validate({"duration_ms": duration}).duration_ms == duration
+
+
+def test_a_completion_with_a_negative_duration_is_accepted() -> None:
+    sid = str(uuid.uuid4())
+    gid = _start(sid)
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(sid),
+        json={
+            "final_score": 2400,
+            "outcome": "completed",
+            "duration_ms": None,
+            "result": {**_ended("completed"), "duration_ms": -5},
+        },
+    )
+    assert r.status_code == 200, r.text
+    metadata = client.get(f"/games/{gid}", headers=_headers(sid)).json()["metadata"]
+    assert metadata["duration_ms"] is None
+    assert metadata["final_score"] == 2400
