@@ -52,11 +52,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
-jest.mock("../../game/sudoku/api", () => ({
-  sudokuApi: {
-    submitPlayerName: jest.fn(),
-    getLeaderboard: jest.fn(),
-  },
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
 
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
@@ -73,7 +75,6 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 // Import after mocks so the test file gets the jest.fn() flavour.
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
-import { sudokuApi } from "../../game/sudoku/api";
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
@@ -117,10 +118,8 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
   mockPopToTop.mockClear();
   mockNavListeners.clear();
-  (sudokuApi.submitPlayerName as jest.Mock).mockReset();
-  (sudokuApi.submitPlayerName as jest.Mock).mockImplementation((_id: string, name: string) =>
-    Promise.resolve({ player_name: name, score: 100, rank: 3 })
-  );
+  mockGetGameRank.mockReset();
+  mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
   mockStartGame.mockClear();
   mockStartGame.mockReturnValue("game-123");
   mockCompleteGame.mockClear();
@@ -282,8 +281,10 @@ describe("SudokuScreen — in-game input", () => {
     expect(summary).not.toHaveProperty("finalScore");
   });
 
-  // #2619: the abandon carries the game's own play time, not 0.
-  it("a back-navigation abandon sends the play timer as durationMs", async () => {
+  // #2632: no screen-level beforeRemove abandon. It sent the full completion
+  // formula as finalScore; back-navigation now unmounts and the hook abandons
+  // with no score (the test above).
+  it("does not complete the session on beforeRemove", async () => {
     const { getAllByRole, getByLabelText } = await startEasy();
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
@@ -297,21 +298,11 @@ describe("SudokuScreen — in-game input", () => {
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
     mockCompleteGame.mockClear();
 
-    const realNow = Date.now.bind(Date);
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + 30_000);
-    try {
-      await act(async () => {
-        mockNavListeners.get("beforeRemove")?.forEach((h) => h());
-      });
-    } finally {
-      nowSpy.mockRestore();
-    }
-
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const summary = mockCompleteGame.mock.calls[0]![1] as { outcome: string; durationMs: number };
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary.durationMs).toBeGreaterThanOrEqual(30_000);
-    expect(summary.durationMs).toBeLessThan(40_000);
+    expect(mockNavListeners.get("beforeRemove") ?? []).toHaveLength(0);
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("persists state after digit input", async () => {
@@ -425,22 +416,23 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
   });
 
-  it("submits under the display name automatically and shows the rank", async () => {
+  // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
+  // instead of PATCH /sudoku/score/{id}.
+  it("shows the synced game's rank under the display name automatically", async () => {
     await saveDisplayName("Riley");
     const r = await solvePuzzle();
-    await waitFor(() =>
-      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Riley")
-    );
-    // The completion is uploaded before the name is attached to it.
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
+    // The completion is uploaded before its rank is read.
     expect(flushQueuedGames).toHaveBeenCalled();
     await r.findByText("Saved as Riley · #3 on the leaderboard");
     expect(r.queryByLabelText(/your name/i)).toBeNull();
+    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
   });
 
-  it("asks for a display name once when none is set, then submits", async () => {
+  it("asks for a display name once when none is set, then shows the rank", async () => {
     const r = await solvePuzzle();
     const input = await r.findByLabelText("Pick a display name for leaderboards");
-    expect(sudokuApi.submitPlayerName).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
       await fireEvent.changeText(input, "Alice");
@@ -449,21 +441,22 @@ describe("SudokuScreen — result card (#2511)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Save" }));
     });
 
-    await waitFor(() =>
-      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Alice")
-    );
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
     await r.findByText("Saved as Alice · #3 on the leaderboard");
   });
 
-  it("queues the name when the server rejects it", async () => {
+  it("offers a retry when the rank lookup fails, and queues nothing", async () => {
     await saveDisplayName("Riley");
-    (sudokuApi.submitPlayerName as jest.Mock).mockRejectedValue(new ApiError("boom", 500));
+    mockGetGameRank.mockRejectedValue(new ApiError("boom", 500));
     const r = await solvePuzzle();
-    await r.findByText("Saved offline · syncs when you're back online");
-    expect(scoreQueue.enqueue).toHaveBeenCalledWith("sudoku", {
-      game_id: "game-123",
-      player_name: "Riley",
+    await r.findByText("Couldn't save your score.");
+    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
+
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Retry" }));
     });
+    await r.findByText("Saved as Riley · #3 on the leaderboard");
   });
 
   it("Change Difficulty returns to the picker", async () => {

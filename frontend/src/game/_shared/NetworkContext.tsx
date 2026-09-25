@@ -13,11 +13,7 @@ import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
-import { registerCascadeScoreHandler } from "../cascade/scoreSync";
-import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
 import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
-import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
-import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import { registerHeartsScoreHandler } from "../hearts/scoreSync";
 import { registerSortScoreHandler } from "../sort/scoreSync";
 import { registerStarSwarmScoreHandler } from "../starswarm/scoreSync";
@@ -36,12 +32,10 @@ const NetworkContext = createContext<NetworkStatus>({
   isInitialized: false,
 });
 
-// Register per-game handlers exactly once, module-load time.
-registerCascadeScoreHandler();
-registerSudokuScoreHandler();
+// Register per-game handlers exactly once, module-load time. Solitaire, Sudoku,
+// FreeCell and Cascade have none since #2632: their result cards only read
+// the rank of the synced game (`sessionBoardAdapter`).
 registerMahjongScoreHandler();
-registerSolitaireScoreHandler();
-registerFreeCellScoreHandler();
 registerHeartsScoreHandler();
 registerSortScoreHandler();
 registerStarSwarmScoreHandler();

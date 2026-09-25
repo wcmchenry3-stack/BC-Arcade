@@ -33,8 +33,8 @@ import {
   saveStats,
   type FreeCellStats,
 } from "../game/freecell/storage";
-import { freecellLeaderboard } from "../game/freecell/leaderboard";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useSound } from "../game/_shared/useSound";
@@ -45,6 +45,9 @@ const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
+
+/** The result card reads the synced game's rank on the session board (#2632). */
+const freecellBoard = sessionBoardAdapter("freecell");
 
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
@@ -76,15 +79,14 @@ export default function FreeCellScreen() {
    * `clearGame()`. Its result was submitted and its celebration played back then.
    */
   const [resumedWin, setResumedWin] = useState(false);
-  const leaderboard = useLeaderboardSubmit(freecellLeaderboard);
+  const leaderboard = useLeaderboardSubmit(freecellBoard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
-  // XP, shows in Profile history and can be measured by the daily challenge. This
-  // is separate from the leaderboard submit (`freecellLeaderboard`, #2508),
-  // which posts the move count under the player's display name. No score is sent, on a win or an abandon: the leaderboard
-  // ranks every row with a non-null `final_score` (fewer moves first), so a scored
-  // session row would duplicate each win as "anon" and rank abandoned games.
+  // XP, shows in Profile history and can be measured by the daily challenge. Since
+  // #2632 that row is also the leaderboard entry: a win sends its move count as
+  // `finalScore` (the board ranks fewest moves first, once per player), and an
+  // abandon (the hook's own, or New Game) sends no score, so it never ranks.
   const {
     start: syncStart,
     resume: syncResume,
@@ -231,18 +233,29 @@ export default function FreeCellScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
+      // complete() closes the session: read its id first, for the rank lookup.
+      const gameId = syncGetGameId();
       syncComplete(
-        { outcome: "completed", result: { won: true, moves: state.moveCount } },
-        { outcome: "completed", won: true, moves: state.moveCount }
+        {
+          finalScore: state.moveCount,
+          outcome: "completed",
+          result: { won: true, moves: state.moveCount },
+        },
+        {
+          final_score: state.moveCount,
+          outcome: "completed",
+          won: true,
+          moves: state.moveCount,
+        }
       );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
         const finalMoves = state.moveCount;
         const curr = statsRef.current;
-        // Submit only a win that happened this session, so a resumed won
-        // game can't post the same result twice.
-        submitScore({ moves: finalMoves });
+        // Only a win that happened this session has a session to rank (a
+        // resumed won game's was completed back then).
+        if (gameId) void submitScore({ gameId });
         const isNewBest = curr.bestMoves === 0 || finalMoves < curr.bestMoves;
         setWinSummary({ best: isNewBest ? finalMoves : curr.bestMoves, isNewBest });
         const updated: FreeCellStats = {
@@ -256,7 +269,7 @@ export default function FreeCellScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  }, [state, syncComplete, syncGetGameId, submitScore]);
 
   const handleMove = useCallback(
     (move: Move) => {

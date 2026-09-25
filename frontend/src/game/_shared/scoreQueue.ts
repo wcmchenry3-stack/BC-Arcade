@@ -11,13 +11,12 @@
  * - **The display name is not in this queue.** It is one per player on the
  *   server (`PUT /players/me`, #2624, synced by `displayNameSync.ts`) and every
  *   board reads it from there, so there is no per-game name left to submit
- *   twice. The name-attach handlers still queued here (Cascade's
- *   `PATCH /cascade/score/{id}`, Sudoku's `PATCH /sudoku/score/{id}`) set a
- *   name on an existing game row: a replay rewrites the same value.
+ *   twice. Games on the session boards (Solitaire, Sudoku, FreeCell and
+ *   Cascade since #2632) queue nothing here: their result cards only read the
+ *   synced game's rank (`sessionBoardAdapter`).
  * - **Lost-response duplicates (#155) remain only for the legacy per-game
  *   `POST /<game>/score` handlers**, which insert a new leaderboard row on
- *   every call: Mahjong (`/mahjong/score`), Solitaire (`/solitaire/score`),
- *   FreeCell (`/freecell/score`), Hearts (`/hearts/score`), Sort
+ *   every call: Mahjong (`/mahjong/score`), Hearts (`/hearts/score`), Sort
  *   (`/sort/score`) and Star Swarm (`/starswarm/score`). A replay can add at
  *   most one duplicate row to that game's legacy board (never to the generic
  *   boards, which exclude those `*-anon` rows). Phase 2 of #2519 removes these

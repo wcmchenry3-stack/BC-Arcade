@@ -1,18 +1,20 @@
 /**
- * freecell-leaderboard.spec.ts — GH #2035, #2508
+ * freecell-leaderboard.spec.ts — GH #2035, #2508, #2632
  *
  * Result card + leaderboard: inject a game one card from winning (the King
- * of Spades alone in column 0), which auto-completes on load. Intercept
- * POST /freecell/score and verify the shared result card submits the move
- * count under the player's display name with no name entry (or asks for
- * one once when none is set). A resumed, already-won save shows the card
- * without submitting again.
+ * of Spades alone in column 0), which auto-completes on load. Verify the
+ * shared result card shows where the synced game ranks (GET /games/{id}/rank;
+ * the win's move count is its score) under the player's display name with no
+ * name entry (or asks for one once when none is set). Nothing goes to the
+ * legacy POST /freecell/score (#2632). A resumed, already-won save shows the
+ * card without looking its rank up again.
  *
  * All backend calls are intercepted — no running backend needed.
  */
 
 import { test, expect, type Page } from "@playwright/test";
 import { injectFreecellState } from "./helpers/freecell";
+import { routeSessionBoard } from "./helpers/sessionBoard";
 
 const allRanks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const pile = (suit: string, ranks: number[]) =>
@@ -46,30 +48,9 @@ const NEAR_WIN_STATE = {
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
-/** Intercepts the FreeCell API; returns the POST bodies the app sends. */
-async function routeFreecellApi(
-  page: Page,
-): Promise<Record<string, unknown>[]> {
-  const posts: Record<string, unknown>[] = [];
-  await page.route("**/freecell/**", async (route) => {
-    if (route.request().method() === "POST") {
-      const body = JSON.parse(route.request().postData() ?? "{}");
-      posts.push(body);
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...body, rank: 1 }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    }
-  });
-  return posts;
-}
+/** Mocks the rank lookup and records any legacy FreeCell call. */
+const routeFreecellApi = (page: Page) =>
+  routeSessionBoard(page, { legacyPattern: "**/freecell/**" });
 
 /** Opens a saved game, optionally under a display name. */
 async function openGame(
@@ -100,10 +81,8 @@ async function winGame(page: Page, displayName?: string): Promise<void> {
 }
 
 test.describe("FreeCell — result card + leaderboard", () => {
-  test("submits the move count under the saved display name", async ({
-    page,
-  }) => {
-    const posts = await routeFreecellApi(page);
+  test("shows the rank under the saved display name", async ({ page }) => {
+    const calls = await routeFreecellApi(page);
     await winGame(page, "Tester");
 
     const card = page.getByTestId("freecell-result");
@@ -112,24 +91,25 @@ test.describe("FreeCell — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_id: "Tester", move_count: 52 }]);
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
     await expect(
       card.getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("asks for a display name once when none is set, then submits", async ({
+  test("asks for a display name once when none is set, then shows the rank", async ({
     page,
   }) => {
-    const posts = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page);
     await winGame(page);
 
     const nameInput = page.getByLabel("Pick a display name for leaderboards");
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     const save = page.getByRole("button", { name: "Save" });
     await expect(save).toBeDisabled();
-    expect(posts).toEqual([]);
+    expect(calls.rankLookups).toEqual([]);
 
     await nameInput.fill("Tester");
     await save.click();
@@ -137,7 +117,8 @@ test.describe("FreeCell — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(posts).toEqual([{ player_id: "Tester", move_count: 52 }]);
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
   });
 
   test("Play Again dismisses the card and starts a fresh game", async ({
@@ -157,16 +138,17 @@ test.describe("FreeCell — result card + leaderboard", () => {
     await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
   });
 
-  test("a resumed, already-won game shows the card without resubmitting", async ({
+  test("a resumed, already-won game shows the card without a rank lookup", async ({
     page,
   }) => {
-    const posts = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page);
     await openGame(page, WON_STATE, "Tester");
 
     await expect(page.getByTestId("freecell-result")).toBeVisible({
       timeout: 5_000,
     });
     await page.waitForTimeout(1_000);
-    expect(posts).toEqual([]);
+    expect(calls.rankLookups).toEqual([]);
+    expect(calls.legacyCalls).toEqual([]);
   });
 });

@@ -62,8 +62,8 @@ import ThemeSelector from "../components/cascade/ThemeSelector";
 import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
-import { cascadeLeaderboard } from "../game/cascade/leaderboard";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
@@ -96,6 +96,9 @@ import { useSoundSettings } from "../game/_shared/SoundContext";
 import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 
 const SAVE_THROTTLE_MS = 2000;
+
+/** The result card reads the synced game's rank on the session board (#2632). */
+const cascadeBoard = sessionBoardAdapter("cascade");
 
 // ---------------------------------------------------------------------------
 // Merge burst animation (react-native-reanimated)
@@ -305,7 +308,7 @@ function CascadeGame() {
     /** False when the game had no sync id, so nothing could be submitted. */
     submittable: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(cascadeLeaderboard);
+  const leaderboard = useLeaderboardSubmit(cascadeBoard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -566,9 +569,9 @@ function CascadeGame() {
   );
 
   /**
-   * Captures what the result card shows and sends the leaderboard entry.
-   * The card itself announces the result, so there is no separate
-   * screen-reader announcement here.
+   * Captures what the result card shows and looks up where the synced game
+   * ranks (#2632). The card itself announces the result, so there is no
+   * separate screen-reader announcement here.
    */
   const showResult = useCallback(
     (gameId: string | null) => {
@@ -586,7 +589,7 @@ function CascadeGame() {
         merges: mergeCountRef.current,
         submittable: gameId !== null,
       });
-      if (gameId) submitScore({ gameId }).catch(() => {});
+      if (gameId) void submitScore({ gameId });
     },
     [submitScore]
   );

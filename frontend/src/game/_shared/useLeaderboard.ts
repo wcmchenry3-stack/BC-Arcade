@@ -7,8 +7,8 @@
  * Usage
  * -----
  *   const { data, loading, error, refetch } = useLeaderboard(
- *     () => sudokuApi.getLeaderboard("easy"),
- *     "leaderboard_sudoku_easy"
+ *     () => sortApi.getLeaderboard(),
+ *     "leaderboard_sort"
  *   );
  */
 

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "./fixtures";
 import { injectSudokuState } from "./helpers/sudoku";
+import { routeSessionBoard } from "./helpers/sessionBoard";
 
 const SOL =
   "123456789456789123789123456231564897564897231897231564312645978645978312978312645";
@@ -46,32 +47,12 @@ const NEAR_WIN_STATE = {
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
-/** Intercepts the Sudoku API; returns the PATCH bodies the app sends. */
-async function routeSudokuApi(page: Page): Promise<Record<string, unknown>[]> {
-  const patches: Record<string, unknown>[] = [];
-  await page.route("**/sudoku/**", async (route) => {
-    if (route.request().method() === "PATCH") {
-      const body = JSON.parse(route.request().postData() ?? "{}");
-      patches.push(body);
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          player_name: body.player_name,
-          score: 100,
-          rank: 1,
-        }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    }
-  });
-  return patches;
-}
+/**
+ * Mocks the rank lookup (#2632: the card reads GET /games/{id}/rank instead
+ * of PATCH /sudoku/score/{id}) and records any legacy Sudoku call.
+ */
+const routeSudokuApi = (page: Page) =>
+  routeSessionBoard(page, { legacyPattern: "**/sudoku/**" });
 
 /** Opens the near-won puzzle and enters the final digit. */
 async function solveNearWinPuzzle(
@@ -103,16 +84,17 @@ async function solveNearWinPuzzle(
 }
 
 test.describe("Sudoku — result card + leaderboard", () => {
-  test("submits under the saved display name with no name entry", async ({
+  test("shows the rank under the saved display name with no name entry", async ({
     page,
   }) => {
-    const patches = await routeSudokuApi(page);
+    const calls = await routeSudokuApi(page);
     await solveNearWinPuzzle(page, "Tester");
 
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(patches).toEqual([{ player_name: "Tester" }]);
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
     const card = page.getByTestId("sudoku-result");
     await expect(
       card.getByRole("button", { name: "Play Again" }),
@@ -123,17 +105,17 @@ test.describe("Sudoku — result card + leaderboard", () => {
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("asks for a display name once when none is set, then submits", async ({
+  test("asks for a display name once when none is set, then shows the rank", async ({
     page,
   }) => {
-    const patches = await routeSudokuApi(page);
+    const calls = await routeSudokuApi(page);
     await solveNearWinPuzzle(page);
 
     const nameInput = page.getByLabel("Pick a display name for leaderboards");
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     const save = page.getByRole("button", { name: "Save" });
     await expect(save).toBeDisabled();
-    expect(patches).toEqual([]);
+    expect(calls.rankLookups).toEqual([]);
 
     await nameInput.fill("Tester");
     await save.click();
@@ -141,6 +123,7 @@ test.describe("Sudoku — result card + leaderboard", () => {
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),
     ).toBeVisible({ timeout: 15_000 });
-    expect(patches).toEqual([{ player_name: "Tester" }]);
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
   });
 });

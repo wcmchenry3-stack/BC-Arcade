@@ -13,7 +13,6 @@ import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
 import { CascadeScoreboardProvider } from "../../game/cascade/CascadeScoreboardContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { cascadeApi } from "../../game/cascade/api";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 jest.mock("expo-blur", () => ({
@@ -29,8 +28,13 @@ jest.mock("@react-navigation/native", () => ({
   }),
 }));
 
-jest.mock("../../game/cascade/api", () => ({
-  cascadeApi: { submitPlayerName: jest.fn(), getLeaderboard: jest.fn() },
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -573,16 +577,12 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
 // ---------------------------------------------------------------------------
 
 describe("CascadeScreen — result card (#2515)", () => {
-  const submitPlayerName = cascadeApi.submitPlayerName as jest.Mock;
-
   beforeEach(async () => {
     await AsyncStorage.clear();
     resetDisplayNameCacheForTests();
     mockPopToTop.mockClear();
-    submitPlayerName.mockReset();
-    submitPlayerName.mockImplementation((_id: string, name: string) =>
-      Promise.resolve({ player_name: name, score: 1234, rank: 2 })
-    );
+    mockGetGameRank.mockReset();
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 2, is_best: true, reason: null });
   });
 
   /** Let AsyncStorage reads/writes and the submit chain settle under fake timers. */
@@ -641,10 +641,11 @@ describe("CascadeScreen — result card (#2515)", () => {
     await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("5000");
   });
 
-  it("submits under the display name automatically", async () => {
+  // #2632: the card reads the synced game's rank instead of PATCH /cascade/score/{id}.
+  it("shows the synced game's rank under the display name automatically", async () => {
     await saveDisplayName("Riley");
     const renderer = await playToGameOver(1234);
-    expect(submitPlayerName).toHaveBeenCalledWith("game-uuid-test", "Riley");
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
     expect(findCard(renderer)?.props.submission).toEqual(
       expect.objectContaining({ status: "saved", rank: 2, playerName: "Riley" })
     );
@@ -652,7 +653,7 @@ describe("CascadeScreen — result card (#2515)", () => {
 
   it("asks for a name when none is set", async () => {
     const renderer = await playToGameOver(1234);
-    expect(submitPlayerName).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
     expect(findCard(renderer)?.props.submission.status).toBe("needsName");
   });
 
@@ -679,7 +680,7 @@ describe("CascadeScreen — result card (#2515)", () => {
   it("a fruit-set switch after game over lets the next game submit again", async () => {
     await saveDisplayName("Riley");
     await playToGameOver(1234);
-    expect(submitPlayerName).toHaveBeenCalledTimes(1);
+    expect(mockGetGameRank).toHaveBeenCalledTimes(1);
 
     await act(() => {
       mockSetFruitSetById?.("cosmos");
@@ -692,14 +693,14 @@ describe("CascadeScreen — result card (#2515)", () => {
     await injectGameOver();
     await settle();
 
-    expect(submitPlayerName).toHaveBeenCalledTimes(2);
+    expect(mockGetGameRank).toHaveBeenCalledTimes(2);
   });
 
   it("shows a save error, with no retry, when the game has no sync id", async () => {
     await saveDisplayName("Riley");
     mockStartGame.mockReturnValue(null as unknown as string);
     const renderer = await playToGameOver(1234);
-    expect(submitPlayerName).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
     const submission = findCard(renderer)?.props.submission;
     expect(submission.status).toBe("error");
     expect(submission.onRetry).toBeUndefined();

@@ -8,10 +8,10 @@
  *   2. Persistence — AsyncStorage save/resume on every mutation so a
  *      backgrounded or force-killed app resumes at the exact board.
  *   3. Instrumentation + result — `useGameSync` session (started on the
- *      first real move, completed on win, abandoned on unmount for anything
- *      else), and the shared GameResultModal (#2509) on win, which submits
- *      the score under the player's display name (useLeaderboardSubmit),
- *      queued when offline.
+ *      first real move with the deal's `draw_mode` in its metadata, completed
+ *      on win, abandoned by the hook on unmount for anything else, #2632), and
+ *      the shared GameResultModal (#2509) on win, which shows where the synced
+ *      game ranks on the session board (`sessionBoardAdapter`, #2677).
  *
  * Route wiring into HomeStack and the lobby card live in #599; this file
  * is intentionally route-agnostic and reads its navigation via the hook.
@@ -72,10 +72,10 @@ import {
   type SolitaireStats,
 } from "../game/solitaire/storage";
 import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
-import { solitaireLeaderboard } from "../game/solitaire/leaderboard";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
@@ -84,6 +84,9 @@ const COL_GAP = 6;
 const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
+
+/** The result card reads the synced game's rank on the session board (#2632). */
+const solitaireBoard = sessionBoardAdapter("solitaire");
 
 /** The game's play timer so far: time banked plus the running segment. */
 function activeMs(state: SolitaireState, now: number = Date.now()): number {
@@ -140,7 +143,7 @@ export default function SolitaireScreen() {
    * `clearGame()`. Its score was submitted and its cascade played back then.
    */
   const [resumedWin, setResumedWin] = useState(false);
-  const leaderboard = useLeaderboardSubmit(solitaireLeaderboard);
+  const leaderboard = useLeaderboardSubmit(solitaireBoard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
@@ -162,8 +165,9 @@ export default function SolitaireScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("solitaire");
 
-  // #2450 / #2619 — the abandon result block (backend SolitaireResult). Both the
-  // hook's own abandon (unmount) and the beforeRemove abandon build it here.
+  // #2450 / #2619 — the abandon result block (backend SolitaireResult), sent by
+  // the hook's own abandon (unmount). Back-navigation needs nothing more: the
+  // screen unmounts, and that abandon carries no score (#2632).
   const progressResult = useCallback(() => ({ won: false, moves: movesRef.current }), []);
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult() }));
@@ -256,8 +260,8 @@ export default function SolitaireScreen() {
     saveGame(state).catch(() => {});
   }, [state]);
 
-  // #597 — mirror moves into a ref so the navigation listener can read the
-  // latest value without re-subscribing every tick.
+  // #597 — mirror moves into a ref so the abandon snapshot (which runs on
+  // unmount) and the completion effect read the latest value.
   useEffect(() => {
     movesRef.current = moves;
   }, [moves]);
@@ -276,6 +280,8 @@ export default function SolitaireScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
+      // complete() closes the session: read its id first, for the rank lookup.
+      const gameId = syncGetGameId();
       syncComplete(
         {
           finalScore: state.score,
@@ -290,9 +296,9 @@ export default function SolitaireScreen() {
       const finalMoves = movesRef.current;
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
-        // Submit only a win that happened this session, so a resumed won
-        // game can't post the same score twice.
-        submitScore({ score: state.score });
+        // Only a win that happened this session has a session to rank (a
+        // resumed won game's was completed back then).
+        if (gameId) void submitScore({ gameId });
         const isNewBest =
           statsRef.current.bestTimeMs === 0 || finalMs < statsRef.current.bestTimeMs;
         setWinSummary({
@@ -324,32 +330,7 @@ export default function SolitaireScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
-
-  // #597 — abandon on back-navigation when a move has been made and the
-  // game isn't already complete. `useGameSync`'s unmount handler provides a
-  // second line of defense; calling complete here first is idempotent
-  // (it flips `completedRef` so the unmount handler becomes a no-op).
-  useEffect(() => {
-    const unsub = navigation.addListener("beforeRemove", () => {
-      const s = stateRef.current;
-      if (!syncGetGameId()) return;
-      if (s !== null && s.isComplete) return;
-      if (movesRef.current < 1) return;
-      const result = progressResult();
-      syncComplete(
-        {
-          outcome: "abandoned",
-          finalScore: s?.score ?? 0,
-          // The game's own play timer (#2619), not wall-clock time.
-          durationMs: s ? activeMs(s) : null,
-          result,
-        },
-        { outcome: "abandoned", ...result }
-      );
-    });
-    return unsub;
-  }, [navigation, syncComplete, syncGetGameId, progressResult]);
+  }, [state, syncComplete, syncGetGameId, submitScore]);
 
   useEffect(() => {
     if (!state?.events) return;
@@ -369,7 +350,8 @@ export default function SolitaireScreen() {
   const ensureSyncStarted = useCallback(
     (s: SolitaireState) => {
       if (syncGetGameId()) return;
-      syncStart({ draw_mode: s.drawMode });
+      // The draw mode is the row's metadata too (#2632), not only event data.
+      syncStart({ draw_mode: s.drawMode }, { draw_mode: s.drawMode });
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
