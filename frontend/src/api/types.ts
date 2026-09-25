@@ -135,3 +135,20 @@ export interface GameRankResponse {
   readonly ranked: boolean;
   readonly reason: GameRankReason | null;
 }
+
+/** One player on a board: their best entry. Mirrors backend `LeaderboardEntryOut`. */
+export interface GameLeaderboardEntry {
+  readonly rank: number;
+  readonly player_name: string;
+  /** The board's metric (e.g. Sort's level reached), labelled by `label_key`. */
+  readonly value: number;
+  readonly completed_at: string;
+}
+
+/** `GET /games/leaderboard/{game_type}` (#2618). Mirrors backend `LeaderboardResponse`. */
+export interface GameLeaderboardResponse {
+  readonly game_type: string;
+  readonly partition: Readonly<Record<string, string>>;
+  readonly label_key: string;
+  readonly entries: readonly GameLeaderboardEntry[];
+}

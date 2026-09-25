@@ -63,6 +63,8 @@ describe("useGameSync restart() with the real client (#2619)", () => {
 
     const old = pendingGamesStore.get(oldId);
     expect(old?.completed).toBe(true);
-    expect(old?.completeSummary).toEqual({ outcome: "abandoned" });
+    // Real time runs here, so the active-play window (#2684) may add a durationMs.
+    expect(old?.completeSummary).toEqual(expect.objectContaining({ outcome: "abandoned" }));
+    expect(old?.completeSummary).not.toHaveProperty("finalScore");
   });
 });

@@ -63,9 +63,10 @@ Fire Zone and everything that hung off it.
   that swoop into empty grunt slots, capped per wave at half the wave's grunt slots
   (`reinforceCap`). They never touch `startingNonBossCount`, so the 35% / ≤3 latches are unaffected
   once crossed. Killing the Carrier early is the wave's objective.
-- **Lone-ship lasers.** Once nothing else is alive (in-flight reinforcements count as alive) it fires
-  a pair of aimed shots every 1.1 s (÷ the same cadence factor) so the player can't park off to one
-  side and plink it. These do count against `bulletCap()`.
+- **Twin lasers.** #2699: once it's unarmored (its last Boss escort has died — see armor above) it
+  fires a pair of aimed shots every 1.1 s (÷ the same cadence factor), whether or not grunts are
+  still alive, so the player can't plink an exposed Carrier for free. These do count against
+  `bulletCap()`.
 - Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
 ## In-Run Ship Upgrades (#2488)
