@@ -133,9 +133,9 @@ def test_long_number_arrays_fill_like_prettier() -> None:
 def test_vocab_ts_matches_generator_output() -> None:
     """The committed vocab.ts is byte-for-byte what the generator prints."""
     rendered = _load_generator().render() + "\n"
-    assert _VOCAB_TS.read_text(encoding="utf-8") == rendered, (
-        f"frontend/src/api/vocab.ts differs from the generator output. {_REGEN}"
-    )
+    assert (
+        _VOCAB_TS.read_text(encoding="utf-8") == rendered
+    ), f"frontend/src/api/vocab.ts differs from the generator output. {_REGEN}"
 
 
 def test_game_type_ts_in_sync() -> None:

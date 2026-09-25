@@ -90,9 +90,9 @@ _HAS_WINNER = {
 def test_has_winner_declared(name: str) -> None:
     """Every registered module declares ``has_winner`` as a bool (#2619)."""
     mod = _REGISTRY[name]
-    assert isinstance(type(mod).__dict__.get("has_winner"), bool), (
-        f"{name} module must declare has_winner: bool as a class attribute"
-    )
+    assert isinstance(
+        type(mod).__dict__.get("has_winner"), bool
+    ), f"{name} module must declare has_winner: bool as a class attribute"
     assert name in _HAS_WINNER, f"add {name} to _HAS_WINNER (see vocab.GameOutcome)"
     assert mod.has_winner is _HAS_WINNER[name]
 
