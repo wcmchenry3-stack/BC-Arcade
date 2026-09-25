@@ -21,12 +21,12 @@ class StarSwarmModule:
     game_type = GameType.STARSWARM
     metadata_model = StarSwarmMetadata
     result_model = StarSwarmResult
-    # One board per difficulty tier; no natural ceiling (#2519 decision 14).
+    # One board per difficulty tier (plan §4.2); no natural ceiling (#2519 decision 14).
     board = BoardDefinition(
         metric=SCORE_METRIC,
         direction="desc",
         label_key="score",
-        partitions=["difficulty_tier"],
+        partitions=("difficulty_tier",),
     )
     # A run ends when the ship is lost: there is no win.
     has_winner = False

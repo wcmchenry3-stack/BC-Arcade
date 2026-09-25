@@ -106,13 +106,16 @@ def test_board_is_one_global_score_board() -> None:
     board = twenty48_module.board
     assert board.metric == SCORE_METRIC
     assert board.direction == "desc"
-    assert board.partitions == []
+    assert board.tiebreak is None
+    assert board.partitions == ()
     assert board.max_value is None
+    assert board.qualifying_outcomes is None  # kept_playing counts like completed
     assert board.enabled is True
 
 
-def test_reaching_2048_is_a_win() -> None:
-    assert twenty48_module.has_winner is True
+def test_has_no_winner_until_the_app_records_win_or_loss() -> None:
+    # The app sends completed / kept_playing / abandoned today; #2631 flips this.
+    assert twenty48_module.has_winner is False
 
 
 def test_stats_shape_is_pass_through_without_latest_score() -> None:

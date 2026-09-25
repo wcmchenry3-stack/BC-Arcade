@@ -78,8 +78,10 @@ def test_board_is_partitioned_by_difficulty_tier() -> None:
     board = starswarm_module.board
     assert board.metric == SCORE_METRIC
     assert board.direction == "desc"
-    assert board.partitions == ["difficulty_tier"]
+    assert board.partitions == ("difficulty_tier",)
+    assert board.partition_defaults == ()
     assert board.max_value is None
+    assert board.qualifying_outcomes is None
     assert board.enabled is True
 
 

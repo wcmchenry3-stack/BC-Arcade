@@ -23,8 +23,10 @@ class Twenty48Module:
     result_model = Twenty48Result
     # One global board by score (#2519 decision 1); no natural ceiling (decision 14).
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
-    # Reaching 2048 is a win; a game over before it is a loss (#2631).
-    has_winner = True
+    # True only once the client records win/loss. Today the app sends
+    # ``completed`` / ``kept_playing`` / ``abandoned``; #2631 flips this when
+    # reaching 2048 records ``win`` and a game over before it records ``loss``.
+    has_winner = False
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {k: v for k, v in raw_stats.items() if k != "latest_score"}

@@ -37,7 +37,7 @@ Gameplay is fully client-side; sessions reach the server through the shared `Syn
 - Module: `backend/twenty48/module.py`, registered in `backend/games/registry.py` (#2623)
 - Metadata model: `Twenty48Metadata` in `backend/twenty48/models.py` — empty (extra keys forbidden); the opening board is event data
 - Result model: `Twenty48Result` — `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`, all optional; unknown keys are ignored. The daily challenge reads `final_score` and `highest_tile` from it
-- Board: `final_score` desc, one global board, no cap. `has_winner = True` (reaching 2048 is a win)
+- Board: `final_score` desc, one global board, no cap. `has_winner = False` until the app records `win`/`loss` (#2631); a `kept_playing` completion counts like `completed`
 - Stats: default pass-through `stats_shape`
 
 ## Entitlement
