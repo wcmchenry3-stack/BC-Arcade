@@ -64,7 +64,34 @@ queue.** The pipeline is:
 - `SyncWorker` — batched event flush with exponential backoff (1s → 30min).
 - `ScoreQueue` — outcome submissions, retried up to 5 attempts.
 - `PendingGamesStore` — pending games persisted across app restarts.
-- All three are AsyncStorage-backed and survive app kill.
+- `displayNameSync` — one pending display-name sync (see below).
+- All four are AsyncStorage-backed and survive app kill.
+
+**Identity and display name (#2624, #2519 decisions 17–18).** A player is
+their player id: the app's `game_session_id`, sent as `X-Session-ID` (one per
+install; a reinstall or a new device is a new player until accounts, #1047).
+Their display name is a property of the player, not of a game: the server
+keeps one per player (`players` table, `PUT/GET/DELETE /players/me`), it can
+change at any time, and no history is kept. Every leaderboard ranks only
+players who have one, counts all of their finished games, and shows the
+current name, so a rename applies to all of their history at once. A player
+with no name is on no board.
+
+The app sends the name when it is saved (`saveDisplayName` →
+`PUT /players/me`). Offline or on failure it keeps **one** pending sync
+holding the latest name — five offline saves send one PUT — and flushes it on
+reconnect and foreground alongside the queues above; on launch, a stored name
+the server was never sent is synced once. See
+`frontend/src/game/_shared/displayNameSync.ts`.
+
+**Safe replays.** Retries are the normal case, so every write is safe to
+repeat: `POST /games` dedupes on the client game id, a completed game can't be
+completed again (a replayed `PATCH /games/{id}/complete` returns the row
+unchanged), events dedupe on `(game_id, event_index)`, and `PUT /players/me`
+with the current name writes nothing. With the name on the player there is no
+per-game name left to duplicate. The only remaining lost-response duplicates
+are the legacy per-game `POST /<game>/score` handlers still in `ScoreQueue`
+(listed in its header), which Phase 2 of #2519 removes.
 
 What we log:
 
@@ -77,7 +104,8 @@ What we log:
 module may declare a `result_model` (a Pydantic model, separate from the
 creation-time `metadata_model`, which forbids extra keys); the validated result
 is merged into `games.metadata` — creation-time keys always win on a collision,
-because leaderboards read `player_name` / `raw_score` from there — and an
+because leaderboards read partition keys such as `difficulty` (and the legacy
+per-game boards `player_name` / `raw_score`) from there — and an
 invalid or oversized (> 8 KB) result returns 400 without completing the game
 and is reported to Sentry (game type, failing field paths, error types — no
 session id or values), because the app's sync worker dead-letters a 400. Modules with
