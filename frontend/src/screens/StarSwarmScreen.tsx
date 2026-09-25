@@ -34,7 +34,6 @@ import {
 } from "../game/starswarm/engine";
 import type { TierDodgeRow } from "../game/starswarm/engine";
 import type {
-  GamePhase,
   PowerUpType,
   DifficultyTier,
   CarrierEvent,
@@ -155,7 +154,7 @@ export default function StarSwarmScreen() {
     markStarted: syncMarkStarted,
     complete: syncComplete,
   } = useGameSync("starswarm");
-  const [phase, setPhase] = useState<GamePhase>("SwoopIn");
+  const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
@@ -235,7 +234,7 @@ export default function StarSwarmScreen() {
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
-  } = useStarSwarmAudio(phase !== "GameOver", devVolumes, resetTick);
+  } = useStarSwarmAudio(!isGameOver, devVolumes, resetTick, isPaused);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
@@ -260,7 +259,7 @@ export default function StarSwarmScreen() {
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
-      setPhase("GameOver");
+      setIsGameOver(true);
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
@@ -348,7 +347,6 @@ export default function StarSwarmScreen() {
   }, [playPlayerHit]);
 
   const handleWaveClear = useCallback(() => {
-    setPhase("WaveClear");
     playWaveClear();
     hapticWaveClear();
   }, [playWaveClear]);
@@ -445,7 +443,7 @@ export default function StarSwarmScreen() {
       if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
       beginRun(opts?.difficulty ?? difficulty);
       scoreRef.current = 0;
-      setPhase("SwoopIn");
+      setIsGameOver(false);
       setIsPaused(false);
       setResetTick((t) => t + 1);
     },
@@ -470,7 +468,7 @@ export default function StarSwarmScreen() {
     setShowDifficultyPicker(false);
     beginRun(difficulty);
     scoreRef.current = 0;
-    setPhase("SwoopIn");
+    setIsGameOver(false);
     setIsPaused(false);
     setResetTick((t) => t + 1);
   }, [difficulty, beginRun]);
@@ -483,14 +481,25 @@ export default function StarSwarmScreen() {
     setIsPaused(false);
   }, []);
 
+  /** A run is on screen and not over — the only time pausing means anything. */
+  const isLiveRun = !showDifficultyPicker && !isGameOver;
+  const isLiveRunRef = useRef(isLiveRun);
+  isLiveRunRef.current = isLiveRun;
+
+  // Leaving the app mid-run pauses it, so the player returns to the pause overlay. Subscribed
+  // once; it reads the live run from a ref, and game over from the engine itself — the canvas
+  // stores the game-over state before React renders it, so a run that has just ended is never
+  // paused.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if ((next === "background" || next === "inactive") && phase === "Playing") {
-        handlePause();
-      }
+      if (next !== "background" && next !== "inactive") return;
+      if (!isLiveRunRef.current) return;
+      const state = canvasRef.current?.getState();
+      if (!state || state.phase === "GameOver") return;
+      handlePause();
     });
     return () => sub.remove();
-  }, [phase, handlePause]);
+  }, [handlePause]);
 
   const dynamicStyles = getStyles(colors);
 
@@ -500,7 +509,7 @@ export default function StarSwarmScreen() {
   const displayW = Math.round(CANVAS_W * scale);
   const displayH = Math.round(CANVAS_H * scale);
 
-  const showPauseBtn = !showDifficultyPicker && phase !== "GameOver" && scale > 0;
+  const showPauseBtn = isLiveRun && scale > 0;
 
   return (
     <GameShell
@@ -509,7 +518,9 @@ export default function StarSwarmScreen() {
       onBack={() => {
         if (isPaused) {
           const state = canvasRef.current?.getState();
-          if (state) savePausedState({ gameState: state, difficulty });
+          // A finished run is never saved as a paused one.
+          if (state && state.phase !== "GameOver")
+            savePausedState({ gameState: state, difficulty });
         }
         navigation.popToTop();
       }}
@@ -589,7 +600,7 @@ export default function StarSwarmScreen() {
             <Controls
               canvasRef={canvasRef}
               scale={scale}
-              phase={phase}
+              isLiveRun={isLiveRun}
               isPaused={isPaused}
               onPause={handlePause}
               onResume={handleResume}
