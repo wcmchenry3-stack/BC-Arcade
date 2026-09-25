@@ -197,21 +197,25 @@ describe("GameScreen VS mode — AppState interruption + replay", () => {
     appStateListeners.forEach((h) => h(state));
   }
 
-  it("registers exactly one AppState listener on mount (single combined listener)", async () => {
+  // The screen's own combined listener, plus useGameSync's one for its
+  // active-play clock (#2684).
+  const LISTENERS_ON_MOUNT = 2;
+
+  it("registers one screen AppState listener on mount (single combined listener)", async () => {
     await renderVsGame();
-    expect(appStateListeners).toHaveLength(1);
+    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
   });
 
   it("no additional AppState listener is registered when an AI turn starts", async () => {
     const { getByRole } = await renderVsGame();
-    expect(appStateListeners).toHaveLength(1);
+    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
 
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
 
-    // Still exactly one listener — no per-turn subscription added.
-    expect(appStateListeners).toHaveLength(1);
+    // Still the same listeners — no per-turn subscription added.
+    expect(appStateListeners).toHaveLength(LISTENERS_ON_MOUNT);
   });
 
   it("backgrounding mid-AI-turn stops the animation loop (no further rolls)", async () => {

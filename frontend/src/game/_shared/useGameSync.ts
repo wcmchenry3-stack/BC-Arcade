@@ -58,9 +58,23 @@
  * one real game stays one row. If the player starts a fresh game of the type
  * instead, or never reopens it within 24 h, gameEventClient abandons it; an
  * unstarted one is discarded at startup.
+ *
+ * Active-play clock (#2684): the hook times each session's foreground play, so
+ * a game that does not measure its own active time still reports a duration.
+ * The clock starts at `markStarted()` (or `resume()`), pauses while the app is
+ * `background` or `inactive`, and starts again from zero for every new
+ * session (`start()` / `restart()` / `resume()`). `complete()` sends the
+ * game's own `summary.durationMs` when it is > 0, otherwise the clock's
+ * reading. The hook's own abandons (unmount, and `start()` / `restart()` over
+ * a started session) send the snapshot's `durationMs` when > 0, otherwise the
+ * old session's clock. A never-started session reads 0 and sends no duration.
+ * A session resumed after a killed process counts from the `resume()`: time
+ * before the kill is lost (an undercount, never an overcount). It is never
+ * wall-clock start-to-end time (#2619, `resolveDurationMs`).
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
@@ -76,6 +90,21 @@ import type { BugLevel } from "./eventQueueConfig";
 export interface ProgressSnapshot {
   /** Per-game result block — must satisfy the backend `result_model`, if any. */
   result?: Record<string, unknown>;
+  /**
+   * The game's own active play time, if it measures one. A value > 0 wins
+   * over the hook's active-play clock (#2684); anything else uses the clock.
+   */
+  durationMs?: number | null;
+}
+
+/** A duration SyncWorker would send: finite and > 0 once rounded (#2619). */
+function isKnownDuration(ms: number | null | undefined): ms is number {
+  return typeof ms === "number" && Number.isFinite(ms) && Math.round(ms) > 0;
+}
+
+/** Only `background` and `inactive` pause the clock; anything else is foreground. */
+function isForeground(state: unknown): boolean {
+  return state !== "background" && state !== "inactive";
 }
 
 export interface UseGameSyncReturn {
@@ -112,6 +141,9 @@ export interface UseGameSyncReturn {
    * `summary.result` is the PATCH `result` block and must be passed
    * explicitly (#2619). `payload` is only the analytics `game_ended` event
    * data — it is never copied into the result.
+   *
+   * `summary.durationMs` > 0 (the game's own active time) is sent as given;
+   * otherwise the hook's active-play clock is sent in its place (#2684).
    */
   complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
   /**
@@ -153,23 +185,89 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     gameTypeRef.current = gameType;
   }, [gameType]);
 
-  // Abandon the open session, attaching the game's progress snapshot if it
-  // registered one. A throwing getter degrades to a bare abandon.
-  const abandon = useCallback((gid: string) => {
-    let snapshot: ProgressSnapshot = {};
+  // Active-play clock (#2684): time banked from finished foreground segments,
+  // plus the running segment's start (null while paused or not running).
+  const clockBankedRef = useRef(0);
+  const clockSegmentStartRef = useRef<number | null>(null);
+  const clockRunningRef = useRef(false);
+  const foregroundRef = useRef<boolean | null>(null);
+  if (foregroundRef.current === null) {
+    let state: unknown = null;
     try {
-      snapshot = snapshotRef.current() ?? {};
+      state = AppState.currentState;
     } catch {
-      // Isolation: a broken getter must not lose the abandon.
+      // Isolation: assume foreground.
     }
-    const summary: CompleteSummary = { outcome: "abandoned" };
-    if (snapshot.result) summary.result = snapshot.result;
-    try {
-      gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
-    } catch {
-      // Isolation.
-    }
+    foregroundRef.current = isForeground(state);
+  }
+
+  const readClock = useCallback((): number => {
+    const segmentStart = clockSegmentStartRef.current;
+    const running = segmentStart !== null ? Math.max(0, Date.now() - segmentStart) : 0;
+    return clockBankedRef.current + running;
   }, []);
+
+  const resetClock = useCallback(() => {
+    clockBankedRef.current = 0;
+    clockSegmentStartRef.current = null;
+    clockRunningRef.current = false;
+  }, []);
+
+  const startClock = useCallback(() => {
+    if (clockRunningRef.current) return;
+    clockRunningRef.current = true;
+    if (foregroundRef.current) clockSegmentStartRef.current = Date.now();
+  }, []);
+
+  // One subscription for the hook's lifetime: bank the running segment when
+  // the app leaves the foreground, open a new one when it comes back.
+  useEffect(() => {
+    let sub: { remove?: () => void } | undefined;
+    try {
+      sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+        if (isForeground(next)) {
+          foregroundRef.current = true;
+          if (clockRunningRef.current && clockSegmentStartRef.current === null) {
+            clockSegmentStartRef.current = Date.now();
+          }
+          return;
+        }
+        foregroundRef.current = false;
+        const segmentStart = clockSegmentStartRef.current;
+        if (segmentStart !== null) {
+          clockBankedRef.current += Math.max(0, Date.now() - segmentStart);
+          clockSegmentStartRef.current = null;
+        }
+      });
+    } catch {
+      // Isolation: without the subscription the clock never pauses.
+    }
+    return () => sub?.remove?.();
+  }, []);
+
+  // Abandon the open session, attaching the game's progress snapshot if it
+  // registered one. A throwing getter degrades to a bare abandon. The
+  // duration is the snapshot's own when > 0, otherwise the active-play clock.
+  const abandon = useCallback(
+    (gid: string) => {
+      let snapshot: ProgressSnapshot = {};
+      try {
+        snapshot = snapshotRef.current() ?? {};
+      } catch {
+        // Isolation: a broken getter must not lose the abandon.
+      }
+      const summary: CompleteSummary = { outcome: "abandoned" };
+      if (snapshot.result) summary.result = snapshot.result;
+      const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readClock();
+      if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
+      try {
+        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
+      } catch {
+        // Isolation.
+      }
+    },
+    [readClock]
+  );
 
   // Close the open session, if any: abandoned when the player started it,
   // otherwise discarded — an untouched session is never left pending (#2619,
@@ -194,7 +292,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {
+      // The old session's abandon reads its clock; only then is it reset.
       closeOpen();
+      resetClock();
       gameIdRef.current = gameEventClient.startGame(
         gameTypeRef.current,
         metadata ?? {},
@@ -203,7 +303,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = false;
       startedRef.current = false;
     },
-    [closeOpen]
+    [closeOpen, resetClock]
   );
 
   const resume = useCallback(
@@ -219,14 +319,18 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       gameIdRef.current = gid;
       completedRef.current = false;
       startedRef.current = true;
+      // Play before the kill is unknown: count from now (undercount, never over).
+      resetClock();
+      startClock();
       return true;
     },
-    [closeOpen]
+    [closeOpen, resetClock, startClock]
   );
 
   const markStarted = useCallback(() => {
     if (startedRef.current) return;
     startedRef.current = true;
+    startClock();
     const gid = gameIdRef.current;
     if (!gid) return;
     try {
@@ -234,7 +338,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     } catch {
       // Isolation.
     }
-  }, []);
+  }, [startClock]);
 
   const enqueue = useCallback((event: EnqueueEventInput) => {
     const gid = gameIdRef.current;
@@ -246,19 +350,30 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     }
   }, []);
 
-  const complete = useCallback((summary: CompleteSummary, payload?: Record<string, unknown>) => {
-    const gid = gameIdRef.current;
-    if (!gid || completedRef.current) return;
-    try {
-      // The result block is summary.result only (#2619) — the event payload is
-      // no longer copied into it.
-      gameEventClient.completeGame(gid, summary, payload ?? {});
-    } catch {
-      // Isolation.
-    }
-    completedRef.current = true;
-    gameIdRef.current = null;
-  }, []);
+  const complete = useCallback(
+    (summary: CompleteSummary, payload?: Record<string, unknown>) => {
+      const gid = gameIdRef.current;
+      if (!gid || completedRef.current) return;
+      // The game's own durationMs > 0 wins; otherwise the active-play clock
+      // (#2684), once it has counted anything.
+      let sent = summary;
+      if (!isKnownDuration(summary.durationMs)) {
+        const clockMs = readClock();
+        if (isKnownDuration(clockMs)) sent = { ...summary, durationMs: clockMs };
+      }
+      try {
+        // The result block is summary.result only (#2619) — the event payload is
+        // no longer copied into it.
+        gameEventClient.completeGame(gid, sent, payload ?? {});
+      } catch {
+        // Isolation.
+      }
+      completedRef.current = true;
+      gameIdRef.current = null;
+      resetClock();
+    },
+    [readClock, resetClock]
+  );
 
   // Same as start(): it closes the open session before opening the new one.
   // Kept as its own name for the New Game / theme-switch call sites.

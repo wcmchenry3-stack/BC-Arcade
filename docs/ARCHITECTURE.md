@@ -140,6 +140,13 @@ play, so a Daily Word left open all day would record 12 h. A negative value
 never reaches the server, where `duration_ms` is `ge=0` and would 400 the
 whole completion.
 
+A game with no timer of its own still reports one: `useGameSync` keeps an
+active-play clock per session (#2684). It starts at `markStarted()` (or
+`resume()`), pauses while the app is `background` or `inactive`, and restarts
+from zero with each new session. `complete()` and the hook's own abandons fill
+in `durationMs` from it unless the game (or its progress snapshot) passes a
+value > 0, which always wins. A resumed session counts only from the resume.
+
 **Deferred create and killed sessions (#2654).** `startGame()` records the
 session on the device only. `SyncWorker` sends `POST /games` and the session's
 events once `markStarted()` (or a completion) marks it started, so a session the

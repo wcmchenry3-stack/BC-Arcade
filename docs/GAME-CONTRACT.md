@@ -375,6 +375,24 @@ negative) as `null`, meaning "unknown". It never derives a duration from the
 session's wall-clock start and end times: those count idle and backgrounded
 time as play.
 
+**Active-play clock (#2684).** A game that measures no active time of its own
+needs no code for a duration: `useGameSync` times each session's foreground
+play and fills in `durationMs` for it.
+
+- The clock starts at the session's first `markStarted()`, or at `resume()` for
+  a session continued after a killed process — time before the kill is lost
+  (an undercount, never an overcount).
+- It pauses while `AppState` is `background` or `inactive` and continues when
+  the app is `active` again. Time before `markStarted()` is not counted.
+- `start()` / `restart()` / `resume()` begin the new session's clock at zero;
+  the session they replace is abandoned with its own clock value first.
+- `complete()` sends the game's own `summary.durationMs` when it is > 0,
+  otherwise the clock's reading. The hook's own abandons (unmount, `start()` /
+  `restart()` over a started session) send `ProgressSnapshot.durationMs` when it
+  is > 0, otherwise the clock's reading.
+- A session never marked started reads 0, so it sends no duration — the same
+  `resolveDurationMs` rule: 0 means "unknown".
+
 ### 2.4 ESLint import zones _(TBD)_
 
 Cross-game import paths (e.g. a Blackjack screen importing from `../cascade/`) will be forbidden via `no-restricted-imports` or an import-zone plugin rule. The exact configuration will be documented here when implemented.

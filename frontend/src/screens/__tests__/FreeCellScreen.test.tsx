@@ -260,6 +260,25 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     expect(summary).not.toHaveProperty("finalScore");
   });
 
+  // #2684 — FreeCell has no timer of its own: useGameSync's active-play clock
+  // supplies the duration, counted from the first move.
+  it("completes with the active play time since the first move", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11)); // two auto-steps to go
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS); // first move opens the session
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS); // second move wins
+    });
+
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary["outcome"]).toBe("completed");
+    expect(summary["durationMs"]).toBeGreaterThan(0);
+  });
+
   it("New Game after a move abandons the session with the moves so far, and no score", async () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
     const { getByLabelText, getByText } = await renderScreen();

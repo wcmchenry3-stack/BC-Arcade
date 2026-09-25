@@ -1,4 +1,5 @@
 import { renderHook, act } from "@testing-library/react-native";
+import { AppState } from "react-native";
 import { useGameSync } from "../useGameSync";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,11 +24,37 @@ jest.mock("../gameEventClient", () => ({
   },
 }));
 
+// The active-play clock (#2684) reads Date.now(); fake timers keep it still
+// unless a test advances it, so the tests below see exact summaries.
+let appStateListeners: ((state: string) => void)[] = [];
+
+async function fireAppState(state: string) {
+  await act(() => {
+    appStateListeners.forEach((h) => h(state));
+  });
+}
+
 describe("useGameSync", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers({ now: 1_700_000_000_000 });
     mockStartGame.mockReturnValue("test-game-id");
     mockResumeGame.mockReturnValue(null);
+    appStateListeners = [];
+    (AppState.addEventListener as jest.Mock).mockImplementation(
+      (_event: string, handler: (state: string) => void) => {
+        appStateListeners.push(handler);
+        return {
+          remove: jest.fn(() => {
+            appStateListeners = appStateListeners.filter((h) => h !== handler);
+          }),
+        };
+      }
+    );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   // ---------------------------------------------------------------------------
@@ -629,6 +656,234 @@ describe("useGameSync", () => {
       { outcome: "abandoned" },
       { outcome: "abandoned" }
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // active-play clock (#2684): games without their own duration still send one
+  // ---------------------------------------------------------------------------
+
+  describe("active-play clock", () => {
+    function sentSummary(call = 0) {
+      return mockCompleteGame.mock.calls[call]![1] as Record<string, unknown>;
+    }
+
+    it("complete() without a durationMs sends the time since markStarted()", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        jest.advanceTimersByTime(5_000); // before the first action: not play
+        result.current.markStarted();
+        jest.advanceTimersByTime(42_000);
+        result.current.complete({ outcome: "completed", finalScore: 200 });
+      });
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "test-game-id",
+        { outcome: "completed", finalScore: 200, durationMs: 42_000 },
+        {}
+      );
+    });
+
+    it.each(["background", "inactive"])("does not count time the app is %s", async (state) => {
+      const { result } = await renderHook(() => useGameSync("daily_word"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(10_000);
+      });
+      await fireAppState(state);
+      await act(() => {
+        jest.advanceTimersByTime(60 * 60 * 1000); // an hour away
+      });
+      await fireAppState("active");
+      await act(() => {
+        jest.advanceTimersByTime(3_000);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary().durationMs).toBe(13_000);
+    });
+
+    it("background then inactive then active pauses once and resumes once", async () => {
+      const { result } = await renderHook(() => useGameSync("freecell"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(1_000);
+      });
+      await fireAppState("inactive");
+      await act(() => jest.advanceTimersByTime(5_000));
+      await fireAppState("background");
+      await act(() => jest.advanceTimersByTime(5_000));
+      await fireAppState("active");
+      await act(() => jest.advanceTimersByTime(1_000));
+      await fireAppState("active"); // a repeat does not reset the segment
+      await act(() => {
+        jest.advanceTimersByTime(1_000);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary().durationMs).toBe(3_000);
+    });
+
+    it("the game's own durationMs > 0 wins over the clock", async () => {
+      const { result } = await renderHook(() => useGameSync("solitaire"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(90_000);
+        result.current.complete({ outcome: "completed", durationMs: 12_345 });
+      });
+      expect(sentSummary().durationMs).toBe(12_345);
+    });
+
+    it.each([0, null, -5, Number.NaN])(
+      "a game durationMs of %p falls back to the clock",
+      async (own) => {
+        const { result } = await renderHook(() => useGameSync("hearts"));
+        await act(() => {
+          result.current.start();
+          result.current.markStarted();
+          jest.advanceTimersByTime(7_000);
+          result.current.complete({ outcome: "completed", durationMs: own });
+        });
+        expect(sentSummary().durationMs).toBe(7_000);
+      }
+    );
+
+    it("unmount abandon sends the clock value", async () => {
+      const { result, unmount } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(20_000);
+      });
+      await unmount();
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "test-game-id",
+        { outcome: "abandoned", durationMs: 20_000 },
+        { outcome: "abandoned" }
+      );
+    });
+
+    it("a snapshot durationMs > 0 wins over the clock on the hook's abandon", async () => {
+      const { result, unmount } = await renderHook(() => useGameSync("solitaire"));
+      await act(() => {
+        result.current.setProgressSnapshot(() => ({ result: { moves: 3 }, durationMs: 4_000 }));
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(20_000);
+      });
+      await unmount();
+      expect(sentSummary()).toEqual({
+        outcome: "abandoned",
+        result: { moves: 3 },
+        durationMs: 4_000,
+      });
+    });
+
+    it("restart() abandons with the old session's clock, then the new session starts from zero", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("freecell"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(30_000);
+        result.current.restart();
+        jest.advanceTimersByTime(2_000); // before session-2's first action
+        result.current.markStarted();
+        jest.advanceTimersByTime(4_000);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockCompleteGame.mock.calls[0]![0]).toBe("session-1");
+      expect(sentSummary(0)).toEqual({ outcome: "abandoned", durationMs: 30_000 });
+      expect(mockCompleteGame.mock.calls[1]![0]).toBe("session-2");
+      expect(sentSummary(1).durationMs).toBe(4_000);
+    });
+
+    it("start() after complete() does not carry the finished session's time over", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("daily_word"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(8_000);
+        result.current.complete({ outcome: "completed" });
+        jest.advanceTimersByTime(8_000);
+        result.current.start();
+        result.current.complete({ outcome: "completed" }); // ends on its first action
+      });
+      expect(sentSummary(0).durationMs).toBe(8_000);
+      expect(sentSummary(1)).not.toHaveProperty("durationMs");
+    });
+
+    it("an unstarted session sends no duration", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        jest.advanceTimersByTime(60_000);
+        result.current.complete({ outcome: "completed", finalScore: 10 });
+      });
+      expect(sentSummary()).toEqual({ outcome: "completed", finalScore: 10 });
+    });
+
+    it("resume() counts from the resume, not from the killed session's start", async () => {
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result } = await renderHook(() => useGameSync("daily_word"));
+      await act(() => {
+        jest.advanceTimersByTime(60_000); // the screen loading its saved game
+        result.current.resume({ puzzle_id: "p1" });
+        jest.advanceTimersByTime(9_000);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "orphan-id",
+        { outcome: "completed", durationMs: 9_000 },
+        {}
+      );
+    });
+
+    it("resume() over a started session abandons it with its own clock value", async () => {
+      mockStartGame.mockReturnValueOnce("session-1");
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result } = await renderHook(() => useGameSync("daily_word"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(6_000);
+        result.current.resume();
+        jest.advanceTimersByTime(1_000);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary(0)).toEqual({ outcome: "abandoned", durationMs: 6_000 });
+      expect(sentSummary(1).durationMs).toBe(1_000);
+    });
+
+    it("a session started while the app is in the background counts from the return", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await fireAppState("background");
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        jest.advanceTimersByTime(30_000);
+      });
+      await fireAppState("active");
+      await act(() => {
+        jest.advanceTimersByTime(2_500);
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary().durationMs).toBe(2_500);
+    });
+
+    it("subscribes to AppState once and unsubscribes on unmount", async () => {
+      const { result, rerender, unmount } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        result.current.restart();
+      });
+      await rerender({});
+      expect(AppState.addEventListener).toHaveBeenCalledTimes(1);
+      expect(appStateListeners).toHaveLength(1);
+      await unmount();
+      expect(appStateListeners).toHaveLength(0);
+    });
   });
 
   // ---------------------------------------------------------------------------

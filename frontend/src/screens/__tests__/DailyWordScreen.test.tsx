@@ -620,40 +620,72 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
   });
 
   it("completes with a null score and the win result block on a winning guess", async () => {
-    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
-    const api = await renderScreen();
-    await api.findByTestId("tile-0-0");
-    await typeAndSubmit(api, "crane");
+    // A still clock: the first guess both starts and ends the session, so the
+    // active-play clock (#2684) reads 0 and no duration is sent.
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
+      const api = await renderScreen();
+      await api.findByTestId("tile-0-0");
+      await typeAndSubmit(api, "crane");
 
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(gameId).toBe("game-1");
-    expect(summary).toEqual({
-      finalScore: null,
-      outcome: "win",
-      result: { is_complete: true, won: true, guesses_used: 1 },
-    });
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+      expect(gameId).toBe("game-1");
+      expect(summary).toEqual({
+        finalScore: null,
+        outcome: "win",
+        result: { is_complete: true, won: true, guesses_used: 1 },
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("abandons on unmount with the guesses made so far", async () => {
-    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+    // A fixed clock, so the active-play clock (#2684) reading is exact.
+    let clock = 1_000_000;
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+      const api = await renderScreen();
+      await api.findByTestId("tile-0-0");
+      await typeAndSubmit(api, "zzzzz");
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+
+      clock += 5_000;
+      await act(async () => {
+        api.unmount();
+      });
+
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+      expect(gameId).toBe("game-1");
+      expect(summary).toEqual({
+        outcome: "abandoned",
+        result: { is_complete: false, won: false, guesses_used: 1 },
+        durationMs: 5_000,
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  // #2684 — Daily Word has no timer of its own: useGameSync's active-play
+  // clock supplies the duration, counted from the first guess.
+  it("completes with the active play time since the first guess", async () => {
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("zzzzz", "absent") });
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tilesFor("crane", "correct") });
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
     await typeAndSubmit(api, "zzzzz");
-    expect(mockCompleteGame).not.toHaveBeenCalled();
-
-    await act(async () => {
-      api.unmount();
-    });
+    await typeAndSubmitAgain(api, "crane"); // 5 s later
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(gameId).toBe("game-1");
-    expect(summary).toEqual({
-      outcome: "abandoned",
-      result: { is_complete: false, won: false, guesses_used: 1 },
-    });
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary).toMatchObject({ outcome: "win" });
+    expect(summary.durationMs).toBeGreaterThanOrEqual(5_000);
   });
 
   it("does not open a session for a guess that resolves after the player left", async () => {
@@ -714,6 +746,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
       expect(summary).toEqual({
         outcome: "abandoned",
         result: { is_complete: false, won: false, guesses_used: 1 },
+        durationMs: 1000, // the active-play clock since the first guess (#2684)
       });
 
       // The next guess belongs to the new puzzle, in a new session.

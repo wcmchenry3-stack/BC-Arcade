@@ -190,6 +190,9 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     const [, summary, payload] = completedCalls()[0]!;
     // #2517: the row records who won.
     expect(summary).toEqual(expect.objectContaining({ finalScore: 50, outcome: "win" }));
+    // #2684 — Yacht has no timer of its own: useGameSync's active-play clock
+    // supplies the duration.
+    expect(summary.durationMs).toBeGreaterThan(0);
     expect(payload).toEqual(
       expect.objectContaining({
         final_score: 50,
