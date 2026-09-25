@@ -139,6 +139,7 @@ export default function SudokuScreen() {
 
   const {
     start: syncStart,
+    restart: syncRestart,
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
@@ -184,8 +185,12 @@ export default function SudokuScreen() {
           setState(saved);
           setDifficulty(saved.difficulty);
           setVariant(saved.variant);
-          // A restored game continues the session a killed app left open (#2654).
-          if (!saved.isComplete) syncResume();
+          // A restored game continues the session a killed app left open
+          // (#2654) — only one for the same puzzle settings, so a restore never
+          // adopts another difficulty's or variant's session.
+          if (!saved.isComplete) {
+            syncResume({ difficulty: saved.difficulty, variant: saved.variant });
+          }
           // Treat any resumed state that already has moves as "timer
           // already started" — the player wants to see it ticking
           // immediately on return.  Elapsed resets to 0 because we
@@ -326,14 +331,29 @@ export default function SudokuScreen() {
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
-      if (syncGetGameId()) return;
-      syncStart(
-        { difficulty: next.difficulty, variant: next.variant },
-        { difficulty: next.difficulty, variant: next.variant }
-      );
+      // A new puzzle opened its session already (`openPuzzleSession`); a
+      // restored one whose session couldn't be resumed opens one now.
+      if (!syncGetGameId()) {
+        const settings = { difficulty: next.difficulty, variant: next.variant };
+        syncStart(settings, settings);
+      }
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
+  );
+
+  /**
+   * #2690: every new puzzle gets its own session, with its own difficulty and
+   * variant. The restart closes whatever is still open (abandoned with the
+   * snapshot if the player started it, discarded if not) while `stateRef`
+   * still holds the old puzzle; the new session is sent on the first digit.
+   */
+  const openPuzzleSession = useCallback(
+    (fresh: SudokuState) => {
+      const settings = { difficulty: fresh.difficulty, variant: fresh.variant };
+      syncRestart(settings, settings);
+    },
+    [syncRestart]
   );
 
   const flashError = useCallback(() => {
@@ -372,13 +392,14 @@ export default function SudokuScreen() {
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
+    openPuzzleSession(fresh);
     setState(fresh);
     setElapsed(0);
     setResult(null);
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [difficulty, variant, resetScore, rememberDifficulty]);
+  }, [difficulty, variant, resetScore, rememberDifficulty, openPuzzleSession]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
@@ -387,6 +408,7 @@ export default function SudokuScreen() {
       clearGame().catch(() => {});
       // A premium level starts at the default instead (#1129).
       const fresh = loadPuzzle(rememberDifficulty(d), v);
+      openPuzzleSession(fresh);
       setState(fresh);
       setElapsed(0);
       setResult(null);
@@ -394,7 +416,7 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore, rememberDifficulty]
+    [resetScore, rememberDifficulty, openPuzzleSession]
   );
 
   const handleNewGameRequest = useCallback(() => {
@@ -436,6 +458,10 @@ export default function SudokuScreen() {
   }, []);
 
   const handleChangeDifficulty = useCallback(() => {
+    // #2690: close this puzzle's session now, while the snapshot still reads
+    // it. The restart leaves an untouched session open, which the next puzzle
+    // (or unmount) discards: the hook has no close-only call.
+    syncRestart();
     clearGame().catch(() => {});
     setState(null);
     setElapsed(0);
@@ -443,7 +469,7 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore]);
+  }, [resetScore, syncRestart]);
 
   const handleHint = useCallback(() => {
     setState((s) => {

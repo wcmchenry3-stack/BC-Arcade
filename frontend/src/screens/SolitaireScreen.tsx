@@ -158,6 +158,7 @@ export default function SolitaireScreen() {
 
   const {
     start: syncStart,
+    restart: syncRestart,
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
@@ -199,16 +200,23 @@ export default function SolitaireScreen() {
     });
   }, [state, moves, stats, setScoreboardSnapshot]);
 
-  const deal = useCallback((drawMode: DrawMode) => {
-    setState(dealGame(drawMode));
-    setSelection(null);
-    setMoves(0);
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated);
-      return updated;
-    });
-  }, []);
+  const deal = useCallback(
+    (drawMode: DrawMode) => {
+      // #2690: every deal gets its own session, with its own draw mode. The
+      // restart closes whatever is still open (abandoned if the player started
+      // it, discarded if not); the new one is sent once the first move is made.
+      syncRestart({ draw_mode: drawMode }, { draw_mode: drawMode });
+      setState(dealGame(drawMode));
+      setSelection(null);
+      setMoves(0);
+      setStats((prev) => {
+        const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
+        saveStats(updated);
+        return updated;
+      });
+    },
+    [syncRestart]
+  );
 
   // #597 — mount load. Restores a saved game silently; on a clean slot the
   // pre-game draw-mode modal is shown so the player picks their mode.
@@ -235,8 +243,10 @@ export default function SolitaireScreen() {
           winRecordedRef.current = true;
           setResumedWin(true);
         } else {
-          // A restored game continues the session a killed app left open (#2654).
-          syncResume();
+          // A restored game continues the session a killed app left open
+          // (#2654) — only one for the same draw mode, so a restore never
+          // adopts another deal's session.
+          syncResume({ draw_mode: saved.drawMode });
         }
       } else if (areTestHooksEnabled() && Platform.OS !== "web") {
         deal(1);
@@ -349,9 +359,10 @@ export default function SolitaireScreen() {
 
   const ensureSyncStarted = useCallback(
     (s: SolitaireState) => {
-      if (syncGetGameId()) return;
-      // The draw mode is the row's metadata too (#2632), not only event data.
-      syncStart({ draw_mode: s.drawMode }, { draw_mode: s.drawMode });
+      // A deal opened its session already (`deal`); a restored game whose
+      // session couldn't be resumed opens one now. The draw mode is the row's
+      // metadata too (#2632), not only event data.
+      if (!syncGetGameId()) syncStart({ draw_mode: s.drawMode }, { draw_mode: s.drawMode });
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
@@ -640,6 +651,11 @@ export default function SolitaireScreen() {
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {
+    // #2690: close this game's session now, while the snapshot still reads its
+    // moves (abandoned if started, discarded if not; a won game's is already
+    // complete). The restart leaves an untouched session open, which the next
+    // deal (or unmount) discards: the hook has no close-only call.
+    syncRestart();
     if (autoStepTimeoutRef.current !== null) {
       clearTimeout(autoStepTimeoutRef.current);
       autoStepTimeoutRef.current = null;
@@ -653,7 +669,7 @@ export default function SolitaireScreen() {
     resetSubmission();
     winRecordedRef.current = false;
     setResumedWin(false);
-  }, [resetSubmission]);
+  }, [resetSubmission, syncRestart]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {
