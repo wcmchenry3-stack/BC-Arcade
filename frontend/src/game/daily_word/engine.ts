@@ -166,6 +166,17 @@ export function parseGuessCount(value: unknown): number | undefined {
 }
 
 /**
+ * `state` with the server's guess count recorded, if `value` is a plausible
+ * one (#2541); otherwise `state` unchanged, so a response without a count —
+ * an older API, or a guess scored while the record was unreachable (#2542) —
+ * keeps whatever count the state already had.
+ */
+export function withServerGuessCount(state: DailyWordState, value: unknown): DailyWordState {
+  const count = parseGuessCount(value);
+  return count === undefined ? state : { ...state, guesses_used: count };
+}
+
+/**
  * The result block sent on `PATCH /games/{id}/complete` (#2451). Must satisfy
  * the backend `DailyWordResult`; the daily challenge reads exactly these fields.
  * `guessCount` rather than `current_row`, so it is right at the win (where

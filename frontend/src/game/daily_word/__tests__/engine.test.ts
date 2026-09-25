@@ -7,6 +7,7 @@ import {
   buildShareText,
   guessCount,
   parseGuessCount,
+  withServerGuessCount,
   sessionResult,
 } from "../engine";
 import type { TileState } from "../types";
@@ -363,5 +364,19 @@ describe("guessCount — corrupt saved count", () => {
   it("falls back to the board rather than producing NaN", () => {
     const s = initialState("2026-05-03:en", 5, "en");
     expect(guessCount({ ...s, guesses_used: "garbage" as unknown as number })).toBe(0);
+  });
+});
+
+describe("withServerGuessCount (#2541)", () => {
+  const s = initialState("2026-05-03:en", 5, "en");
+
+  it("records a plausible server count", () => {
+    expect(withServerGuessCount(s, 4).guesses_used).toBe(4);
+  });
+
+  it("returns the state unchanged when there is no usable count", () => {
+    const withCount = { ...s, guesses_used: 3 };
+    expect(withServerGuessCount(withCount, undefined)).toBe(withCount);
+    expect(withServerGuessCount(withCount, "9")).toBe(withCount);
   });
 });

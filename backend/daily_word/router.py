@@ -42,8 +42,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import sentry_sdk
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
@@ -178,7 +177,7 @@ async def get_today(
     return get_today_meta(tz_offset_minutes, lang)
 
 
-@router.post("/guess", response_model=None)
+@router.post("/guess")
 @limiter.limit("20/hour", key_func=_guess_key)
 # An IP-keyed backstop *in addition to* the session key, because the session id
 # is self-asserted: without one, minting a fresh UUID bought another six
@@ -188,7 +187,7 @@ async def get_today(
 # prevents. This is a volume backstop, not a security boundary; it does not
 # stop a determined caller, which needs server-issued sessions (#1047).
 @limiter.limit("1200/hour")
-async def post_guess(request: Request, body: GuessRequest) -> dict | JSONResponse:
+async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
     try:
@@ -262,14 +261,13 @@ async def post_guess(request: Request, body: GuessRequest) -> dict | JSONRespons
         # lost), so the client must not count its own rows: that number is
         # structurally low, and it feeds the "win within N guesses" goal and
         # the share text. `detail` stays the bare code the client matches on.
-        return JSONResponse(
-            status_code=403,
-            content={
-                "detail": "already_solved" if outcome.solved else "no_guesses_remaining",
-                "guesses_used": outcome.guesses_used,
-                "solved": outcome.solved,
-            },
-        )
+        # Set on the injected Response rather than raising HTTPException, whose
+        # body can only be `detail`; this keeps the route's `-> dict` contract.
+        response.status_code = 403
+        return {
+            "detail": "already_solved" if outcome.solved else "no_guesses_remaining",
+            "guesses_used": outcome.guesses_used,
+        }
 
     result: dict = {"tiles": tiles}
     if outcome is not None:

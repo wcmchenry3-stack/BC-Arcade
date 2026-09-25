@@ -238,8 +238,14 @@ export function createGameClient(options: HttpClientOptions) {
         ...options,
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        const msg = err.detail ?? "Request failed";
+        const parsed: unknown = await res.json().catch(() => ({ detail: res.statusText }));
+        // A JSON body can be `null`, an array or a scalar (a proxy or edge
+        // error page): only a plain object has fields to read (#2541 review).
+        const body =
+          parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : undefined;
+        const msg = body?.detail ?? "Request failed";
         // 4xx and 5xx are HTTP-layer outcomes, not JS exceptions. Emit a
         // breadcrumb only — never `captureMessage` (which attaches a
         // synthetic stack and creates a grouped Sentry issue per status
@@ -263,11 +269,7 @@ export function createGameClient(options: HttpClientOptions) {
             extra: { url, detail: msg, platform: Platform.OS },
           });
         }
-        const body =
-          err !== null && typeof err === "object" && !Array.isArray(err)
-            ? (err as Record<string, unknown>)
-            : undefined;
-        throw new ApiError(msg, res.status, body);
+        throw new ApiError(String(msg), res.status, body);
       }
       if (res.status === 204) {
         return undefined as unknown as T;

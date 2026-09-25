@@ -560,7 +560,7 @@ def test_no_guesses_remaining_carries_the_server_count(client: TestClient) -> No
         assert _guess(client, headers, puzzle_id, word).status_code == 200
 
     body = _guess(client, headers, puzzle_id, _SEVENTH).json()
-    assert body == {"detail": "no_guesses_remaining", "guesses_used": 6, "solved": False}
+    assert body == {"detail": "no_guesses_remaining", "guesses_used": 6}
 
 
 def test_already_solved_carries_the_winning_guess_count(client: TestClient) -> None:
@@ -575,7 +575,7 @@ def test_already_solved_carries_the_winning_guess_count(client: TestClient) -> N
     assert _guess(client, headers, puzzle_id, get_answer(puzzle_id)).status_code == 200
 
     body = _guess(client, headers, puzzle_id, _SIX_WRONG[2]).json()
-    assert body == {"detail": "already_solved", "guesses_used": 3, "solved": True}
+    assert body == {"detail": "already_solved", "guesses_used": 3}
 
 
 def test_a_replayed_guess_does_not_cost_a_turn(client: TestClient) -> None:

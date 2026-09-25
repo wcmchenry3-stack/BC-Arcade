@@ -48,7 +48,7 @@ import {
   markComplete,
   buildShareText,
   guessCount as countGuesses,
-  parseGuessCount,
+  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
@@ -760,17 +760,20 @@ export default function DailyWordScreen() {
       if (!mountedRef.current) return;
       const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
 
-      const applied = applyServerResult(s, tileStates);
       // #2541 — keep the server's count on the state; `guessCount` reads it.
-      // Absent when the server's record was unreachable (#2542): keep what we had.
-      const serverCount = parseGuessCount(result.guesses_used);
-      const afterApply =
-        serverCount === undefined ? applied : { ...applied, guesses_used: serverCount };
+      const afterApply = withServerGuessCount(
+        applyServerResult(s, tileStates),
+        result.guesses_used
+      );
       const won = tileStates.every((tile) => tile.status === "correct");
-      // The server's remaining count ends the game too: when the board is
-      // behind the record, the board alone would offer a guess the server
-      // will refuse (#2541).
-      const outOfGuesses = !won && (afterApply.current_row >= 6 || result.guesses_remaining === 0);
+      // Deliberately the board's rows, not the server's `guesses_remaining`
+      // (#2541 review). A 200 can be a replay of a recorded guess — on a
+      // puzzle the server has as solved, or on a wiped board — and the 200
+      // carries no `solved` flag, so ending the game here would record a
+      // loss for a win, or a fresh completion for a finished puzzle. A board
+      // that is behind reaches its next guess, which the server refuses with
+      // a 403 that the recovery path below handles, guards included.
+      const outOfGuesses = !won && afterApply.current_row >= 6;
 
       if (!syncGetGameId()) {
         syncStart({ puzzle_id: s.puzzle_id }, { puzzle_id: s.puzzle_id, language: s.language });
@@ -856,9 +859,8 @@ export default function DailyWordScreen() {
           // this 403 happened — so its row count is too low. Take the
           // server's count from the refusal (#2541); `guessCount` falls back
           // to the board if an older API sent none.
-          const serverCount = parseGuessCount(err.body?.guesses_used);
           const finished = markComplete(
-            serverCount === undefined ? current : { ...current, guesses_used: serverCount },
+            withServerGuessCount(current, err.body?.guesses_used),
             wonIt
           );
 

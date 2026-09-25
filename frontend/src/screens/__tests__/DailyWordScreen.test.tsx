@@ -543,26 +543,25 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     expect(summary).toMatchObject({ result: { won: true, guesses_used: 3 } });
   });
 
-  // #2541 — a 200 that says no guesses remain ends the game, even when the
-  // board (one behind the server) would still offer a row. Otherwise the
-  // player types a word only for the server to refuse it.
-  it("ends the game when the server says no guesses remain", async () => {
+  // #2541 review — a 200 can be a replay of a recorded guess, and it carries
+  // no `solved` flag. Here the server has six guesses on record (the puzzle
+  // may well be solved) and the replayed guess is not a winner: ending the
+  // game on `guesses_remaining: 0` would record a loss for a win, or a fresh
+  // completion on a wiped board. The game must stay open; the next guess gets
+  // the 403 whose recovery path handles both cases.
+  it("does not end the game on a 200's guesses_remaining alone", async () => {
     dailyWordApi.submitGuess.mockResolvedValueOnce({
       tiles: tilesFor("zzzzz", "absent"),
       guesses_used: 6,
       guesses_remaining: 0,
     });
-    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
     await typeAndSubmit(api, "zzzzz");
 
-    expect(await api.findByText("You Lose")).toBeTruthy();
-    const [, summary] = mockCompleteGame.mock.calls[0]!;
-    expect(summary).toMatchObject({
-      outcome: "completed",
-      result: { is_complete: true, won: false, guesses_used: 6 },
-    });
+    await waitFor(() => expect(dailyWordApi.submitGuess).toHaveBeenCalledTimes(1));
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(api.queryByText("You Lose")).toBeNull();
   });
 
   // #2535 review — without syncComplete the session stays open and the unmount
