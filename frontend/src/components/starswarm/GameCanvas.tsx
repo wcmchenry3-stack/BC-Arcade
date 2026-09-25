@@ -45,6 +45,14 @@ import {
   upgradeEvents,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
+import {
+  createFrameStats,
+  recordCommit,
+  recordLoopFrame,
+  summarizeFrameStats,
+} from "../../game/starswarm/render/frameStats";
+import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
@@ -112,7 +120,15 @@ export interface GameCanvasHandle {
   killEscorts: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
+  /** #2567: the last second of frame times and React commits, or null when sampling is off. */
+  getFrameStats: () => FrameStatsSummary | null;
 }
+
+/**
+ * #2567: frame-time sampling runs in dev builds, internal pre-launch builds (TestFlight / Play
+ * test, where the numbers are measured) and E2E test builds — never in a store build.
+ */
+const FRAME_STATS_ENABLED = __DEV__ || isPreLaunchApiBuild() || areTestHooksEnabled();
 
 /** #2565: a throw inside the UI-thread renderer is reported once, on the JS thread. */
 function reportDrawError(message: string): void {
@@ -311,6 +327,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // Tracked as a separate boolean so it doesn't depend on the countdown duration value.
     const waveBannerCountdownRef = useRef(false);
     const lastFrameTimeRef = useRef(0);
+    const frameStatsRef = useRef(FRAME_STATS_ENABLED ? createFrameStats() : null);
+    // #2567: count this component's React commits for the "Frame" readout (no deps: every commit)
+    useEffect(() => {
+      if (frameStatsRef.current) recordCommit(frameStatsRef.current, performance.now());
+    });
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(gameRef.current.player.lives);
     const prevPhaseRef = useRef(gameRef.current.phase);
@@ -482,6 +503,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         getState() {
           return gameRef.current;
         },
+        getFrameStats() {
+          const stats = frameStatsRef.current;
+          return stats ? summarizeFrameStats(stats, performance.now()) : null;
+        },
       }),
       []
     );
@@ -536,7 +561,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       function loop(timestamp: number) {
         if (lastFrameTimeRef.current === 0) lastFrameTimeRef.current = timestamp;
-        const dtMs = Math.min(timestamp - lastFrameTimeRef.current, DT_CAP_MS);
+        // #2567: the raw interval, before the engine's cap — a long frame is what we want to see.
+        // RN hands RAF the performance.now() clock, the same one the readout's window uses.
+        const intervalMs = timestamp - lastFrameTimeRef.current;
+        if (frameStatsRef.current) recordLoopFrame(frameStatsRef.current, timestamp, intervalMs);
+        const dtMs = Math.min(intervalMs, DT_CAP_MS);
         lastFrameTimeRef.current = timestamp;
 
         // #1039: apply dev-panel power-up injection before regular tick
