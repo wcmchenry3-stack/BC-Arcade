@@ -141,7 +141,7 @@
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Russian 'Подсказка' needs 9."
+    "notes": "Russian Подсказка needs 9. The button is an auto-width pill beside Notes in a centred row (NumberPad toolBtn), so it grows with its label."
   },
   "action.changeDifficulty": {
     "component": "Win modal",

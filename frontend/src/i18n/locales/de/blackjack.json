@@ -21,7 +21,7 @@
   "actions.splitLabel": "Teilen — Paar in zwei Hände aufteilen",
   "actions.splitDisabledLabel": "Teilen nicht verfügbar",
   "actions.nextHand": "Neue Runde",
-  "actions.nextHandLabel": "Nächste Runde starten",
+  "actions.nextHandLabel": "Neue Runde starten",
   "actions.quit": "Beenden",
   "actions.quitLabel": "Beenden und zum Startbildschirm",
   "hand.player": "Deine Hand",

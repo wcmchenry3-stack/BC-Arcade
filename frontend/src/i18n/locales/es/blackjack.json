@@ -21,7 +21,7 @@
   "actions.splitLabel": "Dividir — dividir el par en dos manos",
   "actions.splitDisabledLabel": "Dividir no disponible",
   "actions.nextHand": "Nueva mano",
-  "actions.nextHandLabel": "Comenzar la siguiente mano",
+  "actions.nextHandLabel": "Comenzar una nueva mano",
   "actions.quit": "Salir",
   "actions.quitLabel": "Salir y volver a la pantalla de inicio",
   "hand.player": "Tu mano",
