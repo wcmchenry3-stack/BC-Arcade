@@ -3,7 +3,7 @@
 Acceptance criteria:
 - POST /games with a premium game_type and no entitlement → 403
 - POST /games with a free game_type → proceeds normally
-- Any route on /cascade/*, /hearts/*, /starswarm/* without
+- Any route on /cascade/*, /hearts/*, /mahjong/*, /starswarm/* without
   entitlement → 403
 - Entitled session passes through without error
 - Free game routes are unaffected
@@ -163,6 +163,33 @@ def test_hearts_submit_no_entitlement_returns_403(client: TestClient, session_id
 async def test_hearts_entitled_session_passes(client: TestClient, session_id: str) -> None:
     await _grant(session_id, "hearts")
     r = client.get("/hearts/scores", headers=_headers(session_id))
+    assert r.status_code != 403
+
+
+# ---------------------------------------------------------------------------
+# /mahjong/* — gated
+# ---------------------------------------------------------------------------
+
+
+def test_mahjong_scores_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
+    r = client.get("/mahjong/scores", headers=_headers(session_id))
+    assert r.status_code == 403
+    assert r.json()["game"] == "mahjong"
+
+
+def test_mahjong_submit_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
+    r = client.post(
+        "/mahjong/score",
+        json={"player_name": "Dana", "score": 500},
+        headers=_headers(session_id),
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_mahjong_entitled_session_passes(client: TestClient, session_id: str) -> None:
+    await _grant(session_id, "mahjong")
+    r = client.get("/mahjong/scores", headers=_headers(session_id))
     assert r.status_code != 403
 
 

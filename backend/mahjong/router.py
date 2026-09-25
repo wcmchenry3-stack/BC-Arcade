@@ -10,19 +10,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
 from db.models import Game, GameType
+from entitlements.dependencies import require_entitlement
 from games.filters import not_abandoned
 from limiter import limiter
 from vocab import GameType as GameTypeEnum
 
 from .models import LeaderboardResponse, ScoreEntry, ScoreSubmitRequest
 
-router = APIRouter()
+# Mahjong moved to premium on 2026-09-24 (#2589) — this leaderboard router
+# predates that (written when Mahjong mirrored the free Solitaire pattern),
+# so it needs the same entitlement gate every other premium game's router has.
+router = APIRouter(dependencies=[Depends(require_entitlement("mahjong"))])
 
 LEADERBOARD_LIMIT = 10
 _MAHJONG_SESSION = "mahjong-anon"
