@@ -174,7 +174,6 @@ export default function StarSwarmScreen() {
   const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
   const [devFlakOff, setDevFlakOff] = useState(false); // #2491
   const [devRoutOff, setDevRoutOff] = useState(false); // #2489
-  const [devLegacyRenderer, setDevLegacyRenderer] = useState(false); // #2565
   const [devFrameReadout, setDevFrameReadout] = useState(false); // #2567
   // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
   const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
@@ -583,7 +582,6 @@ export default function StarSwarmScreen() {
                       dodgeDisabled: devDodgeOff,
                       flakDisabled: devFlakOff,
                       routDisabled: devRoutOff,
-                      rendererMode: devLegacyRenderer ? "react" : "picture",
                     }
                   : undefined
               }
@@ -602,12 +600,7 @@ export default function StarSwarmScreen() {
                 <Text style={styles.devButtonText}>DEV</Text>
               </Pressable>
             )}
-            {DEV_TOOLS && devFrameReadout && (
-              <FrameStatsReadout
-                read={readFrameStats}
-                renderer={devLegacyRenderer ? "legacy" : "picture"}
-              />
-            )}
+            {DEV_TOOLS && devFrameReadout && <FrameStatsReadout read={readFrameStats} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
@@ -778,12 +771,6 @@ export default function StarSwarmScreen() {
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Rout off</Text>
                 <Switch value={devRoutOff} onValueChange={setDevRoutOff} />
-              </View>
-
-              {/* #2565: compare the UI-thread Picture renderer against the phase-2 path */}
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Legacy renderer</Text>
-                <Switch value={devLegacyRenderer} onValueChange={setDevLegacyRenderer} />
               </View>
 
               {/* #2567: frame-time avg / p95 and canvas commits/s, shown over the game */}

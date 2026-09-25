@@ -15,25 +15,22 @@ export const FRAME_STATS_POLL_MS = 250;
 interface Props {
   /** Reads the canvas's last second; null when sampling is off or no frame has landed. */
   readonly read: () => FrameStatsSummary | null;
-  /** Which renderer is drawing, so a screenshot of the numbers says what they measure. */
-  readonly renderer: string;
 }
 
-export default function FrameStatsReadout({ read, renderer }: Props) {
+export default function FrameStatsReadout({ read }: Props) {
   const [line, setLine] = useState(() => formatFrameStats(read()));
   useEffect(() => {
     const id = setInterval(() => setLine(formatFrameStats(read())), FRAME_STATS_POLL_MS);
     return () => clearInterval(id);
   }, [read]);
-  const text = `${renderer} · ${line}`;
   return (
     <View
       pointerEvents="none"
       style={styles.wrap}
       testID="starswarm-frame-stats"
-      accessibilityLabel={`Frame stats: ${text}`}
+      accessibilityLabel={`Frame stats: ${line}`}
     >
-      <Text style={styles.text}>{text}</Text>
+      <Text style={styles.text}>{line}</Text>
     </View>
   );
 }

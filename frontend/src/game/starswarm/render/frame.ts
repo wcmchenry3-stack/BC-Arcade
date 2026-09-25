@@ -158,20 +158,6 @@ function flatRounded(points: readonly { x: number; y: number }[]): number[] {
   return out;
 }
 
-/** SVG path for a closed `poly` op: "M x0,y0 L x1,y1 … Z". */
-export function polyPath(points: readonly number[]): string {
-  let d = "";
-  for (let i = 0; i < points.length; i += 2) {
-    d += `${i === 0 ? "M" : " L"}${points[i]},${points[i + 1]}`;
-  }
-  return `${d} Z`;
-}
-
-/** The x a `flipX` image op mirrors about — its own centre. */
-export function mirrorAxisX(op: { readonly x: number; readonly w: number }): number {
-  return op.x + op.w / 2;
-}
-
 /** The whole native-canvas scene for one frame, back to front. */
 export function buildFrame(
   state: StarSwarmState,
