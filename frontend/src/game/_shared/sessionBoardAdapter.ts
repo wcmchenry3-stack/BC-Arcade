@@ -37,7 +37,7 @@ import type { GameType } from "./types";
 import {
   retryUntilGameSynced,
   type RankLookup,
-  type RankOnlyLeaderboardAdapter,
+  type LeaderboardAdapter,
 } from "./useLeaderboardSubmit";
 
 export interface SessionBoardSubmission {
@@ -66,11 +66,11 @@ export function toRankLookup(result: GameRankResponse, nameSynced: boolean): Ran
   }
 }
 
-/** The rank-only adapter for `gameType`'s session board. */
+/** The leaderboard adapter for `gameType`'s session board. */
 export function sessionBoardAdapter(
   gameType: GameType,
   { retry }: SessionBoardAdapterOptions = {}
-): RankOnlyLeaderboardAdapter<SessionBoardSubmission> {
+): LeaderboardAdapter<SessionBoardSubmission> {
   return {
     gameType,
     submit: async (_playerName, { gameId }) => {

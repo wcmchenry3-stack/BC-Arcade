@@ -53,7 +53,7 @@ beforeEach(async () => {
 });
 
 describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
-  it("is a rank-only adapter: nothing to queue", () => {
+  it("only has a game type and a rank lookup: nothing to queue", () => {
     const adapter = sessionBoardAdapter("cascade");
     expect(Object.keys(adapter).sort()).toEqual(["gameType", "submit"]);
     expect(adapter.gameType).toBe("cascade");

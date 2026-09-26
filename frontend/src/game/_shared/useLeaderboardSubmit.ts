@@ -27,7 +27,7 @@ export type LeaderboardSubmitStatus =
   "idle" | "submitting" | "saved" | "offline" | "needsName" | "unranked" | "error";
 
 /**
- * What a `RankOnlyLeaderboardAdapter`'s `submit` found:
+ * What a `LeaderboardAdapter`'s `submit` found:
  *
  *   ranked    — `saved`; `rank` is the rank of the player's best entry (the
  *               hook still applies `topTenRank`), and `isBest` says whether
@@ -56,7 +56,7 @@ export type RankLookup =
  * the status is `offline`; on `pending` it stays `submitting`. No queue item
  * is ever written. `sessionBoardAdapter` is the one implementation.
  */
-export interface RankOnlyLeaderboardAdapter<P> {
+export interface LeaderboardAdapter<P> {
   /** For error reporting only. */
   gameType: GameType;
   /** Look the rank up. Throws on a failed request. */
@@ -127,9 +127,7 @@ export interface LeaderboardSubmitState<P> {
   reset: () => void;
 }
 
-export function useLeaderboardSubmit<P>(
-  adapter: RankOnlyLeaderboardAdapter<P>
-): LeaderboardSubmitState<P> {
+export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): LeaderboardSubmitState<P> {
   const { isOnline, isInitialized } = useNetwork();
   const [status, setStatus] = useState<LeaderboardSubmitStatus>("idle");
   const [rank, setRank] = useState<number | null>(null);
@@ -172,9 +170,10 @@ export function useLeaderboardSubmit<P>(
     }, delay);
   }, [clearTimer]);
 
-  /** Look the rank up: nothing is queued. */
-  const fetchRank = useCallback(
-    async (adapter: RankOnlyLeaderboardAdapter<P>, name: string, payload: P) => {
+  /** Look the rank up under `name` with the current adapter: nothing is queued. */
+  const send = useCallback(
+    async (name: string, payload: P) => {
+      const adapter = adapterRef.current;
       const generation = generationRef.current;
       const isCurrent = () => generationRef.current === generation;
       clearTimer();
@@ -243,11 +242,6 @@ export function useLeaderboardSubmit<P>(
       }
     },
     [clearTimer, scheduleRefetch]
-  );
-
-  const send = useCallback(
-    (name: string, payload: P) => fetchRank(adapterRef.current, name, payload),
-    [fetchRank]
   );
 
   /** Looks the pending game up under the stored name, or asks for one. */
