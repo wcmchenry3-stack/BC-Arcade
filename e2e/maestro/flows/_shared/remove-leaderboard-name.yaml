@@ -1,29 +1,23 @@
 appId: com.buffingchi.games
 ---
-# Subflow: safety-net cleanup for flows that save a display name on the real
-# dev API (leaderboard/result-submission.yaml's `onFlowComplete`). Runs only
-# when that flow failed after saving the name and before removing it, so the
-# dev boards testers see don't keep a Maestro bot entry.
+# Subflow: take the player's display name off the (real dev API) leaderboards
+# so the boards testers see don't keep a Maestro bot entry (#2637, #2643).
 #
-# The app may be anywhere (a modal, the leaderboard, a crash), so relaunch it
-# (no clearState: the name and session must survive), then Profile →
-# "Remove my name from leaderboards" → confirm. Every step tolerates a missing
-# element: a cleanup that can't finish must not hide the original failure.
+# Used twice by leaderboard/result-submission.yaml: as its last step (which
+# then asserts `profile-not-on-boards` itself), and from its onFlowComplete
+# hook when the flow failed after typing the name and before that step — the
+# app may then be anywhere (a modal, the leaderboard, a crash).
+#
+# So: relaunch WITHOUT clearState (the saved name and the session must
+# survive), reach Home through the same launcher handling every flow uses,
+# then Profile → "Remove my name from leaderboards" → confirm.
 - launchApp
-# Android's launcher ANR dialog (see launch.yaml), bounded here so a stuck
-# dialog can't burn the job timeout.
-- repeat:
-    times: 3
-    while:
-      visible: "Wait"
-    commands:
-      - tapOn: "Wait"
-- tapOn:
-    text: "Load embedded bundle"
-    optional: true
+- runFlow: after-launch.yaml
 - tapOn:
     id: "tab-profile"
-    optional: true
+# The only tolerant step: is there a name to remove at all? (A failure before
+# the name reached the device leaves nothing to do.) Once the button is
+# there, every step is required.
 - runFlow:
     when:
       visible:
@@ -31,6 +25,16 @@ appId: com.buffingchi.games
     commands:
       - tapOn:
           id: "profile-remove-name"
+      - extendedWaitUntil:
+          visible:
+            id: "profile-remove-name-confirm-confirm"
+          timeout: 5000
       - tapOn:
           id: "profile-remove-name-confirm-confirm"
-          optional: true
+      # Wait for DELETE /players/me to land ("profile-name-removing" shows
+      # until it does). Returning earlier would let the next flow's
+      # `launchApp: clearState` wipe the pending removal before it is sent.
+      - extendedWaitUntil:
+          visible:
+            id: "profile-not-on-boards"
+          timeout: 60000

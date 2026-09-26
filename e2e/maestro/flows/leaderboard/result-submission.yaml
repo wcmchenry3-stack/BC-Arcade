@@ -1,5 +1,5 @@
 appId: com.buffingchi.games
-# Safety net: if the flow fails after saving the bot's display name and
+# Safety net: if the flow fails after typing the bot's display name and
 # before removing it, take the name off the dev boards anyway. `output.named`
 # / `output.cleanedUp` are set below; on a pass this is a no-op.
 onFlowComplete:
@@ -18,12 +18,14 @@ onFlowComplete:
 # EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com): the game syncs
 # through SyncWorker, the name through PUT /players/me, and the rank comes
 # from GET /games/{id}/rank. The dev API must be reachable from the runner.
+# Full suite only (detect-maestro-scope.yml) — see e2e/maestro/README.md.
 #
 # Yacht because a solo game always ends after exactly 13 roll+score turns,
 # whatever the dice — no test hook or fixed deal needed. Categories are
 # scored in a fixed order (upper first, `yacht` second to last, `chance`
-# last) so the Joker rule can never reject a tap (it needs a 50 already in
-# the Yacht box plus a second Yacht).
+# last): the Joker rule can then never reject a tap (it needs a 50 already in
+# the Yacht box plus a second Yacht), and only the 12th turn (the Yacht box)
+# can raise a celebration before the game ends — see _shared/yacht-turn.yaml.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -43,43 +45,44 @@ onFlowComplete:
 # ── Play all 13 turns ──────────────────────────────────────────────────────
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "ones", tab: "upper" }
+    env: { category: "ones", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "twos", tab: "upper" }
+    env: { category: "twos", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "threes", tab: "upper" }
+    env: { category: "threes", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "fours", tab: "upper" }
+    env: { category: "fours", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "fives", tab: "upper" }
+    env: { category: "fives", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "sixes", tab: "upper" }
+    env: { category: "sixes", tab: "upper", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "three_of_a_kind", tab: "lower" }
+    env: { category: "three_of_a_kind", tab: "lower", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "four_of_a_kind", tab: "lower" }
+    env: { category: "four_of_a_kind", tab: "lower", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "full_house", tab: "lower" }
+    env: { category: "full_house", tab: "lower", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "small_straight", tab: "lower" }
+    env: { category: "small_straight", tab: "lower", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "large_straight", tab: "lower" }
+    env: { category: "large_straight", tab: "lower", celebrate: "false" }
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "yacht", tab: "lower" }
+    env: { category: "yacht", tab: "lower", celebrate: "true" }
+# Last turn: a joker here is never tapped away (the result card is open).
 - runFlow:
     file: ../_shared/yacht-turn.yaml
-    env: { category: "chance", tab: "lower", lastTurn: "true" }
+    env: { category: "chance", tab: "lower", celebrate: "false" }
 
 # ── Result card: one-time name prompt ─────────────────────────────────────
 - extendedWaitUntil:
@@ -135,13 +138,15 @@ onFlowComplete:
     visible:
       id: "leaderboard-list"
     timeout: 30000
-# `leaderboard-row-me` is the highlighted row in the top-10 list;
-# `leaderboard-row-pinned` the highlighted "Your best" row under it when the
-# player is outside the top 10.
-- extendedWaitUntil:
-    visible:
+# `leaderboard-row-me` is the highlighted row inside the top-10 list, and can
+# sit below the fold; `leaderboard-row-pinned` is the highlighted "Your best"
+# row fixed under the list when the player is outside the top 10. Scroll the
+# list until either shows (a no-op when it already does).
+- scrollUntilVisible:
+    element:
       id: "leaderboard-row-(me|pinned)"
-    timeout: 30000
+    direction: DOWN
+    timeout: 20000
 - takeScreenshot: result-submission-leaderboard
 - tapOn:
     id: "nav-back"
@@ -169,24 +174,16 @@ onFlowComplete:
     id: "tab-ranks"
 
 # ── Cleanup: take the bot off the dev boards (#2637) ──────────────────────
+# First prove Profile offers the removal (the shared subflow's own check is
+# tolerant, for its onFlowComplete use), then run it and assert the result.
 - tapOn:
     id: "tab-profile"
 - extendedWaitUntil:
     visible:
       id: "profile-remove-name"
     timeout: 15000
-- tapOn:
-    id: "profile-remove-name"
-- extendedWaitUntil:
-    visible:
-      id: "profile-remove-name-confirm-confirm"
-    timeout: 5000
-- tapOn:
-    id: "profile-remove-name-confirm-confirm"
-# "profile-name-removing" shows until DELETE /players/me lands.
-- extendedWaitUntil:
-    visible:
-      id: "profile-not-on-boards"
-    timeout: 30000
+- runFlow: ../_shared/remove-leaderboard-name.yaml
+- assertVisible:
+    id: "profile-not-on-boards"
 - evalScript: ${output.cleanedUp = true}
 - takeScreenshot: result-submission-cleanup

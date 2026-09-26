@@ -44,9 +44,10 @@ e2e/maestro/
 └── flows/
     ├── _shared/
     │   ├── launch.yaml          # App launch + home screen assertion (imported by all flows)
+    │   ├── after-launch.yaml   # Subflow: ANR dialog, dev-client launcher, Home check (used by launch.yaml)
     │   ├── navigate-to.yaml    # Subflow: tap a tile, assert game screen loads
     │   ├── yacht-turn.yaml     # Subflow: one solo Yacht turn (roll, score a category)
-    │   └── remove-leaderboard-name.yaml  # Subflow: safety-net name cleanup (see below)
+    │   └── remove-leaderboard-name.yaml  # Subflow: relaunch, remove the display name (see below)
     ├── home/                    # Home screen & navigation smoke tests
     ├── leaderboard/             # Result submission against the real dev API (see below)
     ├── blackjack/
@@ -139,7 +140,10 @@ check of finishing a game and landing on a leaderboard:
 
 1. Plays a full **solo Yacht** game — 13 turns via `_shared/yacht-turn.yaml`.
    Yacht always ends after 13 roll+score turns whatever the dice, so no test
-   hook is needed.
+   hook is needed. Turns wait on DiceRow's state-keyed hint id
+   (`yacht-dice-hint-rolled` / `-ready`), not its copy. Scoring 50 in the
+   Yacht box plays a full-screen celebration; the 12th turn (the Yacht box)
+   taps it away via `yacht-celebration` if it is on screen.
 2. On the result card, answers the one-time display-name prompt with a
    unique-ish bot name (`Maestro<5 digits>`) and waits (up to 2 min) for the
    submission line: `yacht-result-submission-ranked` (saved with a `#N` /
@@ -149,12 +153,21 @@ check of finishing a game and landing on a leaderboard:
    (`leaderboard-row-me` in the list, or `leaderboard-row-pinned` under it).
 4. Goes back to the card, then Home, and asserts exactly three bottom tabs
    (`tab-lobby`, `tab-profile`, `tab-settings`; no `tab-ranks`, #2634).
-5. **Cleans up:** Profile → "Remove my name from leaderboards" → confirm, and
-   asserts `profile-not-on-boards`, so the dev boards testers see don't keep
-   a bot entry (#2637). If the flow fails after the name was typed and before
-   this step, its `onFlowComplete` hook runs
-   `_shared/remove-leaderboard-name.yaml`, which relaunches the app and
-   removes the name.
+5. **Cleans up:** runs `_shared/remove-leaderboard-name.yaml` — relaunch
+   (keeping state, through the same `_shared/after-launch.yaml` launcher
+   handling as `launch.yaml`) → Profile → "Remove my name from leaderboards"
+   → confirm → wait for `profile-not-on-boards`, i.e. for
+   `DELETE /players/me` to land — so the dev boards testers see don't keep a
+   bot entry (#2637). If the flow fails after the name was typed and before
+   this step, its `onFlowComplete` hook runs the same subflow.
+
+**Full suite only.** `detect-maestro-scope.yml` lists `leaderboard` in the
+full-suite set but gives it no paths-filter category, so it runs on push to
+`main`, `workflow_dispatch`, PRs into `main` and shared/infra changes — never
+as a selective per-PR run. Two reasons: it runs against the deployed dev API,
+not the PR's backend, so a PR's changed paths can't say whether it is
+relevant; and a full 13-turn game on the `macos-15` runner is too costly to
+repeat for every Yacht-UI PR.
 
 **It needs the real dev API.** Unlike every other flow, it depends on the
 backend: the game syncs through SyncWorker, the name through

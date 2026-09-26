@@ -1,21 +1,24 @@
 appId: com.buffingchi.games
 ---
-# Subflow: play one solo Yacht turn — roll, then score ${category}.
-# Caller must set: ${category} (score-row testID suffix, e.g. "ones")
-#                  ${tab}      (scorecard tab holding it: "upper" / "lower")
-# Optional:        ${lastTurn} ("true" for the 13th category)
+# Subflow: play one solo Yacht turn — roll once, then score ${category}.
+# Caller must set: ${category}  (score-row testID suffix, e.g. "ones")
+#                  ${tab}       (scorecard tab holding it: "upper" / "lower")
+#                  ${celebrate} ("true" only where scoring can celebrate,
+#                                else "false" — always pass it explicitly)
 #
-# Rolling a Yacht (all five dice equal) shows a full-screen celebration whose
-# backdrop swallows the next tap (the tap dismisses it instead). So each tap
-# is sent twice, the second being a harmless no-op when the first landed: a
-# second roll just re-rolls (3 are allowed per turn), and a second tap on a
-# row that was just scored hits a disabled row (rolls_used is back to 0).
-# That avoids `when: visible` checks, which cost Maestro's ~7s lookup timeout
-# whenever they are false — ×13 turns, minutes per run.
+# Rolling never shows anything over the board. Scoring can: the engine emits
+# a `yacht` event when the Yacht box scores 50 and a `joker` event for a
+# Yacht bonus (game/yacht/engine.ts score()), and GameScreen shows a
+# full-screen YachtCelebrationAnimation for either. Its backdrop would
+# swallow the next turn's first tap, so on a `celebrate: "true"` turn it is
+# tapped away if it is actually on screen (`yacht-celebration` exists only
+# while it shows; it also auto-dismisses after ~2.8s).
 #
-# The last turn is different: scoring it ends the game and the result card
-# opens over the board, so a blind second tap could land on the card. There
-# the retry only fires if the turn visibly didn't end.
+# The check is gated on `celebrate` because a `when: visible` that is false
+# costs Maestro's ~7s lookup timeout; with result-submission.yaml's order
+# (Yacht box 12th, Chance 13th) only the 12th turn can celebrate before the
+# game ends. A 13th-turn joker is left alone: the result card is open over
+# the board then, and a tap at the backdrop's centre would land on the card.
 #
 # The tabs only exist below 600dp wide (Scorecard.tsx WIDE_BREAKPOINT); on a
 # tablet both sections show at once, so the tab tap is optional.
@@ -24,36 +27,29 @@ appId: com.buffingchi.games
     optional: true
 - tapOn:
     id: "yacht-roll-button"
-- tapOn:
-    id: "yacht-roll-button"
-# "Tap dice to hold" (yacht:dice.hintAfterRoll) shows only once this turn has
-# rolled at least once.
+# DiceRow's hint is `yacht-dice-hint-rolled` once this turn has rolled.
 - extendedWaitUntil:
     visible:
-      text: "Tap dice to hold"
+      id: "yacht-dice-hint-rolled"
     timeout: 5000
 - tapOn:
     id: "score-row-${category}"
+# `typeof` so an unset variable can't throw a ReferenceError.
 - runFlow:
     when:
-      true: ${lastTurn != 'true'}
-    commands:
-      - tapOn:
-          id: "score-row-${category}"
-- runFlow:
-    when:
-      true: ${lastTurn == 'true'}
+      true: ${typeof celebrate !== 'undefined' && celebrate === 'true'}
     commands:
       - runFlow:
           when:
             visible:
-              text: "Tap dice to hold"
+              id: "yacht-celebration"
           commands:
             - tapOn:
-                id: "score-row-${category}"
-# Scoring ends the turn: the hint goes back to "Press Roll to start your
-# turn" (or, after the 13th category, the result card covers the board).
+                id: "yacht-celebration"
+# Scoring ends the turn: the hint goes back to `yacht-dice-hint-ready`.
+# Waiting for "rolled" to go (not for "ready" to appear) also holds after the
+# 13th category, when the result card covers the board.
 - extendedWaitUntil:
     notVisible:
-      text: "Tap dice to hold"
+      id: "yacht-dice-hint-rolled"
     timeout: 5000
