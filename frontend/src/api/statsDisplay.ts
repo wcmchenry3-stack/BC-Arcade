@@ -4,7 +4,8 @@
  * these, so the two never disagree. Strings are in the "profile" namespace.
  */
 
-import i18next, { type TFunction } from "i18next";
+import type { TFunction } from "i18next";
+import { languageOf } from "../i18n/languageOf";
 import type { GameTypeStats } from "./types";
 
 // A missing comparable field shows "—" (or 0 sessions) rather than failing.
@@ -23,16 +24,6 @@ export function winRateOf(s: GameTypeStats): number | null {
 }
 
 const numberFormats = new Map<string, Intl.NumberFormat>();
-
-/**
- * The language `t` translates into. A `useTranslation` t is fixed to one
- * (`lng`); any other t translates into i18next's resolved language.
- */
-function languageOf(t: TFunction): string {
-  const fixed = (t as unknown as { lng?: unknown }).lng;
-  if (typeof fixed === "string" && fixed !== "cimode") return fixed;
-  return i18next.resolvedLanguage ?? i18next.language ?? "en";
-}
 
 /**
  * A number grouped the way the app's language writes it ("1,450" in English,

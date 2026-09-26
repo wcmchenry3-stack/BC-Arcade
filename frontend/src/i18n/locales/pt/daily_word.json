@@ -3,6 +3,7 @@
   "game.description": "Palavra de 5 letras. 6 tentativas. Novo desafio todo dia.",
   "game.playLabel": "Jogar Palavra do Dia",
   "hud.guessesLeft_one": "{{count}} tentativa restante",
+  "hud.guessesLeft_many": "{{count}} tentativas restantes",
   "hud.guessesLeft_other": "{{count}} tentativas restantes",
   "hud.puzzleNumber": "Desafio #{{number}}",
   "result.loss.answer": "A palavra era {{answer}}",

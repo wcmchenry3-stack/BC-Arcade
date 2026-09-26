@@ -408,7 +408,7 @@ function EntryRow({
 }) {
   const mine = !!entry.is_me;
   const value = entry.value.toLocaleString();
-  const date = formatDate(entry.completed_at);
+  const date = formatDate(t, entry.completed_at);
   const a11yLabel = pinned
     ? t("leaderboard:a11y.yourBest", { rank: entry.rank, metric: metricLabel, value, date })
     : t(mine ? "leaderboard:a11y.rowYou" : "leaderboard:a11y.row", {
