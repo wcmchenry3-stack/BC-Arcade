@@ -27,11 +27,6 @@
   "trick.slot.empty": "Empty slot — {{label}}",
   "trick.winner": "{{label}} won the trick",
 
-  "score.board": "Scores",
-  "score.player": "Player",
-  "score.round": "Rnd",
-  "score.total": "Total",
-  "score.hand": "Hand",
   "score.footnote": "★ shooter zeroes · 26 to others · lowest total wins",
 
   "pass.direction.left": "Pass left",
@@ -51,8 +46,6 @@
   "hand_end.title": "Hand Complete",
   "hand_end.moon": "{{label}} shot the moon! +26 to all others.",
   "hand_end.next": "Next Hand",
-
-  "score.close": "Close",
 
   "settings.rename": "Edit Names",
   "settings.rename_title": "Player Names",

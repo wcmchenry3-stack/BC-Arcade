@@ -19,5 +19,20 @@
   "updating": "Wird aktualisiert…",
   "retry": "Wiederholen",
   "link.leaderboard": "Bestenliste ansehen",
-  "link.runHistory": "Laufverlauf"
+  "link.runHistory": "Laufverlauf",
+  "outcome.completed": "Abgeschlossen",
+  "outcome.abandoned": "Abgebrochen",
+  "outcome.kept_playing": "Weitergespielt",
+  "outcome.win": "Sieg",
+  "outcome.loss": "Niederlage",
+  "outcome.push": "Unentschieden",
+  "metric.score_one": "{{value}} Pkt.",
+  "metric.score_other": "{{value}} Pkt.",
+  "metric.moves_one": "{{value}} Zug",
+  "metric.moves_other": "{{value}} Züge",
+  "metric.level": "Level {{value}}",
+  "metric.guesses_one": "{{value}} Versuch",
+  "metric.guesses_other": "{{value}} Versuche",
+  "metric.chips_one": "{{value}} Chip",
+  "metric.chips_other": "{{value}} Chips"
 }

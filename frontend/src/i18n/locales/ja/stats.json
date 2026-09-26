@@ -19,5 +19,20 @@
   "updating": "更新中…",
   "retry": "再試行",
   "link.leaderboard": "ランキングを見る",
-  "link.runHistory": "ラン履歴"
+  "link.runHistory": "ラン履歴",
+  "outcome.completed": "完了",
+  "outcome.abandoned": "中断",
+  "outcome.kept_playing": "プレイ継続",
+  "outcome.win": "勝ち",
+  "outcome.loss": "負け",
+  "outcome.push": "引き分け",
+  "metric.score_one": "{{value}}点",
+  "metric.score_other": "{{value}}点",
+  "metric.moves_one": "{{value}}手",
+  "metric.moves_other": "{{value}}手",
+  "metric.level": "レベル{{value}}",
+  "metric.guesses_one": "{{value}}回",
+  "metric.guesses_other": "{{value}}回",
+  "metric.chips_one": "{{value}}チップ",
+  "metric.chips_other": "{{value}}チップ"
 }

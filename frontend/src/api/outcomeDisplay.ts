@@ -14,6 +14,7 @@ import type MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIco
 import type { TFunction } from "i18next";
 import type { Colors } from "../theme/ThemeContext";
 import type { GameRow } from "./types";
+import { formatNumber } from "./statsDisplay";
 import { BOARDS, GAME_OUTCOMES, type GameOutcome } from "./vocab";
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
@@ -26,40 +27,40 @@ export interface OutcomeDisplay {
     Colors,
     "outcomeWin" | "outcomeLoss" | "outcomeDraw" | "outcomeEnded" | "textMuted"
   >;
-  /** Key of the localised label, in the "profile" namespace. */
+  /** Key of the localised label, in the "stats" namespace. */
   readonly labelKey: string;
 }
 
 export function outcomeDisplay(outcome: GameOutcome): OutcomeDisplay {
   switch (outcome) {
     case "win":
-      return { icon: "trophy-outline", color: "outcomeWin", labelKey: "recentGames.outcome.win" };
+      return { icon: "trophy-outline", color: "outcomeWin", labelKey: "outcome.win" };
     case "loss":
       return {
         icon: "minus-circle-outline",
         color: "outcomeLoss",
-        labelKey: "recentGames.outcome.loss",
+        labelKey: "outcome.loss",
       };
     case "push":
-      return { icon: "equal", color: "outcomeDraw", labelKey: "recentGames.outcome.push" };
+      return { icon: "equal", color: "outcomeDraw", labelKey: "outcome.push" };
     case "completed":
       return {
         icon: "check-circle-outline",
         color: "outcomeEnded",
-        labelKey: "recentGames.outcome.completed",
+        labelKey: "outcome.completed",
       };
     case "kept_playing":
       return {
         icon: "play-circle-outline",
         color: "outcomeEnded",
-        labelKey: "recentGames.outcome.kept_playing",
+        labelKey: "outcome.kept_playing",
       };
     case "abandoned":
       // Muted, not an error colour: leaving a game carries no penalty (PRODUCT.md).
       return {
         icon: "exit-to-app",
         color: "textMuted",
-        labelKey: "recentGames.outcome.abandoned",
+        labelKey: "outcome.abandoned",
       };
     default: {
       const unhandled: never = outcome;
@@ -71,7 +72,7 @@ export function outcomeDisplay(outcome: GameOutcome): OutcomeDisplay {
 /** The localised outcome, or "—" for a game with no outcome yet (or one this build doesn't know). */
 export function outcomeLabel(t: TFunction, outcome: string | null): string {
   const display = knownOutcome(outcome);
-  return display ? t(`profile:${display.labelKey}`) : "—";
+  return display ? t(`stats:${display.labelKey}`) : "—";
 }
 
 /** `outcomeDisplay` for an outcome string from the server; null when absent or unknown. */
@@ -81,7 +82,7 @@ export function knownOutcome(outcome: string | null): OutcomeDisplay | null {
   return outcomeDisplay(outcome as GameOutcome);
 }
 
-/** Board label keys with a "profile:metric.*" string. Others show the bare number. */
+/** Board label keys with a "stats:metric.*" string. Others show the bare number. */
 const METRIC_LABEL_KEYS = new Set(["score", "moves", "level", "guesses", "chips"]);
 
 /**
@@ -95,9 +96,9 @@ export function formatMetric(
   value: number | null | undefined
 ): string {
   if (value == null) return "—";
-  const formatted = value.toLocaleString();
+  const formatted = formatNumber(t, value);
   if (labelKey == null || !METRIC_LABEL_KEYS.has(labelKey)) return formatted;
-  return t(`profile:metric.${labelKey}`, { count: value, value: formatted });
+  return t(`stats:metric.${labelKey}`, { count: value, value: formatted });
 }
 
 /**

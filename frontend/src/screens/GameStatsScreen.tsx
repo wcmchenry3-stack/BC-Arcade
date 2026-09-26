@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { formatMetric } from "../api/outcomeDisplay";
 import {
   completedOf,
+  formatNumber,
   formatPercent,
   formatPlayTime,
   sessionsOf,
@@ -38,7 +39,8 @@ interface Tile {
   value: string;
 }
 
-const count = (n: number | null | undefined): string => (n == null ? "—" : n.toLocaleString());
+const count = (t: TFunction, n: number | null | undefined): string =>
+  n == null ? "—" : formatNumber(t, n);
 
 /**
  * The tiles for one game's stats, in reading order. Win figures show "—" for
@@ -48,11 +50,11 @@ const count = (n: number | null | undefined): string => (n == null ? "—" : n.t
 export function statsTiles(t: TFunction, s: GameTypeStats): Tile[] {
   const rate = winRateOf(s);
   const tiles: Tile[] = [
-    { key: "sessions", label: t("stats:tile.sessions"), value: count(sessionsOf(s)) },
-    { key: "completed", label: t("stats:tile.completed"), value: count(completedOf(s)) },
-    { key: "wins", label: t("stats:tile.wins"), value: count(s.won) },
-    { key: "losses", label: t("stats:tile.losses"), value: count(s.lost) },
-    { key: "ties", label: t("stats:tile.ties"), value: count(s.tied) },
+    { key: "sessions", label: t("stats:tile.sessions"), value: count(t, sessionsOf(s)) },
+    { key: "completed", label: t("stats:tile.completed"), value: count(t, completedOf(s)) },
+    { key: "wins", label: t("stats:tile.wins"), value: count(t, s.won) },
+    { key: "losses", label: t("stats:tile.losses"), value: count(t, s.lost) },
+    { key: "ties", label: t("stats:tile.ties"), value: count(t, s.tied) },
     {
       key: "winRate",
       label: t("stats:tile.winRate"),
@@ -63,14 +65,14 @@ export function statsTiles(t: TFunction, s: GameTypeStats): Tile[] {
     tiles.push({
       key: "currentStreak",
       label: t("stats:tile.currentStreak"),
-      value: count(s.current_win_streak),
+      value: count(t, s.current_win_streak),
     });
   }
   if (s.best_win_streak != null) {
     tiles.push({
       key: "bestStreak",
       label: t("stats:tile.bestStreak"),
-      value: count(s.best_win_streak),
+      value: count(t, s.best_win_streak),
     });
   }
   tiles.push(

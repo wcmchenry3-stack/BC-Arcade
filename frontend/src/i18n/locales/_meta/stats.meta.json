@@ -187,5 +187,140 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "A run is one Blackjack session from a starting bankroll to cash-out or bust."
+  },
+  "outcome.completed": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game that was played through to a natural end.",
+    "tone": "neutral",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.abandoned": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game the player left before it ended.",
+    "tone": "neutral",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.kept_playing": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game with no natural end that the player kept playing beyond a milestone (e.g. 2048's win tile).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.win": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: the player won.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.loss": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: the player lost.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.push": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: a tie (a push in Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "metric.score_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A points value, singular. Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.score_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A points value, plural, e.g. \"412 pts\". Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A move count, singular (FreeCell's best is the fewest moves).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A move count, plural, e.g. \"87 moves\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.level": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A level reached (Bottle Sort), e.g. \"Level 19\".",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A guess count, singular (Daily Word).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A guess count, plural (Daily Word), e.g. \"3 guesses\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A chip count, singular (Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A chip count, plural (Blackjack), e.g. \"1,450 chips\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

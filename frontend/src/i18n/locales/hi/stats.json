@@ -19,5 +19,20 @@
   "updating": "अपडेट हो रहा है…",
   "retry": "पुनः प्रयास करें",
   "link.leaderboard": "लीडरबोर्ड देखें",
-  "link.runHistory": "रन का इतिहास"
+  "link.runHistory": "रन का इतिहास",
+  "outcome.completed": "पूर्ण",
+  "outcome.abandoned": "छोड़ा गया",
+  "outcome.kept_playing": "खेलना जारी रखा",
+  "outcome.win": "जीत",
+  "outcome.loss": "हार",
+  "outcome.push": "बराबरी",
+  "metric.score_one": "{{value}} अंक",
+  "metric.score_other": "{{value}} अंक",
+  "metric.moves_one": "{{value}} चाल",
+  "metric.moves_other": "{{value}} चालें",
+  "metric.level": "स्तर {{value}}",
+  "metric.guesses_one": "{{value}} अनुमान",
+  "metric.guesses_other": "{{value}} अनुमान",
+  "metric.chips_one": "{{value}} चिप",
+  "metric.chips_other": "{{value}} चिप्स"
 }

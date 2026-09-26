@@ -62,7 +62,6 @@ export default function HomeScreen() {
     "mahjong",
     "sort",
     "daily_word",
-    "errors",
   ]);
   const { colors } = useTheme();
   const { canPlay } = useEntitlements();

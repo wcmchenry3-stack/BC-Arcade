@@ -1,11 +1,10 @@
 /**
  * How one game's `/stats/me` figures are read and shown (#2637, #2635): the
  * Profile's tiles and per-game rows and the per-game stats screen share
- * these, so the two never disagree. Strings are in the "profile" namespace
- * (#2638 consolidates them later).
+ * these, so the two never disagree. Strings are in the "profile" namespace.
  */
 
-import type { TFunction } from "i18next";
+import i18next, { type TFunction } from "i18next";
 import type { GameTypeStats } from "./types";
 
 // A server from before #2620 omits the comparable fields. Its `played` is an
@@ -25,6 +24,37 @@ export function winRateOf(s: GameTypeStats): number | null {
   return decided > 0 ? s.won / decided : null;
 }
 
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * The language `t` translates into. A `useTranslation` t is fixed to one
+ * (`lng`); any other t translates into i18next's resolved language.
+ */
+function languageOf(t: TFunction): string {
+  const fixed = (t as unknown as { lng?: unknown }).lng;
+  if (typeof fixed === "string" && fixed !== "cimode") return fixed;
+  return i18next.resolvedLanguage ?? i18next.language ?? "en";
+}
+
+/**
+ * A number grouped the way the app's language writes it ("1,450" in English,
+ * "1.450" in German). Not `toLocaleString()`: that follows the device, whose
+ * language can differ from the one picked in the app.
+ */
+export function formatNumber(t: TFunction, value: number): string {
+  const lng = languageOf(t);
+  let format = numberFormats.get(lng);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat(lng);
+    } catch {
+      format = new Intl.NumberFormat("en");
+    }
+    numberFormats.set(lng, format);
+  }
+  return format.format(value);
+}
+
 /** A 0–1 ratio as a whole percentage, e.g. "67%". */
 export function formatPercent(t: TFunction, ratio: number): string {
   return t("profile:stats.percent", { value: Math.round(ratio * 100) });
@@ -36,6 +66,6 @@ export function formatPlayTime(t: TFunction, ms: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return hours > 0
-    ? t("profile:time.hoursMinutes", { hours: hours.toLocaleString(), minutes })
+    ? t("profile:time.hoursMinutes", { hours: formatNumber(t, hours), minutes })
     : t("profile:time.minutes", { minutes });
 }
