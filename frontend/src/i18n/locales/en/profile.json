@@ -61,6 +61,8 @@
   "boards.removeName": "Remove my name from leaderboards",
   "boards.notOnBoards": "You're not on any leaderboard. Save a name to join them.",
   "boards.removeError": "Couldn't remove your name. Try again.",
+  "boards.removing": "Removing your name… It will sync when you're back online.",
+  "boards.onBoardsAs": "On leaderboards as “{{name}}”.",
   "boards.confirm.title": "Remove your name?",
   "boards.confirm.body": "You'll be taken off every leaderboard. Your games and stats stay. You can save a name again at any time.",
   "boards.confirm.confirm": "Remove",

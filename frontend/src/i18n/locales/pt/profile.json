@@ -61,6 +61,8 @@
   "boards.removeName": "Remover meu nome dos rankings",
   "boards.notOnBoards": "Você não está em nenhum ranking. Salve um nome para participar.",
   "boards.removeError": "Não foi possível remover seu nome. Tente novamente.",
+  "boards.removing": "Removendo seu nome… Isso será sincronizado quando você voltar a ficar online.",
+  "boards.onBoardsAs": "Nos rankings como “{{name}}”.",
   "boards.confirm.title": "Remover seu nome?",
   "boards.confirm.body": "Você sairá de todos os rankings. Seus jogos e estatísticas continuam. Você pode salvar um nome de novo a qualquer momento.",
   "boards.confirm.confirm": "Remover",

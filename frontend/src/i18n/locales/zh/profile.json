@@ -61,6 +61,8 @@
   "boards.removeName": "从排行榜移除我的名字",
   "boards.notOnBoards": "你不在任何排行榜上。保存一个名字即可加入。",
   "boards.removeError": "无法移除你的名字。请重试。",
+  "boards.removing": "正在移除你的名字… 恢复联网后会同步。",
+  "boards.onBoardsAs": "在排行榜上显示为“{{name}}”。",
   "boards.confirm.title": "移除你的名字？",
   "boards.confirm.body": "你将从所有排行榜中移除。你的游戏和统计数据会保留。你可以随时重新保存名字。",
   "boards.confirm.confirm": "移除",

@@ -61,6 +61,8 @@
   "boards.removeName": "Meinen Namen von Bestenlisten entfernen",
   "boards.notOnBoards": "Du stehst auf keiner Bestenliste. Speichere einen Namen, um dabei zu sein.",
   "boards.removeError": "Dein Name konnte nicht entfernt werden. Versuch es noch einmal.",
+  "boards.removing": "Dein Name wird entfernt … Das wird synchronisiert, sobald du wieder online bist.",
+  "boards.onBoardsAs": "Auf Bestenlisten als „{{name}}“.",
   "boards.confirm.title": "Namen entfernen?",
   "boards.confirm.body": "Du wirst von allen Bestenlisten entfernt. Deine Spiele und Statistiken bleiben. Du kannst jederzeit wieder einen Namen speichern.",
   "boards.confirm.confirm": "Entfernen",

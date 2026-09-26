@@ -61,6 +61,8 @@
   "boards.removeName": "Mijn naam van de ranglijsten halen",
   "boards.notOnBoards": "Je staat op geen enkele ranglijst. Sla een naam op om mee te doen.",
   "boards.removeError": "Je naam kon niet worden verwijderd. Probeer het opnieuw.",
+  "boards.removing": "Je naam wordt verwijderd… Dit wordt gesynchroniseerd zodra je weer online bent.",
+  "boards.onBoardsAs": "Op ranglijsten als ‘{{name}}’.",
   "boards.confirm.title": "Je naam verwijderen?",
   "boards.confirm.body": "Je wordt van elke ranglijst gehaald. Je spellen en statistieken blijven bewaard. Je kunt altijd opnieuw een naam opslaan.",
   "boards.confirm.confirm": "Verwijderen",

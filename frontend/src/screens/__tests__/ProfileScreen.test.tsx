@@ -11,12 +11,14 @@ import {
 import {
   flushDisplayNameSync,
   registerDisplayNameSync,
+  removeDisplayName,
   resetDisplayNameSyncForTests,
 } from "../../game/_shared/displayNameSync";
 import type { StatsResponse, GameHistoryResponse, GameOutcome } from "../../api/types";
 
+const mockNetwork = { isOnline: true };
 jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
+  useNetwork: () => ({ isOnline: mockNetwork.isOnline, isInitialized: true }),
 }));
 
 jest.mock("expo-blur", () => ({
@@ -47,8 +49,10 @@ jest.mock("../../api/stats", () => ({
 // The name sync runs for real (its one-slot queue is under test); only the HTTP calls are mocked.
 const mockPutMe = jest.fn();
 const mockDeleteMe = jest.fn();
+const mockGetMe = jest.fn();
 jest.mock("../../api/players", () => ({
   playersApi: {
+    getMe: (...args: unknown[]) => mockGetMe(...args),
     putMe: (...args: unknown[]) => mockPutMe(...args),
     deleteMe: (...args: unknown[]) => mockDeleteMe(...args),
   },
@@ -186,6 +190,8 @@ beforeEach(async () => {
   mockGetMyGames.mockResolvedValue(SAMPLE_GAMES);
   mockPutMe.mockImplementation((name: string) => Promise.resolve({ display_name: name }));
   mockDeleteMe.mockResolvedValue(undefined);
+  mockGetMe.mockResolvedValue({ display_name: null });
+  mockNetwork.isOnline = true;
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   resetDisplayNameSyncForTests();
@@ -438,9 +444,36 @@ describe("ProfileScreen", () => {
       expect(screen.getByTestId("profile-tile-sessions")).toBeTruthy();
     });
     expect(screen.queryByRole("progressbar")).toBeNull();
+    // `played` is an honest session count…
     expect(tileValue("sessions").getByText("3")).toBeTruthy();
-    expect(tileValue("favorite").getByText("Yacht")).toBeTruthy();
+    // …but includes abandons, so it never stands in for `completed`.
+    expect(tileValue("completed").getByText("—")).toBeTruthy();
+    expect(tileValue("completionRate").getByText("—")).toBeTruthy();
+    expect(tileValue("completionRate").queryByText("100%")).toBeNull();
+    expect(tileValue("favorite").getByText("—")).toBeTruthy();
+    expect(tileValue("favorite").queryByText("Yacht")).toBeNull();
     expect(within(screen.getByTestId("profile-game-yacht")).getAllByText("—")).toHaveLength(2);
+  });
+
+  it("breaks a favourite tie like the Your Games list: completed, sessions, then slug", async () => {
+    const base = SAMPLE_STATS.by_game.yacht;
+    mockGetMyStats.mockResolvedValue({
+      ...SAMPLE_STATS,
+      by_game: {
+        yacht: { ...base, sessions: 5, completed: 3 },
+        freecell: { ...base, sessions: 4, completed: 3 },
+        twenty48: { ...base, sessions: 5, completed: 3 },
+      },
+      favorite_game: "yacht",
+    });
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-tile-favorite")).toBeTruthy();
+    });
+    // 2048 and Yacht tie on completed and sessions; "twenty48" sorts before "yacht".
+    expect(tileValue("favorite").getByText("2048")).toBeTruthy();
+    const order = screen.getAllByTestId(/^profile-game-/).map((row) => row.props.testID as string);
+    expect(order).toEqual(["profile-game-twenty48", "profile-game-yacht", "profile-game-freecell"]);
   });
 
   it("omits the level header when only stats fails (#2391)", async () => {
@@ -511,6 +544,7 @@ describe("ProfileScreen", () => {
 describe("ProfileScreen — Remove my name from leaderboards (#2637)", () => {
   const REMOVE = "Remove my name from leaderboards";
   const NOT_ON_BOARDS = "You're not on any leaderboard. Save a name to join them.";
+  const REMOVING = "Removing your name… It will sync when you're back online.";
 
   async function renderWithName(name = "Riley") {
     await AsyncStorage.setItem(NAME_KEY, name);
@@ -565,10 +599,12 @@ describe("ProfileScreen — Remove my name from leaderboards (#2637)", () => {
 
     await confirmRemoval();
 
-    // Off the boards on this device at once; the DELETE is still pending.
-    expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy();
+    // The DELETE failed and is pending: Profile says so, not "on no board".
     await waitFor(() => expect(mockDeleteMe).toHaveBeenCalledTimes(1));
     await waitFor(async () => expect(await AsyncStorage.getItem(PENDING_KEY)).not.toBeNull());
+    expect(screen.getByText(REMOVING)).toBeTruthy();
+    expect(screen.queryByText(NOT_ON_BOARDS)).toBeNull();
+    expect(screen.queryByText(REMOVE)).toBeNull();
 
     // Reconnect: NetworkContext flushes the name sync.
     await act(async () => {
@@ -576,6 +612,52 @@ describe("ProfileScreen — Remove my name from leaderboards (#2637)", () => {
     });
     expect(mockDeleteMe).toHaveBeenCalledTimes(2);
     await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+    expect(screen.queryByText(REMOVING)).toBeNull();
+  });
+
+  it("shows the removal as pending when Profile opens with one still queued", async () => {
+    await AsyncStorage.setItem(NAME_KEY, "Riley");
+    mockDeleteMe.mockRejectedValue(new TypeError("Network request failed"));
+    await removeDisplayName();
+    await flushDisplayNameSync();
+    resetDisplayNameSyncForTests(); // a fresh screen reads the slot from storage
+
+    await renderScreen();
+
+    await waitFor(() => expect(screen.getByText(REMOVING)).toBeTruthy());
+    expect(mockGetMe).not.toHaveBeenCalled();
+  });
+
+  it("shows a name the server still has when the device has none, and removes it", async () => {
+    mockGetMe.mockResolvedValue({ display_name: "Riley" });
+    await renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText("On leaderboards as “Riley”.")).toBeTruthy();
+    });
+    expect(screen.getByText(REMOVE)).toBeTruthy();
+    expect(screen.queryByText(NOT_ON_BOARDS)).toBeNull();
+
+    mockGetMe.mockResolvedValue({ display_name: null });
+    await confirmRemoval();
+
+    await waitFor(() => expect(mockDeleteMe).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+    expect(screen.queryByText("On leaderboards as “Riley”.")).toBeNull();
+  });
+
+  it("doesn't ask the server while offline", async () => {
+    mockNetwork.isOnline = false;
+    mockGetMe.mockResolvedValue({ display_name: "Riley" });
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+    expect(mockGetMe).not.toHaveBeenCalled();
+  });
+
+  it("doesn't ask the server when the device has a name", async () => {
+    await renderWithName();
+    expect(mockGetMe).not.toHaveBeenCalled();
   });
 
   it("lets the existing name editor set a name again afterwards", async () => {
@@ -612,18 +694,18 @@ describe("ProfileScreen — Remove my name from leaderboards (#2637)", () => {
     ).toBeTruthy();
   });
 
-  it("shows an error and keeps the name when it can't be cleared on the device", async () => {
+  it("shows an error and keeps the name when the removal can't be stored", async () => {
     await renderWithName();
-    const spy = jest.spyOn(AsyncStorage, "removeItem").mockRejectedValueOnce(new Error("disk"));
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
 
     await confirmRemoval();
-    spy.mockRestore();
 
     await waitFor(() => {
       expect(screen.getByText("Couldn't remove your name. Try again.")).toBeTruthy();
     });
     expect(screen.getByText(REMOVE)).toBeTruthy();
     expect(mockDeleteMe).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe("Riley");
   });
 });
 

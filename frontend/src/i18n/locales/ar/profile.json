@@ -77,6 +77,8 @@
   "boards.removeName": "إزالة اسمي من لوحات الترتيب",
   "boards.notOnBoards": "أنت لست في أي لوحة ترتيب. احفظ اسمًا للانضمام.",
   "boards.removeError": "تعذرت إزالة اسمك. حاول مرة أخرى.",
+  "boards.removing": "جارٍ إزالة اسمك… ستتم المزامنة عند عودتك إلى الاتصال.",
+  "boards.onBoardsAs": "في لوحات الترتيب باسم «{{name}}».",
   "boards.confirm.title": "إزالة اسمك؟",
   "boards.confirm.body": "ستُزال من كل لوحات الترتيب. تبقى ألعابك وإحصاءاتك. يمكنك حفظ اسم مرة أخرى في أي وقت.",
   "boards.confirm.confirm": "إزالة",

@@ -65,6 +65,8 @@
   "boards.removeName": "הסרת השם שלי מהדירוגים",
   "boards.notOnBoards": "אינך מופיע באף דירוג. שמור שם כדי להצטרף.",
   "boards.removeError": "לא ניתן להסיר את השם. נסה שוב.",
+  "boards.removing": "מסיר את השם שלך… זה יסונכרן כשתחזור לרשת.",
+  "boards.onBoardsAs": "בדירוגים בתור „{{name}}”.",
   "boards.confirm.title": "להסיר את השם?",
   "boards.confirm.body": "תוסר מכל הדירוגים. המשחקים והסטטיסטיקות שלך יישמרו. אפשר לשמור שם שוב בכל עת.",
   "boards.confirm.confirm": "הסרה",

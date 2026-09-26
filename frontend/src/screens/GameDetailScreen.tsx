@@ -10,7 +10,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { statsApi } from "../api/stats";
 import type { GameDetailResponse } from "../api/types";
-import { outcomeLabel } from "../api/outcomeDisplay";
+import { formatMetric, gameMetric, outcomeLabel } from "../api/outcomeDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatTimestamp } from "../utils/formatTimestamp";
 
@@ -65,6 +65,7 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   } else if (error || !detail) {
     body = <EmptyState kind="error" message={t("detail.loadError")} />;
   } else {
+    const metric = gameMetric(detail);
     body = (
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
@@ -75,7 +76,8 @@ export default function GameDetailScreen({ navigation, route }: Props) {
           />
           <DetailRow
             label={t("detail.score")}
-            value={detail.final_score != null ? detail.final_score.toLocaleString() : "—"}
+            // The board's metric with its label, as Profile's recent games show it.
+            value={formatMetric(t, metric.labelKey, metric.value)}
             colors={colors}
           />
           <DetailRow

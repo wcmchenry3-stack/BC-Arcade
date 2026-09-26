@@ -22,6 +22,7 @@ import {
   clearDisplayNameSync,
   flushDisplayNameSync,
   registerDisplayNameSync,
+  isDisplayNameRemovalPending,
   removeDisplayName,
   resetDisplayNameSyncForTests,
   syncDisplayNameOnLaunch,
@@ -29,6 +30,7 @@ import {
 import { ApiError } from "../httpClient";
 import { clearSession } from "../session";
 
+const NAME_KEY = "player_display_name";
 const PENDING_KEY = "player_display_name_pending_sync";
 const SYNCED_KEY = "player_display_name_synced";
 
@@ -354,15 +356,75 @@ describe("removeDisplayName → DELETE /players/me (#2637)", () => {
     expect(order).toEqual(["PUT", "DELETE"]);
   });
 
-  it("changes nothing and sends nothing when the local name can't be cleared", async () => {
-    await saveDisplayName("Riley");
+  it("changes nothing when the removal can't be stored in the slot", async () => {
+    // "Bob" is saved but unsent (offline).
+    mockPutMe.mockImplementation(offline);
+    await saveDisplayName("Bob");
     await flushDisplayNameSync();
-    const spy = jest.spyOn(AsyncStorage, "removeItem").mockRejectedValueOnce(new Error("disk"));
+    mockPutMe.mockClear();
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
 
     await expect(removeDisplayName()).resolves.toBe(false);
-    spy.mockRestore();
-    await flushDisplayNameSync();
+
+    // Nothing sent, nothing cleared: the device still has Bob, with Bob pending.
+    expect(mockPutMe).not.toHaveBeenCalled();
     expect(mockDeleteMe).not.toHaveBeenCalled();
-    await expect(loadDisplayName()).resolves.toBe("Riley");
+    await expect(loadDisplayName()).resolves.toBe("Bob");
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe("Bob");
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBe("Bob");
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
+  });
+
+  it("still sends the DELETE when the device clear fails after the removal is stored", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    mockDeleteMe.mockImplementation(offline);
+    // Stands in for an app kill between the two steps: the slot holds the
+    // removal, the device still holds the name.
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+
+    await expect(removeDisplayName()).resolves.toBe(true);
+    await flushDisplayNameSync();
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(true);
+
+    mockDeleteMe.mockReset();
+    mockDeleteMe.mockResolvedValue(undefined);
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
+  });
+
+  it("finishes a half-done removal at launch: clears the device name, sends only the DELETE", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    mockDeleteMe.mockImplementation(offline);
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+    await removeDisplayName();
+    await flushDisplayNameSync();
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe("Riley");
+
+    // Next launch.
+    mockDeleteMe.mockReset();
+    mockDeleteMe.mockResolvedValue(undefined);
+    resetDisplayNameCacheForTests();
+    resetDisplayNameSyncForTests();
+    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    expect(sentNames()).toEqual(["Riley"]); // not sent again
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBeNull();
+  });
+
+  it("reports a removal as pending until the server confirms it", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
+    mockDeleteMe.mockImplementation(offline);
+    await removeDisplayName();
+    await flushDisplayNameSync();
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(true);
+
+    mockDeleteMe.mockResolvedValue(undefined);
+    await flushDisplayNameSync();
+    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
   });
 });

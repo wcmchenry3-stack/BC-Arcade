@@ -76,7 +76,7 @@ describe("GameDetailScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Yacht")).toBeTruthy();
     });
-    expect(screen.getByText("280")).toBeTruthy();
+    expect(screen.getByText("280 pts")).toBeTruthy();
     // The outcome's label, and the "Completed" (completed at) row's.
     expect(screen.getAllByText("Completed")).toHaveLength(2);
     expect(screen.queryByText("completed")).toBeNull();
@@ -95,6 +95,36 @@ describe("GameDetailScreen", () => {
       expect(screen.getByText(label)).toBeTruthy();
     });
     expect(screen.queryByText(outcome)).toBeNull();
+  });
+
+  it.each([
+    ["sort", 0, { level_reached: 19 }, "Level 19"],
+    ["daily_word", null, { guesses_used: 4 }, "4 guesses"],
+    ["freecell", 87, {}, "87 moves"],
+  ] as const)(
+    "shows %s's board metric with its label, as Recent Games does (#2637)",
+    async (game_type, final_score, metadata, expected) => {
+      mockGetGameDetail.mockResolvedValue({ ...SAMPLE_DETAIL, game_type, final_score, metadata });
+      await renderScreen();
+      await waitFor(() => {
+        expect(screen.getByText(expected)).toBeTruthy();
+      });
+    }
+  );
+
+  it("shows a dash when the game lacks its board metric", async () => {
+    mockGetGameDetail.mockResolvedValue({
+      ...SAMPLE_DETAIL,
+      game_type: "sort",
+      final_score: 3,
+      metadata: {},
+    });
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Final Score")).toBeTruthy();
+    });
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("3")).toBeNull();
   });
 
   it("shows a dash for a game with no outcome yet", async () => {

@@ -18,7 +18,9 @@ import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
 import { useDisplayName } from "../game/_shared/displayName";
-import { removeDisplayName } from "../game/_shared/displayNameSync";
+import { removeDisplayName, useDisplayNameRemovalPending } from "../game/_shared/displayNameSync";
+import { useNetwork } from "../game/_shared/NetworkContext";
+import { playersApi } from "../api/players";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
 import DisplayNameField from "../components/shared/DisplayNameField";
@@ -36,17 +38,19 @@ interface StatsCardData {
 interface GameSummaryRow {
   game: string;
   title: string;
-  /** The best with its label ("412 pts"), or "—" before any qualifying game. */
-  best: string;
-  hasBest: boolean;
-  /** Whole-number percentage, or null when the game has no win concept. */
+  /** Games completed; null from a server that predates #2620. */
+  completed: number | null;
+  /** The best with its label ("412 pts"); null before any qualifying game. */
+  best: string | null;
+  /** won / (won + lost + tied); null when the game has no win concept. */
   winRate: number | null;
 }
 
-// A server from before #2620 omits the comparable fields: fall back to the
-// deprecated `played` so the tiles still read sensibly during a staggered deploy.
+// A server from before #2620 omits the comparable fields. Its `played` is an
+// honest session count, but it includes abandons, so it is no stand-in for
+// `completed`: those figures show "—" instead.
 const sessionsOf = (s: GameTypeStats): number => s.sessions ?? s.played;
-const completedOf = (s: GameTypeStats): number => s.completed ?? s.played;
+const completedOf = (s: GameTypeStats): number | null => s.completed ?? null;
 
 function formatPercent(t: TFunction, ratio: number): string {
   return t("stats.percent", { value: Math.round(ratio * 100) });
@@ -66,12 +70,35 @@ function formatPlayTime(t: TFunction, ms: number): string {
 function winRateOf(s: GameTypeStats): number | null {
   if (s.won == null || s.lost == null || s.tied == null) return null;
   const decided = s.won + s.lost + s.tied;
-  return decided > 0 ? Math.round((s.won / decided) * 100) : null;
+  return decided > 0 ? s.won / decided : null;
 }
 
 /** The games in `/stats/me` that exist in this build (#2390). */
 function visibleStats(stats: StatsResponse): [string, GameTypeStats][] {
   return Object.entries(stats.by_game).filter(([game]) => isGameVisible(game));
+}
+
+/**
+ * One row per visible game played: its own best in its own terms, and its
+ * win rate. Ordered by games completed, then sessions, then slug; the first
+ * row is the favourite.
+ */
+function deriveGameSummaries(stats: StatsResponse, t: TFunction): GameSummaryRow[] {
+  return visibleStats(stats)
+    .filter(([, s]) => sessionsOf(s) > 0)
+    .sort(
+      ([a, sa], [b, sb]) =>
+        (completedOf(sb) ?? 0) - (completedOf(sa) ?? 0) ||
+        sessionsOf(sb) - sessionsOf(sa) ||
+        a.localeCompare(b)
+    )
+    .map(([game, s]) => ({
+      game,
+      title: gameTitle(t, game),
+      completed: completedOf(s),
+      best: s.best_value != null ? formatMetric(t, s.best_label_key, s.best_value) : null,
+      winRate: winRateOf(s),
+    }));
 }
 
 /**
@@ -83,68 +110,80 @@ function visibleStats(stats: StatsResponse): [string, GameTypeStats][] {
  * completed, rather than taken from the server (which picks by sessions over
  * every game).
  */
-function deriveBentoTiles(stats: StatsResponse, t: TFunction): StatsCardData[] {
+function deriveBentoTiles(
+  stats: StatsResponse,
+  summaries: GameSummaryRow[],
+  t: TFunction
+): StatsCardData[] {
   const visible = visibleStats(stats);
   const sessions = visible.reduce((sum, [, s]) => sum + sessionsOf(s), 0);
-  const completed = visible.reduce((sum, [, s]) => sum + completedOf(s), 0);
+  const hasCompleted = visible.every(([, s]) => completedOf(s) != null);
+  const completed = visible.reduce((sum, [, s]) => sum + (completedOf(s) ?? 0), 0);
   const timePlayedMs = visible.reduce((sum, [, s]) => sum + (s.time_played_ms ?? 0), 0);
-  const gamesTried = visible.filter(([, s]) => sessionsOf(s) > 0).length;
+  const favorite = summaries[0];
 
-  let favorite: string | null = null;
-  let favoriteCompleted = 0;
-  for (const [game, s] of visible) {
-    if (completedOf(s) > favoriteCompleted) {
-      favoriteCompleted = completedOf(s);
-      favorite = game;
-    }
-  }
+  let favoriteValue: string;
+  if (!hasCompleted) favoriteValue = "—";
+  else if (favorite && (favorite.completed ?? 0) > 0) favoriteValue = favorite.title;
+  else favoriteValue = t("stats.favoriteEmpty");
 
   return [
     { key: "sessions", label: t("stats.sessions"), value: sessions.toLocaleString() },
-    { key: "completed", label: t("stats.completed"), value: completed.toLocaleString() },
+    {
+      key: "completed",
+      label: t("stats.completed"),
+      value: hasCompleted ? completed.toLocaleString() : "—",
+    },
     {
       key: "completionRate",
       label: t("stats.completionRate"),
-      value: sessions > 0 ? formatPercent(t, completed / sessions) : "—",
+      value: hasCompleted && sessions > 0 ? formatPercent(t, completed / sessions) : "—",
     },
     { key: "timePlayed", label: t("stats.timePlayed"), value: formatPlayTime(t, timePlayedMs) },
-    { key: "gamesTried", label: t("stats.gamesTried"), value: gamesTried.toLocaleString() },
-    {
-      key: "favorite",
-      label: t("stats.favorite"),
-      value: favorite ? gameTitle(t, favorite) : t("stats.favoriteEmpty"),
-    },
+    { key: "gamesTried", label: t("stats.gamesTried"), value: summaries.length.toLocaleString() },
+    { key: "favorite", label: t("stats.favorite"), value: favoriteValue },
   ];
-}
-
-/** One row per visible game: its own best in its own terms, and its win rate. */
-function deriveGameSummaries(stats: StatsResponse, t: TFunction): GameSummaryRow[] {
-  return visibleStats(stats)
-    .filter(([, s]) => sessionsOf(s) > 0)
-    .sort(
-      ([a, sa], [b, sb]) =>
-        completedOf(sb) - completedOf(sa) || sessionsOf(sb) - sessionsOf(sa) || a.localeCompare(b)
-    )
-    .map(([game, s]) => ({
-      game,
-      title: gameTitle(t, game),
-      best: formatMetric(t, s.best_label_key, s.best_value),
-      hasBest: s.best_value != null,
-      winRate: winRateOf(s),
-    }));
 }
 
 /**
  * Under the name editor: says whether the player is on the leaderboards, and
  * lets them take their name off every board (#2637). The editor above sets a
  * name again.
+ *
+ * States, in order: a removal still waiting to reach the server; a name on
+ * this device; no name here but one on the server (fetched when online, e.g.
+ * a device that lost its copy); no name anywhere.
  */
 function LeaderboardPresence() {
   const { colors } = useTheme();
   const { t } = useTranslation("profile");
+  const { isOnline } = useNetwork();
   const { name, isLoaded } = useDisplayName();
+  const removalPending = useDisplayNameRemovalPending();
+  const [serverName, setServerName] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [removeError, setRemoveError] = useState(false);
+
+  const checkServer = isLoaded && name == null && !removalPending && isOnline;
+  useEffect(() => {
+    if (!checkServer) {
+      setServerName(null);
+      return;
+    }
+    let active = true;
+    playersApi
+      .getMe()
+      .then((me) => {
+        if (active) setServerName(me.display_name);
+      })
+      .catch(() => {
+        // Unknown: show the device's state (no name) rather than an error.
+        if (active) setServerName(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [checkServer]);
 
   const handleRemove = useCallback(async () => {
     setConfirmVisible(false);
@@ -153,9 +192,29 @@ function LeaderboardPresence() {
 
   if (!isLoaded) return null;
 
-  return (
-    <View style={styles.presence}>
-      {name != null ? (
+  const shownName = name ?? serverName;
+  let status: React.ReactNode;
+  if (removalPending) {
+    status = (
+      <Text
+        accessibilityLiveRegion="polite"
+        testID="profile-name-removing"
+        style={[styles.presenceText, { color: colors.textMuted }]}
+      >
+        {t("boards.removing")}
+      </Text>
+    );
+  } else if (shownName != null) {
+    status = (
+      <>
+        {name == null && (
+          <Text
+            testID="profile-server-name"
+            style={[styles.presenceText, { color: colors.textMuted }]}
+          >
+            {t("boards.onBoardsAs", { name: shownName })}
+          </Text>
+        )}
         <Pressable
           onPress={() => {
             setRemoveError(false);
@@ -170,15 +229,23 @@ function LeaderboardPresence() {
           <MaterialCommunityIcons name="account-remove-outline" size={18} color={colors.text} />
           <Text style={[styles.removeText, { color: colors.text }]}>{t("boards.removeName")}</Text>
         </Pressable>
-      ) : (
-        <Text
-          accessibilityLiveRegion="polite"
-          testID="profile-not-on-boards"
-          style={[styles.presenceText, { color: colors.textMuted }]}
-        >
-          {t("boards.notOnBoards")}
-        </Text>
-      )}
+      </>
+    );
+  } else {
+    status = (
+      <Text
+        accessibilityLiveRegion="polite"
+        testID="profile-not-on-boards"
+        style={[styles.presenceText, { color: colors.textMuted }]}
+      >
+        {t("boards.notOnBoards")}
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.presence}>
+      {status}
       {removeError && (
         <Text
           accessibilityRole="alert"
@@ -258,8 +325,11 @@ export default function ProfileScreen() {
     [games]
   );
 
-  const bentoTiles = useMemo(() => (stats ? deriveBentoTiles(stats, t) : null), [stats, t]);
   const gameSummaries = useMemo(() => (stats ? deriveGameSummaries(stats, t) : null), [stats, t]);
+  const bentoTiles = useMemo(
+    () => (stats && gameSummaries ? deriveBentoTiles(stats, gameSummaries, t) : null),
+    [stats, gameSummaries, t]
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: GameRow }) => {
@@ -373,7 +443,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
             {gameSummaries.map((row) => {
-              const rate = row.winRate != null ? t("stats.percent", { value: row.winRate }) : "—";
+              const rate = row.winRate != null ? formatPercent(t, row.winRate) : "—";
               return (
                 <View
                   key={row.game}
@@ -383,7 +453,7 @@ export default function ProfileScreen() {
                     row.winRate != null ? "byGame.rowA11y" : "byGame.rowA11yNoWins",
                     {
                       game: row.title,
-                      best: row.hasBest ? row.best : t("byGame.noBest"),
+                      best: row.best ?? t("byGame.noBest"),
                       winRate: rate,
                     }
                   )}
@@ -403,7 +473,7 @@ export default function ProfileScreen() {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    {row.best}
+                    {row.best ?? "—"}
                   </Text>
                   <Text
                     style={[styles.gameValue, styles.gameRateCol, { color: colors.text }]}

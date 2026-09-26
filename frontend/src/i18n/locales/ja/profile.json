@@ -61,6 +61,8 @@
   "boards.removeName": "ランキングから名前を削除",
   "boards.notOnBoards": "どのランキングにも載っていません。名前を保存すると参加できます。",
   "boards.removeError": "名前を削除できませんでした。もう一度お試しください。",
+  "boards.removing": "名前を削除しています… オンラインに戻ると同期されます。",
+  "boards.onBoardsAs": "ランキングでの名前：「{{name}}」",
   "boards.confirm.title": "名前を削除しますか？",
   "boards.confirm.body": "すべてのランキングから外れます。ゲームと統計は残ります。名前はいつでも再び保存できます。",
   "boards.confirm.confirm": "削除",

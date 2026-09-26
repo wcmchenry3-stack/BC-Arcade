@@ -61,6 +61,8 @@
   "boards.removeName": "랭킹에서 내 이름 삭제",
   "boards.notOnBoards": "어떤 랭킹에도 없습니다. 이름을 저장하면 참여할 수 있어요.",
   "boards.removeError": "이름을 삭제하지 못했습니다. 다시 시도하세요.",
+  "boards.removing": "이름을 삭제하는 중… 다시 온라인이 되면 동기화됩니다.",
+  "boards.onBoardsAs": "랭킹에 “{{name}}”(으)로 표시됩니다.",
   "boards.confirm.title": "이름을 삭제할까요?",
   "boards.confirm.body": "모든 랭킹에서 빠집니다. 게임 기록과 통계는 유지됩니다. 언제든 이름을 다시 저장할 수 있어요.",
   "boards.confirm.confirm": "삭제",

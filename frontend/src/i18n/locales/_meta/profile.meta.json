@@ -557,6 +557,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "boards.removing": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field after the player removed their name while the removal hasn't reached the server yet (usually offline).",
+    "tone": "neutral",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.onBoardsAs": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field when this device has no name but the server still shows the player on leaderboards under {{name}}.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the player's own display name (up to 32 characters)."
+  },
   "boards.confirm.title": {
     "component": "ProfileScreen",
     "description": "Title of the dialog confirming removal of the player's name from leaderboards.",

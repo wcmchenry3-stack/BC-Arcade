@@ -61,6 +61,8 @@
   "boards.removeName": "Quitar mi nombre de las clasificaciones",
   "boards.notOnBoards": "No estás en ninguna clasificación. Guarda un nombre para aparecer.",
   "boards.removeError": "No se pudo quitar tu nombre. Inténtalo de nuevo.",
+  "boards.removing": "Quitando tu nombre… Se sincronizará cuando vuelvas a estar en línea.",
+  "boards.onBoardsAs": "En las clasificaciones como «{{name}}».",
   "boards.confirm.title": "¿Quitar tu nombre?",
   "boards.confirm.body": "Saldrás de todas las clasificaciones. Tus partidas y estadísticas se conservan. Puedes volver a guardar un nombre cuando quieras.",
   "boards.confirm.confirm": "Quitar",

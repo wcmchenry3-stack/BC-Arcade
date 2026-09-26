@@ -82,11 +82,14 @@ The app sends the name when it is saved (`saveDisplayName` →
 holding the latest name — five offline saves send one PUT — and flushes it on
 reconnect and foreground alongside the queues above; on launch, a stored name
 the server was never sent is synced once. Profile's "Remove my name from
-leaderboards" (#2637) forgets the name on the device and puts a removal
-(`DELETE /players/me`) in the same one-slot queue, so the latest intent wins:
-a removal replaces an unsent name, a later save replaces an unsent removal,
-and an offline removal goes out on the next reconnect, foreground or launch.
-See `frontend/src/game/_shared/displayNameSync.ts`.
+leaderboards" (#2637) first stores a removal (`DELETE /players/me`) in the
+same one-slot queue and only then forgets the name on the device, so the
+DELETE can't be lost (launch finishes a device clear a kill interrupted). The
+latest intent wins: a removal replaces an unsent name, a later save replaces
+an unsent removal, and an offline removal goes out on the next reconnect,
+foreground or launch; Profile shows it as pending until then. When the device
+has no name, Profile asks `GET /players/me` (online) and offers removal of a
+name the server still has. See `frontend/src/game/_shared/displayNameSync.ts`.
 
 **Safe replays.** Retries are the normal case, so every write is safe to
 repeat: `POST /games` dedupes on the client game id, a completed game can't be

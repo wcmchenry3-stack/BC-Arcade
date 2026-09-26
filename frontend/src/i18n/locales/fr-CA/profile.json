@@ -61,6 +61,8 @@
   "boards.removeName": "Retirer mon nom des classements",
   "boards.notOnBoards": "Vous n'êtes dans aucun classement. Enregistrez un nom pour y figurer.",
   "boards.removeError": "Impossible de retirer votre nom. Réessayez.",
+  "boards.removing": "Retrait de votre nom… La synchronisation se fera à votre retour en ligne.",
+  "boards.onBoardsAs": "Dans les classements sous « {{name}} ».",
   "boards.confirm.title": "Retirer votre nom?",
   "boards.confirm.body": "Vous serez retiré de tous les classements. Vos parties et statistiques sont conservées. Vous pouvez enregistrer un nom à tout moment.",
   "boards.confirm.confirm": "Retirer",
