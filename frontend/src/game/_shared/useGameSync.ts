@@ -90,6 +90,12 @@
  *     or starting it over, FreeCell dealing), so the time on the level grid or
  *     the previous board is not counted. Call it with no session open.
  *
+ * Screen focus (#2735): a pushed screen (Stats, Leaderboard, Scoreboard) blurs
+ * this one without unmounting it. The window stops banking time while the
+ * screen is blurred and resumes counting from the moment it regains focus, so
+ * reading stats mid-puzzle doesn't inflate the reported duration. Outside a
+ * navigator (and in tests) the screen is always considered focused.
+ *
  * `complete()` sends the game's own `summary.durationMs` when it is > 0,
  * otherwise the window. The hook's own abandons send the snapshot's
  * `durationMs` when > 0, otherwise the window; a discarded (never-started)
@@ -103,6 +109,7 @@ import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
 import type { BugLevel } from "./eventQueueConfig";
+import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
 /**
  * What a game knows about its in-progress session when it is abandoned.
@@ -255,6 +262,24 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const windowRunningRef = useRef(true);
   if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
 
+  // Screen focus (#2735): whether this screen is the one the player is
+  // looking at, kept current for ping()/readWindow() below. A pushed screen
+  // (Stats, Leaderboard, Scoreboard) blurs this one without unmounting it.
+  const focused = useIsScreenFocused();
+  const focusedRef = useRef(focused);
+  useEffect(() => {
+    if (focusedRef.current === focused) return;
+    if (!focused && windowRunningRef.current) {
+      // Bank whatever the window earned up to the blur, like a ping, then
+      // hold: readWindow() below stops advancing until focus returns.
+      windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
+    }
+    focusedRef.current = focused;
+    // Regaining focus drops whatever elapsed while blurred: it counts from
+    // now, not from the last ping before the screen was covered.
+    if (focused) fgAtLastPingRef.current = foregroundNow();
+  }, [focused]);
+
   const ping = useCallback(() => {
     // Mirror a "win" outcome override to the device (#2682), so a process
     // kill before the next ping still closes an unresumed session as a win.
@@ -278,14 +303,14 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
         }
       }
     }
-    if (!windowRunningRef.current) return;
+    if (!windowRunningRef.current || !focusedRef.current) return;
     windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
     fgAtLastPingRef.current = foregroundNow();
   }, []);
 
   const readWindow = useCallback(
     (): number =>
-      windowRunningRef.current
+      windowRunningRef.current && focusedRef.current
         ? windowBankedRef.current + cappedGap(fgAtLastPingRef.current ?? foregroundNow())
         : windowBankedRef.current,
     []

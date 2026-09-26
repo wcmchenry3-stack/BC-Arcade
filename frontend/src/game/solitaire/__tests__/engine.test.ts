@@ -24,8 +24,10 @@ import {
   drawFromStock,
   getHintMoves,
   isProductiveMove,
+  pauseGame,
   recycleWaste,
   resolveAutoMove,
+  resumeGame,
   setRng,
   undo,
   validateMove,
@@ -1219,5 +1221,39 @@ describe("resolveAutoMove — waste source", () => {
     });
     const result = resolveAutoMove(state, { type: "waste" });
     expect(result.kind).toBe("no-move");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pauseGame, resumeGame (#2735)
+// ---------------------------------------------------------------------------
+
+describe("pauseGame / resumeGame", () => {
+  it("pauseGame accumulates time and clears startedAt", () => {
+    const state = mkState({ startedAt: 1000, accumulatedMs: 200 });
+    const paused = pauseGame(state, 1600);
+    expect(paused.startedAt).toBeNull();
+    expect(paused.accumulatedMs).toBe(800);
+  });
+
+  it("pauseGame is a no-op before the first move", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 0 });
+    expect(pauseGame(state, 5000)).toBe(state);
+  });
+
+  it("resumeGame sets startedAt", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 200 });
+    const resumed = resumeGame(state, 5000);
+    expect(resumed.startedAt).toBe(5000);
+  });
+
+  it("resumeGame is a no-op when already running", () => {
+    const state = mkState({ startedAt: 1000 });
+    expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+
+  it("resumeGame is a no-op on a finished game", () => {
+    const state = mkState({ startedAt: null, isComplete: true });
+    expect(resumeGame(state, 2000).startedAt).toBeNull();
   });
 });

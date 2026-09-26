@@ -96,6 +96,7 @@ import type { GameRankResponse } from "../../api/types";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 beforeEach(async () => {
+  mockNavListeners.clear();
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
@@ -110,12 +111,25 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
 });
 
+// Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
+// Scoreboard screen, #2735).
+const mockNavListeners = new Map<string, Array<() => void>>();
+
 function mockNav() {
   return {
     setOptions: jest.fn(),
     navigate: jest.fn(),
     goBack: jest.fn(),
     popToTop: jest.fn(),
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    }),
   } as unknown as Parameters<typeof Twenty48Screen>[0]["navigation"];
 }
 
@@ -710,6 +724,95 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(summary["outcome"]).toBe("abandoned");
     expect(summary["durationMs"]).toBe(42_000);
     expect((summary["result"] as Record<string, unknown>)["duration_ms"]).toBe(42_000);
+  });
+
+  // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; its clock
+  // must not run meanwhile.
+  it("stops the play clock while another screen covers the board", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(() => {
+        dispatchKey("ArrowRight"); // starts the board's timer
+      });
+      mockCompleteGame.mockClear();
+
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      now += 10 * 60_000; // ten minutes on the Stats screen
+      await act(async () => {
+        mockNavListeners.get("focus")?.forEach((h) => h());
+      });
+      now += 5_000; // five more seconds of play
+      await unmount();
+    } finally {
+      nowSpy.mockRestore();
+    }
+    const summary = mockCompleteGame.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(summary["durationMs"]).toBe(5_000);
+  });
+
+  // #2735 code review: a move queued during the MOVE_LOCK_MS lock isn't
+  // gated by screen focus, so its release could otherwise apply the move
+  // mid-blur and restart the paused clock (move() treats a paused
+  // `startedAt: null` the same as "never started").
+  // #2735 code review: a move queued during the MOVE_LOCK_MS lock isn't
+  // gated by screen focus on its own, so its release could otherwise apply
+  // the move mid-blur and restart the paused clock (move() treats a paused
+  // `startedAt: null` the same as "never started"). The guard drops the
+  // queued move outright instead, so it never reaches the engine while
+  // blurred.
+  it("drops a move queued before a blur instead of applying it when the lock releases", async () => {
+    // A lone tile in the top-right corner: Left always slides it, and Down is
+    // then always a valid move too (a column can't fill with two tiles), so
+    // the queued move is never a no-op that would release the lock for an
+    // unrelated reason.
+    const board = [
+      [0, 0, 0, 2],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ];
+    (loadGame as jest.Mock).mockResolvedValueOnce({
+      ...NOOP_LEFT_STATE,
+      board,
+      tiles: tilesFor(board),
+    });
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByLabelText("Game board")).toBeTruthy());
+    const moveEvents = () =>
+      mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "move");
+
+    await act(() => {
+      dispatchKey("ArrowLeft"); // starts the timer, locks the board for MOVE_LOCK_MS
+    });
+    await act(() => {
+      dispatchKey("ArrowDown"); // queued: the lock is still held
+    });
+    expect(moveEvents()).toHaveLength(1); // only "left" has actually applied so far
+
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    // Real time passes so the lock's setTimeout actually fires while blurred.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    // The queued "down" never reached the engine: still just the one move.
+    expect(moveEvents()).toHaveLength(1);
+
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await act(() => {
+      // Gameplay resumes normally after focus returns: with at most two
+      // tiles on the board, Down is always a valid move (never a no-op).
+      dispatchKey("ArrowDown");
+    });
+    expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
   });
 
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {

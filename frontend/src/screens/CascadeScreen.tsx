@@ -613,6 +613,39 @@ function CascadeGame() {
   const showResultRef = useRef(showResult);
   showResultRef.current = showResult;
 
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) stops the loop below, so the physics and the reported duration
+  // count only play. Refs, not state: the loop effect below reads them every
+  // frame and must not be recreated when `navigation` re-renders (it isn't
+  // guaranteed to be a stable reference), only when `gameKey` changes.
+  const loopFocusedRef = useRef(true);
+  const blurredAtRef = useRef<number | null>(null);
+  // Set by the loop effect below to its own "start scheduling frames again";
+  // called by the focus listener, which otherwise has no way to reach a
+  // `tick`/`rafId` recreated on every gameKey change.
+  const resumeLoopRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      if (!loopFocusedRef.current) return;
+      loopFocusedRef.current = false;
+      blurredAtRef.current = Date.now();
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      if (loopFocusedRef.current) return;
+      loopFocusedRef.current = true;
+      if (blurredAtRef.current !== null) {
+        gameStartTimeRef.current += Date.now() - blurredAtRef.current;
+        blurredAtRef.current = null;
+      }
+      resumeLoopRef.current();
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
+
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
     const engine = new CascadeEngine({});
@@ -623,6 +656,8 @@ function CascadeGame() {
     let last = performance.now();
 
     function tick(now: number) {
+      if (!loopFocusedRef.current) return; // resumed by resumeLoopRef below
+
       const delta = Math.min(now - last, 100);
       last = now;
 
@@ -654,6 +689,12 @@ function CascadeGame() {
       }
     }
 
+    resumeLoopRef.current = () => {
+      if (gameOverRef.current) return;
+      last = performance.now();
+      rafId = requestAnimationFrame(tick);
+    };
+
     rafId = requestAnimationFrame(tick);
 
     return () => {
@@ -661,6 +702,7 @@ function CascadeGame() {
       engine.destroy();
       engineRef.current = null;
       setPieces([]);
+      resumeLoopRef.current = () => {};
     };
   }, [gameKey]);
 

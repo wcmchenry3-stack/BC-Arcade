@@ -20,11 +20,23 @@ jest.mock("expo-blur", () => ({
 
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
+// Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
+// Scoreboard screen, #2735).
+const mockNavListeners = new Map<string, Array<() => void>>();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    }),
   }),
 }));
 
@@ -179,6 +191,7 @@ async function injectGameOver() {
 
 beforeEach(() => {
   jest.useFakeTimers();
+  mockNavListeners.clear();
   pendingEngineEvents = [];
   mockEngineScore = 0;
   mockEngineInstanceCount = 0;
@@ -511,6 +524,43 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       total_merges: 1,
     });
     expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+  });
+
+  // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; the loop and
+  // the reported duration must not advance meanwhile.
+  it("stops the loop and the play clock while another screen covers the board", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    mockCompleteGame.mockClear();
+    mockEngineStep.mockClear();
+
+    await act(() => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(() => {
+      jest.advanceTimersByTime(10 * 60_000); // ten minutes on the Stats screen
+    });
+    // A frame already queued before the blur may still be flushed, but it
+    // no-ops instead of stepping the engine or rescheduling itself.
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+
+    await act(() => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await act(() => {
+      jest.advanceTimersByTime(5_000); // five more seconds of play
+    });
+    await act(() => {
+      renderer.unmount();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBeLessThan(10_000);
   });
 
   it("a mid-game New Game abandon keeps theme and final_score, but no outcome, in its result", async () => {
