@@ -350,7 +350,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     // CodedError. Verbatim BC_GAMES-4W message.
     dailyWordApi.getToday.mockRejectedValue(
       new Error(
-        'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname'
+        'fetch failed: java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com": No address associated with hostname'
       )
     );
     storage.loadTodayMeta.mockResolvedValue(TODAY_META);

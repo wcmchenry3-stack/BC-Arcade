@@ -111,7 +111,7 @@ jobs:
       # Cloudflare Bot Fight Mode blocks GHA runner IPs (Azure cloud ranges) before
       # the WAF skip rule fires — health checks must bypass the proxy.
       # See wcmchenry3-stack/.github#45.
-      backend-url: "https://gaming-app-api-dev.onrender.com"
+      backend-url: "https://bc-arcade-api-dev.onrender.com"
       health-path: "/health"
       probe-path: "/games/me"
       probe-expected-status: "400"
