@@ -17,6 +17,9 @@
  *      is continued if its screen restores the game (`resumeGame`), and
  *      abandoned when the player starts a fresh game of that type instead,
  *      or at a later launch once it is 24 h old. See `sweepPreviousProcess`.
+ *   6. An orphan the sweep abandons records `win`, not `abandoned`, when the
+ *      game already reported one via `setProgressOutcome` (#2682) — e.g.
+ *      Blackjack's run already reached its goal. See `abandonOrphan`.
  *
  * Errors in the fire-and-forget persistence path go to Sentry, not
  * back to the caller (the caller long forgot about the call).
@@ -70,6 +73,12 @@ export interface GameEventClient {
    */
   markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
+  /**
+   * Record the outcome override a killed-process sweep should use for this
+   * game in place of `abandoned` (#2682), from the game's registered progress
+   * snapshot. Only "win" is honored; pass null to clear it.
+   */
+  setProgressOutcome(gameId: string, outcome: "win" | null): void;
   /**
    * Finish a game: queue its `game_ended` event, then mark it completed, so
    * SyncWorker sends the event before the PATCH. An unstarted game is marked
@@ -152,6 +161,10 @@ export class GameEventClientImpl implements GameEventClient {
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
     this.enqueueEventInternal(gameId, event);
+  }
+
+  setProgressOutcome(gameId: string, outcome: "win" | null): void {
+    this.fireAndForget(this.games.setProgressOutcome(gameId, outcome), "setProgressOutcome");
   }
 
   completeGame(
@@ -292,7 +305,12 @@ export class GameEventClientImpl implements GameEventClient {
   }
 
   /**
-   * Close an orphan as a bare `abandoned` through the normal completion path.
+   * Close an orphan through the normal completion path: `abandoned`, unless
+   * its progress snapshot already reported a win (#2682) — e.g. Blackjack's
+   * run reached its goal before the process was killed — in which case it
+   * records `win` instead, so the streak and stats it earned are not lost.
+   * Only "win" is trusted; anything else on disk (an older build, corrupt
+   * state) falls back to `abandoned`.
    * Its `completedAt` is the last time the device saw the session alive — its
    * last event, else its start (older records have no `lastEventAt`) — not the
    * time of this launch, which could be days later. No `durationMs` is known,
@@ -300,7 +318,8 @@ export class GameEventClientImpl implements GameEventClient {
    */
   private abandonOrphan(gameId: string, game: PendingGame): void {
     const completedAt = game.lastEventAt ?? game.startedAt;
-    this.completeGame(gameId, { outcome: "abandoned" }, undefined, { completedAt });
+    const outcome = game.progressOutcome === "win" ? "win" : "abandoned";
+    this.completeGame(gameId, { outcome }, undefined, { completedAt });
   }
 
   private enqueueEventInternal(gameId: string, event: EnqueueEventInput): void {

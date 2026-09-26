@@ -118,6 +118,15 @@ export interface ProgressSnapshot {
    * over the hook's active-play window (#2684); anything else uses the window.
    */
   durationMs?: number | null;
+  /**
+   * Outcome override for the killed-process sweep (#2682): "win" once the
+   * game has locked in a win that survives however the session ends (e.g.
+   * Blackjack's run goal). The hook mirrors this to the device's persisted
+   * session record on every player-activity ping, so a process kill before
+   * the player reopens the game still closes it as a win, not `abandoned`.
+   * Anything but "win" is ignored — an in-progress game reports nothing here.
+   */
+  outcome?: "win";
 }
 
 /**
@@ -241,6 +250,18 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
 
   const ping = useCallback(() => {
+    // Mirror a "win" outcome override to the device (#2682), so a process
+    // kill before the next ping still closes an unresumed session as a win.
+    // A throwing getter, or anything but "win", is ignored; there is nothing
+    // to persist for a game that never registered a snapshot.
+    const gid = gameIdRef.current;
+    if (gid) {
+      try {
+        if (snapshotRef.current().outcome === "win") gameEventClient.setProgressOutcome(gid, "win");
+      } catch {
+        // Isolation: a broken getter must not block the window update.
+      }
+    }
     if (!windowRunningRef.current) return;
     windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
     fgAtLastPingRef.current = foregroundNow();
@@ -270,6 +291,10 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   // Abandon the open session, attaching the game's progress snapshot if it
   // registered one. A throwing getter degrades to a bare abandon. The
   // duration is the snapshot's own when > 0, otherwise the active-play window.
+  // A registered "win" (#2682) records a win instead — this same-process
+  // unmount is otherwise the same loss the killed-process sweep guards
+  // against (e.g. an ErrorBoundary elsewhere unmounting the game mid-session
+  // after its run already reached its goal).
   const abandon = useCallback(
     (gid: string) => {
       let snapshot: ProgressSnapshot = {};
@@ -278,12 +303,13 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       } catch {
         // Isolation: a broken getter must not lose the abandon.
       }
-      const summary: CompleteSummary = { outcome: "abandoned" };
+      const outcome = snapshot.outcome === "win" ? "win" : "abandoned";
+      const summary: CompleteSummary = { outcome };
       if (snapshot.result) summary.result = snapshot.result;
       const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
       if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
       try {
-        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
+        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome });
       } catch {
         // Isolation.
       }
