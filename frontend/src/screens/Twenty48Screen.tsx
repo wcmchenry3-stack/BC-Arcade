@@ -8,7 +8,6 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { Twenty48State } from "../game/twenty48/types";
 import { newGame, move as engineMove, Direction } from "../game/twenty48/engine";
 import {
@@ -105,7 +104,6 @@ export default function Twenty48Screen({ navigation }: Props) {
   const leaderboard = useLeaderboardSubmit(twenty48Board);
   const { submit: submitLeaderboard, reset: resetLeaderboard } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openStats = useGameStatsLink(navigation, "twenty48");
   const openLeaderboard = useLeaderboardLink(navigation, "twenty48");
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
@@ -454,12 +452,12 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   return (
     <GameShell
+      gameType="twenty48"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={resetGame}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "twenty48" })}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
       style={{

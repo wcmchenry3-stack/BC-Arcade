@@ -16,6 +16,7 @@
   "error": "Não foi possível carregar suas estatísticas.",
   "offline": "Você está offline. Suas estatísticas serão carregadas quando você se reconectar.",
   "stale": "Mostrando suas últimas estatísticas carregadas. Elas podem estar desatualizadas.",
+  "updating": "Atualizando…",
   "retry": "Tentar novamente",
   "link.leaderboard": "Ver ranking",
   "link.runHistory": "Histórico de partidas"

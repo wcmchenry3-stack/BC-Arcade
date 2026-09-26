@@ -111,7 +111,11 @@ export default function ScoreboardScreen() {
   }
 
   return (
-    <GameShell title={t("overflow.menu.scoreboard")} onBack={() => navigation.goBack()}>
+    <GameShell
+      gameType={null}
+      title={t("overflow.menu.scoreboard")}
+      onBack={() => navigation.goBack()}
+    >
       <View style={styles.body}>{body}</View>
     </GameShell>
   );

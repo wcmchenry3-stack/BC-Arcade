@@ -33,7 +33,7 @@ export interface AppHeaderProps {
   onOpenScoreboard?: () => void;
   /**
    * When provided, shows the ⋯ menu with a Stats item (#2635): the game's
-   * shared stats screen. Pass `useGameStatsLink`'s result.
+   * shared stats screen. GameShell sets it from its `gameType` prop.
    */
   onOpenStats?: () => void;
   /**

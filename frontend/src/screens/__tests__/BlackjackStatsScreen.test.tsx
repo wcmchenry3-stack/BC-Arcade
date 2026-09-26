@@ -36,6 +36,8 @@ jest.mock("@react-navigation/native", () => {
   const mockReact = require("react") as typeof React;
   return {
     ...jest.requireActual("@react-navigation/native"),
+    // GameShell calls it (#2635); the run history has no Stats item.
+    useNavigation: () => ({ navigate: jest.fn() }),
     useFocusEffect: (cb: () => void | (() => void)) => {
       mockReact.useEffect(cb, []);
     },

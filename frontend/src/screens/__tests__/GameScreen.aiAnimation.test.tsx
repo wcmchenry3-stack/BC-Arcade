@@ -8,6 +8,14 @@ import type { GameState } from "../../game/yacht/types";
 
 // Replace only `roll`; keep every other engine export (score, newGame, …) real.
 const mockRoll = jest.fn();
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 jest.mock("../../game/yacht/engine", () => {
   const actual = jest.requireActual("../../game/yacht/engine");
   return { ...actual, roll: (...args: unknown[]) => mockRoll(...args) };

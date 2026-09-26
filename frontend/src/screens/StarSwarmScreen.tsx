@@ -23,7 +23,6 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -141,7 +140,6 @@ export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
-  const openStats = useGameStatsLink(navigation, "starswarm");
   const [hydrated, setHydrated] = useState(isPausedStateHydrated);
   useEffect(() => {
     if (hydrated) return;
@@ -156,10 +154,10 @@ export default function StarSwarmScreen() {
   if (hydrated) return <StarSwarmGame />;
   return (
     <GameShell
+      gameType="starswarm"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
-      onOpenStats={openStats}
     >
       <View style={styles.canvasOuter}>
         <ActivityIndicator color={colors.accent} size="large" />
@@ -241,7 +239,6 @@ function StarSwarmGame() {
   const premium = usePremiumLevels("starswarm", "starswarm-premium");
   // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
   // finished run's tier board, else the current tier's.
-  const openStats = useGameStatsLink(navigation, "starswarm");
   const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
     difficulty_tier: result?.tier ?? difficulty,
   });
@@ -620,6 +617,7 @@ function StarSwarmGame() {
 
   return (
     <GameShell
+      gameType="starswarm"
       title={t("game.title")}
       requireBack
       onBack={() => {
@@ -630,7 +628,6 @@ function StarSwarmGame() {
         navigation.popToTop();
       }}
       onNewGame={handleRequestNewGame}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
         showPauseBtn ? (

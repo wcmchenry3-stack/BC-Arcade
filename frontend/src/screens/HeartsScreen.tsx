@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { ModalCard } from "../components/shared/ModalCard";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -104,7 +103,6 @@ export default function HeartsScreen() {
   const leaderboard = useLeaderboardSubmit(HEARTS_BOARD);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openStats = useGameStatsLink(navigation, "hearts");
   const openLeaderboard = useLeaderboardLink(navigation, "hearts");
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
@@ -681,11 +679,11 @@ export default function HeartsScreen() {
   if (!gameState) {
     return (
       <GameShell
+        gameType="hearts"
         title={t("game.title")}
         onBack={() => navigation.goBack()}
         onNewGame={() => handleStartGame(selectedDifficulty)}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
-        onOpenStats={openStats}
         onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
       >
@@ -712,11 +710,11 @@ export default function HeartsScreen() {
 
   return (
     <GameShell
+      gameType="hearts"
       title={t("game.title")}
       onBack={() => navigation.goBack()}
       onNewGame={handleChangeDifficulty}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >

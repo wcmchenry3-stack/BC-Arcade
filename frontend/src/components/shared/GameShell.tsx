@@ -1,6 +1,10 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { GameType } from "../../api/vocab";
+import type { HomeStackParamList } from "../../types/navigation";
 import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
 import { EmptyState } from "./EmptyState";
 import { useTheme } from "../../theme/ThemeContext";
@@ -14,12 +18,18 @@ export interface GameShellProps extends Pick<
   | "backAccessibilityLabel"
   | "rightSlot"
   | "onOpenScoreboard"
-  | "onOpenStats"
   | "onOpenLeaderboard"
   | "onNewGame"
   | "onLevelSelect"
   | "onEditPlayerNames"
 > {
+  /**
+   * The game this screen plays (#2635). Its ⋯ menu gets a "Stats" item that
+   * opens the shared `GameStats` screen for it. `null` for a screen that is
+   * not one game's play screen (a scoreboard, a run history, a dev tool): no
+   * Stats item. Required, so a new game screen can't leave it out.
+   */
+  gameType: GameType | null;
   /**
    * When true renders a loading spinner instead of children. The header keeps
    * its title and back button so a slow load never strands the player; the ⋯
@@ -43,13 +53,13 @@ export interface GameShellProps extends Pick<
  * game screen only needs to provide its game-specific content as children.
  */
 export function GameShell({
+  gameType,
   title,
   onBack,
   requireBack,
   backAccessibilityLabel,
   rightSlot,
   onOpenScoreboard,
-  onOpenStats,
   onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
@@ -64,6 +74,10 @@ export function GameShell({
   const tabBarHeight = useSafeBottomTabBarHeight();
   const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
   const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const openStats = useCallback(() => {
+    if (gameType) navigation.navigate("GameStats", { gameType });
+  }, [navigation, gameType]);
 
   return (
     <View
@@ -92,7 +106,7 @@ export function GameShell({
           backAccessibilityLabel={backAccessibilityLabel}
           rightSlot={rightSlot}
           onOpenScoreboard={onOpenScoreboard}
-          onOpenStats={onOpenStats}
+          onOpenStats={gameType ? openStats : undefined}
           onOpenLeaderboard={onOpenLeaderboard}
           onNewGame={onNewGame}
           onLevelSelect={onLevelSelect}

@@ -130,6 +130,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
 
   return (
     <GameShell
+      gameType="blackjack"
       title={t("blackjack:game.title")}
       requireBack
       onBack={() => navigation.popToTop()}

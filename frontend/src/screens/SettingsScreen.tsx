@@ -15,6 +15,7 @@ import { scoreQueue } from "../game/_shared/scoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
+import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
 import { clearDisplayNameSync } from "../game/_shared/displayNameSync";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
@@ -60,6 +61,8 @@ export default function SettingsScreen() {
       // the server after the delete (#2624).
       await clearDisplayNameSync();
       await statsApi.deleteMyData();
+      // The stats screen's remembered /stats/me is this player's (#2635).
+      clearMyStatsCache();
       await Promise.all([
         // The name too, or the next launch would send it again for the new session.
         clearDisplayName(),

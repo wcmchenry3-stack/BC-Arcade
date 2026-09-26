@@ -34,6 +34,7 @@ export default function MahjongLayoutInspectorScreen() {
 
   return (
     <GameShell
+      gameType={null}
       title="Layout Inspector"
       requireBack
       onBack={() => navigation.goBack()}

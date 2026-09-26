@@ -41,7 +41,6 @@ import {
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
@@ -313,7 +312,6 @@ function CascadeGame() {
   const leaderboard = useLeaderboardSubmit(cascadeBoard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openStats = useGameStatsLink(navigation, "cascade");
   const openLeaderboard = useLeaderboardLink(navigation, "cascade");
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -852,12 +850,12 @@ function CascadeGame() {
 
   return (
     <GameShell
+      gameType="cascade"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handleRestart}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "cascade" })}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),

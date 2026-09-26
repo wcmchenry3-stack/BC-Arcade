@@ -4,11 +4,13 @@ import { statsApi, type StatsResponse } from "../api/stats";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { useNetwork } from "../game/_shared/NetworkContext";
+import { getSessionIdIfAny } from "../game/_shared/session";
 import { withRetry } from "../game/_shared/withRetry";
 
 /**
  *   loading — fetching, with nothing to show yet
- *   ready   — `stats` is the server's answer (or, with `stale`, the last one)
+ *   ready   — `stats` is on screen: the server's answer, or the session's
+ *             last one (see `refreshing` and `stale`)
  *   offline — the device is offline and nothing was loaded before
  *   error   — the request failed while online and nothing was loaded before
  */
@@ -18,26 +20,62 @@ export interface MyStats {
   status: MyStatsStatus;
   stats: StatsResponse | null;
   /**
-   * `stats` is the last good response from earlier in this app session: the
-   * device is offline, or the latest request failed.
+   * `stats` is the last good response for this session and could not be
+   * brought up to date: the device is offline, or the latest request failed.
    */
   stale: boolean;
-  /** A `refresh()` with stats already on screen is in flight. */
+  /**
+   * A request is in flight while `stats` is on screen: the last good
+   * response shown while the fresh one loads, or a pull-to-refresh.
+   */
   refreshing: boolean;
-  /** Ask again, showing `loading` (after `error` or `offline`). */
+  /** Ask again, showing `loading` when there is nothing to show (after `error` or `offline`). */
   retry: () => void;
   /** Ask again, keeping what's on screen until the answer lands (pull-to-refresh). */
   refresh: () => void;
 }
 
+interface CacheEntry {
+  /** The `X-Session-ID` the response belongs to. */
+  sessionId: string;
+  response: StatsResponse;
+}
+
 // The last good `/stats/me` for this app session, so the stats screen opened
 // offline, or when the request fails, still shows the player's figures
-// (#2635). In memory only: nothing persists it across launches.
-let lastGood: StatsResponse | null = null;
+// (#2635). In memory only: nothing persists it across launches. Keyed by the
+// session, so a response never outlives "Delete my data" (which starts a new
+// session) and is never shown to another session.
+let cache: CacheEntry | null = null;
+// Bumped by `clearMyStatsCache`: a request that started before a clear must
+// not refill the cache when it lands.
+let generation = 0;
 
-/** Test seam: forget the session's last good response. */
-export function __resetMyStatsCacheForTests(): void {
-  lastGood = null;
+/** Forget the remembered response ("Delete my data"; tests). */
+export function clearMyStatsCache(): void {
+  cache = null;
+  generation += 1;
+}
+
+async function remember(response: StatsResponse, startedAt: number): Promise<void> {
+  const sessionId = await getSessionIdIfAny();
+  if (sessionId != null && startedAt === generation) cache = { sessionId, response };
+}
+
+/**
+ * Keep a successful `/stats/me` answer for the stats screen (#2635). Home and
+ * Profile call this after their own fetches, so the stats screen opened
+ * offline afterwards still has the player's figures.
+ */
+export function rememberMyStats(response: StatsResponse): Promise<void> {
+  return remember(response, generation);
+}
+
+/** The remembered response for `sessionId`, or null. */
+function cachedFor(sessionId: string | null): StatsResponse | null {
+  return cache != null && sessionId != null && cache.sessionId === sessionId
+    ? cache.response
+    : null;
 }
 
 interface Loaded {
@@ -47,21 +85,21 @@ interface Loaded {
   refreshing: boolean;
 }
 
-/** What to show before (or instead of) an answer: the cache, else `fallback`. */
-function fromCache(fallback: "loading" | "offline" | "error", refreshing = false): Loaded {
-  return lastGood
-    ? { status: "ready", stats: lastGood, stale: fallback !== "loading", refreshing }
-    : { status: fallback, stats: null, stale: false, refreshing: false };
-}
+const LOADING: Loaded = { status: "loading", stats: null, stale: false, refreshing: false };
 
 /**
  * The player's `GET /stats/me`, for the per-game stats screen (#2635).
  *
  * Queued games are uploaded first, so a game finished a moment ago counts.
  * Transient network failures are retried (`withRetry`). While NetInfo says the
- * device is offline nothing is requested; it asks again on reconnect. When
- * there is no fresh answer, the last good response from this app session is
- * shown with `stale` set; with none, the status is `offline` or `error`.
+ * device is offline nothing is requested.
+ *
+ * The last good response for the current session (from this hook, Home or
+ * Profile: `rememberMyStats`) is shown at once with `refreshing` set while the
+ * fresh one loads. When the fresh one can't be had (offline, or the request
+ * failed) it stays on screen with `stale` set; with nothing remembered, the
+ * status is `offline` or `error`. When the device comes back online after
+ * `offline`, `error` or a stale answer, it asks again.
  */
 export function useMyStats(): MyStats {
   const { isOnline, isInitialized } = useNetwork();
@@ -69,28 +107,46 @@ export function useMyStats(): MyStats {
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
 
-  const [loaded, setLoaded] = useState<Loaded>(() => fromCache("loading"));
+  const [loaded, setLoaded] = useState<Loaded>(LOADING);
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
   // Bumped per request and on unmount: only the latest request may land.
   const requestRef = useRef(0);
 
-  const load = useCallback(async (silent: boolean) => {
+  const load = useCallback(async () => {
     const request = ++requestRef.current;
     const current = () => request === requestRef.current;
+    const startedAt = generation;
+
+    const sessionId = await getSessionIdIfAny();
+    if (!current()) return;
+    const cached = cachedFor(sessionId);
+    const showing = loadedRef.current.status === "ready" ? loadedRef.current.stats : cached;
 
     if (offlineRef.current) {
-      setLoaded(fromCache("offline"));
+      setLoaded(
+        showing
+          ? { status: "ready", stats: showing, stale: true, refreshing: false }
+          : { status: "offline", stats: null, stale: false, refreshing: false }
+      );
       return;
     }
-    const showing = loadedRef.current.status === "ready";
-    if (silent && showing) setLoaded({ ...loadedRef.current, refreshing: true });
-    else if (!showing) setLoaded(fromCache("loading"));
+    setLoaded(
+      showing
+        ? {
+            status: "ready",
+            stats: showing,
+            stale: loadedRef.current.stale,
+            refreshing: true,
+          }
+        : LOADING
+    );
     try {
       await flushQueuedGames();
       const res = await withRetry(() => statsApi.getMyStats());
       if (!current()) return;
-      lastGood = res;
+      await remember(res, startedAt);
+      if (!current()) return;
       setLoaded({ status: "ready", stats: res, stale: false, refreshing: false });
     } catch (e) {
       if (!current()) return;
@@ -98,19 +154,33 @@ export function useMyStats(): MyStats {
       if (!(e instanceof ApiError) && !isNetworkError(e)) {
         Sentry.captureException(e, { tags: { subsystem: "gameStats" } });
       }
-      setLoaded(fromCache(offlineRef.current ? "offline" : "error"));
+      setLoaded(
+        showing
+          ? { status: "ready", stats: showing, stale: true, refreshing: false }
+          : {
+              status: offlineRef.current ? "offline" : "error",
+              stats: null,
+              stale: false,
+              refreshing: false,
+            }
+      );
     }
   }, []);
 
   useEffect(() => {
-    void load(false);
+    void load();
   }, [load]);
 
-  // Back online with nothing fresh to show: ask again.
+  // Back online (an offline → online transition) with nothing fresh to show:
+  // ask again.
   const online = isInitialized && isOnline;
+  const wasOnlineRef = useRef(online);
   useEffect(() => {
+    const cameOnline = online && !wasOnlineRef.current;
+    wasOnlineRef.current = online;
+    if (!cameOnline) return;
     const { status, stale } = loadedRef.current;
-    if (online && (status === "offline" || stale)) void load(false);
+    if (status === "offline" || status === "error" || stale) void load();
   }, [online, load]);
 
   useEffect(
@@ -120,8 +190,7 @@ export function useMyStats(): MyStats {
     []
   );
 
-  const retry = useCallback(() => void load(false), [load]);
-  const refresh = useCallback(() => void load(true), [load]);
+  const retry = useCallback(() => void load(), [load]);
 
-  return { ...loaded, retry, refresh };
+  return { ...loaded, retry, refresh: retry };
 }

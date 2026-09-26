@@ -16,6 +16,7 @@
   "error": "No se pudieron cargar tus estadísticas.",
   "offline": "Estás sin conexión. Tus estadísticas se cargarán al volver a conectarte.",
   "stale": "Se muestran tus últimas estadísticas cargadas. Puede que no estén actualizadas.",
+  "updating": "Actualizando…",
   "retry": "Reintentar",
   "link.leaderboard": "Ver clasificación",
   "link.runHistory": "Historial de series"

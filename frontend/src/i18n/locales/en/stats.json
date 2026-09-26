@@ -16,6 +16,7 @@
   "error": "Couldn't load your stats.",
   "offline": "You're offline. Your stats load when you reconnect.",
   "stale": "Showing your stats as last loaded. They may be out of date.",
+  "updating": "Updating…",
   "retry": "Retry",
   "link.leaderboard": "View leaderboard",
   "link.runHistory": "Run history"

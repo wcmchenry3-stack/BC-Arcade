@@ -16,6 +16,7 @@
   "error": "Je statistieken konden niet worden geladen.",
   "offline": "Je bent offline. Je statistieken worden geladen zodra je weer verbinding hebt.",
   "stale": "Dit zijn je laatst geladen statistieken. Ze zijn mogelijk niet actueel.",
+  "updating": "Bijwerken…",
   "retry": "Opnieuw",
   "link.leaderboard": "Ranglijst bekijken",
   "link.runHistory": "Runhistorie"

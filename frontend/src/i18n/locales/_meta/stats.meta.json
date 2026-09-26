@@ -152,6 +152,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "updating": {
+    "component": "GameStatsScreen",
+    "description": "Note above stats loaded earlier in this app session while the latest ones are being fetched.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "retry": {
     "component": "GameStatsScreen",
     "description": "Button that tries loading the stats again.",

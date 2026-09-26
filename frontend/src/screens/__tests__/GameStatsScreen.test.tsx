@@ -1,4 +1,5 @@
 import React from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import GameStatsScreen from "../GameStatsScreen";
@@ -6,7 +7,7 @@ import type { GameTypeStats, StatsResponse } from "../../api/types";
 import type { GameType } from "../../api/vocab";
 import { ApiError } from "../../game/_shared/httpClient";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
-import { __resetMyStatsCacheForTests } from "../../hooks/useMyStats";
+import { clearMyStatsCache, rememberMyStats } from "../../hooks/useMyStats";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -99,9 +100,22 @@ function tile(key: string): string {
   return label.slice(label.indexOf(": ") + 2);
 }
 
-beforeEach(() => {
+/** The install's `X-Session-ID` (game/_shared/session.ts). */
+const SESSION_KEY = "game_session_id";
+
+async function rerenderStats(rerender: (ui: React.ReactElement) => Promise<void>) {
+  await rerender(
+    <ThemeProvider>
+      <GameStatsScreen route={{ params: { gameType: "hearts" } }} navigation={navigation} />
+    </ThemeProvider>
+  );
+  await act(async () => {});
+}
+
+beforeEach(async () => {
   jest.clearAllMocks();
-  __resetMyStatsCacheForTests();
+  clearMyStatsCache();
+  await AsyncStorage.setItem(SESSION_KEY, "session-a");
   mockGetMyStats.mockReset();
   mockGetMyStats.mockResolvedValue(response({ hearts: HEARTS }));
   mockNetwork.isOnline = true;
@@ -307,12 +321,23 @@ describe("GameStatsScreen — offline and errors", () => {
     mockNetwork.isOnline = false;
     const { rerender } = await renderStats("hearts");
     mockNetwork.isOnline = true;
-    await rerender(
-      <ThemeProvider>
-        <GameStatsScreen route={{ params: { gameType: "hearts" } }} navigation={navigation} />
-      </ThemeProvider>
-    );
-    await act(async () => {});
+    await rerenderStats(rerender);
+    expect(tile("wins")).toBe("6");
+  });
+
+  it("asks again from the error state when the device comes back online", async () => {
+    mockGetMyStats.mockRejectedValue(new ApiError("Service Unavailable", 503));
+    const { rerender } = await renderStats("hearts");
+    expect(screen.getByTestId("game-stats-error")).toBeTruthy();
+    expect(mockGetMyStats).toHaveBeenCalledTimes(1);
+
+    mockGetMyStats.mockResolvedValue(response({ hearts: HEARTS }));
+    mockNetwork.isOnline = false;
+    await rerenderStats(rerender);
+    expect(mockGetMyStats).toHaveBeenCalledTimes(1);
+    mockNetwork.isOnline = true;
+    await rerenderStats(rerender);
+    expect(mockGetMyStats).toHaveBeenCalledTimes(2);
     expect(tile("wins")).toBe("6");
   });
 
@@ -340,6 +365,71 @@ describe("GameStatsScreen — offline and errors", () => {
     expect(mockGetMyStats).not.toHaveBeenCalled();
   });
 
+  it("marks the remembered figures as updating until the fresh ones land", async () => {
+    const first = await renderStats("hearts");
+    await first.unmount();
+
+    let answer!: (r: StatsResponse) => void;
+    mockGetMyStats.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    await renderStats("hearts");
+    expect(tile("wins")).toBe("6");
+    expect(screen.getByText("Updating…")).toBeTruthy();
+    expect(screen.queryByTestId("game-stats-stale")).toBeNull();
+
+    await act(async () => {
+      answer(response({ hearts: gameStats({ won: 9, lost: 1, tied: 0 }) }));
+    });
+    expect(tile("wins")).toBe("9");
+    expect(screen.queryByText("Updating…")).toBeNull();
+    expect(screen.queryByTestId("game-stats-stale")).toBeNull();
+  });
+
+  it("never shows a response remembered for another session", async () => {
+    const first = await renderStats("hearts");
+    await first.unmount();
+
+    await AsyncStorage.setItem(SESSION_KEY, "session-b");
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
+    expect(screen.getByText("You're offline. Your stats load when you reconnect.")).toBeTruthy();
+  });
+
+  it("shows nothing remembered once the cache is cleared (Delete my data)", async () => {
+    const first = await renderStats("hearts");
+    await first.unmount();
+
+    clearMyStatsCache();
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
+    expect(screen.getByText("You're offline. Your stats load when you reconnect.")).toBeTruthy();
+  });
+
+  it("doesn't let a request that was in flight when the cache was cleared refill it", async () => {
+    let answer!: (r: StatsResponse) => void;
+    mockGetMyStats.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    const first = await renderStats("hearts");
+    clearMyStatsCache();
+    await act(async () => {
+      answer(response({ hearts: HEARTS }));
+    });
+    expect(tile("wins")).toBe("6");
+    await first.unmount();
+
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
+  });
+
+  it("shows a response another screen remembered (rememberMyStats)", async () => {
+    await rememberMyStats(response({ hearts: HEARTS }));
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(tile("wins")).toBe("6");
+    expect(mockGetMyStats).not.toHaveBeenCalled();
+  });
+
   it("shows fresh figures without the note once a request succeeds", async () => {
     const first = await renderStats("hearts");
     await first.unmount();
@@ -348,5 +438,6 @@ describe("GameStatsScreen — offline and errors", () => {
     await renderStats("hearts");
     expect(tile("wins")).toBe("9");
     expect(screen.queryByTestId("game-stats-stale")).toBeNull();
+    expect(screen.queryByText("Updating…")).toBeNull();
   });
 });

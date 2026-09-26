@@ -50,7 +50,6 @@ import {
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { PillButton } from "../components/shared/PillButton";
 
 function delay(ms: number): Promise<void> {
@@ -192,7 +191,6 @@ export default function GameScreen({ navigation, route }: Props) {
   const leaderboard = useLeaderboardSubmit(yachtBoard);
   const { submit: submitRank, reset: resetRank } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openStats = useGameStatsLink(navigation, "yacht");
   const openLeaderboard = useLeaderboardLink(navigation, "yacht");
   // The finished game's session id, captured when the player's game ends —
   // complete() clears the hook's id, and in vs mode (or on a background during
@@ -673,13 +671,13 @@ export default function GameScreen({ navigation, route }: Props) {
 
   return (
     <GameShell
+      gameType="yacht"
       title={t("game.title")}
       rightSlot={roundPill}
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={startNewGame}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "yacht" })}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       error={error}
       style={{

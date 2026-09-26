@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import ProfileScreen from "../ProfileScreen";
+import GameStatsScreen from "../GameStatsScreen";
+import { clearMyStatsCache } from "../../hooks/useMyStats";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import {
   resetDisplayNameCacheForTests,
@@ -777,5 +779,34 @@ describe("ProfileScreen — store build hides premium-game history (#2390)", () 
     });
     expect(screen.queryByLabelText(/^Blackjack/)).toBeNull();
     expect(screen.getByText("Play a game to see it here")).toBeTruthy();
+  });
+});
+
+describe("ProfileScreen — remembers /stats/me for the stats screen (#2635)", () => {
+  beforeEach(() => clearMyStatsCache());
+
+  it("a stats screen opened offline after Profile loaded shows Profile's figures", async () => {
+    await AsyncStorage.setItem("game_session_id", "session-a");
+    const profile = await renderScreen();
+    await waitFor(() => expect(screen.getByTestId("profile-game-freecell")).toBeTruthy());
+    await profile.unmount();
+
+    mockNetwork.isOnline = false;
+    mockGetMyStats.mockClear();
+    const navigation = {
+      navigate: jest.fn(),
+      goBack: jest.fn(),
+    } as unknown as React.ComponentProps<typeof GameStatsScreen>["navigation"];
+    await render(
+      <ThemeProvider>
+        <GameStatsScreen route={{ params: { gameType: "freecell" } }} navigation={navigation} />
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("game-stats-tile-best").props.accessibilityLabel).toBe(
+      "Best: 87 moves"
+    );
+    expect(screen.getByTestId("game-stats-stale")).toBeTruthy();
+    expect(mockGetMyStats).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,7 @@
   "error": "无法加载你的统计数据。",
   "offline": "你已离线。重新连接后将加载你的统计数据。",
   "stale": "正在显示上次加载的统计数据，可能不是最新的。",
+  "updating": "正在更新…",
   "retry": "重试",
   "link.leaderboard": "查看排行榜",
   "link.runHistory": "游戏历史"

@@ -32,6 +32,7 @@ import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
+import { rememberMyStats } from "../hooks/useMyStats";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -113,6 +114,8 @@ export default function HomeScreen() {
     flushQueuedGames()
       .then(() => withRetry(() => statsApi.getMyStats()))
       .then((stats) => {
+        // For the stats screen opened offline later (#2635).
+        void rememberMyStats(stats);
         if (!mounted.current) return;
         setArcadeLevel(stats.arcade_level);
         // A server that predates the streak omits the field: treat it as no streak.

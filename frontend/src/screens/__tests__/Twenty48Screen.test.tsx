@@ -14,6 +14,14 @@ import { Twenty48State } from "../../game/twenty48/types";
 import { Platform } from "react-native";
 (Platform as { OS: string }).OS = "web";
 
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -918,7 +926,7 @@ describe("Twenty48Screen — result card (#2513)", () => {
     await act(async () => {
       await fireEvent.press(r.getByText("Stats"));
     });
-    expect(nav.navigate).toHaveBeenCalledWith("GameStats", { gameType: "twenty48" });
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "twenty48" });
   });
 
   it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {

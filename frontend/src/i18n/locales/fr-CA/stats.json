@@ -16,6 +16,7 @@
   "error": "Impossible de charger vos statistiques.",
   "offline": "Vous êtes hors ligne. Vos statistiques se chargeront à la reconnexion.",
   "stale": "Affichage de vos dernières statistiques chargées. Elles ne sont peut-être pas à jour.",
+  "updating": "Mise à jour…",
   "retry": "Réessayer",
   "link.leaderboard": "Voir le classement",
   "link.runHistory": "Historique des séries"

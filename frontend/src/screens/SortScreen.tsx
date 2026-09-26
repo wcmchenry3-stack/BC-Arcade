@@ -48,7 +48,6 @@ import {
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
@@ -101,7 +100,6 @@ export default function SortScreen() {
   const leaderboardSubmit = useLeaderboardSubmit(sortBoard);
   const { submit: submitRank, reset: resetSubmission } = leaderboardSubmit;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openStats = useGameStatsLink(navigation, "sort");
   const openLeaderboard = useLeaderboardLink(navigation, "sort");
 
   // One `games` row per level played (#2512): XP, Profile history, stats and
@@ -517,17 +515,17 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return <GameShell key="loading" title={t("game.title")} loading />;
+    return <GameShell gameType="sort" key="loading" title={t("game.title")} loading />;
   }
 
   if (view === "select") {
     return (
       <GameShell
+        gameType="sort"
         key="select"
         title={t("game.title")}
         requireBack
         onBack={() => navigation.goBack()}
-        onOpenStats={openStats}
         onOpenLeaderboard={openLeaderboard}
       >
         {/* Error banner with retry */}
@@ -563,6 +561,7 @@ export default function SortScreen() {
   // view === "play"
   return (
     <GameShell
+      gameType="sort"
       key="play"
       title={t("game.title")}
       requireBack
@@ -570,7 +569,6 @@ export default function SortScreen() {
       backAccessibilityLabel={t("action.backToLevels")}
       onNewGame={handleResetLevel}
       onLevelSelect={handleBackToSelect}
-      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.headerBtnRow}>

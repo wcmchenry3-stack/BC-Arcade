@@ -83,6 +83,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
 
   return (
     <GameShell
+      gameType={null}
       title={t("stats.title")}
       requireBack
       onBack={() => navigation.goBack()}

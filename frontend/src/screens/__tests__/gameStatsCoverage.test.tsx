@@ -2,19 +2,17 @@
  * Every visible game has a stats screen (#2635, plan Appendix C).
  *
  * Mahjong's Scoreboard item once led to an untranslated fallback because the
- * only test covered an unknown key. This suite iterates every game type:
+ * only test covered an unknown key. This suite iterates every game type and
+ * checks that GameStatsScreen shows that game's stats under its translated
+ * title, with no raw i18n keys.
  *
- * 1. GameStatsScreen shows that game's stats under its translated title, with
- *    no raw i18n keys.
- * 2. Every game screen passes `onOpenStats` to each `GameShell` it renders
- *    with a menu, so the ⋯ menu has a "Stats" item. The screens are checked
- *    in their source (rendering all twelve needs each suite's own mocks); the
- *    per-screen suites press the item and assert the navigation.
+ * The menu side needs no test here: `GameShell`'s `gameType` prop is required,
+ * so the type check fails for a game screen that doesn't say which game it
+ * plays, and a screen that names its game gets the Stats item. The per-screen
+ * suites press it and assert the navigation.
  */
 
 import React from "react";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { act, render, screen } from "@testing-library/react-native";
 import i18n from "i18next";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -22,7 +20,7 @@ import GameStatsScreen from "../GameStatsScreen";
 import type { GameTypeStats, StatsResponse } from "../../api/types";
 import { BOARDS, GAME_TYPES, type GameType } from "../../api/vocab";
 import { isGameVisible } from "../../entitlements/gameVisibility";
-import { __resetMyStatsCacheForTests } from "../../hooks/useMyStats";
+import { clearMyStatsCache } from "../../hooks/useMyStats";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -38,56 +36,6 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 jest.mock("../../game/_shared/NetworkContext", () => ({
   useNetwork: () => ({ isOnline: true, isInitialized: true }),
 }));
-
-/**
- * The screens that render each game's ⋯ menu. A `Record` over `GameType`, so
- * a new game type fails the type check until its screens are listed here.
- * Mahjong's layout inspector and detail screens are developer tools, and
- * Blackjack's victory and run-history screens have no game menu.
- */
-const GAME_SCREENS: Record<GameType, readonly string[]> = {
-  yacht: ["GameScreen.tsx"],
-  twenty48: ["Twenty48Screen.tsx"],
-  blackjack: ["BlackjackBettingScreen.tsx", "BlackjackTableScreen.tsx"],
-  cascade: ["CascadeScreen.tsx"],
-  solitaire: ["SolitaireScreen.tsx"],
-  hearts: ["HeartsScreen.tsx"],
-  sudoku: ["SudokuScreen.tsx"],
-  mahjong: ["MahjongScreen.tsx"],
-  starswarm: ["StarSwarmScreen.tsx"],
-  freecell: ["FreeCellScreen.tsx"],
-  sort: ["SortScreen.tsx"],
-  daily_word: ["DailyWordScreen.tsx"],
-};
-
-/**
- * The opening `<GameShell …>` tags in a source file. A `>` inside `{…}` (an
- * arrow function, a comparison) does not end the tag.
- */
-function gameShellTags(source: string): string[] {
-  const tags: string[] = [];
-  let from = 0;
-  for (;;) {
-    const start = source.indexOf("<GameShell", from);
-    if (start === -1) return tags;
-    let depth = 0;
-    let end = start;
-    for (let i = start; i < source.length; i++) {
-      const c = source[i];
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
-      else if (c === ">" && depth === 0) {
-        end = i;
-        break;
-      }
-    }
-    tags.push(source.slice(start, end + 1));
-    from = end + 1;
-  }
-}
-
-/** A shell that only shows a spinner (`loading` with no value): GameShell hides its menu. */
-const isLoadingOnly = (tag: string): boolean => /\sloading(?=[\s/>])/.test(tag);
 
 function gameStats(gameType: GameType): GameTypeStats {
   return {
@@ -143,13 +91,12 @@ const navigation = { navigate: jest.fn(), goBack: jest.fn() } as unknown as Reac
 >["navigation"];
 
 beforeEach(() => {
-  __resetMyStatsCacheForTests();
+  clearMyStatsCache();
   mockGetMyStats.mockResolvedValue(allStats());
 });
 
 describe("every visible game has a stats screen (#2635)", () => {
   it("covers every game type", () => {
-    expect(Object.keys(GAME_SCREENS).sort()).toEqual([...GAME_TYPES].sort());
     // Jest runs as a dev build: every game is visible, so none is skipped below.
     expect(GAME_TYPES.every((g) => isGameVisible(g))).toBe(true);
   });
@@ -182,33 +129,4 @@ describe("every visible game has a stats screen (#2635)", () => {
       expect(raw).toEqual([]);
     }
   );
-
-  it.each(GAME_TYPES)("%s: every game menu on its screens has a Stats item", (gameType) => {
-    for (const file of GAME_SCREENS[gameType]) {
-      const source = readFileSync(join(__dirname, "..", file), "utf8");
-      expect(source).toContain(`useGameStatsLink(navigation, "${gameType}")`);
-      const menus = gameShellTags(source).filter((tag) => !isLoadingOnly(tag));
-      expect(menus.length).toBeGreaterThan(0);
-      for (const tag of menus) {
-        expect({ file, tag, hasStats: /\sonOpenStats=\{/.test(tag) }).toEqual({
-          file,
-          tag,
-          hasStats: true,
-        });
-      }
-    }
-  });
-});
-
-describe("gameShellTags", () => {
-  it("reads a tag past arrow functions and treats a bare `loading` as spinner-only", () => {
-    const tags = gameShellTags(
-      `<GameShell title="a" onBack={() => x > 1} loading />
-       <GameShell loading={busy} onOpenStats={openStats}>`
-    );
-    expect(tags).toHaveLength(2);
-    expect(tags[0]).toContain("x > 1");
-    expect(isLoadingOnly(tags[0]!)).toBe(true);
-    expect(isLoadingOnly(tags[1]!)).toBe(false);
-  });
 });

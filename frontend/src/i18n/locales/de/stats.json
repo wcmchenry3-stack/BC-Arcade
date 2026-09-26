@@ -16,6 +16,7 @@
   "error": "Deine Statistiken konnten nicht geladen werden.",
   "offline": "Du bist offline. Deine Statistiken werden geladen, sobald du wieder verbunden bist.",
   "stale": "Das sind deine zuletzt geladenen Statistiken. Sie sind möglicherweise nicht aktuell.",
+  "updating": "Wird aktualisiert…",
   "retry": "Wiederholen",
   "link.leaderboard": "Bestenliste ansehen",
   "link.runHistory": "Laufverlauf"

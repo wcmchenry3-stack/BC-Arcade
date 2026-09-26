@@ -96,6 +96,7 @@ export default function MahjongLayoutDetailScreen() {
 
   return (
     <GameShell
+      gameType={null}
       title={meta?.name ?? layoutId}
       requireBack
       onBack={() => navigation.goBack()}

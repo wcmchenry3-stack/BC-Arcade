@@ -100,8 +100,10 @@ export function statsTiles(t: TFunction, s: GameTypeStats): Tile[] {
  * leaderboard (when it has an openable board) and, for Blackjack, its
  * on-device run history. Opened from every game's ⋯ menu ("Stats").
  *
- * Offline or on a failed request it shows the last response loaded in this
- * app session, else a translated message.
+ * The last response remembered for this session (`useMyStats`) shows at
+ * once, marked "Updating…" until the fresh one lands. Offline or on a failed
+ * request it stays, marked as possibly out of date; with none, a translated
+ * message.
  */
 export default function GameStatsScreen({ route, navigation }: GameStatsScreenProps) {
   const { gameType } = route.params;
@@ -141,14 +143,24 @@ export default function GameStatsScreen({ route, navigation }: GameStatsScreenPr
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />
         }
       >
-        {stale && (
+        {refreshing ? (
           <Text
-            testID="game-stats-stale"
+            testID="game-stats-updating"
             accessibilityLiveRegion="polite"
             style={[styles.note, { color: colors.textMuted }]}
           >
-            {t("stats:stale")}
+            {t("stats:updating")}
           </Text>
+        ) : (
+          stale && (
+            <Text
+              testID="game-stats-stale"
+              accessibilityLiveRegion="polite"
+              style={[styles.note, { color: colors.textMuted }]}
+            >
+              {t("stats:stale")}
+            </Text>
+          )
         )}
         {tiles ? (
           <View style={styles.grid}>
