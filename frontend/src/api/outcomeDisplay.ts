@@ -14,6 +14,7 @@ import type MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIco
 import type { TFunction } from "i18next";
 import type { Colors } from "../theme/ThemeContext";
 import type { GameRow } from "./types";
+import { formatNumber } from "./statsDisplay";
 import { BOARDS, GAME_OUTCOMES, type GameOutcome } from "./vocab";
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
@@ -95,7 +96,7 @@ export function formatMetric(
   value: number | null | undefined
 ): string {
   if (value == null) return "—";
-  const formatted = value.toLocaleString();
+  const formatted = formatNumber(t, value);
   if (labelKey == null || !METRIC_LABEL_KEYS.has(labelKey)) return formatted;
   return t(`stats:metric.${labelKey}`, { count: value, value: formatted });
 }

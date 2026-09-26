@@ -59,7 +59,7 @@ type Props = {
 };
 
 export default function Twenty48Screen({ navigation }: Props) {
-  const { t } = useTranslation(["twenty48", "common", "errors"]);
+  const { t } = useTranslation(["twenty48", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();

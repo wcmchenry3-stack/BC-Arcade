@@ -17,6 +17,7 @@ import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
 import { formatMetric, gameMetric, knownOutcome, outcomeLabel } from "../api/outcomeDisplay";
 import {
   completedOf,
+  formatNumber,
   formatPercent,
   formatPlayTime,
   sessionsOf,
@@ -109,11 +110,11 @@ function deriveBentoTiles(
   else favoriteValue = t("stats.favoriteEmpty");
 
   return [
-    { key: "sessions", label: t("stats.sessions"), value: sessions.toLocaleString() },
+    { key: "sessions", label: t("stats.sessions"), value: formatNumber(t, sessions) },
     {
       key: "completed",
       label: t("stats.completed"),
-      value: hasCompleted ? completed.toLocaleString() : "—",
+      value: hasCompleted ? formatNumber(t, completed) : "—",
     },
     {
       key: "completionRate",
@@ -121,7 +122,7 @@ function deriveBentoTiles(
       value: hasCompleted && sessions > 0 ? formatPercent(t, completed / sessions) : "—",
     },
     { key: "timePlayed", label: t("stats.timePlayed"), value: formatPlayTime(t, timePlayedMs) },
-    { key: "gamesTried", label: t("stats.gamesTried"), value: summaries.length.toLocaleString() },
+    { key: "gamesTried", label: t("stats.gamesTried"), value: formatNumber(t, summaries.length) },
     { key: "favorite", label: t("stats.favorite"), value: favoriteValue },
   ];
 }
@@ -254,7 +255,7 @@ function LeaderboardPresence() {
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["profile", "stats", ...GAME_TITLE_NAMESPACES]);
+  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
   const [stats, setStats] = useState<StatsResponse | null>(null);

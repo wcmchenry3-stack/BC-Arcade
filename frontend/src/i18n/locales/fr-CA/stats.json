@@ -27,12 +27,16 @@
   "outcome.loss": "Défaite",
   "outcome.push": "Match nul",
   "metric.score_one": "{{value}} pt",
+  "metric.score_many": "{{value}} pts",
   "metric.score_other": "{{value}} pts",
   "metric.moves_one": "{{value}} coup",
+  "metric.moves_many": "{{value}} coups",
   "metric.moves_other": "{{value}} coups",
   "metric.level": "Niveau {{value}}",
   "metric.guesses_one": "{{value}} essai",
+  "metric.guesses_many": "{{value}} essais",
   "metric.guesses_other": "{{value}} essais",
   "metric.chips_one": "{{value}} jeton",
+  "metric.chips_many": "{{value}} jetons",
   "metric.chips_other": "{{value}} jetons"
 }

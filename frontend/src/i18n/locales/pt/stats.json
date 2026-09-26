@@ -27,12 +27,16 @@
   "outcome.loss": "Derrota",
   "outcome.push": "Empate",
   "metric.score_one": "{{value}} ponto",
+  "metric.score_many": "{{value}} pontos",
   "metric.score_other": "{{value}} pontos",
   "metric.moves_one": "{{value}} jogada",
+  "metric.moves_many": "{{value}} jogadas",
   "metric.moves_other": "{{value}} jogadas",
   "metric.level": "Nível {{value}}",
   "metric.guesses_one": "{{value}} tentativa",
+  "metric.guesses_many": "{{value}} tentativas",
   "metric.guesses_other": "{{value}} tentativas",
   "metric.chips_one": "{{value}} ficha",
+  "metric.chips_many": "{{value}} fichas",
   "metric.chips_other": "{{value}} fichas"
 }
