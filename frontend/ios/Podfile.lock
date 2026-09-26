@@ -21,12 +21,12 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - EXConstants (57.0.18):
+  - EXConstants (57.0.19):
     - ExpoModulesCore
   - EXJSONUtils (57.0.2)
   - EXManifests (57.0.2):
     - ExpoModulesCore
-  - Expo (57.0.23):
+  - Expo (57.0.24):
     - ExpoModulesCore
     - ExpoModulesJSI
     - hermes-engine
@@ -200,7 +200,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (57.0.17):
+  - ExpoAsset (57.0.18):
     - ExpoModulesCore
   - ExpoAudio (57.0.5):
     - ExpoModulesCore
@@ -2991,15 +2991,15 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AsyncStorage: 163ab23f6aa37a58b7f2379d0b4ee7ac84d6655c
-  EXConstants: 8948a340eb14bf2bdaaa0e21a63cb9343860b87a
+  EXConstants: 2dc4473aff5574eccaccb9f3eefe6d95247e5d38
   EXJSONUtils: a49e3ef80dff762108e5690c7b2f360675dcf7f6
   EXManifests: 4c53b2602e03ccf44d0b4ff9c5d655b2c5acba3f
-  Expo: d06878ab7512dbcb2deec84c4d56f07af8a8b765
+  Expo: c04c9bde6ce9344f6da189e3d594c34884bba88b
   expo-dev-client: 9cd43bb07fb625c51b436d4cb23be2fc932f8d26
   expo-dev-launcher: 05c72f3a22b4c742b06bd36fa391a30a990556a0
   expo-dev-menu: 272e23ced973a0e401c2b9a679595ea6c7c05d78
   expo-dev-menu-interface: 7a59e803916fbfd1b96c75ff91ea8dddac7e722f
-  ExpoAsset: b3999ffb3d4049b6c870708c60ea2209ace9f170
+  ExpoAsset: a917b756b2e4fe12cef1ac3bca5fd849ddb2b919
   ExpoAudio: edc9230b788be6f65238a53907d5c176b57a7ce0
   ExpoBlur: 975b78b65b3c8f475c44bd8f8b53948146b1ff9b
   ExpoDomWebView: beaec034e51bd028428b98bb1f2633ab79c6d095
