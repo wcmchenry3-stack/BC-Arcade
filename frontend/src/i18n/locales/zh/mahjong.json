@@ -44,10 +44,5 @@
   "layout.concentric_squares": "同心方形",
   "layoutSelect.title": "选择布局",
   "layoutSelect.continue": "继续",
-  "layoutSelect.lockedLayout": "{{name}} — 已锁定",
-  "scoreboard.title": "最高分",
-  "scoreboard.rank": "排名",
-  "scoreboard.player": "玩家",
-  "scoreboard.score": "得分",
-  "scoreboard.empty": "还没有分数 — 来当第一名吧！"
+  "layoutSelect.lockedLayout": "{{name}} — 已锁定"
 }

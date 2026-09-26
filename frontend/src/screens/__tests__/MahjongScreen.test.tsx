@@ -1153,13 +1153,13 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     }
   });
 
-  it("has no Scoreboard item in the overflow menu", async () => {
+  it("has no Scorecard (or old Scoreboard) item in the overflow menu", async () => {
     const api = await mount();
     await act(async () => {
       await fireEvent.press(api.getByLabelText("More options"));
     });
     expect(api.getByText("New Game")).toBeTruthy();
-    expect(api.queryByText("Scoreboard")).toBeNull();
+    expect(api.queryByText(/Scoreboard|Scorecard/)).toBeNull();
   });
 
   it("has a Leaderboard item that opens Mahjong's board (#2633)", async () => {

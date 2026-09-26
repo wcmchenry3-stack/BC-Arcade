@@ -359,6 +359,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "scorecard.unavailable": {
+    "component": "ScorecardScreen",
+    "description": "Shown on the Scorecard screen if it is opened for a game with no live scorecard.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "overflow.menu.stats": {
     "component": "AppHeader",
     "description": "Overflow menu item that opens the player's stats for this game.",

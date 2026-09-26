@@ -39,6 +39,7 @@
   "deck.selected": "تم اختيار {{name}}",
   "overflow.menu.label": "خيارات إضافية",
   "overflow.menu.scorecard": "بطاقة النتائج",
+  "scorecard.unavailable": "لا توجد بطاقة نتائج لهذه اللعبة.",
   "overflow.menu.stats": "الإحصائيات",
   "overflow.menu.leaderboard": "لوحة الترتيب",
   "overflow.menu.newGame": "لعبة جديدة",

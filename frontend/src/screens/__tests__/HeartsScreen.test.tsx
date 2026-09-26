@@ -286,7 +286,7 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     await waitFor(() => getByLabelText("More options"));
     await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
     await fireEvent.press(getByText("Scorecard")); // tap Scorecard item
-    expect(mockNavigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "hearts" });
+    expect(mockNavigate).toHaveBeenCalledWith("Scorecard", { gameKey: "hearts" });
   });
 
   it("⋯ menu Leaderboard item opens Hearts' board (#2633)", async () => {

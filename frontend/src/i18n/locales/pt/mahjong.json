@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Quadrados concêntricos",
   "layoutSelect.title": "Escolha o layout",
   "layoutSelect.continue": "Continuar",
-  "layoutSelect.lockedLayout": "{{name}} — bloqueado",
-  "scoreboard.title": "Recordes",
-  "scoreboard.rank": "Pos.",
-  "scoreboard.player": "Jogador",
-  "scoreboard.score": "Pontos",
-  "scoreboard.empty": "Nenhuma pontuação ainda — seja o primeiro!"
+  "layoutSelect.lockedLayout": "{{name}} — bloqueado"
 }

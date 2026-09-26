@@ -412,50 +412,5 @@
     "placeholders": ["{{name}}"],
     "doNotTranslate": [],
     "notes": "{{name}} is the translated layout name (e.g. 'Turtle'). Screen-reader only — not visible text."
-  },
-  "scoreboard.title": {
-    "component": "ScoreboardScreen",
-    "description": "Heading for the Mahjong Solitaire scoreboard.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "scoreboard.rank": {
-    "component": "ScoreboardScreen",
-    "description": "Column header for rank position in the leaderboard.",
-    "tone": "functional",
-    "characterLimit": 6,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "scoreboard.player": {
-    "component": "ScoreboardScreen",
-    "description": "Column header for the player name in the leaderboard.",
-    "tone": "functional",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "scoreboard.score": {
-    "component": "ScoreboardScreen",
-    "description": "Column header for the score value in the leaderboard.",
-    "tone": "functional",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "scoreboard.empty": {
-    "component": "ScoreboardScreen",
-    "description": "Empty state message when no scores have been submitted yet.",
-    "tone": "encouraging, casual",
-    "characterLimit": 45,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
   }
 }

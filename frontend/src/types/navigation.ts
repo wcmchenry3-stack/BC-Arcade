@@ -3,6 +3,7 @@
 // caused a TDZ crash at bundle time (issue #1553).
 import type { AiDifficulty, GameState } from "../game/yacht/types";
 import type { GameType } from "../api/vocab";
+import type { ScorecardGame } from "../navigation/scorecards";
 
 /**
  * The shared leaderboard screen (#2633): one game's board. `partition` picks
@@ -62,10 +63,10 @@ export type HomeStackParamList = {
   GameStats: GameStatsParams;
   /**
    * The live scorecard of the match in progress (#2636): only games with a
-   * live view. A game's history is `GameStats`.
+   * live view (`SCORECARD_GAMES`). A game's history is `GameStats`.
    */
-  Scoreboard: {
-    gameKey: "hearts" | "yacht" | "blackjack";
+  Scorecard: {
+    gameKey: ScorecardGame;
   };
 };
 

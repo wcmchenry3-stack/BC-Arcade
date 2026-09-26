@@ -225,8 +225,8 @@
     "notes": null
   },
   "score.round": {
-    "component": "HeartsScoreboard",
-    "description": "Abbreviated header for the round-number column in the Hearts scoreboard's score history table.",
+    "component": "HeartsScorecard",
+    "description": "Abbreviated header for the round-number column in the Hearts scorecard's score history table.",
     "tone": "functional, abbreviated",
     "characterLimit": 8,
     "placeholders": [],
@@ -252,7 +252,7 @@
     "notes": null
   },
   "score.footnote": {
-    "component": "HeartsScoreboard",
+    "component": "HeartsScorecard",
     "description": "Footnote under the score history table explaining the shoot-the-moon rule.",
     "tone": "functional, concise",
     "characterLimit": 75,

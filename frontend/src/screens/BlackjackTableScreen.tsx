@@ -30,7 +30,7 @@ import BlackjackTable from "../components/blackjack/BlackjackTable";
 import ActionButtons from "../components/blackjack/ActionButtons";
 import ResultBanner from "../components/blackjack/ResultBanner";
 import GameResultModal from "../components/shared/GameResultModal";
-import { winRatePct } from "../components/scoreboard/blackjackStatsModel";
+import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { GameShell } from "../components/shared/GameShell";
@@ -208,7 +208,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handleNewGame}
-      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >

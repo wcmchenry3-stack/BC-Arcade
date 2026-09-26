@@ -249,7 +249,7 @@ export default function GameScreen({ navigation, route }: Props) {
     saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
   }, [gameState, aiDifficulty, aiGameState, finishedGameId]);
 
-  // Sync snapshot to shared scorecard context (read by ScoreboardScreen).
+  // Sync snapshot to shared scorecard context (read by ScorecardScreen).
   const { setSnapshot: setScorecardSnapshot } = useYachtScorecard();
   useEffect(() => {
     setScorecardSnapshot({
@@ -682,7 +682,6 @@ export default function GameScreen({ navigation, route }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={startNewGame}
-      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "yacht" })}
       onOpenLeaderboard={openLeaderboard}
       error={error}
       style={{

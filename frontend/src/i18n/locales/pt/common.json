@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} selecionado",
   "overflow.menu.label": "Mais opções",
   "overflow.menu.scorecard": "Ficha de pontuação",
+  "scorecard.unavailable": "Este jogo não tem ficha de pontuação.",
   "overflow.menu.stats": "Estatísticas",
   "overflow.menu.leaderboard": "Ranking",
   "overflow.menu.newGame": "Novo Jogo",

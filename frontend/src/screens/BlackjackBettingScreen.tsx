@@ -65,7 +65,6 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handlePlayAgain}
-      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
     >
       {/* Full-width run HUD — shown once a table is selected */}

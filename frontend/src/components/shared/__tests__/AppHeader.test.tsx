@@ -228,6 +228,22 @@ describe("AppHeader", () => {
       expect(screen.getByText("New Game")).toBeTruthy();
     });
 
+    it("gives the Scorecard item the scoreboard icon, not the leaderboard one (#2636)", async () => {
+      await render(<AppHeader title="Hearts" onOpenScorecard={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      // The item's icon: the mocked MaterialIcons host element inside it.
+      type Node = { type: string; props: Record<string, unknown>; children?: unknown[] };
+      const find = (n: unknown, pred: (n: Node) => boolean): Node[] => {
+        if (!n || typeof n !== "object") return [];
+        if (Array.isArray(n)) return n.flatMap((c) => find(c, pred));
+        const node = n as Node;
+        return [...(pred(node) ? [node] : []), ...find(node.children ?? [], pred)];
+      };
+      const [item] = find(screen.toJSON(), (n) => n.props?.testID === "nav-menu-scorecard");
+      const icons = find(item, (n) => n.type === "MockMaterialIcons");
+      expect(icons.map((i) => i.props.name)).toEqual(["scoreboard"]);
+    });
+
     it("does not show Scorecard item when onOpenScorecard is absent", async () => {
       await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));

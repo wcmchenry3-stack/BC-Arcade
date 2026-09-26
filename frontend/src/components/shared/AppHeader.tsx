@@ -31,7 +31,8 @@ export interface AppHeaderProps {
   backAccessibilityLabel?: string;
   /**
    * When provided, shows the ⋯ menu with a Scorecard item: the live view of
-   * the match in progress (Hearts, Yacht, Blackjack). See GH #711, #2636.
+   * the match in progress (Hearts, Yacht, Blackjack). GameShell sets it from
+   * its `gameType` prop (`SCORECARD_GAMES`). See GH #711, #2636.
    */
   onOpenScorecard?: () => void;
   /**
@@ -305,7 +306,7 @@ export function AppHeader({
               ]}
             >
               <MaterialIcons
-                name="leaderboard"
+                name="scoreboard"
                 size={18}
                 color={colors.accent}
                 style={styles.itemIcon}

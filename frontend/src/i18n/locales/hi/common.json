@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} चुना गया",
   "overflow.menu.label": "और विकल्प",
   "overflow.menu.scorecard": "स्कोर कार्ड",
+  "scorecard.unavailable": "इस गेम का कोई स्कोर कार्ड नहीं है।",
   "overflow.menu.stats": "आंकड़े",
   "overflow.menu.leaderboard": "लीडरबोर्ड",
   "overflow.menu.newGame": "नया गेम",

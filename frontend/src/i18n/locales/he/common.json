@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} נבחר",
   "overflow.menu.label": "עוד אפשרויות",
   "overflow.menu.scorecard": "כרטיס הניקוד",
+  "scorecard.unavailable": "למשחק הזה אין כרטיס ניקוד.",
   "overflow.menu.stats": "סטטיסטיקה",
   "overflow.menu.leaderboard": "טבלת מובילים",
   "overflow.menu.newGame": "משחק חדש",

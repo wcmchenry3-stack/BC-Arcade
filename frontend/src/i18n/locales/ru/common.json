@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} выбрана",
   "overflow.menu.label": "Ещё опции",
   "overflow.menu.scorecard": "Счёт партии",
+  "scorecard.unavailable": "У этой игры нет счёта партии.",
   "overflow.menu.stats": "Статистика",
   "overflow.menu.leaderboard": "Рейтинг",
   "overflow.menu.newGame": "Новая игра",

@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} 선택됨",
   "overflow.menu.label": "더보기",
   "overflow.menu.scorecard": "스코어카드",
+  "scorecard.unavailable": "이 게임에는 스코어카드가 없습니다.",
   "overflow.menu.stats": "통계",
   "overflow.menu.leaderboard": "랭킹",
   "overflow.menu.newGame": "새 게임",

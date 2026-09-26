@@ -194,7 +194,6 @@ describe("sudoku stats storage", () => {
     for (const v of ["classic", "mini"] as const) {
       for (const diff of ["easy", "medium", "hard"] as const) {
         expect(EMPTY_SUDOKU_STATS[v][diff].bestTimeS).toBe(0);
-        expect(EMPTY_SUDOKU_STATS[v][diff].gamesSolved).toBe(0);
       }
     }
   });
@@ -202,14 +201,14 @@ describe("sudoku stats storage", () => {
   it("round-trips stats via saveStats → loadStats", async () => {
     const stats = {
       classic: {
-        easy: { bestTimeS: 120, gamesSolved: 5 },
-        medium: { bestTimeS: 300, gamesSolved: 3 },
-        hard: { bestTimeS: 600, gamesSolved: 1 },
+        easy: { bestTimeS: 120 },
+        medium: { bestTimeS: 300 },
+        hard: { bestTimeS: 600 },
       },
       mini: {
-        easy: { bestTimeS: 0, gamesSolved: 0 },
-        medium: { bestTimeS: 0, gamesSolved: 0 },
-        hard: { bestTimeS: 0, gamesSolved: 0 },
+        easy: { bestTimeS: 0 },
+        medium: { bestTimeS: 0 },
+        hard: { bestTimeS: 0 },
       },
     };
     await saveStats(stats);
@@ -220,14 +219,14 @@ describe("sudoku stats storage", () => {
   it("persists to STATS_KEY in AsyncStorage", async () => {
     const stats = {
       classic: {
-        easy: { bestTimeS: 90, gamesSolved: 2 },
-        medium: { bestTimeS: 0, gamesSolved: 0 },
-        hard: { bestTimeS: 0, gamesSolved: 0 },
+        easy: { bestTimeS: 90 },
+        medium: { bestTimeS: 0 },
+        hard: { bestTimeS: 0 },
       },
       mini: {
-        easy: { bestTimeS: 0, gamesSolved: 0 },
-        medium: { bestTimeS: 0, gamesSolved: 0 },
-        hard: { bestTimeS: 0, gamesSolved: 0 },
+        easy: { bestTimeS: 0 },
+        medium: { bestTimeS: 0 },
+        hard: { bestTimeS: 0 },
       },
     };
     await saveStats(stats);
@@ -241,16 +240,16 @@ describe("sudoku stats storage", () => {
     await AsyncStorage.setItem(
       STATS_KEY,
       JSON.stringify({
-        easy: { bestTimeS: 60, gamesSolved: 1 },
-        medium: { bestTimeS: 0, gamesSolved: 0 },
-        hard: { bestTimeS: 0, gamesSolved: 0 },
+        easy: { bestTimeS: 60 },
+        medium: { bestTimeS: 0 },
+        hard: { bestTimeS: 0 },
       })
     );
     const loaded = await loadStats();
-    expect(loaded.classic.easy).toEqual({ bestTimeS: 60, gamesSolved: 1 });
-    expect(loaded.classic.medium).toEqual({ bestTimeS: 0, gamesSolved: 0 });
-    expect(loaded.classic.hard).toEqual({ bestTimeS: 0, gamesSolved: 0 });
-    expect(loaded.mini.easy).toEqual({ bestTimeS: 0, gamesSolved: 0 });
+    expect(loaded.classic.easy).toEqual({ bestTimeS: 60 });
+    expect(loaded.classic.medium).toEqual({ bestTimeS: 0 });
+    expect(loaded.classic.hard).toEqual({ bestTimeS: 0 });
+    expect(loaded.mini.easy).toEqual({ bestTimeS: 0 });
   });
 
   it("recovers partial DifficultyStats fields as zeros (old flat format migration)", async () => {
@@ -259,9 +258,35 @@ describe("sudoku stats storage", () => {
       JSON.stringify({ easy: { gamesSolved: 4 }, medium: {}, hard: null })
     );
     const loaded = await loadStats();
-    expect(loaded.classic.easy).toEqual({ bestTimeS: 0, gamesSolved: 4 });
-    expect(loaded.classic.medium).toEqual({ bestTimeS: 0, gamesSolved: 0 });
-    expect(loaded.classic.hard).toEqual({ bestTimeS: 0, gamesSolved: 0 });
+    expect(loaded.classic.easy).toEqual({ bestTimeS: 0 });
+    expect(loaded.classic.medium).toEqual({ bestTimeS: 0 });
+    expect(loaded.classic.hard).toEqual({ bestTimeS: 0 });
+  });
+
+  // #2636: only the best time is kept; an older build's record still loads.
+  it("loads the best times from a record with the old gamesSolved counters", async () => {
+    await AsyncStorage.setItem(
+      STATS_KEY,
+      JSON.stringify({
+        classic: {
+          easy: { bestTimeS: 95, gamesSolved: 12 },
+          medium: { bestTimeS: 0, gamesSolved: 0 },
+          hard: { bestTimeS: 400, gamesSolved: 2 },
+        },
+        mini: { easy: { bestTimeS: 30, gamesSolved: 1 } },
+      })
+    );
+    const loaded = await loadStats();
+    expect(loaded.classic).toEqual({
+      easy: { bestTimeS: 95 },
+      medium: { bestTimeS: 0 },
+      hard: { bestTimeS: 400 },
+    });
+    expect(loaded.mini.easy).toEqual({ bestTimeS: 30 });
+    await saveStats(loaded);
+    expect(JSON.parse((await AsyncStorage.getItem(STATS_KEY))!).classic.easy).toEqual({
+      bestTimeS: 95,
+    });
   });
 
   it("returns empty stats and captures exception on AsyncStorage failure", async () => {

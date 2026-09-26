@@ -108,26 +108,34 @@ describe("solitaire stats storage", () => {
     (Sentry.captureException as jest.Mock).mockClear();
   });
 
-  it("returns zero defaults when no stats saved", async () => {
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+  it("returns a zero best when nothing is saved", async () => {
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 
-  it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestTimeMs: 95000, bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
-    const loaded = await loadStats();
-    expect(loaded).toEqual({ bestTimeMs: 95000, bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
+  it("saves and loads the best round-trip, storing only the best", async () => {
+    await saveStats({ bestTimeMs: 95000 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 95000 });
+    expect(JSON.parse((await AsyncStorage.getItem("solitaire_stats_v1"))!)).toEqual({
+      bestTimeMs: 95000,
+    });
   });
 
-  it("returns zero defaults on corrupt stats payload", async () => {
+  it("returns a zero best on a corrupt payload", async () => {
     await AsyncStorage.setItem("solitaire_stats_v1", "not-json{");
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 
-  it("coerces missing numeric fields to 0 on partial payload", async () => {
+  // #2636: the counters are gone; an older build's record still loads.
+  it("loads the best from a record with the old counters", async () => {
+    await AsyncStorage.setItem(
+      "solitaire_stats_v1",
+      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
+    );
+    expect(await loadStats()).toEqual({ bestTimeMs: 81000 });
+  });
+
+  it("coerces a missing best to 0 on a partial payload", async () => {
     await AsyncStorage.setItem("solitaire_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 5, gamesWon: 0 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 });

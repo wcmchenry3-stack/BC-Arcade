@@ -156,5 +156,36 @@ describe("GameShell", () => {
     );
     await fireEvent.press(screen.getByTestId("nav-menu"));
     expect(screen.queryByTestId("nav-menu-stats")).toBeNull();
+    expect(screen.queryByTestId("nav-menu-scorecard")).toBeNull();
   });
+
+  // #2636: the Scorecard item comes from gameType, like Stats.
+  it.each(["hearts", "yacht", "blackjack"] as const)(
+    "gives %s a Scorecard item that opens its live view",
+    async (gameType) => {
+      mockShellNavigate.mockClear();
+      await render(
+        <GameShell gameType={gameType} title="Game" onBack={noop}>
+          <Text>game content</Text>
+        </GameShell>
+      );
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+      await fireEvent.press(screen.getByTestId("nav-menu-scorecard"));
+      expect(mockShellNavigate).toHaveBeenCalledWith("Scorecard", { gameKey: gameType });
+    }
+  );
+
+  it.each(["cascade", "solitaire", "sudoku", "twenty48", "mahjong", "freecell"] as const)(
+    "gives %s (no live view) no Scorecard item",
+    async (gameType) => {
+      await render(
+        <GameShell gameType={gameType} title="Game" onBack={noop}>
+          <Text>game content</Text>
+        </GameShell>
+      );
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+      expect(screen.getByTestId("nav-menu-stats")).toBeTruthy();
+      expect(screen.queryByTestId("nav-menu-scorecard")).toBeNull();
+    }
+  );
 });

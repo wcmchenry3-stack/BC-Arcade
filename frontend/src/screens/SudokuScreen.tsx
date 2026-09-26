@@ -135,10 +135,9 @@ export default function SudokuScreen() {
   const stateRef = useRef<SudokuState | null>(null);
   const prevCompleteRef = useRef(false);
 
-  // The device's `sudoku_stats_v1` store. Only each puzzle kind's `bestTimeS`
-  // is read, for the result card's best time and "New best" badge (#2636);
-  // `gamesSolved` is still kept but shown nowhere: the Stats screen reads the
-  // server.
+  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
+  // result card's best time and "New best" badge only (#2636): the player's
+  // history is the Stats screen, fed by the server.
   const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
 
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -300,23 +299,19 @@ export default function SudokuScreen() {
       const diff = state.difficulty;
       const variantKey = state.variant;
       const prev = statsRef.current[variantKey][diff];
-      const updatedStats: SudokuStats = {
-        ...statsRef.current,
-        [variantKey]: {
-          ...statsRef.current[variantKey],
-          [diff]: {
-            bestTimeS:
-              prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS ? finalElapsed : prev.bestTimeS,
-            gamesSolved: prev.gamesSolved + 1,
-          },
-        },
-      };
-      statsRef.current = updatedStats;
-      saveStats(updatedStats).catch(() => {});
+      const improved = prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS;
+      // The cache is written only when this puzzle kind's best improves.
+      if (improved) {
+        statsRef.current = {
+          ...statsRef.current,
+          [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
+        };
+        saveStats(statsRef.current).catch(() => {});
+      }
       setElapsed(finalElapsed);
       setResult({
         elapsedS: finalElapsed,
-        bestTimeS: updatedStats[variantKey][diff].bestTimeS,
+        bestTimeS: improved ? finalElapsed : prev.bestTimeS,
         // Only a beaten previous time is a "new best" — not a first solve.
         isNewBest: prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
       });

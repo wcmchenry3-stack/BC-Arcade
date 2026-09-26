@@ -13,7 +13,7 @@ import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/Cap
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
 import PlayerHand from "../components/hearts/PlayerHand";
-import HeartsScoreboard from "../components/scoreboard/HeartsScoreboard";
+import HeartsScorecard from "../components/scorecard/HeartsScorecard";
 import TrickArea from "../components/hearts/TrickArea";
 import {
   commitPass,
@@ -254,7 +254,7 @@ export default function HeartsScreen() {
     });
   }, [syncResume, setSelectedDifficulty, submitRank, updateClock]);
 
-  // ─── Sync snapshot to shared rounds context (read by ScoreboardScreen) ────
+  // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
   useEffect(() => {
     setRoundsSnapshot({
@@ -684,7 +684,6 @@ export default function HeartsScreen() {
         title={t("game.title")}
         onBack={() => navigation.goBack()}
         onNewGame={() => handleStartGame(selectedDifficulty)}
-        onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
         onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
       >
@@ -715,7 +714,6 @@ export default function HeartsScreen() {
       title={t("game.title")}
       onBack={() => navigation.goBack()}
       onNewGame={handleChangeDifficulty}
-      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >
@@ -835,7 +833,7 @@ export default function HeartsScreen() {
                 {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
               </Text>
             )}
-            <HeartsScoreboard
+            <HeartsScorecard
               playerLabels={playerLabels}
               cumulativeScores={[...gameState.cumulativeScores]}
               scoreHistory={scoreHistory}

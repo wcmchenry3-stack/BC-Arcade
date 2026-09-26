@@ -95,7 +95,7 @@
     "mahjong": {
       "de": ["layout.arena"],
       "es": ["layout.arena"],
-      "nl": ["action.hint", "hud.score", "layout.arena", "scoreboard.score"],
+      "nl": ["action.hint", "hud.score", "layout.arena"],
       "pt": ["layout.arena"]
     },
     "profile": {

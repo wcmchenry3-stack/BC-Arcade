@@ -44,10 +44,5 @@
   "layout.concentric_squares": "동심 사각형",
   "layoutSelect.title": "배치 선택",
   "layoutSelect.continue": "계속",
-  "layoutSelect.lockedLayout": "{{name}} — 잠김",
-  "scoreboard.title": "최고 점수",
-  "scoreboard.rank": "순위",
-  "scoreboard.player": "플레이어",
-  "scoreboard.score": "점수",
-  "scoreboard.empty": "아직 점수가 없습니다 — 첫 번째가 되어 보세요!"
+  "layoutSelect.lockedLayout": "{{name}} — 잠김"
 }

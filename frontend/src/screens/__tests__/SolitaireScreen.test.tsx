@@ -829,7 +829,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
   it("plays the win cascade, then reveals the card and records the win once", async () => {
     reduceMotion.mockResolvedValue(false);
     await AsyncStorage.setItem("player_display_name", "Alice");
-    await saveStats({ bestTimeMs: 90000, bestMoves: 80, gamesPlayed: 3, gamesWon: 1 });
+    await saveStats({ bestTimeMs: 90000 });
     const api = await mountOneMoveFromWin();
     await playWinningMove(api);
 
@@ -843,7 +843,35 @@ describe("SolitaireScreen — result card (#2509)", () => {
     expect(card.getByText("New best")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledTimes(1));
-    expect((await loadStats()).gamesWon).toBe(2);
+    expect(await loadStats()).toEqual({ bestTimeMs: 61000 });
+  });
+
+  // #2636: as in Sudoku, Cascade and 2048, a first win has no best to beat.
+  it("shows no New best on the first win, but caches its time as the best", async () => {
+    const api = await winNow();
+    const card = within(api.getByTestId("solitaire-result"));
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("Best")).toBeTruthy();
+    await waitFor(async () => expect(await loadStats()).toEqual({ bestTimeMs: 61000 }));
+  });
+
+  it("shows no New best and writes nothing when the win is slower than the best", async () => {
+    // An older build's record, counters and all: it must be left as it is.
+    const stored = JSON.stringify({
+      bestTimeMs: 50000,
+      bestMoves: 40,
+      gamesPlayed: 3,
+      gamesWon: 1,
+    });
+    await AsyncStorage.setItem("solitaire_stats_v1", stored);
+    const api = await winNow();
+    const card = within(api.getByTestId("solitaire-result"));
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("0:50")).toBeTruthy(); // the stored best, loaded from the old record
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBe(stored);
   });
 
   it("Play Again deals a new game in the same draw mode, skipping the picker", async () => {
@@ -1148,30 +1176,26 @@ describe("SolitaireScreen — tap-to-select and two-tap moves", () => {
   });
 });
 
-describe("SolitaireScreen — stats tracking", () => {
-  it("increments gamesPlayed when the player chooses a draw mode", async () => {
+// #2636: the device keeps only the best time (for the result card). Deals and
+// resumes write nothing: games played and won are the server's (Stats screen).
+describe("SolitaireScreen — local best cache", () => {
+  it("a deal writes nothing to the stats store", async () => {
     const api = await mount();
     await chooseDraw1(api);
-    await waitFor(async () => {
-      const raw = await AsyncStorage.getItem("solitaire_stats_v1");
-      expect(raw).not.toBeNull();
-      expect(JSON.parse(raw!).gamesPlayed).toBe(1);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
     });
+    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBeNull();
   });
 
-  it("does not double-count gamesPlayed when resuming a saved game", async () => {
-    const saved = dealGame(1, 12345);
-    await AsyncStorage.setItem("solitaire_game", JSON.stringify(saved));
-    await mount();
-    const raw = await AsyncStorage.getItem("solitaire_stats_v1");
-    // No new deal was started — stats not yet written or gamesPlayed is still 0.
-    const gamesPlayed = raw ? JSON.parse(raw).gamesPlayed : 0;
-    expect(gamesPlayed).toBe(0);
-  });
-
-  it("does not double-count gamesWon when resuming an already-complete game", async () => {
-    // Pre-seed stats as if a win was already counted in a prior session.
-    await saveStats({ bestTimeMs: 95000, bestMoves: 42, gamesPlayed: 1, gamesWon: 1 });
+  it("resuming an already-won game leaves the stored record alone", async () => {
+    const stored = JSON.stringify({
+      bestTimeMs: 95000,
+      bestMoves: 42,
+      gamesPlayed: 1,
+      gamesWon: 1,
+    });
+    await AsyncStorage.setItem("solitaire_stats_v1", stored);
     // Seed a complete game (edge case: game wasn't cleared before app killed).
     const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
     const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
@@ -1193,15 +1217,13 @@ describe("SolitaireScreen — stats tracking", () => {
       undoStack: [],
       isComplete: true,
       startedAt: null,
-      accumulatedMs: 95000,
+      accumulatedMs: 80000,
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     await mount();
-    // gamesWon must remain 1, not 2.
-    await waitFor(async () => {
-      const raw = await AsyncStorage.getItem("solitaire_stats_v1");
-      const stats = raw ? JSON.parse(raw) : { gamesWon: 1 };
-      expect(stats.gamesWon).toBe(1);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
     });
+    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBe(stored);
   });
 });

@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} geselecteerd",
   "overflow.menu.label": "Meer opties",
   "overflow.menu.scorecard": "Scorekaart",
+  "scorecard.unavailable": "Dit spel heeft geen scorekaart.",
   "overflow.menu.stats": "Statistieken",
   "overflow.menu.leaderboard": "Ranglijst",
   "overflow.menu.newGame": "Nieuw spel",

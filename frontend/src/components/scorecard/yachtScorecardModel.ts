@@ -1,4 +1,4 @@
-// Pure helpers for the Yacht scoreboard variant. Mirrors heartsRoundsModel.ts
+// Pure helpers for the Yacht scorecard (live view). Mirrors heartsRoundsModel.ts
 // — kept independent of React + theme so layout-free logic is unit-testable.
 
 export const UPPER_BONUS_THRESHOLD = 63;
