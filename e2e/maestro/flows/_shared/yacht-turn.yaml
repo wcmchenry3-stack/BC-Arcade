@@ -1,0 +1,59 @@
+appId: com.buffingchi.games
+---
+# Subflow: play one solo Yacht turn — roll, then score ${category}.
+# Caller must set: ${category} (score-row testID suffix, e.g. "ones")
+#                  ${tab}      (scorecard tab holding it: "upper" / "lower")
+# Optional:        ${lastTurn} ("true" for the 13th category)
+#
+# Rolling a Yacht (all five dice equal) shows a full-screen celebration whose
+# backdrop swallows the next tap (the tap dismisses it instead). So each tap
+# is sent twice, the second being a harmless no-op when the first landed: a
+# second roll just re-rolls (3 are allowed per turn), and a second tap on a
+# row that was just scored hits a disabled row (rolls_used is back to 0).
+# That avoids `when: visible` checks, which cost Maestro's ~7s lookup timeout
+# whenever they are false — ×13 turns, minutes per run.
+#
+# The last turn is different: scoring it ends the game and the result card
+# opens over the board, so a blind second tap could land on the card. There
+# the retry only fires if the turn visibly didn't end.
+#
+# The tabs only exist below 600dp wide (Scorecard.tsx WIDE_BREAKPOINT); on a
+# tablet both sections show at once, so the tab tap is optional.
+- tapOn:
+    id: "yacht-tab-${tab}"
+    optional: true
+- tapOn:
+    id: "yacht-roll-button"
+- tapOn:
+    id: "yacht-roll-button"
+# "Tap dice to hold" (yacht:dice.hintAfterRoll) shows only once this turn has
+# rolled at least once.
+- extendedWaitUntil:
+    visible:
+      text: "Tap dice to hold"
+    timeout: 5000
+- tapOn:
+    id: "score-row-${category}"
+- runFlow:
+    when:
+      true: ${lastTurn != 'true'}
+    commands:
+      - tapOn:
+          id: "score-row-${category}"
+- runFlow:
+    when:
+      true: ${lastTurn == 'true'}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "Tap dice to hold"
+          commands:
+            - tapOn:
+                id: "score-row-${category}"
+# Scoring ends the turn: the hint goes back to "Press Roll to start your
+# turn" (or, after the 13th category, the result card covers the board).
+- extendedWaitUntil:
+    notVisible:
+      text: "Tap dice to hold"
+    timeout: 5000

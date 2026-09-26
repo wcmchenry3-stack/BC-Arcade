@@ -85,3 +85,4 @@ iOS is ~12× more expensive due to the `macos-15` runner rate. Keep iOS flows as
 | Offline mode (`toggleAirplaneMode`) | Maestro (Android) | Requires OS-level network control |
 | App launch on real/simulated device | Maestro | Verifies the native bundle boots and renders the home screen |
 | Backend API, scoring submission | Backend tests | FastAPI `TestClient`; no browser or device needed |
+| Result card → name prompt → rank → leaderboard → name removal, on a native build | Maestro (`leaderboard/result-submission.yaml`) | The one native end-to-end check of submission (#2643); runs against the real dev API, see [`e2e/maestro/README.md`](../e2e/maestro/README.md#result-submission-flow-leaderboard) |

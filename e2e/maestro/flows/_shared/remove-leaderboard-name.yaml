@@ -1,0 +1,36 @@
+appId: com.buffingchi.games
+---
+# Subflow: safety-net cleanup for flows that save a display name on the real
+# dev API (leaderboard/result-submission.yaml's `onFlowComplete`). Runs only
+# when that flow failed after saving the name and before removing it, so the
+# dev boards testers see don't keep a Maestro bot entry.
+#
+# The app may be anywhere (a modal, the leaderboard, a crash), so relaunch it
+# (no clearState: the name and session must survive), then Profile →
+# "Remove my name from leaderboards" → confirm. Every step tolerates a missing
+# element: a cleanup that can't finish must not hide the original failure.
+- launchApp
+# Android's launcher ANR dialog (see launch.yaml), bounded here so a stuck
+# dialog can't burn the job timeout.
+- repeat:
+    times: 3
+    while:
+      visible: "Wait"
+    commands:
+      - tapOn: "Wait"
+- tapOn:
+    text: "Load embedded bundle"
+    optional: true
+- tapOn:
+    id: "tab-profile"
+    optional: true
+- runFlow:
+    when:
+      visible:
+        id: "profile-remove-name"
+    commands:
+      - tapOn:
+          id: "profile-remove-name"
+      - tapOn:
+          id: "profile-remove-name-confirm-confirm"
+          optional: true

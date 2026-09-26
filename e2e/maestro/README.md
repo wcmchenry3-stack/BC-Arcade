@@ -44,8 +44,11 @@ e2e/maestro/
 └── flows/
     ├── _shared/
     │   ├── launch.yaml          # App launch + home screen assertion (imported by all flows)
-    │   └── navigate-to.yaml    # Subflow: tap a tile, assert game screen loads
+    │   ├── navigate-to.yaml    # Subflow: tap a tile, assert game screen loads
+    │   ├── yacht-turn.yaml     # Subflow: one solo Yacht turn (roll, score a category)
+    │   └── remove-leaderboard-name.yaml  # Subflow: safety-net name cleanup (see below)
     ├── home/                    # Home screen & navigation smoke tests
+    ├── leaderboard/             # Result submission against the real dev API (see below)
     ├── blackjack/
     ├── yacht/
     ├── cascade/
@@ -129,6 +132,37 @@ deterministic deals this same flag enables in Solitaire/FreeCell.
 
 `offline/smoke.yaml` uses `toggleAirplaneMode` (Android only). On iOS, put the device in Airplane Mode before running the flow. The flow navigates to Solitaire — a client-side game — taps the stock pile, and asserts the game responds without a network connection.
 
+## Result submission flow (leaderboard/)
+
+`leaderboard/result-submission.yaml` (#2643) is the one native end-to-end
+check of finishing a game and landing on a leaderboard:
+
+1. Plays a full **solo Yacht** game — 13 turns via `_shared/yacht-turn.yaml`.
+   Yacht always ends after 13 roll+score turns whatever the dice, so no test
+   hook is needed.
+2. On the result card, answers the one-time display-name prompt with a
+   unique-ish bot name (`Maestro<5 digits>`) and waits (up to 2 min) for the
+   submission line: `yacht-result-submission-ranked` (saved with a `#N` /
+   `Your best: #N` rank) or `-saved` (saved, outside the top 10, where the
+   card shows no rank).
+3. Taps **View leaderboard** and asserts the player's highlighted row
+   (`leaderboard-row-me` in the list, or `leaderboard-row-pinned` under it).
+4. Goes back to the card, then Home, and asserts exactly three bottom tabs
+   (`tab-lobby`, `tab-profile`, `tab-settings`; no `tab-ranks`, #2634).
+5. **Cleans up:** Profile → "Remove my name from leaderboards" → confirm, and
+   asserts `profile-not-on-boards`, so the dev boards testers see don't keep
+   a bot entry (#2637). If the flow fails after the name was typed and before
+   this step, its `onFlowComplete` hook runs
+   `_shared/remove-leaderboard-name.yaml`, which relaunches the app and
+   removes the name.
+
+**It needs the real dev API.** Unlike every other flow, it depends on the
+backend: the game syncs through SyncWorker, the name through
+`PUT /players/me`, and the rank comes from `GET /games/{id}/rank`. The
+mobile-smoke builds point at `https://dev-games-api.buffingchi.com`
+(`EXPO_PUBLIC_API_URL`), which must be up and reachable from the runner. A
+local run needs a build with the same URL (and `EXPO_PUBLIC_TEST_HOOKS=1`).
+
 ## Scope
 
-Each game flow is a **smoke test only**: launch → navigate → one interaction → assert screen is stable. Detailed logic (scoring, edge cases, persistence) is covered by Playwright.
+Each game flow is a **smoke test only**: launch → navigate → one interaction → assert screen is stable. Detailed logic (scoring, edge cases, persistence) is covered by Playwright. The exception is `leaderboard/` (above), which runs one full game through to the leaderboard.
