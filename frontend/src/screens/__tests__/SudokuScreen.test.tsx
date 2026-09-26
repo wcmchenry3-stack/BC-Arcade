@@ -10,6 +10,8 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -815,5 +817,54 @@ describe("SudokuScreen — stats (#2635)", () => {
     });
     expect(r.getByText("Stats")).toBeTruthy();
     expect(r.queryByText(/Scoreboard|Scorecard/)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 review: a saved puzzle that loads while the app isn't active
+// ---------------------------------------------------------------------------
+
+describe("SudokuScreen — load while away (#2750)", () => {
+  it("a puzzle loaded while the app is in the background stays paused until it returns", async () => {
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    let skip = { row: 0, col: 0 };
+    outer: for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (!fresh.grid[r]![c]!.given) {
+          skip = { row: r, col: c };
+          break outer;
+        }
+      }
+    }
+    await saveGame(fillAllExcept(fresh, skip)); // under way: its timer runs on load
+    mockResumeGame.mockReturnValue("orphan-easy");
+
+    const original = Object.getOwnPropertyDescriptor(AppState, "currentState");
+    Object.defineProperty(AppState, "currentState", { value: "background", configurable: true });
+    const appStateSpy = jest.spyOn(AppState, "addEventListener");
+    const appStateBase = appStateSpy.mock.calls.length;
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const r = await renderScreen();
+      await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+      now += 60 * 60_000; // an hour before the player opens the app
+      await act(async () => {
+        for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+          if (type === "change") (listener as (s: AppStateStatus) => void)("active");
+        }
+      });
+      now += 5_000;
+      await r.unmount();
+    } finally {
+      nowSpy.mockRestore();
+      appStateSpy.mockRestore();
+      if (original) Object.defineProperty(AppState, "currentState", original);
+      else delete (AppState as { currentState?: unknown }).currentState;
+    }
+
+    const abandon = mockCompleteGame.mock.calls.at(-1)!;
+    expect(abandon[0]).toBe("orphan-easy");
+    expect((abandon[1] as Record<string, unknown>)["durationMs"]).toBe(5_000);
   });
 });

@@ -10,6 +10,8 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 
 import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -352,24 +354,36 @@ describe("MahjongScreen — win result card (#2510)", () => {
     }
   });
 
+  /**
+   * Clears the last pair in one sitting 90 s after the first tap: the board
+   * loads with nothing banked, so the running segment is all its play.
+   */
+  async function winInOneSitting() {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({ ...makeLastPairState(), accumulatedMs: 0, startedAt: null })
+    );
+    const api = await mount();
+    const start = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(start);
+    try {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-0")); // starts the clock
+      });
+      nowSpy.mockReturnValue(start + 90_000);
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("mock-tile-1"));
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+    return api;
+  }
+
   // #2627 review: the engine banks the running clock only on pause, so
   // accumulatedMs is still 0 on a board cleared in one sitting.
   it("records the best time from the play timer, not the banked time", async () => {
-    await AsyncStorage.setItem(
-      "mahjong_game",
-      JSON.stringify({
-        ...makeLastPairState(),
-        accumulatedMs: 0,
-        startedAt: Date.now() - 90_000,
-      })
-    );
-    const api = await mount();
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("mock-tile-0"));
-    });
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("mock-tile-1"));
-    });
+    const api = await winInOneSitting();
     await api.findByTestId("mahjong-result");
     await waitFor(async () => {
       const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
@@ -381,21 +395,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
 
   // #2704: the card's Time is the real play time, not the banked-on-pause 0.
   it("shows the real play time for a board cleared in one sitting", async () => {
-    await AsyncStorage.setItem(
-      "mahjong_game",
-      JSON.stringify({
-        ...makeLastPairState(),
-        accumulatedMs: 0,
-        startedAt: Date.now() - 90_000,
-      })
-    );
-    const api = await mount();
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("mock-tile-0"));
-    });
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("mock-tile-1"));
-    });
+    const api = await winInOneSitting();
     const card = within(await api.findByTestId("mahjong-result"));
     expect(card.getByText("1:30")).toBeTruthy();
   });
@@ -930,11 +930,13 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
   });
 
   it("a blur before the first move doesn't start the clock on return", async () => {
+    // A board saved before its first move: nothing banked, so the load leaves
+    // its clock stopped (#2750).
     const inProgress = makeWinState({
       isComplete: false,
       isDeadlocked: false,
-      pairsRemoved: 12,
-      accumulatedMs: PLAY_MS,
+      pairsRemoved: 0,
+      accumulatedMs: 0,
       startedAt: null,
     } as Partial<MahjongState>);
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(inProgress));
@@ -1182,5 +1184,279 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
       await fireEvent.press(api.getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "mahjong" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 — the clock stops in the background, and a relaunch counts neither
+// the time the app was closed nor loses the play before it
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — app background and relaunch (#2750)", () => {
+  const PLAY_MS = 60_000;
+  let appStateSpy: jest.SpyInstance;
+  // AppState.addEventListener may already be a shared mock whose calls
+  // outlive a test: only listeners added from this test on are emitted to.
+  let appStateBase: number;
+  let now: number;
+  let nowSpy: jest.SpyInstance;
+  beforeEach(() => {
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+    now = 1_800_000_000_000;
+    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+  });
+  afterEach(() => {
+    nowSpy.mockRestore();
+    appStateSpy.mockRestore();
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  /** The last pair on the board, with a minute of play banked. */
+  function lastPairState(): MahjongState {
+    return makeWinState({
+      isComplete: false,
+      pairsRemoved: 71,
+      score: 3550,
+      accumulatedMs: PLAY_MS,
+      startedAt: null,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+  }
+
+  async function tap(api: Awaited<ReturnType<typeof mount>>, id: number) {
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(`mock-tile-${id}`));
+    });
+  }
+
+  function lastSummary(): Record<string, unknown> {
+    return mockCompleteGame.mock.calls.at(-1)![1] as Record<string, unknown>;
+  }
+
+  it("doesn't count the time the app spends in the background", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(lastPairState()));
+    const api = await mount();
+    await tap(api, 0); // selects the first tile
+    now += 20_000;
+    await setAppState("background");
+    now += 2 * 60 * 60_000; // two hours away
+    await setAppState("active");
+    now += 5_000;
+    await tap(api, 1); // clears the board
+    await api.findByTestId("mahjong-result");
+
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "win", durationMs: PLAY_MS + 25_000 })
+    );
+  });
+
+  it("returning to the foreground while the leaderboard still covers the game doesn't resume", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(lastPairState()));
+    const api = await mount();
+    await tap(api, 0);
+    now += 20_000;
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await setAppState("background");
+    now += 60 * 60_000;
+    await setAppState("active"); // back in the app, the leaderboard still on top
+    now += 10 * 60_000;
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    now += 5_000;
+    await tap(api, 1);
+    await api.findByTestId("mahjong-result");
+
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "win", durationMs: PLAY_MS + 25_000 })
+    );
+  });
+
+  // The issue's example: a move, a two-day break, then the win.
+  it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(lastPairState()));
+    const first = await mount();
+    await tap(first, 0); // selects the first tile; the clock runs
+    now += 30_000;
+    await setAppState("background"); // the OS kills the app from here
+    await first.unmount();
+    mockCompleteGame.mockClear();
+
+    now += 2 * 24 * 60 * 60_000; // two days later, a fresh launch
+    const second = await mount();
+    now += 5_000;
+    await tap(second, 1); // the saved selection plus this tile clear the board
+    await second.findByTestId("mahjong-result");
+
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "win", durationMs: PLAY_MS + 35_000 })
+    );
+  });
+
+  // A first tap that lands while the player is away mustn't start the clock
+  // running: it starts paused, and the return starts it.
+  it("a first tap while away leaves the clock paused until the return", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({ ...lastPairState(), accumulatedMs: 0, startedAt: null })
+    );
+    const api = await mount(); // nothing played yet: the clock waits
+    await setAppState("background");
+    await tap(api, 0); // lands while away, and opens the session
+    now += 60 * 60_000; // an hour away
+    await setAppState("active");
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await api.unmount();
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
+  // CONTINUE from Level Select carries on from the board still in memory: the
+  // play since the last save is kept, and the time on Level Select isn't play.
+  it("CONTINUE from Level Select keeps the unsaved play and skips the time on Level Select", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 70,
+          score: 700,
+          accumulatedMs: PLAY_MS,
+          startedAt: null,
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+            { id: 2, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+            { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 30, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    await tap(api, 0); // selects a tile and opens the session; the save is written
+    now += 20_000; // play not yet saved
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Level Select"));
+    });
+    now += 10 * 60_000; // ten minutes browsing layouts
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(/continue/i));
+    });
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await api.unmount();
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: PLAY_MS + 25_000 })
+    );
+  });
+
+  // #2750 review: CONTINUE resumes only a clock Level Select paused. A new
+  // layout played to a deadlock, then Level Select and CONTINUE, must leave
+  // the deadlocked board's clock stopped.
+  it("CONTINUE doesn't start a deadlocked board's clock after a layout switch", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 70,
+          accumulatedMs: PLAY_MS,
+          startedAt: null,
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+            { id: 2, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+            { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 30, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    // The next deal: one matching pair, then two tiles that don't match and
+    // no shuffles left, so clearing the pair deadlocks the board.
+    const nearDeadlock = makeWinState({
+      isComplete: false,
+      pairsRemoved: 70,
+      shufflesLeft: 0,
+      startedAt: null,
+      accumulatedMs: 0,
+      tiles: [
+        { id: 10, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 11, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+        { id: 12, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+        { id: 13, suit: "bamboos", rank: 3, faceId: 28, col: 30, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    const createGame = jest.spyOn(mahjongEngine, "createGame").mockReturnValue(nearDeadlock);
+    const openLevelSelect = async (api: Awaited<ReturnType<typeof mount>>) => {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("More options"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByText("Level Select"));
+      });
+    };
+    try {
+      const api = await mount();
+      await tap(api, 0); // the first board's clock runs
+      now += 10_000;
+      await openLevelSelect(api); // …and pauses
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Turtle")); // a new deal
+      });
+      await tap(api, 10);
+      now += 30_000;
+      await tap(api, 11); // the pair: the board deadlocks, its clock stops at 30 s
+      await openLevelSelect(api);
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText(/continue/i));
+      });
+      now += 10 * 60_000; // ten more minutes on the deadlocked board
+      mockCompleteGame.mockClear();
+      await act(async () => {
+        mockNavListeners.get("beforeRemove")?.forEach((h) => h()); // leaving records the loss
+      });
+      expect(lastSummary()).toEqual(
+        expect.objectContaining({ outcome: "loss", durationMs: 30_000 })
+      );
+    } finally {
+      createGame.mockRestore();
+    }
+  });
+
+  // A save from an older build: a raw running startedAt and, in the oldest,
+  // no accumulatedMs. When the app was closed is unknown, so the game counts
+  // from the load. It must load, not crash or discard the game.
+  it("loads an older build's save with a running startedAt, counting from the load", async () => {
+    const old = { ...lastPairState(), startedAt: now - 2 * 24 * 60 * 60_000 } as Record<
+      string,
+      unknown
+    >;
+    delete old["accumulatedMs"];
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(old));
+    const api = await mount();
+    now += 4_000;
+    await tap(api, 0);
+    await tap(api, 1);
+    await api.findByTestId("mahjong-result");
+    expect(lastSummary()).toEqual(expect.objectContaining({ outcome: "win", durationMs: 4_000 }));
   });
 });

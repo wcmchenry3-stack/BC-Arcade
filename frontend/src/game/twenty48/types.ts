@@ -30,6 +30,8 @@ export interface Twenty48State {
   startedAt: number | null;
   /** Total elapsed milliseconds accumulated across all sessions before the current one. */
   accumulatedMs: number;
+  /** The clock is paused (the player is away), not merely stopped: see `PlayClock`. */
+  paused?: boolean;
   /** One-shot events emitted on the move that caused them; undefined otherwise. */
   events?: readonly GameEvent[];
 }

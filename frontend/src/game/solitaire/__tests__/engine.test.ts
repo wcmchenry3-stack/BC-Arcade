@@ -1241,10 +1241,29 @@ describe("pauseGame / resumeGame", () => {
     expect(pauseGame(state, 5000)).toBe(state);
   });
 
-  it("resumeGame sets startedAt", () => {
-    const state = mkState({ startedAt: null, accumulatedMs: 200 });
+  it("resumeGame sets startedAt on a paused clock", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 200, paused: true });
     const resumed = resumeGame(state, 5000);
     expect(resumed.startedAt).toBe(5000);
+    expect(resumed.paused).toBeUndefined();
+  });
+
+  // #2750: not started (waiting for the first move) isn't paused.
+  it("resumeGame doesn't start a clock that isn't paused", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 0 });
+    expect(resumeGame(state, 5000)).toBe(state);
+  });
+
+  it("a move leaves a paused clock paused, and starts one not started yet", () => {
+    const stock = [{ suit: "clubs" as const, rank: 5 as const, faceUp: false }];
+    const paused = pauseGame(mkState({ stock, startedAt: 1000, accumulatedMs: 0 }), 1600);
+    const moved = drawFromStock(paused);
+    expect(moved).not.toBe(paused);
+    expect(moved.startedAt).toBeNull();
+    expect(moved.paused).toBe(true);
+    expect(moved.accumulatedMs).toBe(600);
+    const fresh = mkState({ stock, startedAt: null, accumulatedMs: 0 });
+    expect(drawFromStock(fresh).startedAt).not.toBeNull();
   });
 
   it("resumeGame is a no-op when already running", () => {

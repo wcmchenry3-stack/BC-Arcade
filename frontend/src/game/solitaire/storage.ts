@@ -10,6 +10,9 @@
  * engine already guarantees nested stacks are `[]` at write time — this
  * is defensive belt-and-suspenders.
  *
+ * The play clock is saved banked and restarted on load (`clockForSave`,
+ * `clockOnLoad`, #2750), so the time the app was closed never counts.
+ *
  * `loadGame` enforces `_v: 1` so future schema bumps reject incompatible
  * payloads rather than crashing the screen. Corrupt payloads are deleted
  * and reported as a warning (not an exception) — the caller recovers by
@@ -19,6 +22,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { SolitaireState } from "./types";
+import { clockForSave, clockOnLoad } from "../_shared/playClock";
 
 const GAME_KEY = "solitaire_game";
 const STATS_KEY = "solitaire_stats_v1";
@@ -42,7 +46,7 @@ function stripNestedUndo(state: SolitaireState): SolitaireState {
 
 export async function saveGame(state: SolitaireState): Promise<void> {
   try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(state)));
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(clockForSave(state))));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "save" } });
   }
@@ -73,7 +77,8 @@ export async function loadGame(): Promise<SolitaireState | null> {
     // Normalize timer fields — absent in saves created before timer tracking was added.
     parsed.startedAt = parsed.startedAt ?? null;
     parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
-    return parsed as SolitaireState;
+    const loaded = parsed as SolitaireState;
+    return clockOnLoad(loaded, loaded.isComplete);
   } catch (e) {
     Sentry.captureMessage("solitaire.storage: corrupt game payload, discarding", {
       level: "warning",

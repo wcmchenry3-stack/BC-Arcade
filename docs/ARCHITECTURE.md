@@ -241,8 +241,9 @@ time its active-play window has counted.
   the window applies.
 
 Every rule, with the screens that call `resetPlayWindow()`, is in
-[GAME-CONTRACT.md](GAME-CONTRACT.md) §2.3 "useGameSync"; open gaps are
-tracked in #2750.
+[GAME-CONTRACT.md](GAME-CONTRACT.md) §2.3 "useGameSync". A game's own
+clock pauses the same way, in the background and while covered
+(`usePauseWhileAway`, #2750).
 
 **Deferred create and killed sessions (#2654).** `startGame()` records the
 session on the device only. `SyncWorker` sends `POST /games` and the session's

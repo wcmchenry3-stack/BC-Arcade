@@ -72,6 +72,20 @@ describe("cascade storage2 — looksValid", () => {
   });
 });
 
+describe("cascade storage2 — playedMs (#2750)", () => {
+  it("accepts a save with its play time", () => {
+    expect(looksValid(makeSavedState({ playedMs: 20_000 }))).toBe(true);
+  });
+
+  it("accepts an older build's save without it", () => {
+    expect(looksValid(makeSavedState())).toBe(true);
+  });
+
+  it("rejects a play time that isn't a number", () => {
+    expect(looksValid({ ...makeSavedState(), playedMs: "20" })).toBe(false);
+  });
+});
+
 describe("cascade storage2 — save / load roundtrip", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();

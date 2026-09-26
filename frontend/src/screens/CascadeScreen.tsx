@@ -41,6 +41,8 @@ import {
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
@@ -375,7 +377,25 @@ function CascadeGame() {
       active = false;
     };
   }, []);
-  const gameStartTimeRef = useRef<number>(Date.now());
+  // The game's play clock (#2750), on the shared PlayClock model: it runs from
+  // the session's start and stops while the player is away (another screen
+  // covers the board, #2735, or the app is in the background), through
+  // usePauseWhileAway below. A ref, not state: the loop and the session
+  // callbacks read it outside a render.
+  const clockRef = useRef<PlayClock>({ startedAt: Date.now(), accumulatedMs: 0 });
+  /**
+   * Start the clock over with `accumulatedMs` banked, keeping it paused if
+   * the player is away: a session can open, or a save load land, while the
+   * app is in the background or another screen covers the board.
+   */
+  const restartClock = useCallback((accumulatedMs: number) => {
+    clockRef.current =
+      clockRef.current.paused === true
+        ? { accumulatedMs, startedAt: null, paused: true }
+        : { accumulatedMs, startedAt: Date.now() };
+  }, []);
+  /** Play time so far. */
+  const playedMs = useCallback(() => clockElapsedMs(clockRef.current), []);
   const mergeCountRef = useRef(0);
 
   // #2450 / #2619 — the result block. The hook's own abandon (unmount) and
@@ -384,12 +404,12 @@ function CascadeGame() {
   const progressResult = useCallback(
     () => ({
       final_score: scoreRef.current,
-      duration_ms: Date.now() - gameStartTimeRef.current,
+      duration_ms: playedMs(),
       theme: activeFruitSetRef.current.id,
       total_drops: dropCountRef.current,
       total_merges: mergeCountRef.current,
     }),
-    []
+    [playedMs]
   );
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult() }));
@@ -405,11 +425,11 @@ function CascadeGame() {
 
   const startInstrumentedSession = useCallback(
     (themeId: string) => {
-      gameStartTimeRef.current = Date.now();
+      restartClock(0);
       mergeCountRef.current = 0;
       syncStart({ fruit_set: themeId, theme: themeId, seed: null });
     },
-    [syncStart]
+    [syncStart, restartClock]
   );
 
   const endInstrumentedSession = useCallback(
@@ -457,6 +477,10 @@ function CascadeGame() {
     loadCascadeGame().then((snapshot) => {
       if (!active || !snapshot || snapshot.pieces.length === 0) return;
       engineRef.current?.restore(snapshot.pieces, snapshot.score);
+      // The play before the app was closed carries on (#2750); the time it
+      // was closed doesn't count. A save from an older build has no
+      // playedMs: its earlier play is unknown, so the clock starts at the load.
+      restartClock(snapshot.playedMs ?? 0);
       // The restored game continues the session a killed app left open (#2654),
       // in place of the untouched one opened at mount.
       syncResume();
@@ -470,7 +494,7 @@ function CascadeGame() {
     return () => {
       active = false;
     };
-  }, [syncResume]);
+  }, [syncResume, restartClock]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
@@ -479,8 +503,9 @@ function CascadeGame() {
       score: scoreRef.current,
       savedAt: Date.now(),
       queue: queueRef.current,
+      playedMs: playedMs(),
     };
-  }, []);
+  }, [playedMs]);
 
   const saveGameThrottled = useCallback(() => {
     const now = Date.now();
@@ -614,37 +639,30 @@ function CascadeGame() {
   showResultRef.current = showResult;
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) stops the loop below, so the physics and the reported duration
-  // count only play. Refs, not state: the loop effect below reads them every
-  // frame and must not be recreated when `navigation` re-renders (it isn't
-  // guaranteed to be a stable reference), only when `gameKey` changes.
-  const loopFocusedRef = useRef(true);
-  const blurredAtRef = useRef<number | null>(null);
+  // #2735) or the app going to the background (#2750) stops the loop below,
+  // so the physics and the reported duration count only play. The pause saves
+  // the board, so a kill while backgrounded keeps the play so far. Refs, not
+  // state: the loop effect below reads them every frame and must not be
+  // recreated when `navigation` re-renders (it isn't guaranteed to be a
+  // stable reference), only when `gameKey` changes.
+  //
   // Set by the loop effect below to its own "start scheduling frames again";
-  // called by the focus listener, which otherwise has no way to reach a
-  // `tick`/`rafId` recreated on every gameKey change.
+  // called on resume, which otherwise has no way to reach a `tick`/`rafId`
+  // recreated on every gameKey change.
   const resumeLoopRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      if (!loopFocusedRef.current) return;
-      loopFocusedRef.current = false;
-      blurredAtRef.current = Date.now();
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      if (loopFocusedRef.current) return;
-      loopFocusedRef.current = true;
-      if (blurredAtRef.current !== null) {
-        gameStartTimeRef.current += Date.now() - blurredAtRef.current;
-        blurredAtRef.current = null;
+  const awayRef = usePauseWhileAway(
+    navigation,
+    () => {
+      clockRef.current = pauseClock(clockRef.current);
+      if (!gameOverRef.current && piecesRef.current.length > 0) {
+        saveCascadeGame(buildSnapshot()).catch(() => {});
       }
+    },
+    () => {
+      clockRef.current = resumeClock(clockRef.current);
       resumeLoopRef.current();
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
+    }
+  );
 
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
@@ -652,11 +670,25 @@ function CascadeGame() {
     engineRef.current = engine;
     engine.start();
 
-    let rafId: number;
+    // Every frame carries the loop generation that scheduled it. iOS and
+    // Android hold frames while the app is away, so one queued before a pause
+    // can still arrive after the resume has started the loop again, and one
+    // can arrive after cleanup: both belong to an older generation and do
+    // nothing. So there is only ever one loop, and none once this effect is
+    // cleaned up.
+    let generation = 0;
+    let rafId: number | null = null;
     let last = performance.now();
 
-    function tick(now: number) {
-      if (!loopFocusedRef.current) return; // resumed by resumeLoopRef below
+    function schedule() {
+      const scheduledFor = generation;
+      rafId = requestAnimationFrame((now) => tick(now, scheduledFor));
+    }
+
+    function tick(now: number, scheduledFor: number) {
+      if (scheduledFor !== generation) return; // a superseded loop's frame
+      rafId = null;
+      if (awayRef.current) return; // resumed by resumeLoopRef below
 
       const delta = Math.min(now - last, 100);
       last = now;
@@ -684,27 +716,28 @@ function CascadeGame() {
       piecesRef.current = state.pieces;
       setPieces(state.pieces);
 
-      if (!gameOverRef.current) {
-        rafId = requestAnimationFrame(tick);
-      }
+      if (!gameOverRef.current) schedule();
     }
 
     resumeLoopRef.current = () => {
       if (gameOverRef.current) return;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      generation++;
       last = performance.now();
-      rafId = requestAnimationFrame(tick);
+      schedule();
     };
 
-    rafId = requestAnimationFrame(tick);
+    schedule();
 
     return () => {
-      cancelAnimationFrame(rafId);
+      generation++;
+      if (rafId !== null) cancelAnimationFrame(rafId);
       engine.destroy();
       engineRef.current = null;
       setPieces([]);
       resumeLoopRef.current = () => {};
     };
-  }, [gameKey]);
+  }, [gameKey, awayRef]);
 
   const handleTap = useCallback(
     (x: number) => {

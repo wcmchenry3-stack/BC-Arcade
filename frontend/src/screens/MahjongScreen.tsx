@@ -56,6 +56,7 @@ import {
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePausableClock } from "../hooks/usePausableClock";
 import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -602,6 +603,24 @@ export default function MahjongScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
+  // going to the background (#2750) stops its clock, so the finish and best
+  // times count only play (usePausableClock). The pause is saved like any
+  // state change, so a kill while backgrounded keeps the play banked.
+  const { adoptLoaded, matchPresence } = usePausableClock({
+    navigation,
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+    // Level Select pauses the clock too: coming back to the app there
+    // mustn't start it; CONTINUE does.
+    hold: view === "select",
+    saveOnLeave: (paused) => {
+      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
+    },
+  });
+
   // Mount: restore saved game or show layout select.
   useEffect(() => {
     let alive = true;
@@ -612,7 +631,7 @@ export default function MahjongScreen() {
         progressRef.current = savedProgress;
         setProgress(savedProgress);
         if (saved !== null) {
-          setState(saved);
+          setState(adoptLoaded(saved));
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) winRecordedRef.current = true;
           // A restored game continues the session a killed app left open (#2654).
@@ -628,7 +647,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume]);
+  }, [syncResume, adoptLoaded]);
 
   // Persist on every state change after mount load resolves.
   useEffect(() => {
@@ -811,28 +830,6 @@ export default function MahjongScreen() {
     return unsub;
   }, [navigation, recordDeadlockLoss]);
 
-  // Another screen covering the game (⋯ → Leaderboard, #2633) stops its clock,
-  // so the finish and best times count only play. Only a clock this pauses is
-  // restarted on return: a board with no move yet keeps waiting for its first.
-  const pausedOnBlurRef = useRef(false);
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      const s = stateRef.current;
-      if (!s || s.startedAt === null) return;
-      pausedOnBlurRef.current = true;
-      setState(pauseGame(s));
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      if (!pausedOnBlurRef.current) return;
-      pausedOnBlurRef.current = false;
-      setState((s) => (s ? resumeGame(s) : s));
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
-
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
@@ -854,13 +851,16 @@ export default function MahjongScreen() {
       setHintIds(new Set());
       setState((prev) => {
         if (!prev) return prev;
-        const next = selectTile(prev, tileId);
-        if (next === prev) return prev;
+        const moved = selectTile(prev, tileId);
+        if (moved === prev) return prev;
+        // A first tap that lands while the player is away mustn't start the
+        // clock running (#2750).
+        const next = matchPresence(moved);
         ensureSyncStarted(next);
         return next;
       });
     },
-    [ensureSyncStarted]
+    [ensureSyncStarted, matchPresence]
   );
 
   const handleHint = useCallback(() => {
@@ -888,19 +888,20 @@ export default function MahjongScreen() {
   const handleShuffle = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      const next = shuffleBoard(prev);
-      if (next === prev) return prev;
+      const shuffled = shuffleBoard(prev);
+      if (shuffled === prev) return prev;
+      const next = matchPresence(shuffled);
       ensureSyncStarted(next);
       return next;
     });
-  }, [ensureSyncStarted]);
+  }, [ensureSyncStarted, matchPresence]);
 
   const handleUndo = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      return undoMove(prev);
+      return matchPresence(undoMove(prev));
     });
-  }, []);
+  }, [matchPresence]);
 
   /**
    * Closes an open session: a loss for a deadlocked board, otherwise the
@@ -927,9 +928,14 @@ export default function MahjongScreen() {
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
+  // Level Select isn't play: the clock pauses here and CONTINUE resumes it
+  // (#2750). The clock's own state decides: only a running clock pauses, and
+  // only a paused one on an unfinished board resumes.
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
+    const now = Date.now();
+    setState((prev) => (prev ? pauseGame(prev, now) : prev));
     setView("select");
   }, []);
 
@@ -971,6 +977,17 @@ export default function MahjongScreen() {
   }, [handleSelectLayout]);
 
   const handleContinue = useCallback(() => {
+    const inMemory = stateRef.current;
+    if (inMemory !== null && !inMemory.isComplete) {
+      // Level Select kept this board in memory, with its session open and its
+      // clock stopped: carry on from it (#2750). Reloading the save would drop
+      // the play since the last save, and a resume would reopen the session.
+      setHasSavedGame(false);
+      const now = Date.now();
+      setState((prev) => (prev ? resumeGame(prev, now) : prev));
+      setView("play");
+      return;
+    }
     loadGame()
       .then((saved) => {
         if (!saved) {
@@ -978,7 +995,7 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
-        setState(saved);
+        setState(adoptLoaded(saved));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).
         if (!saved.isComplete) syncResume();
@@ -987,7 +1004,7 @@ export default function MahjongScreen() {
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, [syncResume]);
+  }, [syncResume, adoptLoaded]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 

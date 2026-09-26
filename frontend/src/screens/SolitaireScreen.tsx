@@ -29,6 +29,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -200,6 +201,25 @@ export default function SolitaireScreen() {
     [syncRestart]
   );
 
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) or the app going to the background (#2750) stops its clock, so
+  // the finish time counts only play (usePausableClock). The pause is saved
+  // like any state change, so a kill while backgrounded keeps the play
+  // banked. `awayRef` also gates Auto Complete's self-scheduled steps below:
+  // applyMove's timer would otherwise treat a paused (`startedAt: null`)
+  // state as "not yet started" and restart the clock from a step that lands
+  // while away, defeating the pause.
+  const { awayRef, adoptLoaded, matchPresence } = usePausableClock({
+    navigation,
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+    saveOnLeave: (paused) => {
+      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
+    },
+  });
+
   // #597 — mount load. Restores a saved game silently; on a clean slot the
   // pre-game draw-mode modal is shown so the player picks their mode.
   //
@@ -219,7 +239,7 @@ export default function SolitaireScreen() {
       hasLoadedRef.current = true;
       statsRef.current = savedStats;
       if (saved !== null) {
-        setState(saved);
+        setState(adoptLoaded(saved));
         // Suppress re-counting a win when resuming an already-won game.
         if (saved.isComplete) {
           winRecordedRef.current = true;
@@ -251,35 +271,6 @@ export default function SolitaireScreen() {
     if (state === null) return;
     saveGame(state).catch(() => {});
   }, [state]);
-
-  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) stops its clock, so the finish time counts only play. Only a
-  // clock this pauses is restarted on return: a deal with no move yet keeps
-  // waiting for its first. `screenFocusedRef` also gates Auto Complete's
-  // self-scheduled steps below: applyMove's timer would otherwise treat a
-  // paused (`startedAt: null`) state as "not yet started" and restart the
-  // clock from a step that lands mid-blur, defeating the pause.
-  const pausedOnBlurRef = useRef(false);
-  const screenFocusedRef = useRef(true);
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      screenFocusedRef.current = false;
-      const s = stateRef.current;
-      if (!s || s.startedAt === null) return;
-      pausedOnBlurRef.current = true;
-      setState(pauseGame(s));
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      screenFocusedRef.current = true;
-      if (!pausedOnBlurRef.current) return;
-      pausedOnBlurRef.current = false;
-      setState((s) => (s ? resumeGame(s) : s));
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
   // unmount) and the completion effect read the latest value.
@@ -372,12 +363,12 @@ export default function SolitaireScreen() {
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       ensureSyncStarted(next);
-      setState(next);
+      setState(matchPresence(next));
       setMoves((m) => m + 1);
       setSelection(null);
       return true;
     },
-    [state, ensureSyncStarted]
+    [state, ensureSyncStarted, matchPresence]
   );
 
   const handleWastePress = useCallback(() => {
@@ -405,10 +396,10 @@ export default function SolitaireScreen() {
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
     ensureSyncStarted(next);
-    setState(next);
+    setState(matchPresence(next));
     setMoves((m) => m + 1);
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted]);
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
@@ -613,36 +604,50 @@ export default function SolitaireScreen() {
   const handleUndo = useCallback(() => {
     if (state === null || autoCompleting) return;
     if (state.undoStack.length === 0) return;
-    setState(undo(state));
+    setState(matchPresence(undo(state)));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
-  }, [state, autoCompleting]);
+  }, [state, autoCompleting, matchPresence]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
-    setState(applyHint(state));
-  }, [state, autoCompleting]);
+    setState(matchPresence(applyHint(state)));
+  }, [state, autoCompleting, matchPresence]);
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
     setAutoCompleting(true);
     setSelection(null);
-    let current = state;
     const step = () => {
-      // Another screen is covering the game (#2735): hold off applying the
-      // next step until focus returns, instead of letting a step scheduled
-      // before the blur land while the clock is paused.
-      if (!screenFocusedRef.current) {
+      // Another screen is covering the game (#2735) or the app is in the
+      // background (#2750): hold off applying the next step until the player
+      // is back, instead of letting a step scheduled before they left land
+      // while the clock is paused.
+      if (awayRef.current) {
         autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
         return;
       }
-      const next = autoComplete(current);
-      if (next === current) {
+      // Each step starts from the committed state, board and clock, never a
+      // copy an earlier step kept: a pause and a resume between two steps
+      // (even inside one step's gap) changed the clock, and reapplying the
+      // old copy would count the time away as play (#2750).
+      const current = stateRef.current;
+      if (current === null) {
         setAutoCompleting(false);
         return;
       }
+      const computed = autoComplete(current);
+      if (computed === current) {
+        setAutoCompleting(false);
+        return;
+      }
+      // The committed state can still hold the clock from before a return
+      // (#2750): match it to the player being here.
+      const next = matchPresence(computed);
       ensureSyncStarted(next);
-      current = next;
+      // Until the commit catches up, so a step that comes due first builds on
+      // this one instead of repeating it.
+      stateRef.current = next;
       setState(next);
       setMoves((m) => m + 1);
       if (next.isComplete) {
@@ -652,7 +657,7 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
     };
     step();
-  }, [state, autoCompleting, ensureSyncStarted]);
+  }, [state, autoCompleting, ensureSyncStarted, awayRef, matchPresence]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {

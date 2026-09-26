@@ -7,6 +7,9 @@
  * payload cannot balloon (the engine guarantees nested stacks are already `[]`,
  * this is defensive belt-and-suspenders).
  *
+ * The play clock is saved banked and restarted on load (`clockForSave`,
+ * `clockOnLoad`, #2750), so the time the app was closed never counts.
+ *
  * `loadGame` enforces `_v: 1` so future schema bumps reject incompatible
  * payloads rather than crashing. Corrupt payloads are deleted and reported
  * as a warning — the caller recovers by starting a fresh game.
@@ -16,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { LayoutMeta, MahjongState } from "./types";
 import { resolveLayoutId } from "./layouts/registry";
+import { clockForSave, clockOnLoad } from "../_shared/playClock";
 
 const GAME_KEY = "mahjong_game";
 const STATS_KEY = "mahjong_stats_v1";
@@ -36,7 +40,7 @@ function stripNestedUndo(state: MahjongState): MahjongState {
 
 export async function saveGame(state: MahjongState): Promise<void> {
   try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(state)));
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(clockForSave(state))));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "save" } });
   }
@@ -55,21 +59,23 @@ export async function loadGame(): Promise<MahjongState | null> {
       typeof parsed.shufflesLeft !== "number" ||
       !Array.isArray(parsed.undoStack) ||
       typeof parsed.isComplete !== "boolean" ||
-      typeof parsed.isDeadlocked !== "boolean" ||
-      typeof parsed.accumulatedMs !== "number"
+      typeof parsed.isDeadlocked !== "boolean"
     ) {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    // A cleared board has a frozen clock. Saves from before the engine banked
-    // time on completion can still carry a running startedAt, which would make
-    // the win card's time grow — drop it.
-    parsed.startedAt = parsed.isComplete ? null : (parsed.startedAt ?? null);
+    // Timer fields: a save without them loads with no play banked (#2750).
+    parsed.startedAt = parsed.startedAt ?? null;
+    if (typeof parsed.accumulatedMs !== "number") parsed.accumulatedMs = 0;
     // dealId added in #943 — fall back gracefully for saves from older builds
     if (typeof parsed.dealId !== "string") parsed.dealId = "0000";
     // currentLayoutId added in #1688 — resolveLayoutId() defaults to "turtle" for old saves
     parsed.currentLayoutId = resolveLayoutId(parsed as { currentLayoutId?: string });
-    return parsed as MahjongState;
+    // A cleared or deadlocked board has a frozen clock: saves from before the
+    // engine banked time on completion can still carry a running startedAt,
+    // which would make the win card's time grow, so clockOnLoad drops it.
+    const loaded = parsed as MahjongState;
+    return clockOnLoad(loaded, loaded.isComplete || loaded.isDeadlocked);
   } catch (e) {
     Sentry.captureMessage("mahjong.storage: corrupt game payload, discarding", {
       level: "warning",

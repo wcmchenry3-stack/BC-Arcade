@@ -100,6 +100,45 @@ describe("mahjong game storage", () => {
   });
 });
 
+// #2750: the save banks the running clock and the load restarts it, so the
+// time the app was closed never counts.
+describe("mahjong storage — play clock across a relaunch (#2750)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("keeps the play before the save and drops the time until the load", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    await saveGame({ ...seedState(), startedAt: 10_000, accumulatedMs: 5_000 });
+    nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(35_000);
+    expect(loaded!.startedAt).toBe(40_000 + 2 * 86_400_000);
+  });
+
+  it("loads an older build's save with a running startedAt and no accumulatedMs", async () => {
+    const old = { ...seedState(), startedAt: 1_000 } as Record<string, unknown>;
+    delete old["accumulatedMs"];
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(old));
+    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.accumulatedMs).toBe(0);
+    expect(loaded!.startedAt).toBe(172_800_000);
+  });
+
+  it("keeps a deadlocked board's clock stopped", async () => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...seedState(), isDeadlocked: true, startedAt: null, accumulatedMs: 9_000 })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.startedAt).toBeNull();
+    expect(loaded!.accumulatedMs).toBe(9_000);
+  });
+});
+
 describe("mahjong stats storage", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
