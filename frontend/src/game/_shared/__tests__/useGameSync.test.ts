@@ -25,6 +25,10 @@ jest.mock("../gameEventClient", () => ({
   },
 }));
 
+// The hook runs against the real foreground clock here, not the shared mock
+// jest.setup.ts pins for every other file (#2710).
+jest.unmock("../foregroundClock");
+
 // The active-play window (#2684) reads foregroundNow(), which runs on
 // performance.now(); fake timers keep it still unless a test advances it, so
 // the tests below see exact summaries. The foreground clock is reset each test
@@ -888,7 +892,8 @@ describe("useGameSync", () => {
       expect(sentSummary(1).durationMs).toBe(4_000);
     });
 
-    it("close() resets the window", async () => {
+    // #2710 — a session ending pauses the window at zero; start() resumes it.
+    it("close() of an unstarted session pauses the window until the next start()", async () => {
       mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
       const { result } = await renderHook(() => useGameSync("blackjack"));
       await act(() => {
@@ -899,17 +904,20 @@ describe("useGameSync", () => {
         result.current.close(); // never started: discarded, sends nothing
       });
       expect(mockDiscardGame).toHaveBeenCalledWith("session-1");
-      await advance(6_000);
+      await advance(6_000); // on a menu
       await act(() => {
         result.current.start();
+      });
+      await advance(3_000);
+      await act(() => {
         result.current.markStarted();
         result.current.complete({ outcome: "win" });
       });
       expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-      expect(sentSummary(0).durationMs).toBe(6_000);
+      expect(sentSummary(0).durationMs).toBe(3_000);
     });
 
-    it("close() on a started session abandons with the window, then resets it", async () => {
+    it("close() on a started session abandons with the window, then pauses it", async () => {
       mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
       const { result } = await renderHook(() => useGameSync("blackjack"));
       await act(() => {
@@ -920,18 +928,21 @@ describe("useGameSync", () => {
       await act(() => {
         result.current.close();
       });
-      await advance(1_000);
+      await advance(60_000); // on the table picker
       await act(() => {
         result.current.start();
+      });
+      await advance(2_000);
+      await act(() => {
         result.current.complete({ outcome: "loss" });
       });
       expect(sentSummary(0)).toEqual({ outcome: "abandoned", durationMs: 8_000 });
-      expect(sentSummary(1).durationMs).toBe(1_000);
+      expect(sentSummary(1).durationMs).toBe(2_000);
     });
 
-    it("complete() resets the window for the next game", async () => {
+    it("complete() pauses the window: time on the result card is not counted", async () => {
       mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
-      const { result } = await renderHook(() => useGameSync("daily_word"));
+      const { result } = await renderHook(() => useGameSync("yacht"));
       await act(() => {
         result.current.start();
         result.current.markStarted();
@@ -940,13 +951,126 @@ describe("useGameSync", () => {
       await act(() => {
         result.current.complete({ outcome: "win" });
       });
-      await advance(3_000); // on the result card
+      await advance(3 * MIN); // on the result card
+      await act(() => {
+        result.current.start(); // Play Again
+      });
+      await advance(4_000);
+      await act(() => {
+        result.current.complete({ outcome: "win" });
+      });
+      expect(sentSummary(0).durationMs).toBe(8_000);
+      expect(sentSummary(1).durationMs).toBe(4_000);
+    });
+
+    it("while paused, pings add nothing", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("starswarm"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        result.current.complete({ outcome: "loss" });
+      });
+      await advance(5 * MIN);
+      await act(() => {
+        result.current.enqueue({ type: "menu_tap", data: {} });
+        result.current.markStarted();
+      });
+      await advance(5 * MIN);
+      await act(() => {
+        result.current.restart(); // New Run
+      });
+      await advance(7_000);
+      await act(() => {
+        result.current.markStarted();
+        result.current.complete({ outcome: "loss" });
+      });
+      expect(sentSummary(1).durationMs).toBe(7_000);
+    });
+
+    it("start() right after a pause sends no duration for a session with no time in it", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+      });
+      await advance(8_000);
+      await act(() => {
+        result.current.complete({ outcome: "win" });
+      });
+      await advance(2 * MIN);
       await act(() => {
         result.current.start();
         result.current.complete({ outcome: "win" });
       });
+      expect(sentSummary(1)).toEqual({ outcome: "win" });
+    });
+
+    it("start() leaves a running window alone: the time before the first game's first move counts", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("freecell"));
+      await advance(20_000); // looking at the first deal
+      await act(() => {
+        result.current.start();
+        result.current.start(); // a second start() with nothing played between
+      });
+      await advance(5_000);
+      await act(() => {
+        result.current.markStarted();
+        result.current.complete({ outcome: "completed" });
+      });
+      // session-1 was never started: discarded, and the window pauses; the
+      // second start() resumes it from zero.
+      expect(mockDiscardGame).toHaveBeenCalledWith("session-1");
+      expect(sentSummary(0).durationMs).toBe(5_000);
+    });
+
+    // #2710 — a screen that shows a menu or result card before the next puzzle
+    // restarts the window when the puzzle appears.
+    it("resetPlayWindow() drops the time before it: the next session counts from the reset", async () => {
+      const { result } = await renderHook(() => useGameSync("sort"));
+      await advance(5 * MIN); // browsing the level grid
+      await act(() => {
+        result.current.resetPlayWindow(); // a level appears
+      });
+      await advance(20_000);
+      await act(() => {
+        result.current.start(); // the first move opens the session
+        result.current.markStarted();
+      });
+      await advance(5_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary().durationMs).toBe(25_000);
+    });
+
+    it("resetPlayWindow() after a pause runs the window from the new deal, before the first move", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("freecell"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+      });
+      await advance(8_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
+      await advance(3 * MIN); // on the win card
+      await act(() => {
+        result.current.resetPlayWindow(); // a new deal
+      });
+      await advance(4_000); // thinking before the first move
+      await act(() => {
+        result.current.start(); // a running window: left alone
+      });
+      await advance(1_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
       expect(sentSummary(0).durationMs).toBe(8_000);
-      expect(sentSummary(1).durationMs).toBe(3_000);
+      expect(sentSummary(1).durationMs).toBe(5_000);
     });
 
     it("an unstarted session's discard sends nothing", async () => {
@@ -970,10 +1094,10 @@ describe("useGameSync", () => {
       expect(sentSummary()).toEqual({ outcome: "completed", finalScore: 10 });
     });
 
-    it("resume() counts from the relaunch's mount, not the killed session's start", async () => {
+    it("resume() counts from the resume, not the mount or the killed session's start", async () => {
       mockResumeGame.mockReturnValueOnce("orphan-id");
       const { result } = await renderHook(() => useGameSync("daily_word"));
-      await advance(2_000); // the screen loading its saved game
+      await advance(2 * MIN); // on a menu before Continue
       await act(() => {
         result.current.resume({ puzzle_id: "p1" });
       });
@@ -983,9 +1107,29 @@ describe("useGameSync", () => {
       });
       expect(mockCompleteGame).toHaveBeenCalledWith(
         "orphan-id",
-        { outcome: "loss", durationMs: 11_000 },
+        { outcome: "loss", durationMs: 9_000 },
         {}
       );
+    });
+
+    it("resume() after a pause restarts the window from the resume", async () => {
+      mockStartGame.mockReturnValueOnce("session-1");
+      mockResumeGame.mockReturnValueOnce("orphan-id");
+      const { result } = await renderHook(() => useGameSync("sort"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        result.current.complete({ outcome: "completed" });
+      });
+      await advance(MIN);
+      await act(() => {
+        result.current.resume();
+      });
+      await advance(6_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary(1).durationMs).toBe(6_000);
     });
 
     it("resume() over a started session abandons it with its own window", async () => {

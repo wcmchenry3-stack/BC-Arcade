@@ -5,6 +5,11 @@ import StarSwarmScreen from "../StarSwarmScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
+
+// useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
+// (#2710); the duration tests move it forward.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 // The shared result card for Star Swarm (#2516). The Skia canvas is mocked: the
 // test drives its onGameOver callback the way the game loop does.
@@ -203,6 +208,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     await startRun();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     expect(mockStartGame.mock.calls[0]![0]).toBe("starswarm");
+    clock.advanceForegroundNow(45_000);
     await endRun(4200, 7);
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
@@ -214,12 +220,9 @@ describe("StarSwarmScreen — result card (#2516)", () => {
       wave_reached: 7,
       difficulty_tier: "Commander",
     });
-    // The engine keeps no play clock: a duration is absent or a real, positive time —
-    // never 0 or negative (a shared clock, #2684, may fill it in later).
-    if (summary.durationMs !== undefined) {
-      expect(typeof summary.durationMs).toBe("number");
-      expect(summary.durationMs).toBeGreaterThan(0);
-    }
+    // The engine keeps no play clock: useGameSync's active-play window (#2684)
+    // supplies the run's foreground time.
+    expect(summary.durationMs).toBe(45_000);
   });
 
   it("reports a game over with no open session, and asks for no rank", async () => {
@@ -273,6 +276,52 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(mockCanvasProps.resetTick).toBe(resetBefore + 1);
     expect(mockCanvasProps.difficulty).toBe("Commander");
     expect(mockStartGame).toHaveBeenCalledTimes(2);
+  });
+
+  // #2710 — the difficulty picker shown from mount is not play.
+  it("leaves the picker's time before the first run out of it", async () => {
+    await renderScreen();
+    clock.advanceForegroundNow(2 * 60_000); // on the difficulty picker
+    await startRun();
+    clock.advanceForegroundNow(25_000);
+    await endRun(4200, 7);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].durationMs).toBe(25_000);
+  });
+
+  // #2710 — a finished run pauses the play window: the result card and the
+  // picker are not counted into the next run.
+  it("Play Again leaves the time on the result card out of the next run", async () => {
+    await renderScreen();
+    await startRun();
+    clock.advanceForegroundNow(30_000);
+    await endRun(4200, 7);
+    clock.advanceForegroundNow(2 * 60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Play Again" }));
+    });
+    clock.advanceForegroundNow(20_000);
+    await endRun(900, 2);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    expect(mockCompleteGame.mock.calls[0]![1].durationMs).toBe(30_000);
+    expect(mockCompleteGame.mock.calls[1]![1].durationMs).toBe(20_000);
+  });
+
+  it("Change Difficulty leaves the card and picker time out of the next run", async () => {
+    await renderScreen();
+    await startRun();
+    clock.advanceForegroundNow(30_000);
+    await endRun(4200, 7);
+    clock.advanceForegroundNow(60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Change Difficulty" }));
+    });
+    clock.advanceForegroundNow(90_000); // on the picker
+    await startRun();
+    clock.advanceForegroundNow(15_000);
+    await endRun(900, 2);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    expect(mockCompleteGame.mock.calls[1]![1].durationMs).toBe(15_000);
   });
 
   it("Change Difficulty opens the picker; Home leaves", async () => {

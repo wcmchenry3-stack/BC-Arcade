@@ -119,6 +119,7 @@ export default function SortScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("sort");
   const gameStateRef = useRef<SortState | null>(null);
   gameStateRef.current = gameState;
@@ -431,6 +432,10 @@ export default function SortScreen() {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
     abandonSession();
+    // The level's play time starts now, though its session opens at the first
+    // pour: the thinking time before that pour counts, and time on the level
+    // grid or the previous level's result card does not (#2710).
+    syncResetPlayWindow();
     levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
@@ -447,8 +452,10 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(prog.currentLevelId);
     setGameState(prog.currentState);
-    // A restored game continues the session a killed app left open (#2654).
-    syncResume();
+    // A restored game continues the session a killed app left open (#2654);
+    // resume() counts its play time from here. With no session to resume the
+    // level's play time still starts now, not on the level grid (#2710).
+    if (!syncResume()) syncResetPlayWindow();
     setHistory([]);
     setShowWinModal(false);
     setWinSummary(null);
@@ -513,6 +520,9 @@ export default function SortScreen() {
     setPouringFrom(null);
     setPouringTo(null);
     abandonSession();
+    // The fresh board's play time starts now, not with the board it replaces
+    // (#2710).
+    syncResetPlayWindow();
     levelGenRef.current += 1;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);

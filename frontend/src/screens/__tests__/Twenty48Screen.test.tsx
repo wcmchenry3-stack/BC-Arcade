@@ -66,12 +66,10 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
-// useGameSync's app-wide foreground clock (#2684), held still: Twenty48 sends
-// its own timer, and where that reads 0 (a fresh board) the hook's window would
-// otherwise fill in real elapsed test time.
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => 0,
-}));
+// useGameSync's app-wide foreground clock (#2684) is held still by the shared
+// mock jest.setup.ts pins (#2710): Twenty48 sends its own timer, and where that
+// reads 0 (a fresh board) the hook's window would otherwise fill in real
+// elapsed test time.
 // The result card's rank lookup (#2631, #2677): GET /games/{id}/rank.
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
 jest.mock("../../api/stats", () => ({

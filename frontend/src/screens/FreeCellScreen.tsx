@@ -94,6 +94,7 @@ export default function FreeCellScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("freecell");
   /** Move count last seen — a rise is the first move of a session. */
   const seenMovesRef = useRef<number | null>(null);
@@ -303,6 +304,10 @@ export default function FreeCellScreen() {
       const result = progressResult();
       syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
     }
+    // The new deal's play time starts now, though its session opens at the
+    // first move: the thinking time before that move counts, and time spent on
+    // the previous board or its result card does not (#2710).
+    syncResetPlayWindow();
     // Stop an in-flight auto-complete. Its next scheduled step would otherwise overwrite
     // the new deal with the old game's state — and, since that state's move count is
     // above zero, the first-move effect would open a second session for the old game.
@@ -322,7 +327,7 @@ export default function FreeCellScreen() {
     setResumedWin(false);
     setWinSummary(null);
     resetSubmission();
-  }, [syncGetGameId, syncComplete, resetSubmission, progressResult]);
+  }, [syncGetGameId, syncComplete, syncResetPlayWindow, resetSubmission, progressResult]);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;

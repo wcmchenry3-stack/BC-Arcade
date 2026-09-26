@@ -11,7 +11,13 @@ import { gameEventClient } from "../../game/_shared/gameEventClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
-import { __resetForegroundClockForTests } from "../../game/_shared/foregroundClock";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
+
+// useGameSync's foreground clock (#2684) is the shared mock jest.setup.ts pins
+// for every test (#2710): held still unless a test moves it, and never
+// subscribed to AppState, so the backgrounding tests see only the screen's own
+// listeners.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 // Shared result card for Yacht (#2505): vs outcomes, and the game-sync
 // session completing only once the CPU has finished its last turn.
@@ -169,9 +175,6 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  // A backgrounding test must not leave the shared foreground clock (#2684)
-  // paused for the next one.
-  __resetForegroundClockForTests();
   jest.useRealTimers();
 });
 
@@ -214,6 +217,7 @@ describe("Yacht result card — vs outcomes (#2505)", () => {
 describe("Yacht vs mode — game sync timing (#2505)", () => {
   it("completes only after the CPU's last turn, reporting the result", async () => {
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    clock.advanceForegroundNow(12_000);
     await playLastTurn(r, /^Yacht/i);
 
     // The player is done but the CPU is still playing: nothing reported yet.
@@ -227,7 +231,7 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     expect(summary).toEqual(expect.objectContaining({ finalScore: 50, outcome: "win" }));
     // #2684 — Yacht has no timer of its own: useGameSync's active-play window
     // supplies the duration.
-    expect(summary.durationMs).toBeGreaterThan(0);
+    expect(summary.durationMs).toBe(12_000);
     expect(payload).toEqual(
       expect.objectContaining({
         final_score: 50,
@@ -265,6 +269,75 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]![1].outcome).toBe("completed");
     expect(calls[0]![2]).toEqual(expect.objectContaining({ final_score: 50 }));
+  });
+});
+
+// #2710 — a finished game pauses useGameSync's play window: time on the result
+// card or the mode picker is not counted into the next game.
+describe("Yacht play time between games (#2710)", () => {
+  async function rollThenLeave(r: Rendered) {
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
+    });
+    await act(async () => {
+      await r.unmount();
+    });
+  }
+
+  it("Play Again leaves the time on the result card out of the next game", async () => {
+    const r = await renderSolo("yacht");
+    clock.advanceForegroundNow(10_000);
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+    clock.advanceForegroundNow(3 * 60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    await settle();
+    clock.advanceForegroundNow(5_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(2);
+    expect(completeGame.mock.calls[0]![1].durationMs).toBe(10_000);
+    expect(completeGame.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
+  it("the mode picker's time before the first game is left out of it", async () => {
+    const r = await renderGame({ initialState: newGame() });
+    clock.advanceForegroundNow(2 * 60_000); // on the mode picker, from mount
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    });
+    clock.advanceForegroundNow(5_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(1);
+    expect(completeGame.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
+  it("the mode picker's time is left out of the next game", async () => {
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+    await finishCpuTurn();
+    clock.advanceForegroundNow(60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+    });
+    clock.advanceForegroundNow(2 * 60_000); // on the mode picker
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    });
+    clock.advanceForegroundNow(4_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(2);
+    expect(completeGame.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 4_000 })
+    );
   });
 });
 

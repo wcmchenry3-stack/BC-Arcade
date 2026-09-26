@@ -96,9 +96,9 @@ jest.mock("../../api/stats", () => ({
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
-// The hook's foreground clock (#2684) adds nothing, so the summaries below
-// carry only what the screen sends: its own play timer.
-jest.mock("../../game/_shared/foregroundClock", () => ({ foregroundNow: () => 0 }));
+// The hook's foreground clock (#2684) is held still by the shared mock
+// jest.setup.ts pins (#2710), so the summaries below carry only what the
+// screen sends: its own play timer.
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));

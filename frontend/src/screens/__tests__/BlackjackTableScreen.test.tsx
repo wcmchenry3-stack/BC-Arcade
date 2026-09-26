@@ -5,6 +5,7 @@ import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, saveRun } from "../../game/blackjack/storage";
 import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -50,11 +51,9 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
-// (#2684), held still unless a test moves it.
-let mockForegroundMs = 0;
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => mockForegroundMs,
-}));
+// (#2684) is pinned for every test by jest.setup.ts (#2710), held still unless
+// a test moves it.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 function mockNav() {
   return {
@@ -593,7 +592,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
 
       // An hour of wall-clock time passes with only 7 s of it in the foreground.
       nowSpy.mockReturnValue(wallStart + 60 * 60 * 1000);
-      mockForegroundMs += 7_000;
+      clock.advanceForegroundNow(7_000);
       await act(() => {
         getCtx().apply(stand, "stand");
       });
@@ -606,6 +605,74 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     } finally {
       nowSpy.mockRestore();
     }
+  });
+
+  // #2710 — the table picker shown at first launch is not play.
+  it("leaves the table picker's time before the first run out of it", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null); // fresh: table pick pending
+    const { unmount } = await renderWithConsumer();
+    await settle();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    clock.advanceForegroundNow(3 * 60_000); // on the table picker
+    await act(async () => {
+      getCtx().handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+    clock.advanceForegroundNow(9_000);
+    await act(() => {
+      getCtx().apply((st) => placeBet(st, 25)); // the first hand marks it started
+    });
+    await unmount();
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.durationMs).toBe(9_000);
+  });
+
+  // #2710 — a finished run pauses useGameSync's play window: time on the
+  // result screen and the table picker is not counted into the next run.
+  it("leaves the time between runs out of the next run's duration", async () => {
+    const lowChip: EngineState = {
+      ...engineNewGame(),
+      chips: 50,
+      bet: 50,
+      phase: "player",
+      player_hand: [card("10", "♠"), card("6", "♥")],
+      dealer_hand: [card("10", "♦"), card("9", "♣")],
+    };
+    const { unmount } = await renderWithConsumer(lowChip);
+    await settle();
+    mockCompleteGame.mockClear();
+    clock.advanceForegroundNow(7_000);
+    await act(() => {
+      getCtx().apply(stand, "stand"); // out of chips: the run ends
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].durationMs).toBe(7_000);
+
+    clock.advanceForegroundNow(2 * 60_000); // on the result screen
+    await act(async () => {
+      getCtx().handlePlayAgain();
+    });
+    await settle();
+    clock.advanceForegroundNow(3 * 60_000); // on the table picker
+    mockStartGame.mockReturnValue("game-uuid-next");
+    await act(async () => {
+      getCtx().handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(2));
+    clock.advanceForegroundNow(6_000);
+    await act(() => {
+      getCtx().apply((st) => placeBet(st, 25)); // the first hand marks it started
+    });
+    await unmount();
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    const [gameId, summary] = mockCompleteGame.mock.calls[1]!;
+    expect(gameId).toBe("game-uuid-next");
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.durationMs).toBe(6_000);
   });
 
   it("counts a won hand and carries hands_won/chips on an unmount abandon (#2450)", async () => {

@@ -1,7 +1,9 @@
 import { AppState } from "react-native";
 import { __resetForegroundClockForTests, foregroundNow } from "../foregroundClock";
 
-// foregroundClock (#2684): one app-wide foreground-time counter.
+// foregroundClock (#2684): one app-wide foreground-time counter. The real
+// module, not the shared mock jest.setup.ts pins for every other file (#2710).
+jest.unmock("../foregroundClock");
 
 let listeners: ((state: string) => void)[] = [];
 const originalCurrentState = AppState.currentState;
