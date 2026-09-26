@@ -286,24 +286,23 @@ export default function SudokuScreen() {
       const score = computeScore(state.difficulty, state.errorCount);
       const finalElapsed =
         startMsRef.current !== null ? Math.floor((Date.now() - startMsRef.current) / 1000) : 0;
-      const gid = syncGetGameId();
+      const gid = syncComplete(
+        {
+          finalScore: score,
+          outcome: "completed",
+          durationMs: finalElapsed * 1000,
+          result: { won: true, errors: state.errorCount },
+        },
+        {
+          final_score: score,
+          outcome: "completed",
+          won: true,
+          difficulty: state.difficulty,
+          variant: state.variant,
+          errors: state.errorCount,
+        }
+      );
       if (gid) {
-        syncComplete(
-          {
-            finalScore: score,
-            outcome: "completed",
-            durationMs: finalElapsed * 1000,
-            result: { won: true, errors: state.errorCount },
-          },
-          {
-            final_score: score,
-            outcome: "completed",
-            won: true,
-            difficulty: state.difficulty,
-            variant: state.variant,
-            errors: state.errorCount,
-          }
-        );
         // The card shows where this game ranks on its board.
         void submitScore({ gameId: gid });
       }
@@ -342,7 +341,7 @@ export default function SudokuScreen() {
       });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, syncGetGameId, setScoreboardSnapshot, submitScore]);
+  }, [state, syncComplete, setScoreboardSnapshot, submitScore]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {

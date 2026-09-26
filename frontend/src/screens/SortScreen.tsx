@@ -290,9 +290,7 @@ export default function SortScreen() {
       };
       const totalMoves = totalBestMoves(bests, frontier);
       if (totalMoves !== null) result.total_moves = totalMoves;
-      // complete() clears the id: read it first.
-      const gameId = syncGetGameId();
-      syncComplete(
+      const gameId = syncComplete(
         { outcome: "completed", finalScore: frontier, result },
         { outcome: "completed", ...result }
       );
@@ -320,7 +318,6 @@ export default function SortScreen() {
     currentLevelId,
     levels,
     syncComplete,
-    syncGetGameId,
     submitRank,
   ]);
 

@@ -96,7 +96,6 @@ export default function Twenty48Screen({ navigation }: Props) {
     markStarted: syncMarkStarted,
     enqueue: syncEnqueue,
     complete: syncComplete,
-    getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("twenty48");
   // The card's leaderboard line (#2631, #2677): looked up once per session, at
@@ -142,20 +141,19 @@ export default function Twenty48Screen({ navigation }: Props) {
   // `kept_playing`. The card then asks where the game ranks.
   const finishSession = useCallback(
     (s: Twenty48State, card: "win" | "loss") => {
-      // complete() clears the id, so read it first. No open session (a resumed
-      // game that already won, or one already finished) means nothing to send.
-      const gameId = syncGetGameId();
-      if (!gameId) return;
       const outcome = recordedOutcome(card);
       const result = progressResult(s);
       const payload = { ...result, outcome };
-      syncComplete(
+      // No open session (a resumed game that already won, or one already
+      // finished) means nothing to send.
+      const gameId = syncComplete(
         { finalScore: s.score, outcome, durationMs: result.duration_ms, result: payload },
         payload
       );
+      if (!gameId) return;
       void submitLeaderboard({ gameId });
     },
-    [progressResult, syncComplete, syncGetGameId, submitLeaderboard]
+    [progressResult, syncComplete, submitLeaderboard]
   );
 
   // Disable back swipe gesture on this screen.

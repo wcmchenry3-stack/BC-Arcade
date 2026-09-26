@@ -710,11 +710,9 @@ export default function MahjongScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
-      // Read before complete(), which closes the session and clears the id.
-      // Null for a won game restored from storage: its session already ended.
-      const gameId = syncGetGameId();
       const outcome = recordedOutcome("win");
-      syncComplete(
+      // Null for a won game restored from storage: its session already ended.
+      const gameId = syncComplete(
         {
           finalScore: state.score,
           outcome,
@@ -772,7 +770,7 @@ export default function MahjongScreen() {
       setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, syncGetGameId, submitRank]);
+  }, [state, syncComplete, submitRank]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.

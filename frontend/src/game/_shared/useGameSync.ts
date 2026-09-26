@@ -182,8 +182,13 @@ export interface UseGameSyncReturn {
    *
    * `summary.durationMs` > 0 (the game's own active time) is sent as given;
    * otherwise the hook's active-play window is sent in its place (#2684).
+   *
+   * Returns the id of the session it closed, or `null` if none was open (or
+   * it was already completed) — so a caller that needs the id for a rank
+   * lookup reads it here instead of via `getGameId()` beforehand, which
+   * silently breaks if the read ever moves below this call (#2706).
    */
-  complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
+  complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => string | null;
   /**
    * End the current session and immediately start a fresh one. If the old
    * session is still open, it is abandoned when the player started it
@@ -408,9 +413,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   );
 
   const complete = useCallback(
-    (summary: CompleteSummary, payload?: Record<string, unknown>) => {
+    (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
       const gid = gameIdRef.current;
-      if (!gid || completedRef.current) return;
+      if (!gid || completedRef.current) return null;
       // The game's own durationMs > 0 wins; otherwise the active-play window
       // (#2684), once it has counted anything.
       ping();
@@ -429,6 +434,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = true;
       gameIdRef.current = null;
       pauseWindow();
+      return gid;
     },
     [ping, readWindow, pauseWindow]
   );

@@ -422,7 +422,7 @@ function CascadeGame() {
       // completion's keeps `outcome`, as it always has.
       const result = progressResult();
       const payload = { ...result, outcome };
-      syncComplete(
+      return syncComplete(
         {
           finalScore: scoreRef.current,
           outcome,
@@ -600,13 +600,12 @@ function CascadeGame() {
   const handleGameOver = useCallback(() => {
     gameOverRef.current = true;
     setGameOver(true);
-    completedGameIdRef.current = getGameId();
-    endInstrumentedSession("completed");
+    const gameId = endInstrumentedSession("completed");
     clearCascadeGame().catch(() => {});
     gamesPlayedRef.current += 1;
-    showResult(completedGameIdRef.current);
+    showResult(gameId);
     pushScoreboardSnapshot();
-  }, [endInstrumentedSession, getGameId, pushScoreboardSnapshot, showResult]);
+  }, [endInstrumentedSession, pushScoreboardSnapshot, showResult]);
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
   // never captures stale closures for merge/gameOver handling.
