@@ -35,9 +35,5 @@
   "levelSelect.title": "选择关卡",
   "levelSelect.continue": "继续第 {{level}} 关",
   "levelSelect.locked": "已锁定",
-  "levelSelect.lockedLevel": "第 {{level}} 关，已锁定",
-  "tab.levels": "关卡",
-  "tab.leaderboard": "排行榜",
-  "leaderboard.empty": "还没有分数。",
-  "leaderboard.levelReached": "第 {{level}} 关"
+  "levelSelect.lockedLevel": "第 {{level}} 关，已锁定"
 }

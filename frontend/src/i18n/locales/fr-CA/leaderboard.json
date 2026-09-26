@@ -1,0 +1,22 @@
+{
+  "title": "Classement de {{game}}",
+  "column.rank": "#",
+  "column.player": "Joueur",
+  "column.date": "Date",
+  "metric.score": "Pointage",
+  "metric.moves": "Coups",
+  "metric.level": "Niveau",
+  "direction.asc": "Moins, c'est mieux",
+  "partition.tier": "Grade",
+  "you": "Vous",
+  "yourBest": "Votre record",
+  "empty": "Personne n'est encore au classement. Terminez une partie pour prendre la première place.",
+  "error": "Impossible de charger le classement.",
+  "offline": "Vous êtes hors ligne. Le classement se chargera à votre retour en ligne.",
+  "retry": "Réessayer",
+  "unavailable": "Ce jeu n'a pas de classement.",
+  "a11y.row": "Rang {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Rang {{rank}}, {{name}}, vous, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Votre record : rang {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Retour à {{game}}"
+}

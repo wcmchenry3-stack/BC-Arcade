@@ -35,9 +35,5 @@
   "levelSelect.title": "Выберите уровень",
   "levelSelect.continue": "Продолжить уровень {{level}}",
   "levelSelect.locked": "Закрыто",
-  "levelSelect.lockedLevel": "Уровень {{level}}, заблокирован",
-  "tab.levels": "Уровни",
-  "tab.leaderboard": "Рейтинг",
-  "leaderboard.empty": "Результатов пока нет.",
-  "leaderboard.levelReached": "Уровень {{level}}"
+  "levelSelect.lockedLevel": "Уровень {{level}}, заблокирован"
 }

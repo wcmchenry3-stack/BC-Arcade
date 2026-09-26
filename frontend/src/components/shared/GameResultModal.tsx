@@ -15,6 +15,7 @@ import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { LeaderboardSubmitStatus } from "../../game/_shared/useLeaderboardSubmit";
 import DisplayNameField from "./DisplayNameField";
+import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
 /**
  * The one end-of-game result card every game uses (#2504, epic #2500).
@@ -49,7 +50,13 @@ export interface ResultAction {
 
 export interface ResultSubmission {
   status: LeaderboardSubmitStatus;
+  /** The rank of the player's best entry on the board (#2633). */
   rank?: number | null;
+  /**
+   * Whether this game is that best entry. `false` shows "Your best: #N"
+   * instead of this game's placing; omitted means it is.
+   */
+  isBest?: boolean | null;
   playerName?: string | null;
   /** Saves the name from the one-time prompt and sends the waiting score. */
   onProvideName?: (name: string) => Promise<boolean> | void;
@@ -73,6 +80,12 @@ export interface GameResultModalProps {
   detail?: React.ReactNode;
   /** Omit for games without a leaderboard. */
   submission?: ResultSubmission;
+  /**
+   * Opens the game's leaderboard (#2633): a "View leaderboard" link under
+   * the submission line, whatever its status. Pass `useLeaderboardLink`'s
+   * result, which is undefined (no link) for a game without an openable board.
+   */
+  onViewLeaderboard?: (options?: { pendingSync?: boolean }) => void;
   /** Defaults to Play Again when `onPlayAgain` is given. */
   primaryAction?: ResultAction;
   onPlayAgain?: () => void;
@@ -89,6 +102,13 @@ export interface GameResultModalProps {
   celebration?: (done: () => void) => React.ReactNode;
   testID?: string;
 }
+
+/** Submission states where this game's rank isn't known yet (#2633). */
+const RANK_PENDING: ReadonlySet<LeaderboardSubmitStatus> = new Set([
+  "idle",
+  "submitting",
+  "offline",
+]);
 
 /** Safety net so a celebration that never calls `done` can't hide the card. */
 export const CELEBRATION_MAX_MS = 4000;
@@ -232,11 +252,16 @@ export default function GameResultModal({
     hero: card.hero,
   });
 
+  // A native Modal is its own window: hide it while a screen pushed from the
+  // card (the leaderboard, #2633) covers the game, and show it again, without
+  // a second announcement, when the player comes back.
+  const screenFocused = useIsScreenFocused();
+
   return (
     <>
       {phase === "celebrating" && celebration?.(() => setPhase("card"))}
       <Modal
-        visible={phase === "card"}
+        visible={phase === "card" && screenFocused}
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -274,6 +299,7 @@ export function ResultCard({
   isNewBest,
   detail,
   submission,
+  onViewLeaderboard,
   primaryAction,
   onPlayAgain,
   secondaryAction,
@@ -354,6 +380,27 @@ export function ResultCard({
       {detail ? <View style={styles.detail}>{detail}</View> : null}
 
       {submission ? <SubmissionLine submission={submission} colors={colors} /> : null}
+      {onViewLeaderboard ? (
+        <Pressable
+          testID={`${testID}-leaderboard`}
+          // While the rank is still pending the game may not be on the
+          // server yet: the board refetches once it has synced.
+          onPress={() =>
+            onViewLeaderboard({
+              pendingSync: submission ? RANK_PENDING.has(submission.status) : false,
+            })
+          }
+          accessibilityRole="link"
+          accessibilityLabel={t("action.viewLeaderboard")}
+          hitSlop={8}
+          style={({ pressed }) => [styles.leaderboardLink, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <MaterialCommunityIcons name="podium" size={16} color={colors.text} />
+          <Text style={[styles.retryText, { color: colors.text }]}>
+            {t("action.viewLeaderboard")}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View style={styles.actions}>
         {primary ? <PrimaryButton action={primary} colors={colors} /> : null}
@@ -423,7 +470,7 @@ function Hero({
 
 function SubmissionLine({ submission, colors }: { submission: ResultSubmission; colors: Colors }) {
   const { t } = useTranslation("result");
-  const { status, rank, playerName, onProvideName, onRetry } = submission;
+  const { status, rank, isBest, playerName, onProvideName, onRetry } = submission;
 
   // Nothing submitted yet (or this outcome isn't submitted), or the game is on
   // no board (#2677): no line at all.
@@ -449,10 +496,14 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   let color = colors.textMuted;
   switch (status) {
     case "saved":
+      // The rank is always the player's best entry's (#2633): this game's
+      // placing when it is that entry, else "Your best: #N".
       text =
-        rank != null
-          ? t("submission.savedRanked", { name: playerName ?? "", rank })
-          : t("submission.saved", { name: playerName ?? "" });
+        rank == null
+          ? t("submission.saved", { name: playerName ?? "" })
+          : isBest === false
+            ? t("submission.savedBest", { name: playerName ?? "", rank })
+            : t("submission.savedRanked", { name: playerName ?? "", rank });
       break;
     case "offline":
       icon = "cloud-off-outline";
@@ -643,6 +694,15 @@ const styles = StyleSheet.create({
     fontFamily: typography.label,
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+  leaderboardLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 44,
+    marginTop: -8,
+    paddingHorizontal: 8,
   },
   actions: { alignSelf: "stretch", gap: 10 },
   secondaryRow: { flexDirection: "row", gap: 10 },

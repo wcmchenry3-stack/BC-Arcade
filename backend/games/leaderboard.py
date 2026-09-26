@@ -1,7 +1,8 @@
 """Generic leaderboards, driven by each module's ``BoardDefinition`` (#2618).
 
 One query, one rank calculation (``player_standing``, behind both
-``PATCH /games/{id}/name`` and ``GET /games/{id}/rank``) and one name
+``PATCH /games/{id}/name`` and ``GET /games/{id}/rank``, and ``viewer_entry``,
+the caller's own entry on ``GET /games/leaderboard``) and one name
 operation serve every game. They replace the per-game leaderboard routers, which stay in place
 (unchanged) until #2644 because v1.0 clients still call them.
 
@@ -107,6 +108,8 @@ class BoardEntry:
     player_name: str
     value: int
     completed_at: datetime
+    is_me: bool = False
+    """The entry is the requesting player's own (``viewer_session_id``)."""
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ class _BestRow:
     value: Any
     tiebreak: Any
     completed_at: datetime
+    player_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -419,8 +423,13 @@ async def top_entries(
     game_type_id: int,
     partition: Mapping[str, str | None],
     limit: int = DEFAULT_LIMIT,
+    viewer_session_id: str | None = None,
 ) -> list[BoardEntry]:
-    """The top ``limit`` players on a board, one entry each, best first."""
+    """The top ``limit`` players on a board, one entry each, best first.
+
+    The entry of ``viewer_session_id`` (the caller, when known) is flagged
+    ``is_me`` (#2633), so the app never has to match a row by name.
+    """
     stmt = top_statement(board, game_type_id, partition, limit)
     try:
         rows = (await db.execute(stmt)).all()
@@ -443,9 +452,48 @@ async def top_entries(
                 player_name=display_name(row.player_name),
                 value=int(row.value),
                 completed_at=row.completed_at,
+                is_me=viewer_session_id is not None and row.session_id == viewer_session_id,
             )
         )
     return entries
+
+
+async def viewer_entry(
+    db: AsyncSession,
+    *,
+    game_type: str,
+    board: BoardDefinition,
+    game_type_id: int,
+    partition: Mapping[str, str | None],
+    session_id: str,
+) -> BoardEntry | None:
+    """The caller's own entry on one board: their best row and its exact rank (#2633).
+
+    What the leaderboard screen pins as "Your best" when the player is outside
+    the listed top N. Uses the board's own filters, best-row order and
+    ``compute_rank``, like ``player_standing``, so it agrees with the list.
+    ``None`` when the player has no entry there (no display name, or no
+    eligible row). Reads only; a DB error is a clean 500.
+    """
+    filters = board_filters(board, game_type_id, partition)
+    metric = metric_expr(board, metric_cap(board, partition))
+    try:
+        # Name and best row in one query; the board's filters only admit
+        # named players, so a row always has a name.
+        best = await _session_best(db, board, filters, metric, session_id, with_name=True)
+    except SQLAlchemyError as exc:
+        _log_db_error("viewer entry query", game_type, exc)
+        raise LeaderboardError(500, "Failed to load leaderboard.") from exc
+    if best is None:
+        return None
+    rank = await _best_row_rank(db, board, filters, metric, best, game_type)
+    return BoardEntry(
+        rank=rank,
+        player_name=display_name(best.player_name),
+        value=int(best.value),
+        completed_at=best.completed_at,
+        is_me=True,
+    )
 
 
 def _log_db_error(what: str, game_type: str, exc: SQLAlchemyError) -> None:
@@ -460,9 +508,16 @@ async def _session_best(
     filters: Sequence[ColumnElement],
     metric: ColumnElement,
     session_id: str,
+    *,
+    with_name: bool = False,
 ) -> _BestRow | None:
+    """The session's best row on the board; ``with_name`` also reads the
+    player's display name in the same query (as ``top_statement`` does)."""
     sub = _best_rows(board, [*filters, Game.session_id == session_id], metric)
-    row = (await db.execute(select(sub).where(sub.c.rn == 1))).first()
+    columns: list[Any] = [sub]
+    if with_name:
+        columns.append(display_name_of(sub.c.session_id).label("player_name"))
+    row = (await db.execute(select(*columns).where(sub.c.rn == 1))).first()
     if row is None:
         return None
     return _BestRow(
@@ -470,6 +525,7 @@ async def _session_best(
         value=row.value,
         tiebreak=row.tiebreak,
         completed_at=row.completed_at,
+        player_name=row.player_name if with_name else None,
     )
 
 
@@ -533,13 +589,25 @@ async def player_standing(
         raise LeaderboardError(500, "Failed to calculate rank.") from exc
     if best is None:
         return None
+    rank = await _best_row_rank(db, board, filters, metric, best, game_type)
+    return Standing(rank=rank, is_best=best.game_id == game.id)
 
+
+async def _best_row_rank(
+    db: AsyncSession,
+    board: BoardDefinition,
+    filters: Sequence[ColumnElement],
+    metric: ColumnElement,
+    best: _BestRow,
+    game_type: str,
+) -> int:
+    """The exact rank of a player's best row, with the board's order."""
     tiebreak_arg = None
     if board.tiebreak is not None:
         tb = tiebreak_expr(board)
         assert tb is not None
         tiebreak_arg = (tb, board.tiebreak[1], best.tiebreak)
-    rank = await compute_rank(
+    return await compute_rank(
         db,
         metric=metric,
         direction=board.direction,
@@ -549,7 +617,6 @@ async def player_standing(
         filters=filters,
         game_label=game_type,
     )
-    return Standing(rank=rank, is_best=best.game_id == game.id)
 
 
 async def set_player_name(

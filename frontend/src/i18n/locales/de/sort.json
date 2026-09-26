@@ -35,9 +35,5 @@
   "levelSelect.title": "Level wählen",
   "levelSelect.continue": "Level {{level}} fortsetzen",
   "levelSelect.locked": "Gesperrt",
-  "levelSelect.lockedLevel": "Level {{level}}, gesperrt",
-  "tab.levels": "Level",
-  "tab.leaderboard": "Bestenliste",
-  "leaderboard.empty": "Noch keine Punkte.",
-  "leaderboard.levelReached": "Level {{level}}"
+  "levelSelect.lockedLevel": "Level {{level}}, gesperrt"
 }

@@ -121,15 +121,24 @@ class LeaderboardEntryOut(BaseModel):
     player_name: str
     value: int
     completed_at: datetime
+    # The requesting player's own entry (#2633); false without X-Session-ID.
+    is_me: bool = False
 
 
 class LeaderboardResponse(BaseModel):
-    """``GET /games/leaderboard/{game_type}`` (#2618): one entry per player."""
+    """``GET /games/leaderboard/{game_type}`` (#2618): one entry per player.
+
+    ``me`` (#2633) is the caller's own best entry on this board with its exact
+    rank, whether or not it is in ``entries``: null without a valid
+    ``X-Session-ID``, or when the caller has no entry (no display name, or no
+    eligible game).
+    """
 
     game_type: str
     partition: dict[str, str]
     label_key: str
     entries: list[LeaderboardEntryOut]
+    me: LeaderboardEntryOut | None = None
 
 
 class SetPlayerNameResponse(BaseModel):

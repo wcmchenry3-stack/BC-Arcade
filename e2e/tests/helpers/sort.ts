@@ -30,7 +30,7 @@ export const MOCK_LEVELS = {
 };
 
 export async function mockSortApi(page: Page): Promise<void> {
-  // The Leaderboard tab reads the generic board (#2625).
+  // The shared leaderboard screen reads the generic board (#2625, #2633).
   await mockSortBoard(page, []);
   await page.route("**/sort/**", async (route) => {
     const url = route.request().url();

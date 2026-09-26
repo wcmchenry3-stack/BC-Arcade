@@ -22,6 +22,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -231,6 +232,11 @@ function StarSwarmGame() {
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
   const premium = usePremiumLevels("starswarm", "starswarm-premium");
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
+  // finished run's tier board, else the current tier's.
+  const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
+    difficulty_tier: result?.tier ?? difficulty,
+  });
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -574,17 +580,25 @@ function StarSwarmGame() {
   // Subscribed once; it reads the live run from a ref, and game over from the engine itself —
   // the canvas stores the game-over state before React renders it, so a run that has just
   // ended is never paused.
+  const pauseLiveRun = useCallback(() => {
+    if (!isLiveRunRef.current) return;
+    const state = canvasRef.current?.getState();
+    if (!state || state.phase === "GameOver") return;
+    handlePause();
+    savePausedRun(state);
+  }, [handlePause, savePausedRun]);
+
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next !== "background" && next !== "inactive") return;
-      if (!isLiveRunRef.current) return;
-      const state = canvasRef.current?.getState();
-      if (!state || state.phase === "GameOver") return;
-      handlePause();
-      savePausedRun(state);
+      pauseLiveRun();
     });
     return () => sub.remove();
-  }, [handlePause, savePausedRun]);
+  }, [pauseLiveRun]);
+
+  // Leaving the screen mid-run (the ⋯ menu's Leaderboard, #2633) pauses it the same way:
+  // the screen stays mounted under the pushed one, so the run would go on unseen.
+  useEffect(() => navigation.addListener("blur", pauseLiveRun), [navigation, pauseLiveRun]);
 
   const dynamicStyles = getStyles(colors);
 
@@ -608,6 +622,7 @@ function StarSwarmGame() {
         navigation.popToTop();
       }}
       onNewGame={handleRequestNewGame}
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={
         showPauseBtn ? (
           <Pressable
@@ -780,10 +795,12 @@ function StarSwarmGame() {
           submission={{
             status: leaderboard.status,
             rank: leaderboard.rank,
+            isBest: leaderboard.isBest,
             playerName: leaderboard.playerName,
             onProvideName: leaderboard.provideName,
             onRetry: leaderboard.retry,
           }}
+          onViewLeaderboard={openLeaderboard}
           // Same difficulty, straight into a new run.
           onPlayAgain={handleConfirmDifficulty}
           secondaryAction={{

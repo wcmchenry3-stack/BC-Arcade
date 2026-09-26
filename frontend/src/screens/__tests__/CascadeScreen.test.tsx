@@ -20,11 +20,12 @@ jest.mock("expo-blur", () => ({
 }));
 
 const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
   }),
 }));
 
@@ -649,6 +650,13 @@ describe("CascadeScreen — result card (#2515)", () => {
     expect(findCard(renderer)?.props.submission).toEqual(
       expect.objectContaining({ status: "saved", rank: 2, playerName: "Riley" })
     );
+  });
+
+  it("links the card to Cascade's board (#2633)", async () => {
+    const renderer = await playToGameOver(1234);
+    mockNavigate.mockClear();
+    await act(async () => findCard(renderer)?.props.onViewLeaderboard());
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "cascade" });
   });
 
   it("asks for a name when none is set", async () => {

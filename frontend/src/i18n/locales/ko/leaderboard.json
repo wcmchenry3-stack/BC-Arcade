@@ -1,0 +1,22 @@
+{
+  "title": "{{game}} 랭킹",
+  "column.rank": "#",
+  "column.player": "플레이어",
+  "column.date": "날짜",
+  "metric.score": "점수",
+  "metric.moves": "이동",
+  "metric.level": "레벨",
+  "direction.asc": "낮을수록 좋음",
+  "partition.tier": "계급",
+  "you": "나",
+  "yourBest": "내 최고 기록",
+  "empty": "아직 이 랭킹에 아무도 없습니다. 게임을 마치고 1위를 차지하세요.",
+  "error": "랭킹을 불러올 수 없습니다.",
+  "offline": "오프라인 상태입니다. 다시 연결되면 랭킹을 불러옵니다.",
+  "retry": "다시 시도",
+  "unavailable": "이 게임에는 랭킹이 없습니다.",
+  "a11y.row": "{{rank}}위, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "{{rank}}위, {{name}}, 나, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "내 최고 기록: {{rank}}위, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "{{game}}(으)로 돌아가기"
+}

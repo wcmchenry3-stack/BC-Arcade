@@ -1,0 +1,182 @@
+{
+  "title": {
+    "component": "LeaderboardScreen",
+    "description": "Header title of one game's leaderboard screen.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": [],
+    "notes": "{{game}} is the translated game name, e.g. Sudoku."
+  },
+  "column.rank": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for the rank position. A symbol or very short word.",
+    "tone": "functional",
+    "characterLimit": 6,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "column.player": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for the player's display name.",
+    "tone": "functional",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "column.date": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for the date the entry was set.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.score": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a board ranked by points.",
+    "tone": "functional",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a board ranked by moves (fewest wins, e.g. FreeCell).",
+    "tone": "functional",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.level": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a board ranked by the highest level solved (Sort Puzzle).",
+    "tone": "functional",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "direction.asc": {
+    "component": "LeaderboardScreen",
+    "description": "Caption on boards where the lowest number ranks first (e.g. fewest moves).",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "partition.tier": {
+    "component": "LeaderboardScreen",
+    "description": "Label of the Star Swarm difficulty-tier picker above the board.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "you": {
+    "component": "LeaderboardScreen",
+    "description": "Tag next to the player's own name in the list.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "yourBest": {
+    "component": "LeaderboardScreen",
+    "description": "Label above the player's own best entry, pinned below the list when they are outside it.",
+    "tone": "functional",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "empty": {
+    "component": "LeaderboardScreen",
+    "description": "Shown when a board has no entries yet.",
+    "tone": "encouraging",
+    "characterLimit": 110,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error": {
+    "component": "LeaderboardScreen",
+    "description": "Shown when the board could not be loaded (server error).",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "offline": {
+    "component": "LeaderboardScreen",
+    "description": "Shown when the device is offline; the board loads again on reconnect.",
+    "tone": "functional",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "retry": {
+    "component": "LeaderboardScreen",
+    "description": "Button that loads the board again.",
+    "tone": "action",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "unavailable": {
+    "component": "LeaderboardScreen",
+    "description": "Shown if a game without a leaderboard is opened.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.row": {
+    "component": "LeaderboardScreen",
+    "description": "Screen-reader label for one row of the board.",
+    "tone": "functional",
+    "characterLimit": 140,
+    "placeholders": ["{{rank}}", "{{name}}", "{{metric}}", "{{value}}", "{{date}}"],
+    "doNotTranslate": [],
+    "notes": "Screen-reader label for one row. {{rank}} is a 1-based position, {{name}} the player's display name, {{metric}} the translated metric label (Score, Moves, Level), {{value}} the number, {{date}} a localised short date."
+  },
+  "a11y.rowYou": {
+    "component": "LeaderboardScreen",
+    "description": "Screen-reader label for the player's own row of the board.",
+    "tone": "functional",
+    "characterLimit": 140,
+    "placeholders": ["{{rank}}", "{{name}}", "{{metric}}", "{{value}}", "{{date}}"],
+    "doNotTranslate": [],
+    "notes": "Screen-reader label for one row. {{rank}} is a 1-based position, {{name}} the player's display name, {{metric}} the translated metric label (Score, Moves, Level), {{value}} the number, {{date}} a localised short date."
+  },
+  "a11y.yourBest": {
+    "component": "LeaderboardScreen",
+    "description": "Screen-reader label for the player's pinned best entry.",
+    "tone": "functional",
+    "characterLimit": 140,
+    "placeholders": ["{{rank}}", "{{metric}}", "{{value}}", "{{date}}"],
+    "doNotTranslate": [],
+    "notes": "Screen-reader label for one row. {{rank}} is a 1-based position, {{name}} the player's display name, {{metric}} the translated metric label (Score, Moves, Level), {{value}} the number, {{date}} a localised short date."
+  },
+  "a11y.back": {
+    "component": "LeaderboardScreen",
+    "description": "Screen-reader label of the header's back button, which returns to the game.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": [],
+    "notes": "{{game}} is the translated game name, e.g. Sudoku."
+  }
+}

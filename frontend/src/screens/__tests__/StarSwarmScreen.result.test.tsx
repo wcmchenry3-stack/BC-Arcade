@@ -19,11 +19,12 @@ jest.mock("expo-blur", () => ({
 }));
 
 const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
   }),
 }));
@@ -262,6 +263,21 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.queryByText("Star Swarm · Commander")).toBeNull();
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.result.difficulty_tier).toBe("Captain");
+  });
+
+  it("View leaderboard opens the board of the tier the run was played at (#2633)", async () => {
+    await renderScreen();
+    await startRun();
+    mockCanvasState = { difficulty: "Captain" };
+    await endRun(4200, 7);
+    const card = within(screen.getByTestId("starswarm-result"));
+    await act(async () => {
+      await fireEvent.press(card.getByRole("link", { name: "View leaderboard" }));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", {
+      gameType: "starswarm",
+      partition: { difficulty_tier: "Captain" },
+    });
   });
 
   it("Play Again starts a new run at the same difficulty", async () => {

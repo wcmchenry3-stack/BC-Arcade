@@ -368,6 +368,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "overflow.menu.leaderboard": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens the game's leaderboard.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "overflow.menu.newGame": {
     "component": "AppHeader",
     "description": "Overflow menu item that starts a new game.",

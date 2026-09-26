@@ -15,7 +15,7 @@ from db.base import get_session_factory
 from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
-from session import get_session_id
+from session import get_session_id, optional_session_id
 
 from . import leaderboard, service
 from .schemas import (
@@ -186,6 +186,10 @@ async def get_leaderboard(
     Partition values are query params named after ``board.partitions``, e.g.
     ``/games/leaderboard/sudoku?difficulty=hard&variant=mini``. 404 for an
     unknown game or one whose board is disabled.
+
+    With a valid ``X-Session-ID`` the caller's own entry is flagged ``is_me``
+    and returned as ``me`` with its exact rank, even outside the top
+    ``limit`` (#2633). Read-only.
     """
     board = leaderboard.enabled_board(game_type)
     if board is None:
@@ -201,6 +205,9 @@ async def get_leaderboard(
         # board is public, so X-Session-ID is only required (400) for premium.
         if gt.is_premium:
             await check_entitlement(db, get_session_id(request), game_type)
+        # The caller, when known, to flag their own entry (#2633). Optional:
+        # a free board stays public without X-Session-ID.
+        viewer = optional_session_id(request)
         entries = await leaderboard.top_entries(
             db,
             game_type=game_type,
@@ -208,20 +215,36 @@ async def get_leaderboard(
             game_type_id=gt.id,
             partition=partition,
             limit=limit,
+            viewer_session_id=viewer,
         )
+        # The caller's row in the list is their best entry with its rank:
+        # only a caller outside the top ``limit`` costs the extra queries.
+        me = next((e for e in entries if e.is_me), None)
+        if viewer is not None and me is None:
+            me = await leaderboard.viewer_entry(
+                db,
+                game_type=game_type,
+                board=board,
+                game_type_id=gt.id,
+                partition=partition,
+                session_id=viewer,
+            )
     return LeaderboardResponse(
         game_type=game_type,
         partition=partition,
         label_key=board.label_key,
-        entries=[
-            LeaderboardEntryOut(
-                rank=e.rank,
-                player_name=e.player_name,
-                value=e.value,
-                completed_at=e.completed_at,
-            )
-            for e in entries
-        ],
+        entries=[_entry_out(e) for e in entries],
+        me=_entry_out(me) if me is not None else None,
+    )
+
+
+def _entry_out(e: leaderboard.BoardEntry) -> LeaderboardEntryOut:
+    return LeaderboardEntryOut(
+        rank=e.rank,
+        player_name=e.player_name,
+        value=e.value,
+        completed_at=e.completed_at,
+        is_me=e.is_me,
     )
 
 

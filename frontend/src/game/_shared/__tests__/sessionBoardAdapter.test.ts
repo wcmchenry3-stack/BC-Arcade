@@ -77,13 +77,27 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(await scoreQueue.peek()).toEqual([]);
   });
 
-  it("shows no rank when this game isn't the player's best entry", async () => {
+  it("keeps the best entry's rank when this game isn't that entry (#2633)", async () => {
     await saveDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(3, false));
     const { result } = await setup();
     await act(() => result.current.submit({ gameId: "g-1" }));
     expect(result.current.status).toBe("saved");
-    expect(result.current.rank).toBeNull();
+    expect(result.current.rank).toBe(3);
+    expect(result.current.isBest).toBe(false);
+  });
+
+  it("marks the game as the best entry when the server says so, and reset clears it", async () => {
+    await saveDisplayName("Riley");
+    mockGetRank.mockResolvedValueOnce(ranked(3, false)).mockResolvedValueOnce(ranked(2));
+    const { result } = await setup();
+    await act(() => result.current.submit({ gameId: "g-1" }));
+    expect(result.current.isBest).toBe(false);
+    await act(async () => result.current.reset());
+    expect(result.current.isBest).toBe(true);
+    await act(() => result.current.submit({ gameId: "g-2" }));
+    expect(result.current.rank).toBe(2);
+    expect(result.current.isBest).toBe(true);
   });
 
   it("shows a rank outside the top ten as saved with no rank, like the other cards", async () => {

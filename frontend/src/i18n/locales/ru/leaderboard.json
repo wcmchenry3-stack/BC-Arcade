@@ -1,0 +1,22 @@
+{
+  "title": "Рейтинг: {{game}}",
+  "column.rank": "№",
+  "column.player": "Игрок",
+  "column.date": "Дата",
+  "metric.score": "Очки",
+  "metric.moves": "Ходы",
+  "metric.level": "Уровень",
+  "direction.asc": "Чем меньше, тем лучше",
+  "partition.tier": "Звание",
+  "you": "Вы",
+  "yourBest": "Ваш лучший результат",
+  "empty": "В этом рейтинге пока никого нет. Завершите игру и займите первое место.",
+  "error": "Не удалось загрузить рейтинг.",
+  "offline": "Нет подключения. Рейтинг загрузится, когда вы снова будете онлайн.",
+  "retry": "Повторить",
+  "unavailable": "У этой игры нет рейтинга.",
+  "a11y.row": "Место {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Место {{rank}}, {{name}}, вы, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Ваш лучший результат: место {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Назад: {{game}}"
+}

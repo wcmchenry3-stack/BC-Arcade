@@ -35,9 +35,5 @@
   "levelSelect.title": "Kies een niveau",
   "levelSelect.continue": "Verder met niveau {{level}}",
   "levelSelect.locked": "Vergrendeld",
-  "levelSelect.lockedLevel": "Niveau {{level}}, vergrendeld",
-  "tab.levels": "Niveaus",
-  "tab.leaderboard": "Ranglijst",
-  "leaderboard.empty": "Nog geen scores.",
-  "leaderboard.levelReached": "Niveau {{level}}"
+  "levelSelect.lockedLevel": "Niveau {{level}}, vergrendeld"
 }

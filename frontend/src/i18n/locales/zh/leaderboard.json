@@ -1,0 +1,22 @@
+{
+  "title": "{{game}} 排行榜",
+  "column.rank": "排名",
+  "column.player": "玩家",
+  "column.date": "日期",
+  "metric.score": "得分",
+  "metric.moves": "步数",
+  "metric.level": "关卡",
+  "direction.asc": "越少越好",
+  "partition.tier": "军衔",
+  "you": "你",
+  "yourBest": "你的最佳",
+  "empty": "这个排行榜还没有人。完成一局，拿下第一名！",
+  "error": "无法加载排行榜。",
+  "offline": "你已离线。重新联网后将加载排行榜。",
+  "retry": "重试",
+  "unavailable": "这个游戏没有排行榜。",
+  "a11y.row": "第 {{rank}} 名，{{name}}，{{metric}} {{value}}，{{date}}",
+  "a11y.rowYou": "第 {{rank}} 名，{{name}}（你），{{metric}} {{value}}，{{date}}",
+  "a11y.yourBest": "你的最佳：第 {{rank}} 名，{{metric}} {{value}}，{{date}}",
+  "a11y.back": "返回{{game}}"
+}

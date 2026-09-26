@@ -89,6 +89,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.viewLeaderboard": {
+    "component": "GameResultModal",
+    "description": "Link on the result card that opens the game's leaderboard.",
+    "tone": "action",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "submission.saving": {
     "component": "GameResultModal (SubmissionLine)",
     "description": "Status line on the result card while the score is being submitted to the leaderboard.",
@@ -115,6 +124,15 @@
     "placeholders": ["{{name}}", "{{rank}}"],
     "doNotTranslate": [],
     "notes": "{{name}} is the display name the score was saved under; {{rank}} is a 1-based position."
+  },
+  "submission.savedBest": {
+    "component": "GameResultModal (SubmissionLine)",
+    "description": "Status line on the result card when this game is saved but an earlier game is the player's best entry on the board.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["{{name}}", "{{rank}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the player's display name; {{rank}} is the 1-based position of their best entry."
   },
   "submission.offline": {
     "component": "GameResultModal (SubmissionLine)",
