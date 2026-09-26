@@ -809,4 +809,36 @@ describe("ProfileScreen — remembers /stats/me for the stats screen (#2635)", (
     expect(screen.getByTestId("game-stats-stale")).toBeTruthy();
     expect(mockGetMyStats).not.toHaveBeenCalled();
   });
+
+  it("doesn't remember a /stats/me that was in flight when the cache was cleared", async () => {
+    await AsyncStorage.setItem("game_session_id", "session-a");
+    let answer!: (r: StatsResponse) => void;
+    mockGetMyStats.mockImplementation(() => new Promise((resolve) => (answer = resolve)));
+    const profile = await renderScreen();
+    await waitFor(() => expect(mockGetMyStats).toHaveBeenCalledTimes(1));
+
+    // Delete my data runs while Profile's request is out; its session is
+    // replaced as well.
+    clearMyStatsCache();
+    await AsyncStorage.setItem("game_session_id", "session-b");
+    await act(async () => {
+      answer(SAMPLE_STATS);
+    });
+    await waitFor(() => expect(screen.getByTestId("profile-game-freecell")).toBeTruthy());
+    await profile.unmount();
+
+    mockNetwork.isOnline = false;
+    const navigation = {
+      navigate: jest.fn(),
+      goBack: jest.fn(),
+    } as unknown as React.ComponentProps<typeof GameStatsScreen>["navigation"];
+    await render(
+      <ThemeProvider>
+        <GameStatsScreen route={{ params: { gameType: "freecell" } }} navigation={navigation} />
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    expect(screen.queryByTestId("game-stats-tile-best")).toBeNull();
+    expect(screen.getByText("You're offline. Your stats load when you reconnect.")).toBeTruthy();
+  });
 });

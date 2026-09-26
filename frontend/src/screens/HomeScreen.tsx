@@ -32,7 +32,7 @@ import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
-import { rememberMyStats } from "../hooks/useMyStats";
+import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -112,10 +112,9 @@ export default function HomeScreen() {
     // Shared with the daily-challenge card so their concurrent flushes don't
     // let one of them read before the upload lands.
     flushQueuedGames()
-      .then(() => withRetry(() => statsApi.getMyStats()))
+      // Remembered for the stats screen opened offline later (#2635).
+      .then(() => fetchAndRememberMyStats(() => withRetry(() => statsApi.getMyStats())))
       .then((stats) => {
-        // For the stats screen opened offline later (#2635).
-        void rememberMyStats(stats);
         if (!mounted.current) return;
         setArcadeLevel(stats.arcade_level);
         // A server that predates the streak omits the field: treat it as no streak.

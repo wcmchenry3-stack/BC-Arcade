@@ -12,7 +12,7 @@ import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { statsApi } from "../api/stats";
-import { rememberMyStats } from "../hooks/useMyStats";
+import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
 import { formatMetric, gameMetric, knownOutcome, outcomeLabel } from "../api/outcomeDisplay";
 import {
@@ -268,14 +268,11 @@ export default function ProfileScreen() {
     setError(null);
     setGamesError(false);
     const [statsResult, gamesResult] = await Promise.allSettled([
-      withRetry(() => statsApi.getMyStats()),
+      // Remembered for the stats screen opened offline later (#2635).
+      fetchAndRememberMyStats(() => withRetry(() => statsApi.getMyStats())),
       withRetry(() => statsApi.getMyGames(20)),
     ]);
-    if (statsResult.status === "fulfilled") {
-      setStats(statsResult.value);
-      // For the stats screen opened offline later (#2635).
-      void rememberMyStats(statsResult.value);
-    }
+    if (statsResult.status === "fulfilled") setStats(statsResult.value);
     if (gamesResult.status === "fulfilled") {
       setGames(gamesResult.value.items);
     } else {

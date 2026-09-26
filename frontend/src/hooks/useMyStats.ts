@@ -4,7 +4,7 @@ import { statsApi, type StatsResponse } from "../api/stats";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { getSessionIdIfAny } from "../game/_shared/session";
+import { getOrCreateSessionId, getSessionIdIfAny } from "../game/_shared/session";
 import { withRetry } from "../game/_shared/withRetry";
 
 /**
@@ -57,18 +57,50 @@ export function clearMyStatsCache(): void {
   generation += 1;
 }
 
-async function remember(response: StatsResponse, startedAt: number): Promise<void> {
-  const sessionId = await getSessionIdIfAny();
-  if (sessionId != null && startedAt === generation) cache = { sessionId, response };
+/**
+ * Taken right before a `/stats/me` request: the clear generation and the
+ * session the request is sent for. An answer is remembered only if neither
+ * has changed by the time it lands, so a request in flight when "Delete my
+ * data" runs can't file the deleted player's figures under the new session.
+ */
+export interface MyStatsToken {
+  readonly generation: number;
+  readonly sessionId: Promise<string | null>;
+}
+
+export function myStatsToken(): MyStatsToken {
+  return {
+    generation,
+    // The session the request will carry (httpClient creates it the same way).
+    sessionId: getOrCreateSessionId().catch(() => null),
+  };
+}
+
+/** Keep `response` for the stats screen, unless the cache was cleared or the session changed since `token`. */
+export async function rememberMyStats(response: StatsResponse, token: MyStatsToken): Promise<void> {
+  try {
+    const [then, now] = await Promise.all([token.sessionId, getSessionIdIfAny()]);
+    if (then != null && then === now && token.generation === generation) {
+      cache = { sessionId: now, response };
+    }
+  } catch {
+    // Nothing remembered: the stats screen fetches for itself.
+  }
 }
 
 /**
- * Keep a successful `/stats/me` answer for the stats screen (#2635). Home and
- * Profile call this after their own fetches, so the stats screen opened
- * offline afterwards still has the player's figures.
+ * Runs `fetch` (a `/stats/me` request) and keeps its answer for the stats
+ * screen (#2635), so Stats opened offline afterwards still has the player's
+ * figures. Home and Profile wrap their own fetches in it. Resolves or rejects
+ * as `fetch` does.
  */
-export function rememberMyStats(response: StatsResponse): Promise<void> {
-  return remember(response, generation);
+export async function fetchAndRememberMyStats(
+  fetch: () => Promise<StatsResponse>
+): Promise<StatsResponse> {
+  const token = myStatsToken();
+  const response = await fetch();
+  await rememberMyStats(response, token);
+  return response;
 }
 
 /** The remembered response for `sessionId`, or null. */
@@ -95,7 +127,7 @@ const LOADING: Loaded = { status: "loading", stats: null, stale: false, refreshi
  * device is offline nothing is requested.
  *
  * The last good response for the current session (from this hook, Home or
- * Profile: `rememberMyStats`) is shown at once with `refreshing` set while the
+ * Profile: `fetchAndRememberMyStats`) is shown at once with `refreshing` set while the
  * fresh one loads. When the fresh one can't be had (offline, or the request
  * failed) it stays on screen with `stale` set; with nothing remembered, the
  * status is `offline` or `error`. When the device comes back online after
@@ -116,7 +148,7 @@ export function useMyStats(): MyStats {
   const load = useCallback(async () => {
     const request = ++requestRef.current;
     const current = () => request === requestRef.current;
-    const startedAt = generation;
+    const token = myStatsToken();
 
     const sessionId = await getSessionIdIfAny();
     if (!current()) return;
@@ -145,7 +177,7 @@ export function useMyStats(): MyStats {
       await flushQueuedGames();
       const res = await withRetry(() => statsApi.getMyStats());
       if (!current()) return;
-      await remember(res, startedAt);
+      await rememberMyStats(res, token);
       if (!current()) return;
       setLoaded({ status: "ready", stats: res, stale: false, refreshing: false });
     } catch (e) {

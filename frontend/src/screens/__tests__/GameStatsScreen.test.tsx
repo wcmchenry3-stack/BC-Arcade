@@ -7,7 +7,12 @@ import type { GameTypeStats, StatsResponse } from "../../api/types";
 import type { GameType } from "../../api/vocab";
 import { ApiError } from "../../game/_shared/httpClient";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
-import { clearMyStatsCache, rememberMyStats } from "../../hooks/useMyStats";
+import {
+  clearMyStatsCache,
+  fetchAndRememberMyStats,
+  myStatsToken,
+  rememberMyStats,
+} from "../../hooks/useMyStats";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -422,12 +427,36 @@ describe("GameStatsScreen — offline and errors", () => {
     expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
   });
 
-  it("shows a response another screen remembered (rememberMyStats)", async () => {
-    await rememberMyStats(response({ hearts: HEARTS }));
+  it("shows a response another screen remembered (fetchAndRememberMyStats)", async () => {
+    await fetchAndRememberMyStats(() => Promise.resolve(response({ hearts: HEARTS })));
     mockNetwork.isOnline = false;
     await renderStats("hearts");
     expect(tile("wins")).toBe("6");
     expect(mockGetMyStats).not.toHaveBeenCalled();
+  });
+
+  it("drops an answer whose session changed while it was in flight", async () => {
+    const token = myStatsToken();
+    await AsyncStorage.setItem(SESSION_KEY, "session-b");
+    await rememberMyStats(response({ hearts: HEARTS }), token);
+
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
+  });
+
+  it("drops an answer whose fetch was in flight when the cache was cleared", async () => {
+    let answer!: (r: StatsResponse) => void;
+    const pending = fetchAndRememberMyStats(
+      () => new Promise<StatsResponse>((resolve) => (answer = resolve))
+    );
+    clearMyStatsCache();
+    answer(response({ hearts: HEARTS }));
+    await pending;
+
+    mockNetwork.isOnline = false;
+    await renderStats("hearts");
+    expect(screen.queryByTestId("game-stats-tile-wins")).toBeNull();
   });
 
   it("shows fresh figures without the note once a request succeeds", async () => {
