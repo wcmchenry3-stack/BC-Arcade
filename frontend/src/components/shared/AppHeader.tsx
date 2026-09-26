@@ -31,6 +31,11 @@ export interface AppHeaderProps {
   backAccessibilityLabel?: string;
   /** When provided, shows the ⋯ menu with a Scoreboard item. See GH #711. */
   onOpenScoreboard?: () => void;
+  /**
+   * When provided, shows the ⋯ menu with a Leaderboard item (#2633). Pass
+   * `useLeaderboardLink`'s result: undefined for games without an openable board.
+   */
+  onOpenLeaderboard?: () => void;
   /** When provided, shows the ⋯ menu with a New Game item (with abandon confirmation). See GH #711. */
   onNewGame?: () => void;
   /** When provided, shows the ⋯ menu with a Level Select item (no confirmation — goes directly to layout picker). */
@@ -46,6 +51,7 @@ export function AppHeader({
   requireBack = false,
   backAccessibilityLabel,
   onOpenScoreboard,
+  onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
   onEditPlayerNames,
@@ -58,7 +64,12 @@ export function AppHeader({
   const [abandonVisible, setAbandonVisible] = useState(false);
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
-  const showMenu = !!onOpenScoreboard || !!onNewGame || !!onLevelSelect || !!onEditPlayerNames;
+  const showMenu =
+    !!onOpenScoreboard ||
+    !!onOpenLeaderboard ||
+    !!onNewGame ||
+    !!onLevelSelect ||
+    !!onEditPlayerNames;
 
   // #498 — mount-time telemetry: record whether the back affordance is wired
   // up so we can detect regressions where a screen silently drops onBack.
@@ -99,6 +110,11 @@ export function AppHeader({
   const handleMenuScoreboard = () => {
     setMenuOpen(false);
     onOpenScoreboard?.();
+  };
+
+  const handleMenuLeaderboard = () => {
+    setMenuOpen(false);
+    onOpenLeaderboard?.();
   };
 
   const handleMenuNewGame = () => {
@@ -280,6 +296,28 @@ export function AppHeader({
               />
               <Text style={[styles.itemLabel, { color: colors.text }]}>
                 {t("common:overflow.menu.scoreboard")}
+              </Text>
+            </Pressable>
+          )}
+
+          {!!onOpenLeaderboard && (
+            <Pressable
+              onPress={handleMenuLeaderboard}
+              accessibilityRole="menuitem"
+              testID="nav-menu-leaderboard"
+              style={(state) => [
+                styles.dropdownItem,
+                state.pressed && { backgroundColor: colors.surfaceAlt },
+              ]}
+            >
+              <MaterialIcons
+                name="emoji-events"
+                size={18}
+                color={colors.accent}
+                style={styles.itemIcon}
+              />
+              <Text style={[styles.itemLabel, { color: colors.text }]}>
+                {t("common:overflow.menu.leaderboard")}
               </Text>
             </Pressable>
           )}

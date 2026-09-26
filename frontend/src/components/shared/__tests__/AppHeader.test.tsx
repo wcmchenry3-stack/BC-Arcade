@@ -14,6 +14,7 @@ jest.mock("react-i18next", () => ({
         fab_label: "Send feedback",
         "common:overflow.menu.label": "More options",
         "common:overflow.menu.scoreboard": "Scoreboard",
+        "common:overflow.menu.leaderboard": "Leaderboard",
         "common:overflow.menu.newGame": "New Game",
         title: "Send Feedback",
         "common:overflow.abandon.title": "Abandon current game?",
@@ -242,6 +243,30 @@ describe("AppHeader", () => {
       expect(onOpenScoreboard).toHaveBeenCalledTimes(1);
       // Menu should be closed after tap
       expect(screen.queryByText("Scoreboard")).toBeNull();
+    });
+
+    it("a game with only a leaderboard still gets the ⋯ menu (#2633)", async () => {
+      await render(<AppHeader title="Sort" onOpenLeaderboard={jest.fn()} />);
+      expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
+    });
+
+    it("shows the Leaderboard item only when onOpenLeaderboard is provided", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      expect(screen.queryByText("Leaderboard")).toBeNull();
+    });
+
+    it("calls onOpenLeaderboard and closes the menu when Leaderboard is tapped", async () => {
+      const onOpenLeaderboard = jest.fn();
+      await render(
+        <AppHeader title="Hearts" onOpenLeaderboard={onOpenLeaderboard} onNewGame={jest.fn()} />
+      );
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      const item = screen.getByRole("menuitem", { name: "Leaderboard" });
+      await fireEvent.press(item);
+      expect(onOpenLeaderboard).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Leaderboard")).toBeNull();
     });
 
     it("uses a custom back label when the back button does not go home", async () => {

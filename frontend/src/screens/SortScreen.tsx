@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   AppState,
   AppStateStatus,
-  FlatList,
   LayoutChangeEvent,
   Pressable,
   StyleSheet,
@@ -31,7 +29,6 @@ import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
 import { sortApi, type LevelData } from "../game/sort/api";
-import { statsApi, type GameLeaderboardEntry } from "../api/stats";
 import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";
 import {
@@ -50,6 +47,7 @@ import {
 } from "../game/sort/storage";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
@@ -59,7 +57,6 @@ import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 
 type ScreenView = "loading" | "select" | "play";
-type SelectTab = "levels" | "leaderboard";
 
 /** The result card's rank lookup on Sort's session board (#2625, #2677). */
 const sortBoard = sessionBoardAdapter("sort");
@@ -79,11 +76,6 @@ export default function SortScreen() {
     currentLevelId: null,
     currentState: null,
   });
-
-  // Level select tabs
-  const [selectTab, setSelectTab] = useState<SelectTab>("levels");
-  const [leaderboard, setLeaderboard] = useState<readonly GameLeaderboardEntry[]>([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // Active game
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
@@ -107,6 +99,8 @@ export default function SortScreen() {
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   const leaderboardSubmit = useLeaderboardSubmit(sortBoard);
   const { submit: submitRank, reset: resetSubmission } = leaderboardSubmit;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "sort");
 
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Only the first solve of the player's frontier
@@ -476,29 +470,6 @@ export default function SortScreen() {
       .catch(() => {});
   }
 
-  const handleLoadLeaderboard = useCallback(async () => {
-    setLeaderboardLoading(true);
-    try {
-      // The generic board (#2618); #2633's shared screen replaces this tab.
-      const res = await statsApi.getLeaderboard("sort");
-      setLeaderboard(res.entries);
-    } catch {
-      // keep stale data on error
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  }, []);
-
-  const handleSelectTab = useCallback(
-    (tab: SelectTab) => {
-      setSelectTab(tab);
-      if (tab === "leaderboard") {
-        void handleLoadLeaderboard();
-      }
-    },
-    [handleLoadLeaderboard]
-  );
-
   function handleResetLevel() {
     if (!currentLevelId) return;
     const level = levels.find((l) => l.id === currentLevelId);
@@ -530,39 +501,6 @@ export default function SortScreen() {
   }
 
   // ---------------------------------------------------------------------------
-  // Render helpers
-  // ---------------------------------------------------------------------------
-
-  function renderLeaderboard() {
-    if (leaderboardLoading) {
-      return <ActivityIndicator style={styles.leaderboardLoading} />;
-    }
-    if (leaderboard.length === 0) {
-      return (
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          {t("leaderboard.empty")}
-        </Text>
-      );
-    }
-    return (
-      <FlatList
-        data={leaderboard}
-        keyExtractor={(_, i) => String(i)}
-        contentContainerStyle={styles.leaderboardList}
-        renderItem={({ item }) => (
-          <View style={[styles.leaderboardRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.leaderboardRank, { color: colors.textMuted }]}>#{item.rank}</Text>
-            <Text style={[styles.leaderboardName, { color: colors.text }]}>{item.player_name}</Text>
-            <Text style={[styles.leaderboardLevel, { color: colors.accent }]}>
-              {t("leaderboard.levelReached", { level: item.value })}
-            </Text>
-          </View>
-        )}
-      />
-    );
-  }
-
-  // ---------------------------------------------------------------------------
   // Views
   // ---------------------------------------------------------------------------
 
@@ -577,6 +515,7 @@ export default function SortScreen() {
         title={t("game.title")}
         requireBack
         onBack={() => navigation.goBack()}
+        onOpenLeaderboard={openLeaderboard}
       >
         {/* Error banner with retry */}
         {loadError && (
@@ -596,48 +535,14 @@ export default function SortScreen() {
           </View>
         )}
 
-        {/* Tab bar */}
-        <View
-          style={[styles.tabBar, { borderBottomColor: colors.border }]}
-          accessibilityRole="tablist"
-        >
-          {(["levels", "leaderboard"] as SelectTab[]).map((tab) => (
-            <Pressable
-              key={tab}
-              style={[
-                styles.tab,
-                selectTab === tab && {
-                  borderBottomColor: colors.accent,
-                  borderBottomWidth: 2,
-                },
-              ]}
-              onPress={() => handleSelectTab(tab)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: selectTab === tab }}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  { color: selectTab === tab ? colors.accent : colors.textMuted },
-                ]}
-              >
-                {t(`tab.${tab}`)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Tab content */}
-        {selectTab === "levels" ? (
-          <LevelSelectScreen
-            levels={levels}
-            progress={progress}
-            onSelectLevel={handleSelectLevel}
-            onContinue={handleContinue}
-          />
-        ) : (
-          <View style={styles.leaderboardContainer}>{renderLeaderboard()}</View>
-        )}
+        {/* The board is the shared leaderboard screen now (#2633), from the
+            ⋯ menu and the result card; the inline Leaderboard tab is gone. */}
+        <LevelSelectScreen
+          levels={levels}
+          progress={progress}
+          onSelectLevel={handleSelectLevel}
+          onContinue={handleContinue}
+        />
       </GameShell>
     );
   }
@@ -652,6 +557,7 @@ export default function SortScreen() {
       backAccessibilityLabel={t("action.backToLevels")}
       onNewGame={handleResetLevel}
       onLevelSelect={handleBackToSelect}
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.headerBtnRow}>
           <PillButton
@@ -737,10 +643,12 @@ export default function SortScreen() {
           submission={{
             status: leaderboardSubmit.status,
             rank: leaderboardSubmit.rank,
+            isBest: leaderboardSubmit.isBest,
             playerName: leaderboardSubmit.playerName,
             onProvideName: leaderboardSubmit.provideName,
             onRetry: leaderboardSubmit.retry,
           }}
+          onViewLeaderboard={openLeaderboard}
           // The next level when there is one; the last level replays.
           primaryAction={
             levels.some((l) => l.id === currentLevelId + 1)
@@ -772,41 +680,6 @@ const styles = StyleSheet.create({
   },
   loadErrorText: { fontFamily: typography.body, fontSize: 13 },
   retryText: { fontFamily: typography.label, fontSize: 13, textDecorationLine: "underline" },
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  tabText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  leaderboardContainer: { flex: 1 },
-  leaderboardLoading: { marginTop: 32 },
-  leaderboardList: { padding: 16 },
-  leaderboardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  leaderboardRank: { fontFamily: typography.label, fontSize: 13, width: 28 },
-  leaderboardName: { flex: 1, fontFamily: typography.body, fontSize: 14 },
-  leaderboardLevel: { fontFamily: typography.label, fontSize: 13 },
-  emptyText: {
-    textAlign: "center",
-    marginTop: 32,
-    fontFamily: typography.body,
-    fontSize: 14,
-  },
-
   boardContainer: {
     flex: 1,
     alignItems: "center",

@@ -251,6 +251,9 @@ function LobbyStack() {
       />
       <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
+      {/* One game's board (#2633). Only games with an openable board link
+          here (useLeaderboardLink); the screen shows none for any other. */}
+      <HomeStack.Screen name="Leaderboard" component={LazyLeaderboardScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
     </HomeStack.Navigator>
   );

@@ -873,6 +873,36 @@ describe("Twenty48Screen — result card (#2513)", () => {
     expect(nav.popToTop).toHaveBeenCalledTimes(1);
   });
 
+  it("View leaderboard opens 2048's board (#2633)", async () => {
+    const nav = mockNav();
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await renderScreen(nav);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(r.getByTestId("twenty48-result")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(r.getByRole("link", { name: "View leaderboard" }));
+    });
+    expect(nav.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "twenty48" });
+  });
+
+  it("the ⋯ menu's Leaderboard opens 2048's board (#2633)", async () => {
+    const nav = mockNav();
+    const r = await renderScreen(nav);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(r.getByLabelText("More options")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("Leaderboard"));
+    });
+    expect(nav.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "twenty48" });
+  });
+
   it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const { getByTestId, getByLabelText } = await mountAndSettle();

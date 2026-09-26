@@ -22,6 +22,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -230,6 +231,11 @@ function StarSwarmGame() {
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
   const premium = usePremiumLevels("starswarm", "starswarm-premium");
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
+  // finished run's tier board, else the current tier's.
+  const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
+    difficulty_tier: result?.tier ?? difficulty,
+  });
 
   const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
     setDevVolumes((v) => ({
@@ -603,6 +609,7 @@ function StarSwarmGame() {
         navigation.popToTop();
       }}
       onNewGame={handleRequestNewGame}
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={
         showPauseBtn ? (
           <Pressable
@@ -775,10 +782,12 @@ function StarSwarmGame() {
           submission={{
             status: leaderboard.status,
             rank: leaderboard.rank,
+            isBest: leaderboard.isBest,
             playerName: leaderboard.playerName,
             onProvideName: leaderboard.provideName,
             onRetry: leaderboard.retry,
           }}
+          onViewLeaderboard={openLeaderboard}
           // Same difficulty, straight into a new run.
           onPlayAgain={handleConfirmDifficulty}
           secondaryAction={{

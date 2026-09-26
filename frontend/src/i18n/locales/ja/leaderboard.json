@@ -1,0 +1,22 @@
+{
+  "title": "{{game}} ランキング",
+  "column.rank": "#",
+  "column.player": "プレイヤー",
+  "column.date": "日付",
+  "metric.score": "スコア",
+  "metric.moves": "手数",
+  "metric.level": "レベル",
+  "direction.asc": "少ないほど上位",
+  "partition.tier": "階級",
+  "you": "あなた",
+  "yourBest": "自己ベスト",
+  "empty": "このランキングにはまだ誰もいません。ゲームをクリアして1位を目指そう！",
+  "error": "ランキングを読み込めませんでした。",
+  "offline": "オフラインです。再接続するとランキングを読み込みます。",
+  "retry": "再試行",
+  "unavailable": "このゲームにはランキングがありません。",
+  "a11y.row": "{{rank}}位、{{name}}、{{metric}} {{value}}、{{date}}",
+  "a11y.rowYou": "{{rank}}位、{{name}}（あなた）、{{metric}} {{value}}、{{date}}",
+  "a11y.yourBest": "自己ベスト：{{rank}}位、{{metric}} {{value}}、{{date}}",
+  "a11y.back": "{{game}}に戻る"
+}

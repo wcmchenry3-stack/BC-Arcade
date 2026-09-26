@@ -30,11 +30,12 @@ jest.mock("expo-linear-gradient", () => ({
   LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
   }),
 }));
@@ -423,6 +424,17 @@ describe("FreeCellScreen — result card (#2508)", () => {
     });
     await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
+  });
+
+  it("View leaderboard opens FreeCell's board (#2633)", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    const r = await winInOneMove();
+    const card = within(await r.findByTestId("freecell-result"));
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(card.getByRole("link", { name: "View leaderboard" }));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "freecell" });
   });
 
   it("marks a new best and shows it", async () => {

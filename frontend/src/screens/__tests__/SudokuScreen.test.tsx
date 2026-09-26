@@ -19,13 +19,14 @@ import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/stora
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
 const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
 // Captured so tests can fire `beforeRemove` (back-navigation).
 const mockNavListeners = new Map<string, Array<() => void>>();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     addListener: jest.fn((event: string, handler: () => void) => {
       mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
       return () => {
@@ -724,5 +725,24 @@ describe("SudokuScreen — result card (#2511)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Home" }));
     });
     expect(mockPopToTop).toHaveBeenCalled();
+  });
+});
+
+describe("SudokuScreen — leaderboard (#2633)", () => {
+  it("the ⋯ menu's Leaderboard item opens the board of the puzzle on screen", async () => {
+    await saveGame(loadPuzzle("hard", "mini", () => 0));
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("Leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", {
+      gameType: "sudoku",
+      partition: { difficulty: "hard", variant: "mini" },
+    });
   });
 });

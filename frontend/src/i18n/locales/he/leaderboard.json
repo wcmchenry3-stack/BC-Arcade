@@ -1,0 +1,22 @@
+{
+  "title": "טבלת המובילים של {{game}}",
+  "column.rank": "#",
+  "column.player": "שחקן",
+  "column.date": "תאריך",
+  "metric.score": "ניקוד",
+  "metric.moves": "מהלכים",
+  "metric.level": "רמה",
+  "direction.asc": "פחות זה יותר טוב",
+  "partition.tier": "דרגה",
+  "you": "את/ה",
+  "yourBest": "השיא שלך",
+  "empty": "עדיין אין אף אחד בטבלה הזו. סיימו משחק כדי לתפוס את המקום הראשון.",
+  "error": "לא ניתן לטעון את טבלת המובילים.",
+  "offline": "אין חיבור לאינטרנט. הטבלה תיטען כשהחיבור יחזור.",
+  "retry": "נסה שוב",
+  "unavailable": "למשחק הזה אין טבלת מובילים.",
+  "a11y.row": "מקום {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "מקום {{rank}}, {{name}}, את/ה, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "השיא שלך: מקום {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "חזרה אל {{game}}"
+}

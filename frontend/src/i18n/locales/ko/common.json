@@ -40,6 +40,7 @@
   "deck.selected": "{{name}} 선택됨",
   "overflow.menu.label": "더보기",
   "overflow.menu.scoreboard": "점수판",
+  "overflow.menu.leaderboard": "랭킹",
   "overflow.menu.newGame": "새 게임",
   "overflow.menu.levelSelect": "레벨 선택",
   "overflow.menu.editNames": "이름 편집",

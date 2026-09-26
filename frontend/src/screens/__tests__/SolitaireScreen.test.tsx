@@ -48,11 +48,12 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
   };
 });
 
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     addListener: mockAddListener,
   }),
 }));
@@ -291,6 +292,19 @@ describe("SolitaireScreen — new game confirmation", () => {
       await fireEvent.press(api.getByLabelText("Start New"));
     });
     expect(api.getByLabelText("Draw 1")).toBeTruthy();
+  });
+
+  it("the ⋯ menu's Leaderboard opens Solitaire's board (#2633)", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "solitaire" });
   });
 });
 

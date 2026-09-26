@@ -45,15 +45,16 @@ export interface LeaderboardAdapter<P> {
 /**
  * What a `RankOnlyLeaderboardAdapter`'s `submit` found:
  *
- *   ranked    — `saved`; `rank` is this game's rank, or null when it isn't
- *               the player's best entry (the hook still applies `topTenRank`)
+ *   ranked    — `saved`; `rank` is the rank of the player's best entry (the
+ *               hook still applies `topTenRank`), and `isBest` says whether
+ *               this game is that entry (#2633; omitted means it is)
  *   unranked  — `unranked`: the game is on no board; nothing more to do
  *   needsName — the server has no name for the player: `needsName`
  *   pending   — not on the server yet (the completion or the name is still
  *               syncing): shown as `submitting`, and asked again later
  */
 export type RankLookup =
-  | { kind: "ranked"; rank: number | null }
+  | { kind: "ranked"; rank: number | null; isBest?: boolean }
   | { kind: "unranked" }
   | { kind: "needsName" }
   | { kind: "pending" };
@@ -134,7 +135,14 @@ export function topTenRank(rank: number | null | undefined): number | null {
 
 export interface LeaderboardSubmitState<P> {
   status: LeaderboardSubmitStatus;
+  /** Top-10 rank of the player's best entry on the board, else null. */
   rank: number | null;
+  /**
+   * Whether this game is the player's best entry (#2633). False only when a
+   * rank-only adapter reports an earlier game as the best: the card then
+   * shows "Your best: #N".
+   */
+  isBest: boolean;
   /** The name the score went out (or was queued) under. */
   playerName: string | null;
   /** Submit this game's score. Later calls are ignored until `reset()`. */
@@ -153,6 +161,7 @@ export function useLeaderboardSubmit<P>(
   const { isOnline, isInitialized } = useNetwork();
   const [status, setStatus] = useState<LeaderboardSubmitStatus>("idle");
   const [rank, setRank] = useState<number | null>(null);
+  const [isBest, setIsBest] = useState(true);
   const [playerName, setPlayerName] = useState<string | null>(null);
 
   // Refs so the callbacks stay stable and see the latest values.
@@ -226,10 +235,12 @@ export function useLeaderboardSubmit<P>(
         switch (lookup.kind) {
           case "ranked":
             setRank(topTenRank(lookup.rank));
+            setIsBest(lookup.isBest ?? true);
             setStatus("saved");
             break;
           case "unranked":
             setRank(null);
+            setIsBest(true);
             setStatus("unranked");
             break;
           case "needsName":
@@ -377,8 +388,9 @@ export function useLeaderboardSubmit<P>(
     clearTimer();
     setStatus("idle");
     setRank(null);
+    setIsBest(true);
     setPlayerName(null);
   }, [clearTimer]);
 
-  return { status, rank, playerName, submit, provideName, retry, reset };
+  return { status, rank, isBest, playerName, submit, provideName, retry, reset };
 }

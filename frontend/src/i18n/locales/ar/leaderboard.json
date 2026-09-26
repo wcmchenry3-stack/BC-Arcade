@@ -1,0 +1,22 @@
+{
+  "title": "لوحة ترتيب {{game}}",
+  "column.rank": "#",
+  "column.player": "اللاعب",
+  "column.date": "التاريخ",
+  "metric.score": "النقاط",
+  "metric.moves": "الحركات",
+  "metric.level": "المستوى",
+  "direction.asc": "الأقل أفضل",
+  "partition.tier": "الرتبة",
+  "you": "أنت",
+  "yourBest": "أفضل نتيجة لك",
+  "empty": "لا أحد في لوحة الترتيب هذه بعد. أنهِ لعبة لتحتل المركز الأول.",
+  "error": "تعذر تحميل لوحة الترتيب.",
+  "offline": "أنت غير متصل. سيتم تحميل لوحة الترتيب عند إعادة الاتصال.",
+  "retry": "إعادة المحاولة",
+  "unavailable": "لا توجد لوحة ترتيب لهذه اللعبة.",
+  "a11y.row": "المركز {{rank}}، {{name}}، {{metric}} {{value}}، {{date}}",
+  "a11y.rowYou": "المركز {{rank}}، {{name}}، أنت، {{metric}} {{value}}، {{date}}",
+  "a11y.yourBest": "أفضل نتيجة لك: المركز {{rank}}، {{metric}} {{value}}، {{date}}",
+  "a11y.back": "العودة إلى {{game}}"
+}

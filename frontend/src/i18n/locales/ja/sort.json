@@ -35,9 +35,5 @@
   "levelSelect.title": "レベルを選ぼう",
   "levelSelect.continue": "レベル{{level}}を続ける",
   "levelSelect.locked": "ロック中",
-  "levelSelect.lockedLevel": "レベル{{level}}、ロック中",
-  "tab.levels": "レベル",
-  "tab.leaderboard": "ランキング",
-  "leaderboard.empty": "まだスコアがありません。",
-  "leaderboard.levelReached": "レベル {{level}}"
+  "levelSelect.lockedLevel": "レベル{{level}}、ロック中"
 }

@@ -27,6 +27,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -115,6 +116,12 @@ export default function SudokuScreen() {
   } | null>(null);
   const leaderboard = useLeaderboardSubmit(sudokuBoard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
+  // board of the puzzle on screen, else of the picker's choice.
+  const openLeaderboard = useLeaderboardLink(navigation, "sudoku", {
+    difficulty: state?.difficulty ?? difficulty,
+    variant: state?.variant ?? variant,
+  });
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
   // shifted forward while the app sits in the background so elapsed
@@ -511,6 +518,7 @@ export default function SudokuScreen() {
       onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "sudoku" })}
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
@@ -625,10 +633,12 @@ export default function SudokuScreen() {
           submission={{
             status: leaderboard.status,
             rank: leaderboard.rank,
+            isBest: leaderboard.isBest,
             playerName: leaderboard.playerName,
             onProvideName: leaderboard.provideName,
             onRetry: leaderboard.retry,
           }}
+          onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleStart}
           secondaryAction={{ label: t("action.changeDifficulty"), onPress: handleChangeDifficulty }}
           onHome={() => navigation.popToTop()}

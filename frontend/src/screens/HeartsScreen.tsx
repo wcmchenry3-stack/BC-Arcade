@@ -7,6 +7,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { ModalCard } from "../components/shared/ModalCard";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -101,6 +102,8 @@ export default function HeartsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const leaderboard = useLeaderboardSubmit(HEARTS_BOARD);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "hearts");
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
@@ -666,6 +669,7 @@ export default function HeartsScreen() {
         onBack={() => navigation.goBack()}
         onNewGame={() => handleStartGame(selectedDifficulty)}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
+        onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
       >
         <ScrollView contentContainerStyle={styles.preGameContainer}>
@@ -695,6 +699,7 @@ export default function HeartsScreen() {
       onBack={() => navigation.goBack()}
       onNewGame={handleChangeDifficulty}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
+      onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >
       {/* ── Table ──────────────────────────────────────────────────── */}
@@ -853,10 +858,12 @@ export default function HeartsScreen() {
         submission={{
           status: leaderboard.status,
           rank: leaderboard.rank,
+          isBest: leaderboard.isBest,
           playerName: leaderboard.playerName,
           onProvideName: leaderboard.provideName,
           onRetry: leaderboard.retry,
         }}
+        onViewLeaderboard={openLeaderboard}
         onPlayAgain={() => handleStartGame(gameState.aiDifficulty)}
         secondaryAction={{
           label: tResult("action.changeDifficulty"),

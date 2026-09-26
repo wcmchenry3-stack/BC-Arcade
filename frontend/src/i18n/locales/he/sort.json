@@ -35,9 +35,5 @@
   "levelSelect.title": "בחרו רמה",
   "levelSelect.continue": "המשך רמה {{level}}",
   "levelSelect.locked": "נעול",
-  "levelSelect.lockedLevel": "רמה {{level}}, נעולה",
-  "tab.levels": "רמות",
-  "tab.leaderboard": "דירוג",
-  "leaderboard.empty": "עדיין אין ניקוד.",
-  "leaderboard.levelReached": "רמה {{level}}"
+  "levelSelect.lockedLevel": "רמה {{level}}, נעולה"
 }

@@ -1,9 +1,11 @@
 /**
- * sort-leaderboard.spec.ts — GH #1255, #2625
+ * sort-leaderboard.spec.ts — GH #1255, #2625, #2633
  *
- * Leaderboard tab: renders the top 10 from the generic board
- * (GET /games/leaderboard/sort), shows player names, levels reached, and the
- * server's ranks (#1 through #10).
+ * Opening a game's leaderboard: Sort's ⋯ menu → Leaderboard opens the shared
+ * leaderboard screen (#2633; Sort's inline Leaderboard tab is gone), which
+ * renders the generic board (GET /games/leaderboard/sort): the server's
+ * ranks, player names and the level each reached, under a "Level" column.
+ * Native coverage is #2643.
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -15,6 +17,7 @@ const TOP_10 = Array.from({ length: 10 }, (_, i) => ({
   player_name: `Player${i + 1}`,
   value: 10 - i,
   completed_at: "2026-09-01T00:00:00Z",
+  is_me: false,
 }));
 
 async function installSortMock(page: Page, entries: unknown[]) {
@@ -41,15 +44,25 @@ async function installSortMock(page: Page, entries: unknown[]) {
   });
 }
 
-test.describe("Sort Puzzle — leaderboard", () => {
+async function openLeaderboard(page: Page) {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.removeItem("@sort/progress"));
+  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
+  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
+  await page.getByRole("button", { name: "More options" }).click();
+  await page.getByRole("menuitem", { name: "Leaderboard" }).click();
+  await page.getByText("Sort Puzzle Leaderboard").waitFor({ timeout: 10_000 });
+}
+
+test.describe("Sort Puzzle — leaderboard screen", () => {
   test.beforeEach(async ({ page }) => {
     await installEntitlementsMock(page);
     await installSortMock(page, TOP_10);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("@sort/progress"));
-    await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-    await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-    await page.getByRole("tab", { name: /Leaderboard/i }).click();
+    await openLeaderboard(page);
+  });
+
+  test("has no inline Leaderboard tab any more", async ({ page }) => {
+    await expect(page.getByRole("tab", { name: /Leaderboard/i })).toHaveCount(0);
   });
 
   test("renders top-10 player names", async ({ page }) => {
@@ -60,17 +73,18 @@ test.describe("Sort Puzzle — leaderboard", () => {
     await expect(page.getByText("Player10")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("first entry is ranked #1", async ({ page }) => {
-    await expect(page.getByText("#1").first()).toBeVisible({ timeout: 5_000 });
+  test("each row announces its rank, name and level", async ({ page }) => {
+    await expect(
+      page.getByLabel(/^Rank 1, Player1, Level 10, /),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByLabel(/^Rank 10, Player10, Level 1, /),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("last entry is ranked #10", async ({ page }) => {
-    await expect(page.getByText("#10").first()).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("level reached is displayed for each entry", async ({ page }) => {
-    // Player1 reached level 10
-    await expect(page.getByText("Level 10").first()).toBeVisible({
+  test("Back returns to the level select", async ({ page }) => {
+    await page.getByRole("button", { name: "Back to Sort Puzzle" }).click();
+    await expect(page.getByText("Choose a Level")).toBeVisible({
       timeout: 5_000,
     });
   });
@@ -81,12 +95,10 @@ test("Sort Puzzle — empty leaderboard shows empty state message", async ({
 }) => {
   await installEntitlementsMock(page);
   await installSortMock(page, []);
-  await page.goto("/");
-  await page.evaluate(() => localStorage.removeItem("@sort/progress"));
-  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-  await page.getByRole("tab", { name: /Leaderboard/i }).click();
-  await expect(page.getByText("No scores yet.")).toBeVisible({
-    timeout: 5_000,
-  });
+  await openLeaderboard(page);
+  await expect(
+    page.getByText(
+      "No one is on this board yet. Finish a game to claim the top spot.",
+    ),
+  ).toBeVisible({ timeout: 5_000 });
 });

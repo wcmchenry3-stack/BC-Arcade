@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { Twenty48State } from "../game/twenty48/types";
 import { newGame, move as engineMove, Direction } from "../game/twenty48/engine";
 import {
@@ -102,6 +103,8 @@ export default function Twenty48Screen({ navigation }: Props) {
   // the win or the game over; never on an abandon.
   const leaderboard = useLeaderboardSubmit(twenty48Board);
   const { submit: submitLeaderboard, reset: resetLeaderboard } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "twenty48");
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
   const { setSnapshot: setScoreboardSnapshot } = useTwenty48Scoreboard();
@@ -454,6 +457,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       onBack={() => navigation.popToTop()}
       onNewGame={resetGame}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "twenty48" })}
+      onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
@@ -553,11 +557,13 @@ export default function Twenty48Screen({ navigation }: Props) {
             : {
                 status: leaderboard.status,
                 rank: leaderboard.rank,
+                isBest: leaderboard.isBest,
                 playerName: leaderboard.playerName,
                 onProvideName: leaderboard.provideName,
                 onRetry: leaderboard.retry,
               }
         }
+        onViewLeaderboard={openLeaderboard}
         onHome={() => navigation.popToTop()}
         testID="twenty48-result"
       />

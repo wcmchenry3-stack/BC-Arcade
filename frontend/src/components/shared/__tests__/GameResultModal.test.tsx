@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
+import { NavigationContext } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -10,6 +11,9 @@ import GameResultModal, {
   type GameResultModalProps,
 } from "../GameResultModal";
 import { resetDisplayNameCacheForTests } from "../../../game/_shared/displayName";
+import { useLeaderboardLink } from "../../../hooks/useLeaderboardLink";
+import { __forceStoreBuildForTests } from "../../../entitlements/gameVisibility";
+import type { GameType } from "../../../api/vocab";
 
 jest.mock("expo-haptics", () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
@@ -175,6 +179,21 @@ describe("GameResultModal — submission line", () => {
     expect(screen.getByText("Saved as Riley · #12 on the leaderboard")).toBeTruthy();
   });
 
+  it("shows the best entry's rank as 'Your best' when this game isn't it (#2633)", async () => {
+    await renderCard({
+      submission: { status: "saved", rank: 4, isBest: false, playerName: "Riley" },
+    });
+    expect(screen.getByText("Saved as Riley · Your best: #4")).toBeTruthy();
+    expect(screen.queryByText(/on the leaderboard/)).toBeNull();
+  });
+
+  it("shows this game's placing when it is the best entry", async () => {
+    await renderCard({
+      submission: { status: "saved", rank: 4, isBest: true, playerName: "Riley" },
+    });
+    expect(screen.getByText("Saved as Riley · #4 on the leaderboard")).toBeTruthy();
+  });
+
   it("shows the saved name without a rank when unranked", async () => {
     await renderCard({ submission: { status: "saved", rank: null, playerName: "Riley" } });
     expect(screen.getByText("Saved as Riley")).toBeTruthy();
@@ -228,6 +247,110 @@ describe("GameResultModal — submission line", () => {
     );
     await fireEvent.press(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onProvideName).toHaveBeenCalledWith("Riley"));
+  });
+});
+
+describe("GameResultModal — View leaderboard (#2633)", () => {
+  /** A game screen's wiring: the link comes from `useLeaderboardLink`. */
+  function CardFor({ gameType, navigate }: { gameType: GameType; navigate: jest.Mock }) {
+    const navigation = useMemo(() => ({ navigate }), [navigate]);
+    const onViewLeaderboard = useLeaderboardLink(navigation as never, gameType);
+    return (
+      <GameResultModal
+        visible
+        outcome="win"
+        onHome={jest.fn()}
+        submission={{ status: "saved", rank: 2, playerName: "Riley" }}
+        onViewLeaderboard={onViewLeaderboard}
+      />
+    );
+  }
+
+  async function renderFor(gameType: GameType) {
+    const navigate = jest.fn();
+    await render(
+      <ThemeProvider>
+        <CardFor gameType={gameType} navigate={navigate} />
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    return navigate;
+  }
+
+  afterEach(() => __forceStoreBuildForTests(false));
+
+  it.each(["yacht", "sudoku", "freecell", "sort", "twenty48"] as GameType[])(
+    "shows the link for %s, whose board is enabled, and opens its board",
+    async (gameType) => {
+      const navigate = await renderFor(gameType);
+      const link = screen.getByRole("link", { name: "View leaderboard" });
+      await fireEvent.press(link);
+      expect(navigate).toHaveBeenCalledWith("Leaderboard", { gameType });
+    }
+  );
+
+  it.each(["blackjack", "daily_word"] as GameType[])(
+    "shows no link for %s, whose board is disabled",
+    async (gameType) => {
+      await renderFor(gameType);
+      expect(screen.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy();
+      expect(screen.queryByText("View leaderboard")).toBeNull();
+    }
+  );
+
+  it("shows no link for a game hidden in a store build", async () => {
+    __forceStoreBuildForTests(true);
+    await renderFor("cascade");
+    expect(screen.queryByText("View leaderboard")).toBeNull();
+  });
+
+  it("is in addition to the secondary action, not instead of it", async () => {
+    const onViewLeaderboard = jest.fn();
+    const onChange = jest.fn();
+    await renderCard({
+      onViewLeaderboard,
+      secondaryAction: { label: "Change Difficulty", onPress: onChange },
+    });
+    await fireEvent.press(screen.getByRole("link", { name: "View leaderboard" }));
+    expect(onViewLeaderboard).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Change Difficulty" })).toBeTruthy();
+  });
+
+  it("shows the link even when the game has no submission line", async () => {
+    await renderCard({ onViewLeaderboard: jest.fn(), submission: { status: "unranked" } });
+    expect(screen.getByRole("link", { name: "View leaderboard" })).toBeTruthy();
+  });
+
+  it("hides the card while another screen covers the game, without announcing it again", async () => {
+    const listeners: Record<string, (() => void)[]> = {};
+    let focused = true;
+    const navigation = {
+      isFocused: () => focused,
+      addListener: (event: string, cb: () => void) => {
+        (listeners[event] ??= []).push(cb);
+        return () => undefined;
+      },
+    };
+    const emit = async (event: "focus" | "blur") => {
+      focused = event === "focus";
+      await act(async () => listeners[event]?.forEach((cb) => cb()));
+    };
+    await render(
+      <ThemeProvider>
+        <NavigationContext.Provider value={navigation as never}>
+          <GameResultModal visible outcome="win" onHome={jest.fn()} />
+        </NavigationContext.Provider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    expect(screen.getByText("You Win!")).toBeTruthy();
+
+    await emit("blur");
+    expect(screen.queryByText("You Win!")).toBeNull();
+
+    await emit("focus");
+    expect(screen.getByText("You Win!")).toBeTruthy();
+    expect(announce).toHaveBeenCalledTimes(1);
   });
 });
 

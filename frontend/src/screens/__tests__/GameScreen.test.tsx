@@ -187,6 +187,18 @@ describe("GameScreen", () => {
     });
     expect(mockNavigation.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "yacht" });
   });
+
+  it("⋯ menu Leaderboard item opens Yacht's board (#2633)", async () => {
+    (mockNavigation.navigate as jest.Mock).mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Leaderboard"));
+    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "yacht" });
+  });
 });
 
 // ---------------------------------------------------------------------------

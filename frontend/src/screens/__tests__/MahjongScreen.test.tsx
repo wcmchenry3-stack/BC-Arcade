@@ -68,11 +68,12 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
   };
 });
 
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     setOptions: jest.fn(),
     addListener: mockAddListener,
   }),
@@ -1088,5 +1089,17 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     });
     expect(api.getByText("New Game")).toBeTruthy();
     expect(api.queryByText("Scoreboard")).toBeNull();
+  });
+
+  it("has a Leaderboard item that opens Mahjong's board (#2633)", async () => {
+    const api = await mount();
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "mahjong" });
   });
 });

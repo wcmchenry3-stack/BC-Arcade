@@ -35,9 +35,5 @@
   "levelSelect.title": "Choose a Level",
   "levelSelect.continue": "Continue Level {{level}}",
   "levelSelect.locked": "Locked",
-  "levelSelect.lockedLevel": "Level {{level}}, locked",
-  "tab.levels": "Levels",
-  "tab.leaderboard": "Leaderboard",
-  "leaderboard.empty": "No scores yet.",
-  "leaderboard.levelReached": "Level {{level}}"
+  "levelSelect.lockedLevel": "Level {{level}}, locked"
 }
