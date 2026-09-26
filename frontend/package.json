@@ -108,7 +108,7 @@
     "@typescript-eslint/eslint-plugin": "^8.70.1",
     "@typescript-eslint/parser": "^8.70.1",
     "bundlesize2": "^0.0.35",
-    "eslint": "^9.8.0",
+    "eslint": "^10.11.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^7.1.1",
