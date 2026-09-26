@@ -56,7 +56,46 @@ export interface LeaderboardScreenProps {
  * menu (`useLeaderboardLink`), only for games with an openable board.
  */
 export default function LeaderboardScreen({ route, navigation }: LeaderboardScreenProps) {
-  const { gameType, partition, refreshAfterSync } = route.params;
+  // The route's params are required by type, but a restored or hand-built
+  // navigation state can still arrive without them: show "no leaderboard"
+  // rather than crash.
+  const params = route.params as LeaderboardParams | undefined;
+  if (!params?.gameType) return <NoBoard navigation={navigation} />;
+  return <GameLeaderboard params={params} navigation={navigation} />;
+}
+
+function NoBoard({ navigation }: Pick<LeaderboardScreenProps, "navigation">) {
+  const { t } = useTranslation(["leaderboard", "common"]);
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: APP_HEADER_HEIGHT + insets.top,
+          paddingBottom: Math.max(insets.bottom, 16),
+        },
+      ]}
+    >
+      <AppHeader
+        title={t("common:overflow.menu.leaderboard")}
+        onBack={() => navigation.goBack()}
+        requireBack
+      />
+      <EmptyState kind="empty" message={t("leaderboard:unavailable")} />
+    </View>
+  );
+}
+
+function GameLeaderboard({
+  params: { gameType, partition, refreshAfterSync },
+  navigation,
+}: {
+  params: LeaderboardParams;
+  navigation: LeaderboardScreenProps["navigation"];
+}) {
   const board = openableBoard(gameType);
   // The screen's strings and the game's own (its title; Sudoku's partition
   // labels are in it), not every game's bundle.

@@ -177,6 +177,24 @@ describe("LeaderboardScreen — header and states", () => {
     }
   );
 
+  it("shows no board, and a way back, when opened without params", async () => {
+    await render(
+      <ThemeProvider>
+        <LeaderboardScreen
+          route={{} as unknown as { params: LeaderboardParams }}
+          navigation={navigation}
+        />
+      </ThemeProvider>
+    );
+    expect(screen.getByText("This game has no leaderboard.")).toBeTruthy();
+    expect(screen.getAllByRole("header").some((h) => h.props.children === "Leaderboard")).toBe(
+      true
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Go back to home screen" }));
+    expect(goBack).toHaveBeenCalledTimes(1);
+    expect(mockGetLeaderboard).not.toHaveBeenCalled();
+  });
+
   it("shows no board for a game hidden in a store build", async () => {
     __forceStoreBuildForTests(true);
     await renderBoard("cascade");

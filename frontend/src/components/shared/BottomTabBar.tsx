@@ -10,11 +10,8 @@ import { MAIN_TABS, type MainTab } from "../../navigation/mainTabs";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
-type MaterialIconName = MainTab["icon"];
-
-const TAB_CONFIG: Readonly<Record<string, MainTab>> = Object.fromEntries(
-  MAIN_TABS.map((tab) => [tab.name, tab])
-);
+/** A route the navigator hands us that isn't in `MAIN_TABS`. */
+const UNKNOWN_TAB_ICON: MainTab["icon"] = "circle";
 
 export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -69,10 +66,9 @@ export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
         <View style={styles.tabs}>
           {state.routes.map((route, index) => {
             const focused = state.index === index;
-            const config = TAB_CONFIG[route.name] ?? {
-              icon: "circle" as MaterialIconName,
-              labelKey: route.name,
-            };
+            const config: Omit<MainTab, "name"> = MAIN_TABS.find(
+              (tab) => tab.name === route.name
+            ) ?? { icon: UNKNOWN_TAB_ICON, labelKey: route.name };
             const label = t(config.labelKey as Parameters<typeof t>[0]);
 
             return (

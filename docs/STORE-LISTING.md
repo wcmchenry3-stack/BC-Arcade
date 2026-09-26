@@ -234,7 +234,7 @@ Points to cover for Guideline 4.2 (minimum functionality) — expand into prose 
 2. The privacy-policy URL resolves (#828).
 3. Rating previews show the expected result; screenshot them into #825 / #823.
 4. Screenshots (Sat Oct 3) come from a **store-configuration** build — the prod-API build from Wed 30
-   — so no premium game or Ranks tab appears.
+   — so no premium game appears.
 
 **Sources:** Apple — [Age ratings values and definitions](https://developer.apple.com/help/app-store-connect/reference/app-information/age-ratings-values-and-definitions/),
 [Updated age ratings in App Store Connect](https://developer.apple.com/news/?id=ks775ehf) ·

@@ -1,17 +1,19 @@
 /**
- * mainTabs (#2634) — App.tsx registers `MainTabs()` from `MAIN_TABS`, so this is
- * the guard that every build has the same three tabs. The Star Swarm-only
- * Ranks tab is retired: leaderboards open from each game, never from a tab.
+ * mainTabs (#2634) — the tab registry and the tab bar it drives. The Star
+ * Swarm-only Ranks tab is retired: leaderboards open from each game, never
+ * from a tab.
+ *
+ * What this guards: `MAIN_TABS` is exactly Lobby, Profile and Settings, and
+ * the tab bar renders them labelled. `MAIN_TABS` is a constant with no build
+ * dependency, so the same holds in every build. What it can't guard:
+ * `App.tsx` (which Jest can't render) mapping `MAIN_TABS` into `MainTabs()`
+ * as is; a `<Tab.Screen>` added there directly, or a filter on the list,
+ * would not fail here.
  */
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import BottomTabBar from "../../components/shared/BottomTabBar";
-import {
-  HIDDEN_GAMES,
-  __forceStoreBuildForTests,
-  isGameVisible,
-} from "../../entitlements/gameVisibility";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { MAIN_TABS } from "../mainTabs";
 
@@ -33,15 +35,8 @@ function tabBarProps(): BottomTabBarProps {
   };
 }
 
-describe.each([
-  ["a dev build, with every game visible", false],
-  ["a store build, with the premium games hidden", true],
-])("main tabs in %s", (_build, storeBuild) => {
-  beforeEach(() => __forceStoreBuildForTests(storeBuild));
-  afterEach(() => __forceStoreBuildForTests(false));
-
+describe("main tabs", () => {
   it("are exactly Lobby, Profile and Settings", () => {
-    for (const slug of HIDDEN_GAMES) expect(isGameVisible(slug)).toBe(!storeBuild);
     expect(MAIN_TABS.map((tab) => tab.name)).toEqual(["Lobby", "Profile", "Settings"]);
   });
 
