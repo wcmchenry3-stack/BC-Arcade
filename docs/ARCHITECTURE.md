@@ -76,11 +76,24 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   persisted across app restarts.
 - `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
 - `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`), on foreground
-  and on reconnect (`NetworkContext`), with a global exponential backoff
-  (1 s → 30 min) after a 5xx or network failure. A row leaves the device only
-  after a 2xx.
+  and on reconnect (`NetworkContext`), and on demand through
+  `flushQueuedGames()` (`game/_shared/flushQueuedGames.ts`) from screens that
+  read server results — the result card (`sessionBoardAdapter`), `useMyStats`,
+  `LeaderboardScreen`, `HomeScreen` and `useDailyChallenge` — so a game just
+  finished is uploaded before they ask. After a 5xx or network failure it backs
+  off globally, exponentially (1 s → 30 min); after a 429 it backs off globally
+  for the response's `Retry-After` when it has one (and delays the refused rows
+  by it). An event row is deleted after a 2xx, and also when the server answers
+  409 "Game is already completed." (below); a 400 or 403 dead-letters it (kept on the
+  device, never re-sent); and `eventStore` drops rows older than 7 days and
+  evicts over its cap (see "Queue cap" below). So a row that never got a 2xx
+  can still leave the device.
 - `displayNameSync` — one pending display-name sync (see below).
-- All four are AsyncStorage-backed and survive app kill.
+- `PendingGamesStore`, `eventStore` and `displayNameSync`
+  (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
+  AsyncStorage-backed and survive app kill. `useGameSync`'s and `SyncWorker`'s
+  own state (the active-play window, the backoff) is in memory only and does
+  not.
 
 Nothing else writes a game's result. The result card submits nothing: it only
 asks `GET /games/{id}/rank` where the synced game landed (#2677; §14). There
@@ -127,8 +140,11 @@ nothing, and `DELETE /players/me` without one deletes nothing (#2624). With the
 name on the player there is no per-game name left to duplicate. The legacy
 per-game `POST /<game>/score` routes still insert a row per call, but only
 installed v1.0 builds call them (the current app has no `ScoreQueue`
-handlers), their rows sit under sentinel `*-anon` sessions that no board reads,
-and #2644 removes them.
+handlers), and their rows sit under sentinel `*-anon` sessions. The generic
+boards exclude those sessions; the legacy per-game leaderboard routes, which
+v1.0-era builds still call, list them (e.g. `_top_scores` in
+`backend/solitaire/router.py` filters only on game type, `final_score` and
+`not_abandoned()`). #2644 removes both kinds of legacy route.
 
 What we log:
 
@@ -274,12 +290,21 @@ fallback for devices that never report back.
 `sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
 rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
 NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
-at the start of `GET /stats/me` and `GET /games/me`; there is no scheduler, so
-a player who never calls those again keeps their open rows (boards never read
-open rows). A sweep failure is logged and the read goes on unswept. A device's
-later real completion replaces a swept row (`complete_game`), and an event
-batch for it that the server refuses with 409 "Game is already completed." is
-dropped quietly by `SyncWorker` — no Sentry error, no dead-letter.
+at the start of `GET /stats/me` and on the first page of `GET /games/me` (no
+`cursor`; later pages continue a listing that was just swept,
+`backend/games/router.py`). There is no scheduler, so a player who never calls
+those again keeps their open rows (boards never read open rows). A sweep
+failure is logged and the read goes on unswept. A swept row still counts as
+open to the device: `append_events` accepts events for it, and a later real
+completion replaces it (`complete_game`), so a long-offline queue still lands
+its events and then its result.
+
+**Events for a completed game.** Whenever a game's row already has a real
+(not swept) completion, `POST /games/{id}/events` answers 409 "Game is already
+completed." (`append_events`). `SyncWorker` deletes those rows quietly — no
+Sentry error, no dead-letter (`isAlreadyCompleted` in `syncWorker.ts`) —
+because retrying can't help; the completion itself still goes out, and a
+replayed completion returns the row unchanged.
 
 **Queue cap.** `eventStore` holds at most 5,000 rows or 5 MB
 (`MAX_ROWS` / `MAX_SIZE_BYTES` in `game/_shared/eventQueueConfig.ts`) and drops
@@ -626,9 +651,11 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   target or the salt therefore only changes days not yet frozen. Goals are
   stored as self-contained specs, so a frozen day survives a goal leaving the
   pool.
-- **Completion is a read-side view.** `GET /daily-challenge/status` runs one
-  query over the session's own `games` rows finished inside the local day and
-  evaluates the goals in Python. It is the data `PATCH /games/{id}/complete`
+- **Completion is a read-side view.** `GET /daily-challenge/status` reads the
+  day's frozen template (`schedule.get_or_create_template`: one SELECT, plus an
+  INSERT on the first request for that day and slate), then runs one query over
+  the session's own `games` rows finished inside the local day and evaluates the
+  goals in Python. It is the data `PATCH /games/{id}/complete`
   already writes, so a game played offline counts as soon as the sync queue
   uploads it (§4) — by the time it was played, not the time it was uploaded.
 - **Goals are per game, over the result envelope (#2449).** No one measure fits
@@ -655,7 +682,7 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   game as owned (§10.4) but follows the same rule, so dev never reports a slate
   production would not. Premium-only goal specs are post-launch (#2458), so today
   the two templates are identical, every session resolves to the free slate —
-  override or not — and no query runs. The slate choice is live: each slate's
+  override or not — and `resolve_slate` runs no query. The slate choice is live: each slate's
   template is frozen per day, but which slate a session gets is not pinned, so
   a mid-day entitlement change swaps the challenge on the next `/status`. Two
   guards keep the static pool honest: a test
@@ -663,7 +690,9 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   name a game a free player cannot open), and the free pool is disjoint from the
   premium slugs, which a store build hides (§10.7).
 - **`/today` is always the free slate; only `/status` can be premium.** `/today`
-  has no session, so it never resolves a slate. For an entitled session the goal
+  has no session, so it never resolves a slate; it reads (or, on the day's first
+  request, freezes) the free template through the same
+  `schedule.get_or_create_template`. For an entitled session the goal
   list therefore comes from `/status`, which can differ from `/today` in the goals
   themselves, not just their completion — a client must not build its goals from
   `/today` and only read completion off `/status` (#2455).
@@ -726,13 +755,13 @@ Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly cali
 Where a recorded game shows up in the app (#2519 plan §4.4). Each surface has
 one job and reads the server; none of them writes a score.
 
-| Surface                                                   | Job                                | What it reads                                                                                                                                                                                                                                                                                                                                             |
-| --------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Result card** (`components/shared/GameResultModal.tsx`) | The end of _this_ game             | Its rank line from `useLeaderboardSubmit(sessionBoardAdapter(game))`: `submit({ gameId })` asks `GET /games/{id}/rank` (#2677) and shows "#N on the leaderboard" or "Your best: #N", asks once for a display name, or shows nothing for a game on no board. A "View leaderboard" link appears when the game has an openable board (`useLeaderboardLink`). |
-| **Leaderboard** (`screens/LeaderboardScreen.tsx`, #2633)  | Top players of _one_ game's board  | `GET /games/leaderboard/{game_type}`: one entry per player, with a partition picker where the board has partitions. The player's own row is highlighted (`is_me`); when it is outside the list, their best is pinned below with its exact rank (`me`). Opened from the result card and the game's ⋯ menu.                                                 |
-| **Game stats** (`screens/GameStatsScreen.tsx`, #2635)     | _My_ history in _this_ game        | `GET /stats/me` → `by_game[gameType]`. The last response is cached in memory for the app session, keyed by session id (`hooks/useMyStats.ts`), and cleared by Settings → Delete my data (`clearMyStatsCache`). Blackjack links to its on-device run history.                                                                                              |
-| **Scorecard** (`screens/ScorecardScreen.tsx`, #2636)      | The live view of the match in play | Game state on the device. Only Hearts, Yacht and Blackjack have one (`SCORECARD_GAMES`, `navigation/scorecards.ts`).                                                                                                                                                                                                                                      |
-| **Profile** (`screens/ProfileScreen.tsx`, #2637)          | Cross-game _personal_ summary      | `GET /stats/me`: only tiles that mean the same for every game (sessions, completed, completion rate, time played, games tried, favourite) and one row per game with that game's own best and win rate. No cross-game score. Also "Remove my name from leaderboards" (§4).                                                                                 |
+| Surface                                                   | Job                                | What it reads                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Result card** (`components/shared/GameResultModal.tsx`) | The end of _this_ game             | Its rank line from `useLeaderboardSubmit(sessionBoardAdapter(game))`: `submit({ gameId })` asks `GET /games/{id}/rank` (#2677) and shows "#N on the leaderboard" or "Your best: #N", asks once for a display name, or shows nothing for a game on no board. A "View leaderboard" link appears when the game has an openable board (`useLeaderboardLink`).           |
+| **Leaderboard** (`screens/LeaderboardScreen.tsx`, #2633)  | Top players of _one_ game's board  | `GET /games/leaderboard/{game_type}`: one entry per player, with a partition picker where the board has partitions. The player's own row is highlighted (`is_me`); when it is outside the list, their best is pinned below with its exact rank (`me`). Opened from the result card, the game's ⋯ menu and its Game stats screen (all through `useLeaderboardLink`). |
+| **Game stats** (`screens/GameStatsScreen.tsx`, #2635)     | _My_ history in _this_ game        | `GET /stats/me` → `by_game[gameType]`. The last response is cached in memory for the app session, keyed by session id (`hooks/useMyStats.ts`), and cleared by Settings → Delete my data (`clearMyStatsCache`). Blackjack links to its on-device run history.                                                                                                        |
+| **Scorecard** (`screens/ScorecardScreen.tsx`, #2636)      | The live view of the match in play | Game state on the device. Only Hearts, Yacht and Blackjack have one (`SCORECARD_GAMES`, `navigation/scorecards.ts`).                                                                                                                                                                                                                                                |
+| **Profile** (`screens/ProfileScreen.tsx`, #2637)          | Cross-game _personal_ summary      | `GET /stats/me`: only tiles that mean the same for every game (sessions, completed, completion rate, time played, games tried, favourite) and one row per game with that game's own best and win rate. No cross-game score. Also "Remove my name from leaderboards" (§4).                                                                                           |
 
 `GameShell` takes a required `gameType` prop and adds the ⋯ menu's "Stats"
 item itself, plus "Scorecard" for a game in `SCORECARD_GAMES`; `null` is only
