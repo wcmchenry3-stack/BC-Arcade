@@ -272,6 +272,60 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
   });
 });
 
+// #2710 — a finished game pauses useGameSync's play window: time on the result
+// card or the mode picker is not counted into the next game.
+describe("Yacht play time between games (#2710)", () => {
+  async function rollThenLeave(r: Rendered) {
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
+    });
+    await act(async () => {
+      await r.unmount();
+    });
+  }
+
+  it("Play Again leaves the time on the result card out of the next game", async () => {
+    const r = await renderSolo("yacht");
+    clock.advanceForegroundNow(10_000);
+    await playLastTurn(r, /^Yacht/i);
+    await settle();
+    clock.advanceForegroundNow(3 * 60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    await settle();
+    clock.advanceForegroundNow(5_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(2);
+    expect(completeGame.mock.calls[0]![1].durationMs).toBe(10_000);
+    expect(completeGame.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
+  it("the mode picker's time is left out of the next game", async () => {
+    const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    await playLastTurn(r, /^Yacht/i);
+    await finishCpuTurn();
+    clock.advanceForegroundNow(60_000); // on the result card
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+    });
+    clock.advanceForegroundNow(2 * 60_000); // on the mode picker
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    });
+    clock.advanceForegroundNow(4_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(2);
+    expect(completeGame.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 4_000 })
+    );
+  });
+});
+
 describe("Yacht result card — actions (#2505)", () => {
   it("Play Again keeps vs mode and skips the mode picker", async () => {
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");

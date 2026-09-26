@@ -379,35 +379,41 @@ time as play.
 
 **Active-play window (#2684).** A game that measures no active time of its own
 needs no code for a duration: `useGameSync` fills in `durationMs` with the
-foreground time on the game screen since the previous session ended, with each
-idle gap capped at 10 minutes; a game's own measured duration wins.
+foreground time its active-play window has counted, with each idle gap capped
+at 10 minutes; a game's own measured duration wins.
 
 - Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
   counter that stops while `AppState` is `background` or `inactive`.
-- The window opens when the hook mounts and restarts when a session ends:
-  after `complete()`, and when an open session is abandoned or discarded
-  (unmount, `close()`, or `start()` / `restart()` / `resume()` replacing it),
-  after the abandon has read it. Opening a session with none open leaves it
-  alone, so the thinking time before the first move counts and a game won on
-  its first action still gets a duration.
-- `resetPlayWindow()` (#2710) restarts the window from now. A screen that
-  shows a menu or a result card before the next puzzle, and opens its session
-  at the first move, calls it when the new puzzle appears — Sort when it
-  enters a level (a level card, Continue, Next Level, Play Again), FreeCell
-  when it deals — so time on the level grid or the last game's result card is
-  not counted into the next game. Call it after closing any open session: it
-  drops what the window has counted. `start()` does not reset the window, so a
-  screen whose puzzle is on screen from mount (Daily Word) keeps its thinking
-  time without calling it.
-- Idle cap: player-activity pings — mount, `markStarted()`, `enqueue()`,
-  `complete()`, `resume()` — split the window into gaps, and each gap adds at
-  most `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an
-  in-app pause, stops counting there.
+- The window is running or paused (#2710):
+  - It starts **running** when the hook mounts, so the thinking time before
+    the first move counts (Daily Word's puzzle is on screen from mount) and a
+    game won on its first action still gets a duration.
+  - A session ending **pauses** it at zero: `complete()`, and a close that
+    ended a session — unmount, `close()`, or `start()` / `restart()` /
+    `resume()` replacing one — after the abandon has read it. While paused,
+    pings add nothing, so time on a result card or a menu between games is
+    never counted (Yacht's Play Again and mode picker, Star Swarm's New Run,
+    Blackjack's table picker).
+  - `start()` / `restart()` resume a paused window from zero at that moment.
+    A running window is left alone, so a game that opens its session at the
+    first move keeps the time before it.
+  - `resume()` restarts it from zero: the session counts from the resume.
+  - `resetPlayWindow()` restarts it from zero, running. It is for a screen
+    that shows a new puzzle before its session opens: Sort when it enters a
+    level (a level card, Next Level, Play Again, or Continue with no session
+    to resume) or starts it over (New Game), FreeCell when it deals. The
+    thinking time on the new board counts; the level grid and the previous
+    board do not. Call it with no session open — it drops what the window has
+    counted.
+- Idle cap: player-activity pings — `markStarted()`, `enqueue()`,
+  `complete()` — split a running window into gaps, and each gap adds at most
+  `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an in-app
+  pause, stops counting there.
 - `complete()` sends the game's own `summary.durationMs` when it is > 0,
   otherwise the window. The hook's own abandons send
   `ProgressSnapshot.durationMs` when it is > 0, otherwise the window. A
   discarded (never-started) session sends nothing.
-- A session resumed after a killed process counts from the relaunch; time
+- A session resumed after a killed process counts from the resume; time
   before the kill is lost (an undercount, never an overcount).
 - A window reading 0 sends no duration — the `resolveDurationMs` rule: 0 means
   "unknown".

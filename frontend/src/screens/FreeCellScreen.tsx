@@ -304,8 +304,9 @@ export default function FreeCellScreen() {
       const result = progressResult();
       syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
     }
-    // The new deal's play time starts now: time on the last game's result card
-    // is not play (#2710).
+    // The new deal's play time starts now, though its session opens at the
+    // first move: the thinking time before that move counts, and time spent on
+    // the previous board or its result card does not (#2710).
     syncResetPlayWindow();
     // Stop an in-flight auto-complete. Its next scheduled step would otherwise overwrite
     // the new deal with the old game's state — and, since that state's move count is

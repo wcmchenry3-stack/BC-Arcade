@@ -63,34 +63,37 @@
  * unstarted one is discarded at startup.
  *
  * Active-play clock (#2684): a game that does not measure its own active time
- * still reports a duration. A session's duration is the foreground time on the
- * game screen since the previous session ended (or since the hook mounted),
+ * still reports a duration — the foreground time the window below has counted,
  * with each idle gap capped at `IDLE_GAP_CAP_MS` (10 minutes); a game's own
  * measured duration wins. Foreground time comes from `foregroundNow()`, so time
  * the app spends `background` or `inactive` is not counted. The gaps are the
- * stretches between player-activity pings — mount, `markStarted()`,
- * `enqueue()`, `complete()` and `resume()` — so a screen left awake and idle,
- * or an in-app pause, adds at most the cap. The thinking time before the first
- * move counts, and a game won on its first action still gets a duration.
+ * stretches between player-activity pings — `markStarted()`, `enqueue()`,
+ * `complete()` — so a screen left awake and idle, or an in-app pause, adds at
+ * most the cap. It is never wall-clock start-to-end time (#2619,
+ * `resolveDurationMs`).
  *
- * The window restarts when a session ends: after `complete()`, and when an
- * open session is abandoned or discarded (unmount, `close()`, or `start()` /
- * `restart()` / `resume()` replacing it) — after the abandon has read it.
+ * The window is running or paused (#2710):
+ *   - It starts running at mount, so the thinking time before the first move
+ *     counts (Daily Word's puzzle is on screen from mount), and a game won on
+ *     its first action still gets a duration.
+ *   - A session ending pauses it at zero: `complete()`, and a close that ended
+ *     a session — unmount, `close()`, or `start()` / `restart()` / `resume()`
+ *     replacing one — once the abandon has read it. While paused, pings add
+ *     nothing, so time on a result card or menu is never counted.
+ *   - `start()` / `restart()` resume a paused window from zero at that moment.
+ *     A running window is left alone, so a game that opens its session at the
+ *     first move keeps the time before it.
+ *   - `resume()` restarts it from zero: a session resumed after a killed
+ *     process counts from the resume (an undercount, never an overcount).
+ *   - `resetPlayWindow()` restarts it from zero, running. It is for a screen
+ *     that shows a new puzzle before its session opens (Sort entering a level
+ *     or starting it over, FreeCell dealing), so the time on the level grid or
+ *     the previous board is not counted. Call it with no session open.
+ *
  * `complete()` sends the game's own `summary.durationMs` when it is > 0,
  * otherwise the window. The hook's own abandons send the snapshot's
  * `durationMs` when > 0, otherwise the window; a discarded (never-started)
- * session sends nothing. A session resumed after a killed process counts from
- * the relaunch (an undercount, never an overcount). It is never wall-clock
- * start-to-end time (#2619, `resolveDurationMs`).
- *
- * `start()` does not restart the window, so a screen whose puzzle is on screen
- * from mount (Daily Word) keeps the thinking time before the first move. A
- * screen that shows menus or a result card before the next puzzle — and opens
- * its session at the first move — calls `resetPlayWindow()` when the new puzzle
- * appears (Sort entering a level or going to Next Level, FreeCell dealing), so
- * time on the level grid or the last game's result card is not counted into
- * the next session (#2710). Call it after closing any open session, since it
- * drops what the window has counted so far.
+ * session sends nothing.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -190,11 +193,12 @@ export interface UseGameSyncReturn {
    */
   close: () => void;
   /**
-   * Restart the active-play window from now (#2710): the next session's
-   * duration counts from this call, not from the last session's end or the
-   * hook's mount. Call it when a new puzzle appears on a screen that showed a
-   * menu or a result card first, after closing any open session (it drops
-   * whatever the window has counted, and does not touch the session itself).
+   * Restart the active-play window from zero, running (#2710): the next
+   * session's duration counts from this call. For a screen that shows a new
+   * puzzle before its session opens (at the first move) — the time on the menu
+   * or the previous board before it is not play. Call it with no session open:
+   * it drops whatever the window has counted, and does not touch the session.
+   * Not needed after `start()`/`restart()`/`resume()`, which manage the window.
    */
   resetPlayWindow: () => void;
   /** Delegate to gameEventClient.reportBug with try/catch isolation. */
@@ -230,24 +234,37 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   // Active-play window (#2684): foreground time banked up to the last
   // player-activity ping (each gap capped), and foregroundNow() at that ping.
-  // Mounting is the first ping.
+  // It runs from mount; a session ending pauses it at zero (#2710).
   const windowBankedRef = useRef(0);
   const fgAtLastPingRef = useRef<number | null>(null);
+  const windowRunningRef = useRef(true);
   if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
 
   const ping = useCallback(() => {
+    if (!windowRunningRef.current) return;
     windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
     fgAtLastPingRef.current = foregroundNow();
   }, []);
 
   const readWindow = useCallback(
-    (): number => windowBankedRef.current + cappedGap(fgAtLastPingRef.current ?? foregroundNow()),
+    (): number =>
+      windowRunningRef.current
+        ? windowBankedRef.current + cappedGap(fgAtLastPingRef.current ?? foregroundNow())
+        : windowBankedRef.current,
     []
   );
 
-  const resetWindow = useCallback(() => {
+  /** Restart the window from zero, running. */
+  const restartWindow = useCallback(() => {
     windowBankedRef.current = 0;
     fgAtLastPingRef.current = foregroundNow();
+    windowRunningRef.current = true;
+  }, []);
+
+  /** A session ended: zero the window and hold it until the next one. */
+  const pauseWindow = useCallback(() => {
+    windowBankedRef.current = 0;
+    windowRunningRef.current = false;
   }, []);
 
   // Abandon the open session, attaching the game's progress snapshot if it
@@ -277,9 +294,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   // Close the open session, if any: abandoned when the player started it,
   // otherwise discarded — an untouched session is never left pending (#2619,
   // #2654). Either way the hook has no open session afterwards, and the
-  // active-play window restarts once the abandon has read it. With no session
-  // open nothing changes, so a screen that opens its session at the first move
-  // keeps the thinking time before it.
+  // active-play window pauses at zero once the abandon has read it. With no
+  // session open nothing changes, so a screen that opens its session at the
+  // first move keeps the thinking time before it.
   const closeOpen = useCallback(() => {
     const gid = gameIdRef.current;
     gameIdRef.current = null;
@@ -293,8 +310,8 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
         // Isolation.
       }
     }
-    resetWindow();
-  }, [abandon, resetWindow]);
+    pauseWindow();
+  }, [abandon, pauseWindow]);
 
   // Close any open session on unmount.
   useEffect(() => closeOpen, [closeOpen]);
@@ -302,6 +319,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {
       closeOpen();
+      // A paused window (a session ended) counts from here; a running one
+      // keeps the time before the first move (#2710).
+      if (!windowRunningRef.current) restartWindow();
       gameIdRef.current = gameEventClient.startGame(
         gameTypeRef.current,
         metadata ?? {},
@@ -310,7 +330,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       completedRef.current = false;
       startedRef.current = false;
     },
-    [closeOpen]
+    [closeOpen, restartWindow]
   );
 
   const resume = useCallback(
@@ -323,15 +343,15 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       if (!gid) return false;
       closeOpen();
-      // Play before the kill is unknown: the window counts from the relaunch's
-      // mount (an undercount, never an overcount).
-      ping();
+      // Play before the kill is unknown: the window counts from the resume
+      // (an undercount, never an overcount).
+      restartWindow();
       gameIdRef.current = gid;
       completedRef.current = false;
       startedRef.current = true;
       return true;
     },
-    [closeOpen, ping]
+    [closeOpen, restartWindow]
   );
 
   const markStarted = useCallback(() => {
@@ -382,9 +402,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       completedRef.current = true;
       gameIdRef.current = null;
-      resetWindow();
+      pauseWindow();
     },
-    [ping, readWindow, resetWindow]
+    [ping, readWindow, pauseWindow]
   );
 
   // Same as start(): it closes the open session before opening the new one.
@@ -416,7 +436,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     complete,
     restart,
     close: closeOpen,
-    resetPlayWindow: resetWindow,
+    resetPlayWindow: restartWindow,
     reportBug,
     getGameId,
     setProgressSnapshot,

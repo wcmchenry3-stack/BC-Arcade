@@ -57,9 +57,12 @@ jest.mock("@react-navigation/native", () => ({
 // Per-session game sync (#2512): assert start/complete without the real client.
 const mockStartGame = jest.fn(() => "sort-game-id");
 const mockCompleteGame = jest.fn();
+// No killed session to resume unless a test says so (#2654).
+const mockResumeGame = jest.fn((): string | null => null);
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
     enqueueEvent: jest.fn(),
     completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
@@ -820,6 +823,48 @@ describe("SortScreen — result card (#2512)", () => {
     clock.advanceForegroundNow(12_000);
     await solveShownLevel(r);
     expect(completion().summary.durationMs).toBe(12_000);
+  });
+
+  it("counts a resumed level's session from Continue, not from the level grid", async () => {
+    mockResumeGame.mockReturnValueOnce("killed-sort-id");
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: initState(LEVELS[0]!.bottles as (Color | "")[][]),
+    });
+    const r = await renderScreen();
+    await r.findByLabelText("Continue Level 1");
+    clock.advanceForegroundNow(5 * 60_000); // on the level grid
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    clock.advanceForegroundNow(12_000);
+    await solveShownLevel(r);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    const { gameId, summary } = completion();
+    expect(gameId).toBe("killed-sort-id");
+    expect(summary.durationMs).toBe(12_000);
+  });
+
+  it("New Game starts the level's play time over with the fresh board", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    clock.advanceForegroundNow(40_000); // on the first board, no pour made
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+    });
+    clock.advanceForegroundNow(8_000);
+    await solveShownLevel(r);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(completion().summary.durationMs).toBe(8_000);
   });
 
   it("sends total_moves as the sum of the best moves up to the frontier", async () => {

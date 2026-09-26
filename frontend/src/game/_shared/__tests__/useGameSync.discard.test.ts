@@ -10,6 +10,11 @@ import { eventStore } from "../eventStore";
 import { gameEventClient } from "../gameEventClient";
 import { pendingGamesStore } from "../pendingGamesStore";
 import { useGameSync } from "../useGameSync";
+import type { ForegroundClockMock } from "../__mocks__/foregroundClock";
+
+// useGameSync's foreground clock (#2684) is the shared mock jest.setup.ts pins
+// (#2710): it moves only when a test moves it.
+const clock = jest.requireMock<ForegroundClockMock>("../foregroundClock");
 
 async function settle(): Promise<void> {
   // Fire-and-forget persistence needs a few turns to land.
@@ -55,6 +60,7 @@ describe("useGameSync restart() with the real client (#2619)", () => {
       result.current.markStarted();
     });
     const oldId = result.current.getGameId()!;
+    clock.advanceForegroundNow(3_000);
 
     await act(() => {
       result.current.restart();
@@ -63,8 +69,8 @@ describe("useGameSync restart() with the real client (#2619)", () => {
 
     const old = pendingGamesStore.get(oldId);
     expect(old?.completed).toBe(true);
-    // Real time runs here, so the active-play window (#2684) may add a durationMs.
-    expect(old?.completeSummary).toEqual(expect.objectContaining({ outcome: "abandoned" }));
-    expect(old?.completeSummary).not.toHaveProperty("finalScore");
+    // The pinned clock moved 3 s: the active-play window (#2684) sends exactly
+    // that, and an abandon carries no score.
+    expect(old?.completeSummary).toEqual({ outcome: "abandoned", durationMs: 3_000 });
   });
 });
