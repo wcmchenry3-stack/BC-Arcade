@@ -16,6 +16,7 @@ interface Props {
   cardHeight: number;
   gap?: number;
   labelFontSize?: number;
+  scorePillFontSize?: number;
   /**
    * Maximum cards per row. Additional cards wrap to a new row so the hand
    * grows downward into reserved table space rather than overflowing into
@@ -36,6 +37,7 @@ export default function HandDisplay({
   cardHeight,
   gap = 8,
   labelFontSize = 13,
+  scorePillFontSize,
   maxPerRow = 5,
 }: Props) {
   const { colors } = useTheme();
@@ -55,7 +57,13 @@ export default function HandDisplay({
       )}
 
       {showScore && variant === "player" && (
-        <ScorePill value={hand.value} soft={hand.soft} concealed={concealed} variant={variant} />
+        <ScorePill
+          value={hand.value}
+          soft={hand.soft}
+          concealed={concealed}
+          variant={variant}
+          fontSize={scorePillFontSize}
+        />
       )}
 
       <View style={styles.rows}>

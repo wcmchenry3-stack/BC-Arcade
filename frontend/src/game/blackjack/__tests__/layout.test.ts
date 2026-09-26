@@ -118,6 +118,16 @@ describe("calculateBlackjackLayout", () => {
       const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 400 });
       expect(layout.splitCardWidth).toBeLessThan(layout.playerCardWidth);
     });
+
+    it("compact split card height is 51 (Math.round(36 * 1.414))", () => {
+      const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 400 });
+      expect(layout.splitCardHeight).toBe(51);
+    });
+
+    it("non-compact split card height is 68 (Math.round(48 * 1.414))", () => {
+      const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
+      expect(layout.splitCardHeight).toBe(68);
+    });
   });
 
   describe("hand display properties", () => {
@@ -140,5 +150,29 @@ describe("calculateBlackjackLayout", () => {
       const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 400 });
       expect(layout.handLabelFontSize).toBe(11);
     });
+
+    it("normal scorePillFontSize is 32", () => {
+      const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
+      expect(layout.scorePillFontSize).toBe(32);
+    });
+
+    it("compact scorePillFontSize is 22", () => {
+      const layout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 400 });
+      expect(layout.scorePillFontSize).toBe(22);
+    });
+  });
+
+  describe("spacing tokens sourced from layout", () => {
+    const normal = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
+    const compact = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 400 });
+
+    it("normal handsRowGap is 8", () => expect(normal.handsRowGap).toBe(8));
+    it("compact handsRowGap is 6", () => expect(compact.handsRowGap).toBe(6));
+    it("normal splitHandPadding is 6", () => expect(normal.splitHandPadding).toBe(6));
+    it("compact splitHandPadding is 4", () => expect(compact.splitHandPadding).toBe(4));
+    it("normal controlsPaddingBottom is 32", () => expect(normal.controlsPaddingBottom).toBe(32));
+    it("compact controlsPaddingBottom is 12", () => expect(compact.controlsPaddingBottom).toBe(12));
+    it("normal controlsGap is 16", () => expect(normal.controlsGap).toBe(16));
+    it("compact controlsGap is 8", () => expect(compact.controlsGap).toBe(8));
   });
 });

@@ -53,7 +53,7 @@ export default function BlackjackTable({
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       {isSplit ? (
-        <View style={styles.handsRow}>
+        <View style={[styles.handsRow, { gap: layout.handsRowGap }]}>
           {playerHands.map((hand, i) => {
             const isActive = isPlayerPhase && i === activeHandIndex;
             const bet = handBets?.[i];
@@ -64,6 +64,7 @@ export default function BlackjackTable({
                 key={i}
                 style={[
                   styles.splitHand,
+                  { padding: layout.splitHandPadding },
                   isActive && {
                     borderColor: colors.accent,
                     borderWidth: 2,
@@ -82,6 +83,7 @@ export default function BlackjackTable({
                   cardHeight={layout.splitCardHeight}
                   gap={layout.handGap}
                   labelFontSize={layout.handLabelFontSize}
+                  scorePillFontSize={layout.scorePillFontSize}
                   maxPerRow={3}
                 />
                 {bet != null && phase !== "result" && (
@@ -106,6 +108,7 @@ export default function BlackjackTable({
             cardHeight={layout.playerCardHeight}
             gap={layout.handGap}
             labelFontSize={layout.handLabelFontSize}
+            scorePillFontSize={layout.scorePillFontSize}
             maxPerRow={5}
           />
         </View>
@@ -137,12 +140,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-start",
     width: "100%",
-    gap: 8,
   },
   splitHand: {
     flex: 1,
     alignItems: "center",
-    padding: 6,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "transparent",

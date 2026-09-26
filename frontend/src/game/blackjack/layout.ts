@@ -3,11 +3,11 @@
 // the same threshold without re-importing from the screen.
 export const COMPACT_HEIGHT_BREAKPOINT = 660;
 
-// Standard playing-card aspect ratio (≈ √2).
+// Standard playing-card aspect ratio (≈ √2). Used only for split card height.
 const CARD_ASPECT = 1.414;
 
 export interface BlackjackLayoutInput {
-  availableWidth: number;
+  availableWidth?: number;
   availableHeight: number;
 }
 
@@ -38,6 +38,15 @@ export interface BlackjackLayout {
   // Hand display
   handGap: number;
   handLabelFontSize: number;
+  scorePillFontSize: number;
+
+  // Split hand row
+  handsRowGap: number;
+  splitHandPadding: number;
+
+  // Controls area
+  controlsPaddingBottom: number;
+  controlsGap: number;
 }
 
 export function calculateBlackjackLayout(input: BlackjackLayoutInput): BlackjackLayout {
@@ -75,6 +84,10 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
     tablePaddingV: compact ? 4 : 8,
     handGap: compact ? 2 : 8,
     handLabelFontSize: compact ? 11 : 13,
+    scorePillFontSize: compact ? 22 : 32,
+    handsRowGap: compact ? 6 : 8,
+    splitHandPadding: compact ? 4 : 6,
+    controlsPaddingBottom: compact ? 12 : 32,
+    controlsGap: compact ? 8 : 16,
   };
 }
-

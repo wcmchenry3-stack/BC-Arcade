@@ -282,7 +282,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       )}
 
       {/* Phase-specific controls */}
-      <View style={[styles.controls, layout.compact && styles.controlsCompact]}>
+      <View
+        style={[
+          styles.controls,
+          { paddingBottom: layout.controlsPaddingBottom, gap: layout.controlsGap },
+        ]}
+      >
         {state?.phase === "result" && (
           <>
             {!isSplit && <ResultBanner outcome={state.outcome!} payout={state.payout} />}
@@ -404,16 +409,10 @@ const styles = StyleSheet.create({
   controls: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 16,
     // flexShrink: 0 keeps the action cluster fully rendered even when the
     // tableRow above is competing for space — without this, on compact
     // viewports the controls could be squeezed to zero height.
     flexShrink: 0,
-  },
-  controlsCompact: {
-    paddingBottom: 12,
-    gap: 8,
   },
   resultActions: {
     width: "100%",
