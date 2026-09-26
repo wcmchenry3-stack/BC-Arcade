@@ -1,0 +1,398 @@
+<title>BC Arcade Launch Triage</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=Manrope:wght@400;600;700&display=swap">
+<style>
+  :root {
+    --bg: #f5ecd7; --surface: #fbf4e2; --surface-alt: #eddfbf; --surface-high: #fff8e8;
+    --border: #d8c9a6; --text: #1a1412; --muted: #6b5e4a;
+    --accent: #1bc5d4; --accent-strong: #00a8b8; --secondary: #a34fc4; --tertiary: #8fa800;
+    --error: #d94a42; --good: #2f9e5a;
+    --must: #d94a42; --should: #b8860b; --could: #00a8b8; --later: #6b5e4a;
+    --font-head: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+    --font-body: "Manrope", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0e0e13; --surface: #19191f; --surface-alt: #1f1f26; --surface-high: #25252c;
+      --border: #2e2e38; --text: #e8e8f0; --muted: #a0a0ac;
+      --accent: #8ff5ff; --accent-strong: #00eefc; --secondary: #d674ff; --tertiary: #cafd00;
+      --error: #ff716c; --good: #4ade80;
+      --must: #ff716c; --should: #f2c94c; --could: #8ff5ff; --later: #a0a0ac;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e0e13; --surface: #19191f; --surface-alt: #1f1f26; --surface-high: #25252c;
+    --border: #2e2e38; --text: #e8e8f0; --muted: #a0a0ac;
+    --accent: #8ff5ff; --accent-strong: #00eefc; --secondary: #d674ff; --tertiary: #cafd00;
+    --error: #ff716c; --good: #4ade80;
+    --must: #ff716c; --should: #f2c94c; --could: #8ff5ff; --later: #a0a0ac;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+    padding-block: 32px 64px; padding-inline: 16px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 40px; }
+  h1, h2, h3 { font-family: var(--font-head); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.05; }
+  h2 { font-size: 24px; }
+  h3 { font-size: 17px; }
+  p { margin: 0; max-width: 68ch; }
+  a { color: inherit; text-decoration-color: var(--accent-strong); text-underline-offset: 2px; }
+  a:hover { color: var(--accent-strong); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+  .eyebrow { font-family: var(--font-head); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: grid; gap: 18px; }
+  header .lede { font-size: 17px; max-width: 64ch; }
+
+  .timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stop { background: var(--surface); border: 1px solid var(--border); padding: 14px 16px; display: grid; gap: 2px; }
+  .stop .day { font-family: var(--font-head); font-size: 26px; font-weight: 700; line-height: 1; }
+  .stop .what { font-weight: 600; }
+  .stop .left { font-size: 13px; color: var(--muted); }
+  .stop.next { border-color: var(--accent-strong); box-shadow: inset 4px 0 0 var(--accent-strong); }
+
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .fact { display: grid; gap: 2px; border-top: 2px solid var(--border); padding-top: 8px; }
+  .fact b { font-family: var(--font-head); font-size: 22px; font-weight: 700; }
+  .fact span { font-size: 13px; color: var(--muted); }
+
+  section { display: grid; gap: 14px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .tier { font-family: var(--font-head); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 9px; border-radius: 2px; color: var(--bg); }
+  .tier.must { background: var(--must); }
+  .tier.should { background: var(--should); }
+  .tier.could { background: var(--could); }
+  .tier.later { background: var(--later); }
+  .sec-head .rule { font-size: 14px; color: var(--muted); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--border); }
+  thead th { border-top: 0; background: var(--surface-alt); font-family: var(--font-head); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  td.issue { white-space: nowrap; font-family: var(--font-head); font-weight: 700; }
+  td.when { white-space: nowrap; }
+  td.owner { white-space: nowrap; }
+  tr.overdue td.when { color: var(--error); font-weight: 700; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); white-space: nowrap; }
+  .chip.owner { border-color: var(--secondary); color: var(--secondary); }
+  .chip.device { border-color: var(--tertiary); color: var(--tertiary); }
+  .chip.code { border-color: var(--accent-strong); color: var(--accent-strong); }
+  .chip.ext { border-color: var(--error); color: var(--error); }
+
+  .callout { background: var(--surface-high); border: 1px solid var(--border); border-left: 4px solid var(--secondary); padding: 16px 18px; display: grid; gap: 8px; }
+  .callout.warn { border-left-color: var(--error); }
+  .callout h3 { font-size: 16px; }
+
+  .buckets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .bucket { background: var(--surface); border: 1px solid var(--border); padding: 12px 14px; display: grid; gap: 4px; }
+  .bucket b { font-family: var(--font-head); }
+  .bucket span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 72ch; }
+  .closed { display: grid; gap: 6px; }
+  .closed li { display: grid; grid-template-columns: 60px 1fr; gap: 10px; }
+  .closed .n { font-family: var(--font-head); font-weight: 700; }
+  footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 14px; }
+
+  @media (max-width: 720px) {
+    .timeline { grid-template-columns: 1fr; }
+    .facts { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    a { transition: color 120ms ease; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">BC Arcade · v1.0 store submission · backlog triage as of Fri Sep 26, 2026</div>
+  <h1>Launch triage</h1>
+  <p class="lede">What must, should and could close before the Oct 9 submission, drawn from the 181 open GitHub issues (after thirteen closures today), the release plan, and what merged on <code>dev</code> since the plan's last update on Sep 22. The owner's launch bar is crash and stability fixes only. Almost none of the remaining launch work is code: it is owner sign-offs, store forms and device verification.</p>
+
+  <div class="timeline">
+    <div class="stop next">
+      <div class="day">Tue Sep 29</div>
+      <div class="what">Production API cutover</div>
+      <div class="left num">3 days · release config points at prod, first store-configuration builds Wed 30</div>
+    </div>
+    <div class="stop">
+      <div class="day">Thu Oct 8</div>
+      <div class="what">Freeze</div>
+      <div class="left num">12 days · showstoppers only after this, Supabase on Pro</div>
+    </div>
+    <div class="stop">
+      <div class="day">Fri Oct 9</div>
+      <div class="what">Store submission</div>
+      <div class="left num">13 days · App Store Connect and Play Console, buffer through Oct 15</div>
+    </div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><b class="num">181</b><span>open issues after today's thirteen closures</span></div>
+    <div class="fact"><b class="num">12</b><span>must items, 0 of them new code</span></div>
+    <div class="fact"><b class="num">7 + 5</b><span>free games in the store build + hidden premium (changed Sep 25)</span></div>
+    <div class="fact"><b class="num">6</b><span>must items waiting only on a real device</span></div>
+  </div>
+</header>
+
+<section id="must">
+  <div class="sec-head">
+    <span class="tier must">Must</span>
+    <h2>Submission does not happen without these</h2>
+    <span class="rule">Ordered by deadline. Every one has a named owner and a date.</span>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Issue</th><th>What remains</th><th>Kind</th><th>Due</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="issue">Promotion</td>
+        <td><code>dev</code> to <code>main</code> before the cutover. Migrations 0022 through 0028 (tier swaps, leaderboard tables, display names, win backfill) exist only on <code>dev</code>. Alembic runs on every boot, so the promotion applies them to Supabase. This is the owner's release operation per the git standard.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Sep 29</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1917">#1917</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1916">#1916</a></td>
+        <td>Store-configuration proof on the Wed 30 prod-API builds: <b>7 tiles, 3 tabs</b>, no Ranks, production <code>/entitlements</code> returns an empty <code>entitled_games</code> for a fresh session, prod <code>DATABASE_URL</code> host is the Supabase pooler and no <code>ENTITLEMENT_DEV_OVERRIDE</code> on the prod service (check the Render dashboard, not just <code>render.yaml</code>). Then close #1917. Note the plan still says "6 tiles" in several places; Sudoku moved free on Sep 25.</td>
+        <td><span class="chip device">device</span> <span class="chip owner">owner</span></td>
+        <td class="when">Sep 30</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/830">#830</a></td>
+        <td>TestFlight build #2 from the <b>App Store</b> Xcode Cloud workflow (no <code>BC_API_TARGET</code>) so it targets the prod API. The TestFlight workflow builds against dev since #2612 and would show 12 tiles. Post-clone log must say <code>STORE build</code>.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Sep 30</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2428">#2428</a></td>
+        <td>Code merged and on <code>main</code>. Owed: airplane-mode Daily Word check on iOS and Android (cached puzzle loads, no <code>unexpected</code> error in Sentry). Done when Sentry issues 4W / 4Y / 42 stop receiving events from builds that contain the fix.</td>
+        <td><span class="chip device">device</span></td>
+        <td class="when">Sep 30 builds</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/851">#851</a></td>
+        <td>Backend half verified. Owed: confirm frontend Sentry events from a device build land under <code>production</code> for the prod API and <code>development</code> for dev. Without this the launch-week crash-free numbers mean nothing.</td>
+        <td><span class="chip device">device</span></td>
+        <td class="when">Sep 30 builds</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2392">#2392</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1914">#1914</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2480">#2480</a></td>
+        <td>Device play-through of the daily challenge, streak badge and XP (Home pill, +XP after a game, airplane mode shows the grid with no pill) on both platforms. All code is merged; #2480 carries the 10-item Android checklist and is blocked only on a device being attached.</td>
+        <td><span class="chip device">device</span></td>
+        <td class="when">Oct 1</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/828">#828</a></td>
+        <td>Lawyer pass on the merged privacy-policy and terms drafts (open decisions listed in <code>docs/LEGAL-REVIEW-NOTES.md</code>: publisher entity and address, retention limit, governing law, liability cap), then host at <code>buffingchi.com/privacy</code> and <code>/terms</code>. Both store consoles and external TestFlight require the live URL.</td>
+        <td><span class="chip owner">owner</span> <span class="chip ext">external</span></td>
+        <td class="when">Oct 2</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2676">#2676</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1925">#1925</a></td>
+        <td>Fold into the same lawyer pass: disclose leaderboard display names (shipped Sep 25 in #2674, so they are in the v1.0 build) and the feedback Cloudflare Worker as a processor. Cheap now, a second legal round later.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Oct 2</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/823">#823</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/825">#825</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2014">#2014</a></td>
+        <td>App Store Connect and Play Console listings, Apple age rating and IARC questionnaires, Play Data Safety. Answers are pre-drafted in <code>docs/STORE-LISTING.md</code> and <code>docs/STORE-PRIVACY-ANSWERS.md</code>; the rated build has no Blackjack, so every gambling answer is No. Screenshots Oct 3 from the Wed 30 store-configuration build.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Oct 2 to 3</td>
+      </tr>
+      <tr class="overdue">
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/832">#832</a></td>
+        <td>Google must approve the Play upload-key reset requested Sep 19. <b>No Play upload of any kind is possible until it lands</b>, and the Sep 22 check could not tell whether it is pending or approved. Check the Play Console account email and chase now. Fallback for testing only: sideload the locally signed build (#2480).</td>
+        <td><span class="chip ext">external</span> <span class="chip owner">owner</span></td>
+        <td class="when">Chase now</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/857">#857</a></td>
+        <td>Pick the launch version and land or close the held release-please PR #2424 ("release 1.1.0"). One version across <code>app.json</code>, <code>build.gradle</code> and the pbxproj via <code>version-sync.yml</code>. Kill-switch is post-launch.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Oct 6</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2593">#2593</a></td>
+        <td>Upgrade the Supabase project to Pro and confirm daily backups are listed. The free plan has no backups and pauses after about seven idle days. This was the last open box in #2432, which is now closed in its favour.</td>
+        <td><span class="chip owner">owner</span></td>
+        <td class="when">Oct 8</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="should">
+  <div class="sec-head">
+    <span class="tier should">Should</span>
+    <h2>Cheap, real risk, do before the freeze</h2>
+    <span class="rule">Each is an hour or less, or is verification that folds into the Oct 1 device QA script.</span>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Issue</th><th>Why it makes the cut</th><th>Kind</th><th>When</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2473">#2473</a></td>
+        <td>Daily Word wipes saved progress before fetching today's puzzle, so a failed fetch loses the player's board. Free game, data-loss shape, reorder fetch-then-teardown plus one test. Under an hour.</td>
+        <td><span class="chip code">code</span></td>
+        <td class="when">Sep 27 buffer day</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/845">#845</a></td>
+        <td>CSP and HSTS for the production URLs. Prod has been live at <code>games.buffingchi.com</code> since Sep 22 without them; the dependency (#505) is done.</td>
+        <td><span class="chip code">code</span></td>
+        <td class="when">Sep 27 buffer day</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/847">#847</a></td>
+        <td>PII scrubbing audit. Partly done by #2443 (header scrubbing). Confirm <code>send_default_pii</code> is off on both SDKs and that request logs redact headers, then close.</td>
+        <td><span class="chip code">code</span></td>
+        <td class="when">Before Oct 8</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2201">#2201</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2263">#2263</a></td>
+        <td>Win-animation ordering and the drag behaviour checklist for Solitaire and FreeCell. Both are code-complete and need only device confirmation on the free games. Add to the Oct 1 QA script and close.</td>
+        <td><span class="chip device">device</span></td>
+        <td class="when">Oct 1</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/856">#856</a></td>
+        <td>Offline, error and empty-state pass over the seven free games. Not separate work: it is the airplane-mode half of the Oct 1 QA script, written down.</td>
+        <td><span class="chip device">device</span></td>
+        <td class="when">Oct 1</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="could">
+  <div class="sec-head">
+    <span class="tier could">Could</span>
+    <h2>Only if the Sep 27 buffer day is still free</h2>
+    <span class="rule">None of these change what the store reviewer sees.</span>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Issue</th><th>Case for it</th><th>Case against</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2460">#2460</a></td>
+        <td>Single source of truth for the premium list. Three tier swaps in one week (Blackjack, Mahjong, Sudoku) make drift plausible.</td>
+        <td>A drift test already exists and passed through all three swaps.</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1924">#1924</a></td>
+        <td>Light Daily Word locale check, which the release plan itself asks for.</td>
+        <td>Locales without a word list can be hidden post-launch.</td>
+      </tr>
+      <tr>
+        <td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2673">#2673</a></td>
+        <td>Backend tests are order-dependent after <code>test_security</code> reloads <code>main</code>. Quick to fix.</td>
+        <td>Test hygiene only, no runtime effect.</td>
+      </tr>
+      <tr>
+        <td class="issue">Dependabot <a href="https://github.com/wcmchenry3-stack/BC-Arcade/pull/2691">#2691</a></td>
+        <td>Expo 57.0.23 to 57.0.24 patch. Safe.</td>
+        <td>Leave the TypeScript 7 (#2698), ESLint 10 (#2696) and Jest (#2697) major bumps until after launch.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="flag">
+  <div class="callout warn">
+    <h3>Flag for the owner: the leaderboards epic conflicts with the launch bar</h3>
+    <p>Epic <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2519">#2519</a> says "target v1.0, aiming for the Oct 8 freeze" and has taken most of the Sep 23 to 26 merges (21 of 33 stories done). But <code>docs/LEADERBOARDS-SCORING-PLAN.md</code> states that nothing in the plan is scheduled before submission, and it sizes Phase 3 UI alone at one to two weeks. The Ranks tab is already hidden in store builds, so retiring it (#2634) buys nothing for v1.0.</p>
+    <p><b>Recommendation:</b> stop the epic at what is merged (backend contract plus per-game reporting) and defer #2633, #2634, #2635, #2636, #2637, #2638, #2639, #2640, #2641, #2642, #2643, #2644, #2706, #2682, #2675 and #2704 (Mahjong is premium and hidden). Every further epic PR is stability risk on the release candidate with no store-visible upside. This is the owner's decision; the issues are untouched.</p>
+  </div>
+  <div class="callout">
+    <h3>The single bottleneck is a physical device</h3>
+    <p>Six must items (#1917 store-config proof, #2428, #851, #2392, #1914, #2480) are code-complete and wait only on someone running the Wed 30 builds on a real iPhone and a real Android phone. Nothing has run on a device since Sep 18. If a device is not available Sep 30 to Oct 1, that is the schedule risk, not any open code issue.</p>
+  </div>
+</section>
+
+<section id="later">
+  <div class="sec-head">
+    <span class="tier later">Post-launch</span>
+    <h2>Explicitly deferred</h2>
+    <span class="rule">The release plan already says so for most of these. Numbers are open issues in each bucket.</span>
+  </div>
+  <div class="buckets">
+    <div class="bucket"><b>IAP and premium tier</b><span>#822, #837 to #842, #1136. Blackjack, Cascade, Hearts, Star Swarm and Mahjong are hidden in v1.0.</span></div>
+    <div class="bucket"><b>Leaderboards Phase 3 and 4</b><span>#2633 to #2644, #2706, #2682, #2675, #2704. See the flag above.</span></div>
+    <div class="bucket"><b>Hearts and Yacht AI</b><span>#2283, #2233, #2587, #2271, #2158. One engine, degraded per difficulty.</span></div>
+    <div class="bucket"><b>Maestro and CI hardening</b><span>#2400, #2347, #2152, #2153, #2205, #2365, #2366, #2370, #2371, #2373, #1902, #1904 to #1906, #1989, #2091, #853, #846.</span></div>
+    <div class="bucket"><b>Accessibility</b><span>#854, #2192, #2207 to #2209, #2218, #2219, #2222, #2223, #2220.</span></div>
+    <div class="bucket"><b>i18n</b><span>#855, #2212 (RTL), #2221, #2713 (native-speaker review).</span></div>
+    <div class="bucket"><b>Percy visual regression</b><span>#1420 to #1431.</span></div>
+    <div class="bucket"><b>Analytics</b><span>#1796 to #1800, #852.</span></div>
+    <div class="bucket"><b>Audio and assets</b><span>#1631, #1779 to #1787, #1795, #2571.</span></div>
+    <div class="bucket"><b>Star Swarm v2</b><span>#2483, #2353, #2150. Premium and hidden.</span></div>
+    <div class="bucket"><b>Cascade and Bottle Sort</b><span>#1746, #1605, #2265, #1572 to #1583, #2297.</span></div>
+    <div class="bucket"><b>Themes and PWA</b><span>#1118 to #1126. Web is unmaintained.</span></div>
+    <div class="bucket"><b>Accounts and SSO</b><span>#144, #142, #1047, #835.</span></div>
+    <div class="bucket"><b>Drag-and-drop polish</b><span>#2274, #2264, #2206, #2202, #2154, #2225, #2337, #2340, #2342, #1108.</span></div>
+    <div class="bucket"><b>Progression tail</b><span>#2458, #2459, #2461, #2462, #2469, #2478, #1499, #1498.</span></div>
+    <div class="bucket"><b>Security and docs chores</b><span>#843, #848, #850, #1926, #1156, #220, #858, #2226 to #2231, #2273, #2214, #2224, #2228, #1565, #1911, #1127, #175.</span></div>
+  </div>
+</section>
+
+<section id="sweep">
+  <div class="sec-head">
+    <h2>Commit sweep: code merged, issue open for a manual step</h2>
+    <span class="rule">From 159 PRs merged Sep 19 to 26. PRs merge into <code>dev</code>, so GitHub never auto-closes their linked issues.</span>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Issue</th><th>Code that landed</th><th>What keeps it open</th></tr></thead>
+    <tbody>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2428">#2428</a></td><td>PR #2433, on <code>main</code> since Sep 23</td><td>Airplane-mode device check on both platforms (must list above)</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2392">#2392</a> <a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/1914">#1914</a></td><td>#2445, #2447, #2475 and the rest of the #2448 batch, Sep 20 to 22</td><td>Device play-through of challenge, streak and XP (must list above)</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2430">#2430</a></td><td>PR #2465 per-endpoint throttle, Sep 20</td><td>Owner confirms in Sentry after release that BC_GAMES-3N and 2F event rates dropped</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2713">#2713</a></td><td>AI second-pass fixes across 8 locales (#2714)</td><td>Owner wants a human native speaker to sign off, especially Arabic, Hebrew and Korean. Post-launch is fine.</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2587">#2587</a></td><td>Part A: PIMC engine, deal sampler, device benchmark (#2589)</td><td>On-device timing on the owner's phone, then Part B wires the difficulty tiers. Hearts is hidden in v1.0.</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2297">#2297</a></td><td>Bottle-row layout rewrite (#2427) and shared result card (#2576) touched the same code</td><td>Nobody has re-tested the stray highlight on level advance. Sort is a free game: check it on the Oct 1 device pass and close if gone.</td></tr>
+      <tr><td class="issue"><a href="https://github.com/wcmchenry3-stack/BC-Arcade/issues/2571">#2571</a></td><td>None. PR #2572 recorded asset provenance and explicitly split this scope out.</td><td>Still needs the Kenney pickup sprites and two SFX files from the owner. Star Swarm is hidden in v1.0.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="closed">
+  <div class="sec-head">
+    <h2>Closed today</h2>
+    <span class="rule">Thirteen issues, each with a one-line reason on the issue.</span>
+  </div>
+  <ul class="plain closed">
+    <li><span class="n">#2705</span><span>Hearts stale AI state snapshot. Fixed by PR #2720, merged Sep 26 with a regression test.</span></li>
+    <li><span class="n">#2432</span><span>Supabase prod database. Six of seven boxes done; the Pro upgrade is tracked by #2593.</span></li>
+    <li><span class="n">#2716</span><span>Expo Web Sentry noise. PR #2723 skips Sentry init on web, merged Sep 26.</span></li>
+    <li><span class="n">#2476</span><span>Daily-challenge goal wording. Owner approved it Sep 22; the issue was never updated.</span></li>
+    <li><span class="n">#1922</span><span>Privacy and Terms links in Settings. Shipped in #2441. URL hosting stays with #828.</span></li>
+    <li><span class="n">#2448</span><span>Result reporting, daily challenge and streak epic. All launch children merged Sep 20; checklist was never ticked. Post-launch tail has its own issues.</span></li>
+    <li><span class="n">#1915</span><span>Duplicate of #2392 (daily cross-game challenge).</span></li>
+    <li><span class="n">#821</span><span>May-era productionize plan, superseded by #1916 and the release plan.</span></li>
+    <li><span class="n">#2145</span><span>Expo Go on SDK 56. Dev is on SDK 57 and Expo Go is not a supported path.</span></li>
+    <li><span class="n">#2144</span><span>gesture-handler 3.x. Already 3.3.0 on dev.</span></li>
+    <li><span class="n">#2125</span><span>React Native 0.86. Already 0.86.3 on dev.</span></li>
+    <li><span class="n">#1907</span><span>The <code>isDevApiUrl</code> guard no longer exists in the frontend.</span></li>
+    <li><span class="n">#2196</span><span>Duplicate of #2347 (Mobile Smoke failures).</span></li>
+  </ul>
+</section>
+
+<footer>
+  Sources: <code>docs/RELEASE-PLAN-2026-10.md</code> (gating table, Sep 22 status), <code>docs/LEADERBOARDS-SCORING-PLAN.md</code> §6, <code>docs/STORE-LISTING.md</code> amendments of Sep 23 to 25, the open-issue list and issue bodies as of Sep 26, and the <code>dev</code> merge log from Sep 22 onward. Committed as <code>docs/LAUNCH-TRIAGE-2026-09-26.html</code>.
+</footer>
+
+</div>

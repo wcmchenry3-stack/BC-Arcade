@@ -1,5 +1,6 @@
 /**
- * Sends the player's display name to the server: `PUT /players/me` (#2624).
+ * Sends the player's display name to the server: `PUT /players/me` (#2624),
+ * or `DELETE /players/me` when the player removes it (#2637).
  *
  * The server keeps one name per player (this install's `X-Session-ID`) and
  * every leaderboard reads it, so the app only has to get the latest local name
@@ -11,6 +12,12 @@
  *   next flush sends one PUT. The slot is cleared only once the server has
  *   exactly that name, so a failure or an app kill mid-request keeps it for the
  *   next trigger.
+ * - **Removal.** "Remove my name from leaderboards" (`removeDisplayName`)
+ *   puts `CLEAR` in the same slot, so the latest intent still wins: a removal
+ *   after an unsent save sends only the DELETE, and a save after an unsent
+ *   removal sends only the PUT. It retries on the same triggers as a name.
+ *   The slot is written before the device name is cleared, so a failed write
+ *   changes nothing and a kill in between still sends the DELETE.
  * - **Triggers.** Every save (the hook `registerDisplayNameSync` installs in
  *   `displayName.ts`), app launch, and — alongside `scoreQueue` and
  *   `SyncWorker` — reconnect and return to the foreground (`NetworkContext`).
@@ -20,7 +27,7 @@
  *   `{session_id, name}` the server last confirmed, so later launches send
  *   nothing.
  * - **Replays are harmless.** The PUT is idempotent: sending the name the
- *   player already has writes nothing on the server.
+ *   player already has writes nothing on the server. So is the DELETE.
  *
  * A 400/422 means the server will never accept that name, so it is dropped
  * and recorded as settled for this player id, so launch doesn't send it again
@@ -32,16 +39,23 @@
  * server deleted it) and forgets the pending and settled state.
  */
 
+import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { playersApi } from "../../api/players";
-import { loadDisplayName, setDisplayNameSaveHook } from "./displayName";
+import { clearDisplayName, loadDisplayName, setDisplayNameSaveHook } from "./displayName";
 import { ApiError } from "./httpClient";
 import { getOrCreateSessionId } from "./session";
 
 const PENDING_KEY = "player_display_name_pending_sync";
 const SYNCED_KEY = "player_display_name_synced";
+
+/**
+ * The slot value meaning "remove the name from the server". Longer than
+ * `DISPLAY_NAME_MAX_LENGTH`, so no name the app accepts can equal it.
+ */
+const CLEAR = "__remove_display_name_from_every_leaderboard__";
 
 /** Statuses that mean the server will never accept this name. */
 const REJECTED_STATUSES = new Set([400, 422]);
@@ -70,11 +84,22 @@ async function setItem(key: string, value: string): Promise<boolean> {
   }
 }
 
+// In-memory copy of the slot, so screens can show a pending removal
+// (`useDisplayNameRemovalPending`). `undefined` until first read from storage.
+let slotMirror: string | null | undefined = undefined;
+const slotListeners = new Set<() => void>();
+
+function setSlotMirror(value: string | null): void {
+  slotMirror = value;
+  slotListeners.forEach((l) => l());
+}
+
 /** Clears the slot unless a newer save replaced `name` meanwhile. */
 async function clearPendingIf(name: string): Promise<void> {
   if ((await getItem(PENDING_KEY)) !== name) return;
   try {
     await AsyncStorage.removeItem(PENDING_KEY);
+    setSlotMirror(null);
   } catch (e) {
     // Left pending: the next flush replays an idempotent PUT.
     Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "clear" } });
@@ -96,20 +121,31 @@ async function isSynced(name: string): Promise<boolean> {
 // slot a save is still writing.
 let slotWrites: Promise<unknown> = Promise.resolve();
 
-function writeSlot(name: string): Promise<unknown> {
-  slotWrites = slotWrites.then(() => setItem(PENDING_KEY, name));
-  return slotWrites;
+/** Queues a write of `name` (or CLEAR) to the slot; resolves true once it is stored. */
+function writeSlot(name: string): Promise<boolean> {
+  const write = slotWrites.then(async () => {
+    const ok = await setItem(PENDING_KEY, name);
+    if (ok) setSlotMirror(name);
+    return ok;
+  });
+  slotWrites = write;
+  return write;
 }
 
 /** One attempt. Resolves true when nothing is left pending; never rejects. */
 async function flushOnce(): Promise<boolean> {
   await slotWrites;
+  // A name, or CLEAR. The settled marker records either one.
   const name = await getItem(PENDING_KEY);
   if (name == null) return true;
   let sessionId: string | null = null;
   try {
     sessionId = await getOrCreateSessionId();
-    await playersApi.putMe(name);
+    if (name === CLEAR) {
+      await playersApi.deleteMe();
+    } else {
+      await playersApi.putMe(name);
+    }
   } catch (e) {
     if (e instanceof ApiError && REJECTED_STATUSES.has(e.status)) {
       // Settled: the same name would be refused again, so launch mustn't resend it.
@@ -179,15 +215,71 @@ export function queueDisplayNameSync(name: string): Promise<boolean> {
 }
 
 /**
- * On launch: put a stored name the server was never sent for this player id
- * into the slot (once), then flush whatever is pending.
+ * On launch: finish a stored removal's device clear, or put a stored name the
+ * server was never sent for this player id into the slot (once); then flush
+ * whatever is pending.
  */
 export async function syncDisplayNameOnLaunch(): Promise<boolean> {
+  await slotWrites;
+  if ((await getItem(PENDING_KEY)) === CLEAR) {
+    // A removal whose device clear never ran (app killed) or failed. A save
+    // after it would have replaced the slot, so any stored name is the old one.
+    await clearDisplayName();
+    return flushDisplayNameSync();
+  }
   const name = await loadDisplayName();
   if (name != null && !(await isSynced(name))) {
     return queueDisplayNameSync(name);
   }
   return flushDisplayNameSync();
+}
+
+/**
+ * "Remove my name from leaderboards" (#2637). First stores the removal
+ * (`DELETE /players/me`) in the pending slot, replacing any unsent name, and
+ * only then forgets the name on the device, so the DELETE can't be lost:
+ *
+ * - If the slot write fails, resolves false and changes nothing (an unsent
+ *   older name stays pending as it was).
+ * - Once the slot holds the removal, it goes out on this flush or the next
+ *   trigger (reconnect, foreground, launch), even if the app is killed or the
+ *   device clear fails; launch then finishes the device clear.
+ *
+ * Resolves true once the removal is stored; it doesn't wait for the server.
+ */
+export async function removeDisplayName(): Promise<boolean> {
+  if (!(await writeSlot(CLEAR))) return false;
+  // A failure here is repaired at launch (`syncDisplayNameOnLaunch`).
+  await clearDisplayName();
+  flushDisplayNameSync().catch((e) => {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "remove" } });
+  });
+  return true;
+}
+
+/** True while a removal is stored in the slot, not yet confirmed by the server. */
+export async function isDisplayNameRemovalPending(): Promise<boolean> {
+  await slotWrites;
+  if (slotMirror === undefined) setSlotMirror(await getItem(PENDING_KEY));
+  return slotMirror === CLEAR;
+}
+
+/** `isDisplayNameRemovalPending`, kept current as the slot changes. */
+export function useDisplayNameRemovalPending(): boolean {
+  const [pending, setPending] = useState(slotMirror === CLEAR);
+  useEffect(() => {
+    let active = true;
+    const update = () => {
+      if (active) setPending(slotMirror === CLEAR);
+    };
+    slotListeners.add(update);
+    void isDisplayNameRemovalPending().then(update);
+    return () => {
+      active = false;
+      slotListeners.delete(update);
+    };
+  }, []);
+  return pending;
 }
 
 /** Sends every saved name to the server. Called once, at module load, by NetworkContext. */
@@ -209,6 +301,7 @@ export async function clearDisplayNameSync(): Promise<void> {
   await Promise.allSettled([running, queued].filter((p) => p != null));
   try {
     await Promise.all([AsyncStorage.removeItem(PENDING_KEY), AsyncStorage.removeItem(SYNCED_KEY)]);
+    setSlotMirror(null);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "clearAll" } });
   }
@@ -219,4 +312,6 @@ export function resetDisplayNameSyncForTests(): void {
   running = null;
   queued = null;
   slotWrites = Promise.resolve();
+  slotMirror = undefined;
+  slotListeners.clear();
 }

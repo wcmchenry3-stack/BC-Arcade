@@ -81,14 +81,22 @@ The app sends the name when it is saved (`saveDisplayName` →
 `PUT /players/me`). Offline or on failure it keeps **one** pending sync
 holding the latest name — five offline saves send one PUT — and flushes it on
 reconnect and foreground alongside the queues above; on launch, a stored name
-the server was never sent is synced once. See
-`frontend/src/game/_shared/displayNameSync.ts`.
+the server was never sent is synced once. Profile's "Remove my name from
+leaderboards" (#2637) first stores a removal (`DELETE /players/me`) in the
+same one-slot queue and only then forgets the name on the device, so the
+DELETE can't be lost (launch finishes a device clear a kill interrupted). The
+latest intent wins: a removal replaces an unsent name, a later save replaces
+an unsent removal, and an offline removal goes out on the next reconnect,
+foreground or launch; Profile shows it as pending until then. When the device
+has no name, Profile asks `GET /players/me` (online) and offers removal of a
+name the server still has. See `frontend/src/game/_shared/displayNameSync.ts`.
 
 **Safe replays.** Retries are the normal case, so every write is safe to
 repeat: `POST /games` dedupes on the client game id, a completed game can't be
 completed again (a replayed `PATCH /games/{id}/complete` returns the row
 unchanged), events dedupe on `(game_id, event_index)`, and `PUT /players/me`
-with the current name writes nothing. With the name on the player there is no
+with the current name writes nothing, and `DELETE /players/me` without one
+deletes nothing. With the name on the player there is no
 per-game name left to duplicate. The only remaining lost-response duplicates
 are the legacy per-game `POST /<game>/score` handlers still in `ScoreQueue`
 (listed in its header), which Phase 2 of #2519 removes.
@@ -344,8 +352,11 @@ compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 - the Home grid and chunk prefetch (`HomeScreen.tsx`);
 - route registration — `App.tsx` registers premium screens from the
   `premiumRoutes.ts` registry (a game may own several routes — Blackjack has four);
-- Profile — bento tiles are re-derived from visible games and hidden-game rows
-  are dropped from Recent Games, so earlier plays by a tester cannot resurface.
+- Profile — the tiles (sessions, completed, completion rate, time played, games
+  tried, favourite by completed) and the per-game list are re-derived from
+  visible games, and hidden-game rows are dropped from Recent Games, so earlier
+  plays by a tester cannot resurface. Profile shows no cross-game score (#2637):
+  each game's best appears only in its own row, in its own terms.
 
 `SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1" || isPreLaunchApiBuild()`,
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store

@@ -41,6 +41,8 @@ export default function DisplayNameField({
   const edited = useRef(false);
   useEffect(() => {
     if (isLoaded && !edited.current) setDraft(name ?? "");
+    // Removed elsewhere (Profile's "Remove my name", #2637): an earlier "Saved" no longer holds.
+    if (name == null) setStatus((s) => (s === "saved" ? "idle" : s));
   }, [isLoaded, name]);
 
   const valid = normalizeDisplayName(draft);
