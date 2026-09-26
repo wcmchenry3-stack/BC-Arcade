@@ -1,16 +1,23 @@
-"""BFS script asserting every level ``build_levels()`` generates is solvable.
+"""Script asserting every level ``build_levels()`` generates is solvable.
 
 ``GET /sort/levels`` builds a new random set on every request (#2746), so this
-checks freshly built sets, not a saved file. The BFS below is independent of
-the generator's own checks.
+checks freshly built sets, not a saved file. Each level is decided by
+``sort.fast_solver`` (#2764), which reaches a verdict on every level in well
+under a second. The generator already requires that proof, so this is a manual
+end-to-end check of what the endpoint serves.
+
+``bfs_solvable`` below is the plain reference BFS, written independently of
+``fast_solver``. The tests check that the two agree (``test_sort_fast_solver.py``)
+and prove the small levels solvable with it (``test_sort_levels_solvable.py``).
+It can't decide the big levels within ``MAX_STATES``.
 
 Run from ``backend/``:
     python -m sort.verify_levels                 # one random set
     python -m sort.verify_levels --runs 5        # five random sets
     python -m sort.verify_levels --seed 42       # a reproducible set
 
-Exits with code 1 if any level is proven unsolvable. A level whose state space
-exceeds the cap is reported and assumed solvable.
+Exits with code 1 if any level is proven unsolvable, or can't be decided within
+the solver's budget.
 """
 
 import argparse
@@ -19,7 +26,8 @@ import sys
 from collections import deque
 from itertools import takewhile
 
-from sort.generate_levels import build_levels
+from sort.fast_solver import solve
+from sort.generate_levels import SOLVER_BUDGET, build_levels
 
 DEPTH = 4
 MAX_STATES = 300_000
@@ -112,21 +120,18 @@ def main() -> None:
         print(f"Set seed={seed}")
         for level in build_levels(seed):
             lid = level["id"]
-            state = _from_json(level["bottles"])
-            solvable, n_states = bfs_solvable(state)
+            solvable, n_states = solve(level["bottles"], SOLVER_BUDGET)
             if solvable is True:
-                print(f"Level {lid:>2}: SOLVABLE  (explored {n_states} states)")
+                print(f"Level {lid:>2}: SOLVABLE   ({n_states} states)")
             elif solvable is None:
-                print(
-                    f"Level {lid:>2}: HIT CAP   (explored {n_states} states) — "
-                    "assumed solvable (state space too large to fully verify)"
-                )
+                print(f"Level {lid:>2}: UNDECIDED  (budget of {n_states} states spent)")
+                failures.append(f"{lid} (seed {seed}, undecided)")
             else:
-                print(f"Level {lid:>2}: UNSOLVABLE (explored {n_states} states)")
+                print(f"Level {lid:>2}: UNSOLVABLE ({n_states} states)")
                 failures.append(f"{lid} (seed {seed})")
 
     if failures:
-        print(f"\nFAIL: unsolvable levels: {', '.join(failures)}", file=sys.stderr)
+        print(f"\nFAIL: levels not proven solvable: {', '.join(failures)}", file=sys.stderr)
         sys.exit(1)
     else:
         print("\nAll levels verified.")

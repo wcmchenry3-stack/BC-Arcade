@@ -45,7 +45,9 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 - Module: `backend/sort/module.py`
 - Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644.
-- Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. `python -m sort.verify_levels [--seed N] [--runs N]` (from `backend/`) BFS-checks freshly built sets for solvability. In CI, `backend/tests/test_sort_levels_solvable.py` proves the levels that are cheap to search solvable for fixed seeds; levels with two empty bottles and five or more colors are not covered (#2764).
+- Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. Every level is proven solvable before it is served (#2764). Each level is a uniform random shuffle, dealt again until `backend/sort/fast_solver.py` proves a solution exists. A deal it proves dead, or can't decide within `SOLVER_BUDGET` (200,000 states), is thrown away. If `MAX_ATTEMPTS` (5,000) deals of one level all fail, `build_levels` logs an error and raises `LevelGenerationError`, so the request fails with a 500 rather than serve an unproven level. With the measured solvable rates that can't practically happen: the rarest is about 1% of deals at 9 colors with one empty bottle, so the odds are about 1e-23. A request takes about 0.25 s on average (p95 about 0.5 s).
+- Solver: `fast_solver.solve(bottles, budget)` returns `True`, `False` (proven: the whole reachable space was searched) or `None` (budget spent). It ignores bottle order, drops full single-colour bottles, and searches best-first. It decides every level in well under a second; the most states any deal has needed is about 40,000.
+- Checks: `python -m sort.verify_levels [--seed N] [--runs N]` (from `backend/`) runs the solver over freshly built sets. In CI, `backend/tests/test_sort_levels_solvable.py` proves every level of 20 fixed-seed sets solvable, and also checks the small levels with the independent reference BFS in `verify_levels.py`. `test_sort_fast_solver.py` checks that the solver agrees with that BFS. `python scripts/sort_solvability_survey.py` (from `backend/`) measures the unsolvable rate over many sets or raw shuffles.
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 32 chars). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
@@ -57,4 +59,4 @@ Free: no entitlement check.
 ## Known Issues / Limitations
 
 - Levels are random per request, so players on the same level are not ranked by moves, only by who got there first (#2746; see [Scoring](#scoring-persistence), Tie-break)
-- #2764: levels with 10 to 14 colors are assumed solvable, not checked, and some generated ones are not (e.g. level 21 of `build_levels(42)`)
+- Before #2764, about 1 in 5 sets had a level with no solution, mostly the 9-color one-empty levels 14 and 16. A device can still hold such a set in its offline cache until it next fetches levels, and a dead board saved as "Continue Level N" stays there until the player starts that level again from the grid.
