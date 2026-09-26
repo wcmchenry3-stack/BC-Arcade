@@ -1463,6 +1463,38 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
     expect(abandonDuration()).toBe(25_000);
   });
 
+  // The pause applies to the latest board: a move made just as the app goes
+  // to the background, not yet committed, is neither lost nor left running.
+  it("pauses and saves a move not yet committed when the app goes to the background", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight"); // starts the board's timer
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200)); // the move lock lets go
+    });
+    now += 20_000;
+    await act(() => {
+      dispatchKey("ArrowLeft"); // right-aligned tiles always slide left
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)("background");
+      }
+    });
+    const saves = (saveGame as jest.Mock).mock.calls.map((c) => c[0] as Twenty48State);
+    const moved = saves.at(-2)!; // the ArrowLeft move's own save
+    const paused = saves.at(-1)!; // the pause's
+    expect(paused.board).toEqual(moved.board);
+    expect(paused).toEqual(expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 }));
+
+    now += 60 * 60_000;
+    await setAppState("active");
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await unmount();
+    expect(abandonDuration()).toBe(25_000);
+  });
+
   it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
     // Real persistence for this one: the save and the load are what's tested.
     const actual = jest.requireActual<typeof StorageModule>("../../game/twenty48/storage");

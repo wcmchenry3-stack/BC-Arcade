@@ -1307,6 +1307,48 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     );
   });
 
+  // CONTINUE from Level Select carries on from the board still in memory: the
+  // play since the last save is kept, and the time on Level Select isn't play.
+  it("CONTINUE from Level Select keeps the unsaved play and skips the time on Level Select", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 70,
+          score: 700,
+          accumulatedMs: PLAY_MS,
+          startedAt: null,
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+            { id: 2, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+            { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 30, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    await tap(api, 0); // selects a tile and opens the session; the save is written
+    now += 20_000; // play not yet saved
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Level Select"));
+    });
+    now += 10 * 60_000; // ten minutes browsing layouts
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(/continue/i));
+    });
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await api.unmount();
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: PLAY_MS + 25_000 })
+    );
+  });
+
   // A save from an older build: a raw running startedAt and, in the oldest,
   // no accumulatedMs. When the app was closed is unknown, so the game counts
   // from the load. It must load, not crash or discard the game.

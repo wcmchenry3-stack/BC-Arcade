@@ -29,6 +29,7 @@ import type {
   Suit,
 } from "./types";
 import { cardColor, RANKS, SUITS } from "./types";
+import { pauseClock, resumeClock } from "../_shared/playClock";
 
 // ---------------------------------------------------------------------------
 // Scoring constants (PRODUCT.md — no timers)
@@ -338,18 +339,12 @@ function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState 
  * already complete).
  */
 export function pauseGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
-  if (state.startedAt === null) return state;
-  return {
-    ...state,
-    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
-    startedAt: null,
-  };
+  return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
 export function resumeGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
-  if (state.startedAt !== null || state.isComplete) return state;
-  return { ...state, startedAt: now };
+  return state.isComplete ? state : resumeClock(state, now);
 }
 
 /** If the top card of `col` exists and is face-down, flip it and return

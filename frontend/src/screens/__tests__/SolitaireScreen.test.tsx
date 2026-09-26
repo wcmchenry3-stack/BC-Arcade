@@ -1416,6 +1416,32 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
     }
   });
 
+  // A load that resolves while the app isn't active must not bring in a
+  // running clock that no pause will stop.
+  it("a game loaded while the app is in the background stays paused until it returns", async () => {
+    const original = Object.getOwnPropertyDescriptor(AppState, "currentState");
+    Object.defineProperty(AppState, "currentState", { value: "background", configurable: true });
+    try {
+      await AsyncStorage.setItem(
+        "solitaire_game",
+        JSON.stringify({ ...twoFromWin(), accumulatedMs: 30_000, startedAt: null })
+      );
+      const api = await mount();
+      now += 60 * 60_000; // an hour before the player opens the app
+      await setAppState("active");
+      now += 5_000;
+      await playToFoundation(api, "Q of Clubs");
+      await playToFoundation(api, "K of Clubs");
+      await api.findByTestId("solitaire-result");
+      expect(mockCompleteGame.mock.calls.at(-1)![1]).toEqual(
+        expect.objectContaining({ outcome: "completed", durationMs: 35_000 })
+      );
+    } finally {
+      if (original) Object.defineProperty(AppState, "currentState", original);
+      else delete (AppState as { currentState?: unknown }).currentState;
+    }
+  });
+
   // The issue's example: one move, a two-day break, then the win.
   it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));

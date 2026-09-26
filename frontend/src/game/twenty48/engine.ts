@@ -11,6 +11,7 @@
  */
 
 import { Twenty48State, TileData, GameEvent } from "./types";
+import { pauseClock, resumeClock } from "../_shared/playClock";
 
 export const SIZE = 4;
 
@@ -377,18 +378,12 @@ export function newGame(): Twenty48State {
  * already over).
  */
 export function pauseGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
-  if (state.startedAt === null) return state;
-  return {
-    ...state,
-    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
-    startedAt: null,
-  };
+  return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
 export function resumeGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
-  if (state.startedAt !== null || state.game_over) return state;
-  return { ...state, startedAt: now };
+  return state.game_over ? state : resumeClock(state, now);
 }
 
 /**

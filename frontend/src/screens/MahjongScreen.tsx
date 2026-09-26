@@ -56,7 +56,7 @@ import {
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { usePausableClock } from "../hooks/usePausableClock";
 import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -603,6 +603,18 @@ export default function MahjongScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
+  // going to the background (#2750) stops its clock, so the finish and best
+  // times count only play (usePausableClock). The pause is saved like any
+  // state change, so a kill while backgrounded keeps the play banked.
+  const { adoptLoaded } = usePausableClock({
+    navigation,
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+  });
+
   // Mount: restore saved game or show layout select.
   useEffect(() => {
     let alive = true;
@@ -613,7 +625,7 @@ export default function MahjongScreen() {
         progressRef.current = savedProgress;
         setProgress(savedProgress);
         if (saved !== null) {
-          setState(saved);
+          setState(adoptLoaded(saved));
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) winRecordedRef.current = true;
           // A restored game continues the session a killed app left open (#2654).
@@ -629,7 +641,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume]);
+  }, [syncResume, adoptLoaded]);
 
   // Persist on every state change after mount load resolves.
   useEffect(() => {
@@ -812,28 +824,6 @@ export default function MahjongScreen() {
     return unsub;
   }, [navigation, recordDeadlockLoss]);
 
-  // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
-  // going to the background (#2750) stops its clock, so the finish and best
-  // times count only play. The pause is saved like any state change, so a
-  // kill while backgrounded keeps the play banked. Only a clock this pauses
-  // is restarted on return: a board with no move yet keeps waiting for its
-  // first.
-  const pausedWhileAwayRef = useRef(false);
-  usePauseWhileAway(
-    navigation,
-    () => {
-      const s = stateRef.current;
-      if (!s || s.startedAt === null) return;
-      pausedWhileAwayRef.current = true;
-      setState(pauseGame(s));
-    },
-    () => {
-      if (!pausedWhileAwayRef.current) return;
-      pausedWhileAwayRef.current = false;
-      setState((s) => (s ? resumeGame(s) : s));
-    }
-  );
-
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
@@ -928,9 +918,16 @@ export default function MahjongScreen() {
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
+  // Level Select isn't play: the clock stops here and CONTINUE starts it again
+  // (#2750). Only a clock this stopped is restarted.
+  const pausedForSelectRef = useRef(false);
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
+    if (s !== null && s.startedAt !== null) {
+      pausedForSelectRef.current = true;
+      setState((prev) => (prev ? pauseGame(prev) : prev));
+    }
     setView("select");
   }, []);
 
@@ -972,6 +969,19 @@ export default function MahjongScreen() {
   }, [handleSelectLayout]);
 
   const handleContinue = useCallback(() => {
+    const inMemory = stateRef.current;
+    if (inMemory !== null && !inMemory.isComplete) {
+      // Level Select kept this board in memory, with its session open and its
+      // clock stopped: carry on from it (#2750). Reloading the save would drop
+      // the play since the last save, and a resume would reopen the session.
+      setHasSavedGame(false);
+      if (pausedForSelectRef.current) {
+        pausedForSelectRef.current = false;
+        setState((prev) => (prev ? resumeGame(prev) : prev));
+      }
+      setView("play");
+      return;
+    }
     loadGame()
       .then((saved) => {
         if (!saved) {
@@ -979,7 +989,7 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
-        setState(saved);
+        setState(adoptLoaded(saved));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).
         if (!saved.isComplete) syncResume();
@@ -988,7 +998,7 @@ export default function MahjongScreen() {
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, [syncResume]);
+  }, [syncResume, adoptLoaded]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 

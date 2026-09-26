@@ -8,7 +8,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
 import {
   newGame,
@@ -114,30 +114,19 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
   // #2735) or the app going to the background (#2750) stops its clock, so
-  // the reported duration counts only play. The paused board is saved (2048
-  // otherwise saves only on a move), so a kill while backgrounded keeps the
-  // time played since the last move. Only a clock this pauses is restarted
-  // on return: a board with no move yet keeps waiting for its first.
-  // `awayRef` also gates the queued move below: applying it while away would
-  // run move()'s timer logic on a paused (`startedAt: null`) state,
-  // restarting the clock.
-  const pausedWhileAwayRef = useRef(false);
-  const awayRef = usePauseWhileAway(
+  // the reported duration counts only play (usePausableClock). The paused
+  // board is saved (2048 otherwise saves only on a move), so a kill while
+  // backgrounded keeps the time played since the last move. `awayRef` also
+  // gates the queued move below: applying it while away would run move()'s
+  // timer logic on a paused (`startedAt: null`) state, restarting the clock.
+  const { awayRef, adoptLoaded } = usePausableClock({
     navigation,
-    () => {
-      const s = stateRef.current;
-      if (!s || s.startedAt === null) return;
-      pausedWhileAwayRef.current = true;
-      const paused = pauseGame(s);
-      setState(paused);
-      saveGame({ ...paused, events: undefined });
-    },
-    () => {
-      if (!pausedWhileAwayRef.current) return;
-      pausedWhileAwayRef.current = false;
-      setState((s) => (s ? resumeGame(s) : s));
-    }
-  );
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+    onPaused: (paused) => saveGame({ ...paused, events: undefined }),
+  });
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
   // and the New Game abandon both build it here. final_score goes in the result
@@ -199,7 +188,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       if (!active) return;
       // loadGame restarts a saved mid-game's clock from now (#2750): the time
       // played before the app was closed is kept, the time it was closed isn't.
-      const next = saved ?? newGame();
+      const next = adoptLoaded(saved ?? newGame());
       setState(next);
       if (!saved) saveGame(next);
       setBestScore(best);

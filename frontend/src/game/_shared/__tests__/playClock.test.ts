@@ -1,6 +1,23 @@
-import { clockForSave, clockOnLoad } from "../playClock";
+import { clockElapsedMs, clockForSave, clockOnLoad, pauseClock, resumeClock } from "../playClock";
 
 describe("playClock (#2750)", () => {
+  describe("pauseClock / resumeClock / clockElapsedMs", () => {
+    it("banks the running segment on pause, and runs again from the resume", () => {
+      const paused = pauseClock({ startedAt: 1_000, accumulatedMs: 500 }, 4_000);
+      expect(paused).toEqual({ startedAt: null, accumulatedMs: 3_500 });
+      expect(clockElapsedMs(paused, 99_000)).toBe(3_500);
+      const resumed = resumeClock(paused, 10_000);
+      expect(clockElapsedMs(resumed, 12_000)).toBe(5_500);
+    });
+
+    it("leaves a stopped clock stopped on pause, and a running one alone on resume", () => {
+      const stopped = { startedAt: null, accumulatedMs: 0 };
+      expect(pauseClock(stopped, 5)).toBe(stopped);
+      const running = { startedAt: 1, accumulatedMs: 0 };
+      expect(resumeClock(running, 5)).toBe(running);
+    });
+  });
+
   describe("clockForSave", () => {
     it("banks a running segment and keeps a running marker", () => {
       const saved = clockForSave({ startedAt: 1_000, accumulatedMs: 500 }, 4_000);

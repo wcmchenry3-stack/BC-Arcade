@@ -10,6 +10,7 @@
  */
 
 import type { Layout, MahjongState, Slot, SlotTile, Suit, Rank } from "./types";
+import { clockElapsedMs, pauseClock, resumeClock } from "../_shared/playClock";
 
 // ---------------------------------------------------------------------------
 // Scoring / limits
@@ -143,8 +144,7 @@ export function getAnyFreePair(tiles: readonly SlotTile[]): [number, number] | n
 // ---------------------------------------------------------------------------
 
 export function elapsedMs(state: MahjongState, now: number = Date.now()): number {
-  if (state.startedAt === null) return state.accumulatedMs;
-  return state.accumulatedMs + (now - state.startedAt);
+  return clockElapsedMs(state, now);
 }
 
 /** Bank the running segment and stop the clock (a no-op if it isn't running). */
@@ -730,16 +730,10 @@ export function undoMove(state: MahjongState, now: number = Date.now()): Mahjong
  * running timer to freeze (not yet started, or already finished).
  */
 export function pauseGame(state: MahjongState, now: number = Date.now()): MahjongState {
-  if (state.startedAt === null) return state;
-  return {
-    ...state,
-    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
-    startedAt: null,
-  };
+  return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
 export function resumeGame(state: MahjongState, now: number = Date.now()): MahjongState {
-  if (state.startedAt !== null || state.isComplete) return state;
-  return { ...state, startedAt: now };
+  return state.isComplete ? state : resumeClock(state, now);
 }

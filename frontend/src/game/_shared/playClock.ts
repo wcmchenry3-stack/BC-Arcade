@@ -1,17 +1,35 @@
 /**
- * Saving and restoring a game's play clock across an app kill (#2750).
+ * A game's play clock, and saving and restoring it across an app kill (#2750).
  *
- * Solitaire, Mahjong and 2048 keep their clock as `startedAt` (when the
- * running segment began, or null while stopped) plus `accumulatedMs` (the
- * play banked before it). A raw `startedAt` restored after a relaunch counts
- * the whole time the app was closed as play, so the save banks the running
- * segment and the load restarts the clock from the moment of loading.
+ * Solitaire, Mahjong and 2048 keep their clock on the game state, and Cascade
+ * in a ref, all as `startedAt` (when the running segment began, or null while
+ * stopped) plus `accumulatedMs` (the play banked before it). A raw
+ * `startedAt` restored after a relaunch counts the whole time the app was
+ * closed as play, so the save banks the running segment and the load
+ * restarts the clock from the moment of loading.
  */
 
 /** The clock fields the games share. */
 export interface PlayClock {
   readonly startedAt: number | null;
   readonly accumulatedMs: number;
+}
+
+/** Play time so far: what is banked plus the running segment, if any. */
+export function clockElapsedMs(clock: PlayClock, now: number = Date.now()): number {
+  return clock.accumulatedMs + (clock.startedAt !== null ? now - clock.startedAt : 0);
+}
+
+/** Stop the clock, banking the running segment. A no-op on a stopped clock. */
+export function pauseClock<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+  if (clock.startedAt === null) return clock;
+  return { ...clock, accumulatedMs: clockElapsedMs(clock, now), startedAt: null };
+}
+
+/** Start a stopped clock from `now`. A no-op on a running clock. */
+export function resumeClock<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+  if (clock.startedAt !== null) return clock;
+  return { ...clock, startedAt: now };
 }
 
 /**

@@ -29,7 +29,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
-import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -201,6 +201,22 @@ export default function SolitaireScreen() {
     [syncRestart]
   );
 
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) or the app going to the background (#2750) stops its clock, so
+  // the finish time counts only play (usePausableClock). The pause is saved
+  // like any state change, so a kill while backgrounded keeps the play
+  // banked. `awayRef` also gates Auto Complete's self-scheduled steps below:
+  // applyMove's timer would otherwise treat a paused (`startedAt: null`)
+  // state as "not yet started" and restart the clock from a step that lands
+  // while away, defeating the pause.
+  const { awayRef, adoptLoaded } = usePausableClock({
+    navigation,
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+  });
+
   // #597 — mount load. Restores a saved game silently; on a clean slot the
   // pre-game draw-mode modal is shown so the player picks their mode.
   //
@@ -220,7 +236,7 @@ export default function SolitaireScreen() {
       hasLoadedRef.current = true;
       statsRef.current = savedStats;
       if (saved !== null) {
-        setState(saved);
+        setState(adoptLoaded(saved));
         // Suppress re-counting a win when resuming an already-won game.
         if (saved.isComplete) {
           winRecordedRef.current = true;
@@ -252,31 +268,6 @@ export default function SolitaireScreen() {
     if (state === null) return;
     saveGame(state).catch(() => {});
   }, [state]);
-
-  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) or the app going to the background (#2750) stops its clock, so
-  // the finish time counts only play. The pause is saved like any state
-  // change, so a kill while backgrounded keeps the play banked. Only a clock
-  // this pauses is restarted on return: a deal with no move yet keeps
-  // waiting for its first. `awayRef` also gates Auto Complete's
-  // self-scheduled steps below: applyMove's timer would otherwise treat a
-  // paused (`startedAt: null`) state as "not yet started" and restart the
-  // clock from a step that lands while away, defeating the pause.
-  const pausedWhileAwayRef = useRef(false);
-  const awayRef = usePauseWhileAway(
-    navigation,
-    () => {
-      const s = stateRef.current;
-      if (!s || s.startedAt === null) return;
-      pausedWhileAwayRef.current = true;
-      setState(pauseGame(s));
-    },
-    () => {
-      if (!pausedWhileAwayRef.current) return;
-      pausedWhileAwayRef.current = false;
-      setState((s) => (s ? resumeGame(s) : s));
-    }
-  );
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
   // unmount) and the completion effect read the latest value.
