@@ -13,8 +13,8 @@
  *
  * Checks, per locale file:
  *   - the same keys as English (plural forms the locale needs are allowed);
- *   - every plural form the locale needs (#2754): for each key English has an
- *     `_other` form of, one form per category in the locale's CLDR plural
+ *   - every plural form the locale needs (#2754): for each key English has both
+ *     `_one` and `_other` forms of, one form per category in the locale's CLDR plural
  *     rules (fr/es/pt _many, ru _few/_many, ar _zero/_two/_few/_many, he _two).
  *     A missing one makes i18next show English for counts in that category;
  *   - no __NEEDS_TRANSLATION__ placeholders;
@@ -107,16 +107,23 @@ function isLocalePluralVariant(key, code, enSet) {
   return new Intl.PluralRules(code).resolvedOptions().pluralCategories.includes(m[2]);
 }
 
-// Plural forms the locale's CLDR rules need but the file lacks, e.g. fr "_many"
-// (1,000,000), for every key English has an `_other` form of.
-function missingPluralForms(targetSet, code, enKeys) {
-  const categories = new Intl.PluralRules(code).resolvedOptions().pluralCategories;
-  return enKeys
+// Plural keys, without their suffix: those English has both a `_one` and an
+// `_other` form of, so a plain key that happens to end in `_other` isn't one.
+// pluralTestUtils.ts (Jest) uses the same rule.
+function pluralBases(enSet) {
+  return [...enSet]
     .filter((k) => k.endsWith("_other"))
-    .flatMap((k) => {
-      const base = k.slice(0, -"_other".length);
-      return categories.map((c) => `${base}_${c}`).filter((form) => !targetSet.has(form));
-    });
+    .map((k) => k.slice(0, -"_other".length))
+    .filter((base) => enSet.has(`${base}_one`));
+}
+
+// Plural forms the locale's CLDR rules need but the file lacks, e.g. fr "_many"
+// (1,000,000).
+function missingPluralForms(targetSet, code, enSet) {
+  const categories = new Intl.PluralRules(code).resolvedOptions().pluralCategories;
+  return pluralBases(enSet).flatMap((base) =>
+    categories.map((c) => `${base}_${c}`).filter((form) => !targetSet.has(form))
+  );
 }
 
 function flattenKeys(obj, prefix = "") {
@@ -241,7 +248,7 @@ function main() {
         (k) => !enSet.has(k) && !isLocalePluralVariant(k, code, enSet)
       );
       // Forms English also has are already under "missing".
-      const pluralGaps = missingPluralForms(targetSet, code, enKeys).filter((k) => !enSet.has(k));
+      const pluralGaps = missingPluralForms(targetSet, code, enSet).filter((k) => !enSet.has(k));
       const pending = enKeys.filter(
         (k) => targetStrings[k] === PLACEHOLDER || targetStrings[k] === undefined
       );

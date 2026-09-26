@@ -9,6 +9,7 @@ import {
 import { formatPlayTime } from "../statsDisplay";
 import { GAME_OUTCOMES } from "../vocab";
 import { LOCALES } from "../../i18n/locales";
+import { localeJson, localeOnlyT, samplesByCategory } from "../../i18n/__tests__/pluralTestUtils";
 
 const t = i18n.t.bind(i18n);
 
@@ -68,34 +69,10 @@ describe("formatMetric (#2637)", () => {
 
 describe("outcome and metric labels in every locale (#2638)", () => {
   // The labels moved from "profile" to "stats": Profile, GameDetail and Stats all show them.
-  const statsJson = (code: string): Record<string, string> =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require(`../../i18n/locales/${code}/stats.json`);
-  // Only this locale's strings and no fallback: a missing key shows up as the key, not English.
-  const statsT = (code: string) => {
-    const instance = i18n.createInstance();
-    void instance.init({
-      lng: code,
-      fallbackLng: false,
-      ns: ["stats"],
-      defaultNS: "stats",
-      resources: { [code]: { stats: statsJson(code) } },
-      interpolation: { escapeValue: false },
-      initAsync: false,
-    });
-    // Fixed to the locale, like useTranslation's t.
-    return instance.getFixedT(code) as unknown as typeof t;
-  };
-  // A number in each of the locale's CLDR plural categories (fr/es/pt "many" is 1,000,000).
-  const SAMPLES = [0, 1, 2, 3, 5, 11, 19, 21, 100, 101, 1_000_000, 1.5];
-  const samplesByCategory = (code: string): [Intl.LDMLPluralRule, number][] => {
-    const rules = new Intl.PluralRules(code);
-    return rules.resolvedOptions().pluralCategories.map((category) => {
-      const sample = SAMPLES.find((n) => rules.select(n) === category);
-      if (sample === undefined) throw new Error(`No sample number for ${code} ${category}`);
-      return [category, sample];
-    });
-  };
+  const statsJson = (code: string) => localeJson(code, "stats");
+  const statsT = (code: string) => localeOnlyT(code, ["stats"]);
+  // Every plural key having every category, in every namespace, is checked in
+  // i18n/__tests__/pluralForms.test.ts; this checks formatMetric fills them in.
 
   it.each(LOCALES.map((l) => l.code))("%s has every outcome label in stats", (code) => {
     const tLocale = statsT(code);
