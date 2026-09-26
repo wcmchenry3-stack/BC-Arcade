@@ -216,13 +216,6 @@ export interface UseGameSyncReturn {
   /** Return the current game ID, or null if no session is open. */
   getGameId: () => string | null;
   /**
-   * Return the id `complete()` most recently closed, or `null` if nothing
-   * has completed yet. For a caller that isn't the one calling `complete()`
-   * — e.g. a background completion that runs elsewhere (Yacht's CPU turn,
-   * #2706) — and so cannot use its return value directly.
-   */
-  getLastCompletedGameId: () => string | null;
-  /**
    * Register a getter the hook calls when it abandons the session itself
    * (unmount or `restart()`), so the abandon carries the result block instead
    * of only `{ outcome: "abandoned" }`. The getter must read from refs (it runs
@@ -236,7 +229,6 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const gameIdRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const startedRef = useRef(false);
-  const lastCompletedGameIdRef = useRef<string | null>(null);
   const snapshotRef = useRef<() => ProgressSnapshot>(() => ({}));
   // Keep gameType in a ref so restart() always uses the current value even if
   // the consumer passes a runtime-derived type (shouldn't change, but safe).
@@ -415,7 +407,6 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       completedRef.current = true;
       gameIdRef.current = null;
-      lastCompletedGameIdRef.current = gid;
       pauseWindow();
       return gid;
     },
@@ -438,7 +429,6 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   );
 
   const getGameId = useCallback(() => gameIdRef.current, []);
-  const getLastCompletedGameId = useCallback(() => lastCompletedGameIdRef.current, []);
 
   const setProgressSnapshot = useCallback((getSnapshot: () => ProgressSnapshot) => {
     snapshotRef.current = getSnapshot;
@@ -455,7 +445,6 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     resetPlayWindow: restartWindow,
     reportBug,
     getGameId,
-    getLastCompletedGameId,
     setProgressSnapshot,
   };
 }

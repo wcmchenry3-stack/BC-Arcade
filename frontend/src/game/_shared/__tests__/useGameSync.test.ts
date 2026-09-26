@@ -244,41 +244,6 @@ describe("useGameSync", () => {
     });
   });
 
-  describe("getLastCompletedGameId()", () => {
-    it("is null before anything has completed", async () => {
-      const { result } = await renderHook(() => useGameSync("yacht"));
-      expect(result.current.getLastCompletedGameId()).toBeNull();
-      await act(() => {
-        result.current.start();
-      });
-      expect(result.current.getLastCompletedGameId()).toBeNull();
-    });
-
-    it("returns the id complete() closed, for a caller that isn't the one calling it", async () => {
-      const { result } = await renderHook(() => useGameSync("yacht"));
-      await act(() => {
-        result.current.start();
-        result.current.complete({ outcome: "completed" });
-      });
-      expect(result.current.getLastCompletedGameId()).toBe("test-game-id");
-    });
-
-    it("is unaffected by the hook's own abandon (unmount), only by complete()", async () => {
-      const { result, unmount } = await renderHook(() => useGameSync("yacht"));
-      await act(() => {
-        result.current.start();
-        result.current.markStarted();
-      });
-      await unmount();
-      expect(mockCompleteGame).toHaveBeenCalledWith(
-        "test-game-id",
-        { outcome: "abandoned" },
-        { outcome: "abandoned" }
-      );
-      expect(result.current.getLastCompletedGameId()).toBeNull();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // unmount cleanup
   // ---------------------------------------------------------------------------
