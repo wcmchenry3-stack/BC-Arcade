@@ -1,5 +1,5 @@
 import React from "react";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { render, fireEvent, act, cleanup } from "@testing-library/react-native";
 import i18n from "i18next";
 import DiceRow from "../DiceRow";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -94,6 +94,8 @@ describe("DiceRow roll label plural forms (#2754)", () => {
   });
 
   afterEach(async () => {
+    // Unmount first: switching language under a mounted DiceRow re-renders it outside act().
+    await cleanup();
     await i18n.changeLanguage("en");
   });
 

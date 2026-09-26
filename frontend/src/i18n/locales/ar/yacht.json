@@ -42,7 +42,7 @@
   "dice.holdHint": "اضغط مرتين للإمساك",
   "dice.unholdHint": "اضغط مرتين للإفلات",
   "roll.button": "رمي (باقي {{count}})",
-  "roll.label_zero": "ارمِ النرد، تبقى {{count}} رميات",
+  "roll.label_zero": "ارمِ النرد، لم تتبقَّ أي رمية",
   "roll.label_one": "ارمِ النرد، تبقى {{count}} رمية",
   "roll.label_two": "ارمِ النرد، تبقى رميتان",
   "roll.label_few": "ارمِ النرد، تبقى {{count}} رميات",
