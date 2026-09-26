@@ -33,6 +33,7 @@ from tests.test_generic_leaderboard import (
     _seed,
     _set_name,
     _sid,
+    _sort_with_moves_tiebreak,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -107,7 +108,8 @@ async def test_rank_is_exact_outside_the_top_ten(client: TestClient) -> None:
     assert _rank(client, game_id, sid) == _ranked(13, True)
 
 
-async def test_rank_uses_the_tiebreak(client: TestClient) -> None:
+async def test_rank_uses_the_tiebreak(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed("sort", _sid(), name="Fewer", meta={"level_reached": 5, "total_moves": 10})
     await _seed("sort", _sid(), name="NoMoves", meta={"level_reached": 5})
     sid = _sid()

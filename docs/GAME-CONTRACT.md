@@ -171,20 +171,20 @@ class GameModule(Protocol):
 
 The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.ts` by `backend/scripts/gen_vocab_ts.py`, every field camelCased (`tiebreak`, `labelKey`, `partitions`, `partitionDefaults`, `partitionValues`, `maxValue`, `partitionMaxValues`, `qualifyingOutcomes`, `enabled`); the pair and triple tuples become records (`{ variant: "classic" }`, `{ difficulty_tier: ["Ensign", …] }`, `{ difficulty: { easy: 100, … } }`). `tests/test_vocab.py` fails on drift. The generic leaderboard and rank routes (#2618, below) read them; stats read them too (#2620, §1.5).
 
-| Game       | metric          | direction | tie-break         | partitions (default)                | max_value                            | qualifying outcomes | enabled |
-| ---------- | --------------- | --------- | ----------------- | ----------------------------------- | ------------------------------------ | ------------------- | ------- |
-| Yacht      | `final_score`   | desc      | —                 | —                                   | 1575                                 | any                 | yes     |
-| Solitaire  | `final_score`   | desc      | —                 | —                                   | 1245                                 | any                 | yes     |
-| FreeCell   | `final_score`   | asc       | —                 | —                                   | —                                    | any                 | yes     |
-| Mahjong    | `final_score`   | desc      | —                 | —                                   | 1220                                 | any                 | yes     |
-| Hearts     | `final_score`   | desc      | —                 | —                                   | 100                                  | any                 | yes     |
-| Sudoku     | `final_score`   | desc      | —                 | `difficulty`, `variant` (`classic`) | 300 (easy 100, medium 200, hard 300) | any                 | yes     |
-| Cascade    | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
-| Sort       | `level_reached` | desc      | `total_moves` asc | —                                   | 23                                   | any                 | yes     |
-| Blackjack  | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | no      |
-| Daily Word | `guesses_used`  | asc       | —                 | —                                   | —                                    | `win`               | no      |
-| Twenty48   | `final_score`   | desc      | —                 | —                                   | —                                    | any                 | yes     |
-| Star Swarm | `final_score`   | desc      | —                 | `difficulty_tier` (`LieutenantJG`)  | —                                    | any                 | yes     |
+| Game       | metric          | direction | tie-break | partitions (default)                | max_value                            | qualifying outcomes | enabled |
+| ---------- | --------------- | --------- | --------- | ----------------------------------- | ------------------------------------ | ------------------- | ------- |
+| Yacht      | `final_score`   | desc      | —         | —                                   | 1575                                 | any                 | yes     |
+| Solitaire  | `final_score`   | desc      | —         | —                                   | 1245                                 | any                 | yes     |
+| FreeCell   | `final_score`   | asc       | —         | —                                   | —                                    | any                 | yes     |
+| Mahjong    | `final_score`   | desc      | —         | —                                   | 1220                                 | any                 | yes     |
+| Hearts     | `final_score`   | desc      | —         | —                                   | 100                                  | any                 | yes     |
+| Sudoku     | `final_score`   | desc      | —         | `difficulty`, `variant` (`classic`) | 300 (easy 100, medium 200, hard 300) | any                 | yes     |
+| Cascade    | `final_score`   | desc      | —         | —                                   | —                                    | any                 | yes     |
+| Sort       | `level_reached` | desc      | —         | —                                   | 23                                   | any                 | yes     |
+| Blackjack  | `final_score`   | desc      | —         | —                                   | —                                    | any                 | no      |
+| Daily Word | `guesses_used`  | asc       | —         | —                                   | —                                    | `win`               | no      |
+| Twenty48   | `final_score`   | desc      | —         | —                                   | —                                    | any                 | yes     |
+| Star Swarm | `final_score`   | desc      | —         | `difficulty_tier` (`LieutenantJG`)  | —                                    | any                 | yes     |
 
 "any" means every non-abandoned row. Notes on the declarations:
 
@@ -194,7 +194,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
 - **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`, the engine's default).
 - **Legacy rows:** the removed per-game routes wrote their rows under unattributable `*-anon` sessions, with values unlike the boards' declarations (Yacht's stored `400 - raw`, Sort's the level in `final_score`). Migrations 0026 (#2622) and 0029 (#2644, after the routes were gone) deleted them; any written during the deploy window after 0029 are kept off every board by the `*-anon` filter (rule 3).
-- **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record, so the row ranks after equal levels that have one). The board keeps each player's best row, so a replay that lowers a best improves their rank. Abandons carry no score and never rank.
+- **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record). `total_moves` is recorded but not ranked (#2746): levels are random per request, so players on the same level rank by the earliest completion. The board keeps each player's best row, their first solve of their highest level; a replay never displaces it. Abandons carry no score and never rank.
 - **FreeCell** (#2632): a win sends `final_score = moveCount` (installed builds still send none). Abandons carry no score and never rank.
 
 Every `GameType` has a module since #2623, so no game exports `null`.
