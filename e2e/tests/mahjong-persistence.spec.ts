@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockMahjongApi, injectMahjongState } from "./helpers/mahjong";
+import { injectMahjongState } from "./helpers/mahjong";
 
 const MID_GAME_STATE = {
   _v: 1,
@@ -27,7 +27,6 @@ const MID_GAME_STATE = {
 };
 
 test("SCORE and PAIRS persist after navigating away and back", async ({ page }) => {
-  await mockMahjongApi(page);
   await injectMahjongState(page, MID_GAME_STATE);
 
   await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();

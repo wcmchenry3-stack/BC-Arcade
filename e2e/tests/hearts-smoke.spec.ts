@@ -6,12 +6,11 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockHeartsApi, gotoHearts } from "./helpers/hearts";
+import { gotoHearts } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Hearts — smoke tests", () => {
   test("pre-game difficulty selector is visible on first load", async ({ page }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
@@ -24,7 +23,6 @@ test.describe("Hearts — smoke tests", () => {
 
   test.describe("after starting game", () => {
     test.beforeEach(async ({ page }) => {
-      await mockHeartsApi(page);
       // gotoHearts clears storage, navigates to Hearts, and clicks "Start Game"
       await gotoHearts(page);
     });

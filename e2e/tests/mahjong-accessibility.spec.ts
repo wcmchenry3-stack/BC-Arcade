@@ -10,7 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockMahjongApi, gotoMahjong } from "./helpers/mahjong";
+import { gotoMahjong } from "./helpers/mahjong";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -30,7 +30,6 @@ async function assertNoA11yViolations(
 
 test.describe("Mahjong Solitaire — accessibility", () => {
   test.beforeEach(async ({ page }) => {
-    await mockMahjongApi(page);
     await gotoMahjong(page);
   });
 

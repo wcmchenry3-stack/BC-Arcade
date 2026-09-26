@@ -13,7 +13,6 @@ import {
   type RankOnlyLeaderboardAdapter,
 } from "../useLeaderboardSubmit";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../displayName";
-import { scoreQueue } from "../scoreQueue";
 import { ApiError } from "../httpClient";
 
 jest.mock("../flushQueuedGames", () => ({
@@ -36,7 +35,6 @@ async function setup(submit: jest.Mock) {
   const adapter: RankOnlyLeaderboardAdapter<Payload> = {
     gameType: "sudoku",
     submit,
-    refetchOnReconnect: true,
   };
   return renderHook(() => useLeaderboardSubmit(adapter));
 }
@@ -76,7 +74,6 @@ describe("useLeaderboardSubmit with a rank-only adapter (#2677)", () => {
     await act(() => result.current.submit(PAYLOAD));
     expect(submit).toHaveBeenCalledWith("Riley", PAYLOAD);
     expect(result.current).toMatchObject({ status: "saved", rank: 2, playerName: "Riley" });
-    expect(await scoreQueue.peek()).toEqual([]);
   });
 
   it("a ranked lookup without a rank is saved with no rank", async () => {
@@ -115,7 +112,6 @@ describe("useLeaderboardSubmit with a rank-only adapter (#2677)", () => {
 
   it("offline: no queue item; fetches on reconnect, and only once", async () => {
     mockNetwork.isOnline = false;
-    const enqueue = jest.spyOn(scoreQueue, "enqueue");
     const submit = jest.fn().mockResolvedValue(ranked(1));
     const { result, rerender } = await setup(submit);
 
@@ -124,7 +120,6 @@ describe("useLeaderboardSubmit with a rank-only adapter (#2677)", () => {
     // No timer while offline.
     await advance(10 * 60_000);
     expect(submit).not.toHaveBeenCalled();
-    expect(enqueue).not.toHaveBeenCalled();
 
     await setOnline(true, rerender);
     expect(result.current).toMatchObject({ status: "saved", rank: 1 });
@@ -133,7 +128,6 @@ describe("useLeaderboardSubmit with a rank-only adapter (#2677)", () => {
     await setOnline(false, rerender);
     await setOnline(true, rerender);
     expect(submit).toHaveBeenCalledTimes(1);
-    enqueue.mockRestore();
   });
 
   it("a network failure while NetInfo says online is retried on the timer", async () => {

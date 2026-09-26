@@ -10,7 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockStarswarmApi, gotoStarswarm } from "./helpers/starswarm";
+import { gotoStarswarm } from "./helpers/starswarm";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -30,7 +30,6 @@ async function assertNoA11yViolations(
 
 test.describe("Star Swarm — accessibility", () => {
   test.beforeEach(async ({ page }) => {
-    await mockStarswarmApi(page);
     await gotoStarswarm(page);
   });
 

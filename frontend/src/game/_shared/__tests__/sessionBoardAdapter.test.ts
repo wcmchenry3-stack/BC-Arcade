@@ -3,7 +3,6 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { sessionBoardAdapter } from "../sessionBoardAdapter";
 import { useLeaderboardSubmit } from "../useLeaderboardSubmit";
 import { loadDisplayName, resetDisplayNameCacheForTests, saveDisplayName } from "../displayName";
-import { scoreQueue } from "../scoreQueue";
 import { ApiError } from "../httpClient";
 import type { GameRankResponse } from "../../../api/types";
 
@@ -56,8 +55,8 @@ beforeEach(async () => {
 describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   it("is a rank-only adapter: nothing to queue", () => {
     const adapter = sessionBoardAdapter("cascade");
-    expect(adapter).toMatchObject({ gameType: "cascade", refetchOnReconnect: true });
-    expect(adapter).not.toHaveProperty("queuePayload");
+    expect(Object.keys(adapter).sort()).toEqual(["gameType", "submit"]);
+    expect(adapter.gameType).toBe("cascade");
   });
 
   it("named and online: fetches the rank and reports it as saved", async () => {
@@ -74,7 +73,6 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.status).toBe("saved");
     expect(result.current.rank).toBe(3);
     expect(result.current.playerName).toBe("Riley");
-    expect(await scoreQueue.peek()).toEqual([]);
   });
 
   it("keeps the best entry's rank when this game isn't that entry (#2633)", async () => {
@@ -153,21 +151,17 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
 
     await act(() => result.current.submit({ gameId: "g-1" }));
     expect(result.current.status).toBe("submitting");
-    expect(await scoreQueue.peek()).toEqual([]);
   });
 
   it("offline: shows offline with nothing queued, then fetches the rank on reconnect", async () => {
     await saveDisplayName("Riley");
     mockNetwork.isOnline = false;
     mockGetRank.mockResolvedValue(ranked(4));
-    const enqueue = jest.spyOn(scoreQueue, "enqueue");
     const { result, rerender } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
     expect(result.current.status).toBe("offline");
     expect(mockGetRank).not.toHaveBeenCalled();
-    expect(enqueue).not.toHaveBeenCalled();
-    expect(await scoreQueue.peek()).toEqual([]);
 
     mockNetwork.isOnline = true;
     await act(async () => rerender({}));
@@ -175,8 +169,6 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await waitFor(() => expect(result.current.status).toBe("saved"));
     expect(mockGetRank).toHaveBeenCalledWith("g-1");
     expect(result.current.rank).toBe(4);
-    expect(enqueue).not.toHaveBeenCalled();
-    enqueue.mockRestore();
   });
 
   it("offline with no name: provideName saves it, then the rank comes on reconnect", async () => {
@@ -256,7 +248,6 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await act(() => result.current.submit({ gameId: "g-1" }));
     expect(mockGetRank).toHaveBeenCalledTimes(3);
     expect(result.current.status).toBe("error");
-    expect(await scoreQueue.peek()).toEqual([]);
 
     mockGetRank.mockResolvedValue(ranked(7));
     await act(() => result.current.retry());

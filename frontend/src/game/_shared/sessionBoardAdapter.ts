@@ -73,7 +73,6 @@ export function sessionBoardAdapter(
 ): RankOnlyLeaderboardAdapter<SessionBoardSubmission> {
   return {
     gameType,
-    refetchOnReconnect: true,
     submit: async (_playerName, { gameId }) => {
       // The completion sits in the local game queue until SyncWorker uploads
       // it (every 30 s), and a name just saved may still be in

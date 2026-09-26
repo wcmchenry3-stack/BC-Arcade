@@ -5,9 +5,9 @@
  * of Spades alone in column 0), which auto-completes on load. Verify the
  * shared result card shows where the synced game ranks (GET /games/{id}/rank;
  * the win's move count is its score) under the player's display name with no
- * name entry (or asks for one once when none is set). Nothing goes to the
- * legacy POST /freecell/score (#2632). A resumed, already-won save shows the
- * card without looking its rank up again.
+ * name entry (or asks for one once when none is set). Nothing goes to POST
+ * /freecell/score (#2632; removed in #2644). A resumed, already-won save shows
+ * the card without looking its rank up again.
  *
  * All backend calls are intercepted — no running backend needed.
  */

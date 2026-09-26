@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from "./fixtures";
-import { mockHeartsApi, gotoHearts, injectHeartsState } from "./helpers/hearts";
+import { gotoHearts, injectHeartsState } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 const c = (suit: string, rank: number) => ({ suit: suit, rank: rank });
@@ -46,7 +46,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("pre-game picker shows Cautious / Schemer / Daring radio buttons", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
@@ -65,7 +64,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("selecting Cautious and clicking Start Game launches a game", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
@@ -85,7 +83,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("selecting Daring and clicking Start Game launches a game", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
@@ -105,7 +102,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("Change Difficulty on the result card returns to the difficulty picker", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await injectHeartsState(page, GAME_OVER_STATE);
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page
@@ -131,7 +127,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("Play Again on the result card deals a new game without the picker", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await injectHeartsState(page, GAME_OVER_STATE);
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page
@@ -153,7 +148,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
   test("v2 saved game (no aiDifficulty) loads without showing the picker", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     // Inject a v2 state — migration should convert it to v3 silently
     const v2State = {
       _v: 2,

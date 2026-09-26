@@ -7,8 +7,9 @@
  *
  * Note (issue 367): originally specified expo-sqlite, but we chose AsyncStorage
  * (sharded by priority tier) to avoid a native-module rebuild and keep
- * parity with scoreQueue.ts. The acceptance criteria target behavior, not
- * storage engine, so the "SQLite LogStore" label is historical.
+ * parity with the score queue of the time (removed in #2644). The acceptance
+ * criteria target behavior, not storage engine, so the "SQLite LogStore"
+ * label is historical.
  */
 
 export type LogType = "game_event" | "bug_log";

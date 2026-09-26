@@ -12,7 +12,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSolitaireApi, gotoSolitaire } from "./helpers/solitaire";
+import { gotoSolitaire } from "./helpers/solitaire";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -32,7 +32,6 @@ async function assertNoA11yViolations(
 
 test.describe("Solitaire — accessibility", () => {
   test.beforeEach(async ({ page }) => {
-    await mockSolitaireApi(page);
     await gotoSolitaire(page);
     await page.getByRole("button", { name: "Draw 1" }).click();
     await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });

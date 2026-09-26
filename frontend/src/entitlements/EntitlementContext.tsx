@@ -7,8 +7,6 @@ import { clearGame as clearHearts } from "../game/hearts/storage";
 import { clearGame as clearBlackjack } from "../game/blackjack/storage";
 import { clearGame as clearSudoku } from "../game/sudoku/storage";
 import { clearGame as clearSort } from "../game/sort/storage";
-import { scoreQueue } from "../game/_shared/scoreQueue";
-import type { GameType } from "../api/vocab";
 
 // Maps premium game slugs to their AsyncStorage clear functions.
 // starswarm has no local game state, so it is intentionally absent.
@@ -192,7 +190,6 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
         try {
           const clear = GAME_STORAGE_CLEARERS[slug];
           if (clear) await clear();
-          await scoreQueue.dropByGameType(slug as GameType);
           console.log(`entitlement revoked: ${slug} — local state cleared`);
         } catch (e) {
           Sentry.captureException(e, {

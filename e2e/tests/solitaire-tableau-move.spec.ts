@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // 7♥ is alone in column 1; 8♠ is the face-up top of column 2.
 // All other 50 cards sit in the stock so the state is structurally valid.
@@ -53,7 +53,6 @@ const TABLEAU_MOVE_STATE = {
 test("tableau-to-tableau: move 7♥ from column 1 onto 8♠ in column 2", async ({
   page,
 }) => {
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, TABLEAU_MOVE_STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

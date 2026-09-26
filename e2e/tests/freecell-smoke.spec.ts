@@ -9,11 +9,10 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockFreecellApi, gotoFreecell } from "./helpers/freecell";
+import { gotoFreecell } from "./helpers/freecell";
 
 test.describe("FreeCell — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
   });
 

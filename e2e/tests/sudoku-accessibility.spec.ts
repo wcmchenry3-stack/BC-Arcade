@@ -13,7 +13,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSudokuApi, gotoSudoku, injectSudokuState } from "./helpers/sudoku";
+import { gotoSudoku, injectSudokuState } from "./helpers/sudoku";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -66,7 +66,6 @@ const GAMEPLAY_STATE = {
 
 test.describe("Sudoku — accessibility", () => {
   test("difficulty selector has accessible radiogroup label", async ({ page }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
     await expect(
       page.getByRole("radiogroup", { name: "Difficulty" }),
@@ -74,7 +73,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("difficulty options have accessible radio labels", async ({ page }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
     await expect(
       page.getByRole("radio", { name: /Easy/i }),
@@ -82,7 +80,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("difficulty select screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
     await expect(
       page.getByRole("radiogroup", { name: "Difficulty" }),
@@ -93,7 +90,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("grid cells have descriptive accessible labels", async ({ page }) => {
-    await mockSudokuApi(page);
     await injectSudokuState(page, GAMEPLAY_STATE);
     await page.getByRole("button", { name: "Play Sudoku" }).click();
     await page.getByRole("heading", { name: "Sudoku", exact: true }).waitFor({ timeout: 10_000 });
@@ -103,7 +99,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("digit input buttons have accessible labels after cell selection", async ({ page }) => {
-    await mockSudokuApi(page);
     await injectSudokuState(page, GAMEPLAY_STATE);
     await page.getByRole("button", { name: "Play Sudoku" }).click();
     await page.getByRole("heading", { name: "Sudoku", exact: true }).waitFor({ timeout: 10_000 });
@@ -118,7 +113,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("selecting a cell and entering a digit does not trap focus", async ({ page }) => {
-    await mockSudokuApi(page);
     await injectSudokuState(page, GAMEPLAY_STATE);
     await page.getByRole("button", { name: "Play Sudoku" }).click();
     await page.getByRole("heading", { name: "Sudoku", exact: true }).waitFor({ timeout: 10_000 });
@@ -135,7 +129,6 @@ test.describe("Sudoku — accessibility", () => {
   });
 
   test("gameplay screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
-    await mockSudokuApi(page);
     await injectSudokuState(page, GAMEPLAY_STATE);
     await page.getByRole("button", { name: "Play Sudoku" }).click();
     await page.getByRole("heading", { name: "Sudoku", exact: true }).waitFor({ timeout: 10_000 });

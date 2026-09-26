@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from "./fixtures";
-import { mockHeartsApi, gotoHearts, injectHeartsState } from "./helpers/hearts";
+import { gotoHearts, injectHeartsState } from "./helpers/hearts";
 
 // 13-card hands where Player 1 (West) holds 2♣ and leads trick 1 automatically.
 //
@@ -44,7 +44,6 @@ const AI_LEADS_STATE = {
 
 test.describe("Hearts — gameplay", () => {
   test("pass phase: 3 cards selected and passed; trick area active", async ({ page }) => {
-    await mockHeartsApi(page);
     // gotoHearts navigates to "/" and clears hearts_game before entering the screen.
     await gotoHearts(page);
 
@@ -72,7 +71,6 @@ test.describe("Hearts — gameplay", () => {
   test("AI plays at least one card automatically after pass phase completes", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     // Inject a state where it is West's turn to lead (West holds 2♣).
     // The AI loop fires immediately, so West plays without player interaction.
     await injectHeartsState(page, AI_LEADS_STATE);

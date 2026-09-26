@@ -12,8 +12,6 @@ export interface LevelsResponse {
 }
 
 // The leaderboard is the generic session board (#2625): `statsApi.getLeaderboard("sort")`.
-// The legacy `POST /sort/score` / `GET /sort/scores` routes stay on the server
-// for installed builds until #2644; the app no longer calls them.
 export const sortApi = {
   getLevels: () => request<LevelsResponse>("/sort/levels"),
 };

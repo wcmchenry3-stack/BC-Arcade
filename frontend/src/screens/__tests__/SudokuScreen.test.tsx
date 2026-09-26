@@ -2,8 +2,9 @@
  * SudokuScreen — screen-level interaction, lifecycle, and leaderboard tests.
  *
  * #618 introduced the pre-game flow, input wiring, timer, and win modal.
- * #619 adds persistence via AsyncStorage, useGameSync instrumentation,
- * and the POST /sudoku/score call — this file covers the full surface.
+ * #619 adds persistence via AsyncStorage and useGameSync instrumentation;
+ * since #2632 the card reads the synced game's rank — this file covers the
+ * full surface.
  */
 
 import React from "react";
@@ -75,16 +76,8 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock("../../game/_shared/scoreQueue", () => ({
-  scoreQueue: {
-    enqueue: jest.fn().mockResolvedValue({ id: "q-1" }),
-    flush: jest.fn().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0, remaining: 0 }),
-    registerHandler: jest.fn(),
-  },
-}));
 // Import after mocks so the test file gets the jest.fn() flavour.
 
-import { scoreQueue } from "../../game/_shared/scoreQueue";
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
@@ -135,15 +128,6 @@ beforeEach(async () => {
   mockDiscardGame.mockReset();
   mockResumeGame.mockReset();
   mockResumeGame.mockReturnValue(null);
-  (scoreQueue.enqueue as jest.Mock).mockReset();
-  (scoreQueue.enqueue as jest.Mock).mockResolvedValue({ id: "q-1" });
-  (scoreQueue.flush as jest.Mock).mockReset();
-  (scoreQueue.flush as jest.Mock).mockResolvedValue({
-    attempted: 0,
-    succeeded: 0,
-    failed: 0,
-    remaining: 0,
-  });
 });
 
 describe("SudokuScreen — pre-game (after load)", () => {
@@ -727,7 +711,6 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect(flushQueuedGames).toHaveBeenCalled();
     await r.findByText("Saved as Riley · #3 on the leaderboard");
     expect(r.queryByLabelText(/your name/i)).toBeNull();
-    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it("asks for a display name once when none is set, then shows the rank", async () => {
@@ -751,7 +734,6 @@ describe("SudokuScreen — result card (#2511)", () => {
     mockGetGameRank.mockRejectedValue(new ApiError("boom", 500));
     const r = await solvePuzzle();
     await r.findByText("Couldn't save your score.");
-    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
 
     mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
     await act(async () => {

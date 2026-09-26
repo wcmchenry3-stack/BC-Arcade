@@ -16,7 +16,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // ---------------------------------------------------------------------------
 // Shared stock filler — keeps structural card counts valid without cluttering
@@ -58,7 +58,6 @@ test("solitaire tap-to-select: waste → tableau (K♥ onto empty column)", asyn
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -117,7 +116,6 @@ test("solitaire tap-to-select: tableau → foundation (A♠ to Spades foundation
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -175,7 +173,6 @@ test("solitaire tap-to-select: multi-card run (Q♣-J♥ onto K♦)", async ({
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

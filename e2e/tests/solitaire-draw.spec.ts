@@ -7,12 +7,11 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, gotoSolitaire } from "./helpers/solitaire";
+import { gotoSolitaire } from "./helpers/solitaire";
 
 test("tap stock: waste shows face-up card and moves counter increments", async ({
   page,
 }) => {
-  await mockSolitaireApi(page);
   await gotoSolitaire(page);
   // Dismiss the pre-game draw-mode modal.
   await page.getByRole("button", { name: "Draw 1" }).click();

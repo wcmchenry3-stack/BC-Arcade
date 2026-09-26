@@ -12,13 +12,8 @@
  */
 
 import { test, expect } from "./fixtures";
-import { mockStarswarmApi } from "./helpers/starswarm";
 
 test.describe("Star Swarm — navigation and smoke tests", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockStarswarmApi(page);
-  });
-
   test("navigates from Home to Star Swarm screen", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Play Star Swarm" }).click();

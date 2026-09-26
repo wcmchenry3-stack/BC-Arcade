@@ -13,11 +13,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import {
-  mockSolitaireApi,
-  gotoSolitaire,
-  injectSolitaireState,
-} from "./helpers/solitaire";
+import { gotoSolitaire, injectSolitaireState } from "./helpers/solitaire";
 
 const API_BASE = "http://localhost:8000";
 
@@ -70,7 +66,6 @@ test.describe("Solitaire — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("navigating away from Solitaire returns to Home", async ({ page }) => {
-    await mockSolitaireApi(page);
     await gotoSolitaire(page);
     await page.getByRole("button", { name: "Draw 1" }).click();
     await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
@@ -88,7 +83,6 @@ test.describe("Solitaire — error paths", () => {
   test("invalid card move (red on red) does not increment move counter", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, BOARD_STATE);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -129,7 +123,6 @@ test.describe("Solitaire — error paths", () => {
   test("board and game state are consistent after an invalid move attempt", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, BOARD_STATE);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -157,7 +150,6 @@ test.describe("Solitaire — error paths", () => {
   test("corrupted solitaire_game localStorage — fresh game loads with draw-mode modal", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await page.goto("/");
     await page.evaluate(() =>
       localStorage.setItem("solitaire_game", "not-valid-json{{{"),

@@ -8,12 +8,11 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { gotoMahjong } from "./helpers/mahjong";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Mahjong — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockMahjongApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {

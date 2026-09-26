@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { gotoMahjong } from "./helpers/mahjong";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
@@ -23,7 +23,6 @@ test.describe("Mahjong — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("navigating away from Mahjong returns to Home", async ({ page }) => {
-    await mockMahjongApi(page);
     await gotoMahjong(page);
 
     await page.goto("/");
@@ -39,7 +38,6 @@ test.describe("Mahjong — error paths", () => {
   test("rapid canvas taps on non-matching tiles do not crash the app", async ({
     page,
   }) => {
-    await mockMahjongApi(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
@@ -132,7 +130,6 @@ test.describe("Mahjong — error paths", () => {
   test("corrupted mahjong_game localStorage — fresh board loads", async ({
     page,
   }) => {
-    await mockMahjongApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {

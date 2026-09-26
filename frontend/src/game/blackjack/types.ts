@@ -2,8 +2,6 @@
  * Blackjack API response shapes.
  */
 
-import type { GameSession } from "../_shared/types";
-
 export type BlackjackGameEvent =
   | { readonly type: "cardDeal" }
   | { readonly type: "blackjack" }
@@ -61,5 +59,3 @@ export interface BlackjackState {
   run_starting_chips: number;
   run_complete: boolean;
 }
-
-export type BlackjackSession = GameSession<BlackjackState>;

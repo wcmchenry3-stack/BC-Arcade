@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { mockSudokuApi, injectSudokuState } from "./helpers/sudoku";
+import { injectSudokuState } from "./helpers/sudoku";
 
 const SOL = "123456789456789123789123456231564897564897231897231564312645978645978312978312645";
 
@@ -34,7 +34,6 @@ const PERSIST_STATE = {
 };
 
 test("digit entered in cell persists after navigating away and back", async ({ page }) => {
-  await mockSudokuApi(page);
   await injectSudokuState(page, PERSIST_STATE);
 
   await page.getByRole("button", { name: "Play Sudoku" }).click();

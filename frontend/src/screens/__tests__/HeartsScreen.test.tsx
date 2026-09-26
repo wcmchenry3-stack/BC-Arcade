@@ -15,7 +15,6 @@ import {
 import type { Card, HeartsState, SavedHeartsState, Suit } from "../../game/hearts/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
-import { scoreQueue } from "../../game/_shared/scoreQueue";
 import type { ProgressSnapshot } from "../../game/_shared/useGameSync";
 import type { GameRankResponse } from "../../api/types";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
@@ -781,9 +780,8 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     // The id is read before complete() closes the session.
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
     expect(r.queryByPlaceholderText("Enter your name")).toBeNull();
-    // No POST /hearts/score, and nothing queued for one.
+    // No request to the removed POST /hearts/score.
     expect(heartsRequests()).toEqual([]);
-    expect(await scoreQueue.peek()).toEqual([]);
   });
 
   it("keeps the finished game's id so a reopened card can ask again", async () => {
@@ -858,7 +856,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
 
   // #2560 review, #2629: the app closed while the card asked for a display
   // name. Nothing was owed — the row synced itself — so the reopened card
-  // just asks for the name again and then shows the rank; no scoreQueue item.
+  // just asks for the name again and then shows the rank.
   it("resumes the name prompt and the rank lookup after a remount", async () => {
     const first = await finishGame([45, 100, 63, 52]);
     expect(await first.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
@@ -884,7 +882,6 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     );
     expect(mockGetGameRank).toHaveBeenCalledTimes(1);
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
-    expect(await scoreQueue.peek()).toEqual([]);
     expect(heartsRequests()).toEqual([]);
   });
 

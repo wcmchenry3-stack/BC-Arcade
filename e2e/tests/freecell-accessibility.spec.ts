@@ -12,11 +12,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import {
-  mockFreecellApi,
-  gotoFreecell,
-  injectFreecellState,
-} from "./helpers/freecell";
+import { gotoFreecell, injectFreecellState } from "./helpers/freecell";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -46,7 +42,6 @@ const SINGLE_CARD_STATE = {
 
 test.describe("FreeCell — accessibility", () => {
   test("board region has accessible label", async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
     await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
       timeout: 5_000,
@@ -56,7 +51,6 @@ test.describe("FreeCell — accessibility", () => {
   test("cards in tableau have descriptive accessible labels", async ({
     page,
   }) => {
-    await mockFreecellApi(page);
     await injectFreecellState(page, SINGLE_CARD_STATE);
     await page.getByRole("button", { name: "Play FreeCell" }).click();
     await page
@@ -71,7 +65,6 @@ test.describe("FreeCell — accessibility", () => {
   });
 
   test("empty free cell slots have accessible labels", async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
     await expect(page.getByLabel("Empty free cell 1")).toBeVisible({
       timeout: 5_000,
@@ -79,7 +72,6 @@ test.describe("FreeCell — accessibility", () => {
   });
 
   test("foundation slots have accessible labels", async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
     await expect(page.getByLabel(/foundation/i).first()).toBeVisible({
       timeout: 5_000,
@@ -89,7 +81,6 @@ test.describe("FreeCell — accessibility", () => {
   test("keyboard Tab navigates through interactive controls without trapping focus", async ({
     page,
   }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
@@ -101,7 +92,6 @@ test.describe("FreeCell — accessibility", () => {
   test("focus is not lost after selecting and moving a card", async ({
     page,
   }) => {
-    await mockFreecellApi(page);
     await injectFreecellState(page, SINGLE_CARD_STATE);
     await page.getByRole("button", { name: "Play FreeCell" }).click();
     await page
@@ -121,7 +111,6 @@ test.describe("FreeCell — accessibility", () => {
   });
 
   test("game screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
     await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
       timeout: 5_000,

@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockFreecellApi, injectFreecellState } from "./helpers/freecell";
+import { injectFreecellState } from "./helpers/freecell";
 
 // One move has been made: 5♥ was moved from the tableau to free cell 0.
 const PERSIST_STATE = {
@@ -23,7 +23,6 @@ const PERSIST_STATE = {
 };
 
 test("move counter persists after navigating away and back", async ({ page }) => {
-  await mockFreecellApi(page);
   await injectFreecellState(page, PERSIST_STATE);
 
   await page.getByRole("button", { name: "Play FreeCell" }).click();

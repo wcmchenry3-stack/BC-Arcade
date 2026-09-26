@@ -320,7 +320,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
       json: () => Promise.resolve({ detail: "rate limited" }),
     } as Response);
     const request = makeRequest();
-    await expect(request("/cascade/score", { method: "POST" })).rejects.toThrow("rate limited");
+    await expect(request("/games", { method: "POST" })).rejects.toThrow("rate limited");
     const apiErrorCrumb = Sentry.addBreadcrumb.mock.calls.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c: any[]) => c[0]?.category === "api.error"
@@ -562,7 +562,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     it("a different endpoint, or the same path with another method, still reports", async () => {
       const request = makeRequest();
       await fail(request, "/entitlements");
-      await fail(request, "/starswarm/leaderboard");
+      await fail(request, "/games/leaderboard/starswarm");
       await fail(request, "/entitlements", "POST");
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
     });

@@ -3,16 +3,16 @@
  *
  * Wraps the tree so any component can call `useNetwork()` to get
  * `{ isOnline, isInitialized }`. Internally watches for offline→online
- * transitions and flushes the pending score queue exactly once per
- * reconnect edge. The display-name sync (#2624) flushes with it, on
- * foreground with `SyncWorker`, and once at launch.
+ * transitions and flushes `SyncWorker` and the display-name sync (#2624)
+ * exactly once per reconnect edge. Both also flush on foreground, and the
+ * name sync once at launch.
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
-import { scoreQueue } from "./scoreQueue";
+import { clearLegacyScoreQueue } from "./legacyScoreQueue";
 import {
   flushDisplayNameSync,
   registerDisplayNameSync,
@@ -28,9 +28,6 @@ const NetworkContext = createContext<NetworkStatus>({
   isInitialized: false,
 });
 
-// No per-game score handlers are registered any more: since Phase 2 of #2519
-// every result card only reads the rank of the synced game
-// (`sessionBoardAdapter`).
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
 
@@ -54,6 +51,8 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       });
     });
     syncWorker.start();
+    // What an older build left in the removed score queue (#2644).
+    void clearLegacyScoreQueue();
     // A stored name the server has never been sent (set before #2624) is
     // synced once; any pending name sync is retried.
     syncDisplayNameOnLaunch().catch((e) => {
@@ -96,9 +95,6 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     // Trigger flush on the offline → online edge (only after init so the
     // initial "true → true" mount isn't misread as a reconnect).
     if (status.isInitialized && !prev && status.isOnline) {
-      scoreQueue.flush().catch((e) => {
-        Sentry.captureException(e, { tags: { subsystem: "scoreQueue", op: "flush-on-reconnect" } });
-      });
       syncWorker.flush().catch((e) => {
         Sentry.captureException(e, { tags: { subsystem: "syncWorker", op: "flush-on-reconnect" } });
       });

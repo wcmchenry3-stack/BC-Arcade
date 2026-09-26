@@ -40,20 +40,20 @@ const DEADLOCK_STATE = {
 };
 
 /**
- * Intercepts the legacy Mahjong API and the rank route; returns the URLs of
- * every leaderboard call the app makes (none are expected here).
+ * Intercepts the removed Mahjong routes (#2644) and the rank route; returns the
+ * URLs of every leaderboard call the app makes.
  */
 async function routeMahjongApi(
   page: import("@playwright/test").Page,
 ): Promise<string[]> {
   const calls: string[] = [];
   await page.route("**/mahjong/**", async (route) => {
-    // Only POSTs count: `POST /mahjong/score` is the legacy submit.
+    // Only POSTs count: `POST /mahjong/score` was the removed legacy submit.
     if (route.request().method() === "POST") calls.push(route.request().url());
     await route.fulfill({
-      status: 200,
+      status: 404,
       contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
+      body: JSON.stringify({ detail: "Not Found" }),
     });
   });
   await page.route("**/games/*/rank", async (route) => {

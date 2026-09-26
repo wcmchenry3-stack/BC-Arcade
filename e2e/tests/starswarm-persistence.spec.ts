@@ -11,16 +11,9 @@
  */
 
 import { test, expect } from "./fixtures";
-import {
-  mockStarswarmApi,
-  injectStarswarmState,
-} from "./helpers/starswarm";
+import { injectStarswarmState } from "./helpers/starswarm";
 
 test.describe("Star Swarm — persistence (stateless)", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockStarswarmApi(page);
-  });
-
   test("game canvas is present on initial load with no stale state", async ({ page }) => {
     await injectStarswarmState(page, { score: 500, wave: 3 });
     await page.getByRole("button", { name: "Play Star Swarm" }).click();

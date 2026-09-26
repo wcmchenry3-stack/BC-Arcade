@@ -3,18 +3,6 @@ import { installEntitlementsMock } from "./api-mock";
 
 const STORAGE_KEY = "hearts_game";
 
-export async function mockHeartsApi(page: Page): Promise<void> {
-  // Use **/hearts/** glob so the route matches regardless of the base URL
-  // baked into the bundle (EXPO_PUBLIC_API_URL at export time).
-  await page.route("**/hearts/**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
-
 export async function gotoHearts(page: Page): Promise<void> {
   await installEntitlementsMock(page);
   await page.goto("/");

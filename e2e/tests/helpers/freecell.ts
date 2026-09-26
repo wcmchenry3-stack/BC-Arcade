@@ -2,16 +2,6 @@ import { Page } from "@playwright/test";
 
 const STORAGE_KEY = "freecell_game";
 
-export async function mockFreecellApi(page: Page): Promise<void> {
-  await page.route("**/freecell/**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
-
 export async function gotoFreecell(page: Page): Promise<void> {
   await page.goto("/");
   await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);

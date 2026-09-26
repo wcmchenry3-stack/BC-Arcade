@@ -1,17 +1,6 @@
 import { Page } from "@playwright/test";
 
-const API_BASE = "http://localhost:8000";
 const STORAGE_KEY = "solitaire_game";
-
-export async function mockSolitaireApi(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/solitaire/**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
 
 export async function gotoSolitaire(page: Page): Promise<void> {
   await page.goto("/");

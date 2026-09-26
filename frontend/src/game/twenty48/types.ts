@@ -2,8 +2,6 @@
  * Twenty48 state types.
  */
 
-import type { GameSession } from "../_shared/types";
-
 export interface TileData {
   id: number;
   value: number;
@@ -35,5 +33,3 @@ export interface Twenty48State {
   /** One-shot events emitted on the move that caused them; undefined otherwise. */
   events?: readonly GameEvent[];
 }
-
-export type Twenty48Session = GameSession<Twenty48State>;

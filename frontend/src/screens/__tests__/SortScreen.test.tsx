@@ -94,7 +94,6 @@ const mockRankSubmit = jest.fn();
 jest.mock("../../game/_shared/sessionBoardAdapter", () => ({
   sessionBoardAdapter: jest.fn((gameType: string) => ({
     gameType,
-    refetchOnReconnect: true,
     submit: (...args: unknown[]) => mockRankSubmit(...args),
   })),
 }));

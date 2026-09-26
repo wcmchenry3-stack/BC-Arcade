@@ -13,7 +13,7 @@
  */
 
 import { test, expect } from "./fixtures";
-import { mockHeartsApi, injectHeartsState } from "./helpers/hearts";
+import { injectHeartsState } from "./helpers/hearts";
 
 const c = (suit: string, rank: number) => ({ suit, rank });
 
@@ -56,7 +56,6 @@ const MID_GAME_STATE = {
 test("mid-game state persists across navigation away and back", async ({
   page,
 }) => {
-  await mockHeartsApi(page);
   await injectHeartsState(page, MID_GAME_STATE);
 
   await page.getByRole("button", { name: "Play Hearts" }).click();

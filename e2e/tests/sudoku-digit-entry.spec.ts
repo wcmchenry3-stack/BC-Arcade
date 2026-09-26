@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { mockSudokuApi, injectSudokuState } from "./helpers/sudoku";
+import { injectSudokuState } from "./helpers/sudoku";
 
 // Valid 9×9 solution used across injected states.
 const SOL = "123456789456789123789123456231564897564897231897231564312645978645978312978312645";
@@ -38,7 +38,6 @@ const STATE = {
 };
 
 test("tapping an empty cell then digit 5 displays 5 in that cell", async ({ page }) => {
-  await mockSudokuApi(page);
   await injectSudokuState(page, STATE);
 
   await page.getByRole("button", { name: "Play Sudoku" }).click();

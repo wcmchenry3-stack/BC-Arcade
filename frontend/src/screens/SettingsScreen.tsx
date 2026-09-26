@@ -11,7 +11,7 @@ import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { clearSession } from "../game/_shared/session";
-import { scoreQueue } from "../game/_shared/scoreQueue";
+import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
@@ -69,7 +69,7 @@ export default function SettingsScreen() {
         clearSession(),
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),
-        scoreQueue.clearAll(),
+        clearLegacyScoreQueue(),
       ]);
       setDeleteSuccessVisible(true);
       setTimeout(() => setDeleteSuccessVisible(false), 3000);

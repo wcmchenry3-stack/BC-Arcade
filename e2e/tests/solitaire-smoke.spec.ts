@@ -6,11 +6,10 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, gotoSolitaire } from "./helpers/solitaire";
+import { gotoSolitaire } from "./helpers/solitaire";
 
 test.describe("Solitaire — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockSolitaireApi(page);
     await gotoSolitaire(page);
     // Choose Draw 1 to dismiss the pre-game modal and deal a fresh board.
     await page.getByRole("button", { name: "Draw 1" }).click();

@@ -19,8 +19,8 @@
  *   The slot is written before the device name is cleared, so a failed write
  *   changes nothing and a kill in between still sends the DELETE.
  * - **Triggers.** Every save (the hook `registerDisplayNameSync` installs in
- *   `displayName.ts`), app launch, and — alongside `scoreQueue` and
- *   `SyncWorker` — reconnect and return to the foreground (`NetworkContext`).
+ *   `displayName.ts`), app launch, and — alongside `SyncWorker` — reconnect
+ *   and return to the foreground (`NetworkContext`).
  * - **Launch.** A stored name the server was never sent for this player id
  *   (set before #2624 shipped, or kept after "Delete my data" started a new
  *   session) goes into the slot once. `SYNCED_KEY` records the

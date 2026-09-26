@@ -11,8 +11,6 @@
 import { Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
-const API_BASE = "http://localhost:8000";
-
 export interface CascadeState {
   score: number;
   fruitCount: number;
@@ -27,17 +25,6 @@ export interface CascadeState {
     y: number;
     angle: number;
   }>;
-}
-
-/** Mock leaderboard endpoint so tests don't depend on a running backend. */
-export async function mockLeaderboard(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/cascade/**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
 }
 
 /** Navigate from Home to Cascade and wait for the canvas to be ready. */

@@ -10,11 +10,10 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { gotoMahjong } from "./helpers/mahjong";
 
 test.describe("Mahjong — tile interaction", () => {
   test.beforeEach(async ({ page }) => {
-    await mockMahjongApi(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");

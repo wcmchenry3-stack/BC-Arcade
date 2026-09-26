@@ -49,7 +49,8 @@ const DISPLAY_NAME_KEY = "player_display_name";
 
 /**
  * Mocks the rank lookup (#2632: the card reads GET /games/{id}/rank instead
- * of PATCH /sudoku/score/{id}) and records any legacy Sudoku call.
+ * of PATCH /sudoku/score/{id}, removed in #2644) and records any call to a
+ * removed Sudoku route.
  */
 const routeSudokuApi = (page: Page) =>
   routeSessionBoard(page, { legacyPattern: "**/sudoku/**" });

@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // 5♥ is the top waste card; stock has the remaining 51 cards face-down.
 function remainingStock() {
@@ -37,7 +37,6 @@ const PERSIST_STATE = {
 };
 
 test("waste card persists after navigating away and back", async ({ page }) => {
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, PERSIST_STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

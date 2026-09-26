@@ -21,7 +21,7 @@ const DISPLAY_NAME_KEY = "player_display_name";
 const API_BASE = "http://localhost:8000";
 
 interface RoutedApi {
-  /** Bodies posted to the legacy POST /starswarm/score — the app sends none (#2626). */
+  /** Bodies posted to the removed POST /starswarm/score (#2644) — the app sends none (#2626). */
   legacyPosts: Record<string, unknown>[];
   /** PATCH /games/{id}/complete bodies, as SyncWorker uploads them. */
   completions: Record<string, unknown>[];
@@ -30,7 +30,7 @@ interface RoutedApi {
 }
 
 /**
- * Intercepts the legacy Star Swarm routes and the session pipeline: the run's
+ * Intercepts the removed Star Swarm routes (#2644) and the session pipeline: the run's
  * games row (create, events, complete), its rank, and the display name.
  */
 async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
@@ -44,7 +44,7 @@ async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
     if (route.request().method() === "POST") {
       api.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
     }
-    await route.fulfill(json({ scores: [] }));
+    await route.fulfill(json({ detail: "Not Found" }, 404));
   });
   await page.route(new RegExp(`^${API_BASE}/games(/.*)?$`), async (route) => {
     const req = route.request();
@@ -164,7 +164,7 @@ test.describe("Star Swarm — result card", () => {
       },
     });
     expect(api.rankRequests).toHaveLength(1);
-    // Nothing goes to the legacy POST /starswarm/score any more.
+    // Nothing goes to the removed POST /starswarm/score.
     expect(api.legacyPosts).toHaveLength(0);
   });
 
