@@ -140,7 +140,8 @@ nothing, and `DELETE /players/me` without one deletes nothing (#2624). With the
 name on the player there is no per-game name left to duplicate. The per-game
 `POST /<game>/score` routes, which inserted a row per call, were removed in
 #2644, and migrations 0026 and 0029 deleted the unattributable `*-anon` rows
-they wrote (#2622).
+they wrote (#2622). Rows the old instance writes during a deploy, after 0029
+has run, are kept off the boards by their `*-anon` filter.
 
 What we log:
 

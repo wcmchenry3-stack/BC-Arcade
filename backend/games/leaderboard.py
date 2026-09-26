@@ -19,11 +19,13 @@ Rules every board follows
   player's current one, looked up through ``players.names`` (the one place
   #1047's accounts will change), so a rename shows on every entry at once.
   ``metadata.player_name`` plays no part in ranking.
-- **Excluded**: abandoned rows (``not_abandoned()``) and rows whose outcome
-  is not in ``qualifying_outcomes`` (when the board sets it). The legacy
-  per-game routes' unattributable ``*-anon`` rows were deleted by migrations
-  0026 and 0029 once those routes were gone (#2622, #2644); none can be
-  written any more, and such a session could never have a display name.
+- **Excluded**: abandoned rows (``not_abandoned()``), rows whose outcome is
+  not in ``qualifying_outcomes`` (when the board sets it), and every sentinel
+  ``*-anon`` session. The legacy ``POST /<game>/score`` routes that wrote
+  those rows are gone (#2644) and migrations 0026/0029 deleted the rows
+  (#2622), but a deploy runs 0029 while the old instance still serves the
+  routes, so rows written in that window survive it. This filter keeps them
+  off every board.
 - **Only sane values rank**: the metric must be an integer from 0 to the
   row's effective cap (``board.max_value_for``, or ``MAX_BOARD_VALUE`` when
   uncapped). A tie-break that isn't an integer in ``[0, MAX_BOARD_VALUE]``
@@ -79,6 +81,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 100
+
+SENTINEL_SESSION_SUFFIX = "-anon"
+"""Sessions like ``solitaire-anon``, written by the removed legacy ``POST /<game>/score``."""
 
 MAX_PARTITION_VALUE_LENGTH = 64
 
@@ -330,6 +335,7 @@ def board_filters(
         metric.is_not(None),
         Game.completed_at.is_not(None),
         not_abandoned(),
+        Game.session_id.not_like(f"%{SENTINEL_SESSION_SUFFIX}"),
         # Only players with a display name rank; all their games count (#2624).
         has_display_name(Game.session_id),
     ]
@@ -627,7 +633,7 @@ async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRan
       give a rank;
     - ``not_rankable``: this game can never be on its board (abandoned, a
       non-qualifying outcome, over the cap, a partition value with no board,
-      ...).
+      a sentinel session, ...).
     - ``no_name``: the player has no display name, so no board shows them and
       no rank is computed. Checked after the game, so a result card never
       asks for a name the game couldn't use.
@@ -651,8 +657,8 @@ async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRan
         return GameRank(ranked=False, reason="no_name")
     standing = await player_standing(db, board=board, game=game, session_id=session_id)
     if standing is None:
-        # Named and rankable by the row check, yet off the board (the two
-        # disagree): report what the board shows.
+        # Named and rankable by the row check, yet off the board (e.g. a
+        # sentinel ``*-anon`` session): report what the board shows.
         return GameRank(ranked=False, reason="not_rankable")
     return GameRank(ranked=True, rank=standing.rank, is_best=standing.is_best)
 

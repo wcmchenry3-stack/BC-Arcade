@@ -7,10 +7,12 @@ Create Date: 2026-09-26
 Repeats ``0026_delete_anon_leaderboard`` (#2622). The legacy per-game
 ``POST /<game>/score`` routes wrote their rows under a fixed, unattributable
 session id (``solitaire-anon`` and so on), and kept doing so after 0026 ran
-until #2644 deleted the routes. This is the final cleanup: with the routes
-gone, nothing writes these session ids any more, so once this has run the
-table holds none of them. The generic board's ``*-anon`` filter was removed in
-the same change.
+until #2644 deleted the routes. This repeats the cleanup once the routes are
+gone. It does not leave the table permanently clean: the deploy runs
+``alembic upgrade head`` when the new instance starts, while the old instance
+keeps serving ``POST /<game>/score`` until the swap, so rows written in that
+window survive this migration. The generic board's ``*-anon`` filter
+(``games/leaderboard.py``) stays as the guard that keeps them off every board.
 
 Literal session ids, not imported from application code: a migration must keep
 meaning what it meant when written (see ``0024_drop_blackjack_outcome``). The

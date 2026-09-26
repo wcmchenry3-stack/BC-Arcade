@@ -3,8 +3,8 @@
 ``GET /games/leaderboard/{game_type}`` and ``GET /games/{id}/rank`` serve
 every game from its ``BoardDefinition``. One entry per player (#2519 decision
 12): each named player's best row only, under their current display name
-(#2624); abandoned rows never rank; ranks are exact and count players, not
-rows.
+(#2624); abandoned rows and sentinel ``*-anon`` sessions never rank; ranks are
+exact and count players, not rows.
 """
 
 from __future__ import annotations
@@ -311,6 +311,42 @@ async def test_abandoned_row_does_not_shadow_a_players_real_best(client: TestCli
 async def test_null_outcome_rows_still_rank(client: TestClient) -> None:
     await _seed("solitaire", _sid(), score=100, name="Legacy", outcome=None)
     assert _pairs(_board(client, "solitaire")) == [("Legacy", 100)]
+
+
+# Every game whose legacy `POST /<game>/score` route wrote a `<game>-anon` row
+# (#2622). The routes are gone (#2644), but the old instance still serves them
+# during a deploy, after migration 0029 has run: the board filter is the guard.
+_LEGACY_SENTINEL_GAMES = (
+    "freecell",
+    "hearts",
+    "mahjong",
+    "solitaire",
+    "sort",
+    "starswarm",
+    "yacht",
+)
+
+
+@pytest.mark.parametrize("game_type", _LEGACY_SENTINEL_GAMES)
+async def test_sentinel_rows_never_rank(client: TestClient, game_type: str) -> None:
+    """A sentinel row that would otherwise rank (valid metric, qualifying
+    outcome, right partition) never appears; an identical real row does."""
+    board = leaderboard.enabled_board(game_type)
+    assert board is not None, game_type
+    outcome = board.qualifying_outcomes[0] if board.qualifying_outcomes else "completed"
+    meta = dict(CREATE_METADATA.get(game_type, {}))
+    score: int | None = 10
+    if board.metric != SCORE_METRIC:
+        meta[board.metric] = 10
+        score = None
+    await _seed(
+        game_type, f"{game_type}-anon", score=score, name="OldClient", outcome=outcome, meta=meta
+    )
+    await _seed(game_type, _sid(), score=score, name="Real", outcome=outcome, meta=meta)
+    viewer = _sid()
+    await _grant_all(viewer)  # three of the seven boards are premium
+    body = _board(client, game_type + PARTITION_QUERY.get(game_type, ""), viewer)
+    assert [e["player_name"] for e in body["entries"]] == ["Real"]
 
 
 async def test_players_without_a_display_name_are_excluded(client: TestClient) -> None:
