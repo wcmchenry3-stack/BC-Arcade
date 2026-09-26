@@ -1416,6 +1416,32 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
     }
   });
 
+  // A pause and a resume that both fall inside one step's gap: the next step
+  // never sees the app away, and must still build on the resumed clock.
+  it("an Auto-Complete step after a background trip inside its gap doesn't count the time away", async () => {
+    nowSpy.mockRestore(); // fake timers drive both the steps and the clock here
+    jest.useFakeTimers({ now: 1_700_000_000_000 });
+    try {
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+      const api = await mount();
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Auto-Complete")); // the Queen; the clock starts
+      });
+      await setAppState("background");
+      jest.setSystemTime(Date.now() + 60 * 60_000); // an hour away; no timer fires
+      await setAppState("active");
+      await act(() => {
+        jest.advanceTimersByTime(200); // the King's step, due all along, lands now
+      });
+      expect(api.getByTestId("solitaire-result")).toBeTruthy();
+      const summary = mockCompleteGame.mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(summary["outcome"]).toBe("completed");
+      expect(summary["durationMs"]).toBeLessThan(1_000);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   // A load that resolves while the app isn't active must not bring in a
   // running clock that no pause will stop.
   it("a game loaded while the app is in the background stays paused until it returns", async () => {

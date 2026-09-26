@@ -615,27 +615,23 @@ export default function SolitaireScreen() {
     if (state === null || autoCompleting) return;
     setAutoCompleting(true);
     setSelection(null);
-    let current = state;
-    let waited = false;
     const step = () => {
       // Another screen is covering the game (#2735) or the app is in the
       // background (#2750): hold off applying the next step until the player
       // is back, instead of letting a step scheduled before they left land
       // while the clock is paused.
       if (awayRef.current) {
-        waited = true;
         autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
         return;
       }
-      if (waited) {
-        // The pause and resume changed only the clock. Carry it over, or this
-        // step would put back the clock from before the player left and
-        // count the time away as play.
-        waited = false;
-        const live = stateRef.current;
-        if (live) {
-          current = { ...current, startedAt: live.startedAt, accumulatedMs: live.accumulatedMs };
-        }
+      // Each step starts from the committed state, board and clock, never a
+      // copy an earlier step kept: a pause and a resume between two steps
+      // (even inside one step's gap) changed the clock, and reapplying the
+      // old copy would count the time away as play (#2750).
+      const current = stateRef.current;
+      if (current === null) {
+        setAutoCompleting(false);
+        return;
       }
       const next = autoComplete(current);
       if (next === current) {
@@ -643,7 +639,9 @@ export default function SolitaireScreen() {
         return;
       }
       ensureSyncStarted(next);
-      current = next;
+      // Until the commit catches up, so a step that comes due first builds on
+      // this one instead of repeating it.
+      stateRef.current = next;
       setState(next);
       setMoves((m) => m + 1);
       if (next.isComplete) {
