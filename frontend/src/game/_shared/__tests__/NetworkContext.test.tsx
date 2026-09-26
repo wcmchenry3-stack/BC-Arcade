@@ -31,21 +31,6 @@ jest.mock("../testHooks", () => ({
   registerLogstoreTestHooks: jest.fn().mockReturnValue(() => {}),
 }));
 
-jest.mock("../../cascade/scoreSync", () => ({
-  registerCascadeScoreHandler: jest.fn(),
-}));
-
-jest.mock("../../sudoku/scoreSync", () => ({
-  registerSudokuScoreHandler: jest.fn(),
-}));
-
-jest.mock("../../solitaire/scoreSync", () => ({
-  registerSolitaireScoreHandler: jest.fn(),
-}));
-jest.mock("../../freecell/scoreSync", () => ({
-  registerFreeCellScoreHandler: jest.fn(),
-}));
-
 jest.mock("../../../components/shared/CapacityWarningToast", () => ({
   CapacityWarningToast: () => null,
 }));

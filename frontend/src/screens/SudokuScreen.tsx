@@ -7,12 +7,12 @@
  *      backgrounded or force-killed app resumes at the exact puzzle
  *      state; cleared on New Puzzle / Change Difficulty.
  *   3. Instrumentation (#619) — `useGameSync("sudoku")` session started
- *      on the first `enterDigit`, completed on win, abandoned on
- *      unmount or back-navigation when at least one digit was placed
- *      and the puzzle is unfinished.
- *   4. Result + leaderboard (#2511) — the shared GameResultModal; the
- *      score is attached to the synced game under the profile display
- *      name automatically (useLeaderboardSubmit), queued when offline.
+ *      on the first `enterDigit`, completed on win, and otherwise
+ *      abandoned by the hook on unmount (back-navigation included) with
+ *      its progress snapshot and no score (#2632).
+ *   4. Result + leaderboard (#2511) — the shared GameResultModal shows
+ *      where the synced game ranks on its (difficulty, variant) board
+ *      (`sessionBoardAdapter`, #2677).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,13 +60,16 @@ import {
   type SudokuStats,
 } from "../game/sudoku/storage";
 import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
-import { sudokuLeaderboard } from "../game/sudoku/leaderboard";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 
 const FLASH_MS = 200;
+
+/** The result card reads the synced game's rank on the session board (#2632). */
+const sudokuBoard = sessionBoardAdapter("sudoku");
 const DIFFICULTY_BASE: Record<Difficulty, number> = {
   easy: 100,
   medium: 200,
@@ -110,7 +113,7 @@ export default function SudokuScreen() {
     bestTimeS: number;
     isNewBest: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(sudokuLeaderboard);
+  const leaderboard = useLeaderboardSubmit(sudokuBoard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
@@ -124,7 +127,6 @@ export default function SudokuScreen() {
   // clobber a resumable save still being read off disk.
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<SudokuState | null>(null);
-  const digitCountRef = useRef(0);
   const prevCompleteRef = useRef(false);
 
   const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
@@ -137,6 +139,8 @@ export default function SudokuScreen() {
 
   const {
     start: syncStart,
+    restart: syncRestart,
+    close: syncClose,
     resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
@@ -144,15 +148,23 @@ export default function SudokuScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("sudoku");
 
-  // #2450 / #2619 — the abandon result block (backend SudokuResult). Both the
-  // hook's own abandon (unmount) and the beforeRemove abandon build it here.
+  // #2450 / #2619 — the abandon result block (backend SudokuResult), sent by
+  // the hook's own abandon (unmount). Back-navigation needs nothing more: the
+  // screen unmounts, and that abandon carries no score (#2632).
   const progressResult = useCallback(
     () => ({ won: false, errors: stateRef.current?.errorCount ?? 0 }),
     []
   );
+  // The puzzle's own play timer (#2684), which wins over the hook's foreground
+  // clock: time since the first input, with backgrounded time taken out (the
+  // start moves forward on resume, and a pause in progress stops the count).
+  const playedMs = useCallback((): number | null => {
+    if (startMsRef.current === null) return null;
+    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
+  }, []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
-  }, [syncSetProgressSnapshot, progressResult]);
+    syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
+  }, [syncSetProgressSnapshot, progressResult, playedMs]);
 
   const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
 
@@ -181,8 +193,12 @@ export default function SudokuScreen() {
           setState(saved);
           setDifficulty(saved.difficulty);
           setVariant(saved.variant);
-          // A restored game continues the session a killed app left open (#2654).
-          if (!saved.isComplete) syncResume();
+          // A restored game continues the session a killed app left open
+          // (#2654) — only one for the same puzzle settings, so a restore never
+          // adopts another difficulty's or variant's session.
+          if (!saved.isComplete) {
+            syncResume({ difficulty: saved.difficulty, variant: saved.variant });
+          }
           // Treat any resumed state that already has moves as "timer
           // already started" — the player wants to see it ticking
           // immediately on return.  Elapsed resets to 0 because we
@@ -281,8 +297,8 @@ export default function SudokuScreen() {
             errors: state.errorCount,
           }
         );
-        // The leaderboard entry is the synced game plus the player's name.
-        submitScore({ gameId: gid }).catch(() => {});
+        // The card shows where this game ranks on its board.
+        void submitScore({ gameId: gid });
       }
       clearGame().catch(() => {});
 
@@ -321,50 +337,31 @@ export default function SudokuScreen() {
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete, syncGetGameId, setScoreboardSnapshot, submitScore]);
 
-  // Abandon on back-navigation when a digit has been placed and the
-  // puzzle isn't finished.  useGameSync's own unmount handler provides
-  // a second line of defense; calling complete here first makes the
-  // unmount path a no-op for the same session.
-  useEffect(() => {
-    const unsub = navigation.addListener("beforeRemove", () => {
-      const s = stateRef.current;
-      if (!syncGetGameId()) return;
-      if (s !== null && s.isComplete) return;
-      if (digitCountRef.current < 1) return;
-      const result = progressResult();
-      syncComplete(
-        {
-          outcome: "abandoned",
-          finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
-          // The game's own play timer (#2619): its start moves past time spent
-          // in the background, so this is active time, not wall-clock time.
-          durationMs:
-            startMsRef.current !== null
-              ? (pausedAtRef.current ?? Date.now()) - startMsRef.current
-              : null,
-          result,
-        },
-        {
-          outcome: "abandoned",
-          ...result,
-          difficulty: s?.difficulty,
-          variant: s?.variant,
-        }
-      );
-    });
-    return unsub;
-  }, [navigation, syncComplete, syncGetGameId, progressResult]);
-
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
-      if (syncGetGameId()) return;
-      syncStart(
-        { difficulty: next.difficulty, variant: next.variant },
-        { difficulty: next.difficulty, variant: next.variant }
-      );
+      // A new puzzle opened its session already (`openPuzzleSession`); a
+      // restored one whose session couldn't be resumed opens one now.
+      if (!syncGetGameId()) {
+        const settings = { difficulty: next.difficulty, variant: next.variant };
+        syncStart(settings, settings);
+      }
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
+  );
+
+  /**
+   * #2690: every new puzzle gets its own session, with its own difficulty and
+   * variant. The restart closes whatever is still open (abandoned with the
+   * snapshot if the player started it, discarded if not) while `stateRef`
+   * still holds the old puzzle; the new session is sent on the first digit.
+   */
+  const openPuzzleSession = useCallback(
+    (fresh: SudokuState) => {
+      const settings = { difficulty: fresh.difficulty, variant: fresh.variant };
+      syncRestart(settings, settings);
+    },
+    [syncRestart]
   );
 
   const flashError = useCallback(() => {
@@ -402,24 +399,24 @@ export default function SudokuScreen() {
 
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});
-    digitCountRef.current = 0;
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
+    openPuzzleSession(fresh);
     setState(fresh);
     setElapsed(0);
     setResult(null);
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [difficulty, variant, resetScore, rememberDifficulty]);
+  }, [difficulty, variant, resetScore, rememberDifficulty, openPuzzleSession]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
       setNewGameModalVisible(false);
       setVariant(v);
       clearGame().catch(() => {});
-      digitCountRef.current = 0;
       // A premium level starts at the default instead (#1129).
       const fresh = loadPuzzle(rememberDifficulty(d), v);
+      openPuzzleSession(fresh);
       setState(fresh);
       setElapsed(0);
       setResult(null);
@@ -427,7 +424,7 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore, rememberDifficulty]
+    [resetScore, rememberDifficulty, openPuzzleSession]
   );
 
   const handleNewGameRequest = useCallback(() => {
@@ -448,7 +445,6 @@ export default function SudokuScreen() {
         // Timer + session start on the first input that actually
         // changes state.
         if (startMsRef.current === null) startMsRef.current = Date.now();
-        digitCountRef.current += 1;
         ensureSyncStarted(next);
 
         return next;
@@ -470,15 +466,17 @@ export default function SudokuScreen() {
   }, []);
 
   const handleChangeDifficulty = useCallback(() => {
+    // #2690: close this puzzle's session now, while the snapshot still reads
+    // it (abandoned if started, discarded if not). The next puzzle opens its own.
+    syncClose();
     clearGame().catch(() => {});
-    digitCountRef.current = 0;
     setState(null);
     setElapsed(0);
     setResult(null);
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore]);
+  }, [resetScore, syncClose]);
 
   const handleHint = useCallback(() => {
     setState((s) => {
@@ -489,7 +487,6 @@ export default function SudokuScreen() {
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
       if (startMsRef.current === null) startMsRef.current = Date.now();
-      digitCountRef.current += 1;
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });

@@ -13,10 +13,6 @@ import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { scoreQueue } from "./scoreQueue";
-import { registerCascadeScoreHandler } from "../cascade/scoreSync";
-import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
-import { registerSolitaireScoreHandler } from "../solitaire/scoreSync";
-import { registerFreeCellScoreHandler } from "../freecell/scoreSync";
 import {
   flushDisplayNameSync,
   registerDisplayNameSync,
@@ -32,11 +28,9 @@ const NetworkContext = createContext<NetworkStatus>({
   isInitialized: false,
 });
 
-// Register per-game handlers exactly once, module-load time.
-registerCascadeScoreHandler();
-registerSudokuScoreHandler();
-registerSolitaireScoreHandler();
-registerFreeCellScoreHandler();
+// No per-game score handlers are registered any more: since Phase 2 of #2519
+// every result card only reads the rank of the synced game
+// (`sessionBoardAdapter`).
 // Every saved display name is also sent to the server (#2624).
 registerDisplayNameSync();
 

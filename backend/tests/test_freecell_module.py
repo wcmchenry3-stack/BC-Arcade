@@ -1,8 +1,10 @@
 """FreeCell records a per-session game via the shared path (#2452).
 
-The leaderboard routes are covered by ``test_freecell.py`` and stay unchanged;
-these tests cover the GameModule, its result model, and — the load-bearing part —
-that the new per-session rows do not touch the leaderboard.
+The legacy leaderboard routes are covered by ``test_freecell.py``; these tests
+cover the GameModule, its result model, and — the load-bearing part — how the
+session rows rank. Since #2632 a win sends its move count as ``final_score``
+and ranks on the generic board (fewest moves first, once per player); an
+abandon never carries a score.
 """
 
 from __future__ import annotations
@@ -95,7 +97,8 @@ def test_result_rejects_missing_or_invalid_fields(bad: dict) -> None:
 
 def _facts(result: dict) -> dict:
     validated = FreeCellResult.model_validate(result).model_dump(exclude_unset=True)
-    return game_facts(validated, None, None)  # final_score stays null for FreeCell
+    # The goals read only the result block; a win's final_score (#2632) is its moves.
+    return game_facts(validated, validated["moves"] if validated["won"] else None, None)
 
 
 def test_validated_results_satisfy_the_freecell_goals() -> None:
@@ -110,28 +113,49 @@ def test_validated_results_satisfy_the_freecell_goals() -> None:
 
 
 # ---------------------------------------------------------------------------
-# the shared path over HTTP — and the leaderboard stays exactly as it was
+# the shared path over HTTP — and the boards (#2632)
 # ---------------------------------------------------------------------------
 
 
-def _play(sid: str, *, won: bool, moves: int, outcome: str = "completed") -> str:
+def _play(
+    sid: str, *, won: bool, moves: int, outcome: str = "completed", scored: bool = True
+) -> str:
+    """One session game as the app records it.
+
+    Since #2632 a win sends ``final_score = moves`` (the board ranks it asc); an
+    abandon (the hook's, on unmount or New Game) never carries a score.
+    ``scored=False`` is an installed build's win, which sent no score.
+    """
     r = client.post("/games", headers=_headers(sid), json={"game_type": "freecell"})
     assert r.status_code == 200, r.text
     gid = r.json()["id"]
-    r = client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(sid),
-        json={"outcome": outcome, "result": {"won": won, "moves": moves}},
-    )
+    body: dict = {"outcome": outcome, "result": {"won": won, "moves": moves}}
+    if scored and outcome != "abandoned":
+        body["final_score"] = moves
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     return gid
 
 
-def test_a_session_game_records_the_result_and_no_score() -> None:
+def _generic_board(sid: str) -> list[tuple[str, int]]:
+    r = client.get("/games/leaderboard/freecell", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    return [(e["player_name"], e["value"]) for e in r.json()["entries"]]
+
+
+def test_a_won_session_game_records_the_result_and_its_moves_as_the_score() -> None:
     sid = str(uuid.uuid4())
     gid = _play(sid, won=True, moves=91)
     detail = client.get(f"/games/{gid}", headers=_headers(sid)).json()
     assert detail["metadata"] == {"won": True, "moves": 91}
+    assert detail["final_score"] == 91
+    assert detail["outcome"] == "completed"
+
+
+def test_an_installed_builds_unscored_win_still_completes() -> None:
+    sid = str(uuid.uuid4())
+    gid = _play(sid, won=True, moves=91, scored=False)
+    detail = client.get(f"/games/{gid}", headers=_headers(sid)).json()
     assert detail["final_score"] is None
     assert detail["outcome"] == "completed"
 
@@ -148,25 +172,31 @@ def test_an_invalid_result_is_a_400_and_does_not_complete_the_game() -> None:
     assert client.get(f"/games/{gid}", headers=_headers(sid)).json()["completed_at"] is None
 
 
-def test_session_games_never_reach_the_leaderboard() -> None:
-    # An abandoned game with few moves would rank first (fewer moves is better),
-    # and a win would appear as an "anon" duplicate — so neither may be ranked.
+def test_a_named_players_win_ranks_once_and_an_abandon_never() -> None:
+    # Fewer moves is better, so an abandoned game with a handful of moves must
+    # never rank, and each player is listed once (their fewest moves).
     sid = str(uuid.uuid4())
+    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Alice"})
+    assert r.status_code == 200, r.text
     _play(sid, won=False, moves=3, outcome="abandoned")
     _play(sid, won=True, moves=88)
-    assert client.get("/freecell/leaderboard").json() == {"scores": []}
+    _play(sid, won=True, moves=104)
+    assert _generic_board(sid) == [("Alice", 88)]
 
 
-def test_the_named_submission_flow_is_unchanged_alongside_a_session_game() -> None:
+def test_an_installed_builds_named_submission_does_not_duplicate_the_entry() -> None:
+    # An older build keeps posting to POST /freecell/score after its win. Its
+    # ``freecell-anon`` row stays off the generic board, so the player is
+    # still listed once.
     sid = str(uuid.uuid4())
+    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Alice"})
+    assert r.status_code == 200, r.text
     _play(sid, won=True, moves=88)
-    r = client.post("/freecell/score", json={"player_id": "alice", "move_count": 88})
+    r = client.post(
+        "/freecell/score", headers=_headers(sid), json={"player_id": "Alice", "move_count": 88}
+    )
     assert r.status_code == 201
-    assert r.json()["rank"] == 1
-    # Exactly one entry: the named one. The session row did not duplicate it.
-    assert client.get("/freecell/leaderboard").json()["scores"] == [
-        {"player_id": "alice", "move_count": 88, "rank": 1}
-    ]
+    assert _generic_board(sid) == [("Alice", 88)]
 
 
 def test_a_session_game_earns_xp_and_counts_as_played() -> None:

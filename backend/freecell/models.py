@@ -20,8 +20,9 @@ class FreeCellResult(BaseModel):
     The daily challenge reads exactly these fields (``moves`` for the "make N
     moves" goal, which an abandoned game still counts; ``won`` and ``moves`` for
     the win goals). Unknown keys are ignored so a newer app build never fails
-    completion. The session's ``final_score`` is deliberately left null — see
-    ``freecell/router.py``: the leaderboard ranks every scored row.
+    completion. Since #2632 a won session also sends its move count as
+    ``final_score`` (the generic board ranks it, fewest first); installed
+    builds still leave it null.
     """
 
     won: bool

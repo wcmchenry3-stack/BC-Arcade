@@ -1,6 +1,7 @@
 /**
  * FreeCellScreen — hint and no-moves-banner integration tests (#1295),
- * per-session game sync (#2452), and the shared result card (#2508).
+ * per-session game sync (#2452, scored since #2632), and the shared result
+ * card (#2508), which reads the synced game's rank (#2632).
  *
  * Engine correctness is covered by engine.test.ts. These tests focus on
  * the screen's hint handler: when getHintMoves returns [] (all moves are
@@ -48,11 +49,17 @@ jest.mock("../../game/freecell/storage", () => ({
 
 import { loadGame, loadStats } from "../../game/freecell/storage";
 
-jest.mock("../../game/freecell/api", () => ({
-  freecellApi: { submitScore: jest.fn(), getLeaderboard: jest.fn() },
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
-
-import { freecellApi } from "../../game/freecell/api";
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
+}));
 
 // Mock gameEventClient so the useGameSync wiring (#2452) can be asserted without the
 // real client, which would otherwise start a session on the first move.
@@ -236,11 +243,12 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     expect(summary["outcome"]).toBe("abandoned");
     // Backend FreeCellResult needs both fields; moves feeds the "make N moves" goal.
     expect(summary["result"]).toEqual({ won: false, moves: 1 });
-    // The leaderboard ranks every scored row — an abandon must never carry one.
+    // Fewer moves ranks higher — an abandon must never carry a score.
     expect(summary).not.toHaveProperty("finalScore");
   });
 
-  it("completes on a win with won:true and the move count, and no score", async () => {
+  // #2632: the win's move count is its score (the board ranks it ascending).
+  it("completes on a win with won:true and the move count as finalScore", async () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12)); // only K♠ to go
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
@@ -256,8 +264,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     expect(summary["outcome"]).toBe("completed");
     expect(summary["result"]).toEqual(expect.objectContaining({ won: true, moves: 1 }));
     expect(eventData).toEqual(expect.objectContaining({ won: true, moves: 1 }));
-    // final_score stays null: XP and the challenge read the result block instead.
-    expect(summary).not.toHaveProperty("finalScore");
+    expect(summary["finalScore"]).toBe(1);
   });
 
   // #2684 — FreeCell has no timer of its own: useGameSync's active-play window
@@ -354,14 +361,13 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
 // ---------------------------------------------------------------------------
 
 describe("FreeCellScreen — result card (#2508)", () => {
-  const submitScore = freecellApi.submitScore as jest.Mock;
   let reduceMotion: jest.SpyInstance;
 
   beforeEach(async () => {
     await AsyncStorage.clear();
     resetDisplayNameCacheForTests();
-    submitScore.mockReset();
-    submitScore.mockResolvedValue({ player_id: "Riley", move_count: 1, rank: 2 });
+    mockGetGameRank.mockReset();
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 2, is_best: true, reason: null });
     reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
   });
 
@@ -396,12 +402,27 @@ describe("FreeCellScreen — result card (#2508)", () => {
     expect(card.queryByRole("button", { name: /Submit/ })).toBeNull();
   });
 
-  it("submits the move count under the saved display name", async () => {
+  // #2632: the card reads the synced game's rank; nothing goes to /freecell/score.
+  it("shows the synced game's rank under the saved display name", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     const r = await winInOneMove();
     await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
-    expect(submitScore).toHaveBeenCalledTimes(1);
-    expect(submitScore).toHaveBeenCalledWith("Riley", 1);
+    expect(mockGetGameRank).toHaveBeenCalledTimes(1);
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
+  });
+
+  it("asks for a display name once when none is set, then shows the rank", async () => {
+    const r = await winInOneMove();
+    const input = await r.findByLabelText("Pick a display name for leaderboards");
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    await act(async () => {
+      await fireEvent.changeText(input, "Riley");
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Save" }));
+    });
+    await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 
   it("marks a new best and shows it", async () => {
@@ -455,6 +476,6 @@ describe("FreeCellScreen — result card (#2508)", () => {
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
-    expect(submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
   });
 });

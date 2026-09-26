@@ -14,9 +14,10 @@ import { AccessibilityInfo } from "react-native";
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { SolitaireScoreboardProvider } from "../../game/solitaire/SolitaireScoreboardContext";
+import * as solitaireEngine from "../../game/solitaire/engine";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
+import type { SolitaireState } from "../../game/solitaire/types";
 import { loadStats, saveStats } from "../../game/solitaire/storage";
-import { solitaireApi } from "../../game/solitaire/api";
 import { WIN_CASCADE_MS } from "../../game/solitaire/components/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
@@ -69,11 +70,17 @@ jest.mock("@sentry/react-native", () => ({
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
+const mockMarkStarted = jest.fn();
+const mockDiscardGame = jest.fn();
+const mockResumeGame = jest.fn<string | null, [string, Record<string, unknown> | undefined]>();
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
+    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
+    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
     reportBug: jest.fn(),
     getQueueStats: jest.fn(),
@@ -81,11 +88,19 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
-jest.mock("../../game/solitaire/api", () => ({
-  solitaireApi: {
-    submitScore: jest.fn(),
-    getLeaderboard: jest.fn(),
-  },
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+}));
+// The hook's foreground clock (#2684) adds nothing, so the summaries below
+// carry only what the screen sends: its own play timer.
+jest.mock("../../game/_shared/foregroundClock", () => ({ foregroundNow: () => 0 }));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
 
 async function renderScreen() {
@@ -123,7 +138,11 @@ beforeEach(async () => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
-  (solitaireApi.submitScore as jest.Mock).mockReset();
+  mockMarkStarted.mockReset();
+  mockDiscardGame.mockReset();
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue(null);
+  mockGetGameRank.mockReset();
 });
 
 describe("SolitaireScreen — pre-game modal", () => {
@@ -327,16 +346,39 @@ describe("SolitaireScreen — save/resume lifecycle", () => {
 });
 
 describe("SolitaireScreen — useGameSync lifecycle", () => {
-  it("starts a sync session on the first move (not on mount)", async () => {
+  // #2690: each deal opens its own session (held on the device), which the
+  // first move starts; nothing is opened on mount.
+  it("opens the deal's session when a mode is chosen and starts it on the first move", async () => {
     const api = await mount();
-    await chooseDraw1(api);
     expect(mockStartGame).not.toHaveBeenCalled();
+    await chooseDraw1(api);
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const [gameType] = mockStartGame.mock.calls[0] ?? [];
+    expect(gameType).toBe("solitaire");
+    expect(mockMarkStarted).not.toHaveBeenCalled();
     await act(async () => {
       await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
-    const [gameType] = mockStartGame.mock.calls[0] ?? [];
-    expect(gameType).toBe("solitaire");
+    expect(mockMarkStarted).toHaveBeenCalledWith("game-uuid-test");
+  });
+
+  // #2632: draw_mode is the row's metadata (SolitaireMetadata), not only event data.
+  it.each([
+    ["Draw 1", 1, "Draw 1 from stock, 24 cards remaining"],
+    ["Draw 3", 3, "Draw 3 from stock, 24 cards remaining"],
+  ])("sends %s as draw_mode in the start metadata", async (label, drawMode, stockLabel) => {
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(label));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(stockLabel));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    const [, metadata, eventData] = mockStartGame.mock.calls[0] ?? [];
+    expect(metadata).toEqual({ draw_mode: drawMode });
+    expect(eventData).toEqual({ draw_mode: drawMode });
   });
 
   it("does not start a second session on subsequent moves", async () => {
@@ -351,57 +393,240 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     expect(mockStartGame).toHaveBeenCalledTimes(1);
   });
 
-  it("completes the session as abandoned on beforeRemove when moves >= 1", async () => {
+  // #2632: no screen-level beforeRemove abandon (it sent the score so far).
+  it("does not complete the session on beforeRemove", async () => {
     const api = await mount();
     await chooseDraw1(api);
     await act(async () => {
       await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
     });
-    // Simulate the screen being removed from the navigation stack.
-    const handlers = mockNavListeners.get("beforeRemove") ?? [];
-    expect(handlers.length).toBeGreaterThan(0);
+    expect(mockAddListener).not.toHaveBeenCalledWith("beforeRemove", expect.anything());
     await act(async () => {
-      for (const h of handlers) h();
+      for (const h of mockNavListeners.get("beforeRemove") ?? []) h();
     });
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [, summary] = mockCompleteGame.mock.calls[0];
-    expect(summary).toEqual(expect.objectContaining({ outcome: "abandoned" }));
-    // #2450 — result block must satisfy backend SolitaireResult (won + moves).
-    // #2619 — built by the same helper as the unmount snapshot.
-    expect(summary.result).toEqual({ won: false, moves: 1 });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
-  // #2619: the abandon carries the game's own play timer, not 0.
-  it("a beforeRemove abandon sends the play timer as durationMs", async () => {
+  // Regression (#2632): back-navigation unmounts the screen, and the hook's own
+  // abandon records the game with the progress snapshot and no score.
+  // #2684: the abandon carries the game's own play timer (activeMs), not 0 or
+  // the hook's foreground clock.
+  it("back-navigation mid-game abandons via the hook with the snapshot, its play time and no score", async () => {
     const api = await mount();
     await chooseDraw1(api);
-    await act(async () => {
-      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
-    });
-    const realNow = Date.now.bind(Date);
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + 30_000);
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
     try {
       await act(async () => {
-        for (const h of mockNavListeners.get("beforeRemove") ?? []) h();
+        await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      });
+      now += 30_000; // the game's timer started at the first move
+      await act(async () => {
+        api.unmount();
       });
     } finally {
       nowSpy.mockRestore();
     }
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const [, summary] = mockCompleteGame.mock.calls[0];
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary.durationMs).toBeGreaterThanOrEqual(30_000);
-    expect(summary.durationMs).toBeLessThan(40_000);
+    const [gameId, summary] = mockCompleteGame.mock.calls[0];
+    expect(gameId).toBe("game-uuid-test");
+    // #2450 — the result block satisfies backend SolitaireResult (won + moves).
+    expect(summary).toEqual({
+      outcome: "abandoned",
+      result: { won: false, moves: 1 },
+      durationMs: 30_000,
+    });
   });
 
-  it("does not fire an abandon event before any moves are made", async () => {
+  it("does not record an abandon before any moves are made", async () => {
     const api = await mount();
     await chooseDraw1(api);
-    const handlers = mockNavListeners.get("beforeRemove") ?? [];
     await act(async () => {
-      for (const h of handlers) h();
+      api.unmount();
     });
     expect(mockCompleteGame).not.toHaveBeenCalled();
+    // The untouched deal's session is thrown away, not left pending.
+    expect(mockDiscardGame).toHaveBeenCalledWith("game-uuid-test");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2690 — a new game never completes on the old game's session
+// ---------------------------------------------------------------------------
+
+describe("SolitaireScreen — sessions across games (#2690)", () => {
+  const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
+  const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+  const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+  const foundation = (suit: (typeof suits)[number]) => full.filter((c) => c.suit === suit);
+
+  /** One move from winning: the King of Clubs waits on the waste. */
+  function nearWin(drawMode: 1 | 3): SolitaireState {
+    return {
+      ...dealGame(drawMode),
+      tableau: [[], [], [], [], [], [], []],
+      foundations: {
+        spades: foundation("spades"),
+        hearts: foundation("hearts"),
+        diamonds: foundation("diamonds"),
+        clubs: foundation("clubs").slice(0, 12),
+      },
+      stock: [],
+      waste: [{ suit: "clubs", rank: 13, faceUp: true }],
+      score: 800,
+      undoStack: [],
+      isComplete: false,
+    } as SolitaireState;
+  }
+
+  async function playWinningMove(api: Awaited<ReturnType<typeof mount>>) {
+    const king = api.getByLabelText("K of Clubs");
+    await act(async () => {
+      await fireEvent.press(king);
+    });
+    await act(async () => {
+      await fireEvent.press(king);
+    });
+    await api.findByTestId("solitaire-result");
+  }
+
+  async function newGameFromMenu(api: Awaited<ReturnType<typeof mount>>) {
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Start New"));
+    });
+  }
+
+  let reduceMotion: jest.SpyInstance;
+  let dealSpy: jest.SpyInstance | null = null;
+
+  beforeEach(async () => {
+    resetDisplayNameCacheForTests();
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 1, is_best: true, reason: null });
+    let n = 0;
+    mockStartGame.mockImplementation(() => `game-${++n}`);
+  });
+
+  afterEach(() => {
+    reduceMotion.mockRestore();
+    dealSpy?.mockRestore();
+    dealSpy = null;
+  });
+
+  it("New Game mid-game abandons the old session; the next win completes a new one with its own draw mode", async () => {
+    const api = await mount();
+    await chooseDraw1(api); // game-1, draw 1
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+      });
+      now += 12_000;
+      await newGameFromMenu(api);
+    } finally {
+      nowSpy.mockRestore();
+    }
+    // Closed before the picker, with this game's own progress and play time.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
+    expect(mockCompleteGame.mock.calls[0]![1]).toEqual({
+      outcome: "abandoned",
+      result: { won: false, moves: 1 },
+      durationMs: 12_000,
+    });
+    // The close opens nothing: the picker has no session until a mode is chosen.
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+    const nextDeal = nearWin(3); // built before the spy replaces dealGame
+    dealSpy = jest.spyOn(solitaireEngine, "dealGame").mockReturnValue(nextDeal);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 3"));
+    });
+    await playWinningMove(api);
+
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    const newId = mockStartGame.mock.results.at(-1)!.value as string;
+    expect(newId).toBe("game-2");
+    expect(mockStartGame.mock.calls.at(-1)![1]).toEqual({ draw_mode: 3 });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    expect(mockCompleteGame.mock.calls[1]![0]).toBe(newId);
+    expect(mockCompleteGame.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({ outcome: "completed" })
+    );
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith(newId));
+  });
+
+  it("New Game before any move discards the untouched session", async () => {
+    const api = await mount();
+    await chooseDraw1(api); // game-1, never played
+    await newGameFromMenu(api);
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
+    expect(mockDiscardGame).toHaveBeenCalledWith("game-1");
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).toHaveBeenCalledTimes(1); // no throwaway session
+
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 3"));
+    });
+    // The new deal's session is the second one ever opened, with its mode.
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockStartGame.mock.calls[1]![1]).toEqual({ draw_mode: 3 });
+    expect(mockDiscardGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("Play Again after a win opens a new session for the new deal", async () => {
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(nearWin(3)));
+    const api = await mount();
+    await playWinningMove(api); // game-1 (no resumable session)
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
+
+    const nextDeal = nearWin(3); // built before the spy replaces dealGame
+    dealSpy = jest.spyOn(solitaireEngine, "dealGame").mockReturnValue(nextDeal);
+    await act(async () => {
+      await fireEvent.press(api.getByRole("button", { name: "Play Again" }));
+    });
+    await playWinningMove(api);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    const secondId = mockCompleteGame.mock.calls[1]![0];
+    expect(secondId).not.toBe("game-1");
+    const opened = mockStartGame.mock.results.findIndex((r) => r.value === secondId);
+    expect(mockStartGame.mock.calls[opened]![1]).toEqual({ draw_mode: 3 });
+  });
+
+  // Resume scoping: a restore adopts only a killed session of the same draw mode.
+  it("a restored game resumes only a session with its own draw mode", async () => {
+    mockResumeGame.mockImplementation((_type, match) =>
+      match?.["draw_mode"] === 1 ? "orphan-draw-1" : null
+    );
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(nearWin(3)));
+    const api = await mount();
+    expect(mockResumeGame).toHaveBeenCalledWith("solitaire", { draw_mode: 3 });
+
+    await playWinningMove(api);
+    // The Draw-1 session was not adopted: the win opened its own Draw-3 one.
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockStartGame.mock.calls[0]![1]).toEqual({ draw_mode: 3 });
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
+  });
+
+  it("a restored game continues a killed session of the same draw mode", async () => {
+    mockResumeGame.mockImplementation((_type, match) =>
+      match?.["draw_mode"] === 3 ? "orphan-draw-3" : null
+    );
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(nearWin(3)));
+    const api = await mount();
+    await playWinningMove(api);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("orphan-draw-3");
   });
 });
 
@@ -488,11 +713,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
   beforeEach(() => {
     resetDisplayNameCacheForTests();
     reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
-    (solitaireApi.submitScore as jest.Mock).mockResolvedValue({
-      player_name: "Alice",
-      score: 820,
-      rank: 3,
-    });
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
   });
 
   it("shows the shared card with the score, draw mode and actions", async () => {
@@ -507,21 +728,42 @@ describe("SolitaireScreen — result card (#2509)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("submits the score under the saved display name with no name entry", async () => {
+  // #2632: the card reads the synced game's rank; nothing is posted to /solitaire/score.
+  it("shows the synced game's rank under the saved display name with no name entry", async () => {
     await AsyncStorage.setItem("player_display_name", "Alice");
     const api = await winNow();
     await waitFor(() => {
       expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
     });
-    expect(solitaireApi.submitScore).toHaveBeenCalledTimes(1);
-    expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
+    expect(mockGetGameRank).toHaveBeenCalledTimes(1);
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
     expect(api.queryByLabelText("Your name")).toBeNull();
   });
 
-  it("asks for a display name once when none is set, then submits", async () => {
+  it("completes the win with the score before the card reads its rank", async () => {
+    await AsyncStorage.setItem("player_display_name", "Alice");
+    await winNow();
+    // A loaded CI runner can take a while to reach the lookup (it flushes first).
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalled(), { timeout: 5000 });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockGetGameRank.mock.invocationCallOrder[0]!
+    );
+    const [gameId, summary] = mockCompleteGame.mock.calls[0];
+    expect(gameId).toBe("game-uuid-test");
+    expect(summary).toEqual(
+      expect.objectContaining({
+        outcome: "completed",
+        finalScore: expect.any(Number),
+        result: expect.objectContaining({ won: true }),
+      })
+    );
+  });
+
+  it("asks for a display name once when none is set, then shows the rank", async () => {
     const api = await winNow();
     const input = await api.findByLabelText("Pick a display name for leaderboards");
-    expect(solitaireApi.submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
       await fireEvent.changeText(input, "Alice");
@@ -530,8 +772,9 @@ describe("SolitaireScreen — result card (#2509)", () => {
       await fireEvent.press(api.getByRole("button", { name: "Save" }));
     });
     await waitFor(() => {
-      expect(solitaireApi.submitScore).toHaveBeenCalledWith("Alice", expect.any(Number));
+      expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
     });
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 
   // #2556 review: the app closed after a win but before the save was cleared.
@@ -545,7 +788,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(solitaireApi.submitScore).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
     expect(api.queryByText(/Saved as/)).toBeNull();
   });
 
@@ -565,7 +808,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
     // 61 s beats the 90 s best.
     expect(card.getByText("New best")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
-    await waitFor(() => expect(solitaireApi.submitScore).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledTimes(1));
     expect((await loadStats()).gamesWon).toBe(2);
   });
 

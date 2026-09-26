@@ -270,8 +270,9 @@ async def test_freecell_best_value_is_fewest_moves() -> None:
     s = await _game(sid, "freecell")
     assert s.best_value == 87
     assert s.best_label_key == "moves"
-    # The deprecated alias keeps its old meaning (highest final_score).
-    assert s.best == 140
+    # The deprecated alias follows the board direction too (#2632): FreeCell's
+    # session rows carry moves, so its highest final_score is its worst game.
+    assert s.best == 87
 
 
 async def test_desc_board_best_value_is_highest_score() -> None:
@@ -283,6 +284,8 @@ async def test_desc_board_best_value_is_highest_score() -> None:
     s = await _game(sid, "cascade")
     assert s.best_value == 900
     assert s.best_label_key == "score"
+    # The deprecated alias is unchanged for a descending board.
+    assert s.best == 900
 
 
 async def test_metadata_metric_best_value_uses_the_board_metric_and_direction() -> None:

@@ -13,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { SudokuScoreboardProvider } from "../../game/sudoku/SudokuScoreboardContext";
+import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
@@ -40,11 +41,17 @@ jest.mock("@react-navigation/native", () => ({
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
+const mockMarkStarted = jest.fn();
+const mockDiscardGame = jest.fn();
+const mockResumeGame = jest.fn<string | null, [string, Record<string, unknown> | undefined]>();
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
     startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
     enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
     completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
+    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
+    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
+    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
     init: jest.fn().mockResolvedValue(undefined),
     reportBug: jest.fn(),
     getQueueStats: jest.fn(),
@@ -52,13 +59,18 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
-jest.mock("../../game/sudoku/api", () => ({
-  sudokuApi: {
-    submitPlayerName: jest.fn(),
-    getLeaderboard: jest.fn(),
-  },
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
 }));
 
+// The hook's foreground clock (#2684) adds nothing, so the summaries below
+// carry only what the screen sends: its own play timer.
+jest.mock("../../game/_shared/foregroundClock", () => ({ foregroundNow: () => 0 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
@@ -73,7 +85,6 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 // Import after mocks so the test file gets the jest.fn() flavour.
 
 import { scoreQueue } from "../../game/_shared/scoreQueue";
-import { sudokuApi } from "../../game/sudoku/api";
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
@@ -117,13 +128,15 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
   mockPopToTop.mockClear();
   mockNavListeners.clear();
-  (sudokuApi.submitPlayerName as jest.Mock).mockReset();
-  (sudokuApi.submitPlayerName as jest.Mock).mockImplementation((_id: string, name: string) =>
-    Promise.resolve({ player_name: name, score: 100, rank: 3 })
-  );
+  mockGetGameRank.mockReset();
+  mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
   mockStartGame.mockClear();
   mockStartGame.mockReturnValue("game-123");
   mockCompleteGame.mockClear();
+  mockMarkStarted.mockReset();
+  mockDiscardGame.mockReset();
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue(null);
   (scoreQueue.enqueue as jest.Mock).mockReset();
   (scoreQueue.enqueue as jest.Mock).mockResolvedValue({ id: "q-1" });
   (scoreQueue.flush as jest.Mock).mockReset();
@@ -267,12 +280,19 @@ describe("SudokuScreen — in-game input", () => {
     await act(async () => {
       await fireEvent.press(emptyCells[0]!);
     });
-    await act(async () => {
-      await fireEvent.press(enabledDigitButton(rendered));
-    });
-    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
-    mockCompleteGame.mockClear();
-    await unmount();
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(enabledDigitButton(rendered)); // the puzzle's timer starts
+      });
+      await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+      mockCompleteGame.mockClear();
+      now += 45_000;
+      await unmount();
+    } finally {
+      nowSpy.mockRestore();
+    }
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
@@ -280,10 +300,14 @@ describe("SudokuScreen — in-game input", () => {
     // that the sync worker dead-letters.
     expect(summary["result"]).toEqual({ won: false, errors: expect.any(Number) });
     expect(summary).not.toHaveProperty("finalScore");
+    // #2684: the puzzle's own play timer, not the hook's foreground clock.
+    expect(summary["durationMs"]).toBe(45_000);
   });
 
-  // #2619: the abandon carries the game's own play time, not 0.
-  it("a back-navigation abandon sends the play timer as durationMs", async () => {
+  // #2632: no screen-level beforeRemove abandon. It sent the full completion
+  // formula as finalScore; back-navigation now unmounts and the hook abandons
+  // with no score (the test above).
+  it("does not complete the session on beforeRemove", async () => {
     const { getAllByRole, getByLabelText } = await startEasy();
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
@@ -297,21 +321,11 @@ describe("SudokuScreen — in-game input", () => {
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
     mockCompleteGame.mockClear();
 
-    const realNow = Date.now.bind(Date);
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + 30_000);
-    try {
-      await act(async () => {
-        mockNavListeners.get("beforeRemove")?.forEach((h) => h());
-      });
-    } finally {
-      nowSpy.mockRestore();
-    }
-
-    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const summary = mockCompleteGame.mock.calls[0]![1] as { outcome: string; durationMs: number };
-    expect(summary.outcome).toBe("abandoned");
-    expect(summary.durationMs).toBeGreaterThanOrEqual(30_000);
-    expect(summary.durationMs).toBeLessThan(40_000);
+    expect(mockNavListeners.get("beforeRemove") ?? []).toHaveLength(0);
+    await act(async () => {
+      mockNavListeners.get("beforeRemove")?.forEach((h) => h());
+    });
+    expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 
   it("persists state after digit input", async () => {
@@ -330,6 +344,221 @@ describe("SudokuScreen — in-game input", () => {
       const raw = await AsyncStorage.getItem("sudoku_game");
       expect(raw).not.toBeNull();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2690 — a new puzzle never completes on the old puzzle's session
+// ---------------------------------------------------------------------------
+
+describe("SudokuScreen — sessions across puzzles (#2690)", () => {
+  /** A classic puzzle of `difficulty` with one cell left, and that cell's digit. */
+  function almostSolved(difficulty: "easy" | "hard") {
+    const fresh = loadPuzzle(difficulty, "classic", () => 0);
+    let last: { row: number; col: number } | null = null;
+    for (let i = 0; i < 81 && last === null; i++) {
+      if (!fresh.grid[Math.floor(i / 9)]![i % 9]!.given)
+        last = { row: Math.floor(i / 9), col: i % 9 };
+    }
+    const state = fillAllExcept(fresh, last!);
+    const digit = fresh.solution.charCodeAt(last!.row * 9 + last!.col) - 48;
+    return { state, digit };
+  }
+
+  async function enterFirstEnabledDigit(r: Awaited<ReturnType<typeof renderScreen>>) {
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    for (let d = 1; d <= 9; d++) {
+      const button = r.getByLabelText(new RegExp(`enter digit ${d}`, "i"));
+      if (!button.props.accessibilityState?.disabled) {
+        await act(async () => {
+          await fireEvent.press(button);
+        });
+        return;
+      }
+    }
+    throw new Error("every digit on the number pad is disabled");
+  }
+
+  async function openNewGameModal(r: Awaited<ReturnType<typeof renderScreen>>) {
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start New"));
+    });
+  }
+
+  let loadSpy: jest.SpyInstance | null = null;
+
+  beforeEach(() => {
+    let n = 0;
+    mockStartGame.mockImplementation(() => `game-${++n}`);
+  });
+
+  afterEach(() => {
+    loadSpy?.mockRestore();
+    loadSpy = null;
+  });
+
+  it("New Game on Hard abandons the Easy session; the win completes a new one with difficulty hard", async () => {
+    const hard = almostSolved("hard"); // built before the spy replaces loadPuzzle
+    const r = await renderAndAwaitLoad();
+    await fireEvent.press(r.getByLabelText(/start/i)); // Easy: game-1
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await enterFirstEnabledDigit(r);
+      await waitFor(() => expect(mockMarkStarted).toHaveBeenCalledWith("game-1"));
+      now += 20_000;
+
+      await openNewGameModal(r);
+      await act(async () => {
+        await fireEvent.press(r.getByRole("radio", { name: /hard/i }));
+      });
+      loadSpy = jest.spyOn(sudokuEngine, "loadPuzzle").mockReturnValue(hard.state);
+      await act(async () => {
+        await fireEvent.press(r.getByText("Start"));
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    // The Easy puzzle's session is closed with its own progress and play
+    // time, and no score.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
+    expect(mockCompleteGame.mock.calls[0]![1]).toEqual({
+      outcome: "abandoned",
+      result: { won: false, errors: expect.any(Number) },
+      durationMs: 20_000,
+    });
+    expect(mockStartGame.mock.calls[1]![1]).toEqual({ difficulty: "hard", variant: "classic" });
+
+    // Solve the Hard puzzle: it completes on its own session.
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${hard.digit}`, "i")));
+    });
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(2));
+    const [gameId, summary, payload] = mockCompleteGame.mock.calls[1]!;
+    expect(gameId).toBe("game-2");
+    expect(summary).toEqual(expect.objectContaining({ outcome: "completed", finalScore: 300 }));
+    expect(payload).toEqual(expect.objectContaining({ difficulty: "hard" }));
+  });
+
+  it("New Game before any digit discards the untouched session", async () => {
+    const r = await renderAndAwaitLoad();
+    await fireEvent.press(r.getByLabelText(/start/i)); // game-1, untouched
+    await openNewGameModal(r);
+    await act(async () => {
+      await fireEvent.press(r.getByText("Quick Restart"));
+    });
+    expect(mockDiscardGame).toHaveBeenCalledWith("game-1");
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+  });
+
+  it("Change Difficulty after a win, then Start on Hard, opens a Hard session", async () => {
+    const easy = almostSolved("easy");
+    const hard = almostSolved("hard");
+    await saveGame(easy.state);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${easy.digit}`, "i")));
+    });
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1)); // game-1 won
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+    });
+    // The pre-picker close opens nothing (and the won session is already
+    // complete, so there is nothing to abandon or discard).
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("radio", { name: /hard/i }));
+    });
+    loadSpy = jest.spyOn(sudokuEngine, "loadPuzzle").mockReturnValue(hard.state);
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/^start$/i));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    expect(mockStartGame.mock.calls[1]![1]).toEqual({ difficulty: "hard", variant: "classic" });
+    expect(mockDiscardGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+  });
+
+  // Resume scoping: a restore adopts only a killed session of the same settings.
+  it("a restored puzzle resumes only a session with its own difficulty and variant", async () => {
+    const hard = almostSolved("hard");
+    mockResumeGame.mockImplementation((_type, match) =>
+      match?.["difficulty"] === "easy" ? "orphan-easy" : null
+    );
+    await saveGame(hard.state);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    expect(mockResumeGame).toHaveBeenCalledWith("sudoku", {
+      difficulty: "hard",
+      variant: "classic",
+    });
+
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${hard.digit}`, "i")));
+    });
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
+    // The Easy session was not adopted: the win opened its own Hard one.
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("game-1");
+    expect(mockStartGame.mock.calls[0]![1]).toEqual({ difficulty: "hard", variant: "classic" });
+  });
+
+  it("a restored puzzle continues a killed session with the same settings", async () => {
+    const hard = almostSolved("hard");
+    mockResumeGame.mockImplementation((_type, match) =>
+      match?.["difficulty"] === "hard" && match?.["variant"] === "classic" ? "orphan-hard" : null
+    );
+    await saveGame(hard.state);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${hard.digit}`, "i")));
+    });
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
+    expect(mockCompleteGame.mock.calls[0]![0]).toBe("orphan-hard");
+    expect(mockStartGame).not.toHaveBeenCalled();
   });
 });
 
@@ -425,22 +654,23 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
   });
 
-  it("submits under the display name automatically and shows the rank", async () => {
+  // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
+  // instead of PATCH /sudoku/score/{id}.
+  it("shows the synced game's rank under the display name automatically", async () => {
     await saveDisplayName("Riley");
     const r = await solvePuzzle();
-    await waitFor(() =>
-      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Riley")
-    );
-    // The completion is uploaded before the name is attached to it.
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
+    // The completion is uploaded before its rank is read.
     expect(flushQueuedGames).toHaveBeenCalled();
     await r.findByText("Saved as Riley · #3 on the leaderboard");
     expect(r.queryByLabelText(/your name/i)).toBeNull();
+    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
   });
 
-  it("asks for a display name once when none is set, then submits", async () => {
+  it("asks for a display name once when none is set, then shows the rank", async () => {
     const r = await solvePuzzle();
     const input = await r.findByLabelText("Pick a display name for leaderboards");
-    expect(sudokuApi.submitPlayerName).not.toHaveBeenCalled();
+    expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
       await fireEvent.changeText(input, "Alice");
@@ -449,21 +679,22 @@ describe("SudokuScreen — result card (#2511)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Save" }));
     });
 
-    await waitFor(() =>
-      expect(sudokuApi.submitPlayerName).toHaveBeenCalledWith("game-123", "Alice")
-    );
+    await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
     await r.findByText("Saved as Alice · #3 on the leaderboard");
   });
 
-  it("queues the name when the server rejects it", async () => {
+  it("offers a retry when the rank lookup fails, and queues nothing", async () => {
     await saveDisplayName("Riley");
-    (sudokuApi.submitPlayerName as jest.Mock).mockRejectedValue(new ApiError("boom", 500));
+    mockGetGameRank.mockRejectedValue(new ApiError("boom", 500));
     const r = await solvePuzzle();
-    await r.findByText("Saved offline · syncs when you're back online");
-    expect(scoreQueue.enqueue).toHaveBeenCalledWith("sudoku", {
-      game_id: "game-123",
-      player_name: "Riley",
+    await r.findByText("Couldn't save your score.");
+    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
+
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 3, is_best: true, reason: null });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Retry" }));
     });
+    await r.findByText("Saved as Riley · #3 on the leaderboard");
   });
 
   it("Change Difficulty returns to the picker", async () => {
