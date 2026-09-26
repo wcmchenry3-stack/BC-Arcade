@@ -345,6 +345,7 @@ export default function FreeCellScreen() {
 
   return (
     <GameShell
+      gameType="freecell"
       title={t("freecell:game.title")}
       requireBack
       loading={loading}

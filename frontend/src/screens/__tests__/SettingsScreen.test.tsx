@@ -32,6 +32,12 @@ jest.mock("../../game/_shared/displayName", () => ({
   }),
 }));
 
+jest.mock("../../hooks/useMyStats", () => ({
+  clearMyStatsCache: jest.fn(() => {
+    mockCalls.push("clearMyStatsCache");
+  }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -166,5 +172,14 @@ describe("SettingsScreen", () => {
       mockCalls.indexOf("deleteMyData")
     );
     expect(mockCalls.indexOf("deleteMyData")).toBeLessThan(mockCalls.indexOf("clearDisplayName"));
+  });
+
+  it("Delete my data forgets the stats screen's remembered /stats/me (#2635)", async () => {
+    mockCalls.length = 0;
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() => expect(mockCalls).toContain("clearMyStatsCache"));
+    expect(mockCalls.indexOf("deleteMyData")).toBeLessThan(mockCalls.indexOf("clearMyStatsCache"));
   });
 });

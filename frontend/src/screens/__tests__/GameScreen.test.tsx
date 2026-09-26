@@ -5,6 +5,14 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import { saveGame, clearGame, loadLastMode, saveLastMode } from "../../game/yacht/storage";
 
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -198,6 +206,18 @@ describe("GameScreen", () => {
       await fireEvent.press(getByText("Leaderboard"));
     });
     expect(mockNavigation.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "yacht" });
+  });
+
+  it("⋯ menu Stats item opens Yacht's stats (#2635)", async () => {
+    mockShellNavigate.mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Stats"));
+    });
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "yacht" });
   });
 });
 

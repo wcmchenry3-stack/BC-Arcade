@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} selecionado",
   "overflow.menu.label": "Mais opções",
   "overflow.menu.scoreboard": "Placar",
+  "overflow.menu.stats": "Estatísticas",
   "overflow.menu.leaderboard": "Ranking",
   "overflow.menu.newGame": "Novo Jogo",
   "overflow.menu.levelSelect": "Selecionar Nível",

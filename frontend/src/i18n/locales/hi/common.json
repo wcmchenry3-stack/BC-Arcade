@@ -39,6 +39,7 @@
   "deck.selected": "{{name}} चुना गया",
   "overflow.menu.label": "और विकल्प",
   "overflow.menu.scoreboard": "स्कोरबोर्ड",
+  "overflow.menu.stats": "आंकड़े",
   "overflow.menu.leaderboard": "लीडरबोर्ड",
   "overflow.menu.newGame": "नया गेम",
   "overflow.menu.levelSelect": "स्तर चुनें",

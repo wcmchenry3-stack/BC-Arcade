@@ -452,6 +452,7 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   return (
     <GameShell
+      gameType="twenty48"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}

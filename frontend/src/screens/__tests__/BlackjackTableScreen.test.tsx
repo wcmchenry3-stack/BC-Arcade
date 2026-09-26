@@ -7,6 +7,14 @@ import { loadGame, saveRun } from "../../game/blackjack/storage";
 import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -132,6 +140,19 @@ describe("BlackjackTableScreen — player phase", () => {
       await fireEvent.press(screen.getByText("Scoreboard"));
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
+  });
+
+  it("⋯ menu Stats item opens Blackjack's stats (#2635)", async () => {
+    const nav = mockNav();
+    await renderScreen(nav);
+    await screen.findByText("Hit");
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Stats"));
+    });
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "blackjack" });
   });
 
   it("shows Hit and Stand buttons", async () => {

@@ -974,7 +974,13 @@ export default function DailyWordScreen() {
 
   if (loading) {
     return (
-      <GameShell title={t("game.title")} requireBack onBack={() => navigation.popToTop()} loading>
+      <GameShell
+        gameType="daily_word"
+        title={t("game.title")}
+        requireBack
+        onBack={() => navigation.popToTop()}
+        loading
+      >
         {null}
       </GameShell>
     );
@@ -982,6 +988,7 @@ export default function DailyWordScreen() {
 
   return (
     <GameShell
+      gameType="daily_word"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}

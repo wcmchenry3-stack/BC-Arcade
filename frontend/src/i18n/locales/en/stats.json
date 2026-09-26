@@ -1,0 +1,23 @@
+{
+  "title": "{{game}} Stats",
+  "a11y.back": "Back to {{game}}",
+  "tile.sessions": "Sessions",
+  "tile.completed": "Completed",
+  "tile.wins": "Wins",
+  "tile.losses": "Losses",
+  "tile.ties": "Ties",
+  "tile.winRate": "Win Rate",
+  "tile.currentStreak": "Win Streak",
+  "tile.bestStreak": "Best Streak",
+  "tile.best": "Best",
+  "tile.timePlayed": "Time Played",
+  "tile.lastPlayed": "Last Played",
+  "empty": "No finished games yet. Finish a game to see your stats here.",
+  "error": "Couldn't load your stats.",
+  "offline": "You're offline. Your stats load when you reconnect.",
+  "stale": "Showing your stats as last loaded. They may be out of date.",
+  "updating": "Updating…",
+  "retry": "Retry",
+  "link.leaderboard": "View leaderboard",
+  "link.runHistory": "Run history"
+}

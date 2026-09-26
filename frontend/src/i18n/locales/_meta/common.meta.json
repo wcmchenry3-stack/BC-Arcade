@@ -359,6 +359,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "overflow.menu.stats": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens the player's stats for this game.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "overflow.menu.leaderboard": {
     "component": "AppHeader",
     "description": "Overflow menu item that opens the game's leaderboard.",

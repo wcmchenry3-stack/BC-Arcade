@@ -679,6 +679,7 @@ export default function HeartsScreen() {
   if (!gameState) {
     return (
       <GameShell
+        gameType="hearts"
         title={t("game.title")}
         onBack={() => navigation.goBack()}
         onNewGame={() => handleStartGame(selectedDifficulty)}
@@ -709,6 +710,7 @@ export default function HeartsScreen() {
 
   return (
     <GameShell
+      gameType="hearts"
       title={t("game.title")}
       onBack={() => navigation.goBack()}
       onNewGame={handleChangeDifficulty}

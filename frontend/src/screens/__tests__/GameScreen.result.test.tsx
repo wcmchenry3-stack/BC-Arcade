@@ -22,6 +22,14 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // Shared result card for Yacht (#2505): vs outcomes, and the game-sync
 // session completing only once the CPU has finished its last turn.
 
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 // Every roll shows five 6s, so the CPU's last category scores predictably.
 jest.mock("../../game/yacht/engine", () => {
   const actual = jest.requireActual("../../game/yacht/engine");

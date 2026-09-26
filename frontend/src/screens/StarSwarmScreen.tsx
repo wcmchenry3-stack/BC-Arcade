@@ -153,7 +153,12 @@ export default function StarSwarmScreen() {
   }, [hydrated]);
   if (hydrated) return <StarSwarmGame />;
   return (
-    <GameShell title={t("game.title")} requireBack onBack={() => navigation.popToTop()}>
+    <GameShell
+      gameType="starswarm"
+      title={t("game.title")}
+      requireBack
+      onBack={() => navigation.popToTop()}
+    >
       <View style={styles.canvasOuter}>
         <ActivityIndicator color={colors.accent} size="large" />
       </View>
@@ -612,6 +617,7 @@ function StarSwarmGame() {
 
   return (
     <GameShell
+      gameType="starswarm"
       title={t("game.title")}
       requireBack
       onBack={() => {

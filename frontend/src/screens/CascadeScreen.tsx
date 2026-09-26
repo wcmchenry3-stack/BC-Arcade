@@ -850,6 +850,7 @@ function CascadeGame() {
 
   return (
     <GameShell
+      gameType="cascade"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}

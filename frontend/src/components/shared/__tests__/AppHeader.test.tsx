@@ -15,6 +15,7 @@ jest.mock("react-i18next", () => ({
         "common:overflow.menu.label": "More options",
         "common:overflow.menu.scoreboard": "Scoreboard",
         "common:overflow.menu.leaderboard": "Leaderboard",
+        "common:overflow.menu.stats": "Stats",
         "common:overflow.menu.newGame": "New Game",
         title: "Send Feedback",
         "common:overflow.abandon.title": "Abandon current game?",
@@ -267,6 +268,27 @@ describe("AppHeader", () => {
       await fireEvent.press(item);
       expect(onOpenLeaderboard).toHaveBeenCalledTimes(1);
       expect(screen.queryByText("Leaderboard")).toBeNull();
+    });
+
+    it("a game with only stats still gets the ⋯ menu (#2635)", async () => {
+      await render(<AppHeader title="Daily Word" onOpenStats={jest.fn()} />);
+      expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
+    });
+
+    it("shows the Stats item only when onOpenStats is provided (#2635)", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      expect(screen.queryByText("Stats")).toBeNull();
+    });
+
+    it("calls onOpenStats and closes the menu when Stats is tapped (#2635)", async () => {
+      const onOpenStats = jest.fn();
+      await render(<AppHeader title="Hearts" onOpenStats={onOpenStats} onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByRole("menuitem", { name: "Stats" }));
+      expect(onOpenStats).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Stats")).toBeNull();
     });
 
     it("uses a custom back label when the back button does not go home", async () => {

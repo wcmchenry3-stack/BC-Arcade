@@ -12,8 +12,16 @@ import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { statsApi } from "../api/stats";
+import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
 import { formatMetric, gameMetric, knownOutcome, outcomeLabel } from "../api/outcomeDisplay";
+import {
+  completedOf,
+  formatPercent,
+  formatPlayTime,
+  sessionsOf,
+  winRateOf,
+} from "../api/statsDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
@@ -44,33 +52,6 @@ interface GameSummaryRow {
   best: string | null;
   /** won / (won + lost + tied); null when the game has no win concept. */
   winRate: number | null;
-}
-
-// A server from before #2620 omits the comparable fields. Its `played` is an
-// honest session count, but it includes abandons, so it is no stand-in for
-// `completed`: those figures show "—" instead.
-const sessionsOf = (s: GameTypeStats): number => s.sessions ?? s.played;
-const completedOf = (s: GameTypeStats): number | null => s.completed ?? null;
-
-function formatPercent(t: TFunction, ratio: number): string {
-  return t("stats.percent", { value: Math.round(ratio * 100) });
-}
-
-/** Reported play time as "3h 12m" or "45m". */
-function formatPlayTime(t: TFunction, ms: number): string {
-  const totalMinutes = Math.floor(Math.max(0, ms) / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0
-    ? t("time.hoursMinutes", { hours: hours.toLocaleString(), minutes })
-    : t("time.minutes", { minutes });
-}
-
-/** won / (won + lost + tied), or null when the game records no results for this player. */
-function winRateOf(s: GameTypeStats): number | null {
-  if (s.won == null || s.lost == null || s.tied == null) return null;
-  const decided = s.won + s.lost + s.tied;
-  return decided > 0 ? s.won / decided : null;
 }
 
 /** The games in `/stats/me` that exist in this build (#2390). */
@@ -287,7 +268,8 @@ export default function ProfileScreen() {
     setError(null);
     setGamesError(false);
     const [statsResult, gamesResult] = await Promise.allSettled([
-      withRetry(() => statsApi.getMyStats()),
+      // Remembered for the stats screen opened offline later (#2635).
+      fetchAndRememberMyStats(() => withRetry(() => statsApi.getMyStats())),
       withRetry(() => statsApi.getMyGames(20)),
     ]);
     if (statsResult.status === "fulfilled") setStats(statsResult.value);

@@ -397,3 +397,17 @@ describe("StarSwarmScreen — difficulty picker (#1129)", () => {
     expect(checked("Commander")).toBe(true);
   });
 });
+
+describe("StarSwarmScreen — ⋯ menu (#2635)", () => {
+  it("has a Stats item that opens Star Swarm's stats", async () => {
+    await renderScreen();
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "starswarm" });
+  });
+});

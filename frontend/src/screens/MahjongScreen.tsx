@@ -996,6 +996,7 @@ export default function MahjongScreen() {
   if (!loading && view === "select") {
     return (
       <GameShell
+        gameType="mahjong"
         title={t("game.title")}
         requireBack
         loading={false}
@@ -1020,6 +1021,7 @@ export default function MahjongScreen() {
 
   return (
     <GameShell
+      gameType="mahjong"
       title={t("game.title")}
       requireBack
       loading={loading}
@@ -1031,8 +1033,8 @@ export default function MahjongScreen() {
       }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
-      // No Scoreboard item (#2627): it led to an untranslated fallback. #2635
-      // brings it back, pointing at the game's stats screen.
+      // No Scoreboard item (#2627): it led to an untranslated fallback. The
+      // Stats item (GameShell's gameType, #2635) takes its place.
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.hudGroup}>

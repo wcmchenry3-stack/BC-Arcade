@@ -512,6 +512,7 @@ export default function SudokuScreen() {
 
   return (
     <GameShell
+      gameType="sudoku"
       title={t("game.title")}
       requireBack
       loading={loading}

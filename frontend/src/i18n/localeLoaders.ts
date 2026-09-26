@@ -29,6 +29,7 @@ export const NAMESPACES = [
   "daily_challenge",
   "result",
   "leaderboard",
+  "stats",
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];
@@ -56,6 +57,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/en/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/en/result.json") as TranslationModule,
     leaderboard: () => import("./locales/en/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/en/stats.json") as TranslationModule,
   },
   "fr-CA": {
     common: () => import("./locales/fr-CA/common.json") as TranslationModule,
@@ -77,6 +79,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/fr-CA/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/fr-CA/result.json") as TranslationModule,
     leaderboard: () => import("./locales/fr-CA/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/fr-CA/stats.json") as TranslationModule,
   },
   es: {
     common: () => import("./locales/es/common.json") as TranslationModule,
@@ -98,6 +101,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/es/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/es/result.json") as TranslationModule,
     leaderboard: () => import("./locales/es/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/es/stats.json") as TranslationModule,
   },
   hi: {
     common: () => import("./locales/hi/common.json") as TranslationModule,
@@ -119,6 +123,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/hi/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/hi/result.json") as TranslationModule,
     leaderboard: () => import("./locales/hi/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/hi/stats.json") as TranslationModule,
   },
   ar: {
     common: () => import("./locales/ar/common.json") as TranslationModule,
@@ -140,6 +145,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/ar/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/ar/result.json") as TranslationModule,
     leaderboard: () => import("./locales/ar/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/ar/stats.json") as TranslationModule,
   },
   zh: {
     common: () => import("./locales/zh/common.json") as TranslationModule,
@@ -161,6 +167,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/zh/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/zh/result.json") as TranslationModule,
     leaderboard: () => import("./locales/zh/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/zh/stats.json") as TranslationModule,
   },
   ja: {
     common: () => import("./locales/ja/common.json") as TranslationModule,
@@ -182,6 +189,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/ja/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/ja/result.json") as TranslationModule,
     leaderboard: () => import("./locales/ja/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/ja/stats.json") as TranslationModule,
   },
   ko: {
     common: () => import("./locales/ko/common.json") as TranslationModule,
@@ -203,6 +211,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/ko/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/ko/result.json") as TranslationModule,
     leaderboard: () => import("./locales/ko/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/ko/stats.json") as TranslationModule,
   },
   pt: {
     common: () => import("./locales/pt/common.json") as TranslationModule,
@@ -224,6 +233,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/pt/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/pt/result.json") as TranslationModule,
     leaderboard: () => import("./locales/pt/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/pt/stats.json") as TranslationModule,
   },
   he: {
     common: () => import("./locales/he/common.json") as TranslationModule,
@@ -245,6 +255,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/he/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/he/result.json") as TranslationModule,
     leaderboard: () => import("./locales/he/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/he/stats.json") as TranslationModule,
   },
   de: {
     common: () => import("./locales/de/common.json") as TranslationModule,
@@ -266,6 +277,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/de/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/de/result.json") as TranslationModule,
     leaderboard: () => import("./locales/de/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/de/stats.json") as TranslationModule,
   },
   nl: {
     common: () => import("./locales/nl/common.json") as TranslationModule,
@@ -287,6 +299,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/nl/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/nl/result.json") as TranslationModule,
     leaderboard: () => import("./locales/nl/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/nl/stats.json") as TranslationModule,
   },
   ru: {
     common: () => import("./locales/ru/common.json") as TranslationModule,
@@ -308,6 +321,7 @@ export const localeLoaders: Record<string, Loaders> = {
     daily_challenge: () => import("./locales/ru/daily_challenge.json") as TranslationModule,
     result: () => import("./locales/ru/result.json") as TranslationModule,
     leaderboard: () => import("./locales/ru/leaderboard.json") as TranslationModule,
+    stats: () => import("./locales/ru/stats.json") as TranslationModule,
   },
 };
 

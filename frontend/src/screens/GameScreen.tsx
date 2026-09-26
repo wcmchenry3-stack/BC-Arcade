@@ -671,6 +671,7 @@ export default function GameScreen({ navigation, route }: Props) {
 
   return (
     <GameShell
+      gameType="yacht"
       title={t("game.title")}
       rightSlot={roundPill}
       requireBack

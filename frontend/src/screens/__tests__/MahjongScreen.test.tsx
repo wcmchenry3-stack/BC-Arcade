@@ -1173,4 +1173,35 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     });
     expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "mahjong" });
   });
+
+  it("has a Stats item that opens Mahjong's stats (#2635)", async () => {
+    const api = await mount();
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "mahjong" });
+  });
+
+  it("the layout picker's menu has the Stats item too (#2635)", async () => {
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Level Select"));
+    });
+    expect(api.getByTestId("mahjong-layout-turtle")).toBeTruthy(); // on the layout picker
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "mahjong" });
+  });
 });

@@ -26,6 +26,11 @@ export async function getOrCreateSessionId(): Promise<string> {
   return sid;
 }
 
+/** The current session ID, or null when there is none yet (never creates one). */
+export async function getSessionIdIfAny(): Promise<string | null> {
+  return AsyncStorage.getItem(SESSION_KEY);
+}
+
 export async function clearSession(): Promise<void> {
   await AsyncStorage.removeItem(SESSION_KEY);
 }

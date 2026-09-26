@@ -23,9 +23,10 @@ import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroun
 // ---------------------------------------------------------------------------
 
 const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ popToTop: mockPopToTop }),
+  useNavigation: () => ({ popToTop: mockPopToTop, navigate: mockNavigate }),
   useRoute: () => ({ name: "DailyWord" }),
 }));
 
@@ -847,5 +848,19 @@ describe("DailyWordScreen — result card (#2514)", () => {
     expect(share).toHaveBeenCalledWith({ message: expect.stringContaining("Daily Word #") });
     // Nothing was copied, so the button doesn't claim it was.
     expect(r.queryByText("Copied!")).toBeNull();
+  });
+});
+
+describe("DailyWordScreen — ⋯ menu (#2635)", () => {
+  it("has a Stats item that opens Daily Word's stats", async () => {
+    const { findByTestId, getByLabelText, getByText } = await renderScreen();
+    await findByTestId("tile-0-0");
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "daily_word" });
   });
 });

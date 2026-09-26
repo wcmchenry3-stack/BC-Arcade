@@ -1,13 +1,15 @@
 import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
-import { act, render, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, renderHook, fireEvent, waitFor } from "@testing-library/react-native";
 import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse } from "../../api/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
@@ -336,6 +338,22 @@ describe("HomeScreen — AppHeader", () => {
 });
 
 describe("HomeScreen — Arcade level pill (#2391)", () => {
+  it("remembers /stats/me for the stats screen opened offline later (#2635)", async () => {
+    clearMyStatsCache();
+    await AsyncStorage.setItem("game_session_id", "session-a");
+    mockGetMyStats.mockResolvedValue(statsAtLevel(4));
+    const { findByText, unmount } = await renderScreen();
+    await findByText("Lv 4");
+    await unmount();
+
+    mockNetwork.isOnline = false;
+    const { result } = await renderHook(() => useMyStats());
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    expect(result.current.stats?.arcade_level).toBe(4);
+    expect(result.current.stale).toBe(true);
+  });
+
   it("shows the player's level in the header", async () => {
     mockGetMyStats.mockResolvedValue(statsAtLevel(4));
     const { findByText, getByLabelText } = await renderScreen();

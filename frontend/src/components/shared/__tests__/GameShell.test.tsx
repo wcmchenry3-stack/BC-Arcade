@@ -1,7 +1,14 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { GameShell } from "../GameShell";
+
+// GameShell's Stats item (#2635) navigates through useNavigation.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
 
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -50,7 +57,7 @@ const noop = () => {};
 describe("GameShell", () => {
   it("renders the AppHeader with the given title", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop}>
+      <GameShell gameType={null} title="Yacht" onBack={noop}>
         <Text>game content</Text>
       </GameShell>
     );
@@ -59,7 +66,7 @@ describe("GameShell", () => {
 
   it("renders children when not loading", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop}>
+      <GameShell gameType={null} title="Yacht" onBack={noop}>
         <Text>game content</Text>
       </GameShell>
     );
@@ -68,7 +75,7 @@ describe("GameShell", () => {
 
   it("keeps the title and back button but hides children and the menu while loading", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} onNewGame={noop} loading>
+      <GameShell gameType={null} title="Yacht" onBack={noop} onNewGame={noop} loading>
         <Text>game content</Text>
       </GameShell>
     );
@@ -81,7 +88,7 @@ describe("GameShell", () => {
 
   it("treats a caller paddingBottom as a minimum under the tab bar height", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} style={{ paddingBottom: 24 }}>
+      <GameShell gameType={null} title="Yacht" onBack={noop} style={{ paddingBottom: 24 }}>
         <Text>game content</Text>
       </GameShell>
     );
@@ -92,7 +99,7 @@ describe("GameShell", () => {
 
   it("renders an error banner when error is a non-empty string", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} error="Something went wrong">
+      <GameShell gameType={null} title="Yacht" onBack={noop} error="Something went wrong">
         <Text>game content</Text>
       </GameShell>
     );
@@ -103,7 +110,7 @@ describe("GameShell", () => {
 
   it("does not render an error banner when error is null", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} error={null}>
+      <GameShell gameType={null} title="Yacht" onBack={noop} error={null}>
         <Text>game content</Text>
       </GameShell>
     );
@@ -112,7 +119,7 @@ describe("GameShell", () => {
 
   it("does not render an error banner when error is an empty string", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} error="">
+      <GameShell gameType={null} title="Yacht" onBack={noop} error="">
         <Text>game content</Text>
       </GameShell>
     );
@@ -122,10 +129,32 @@ describe("GameShell", () => {
 
   it("renders rightSlot content in the header area", async () => {
     await render(
-      <GameShell title="Yacht" onBack={noop} rightSlot={<Text>Round 3</Text>}>
+      <GameShell gameType={null} title="Yacht" onBack={noop} rightSlot={<Text>Round 3</Text>}>
         <Text>game content</Text>
       </GameShell>
     );
     expect(screen.getByText("Round 3")).toBeTruthy();
+  });
+
+  it("gives a game's screen a Stats item that opens that game's stats (#2635)", async () => {
+    mockShellNavigate.mockClear();
+    await render(
+      <GameShell gameType="freecell" title="FreeCell" onBack={noop}>
+        <Text>game content</Text>
+      </GameShell>
+    );
+    await fireEvent.press(screen.getByTestId("nav-menu"));
+    await fireEvent.press(screen.getByTestId("nav-menu-stats"));
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "freecell" });
+  });
+
+  it("gives a screen with no game (gameType null) no Stats item (#2635)", async () => {
+    await render(
+      <GameShell gameType={null} title="Scoreboard" onBack={noop} onNewGame={noop}>
+        <Text>game content</Text>
+      </GameShell>
+    );
+    await fireEvent.press(screen.getByTestId("nav-menu"));
+    expect(screen.queryByTestId("nav-menu-stats")).toBeNull();
   });
 });

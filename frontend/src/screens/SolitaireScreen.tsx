@@ -799,6 +799,7 @@ export default function SolitaireScreen() {
   return (
     <DragProvider getLegalDropIds={getLegalDropIds}>
       <GameShell
+        gameType="solitaire"
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}

@@ -515,12 +515,13 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return <GameShell key="loading" title={t("game.title")} loading />;
+    return <GameShell gameType="sort" key="loading" title={t("game.title")} loading />;
   }
 
   if (view === "select") {
     return (
       <GameShell
+        gameType="sort"
         key="select"
         title={t("game.title")}
         requireBack
@@ -560,6 +561,7 @@ export default function SortScreen() {
   // view === "play"
   return (
     <GameShell
+      gameType="sort"
       key="play"
       title={t("game.title")}
       requireBack
