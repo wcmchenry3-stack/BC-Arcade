@@ -304,6 +304,21 @@ describe("Yacht play time between games (#2710)", () => {
     );
   });
 
+  it("the mode picker's time before the first game is left out of it", async () => {
+    const r = await renderGame({ initialState: newGame() });
+    clock.advanceForegroundNow(2 * 60_000); // on the mode picker, from mount
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    });
+    clock.advanceForegroundNow(5_000);
+    await rollThenLeave(r);
+
+    expect(completeGame).toHaveBeenCalledTimes(1);
+    expect(completeGame.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
   it("the mode picker's time is left out of the next game", async () => {
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
     await playLastTurn(r, /^Yacht/i);

@@ -90,6 +90,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     complete: syncComplete,
     close: syncClose,
     setProgressSnapshot: syncSetProgressSnapshot,
+    getGameId: syncGetGameId,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("blackjack");
   // The outcome endSession recorded for the current session (#2628); null
   // until it ends. Drives runResult.
@@ -516,9 +518,14 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       setEngine(fresh);
       saveGame(fresh);
       setError(null);
+      // The run's play time starts at the table pick: time on the table picker
+      // is not play (#2710). With a session open, startSession's syncStart()
+      // closes it and starts the window over itself, so the window is only
+      // reset when none is.
+      if (!syncGetGameId()) syncResetPlayWindow();
       void startSession(fresh.chips, false, config.id);
     },
-    [engine, startSession]
+    [engine, startSession, syncGetGameId, syncResetPlayWindow]
   );
 
   // A bust-out ends the session as a win or a loss. A game-over state loaded

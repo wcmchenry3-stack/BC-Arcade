@@ -195,6 +195,7 @@ function StarSwarmGame() {
     resume: syncResume,
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("starswarm");
   const [isGameOver, setIsGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
@@ -479,12 +480,16 @@ function StarSwarmGame() {
   /** Opens the new run's sync session (abandoning any open one) and clears the last result. */
   const beginRun = useCallback(
     (tier: DifficultyTier) => {
+      // The run's play time starts now: time on the difficulty picker is not
+      // play (#2710). With a session open, syncRestart() closes it and starts
+      // the window over itself, so the window is only reset when none is.
+      if (!syncGetGameId()) syncResetPlayWindow();
       syncRestart({ difficulty_tier: tier }, { difficulty_tier: tier });
       syncMarkStarted();
       setResult(null);
       resetSubmission();
     },
-    [syncRestart, syncMarkStarted, resetSubmission]
+    [syncGetGameId, syncResetPlayWindow, syncRestart, syncMarkStarted, resetSubmission]
   );
 
   // A run restored from a saved pause is a run in progress: give it a session. After a cold

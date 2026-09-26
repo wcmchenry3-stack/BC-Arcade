@@ -403,8 +403,12 @@ at 10 minutes; a game's own measured duration wins.
     level (a level card, Next Level, Play Again, or Continue with no session
     to resume) or starts it over (New Game), FreeCell when it deals. The
     thinking time on the new board counts; the level grid and the previous
-    board do not. Call it with no session open — it drops what the window has
-    counted.
+    board do not. A screen that shows a picker before its first game calls it
+    when the player leaves the picker, so the picker's time from mount is not
+    counted either: Yacht's mode picker, Star Swarm's difficulty picker,
+    Blackjack's table picker. Call it with no session open — it drops what
+    the window has counted; where one may be open, `start()` / `restart()`
+    close it and start the window over themselves.
 - Idle cap: player-activity pings — `markStarted()`, `enqueue()`,
   `complete()` — split a running window into gaps, and each gap adds at most
   `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an in-app

@@ -278,6 +278,17 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(mockStartGame).toHaveBeenCalledTimes(2);
   });
 
+  // #2710 — the difficulty picker shown from mount is not play.
+  it("leaves the picker's time before the first run out of it", async () => {
+    await renderScreen();
+    clock.advanceForegroundNow(2 * 60_000); // on the difficulty picker
+    await startRun();
+    clock.advanceForegroundNow(25_000);
+    await endRun(4200, 7);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].durationMs).toBe(25_000);
+  });
+
   // #2710 — a finished run pauses the play window: the result card and the
   // picker are not counted into the next run.
   it("Play Again leaves the time on the result card out of the next run", async () => {

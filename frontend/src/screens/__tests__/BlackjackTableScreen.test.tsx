@@ -607,6 +607,29 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     }
   });
 
+  // #2710 — the table picker shown at first launch is not play.
+  it("leaves the table picker's time before the first run out of it", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null); // fresh: table pick pending
+    const { unmount } = await renderWithConsumer();
+    await settle();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    clock.advanceForegroundNow(3 * 60_000); // on the table picker
+    await act(async () => {
+      getCtx().handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+    await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+    clock.advanceForegroundNow(9_000);
+    await act(() => {
+      getCtx().apply((st) => placeBet(st, 25)); // the first hand marks it started
+    });
+    await unmount();
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.durationMs).toBe(9_000);
+  });
+
   // #2710 — a finished run pauses useGameSync's play window: time on the
   // result screen and the table picker is not counted into the next run.
   it("leaves the time between runs out of the next run's duration", async () => {
