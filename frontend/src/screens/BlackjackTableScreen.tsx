@@ -22,7 +22,7 @@ import {
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
-import { useBlackjackLayout } from "../game/blackjack/layout";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";

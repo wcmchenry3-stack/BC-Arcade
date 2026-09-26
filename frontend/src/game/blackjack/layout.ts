@@ -1,9 +1,3 @@
-import { useMemo } from "react";
-import { useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
-import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
-
 // Below this available content height the layout collapses to compact variants.
 // Mirrors the old screen-level constant but lives here so every consumer uses
 // the same threshold without re-importing from the screen.
@@ -84,16 +78,3 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
   };
 }
 
-export function useBlackjackLayout(): BlackjackLayout {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
-
-  const availableWidth = width;
-  const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
-
-  return useMemo(
-    () => calculateBlackjackLayout({ availableWidth, availableHeight }),
-    [availableWidth, availableHeight]
-  );
-}

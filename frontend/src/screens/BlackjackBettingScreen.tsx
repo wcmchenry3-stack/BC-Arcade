@@ -12,7 +12,7 @@ import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
-import { useBlackjackLayout } from "../game/blackjack/layout";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { GameShell } from "../components/shared/GameShell";
 
 type Props = {
