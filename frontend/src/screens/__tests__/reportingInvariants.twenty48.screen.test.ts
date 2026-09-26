@@ -198,6 +198,7 @@ async function openTwenty48(saved: Twenty48State | null) {
     navigate: jest.fn(),
     goBack: jest.fn(),
     popToTop: jest.fn(),
+    addListener: jest.fn(() => jest.fn()),
   } as unknown as React.ComponentProps<typeof Twenty48Screen>["navigation"];
   const r = await render(
     React.createElement(ThemeProvider, null, React.createElement(Twenty48Screen, { navigation }))
