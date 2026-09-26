@@ -43,6 +43,7 @@
   "dice.unholdHint": "Doble toque para soltar",
   "roll.button": "Tirar ({{count}})",
   "roll.label_one": "Tirar dados, {{count}} tiro restante",
+  "roll.label_many": "Tirar dados, {{count}} tiros restantes",
   "roll.label_other": "Tirar dados, {{count}} tiros restantes",
   "roll.rolling": "Tirando...",
   "roll.rollingLabel": "Tirando",

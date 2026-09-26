@@ -65,6 +65,7 @@
   "level.pillA11y": "Nivel de arcade {{level}}",
   "streak.pill": "🔥 {{count}}",
   "streak.pillA11y_one": "Racha actual: {{count}} día",
+  "streak.pillA11y_many": "Racha actual: {{count}} días",
   "streak.pillA11y_other": "Racha actual: {{count}} días",
   "legal.privacyPolicy": "Política de privacidad",
   "legal.termsOfService": "Términos del servicio",

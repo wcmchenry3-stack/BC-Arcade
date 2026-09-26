@@ -11,6 +11,7 @@ import { loadRuns, RunRecord } from "../game/blackjack/storage";
 import { comebackLow, isComebackRun } from "../game/blackjack/unlocks";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
+import { formatDate } from "../utils/formatTimestamp";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackStats">;
@@ -222,11 +223,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
             {sortedRuns.map((run, i) => {
               const outcome = outcomeFor(run);
               const badgeColor = outcomeColor(outcome);
-              const date = new Date(run.startedAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              });
+              const date = formatDate(t, run.startedAt);
               return (
                 <React.Fragment key={`${run.startedAt}-${run.table}`}>
                   {i > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}

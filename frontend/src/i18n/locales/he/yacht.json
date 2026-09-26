@@ -43,6 +43,7 @@
   "dice.unholdHint": "הקש פעמיים לשחרור",
   "roll.button": "גלגול ({{count}} נשאר)",
   "roll.label_one": "גלגל קוביות, {{count}} גלגול נשאר",
+  "roll.label_two": "גלגל קוביות, נשארו שני גלגולים",
   "roll.label_other": "גלגל קוביות, {{count}} גלגולים נשארו",
   "roll.rolling": "מגלגל...",
   "roll.rollingLabel": "מגלגל",

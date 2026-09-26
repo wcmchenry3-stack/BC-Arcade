@@ -89,7 +89,7 @@ export function statsTiles(t: TFunction, s: GameTypeStats): Tile[] {
     {
       key: "lastPlayed",
       label: t("stats:tile.lastPlayed"),
-      value: formatDate(s.last_played_at) || "—",
+      value: formatDate(t, s.last_played_at) || "—",
     }
   );
   return tiles;

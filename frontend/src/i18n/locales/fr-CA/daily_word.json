@@ -3,6 +3,7 @@
   "game.description": "Un mot de cinq lettres. Six essais. Un nouveau chaque jour.",
   "game.playLabel": "Jouer au Mot du jour",
   "hud.guessesLeft_one": "{{count}} essai restant",
+  "hud.guessesLeft_many": "{{count}} essais restants",
   "hud.guessesLeft_other": "{{count}} essais restants",
   "hud.puzzleNumber": "Mot #{{number}}",
   "result.loss.answer": "Le mot était {{answer}}",

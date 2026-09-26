@@ -113,9 +113,8 @@ export default function DiceRow({
         accessibilityRole="button"
         testID="yacht-roll-button"
         accessibilityLabel={
-          rolling
-            ? t("roll.rollingLabel")
-            : t(`roll.label_${rollsLeft === 1 ? "one" : "other"}`, { count: rollsLeft })
+          // i18next picks the plural form (ar has six, ru four) from count.
+          rolling ? t("roll.rollingLabel") : t("roll.label", { count: rollsLeft })
         }
         accessibilityState={{ disabled: !canRoll || rolling, busy: rolling }}
       >

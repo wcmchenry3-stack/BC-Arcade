@@ -321,7 +321,7 @@ export default function ProfileScreen() {
       const metric = formatMetric(t, labelKey, value);
       const outcome = knownOutcome(item.outcome);
       const outcomeText = outcomeLabel(t, item.outcome);
-      const date = formatDate(item.completed_at ?? item.started_at);
+      const date = formatDate(t, item.completed_at ?? item.started_at);
       return (
         <Pressable
           onPress={() => navigation.navigate("GameDetail", { gameId: item.id })}

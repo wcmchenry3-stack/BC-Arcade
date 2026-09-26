@@ -13,6 +13,10 @@
  *
  * Checks, per locale file:
  *   - the same keys as English (plural forms the locale needs are allowed);
+ *   - every plural form the locale needs (#2754): for each key English has both
+ *     `_one` and `_other` forms of, one form per category in the locale's CLDR plural
+ *     rules (fr/es/pt _many, ru _few/_many, ar _zero/_two/_few/_many, he _two).
+ *     A missing one makes i18next show English for counts in that category;
  *   - no __NEEDS_TRANSLATION__ placeholders;
  *   - no value that is still a copy of the English one (#2678), unless it is
  *     a do-not-translate term, has no words of its own, or is listed in
@@ -101,6 +105,25 @@ function isLocalePluralVariant(key, code, enSet) {
   const m = key.match(new RegExp(`^(.*)${PLURAL_SUFFIX.source}`));
   if (!m || !enSet.has(`${m[1]}_other`)) return false;
   return new Intl.PluralRules(code).resolvedOptions().pluralCategories.includes(m[2]);
+}
+
+// Plural keys, without their suffix: those English has both a `_one` and an
+// `_other` form of, so a plain key that happens to end in `_other` isn't one.
+// pluralTestUtils.ts (Jest) uses the same rule.
+function pluralBases(enSet) {
+  return [...enSet]
+    .filter((k) => k.endsWith("_other"))
+    .map((k) => k.slice(0, -"_other".length))
+    .filter((base) => enSet.has(`${base}_one`));
+}
+
+// Plural forms the locale's CLDR rules need but the file lacks, e.g. fr "_many"
+// (1,000,000).
+function missingPluralForms(targetSet, code, enSet) {
+  const categories = new Intl.PluralRules(code).resolvedOptions().pluralCategories;
+  return pluralBases(enSet).flatMap((base) =>
+    categories.map((c) => `${base}_${c}`).filter((form) => !targetSet.has(form))
+  );
 }
 
 function flattenKeys(obj, prefix = "") {
@@ -224,6 +247,8 @@ function main() {
       const extra = targetKeys.filter(
         (k) => !enSet.has(k) && !isLocalePluralVariant(k, code, enSet)
       );
+      // Forms English also has are already under "missing".
+      const pluralGaps = missingPluralForms(targetSet, code, enSet).filter((k) => !enSet.has(k));
       const pending = enKeys.filter(
         (k) => targetStrings[k] === PLACEHOLDER || targetStrings[k] === undefined
       );
@@ -232,6 +257,14 @@ function main() {
         console.log(`✗ [${code}/${ns}.json] Missing keys (${missing.length}):`);
         missing.forEach((k) => console.log(`    - ${k}`));
         totalIssues += missing.length;
+      }
+
+      if (pluralGaps.length > 0) {
+        console.log(
+          `✗ [${code}/${ns}.json] Missing plural forms ${code} needs (${pluralGaps.length}); English is shown for those counts:`
+        );
+        pluralGaps.forEach((k) => console.log(`    - ${k}`));
+        totalIssues += pluralGaps.length;
       }
 
       if (extra.length > 0) {
@@ -278,7 +311,12 @@ function main() {
         }
       }
 
-      if (missing.length === 0 && extra.length === 0 && over.length === 0) {
+      if (
+        missing.length === 0 &&
+        pluralGaps.length === 0 &&
+        extra.length === 0 &&
+        over.length === 0
+      ) {
         const pendingNote = pending.length > 0 ? ` (${pending.length} still need translation)` : "";
         const copyNote =
           englishCopies.length > 0 ? ` (${englishCopies.length} English copies pending)` : "";
