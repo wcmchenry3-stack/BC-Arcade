@@ -82,6 +82,15 @@
  * session sends nothing. A session resumed after a killed process counts from
  * the relaunch (an undercount, never an overcount). It is never wall-clock
  * start-to-end time (#2619, `resolveDurationMs`).
+ *
+ * `start()` does not restart the window, so a screen whose puzzle is on screen
+ * from mount (Daily Word) keeps the thinking time before the first move. A
+ * screen that shows menus or a result card before the next puzzle — and opens
+ * its session at the first move — calls `resetPlayWindow()` when the new puzzle
+ * appears (Sort entering a level or going to Next Level, FreeCell dealing), so
+ * time on the level grid or the last game's result card is not counted into
+ * the next session (#2710). Call it after closing any open session, since it
+ * drops what the window has counted so far.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -180,6 +189,14 @@ export interface UseGameSyncReturn {
    * Blackjack's New Game before any hand was played, #2628).
    */
   close: () => void;
+  /**
+   * Restart the active-play window from now (#2710): the next session's
+   * duration counts from this call, not from the last session's end or the
+   * hook's mount. Call it when a new puzzle appears on a screen that showed a
+   * menu or a result card first, after closing any open session (it drops
+   * whatever the window has counted, and does not touch the session itself).
+   */
+  resetPlayWindow: () => void;
   /** Delegate to gameEventClient.reportBug with try/catch isolation. */
   reportBug: (
     level: BugLevel,
@@ -399,6 +416,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     complete,
     restart,
     close: closeOpen,
+    resetPlayWindow: resetWindow,
     reportBug,
     getGameId,
     setProgressSnapshot,

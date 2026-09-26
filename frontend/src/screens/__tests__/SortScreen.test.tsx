@@ -4,17 +4,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { initState } from "../../game/sort/engine";
+import type { Color } from "../../game/sort/types";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
 // ---------------------------------------------------------------------------
 
-// The shared play clock (#2684) is pinned so exact completion summaries don't
-// pick up real test time; one test moves it forward.
-let mockForegroundMs = 0;
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => mockForegroundMs,
-}));
+// The shared play clock (#2684) is pinned for every test by jest.setup.ts
+// (#2710), so exact completion summaries don't pick up real test time; the
+// duration tests move it forward.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 // Pass-through mock that stores the latest SortBoard props in global so tests
 // can call onPourComplete directly (v14: composite components unavailable in
@@ -174,7 +175,6 @@ async function renderScreen() {
 
 beforeEach(async () => {
   jest.clearAllMocks();
-  mockForegroundMs = 0;
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
@@ -742,7 +742,7 @@ describe("SortScreen — result card (#2512)", () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
     });
     // Time passes while the player is on the level, not on the level grid.
-    mockForegroundMs += 45_000;
+    clock.advanceForegroundNow(45_000);
     await act(async () => {
       await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
     });
@@ -755,6 +755,71 @@ describe("SortScreen — result card (#2512)", () => {
     });
     await r.findByTestId("sort-result");
     expect(completion().summary.durationMs).toBe(45_000);
+  });
+
+  /** Solves the level on screen (level 1 and 2 both solve with bottle 2 → 1). */
+  async function solveShownLevel(r: Awaited<ReturnType<typeof renderScreen>>) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    return within(await r.findByTestId("sort-result"));
+  }
+
+  // #2710 — the session opens at the first pour; the level's play time starts
+  // when the level appears, not when the screen mounted.
+  it("leaves time on the level grid out of the level's duration", async () => {
+    const r = await renderScreen();
+    await r.findByLabelText("Level 1");
+    clock.advanceForegroundNow(5 * 60_000); // browsing the level grid
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    clock.advanceForegroundNow(20_000); // solving
+    await solveShownLevel(r);
+    expect(completion().summary.durationMs).toBe(20_000);
+  });
+
+  it("leaves time on the result card out of the next level's duration", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    clock.advanceForegroundNow(30_000);
+    const card = await solveShownLevel(r);
+    clock.advanceForegroundNow(4 * 60_000); // reading the result card
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Next Level" }));
+    });
+    clock.advanceForegroundNow(15_000);
+    await solveShownLevel(r);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(2);
+    expect(completion(0).summary.durationMs).toBe(30_000);
+    expect(completion(1).summary.result).toEqual(expect.objectContaining({ level: 2 }));
+    expect(completion(1).summary.durationMs).toBe(15_000);
+  });
+
+  it("leaves time on the level grid out of a continued level's duration", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: initState(LEVELS[0]!.bottles as (Color | "")[][]),
+    });
+    const r = await renderScreen();
+    await r.findByLabelText("Continue Level 1");
+    clock.advanceForegroundNow(5 * 60_000); // on the level grid
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    clock.advanceForegroundNow(12_000);
+    await solveShownLevel(r);
+    expect(completion().summary.durationMs).toBe(12_000);
   });
 
   it("sends total_moves as the sum of the best moves up to the frontier", async () => {
@@ -985,5 +1050,32 @@ describe("SortScreen — result card (#2512)", () => {
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
     expect(summary).not.toHaveProperty("finalScore");
+  });
+
+  // #2710 — the abandon carries the time played on the level, and only that.
+  it("abandons with the level's play time, not the time on the level grid", async () => {
+    sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+    const r = await renderScreen();
+    await r.findByLabelText("Level 1");
+    clock.advanceForegroundNow(5 * 60_000); // browsing the level grid
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    clock.advanceForegroundNow(30_000); // thinking before the first pour
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 3,/));
+    });
+    clock.advanceForegroundNow(10_000);
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Back to levels"));
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.result).toEqual({ won: false, level: 1, moves: 0 });
+    expect(summary.durationMs).toBe(40_000);
   });
 });

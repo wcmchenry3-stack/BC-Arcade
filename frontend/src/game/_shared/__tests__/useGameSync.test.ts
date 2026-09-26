@@ -25,6 +25,10 @@ jest.mock("../gameEventClient", () => ({
   },
 }));
 
+// The hook runs against the real foreground clock here, not the shared mock
+// jest.setup.ts pins for every other file (#2710).
+jest.unmock("../foregroundClock");
+
 // The active-play window (#2684) reads foregroundNow(), which runs on
 // performance.now(); fake timers keep it still unless a test advances it, so
 // the tests below see exact summaries. The foreground clock is reset each test
@@ -947,6 +951,50 @@ describe("useGameSync", () => {
       });
       expect(sentSummary(0).durationMs).toBe(8_000);
       expect(sentSummary(1).durationMs).toBe(3_000);
+    });
+
+    // #2710 — a screen that shows a menu or result card before the next puzzle
+    // restarts the window when the puzzle appears.
+    it("resetPlayWindow() drops the time before it: the next session counts from the reset", async () => {
+      const { result } = await renderHook(() => useGameSync("sort"));
+      await advance(5 * MIN); // browsing the level grid
+      await act(() => {
+        result.current.resetPlayWindow(); // a level appears
+      });
+      await advance(20_000);
+      await act(() => {
+        result.current.start(); // the first move opens the session
+        result.current.markStarted();
+      });
+      await advance(5_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary().durationMs).toBe(25_000);
+    });
+
+    it("resetPlayWindow() drops time on the last game's result card", async () => {
+      mockStartGame.mockReturnValueOnce("session-1").mockReturnValueOnce("session-2");
+      const { result } = await renderHook(() => useGameSync("freecell"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+      });
+      await advance(8_000);
+      await act(() => {
+        result.current.complete({ outcome: "completed" });
+      });
+      await advance(3 * MIN); // on the win card
+      await act(() => {
+        result.current.resetPlayWindow(); // a new deal
+      });
+      await advance(4_000);
+      await act(() => {
+        result.current.start();
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(sentSummary(0).durationMs).toBe(8_000);
+      expect(sentSummary(1).durationMs).toBe(4_000);
     });
 
     it("an unstarted session's discard sends nothing", async () => {

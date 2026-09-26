@@ -11,7 +11,13 @@ import { gameEventClient } from "../../game/_shared/gameEventClient";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
-import { __resetForegroundClockForTests } from "../../game/_shared/foregroundClock";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
+
+// useGameSync's foreground clock (#2684) is the shared mock jest.setup.ts pins
+// for every test (#2710): held still unless a test moves it, and never
+// subscribed to AppState, so the backgrounding tests see only the screen's own
+// listeners.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 // Shared result card for Yacht (#2505): vs outcomes, and the game-sync
 // session completing only once the CPU has finished its last turn.
@@ -169,9 +175,6 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  // A backgrounding test must not leave the shared foreground clock (#2684)
-  // paused for the next one.
-  __resetForegroundClockForTests();
   jest.useRealTimers();
 });
 
@@ -214,6 +217,7 @@ describe("Yacht result card — vs outcomes (#2505)", () => {
 describe("Yacht vs mode — game sync timing (#2505)", () => {
   it("completes only after the CPU's last turn, reporting the result", async () => {
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
+    clock.advanceForegroundNow(12_000);
     await playLastTurn(r, /^Yacht/i);
 
     // The player is done but the CPU is still playing: nothing reported yet.
@@ -227,7 +231,7 @@ describe("Yacht vs mode — game sync timing (#2505)", () => {
     expect(summary).toEqual(expect.objectContaining({ finalScore: 50, outcome: "win" }));
     // #2684 — Yacht has no timer of its own: useGameSync's active-play window
     // supplies the duration.
-    expect(summary.durationMs).toBeGreaterThan(0);
+    expect(summary.durationMs).toBe(12_000);
     expect(payload).toEqual(
       expect.objectContaining({
         final_score: 50,

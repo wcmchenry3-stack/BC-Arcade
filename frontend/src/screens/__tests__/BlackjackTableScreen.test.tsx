@@ -5,6 +5,7 @@ import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, saveRun } from "../../game/blackjack/storage";
 import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -50,11 +51,9 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
-// (#2684), held still unless a test moves it.
-let mockForegroundMs = 0;
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => mockForegroundMs,
-}));
+// (#2684) is pinned for every test by jest.setup.ts (#2710), held still unless
+// a test moves it.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 function mockNav() {
   return {
@@ -593,7 +592,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
 
       // An hour of wall-clock time passes with only 7 s of it in the foreground.
       nowSpy.mockReturnValue(wallStart + 60 * 60 * 1000);
-      mockForegroundMs += 7_000;
+      clock.advanceForegroundNow(7_000);
       await act(() => {
         getCtx().apply(stand, "stand");
       });

@@ -390,6 +390,15 @@ idle gap capped at 10 minutes; a game's own measured duration wins.
   after the abandon has read it. Opening a session with none open leaves it
   alone, so the thinking time before the first move counts and a game won on
   its first action still gets a duration.
+- `resetPlayWindow()` (#2710) restarts the window from now. A screen that
+  shows a menu or a result card before the next puzzle, and opens its session
+  at the first move, calls it when the new puzzle appears — Sort when it
+  enters a level (a level card, Continue, Next Level, Play Again), FreeCell
+  when it deals — so time on the level grid or the last game's result card is
+  not counted into the next game. Call it after closing any open session: it
+  drops what the window has counted. `start()` does not reset the window, so a
+  screen whose puzzle is on screen from mount (Daily Word) keeps its thinking
+  time without calling it.
 - Idle cap: player-activity pings — mount, `markStarted()`, `enqueue()`,
   `complete()`, `resume()` — split the window into gaps, and each gap adds at
   most `IDLE_GAP_CAP_MS` (10 minutes). A screen left awake and idle, or an
@@ -402,6 +411,13 @@ idle gap capped at 10 minutes; a game's own measured duration wins.
   before the kill is lost (an undercount, never an overcount).
 - A window reading 0 sends no duration — the `resolveDurationMs` rule: 0 means
   "unknown".
+- Tests: `jest.setup.ts` pins `foregroundClock` for every test file to the
+  shared manual mock `src/game/_shared/__mocks__/foregroundClock.ts` (#2710),
+  which reads 0 at the start of each test and moves only when a test calls
+  `advanceForegroundNow()` / `setForegroundNow()` (reached with
+  `jest.requireMock<ForegroundClockMock>(".../foregroundClock")`). Screen tests
+  do not mock it themselves; tests of the real clock opt out with
+  `jest.unmock(".../foregroundClock")`.
 
 ### 2.4 ESLint import zones _(TBD)_
 

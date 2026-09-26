@@ -119,6 +119,7 @@ export default function SortScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("sort");
   const gameStateRef = useRef<SortState | null>(null);
   gameStateRef.current = gameState;
@@ -431,6 +432,9 @@ export default function SortScreen() {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
     abandonSession();
+    // The level's play time starts now: time on the level grid or the last
+    // level's result card is not play (#2710).
+    syncResetPlayWindow();
     levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
@@ -449,6 +453,8 @@ export default function SortScreen() {
     setGameState(prog.currentState);
     // A restored game continues the session a killed app left open (#2654).
     syncResume();
+    // Time on the level grid before Continue is not play (#2710).
+    syncResetPlayWindow();
     setHistory([]);
     setShowWinModal(false);
     setWinSummary(null);
