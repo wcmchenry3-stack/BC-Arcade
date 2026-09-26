@@ -1428,7 +1428,8 @@ function buildWaveState(
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
   const paramScale = difficultyParamScale(difficulty);
   // Ensign gets gentler AI; every tier above gets straggler aggression.
-  // stragglerOverride lets the dev panel disable it regardless of difficulty.
+  // stragglerOverride (from the dev panel) forces the value regardless of difficulty —
+  // both directions: disabling it on aggressive tiers, or enabling it on Ensign.
   const stragglerEnabled = stragglerOverride ?? difficulty !== "Ensign";
 
   // Reset invincibility on each new wave so same-tick hit state never carries forward
@@ -3021,6 +3022,10 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
 
 function startNextWave(state: StarSwarmState): StarSwarmState {
   const nextWave = state.wave + 1;
+  // Only carry a stragglerEnabled override forward when it deviates from what difficulty
+  // would naturally produce — passing undefined lets buildWaveState re-derive from difficulty.
+  const stragglerOverride =
+    state.stragglerEnabled !== (state.difficulty !== "Ensign") ? state.stragglerEnabled : undefined;
   return buildWaveState(
     state.canvasW,
     state.canvasH,
@@ -3029,7 +3034,7 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     state.score,
     state.bonusLivesAwarded,
     state.difficulty,
-    state.stragglerEnabled,
+    stragglerOverride,
     // In-flight bullets survive the wave boundary instead of vanishing. Enemy bullets are
     // marked harmless (see Bullet.harmless): the ship the player was flying already won this
     // wave, so a shot fired at it a moment before the last enemy died can't retroactively

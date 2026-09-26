@@ -2528,6 +2528,28 @@ describe("#1031 Straggler aggression", () => {
     expect(s.wave).toBe(2);
     expect(s.stragglerEnabled).toBe(true);
   });
+
+  it("Ensign natural stragglerEnabled=false persists into wave 2", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
+    expect(s.stragglerEnabled).toBe(false);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    s = advanceMs(s, 3000);
+    expect(s.wave).toBe(2);
+    expect(s.stragglerEnabled).toBe(false);
+  });
+
+  it("dev override stragglerEnabled=false persists across wave boundary on non-Ensign", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "LieutenantJG", false);
+    expect(s.stragglerEnabled).toBe(false);
+    s = advanceMs(s, 8000);
+    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    s = tick(s, 16, NO_INPUT);
+    s = advanceMs(s, 3000);
+    expect(s.wave).toBe(2);
+    expect(s.stragglerEnabled).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

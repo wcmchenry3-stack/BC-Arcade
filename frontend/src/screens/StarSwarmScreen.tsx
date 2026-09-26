@@ -1008,10 +1008,15 @@ function StarSwarmGame() {
                 style={[styles.devActionBtn, dynamicStyles.devPrimary]}
                 onPress={() => {
                   setDevPanelOpen(false);
+                  // Only pass stragglerEnabled when it deviates from what the selected
+                  // difficulty would naturally produce, so Ensign remains straggler-free
+                  // unless the tester explicitly flipped the toggle.
+                  const naturalStraggler = devDifficulty !== "Ensign";
                   handleNewGame({
                     wave: devWave,
                     infiniteLives: devInfiniteLives,
-                    stragglerEnabled: devStragglerEnabled,
+                    stragglerEnabled:
+                      devStragglerEnabled !== naturalStraggler ? devStragglerEnabled : undefined,
                     pauseStraggler: devPauseStraggler,
                     difficulty: devDifficulty,
                   });
