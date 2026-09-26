@@ -888,6 +888,40 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
     expect(lastDuration()).toBe(25_000);
   });
 
+  // iOS and Android hold animation frames while the app is away: the frame
+  // queued before a trip to the background is delivered late, next to the
+  // resumed loop's. It must not start a second loop, trip after trip, and no
+  // frame may run once the screen is gone. (cancelAnimationFrame is a no-op
+  // here, so the late frames really are delivered.)
+  it("runs one loop after trips to the background, and none after unmount", async () => {
+    const renderer = await renderScreen();
+    expect(rafCallbacks).toHaveLength(1);
+    for (let trip = 0; trip < 2; trip++) {
+      await setAppState("background"); // the pending frame isn't delivered
+      await setAppState("active");
+    }
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame(); // the late frames and the resumed loop's arrive together
+    });
+    expect(mockEngineStep).toHaveBeenCalledTimes(1);
+    expect(rafCallbacks).toHaveLength(1);
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).toHaveBeenCalledTimes(2);
+
+    await act(() => {
+      renderer.unmount();
+    });
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame(); // the frame still queued at unmount
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+  });
+
   it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
     const first = await renderScreen();
     await triggerTap(first, 100);

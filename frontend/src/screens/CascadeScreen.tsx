@@ -42,6 +42,7 @@ import {
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
@@ -376,16 +377,23 @@ function CascadeGame() {
       active = false;
     };
   }, []);
-  const gameStartTimeRef = useRef<number>(Date.now());
-  // When the loop last paused (another screen covers the board, #2735, or the
-  // app is in the background, #2750); null while it runs. The resume moves
-  // gameStartTimeRef forward by the pause, so it never counts as play.
-  const pausedAtRef = useRef<number | null>(null);
-  /** Play time so far: time since the game started, less the pauses. */
-  const playedMs = useCallback(
-    () => (pausedAtRef.current ?? Date.now()) - gameStartTimeRef.current,
-    []
-  );
+  // The game's play clock (#2750), on the shared PlayClock model: it runs from
+  // the session's start and stops while the player is away (another screen
+  // covers the board, #2735, or the app is in the background), through
+  // usePauseWhileAway below. A ref, not state: the loop and the session
+  // callbacks read it outside a render.
+  const clockRef = useRef<PlayClock>({ startedAt: Date.now(), accumulatedMs: 0 });
+  /**
+   * Start the clock over with `accumulatedMs` banked, keeping it stopped if
+   * the player is away: a session can open, or a save load land, while the
+   * app is in the background or another screen covers the board.
+   */
+  const restartClock = useCallback((accumulatedMs: number) => {
+    const running = clockRef.current.startedAt !== null;
+    clockRef.current = { accumulatedMs, startedAt: running ? Date.now() : null };
+  }, []);
+  /** Play time so far. */
+  const playedMs = useCallback(() => clockElapsedMs(clockRef.current), []);
   const mergeCountRef = useRef(0);
 
   // #2450 / #2619 — the result block. The hook's own abandon (unmount) and
@@ -415,11 +423,11 @@ function CascadeGame() {
 
   const startInstrumentedSession = useCallback(
     (themeId: string) => {
-      gameStartTimeRef.current = Date.now();
+      restartClock(0);
       mergeCountRef.current = 0;
       syncStart({ fruit_set: themeId, theme: themeId, seed: null });
     },
-    [syncStart]
+    [syncStart, restartClock]
   );
 
   const endInstrumentedSession = useCallback(
@@ -470,7 +478,7 @@ function CascadeGame() {
       // The play before the app was closed carries on (#2750); the time it
       // was closed doesn't count. A save from an older build has no
       // playedMs: its earlier play is unknown, so the clock starts at the load.
-      gameStartTimeRef.current = (pausedAtRef.current ?? Date.now()) - (snapshot.playedMs ?? 0);
+      restartClock(snapshot.playedMs ?? 0);
       // The restored game continues the session a killed app left open (#2654),
       // in place of the untouched one opened at mount.
       syncResume();
@@ -484,7 +492,7 @@ function CascadeGame() {
     return () => {
       active = false;
     };
-  }, [syncResume]);
+  }, [syncResume, restartClock]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
@@ -643,16 +651,13 @@ function CascadeGame() {
   const awayRef = usePauseWhileAway(
     navigation,
     () => {
-      pausedAtRef.current = Date.now();
+      clockRef.current = pauseClock(clockRef.current);
       if (!gameOverRef.current && piecesRef.current.length > 0) {
         saveCascadeGame(buildSnapshot()).catch(() => {});
       }
     },
     () => {
-      if (pausedAtRef.current !== null) {
-        gameStartTimeRef.current += Date.now() - pausedAtRef.current;
-        pausedAtRef.current = null;
-      }
+      clockRef.current = resumeClock(clockRef.current);
       resumeLoopRef.current();
     }
   );
@@ -663,10 +668,24 @@ function CascadeGame() {
     engineRef.current = engine;
     engine.start();
 
-    let rafId: number;
+    // Every frame carries the loop generation that scheduled it. iOS and
+    // Android hold frames while the app is away, so one queued before a pause
+    // can still arrive after the resume has started the loop again, and one
+    // can arrive after cleanup: both belong to an older generation and do
+    // nothing. So there is only ever one loop, and none once this effect is
+    // cleaned up.
+    let generation = 0;
+    let rafId: number | null = null;
     let last = performance.now();
 
-    function tick(now: number) {
+    function schedule() {
+      const scheduledFor = generation;
+      rafId = requestAnimationFrame((now) => tick(now, scheduledFor));
+    }
+
+    function tick(now: number, scheduledFor: number) {
+      if (scheduledFor !== generation) return; // a superseded loop's frame
+      rafId = null;
       if (awayRef.current) return; // resumed by resumeLoopRef below
 
       const delta = Math.min(now - last, 100);
@@ -695,21 +714,22 @@ function CascadeGame() {
       piecesRef.current = state.pieces;
       setPieces(state.pieces);
 
-      if (!gameOverRef.current) {
-        rafId = requestAnimationFrame(tick);
-      }
+      if (!gameOverRef.current) schedule();
     }
 
     resumeLoopRef.current = () => {
       if (gameOverRef.current) return;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      generation++;
       last = performance.now();
-      rafId = requestAnimationFrame(tick);
+      schedule();
     };
 
-    rafId = requestAnimationFrame(tick);
+    schedule();
 
     return () => {
-      cancelAnimationFrame(rafId);
+      generation++;
+      if (rafId !== null) cancelAnimationFrame(rafId);
       engine.destroy();
       engineRef.current = null;
       setPieces([]);
