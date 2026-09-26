@@ -56,4 +56,4 @@ Free: no entitlement check.
 
 ## Known Issues / Limitations
 
-- None tracked at this time
+- #2746: `GET /sort/levels` generates new random levels on every request, so the `total_moves` tie-break compares different puzzles (see [Scoring](#scoring-persistence), Tie-break)

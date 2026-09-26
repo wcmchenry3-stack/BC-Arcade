@@ -31,7 +31,7 @@ Undo steps back through the last 50 moves (`UNDO_CAP`). An undo restores the boa
 - **Recorded, not partitioned:** creation metadata `draw_mode` (`1` | `3`, `SolitaireMetadata`, #2632); older builds send none. Result (`SolitaireResult`): `won` and `moves`.
 - **Max value:** 1245, recomputed from the engine's scoring constants in `backend/tests/test_board_definitions.py`.
 - **Outcomes:** `has_winner = False`. Only a won game records `completed`: there is no loss. A new deal during a game, or leaving the screen, records `abandoned` with `{ won: false, moves }` and no score, once a move has been made.
-- **Duration:** Solitaire's own play timer (`startedAt` / `accumulatedMs` on the engine state), which starts at the first move and stops at the win. It wins over `useGameSync`'s window.
+- **Duration:** Solitaire's own timer (`startedAt` / `accumulatedMs` on the engine state, `applyTimer` in `engine.ts`). It wins over `useGameSync`'s window. It is **wall-clock time** from the first move to the win: nothing pauses it when the app goes to the background or another screen covers the game, and a relaunch restores the saved `startedAt` unchanged (`loadGame` in `frontend/src/game/solitaire/storage.ts`), so a two-day break counts as two days of play (#2735).
 - **How it reaches the server:** the `useGameSync("solitaire")` session row, one per deal, with `draw_mode` as creation metadata. `SyncWorker` sends `POST /games` once the first move is made, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The app no longer calls the legacy `POST /solitaire/score`. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
 
@@ -54,4 +54,4 @@ Tier TBD. If free: no entitlement check.
 
 ## Known Issues / Limitations
 
-- None tracked at this time
+- #2735: the play timer counts backgrounded time and breaks across relaunches (see [Scoring](#scoring-persistence), Duration)
