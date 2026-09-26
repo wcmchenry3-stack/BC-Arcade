@@ -12,7 +12,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { SudokuScoreboardProvider } from "../../game/sudoku/SudokuScoreboardContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
@@ -109,9 +108,7 @@ function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): 
 async function renderScreen() {
   return await render(
     <ThemeProvider>
-      <SudokuScoreboardProvider>
-        <SudokuScreen />
-      </SudokuScoreboardProvider>
+      <SudokuScreen />
     </ThemeProvider>
   );
 }
@@ -760,5 +757,16 @@ describe("SudokuScreen — stats (#2635)", () => {
       await fireEvent.press(r.getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "sudoku" });
+  });
+
+  it("the ⋯ menu has no Scorecard: Stats replaced the old Scoreboard (#2636)", async () => {
+    await saveGame(loadPuzzle("hard", "mini", () => 0));
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    expect(r.getByText("Stats")).toBeTruthy();
+    expect(r.queryByText(/Scoreboard|Scorecard/)).toBeNull();
   });
 });

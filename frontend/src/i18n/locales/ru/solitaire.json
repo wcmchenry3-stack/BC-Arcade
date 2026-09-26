@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Игровое поле",
   "a11y.invalidMove": "Неверный ход",
   "error.saveFailed": "Не удалось сохранить игру.",
-  "error.loadFailed": "Не удалось загрузить сохранение.",
-  "scoreboard.heroLabel": "ВРЕМЯ",
-  "scoreboard.heroSub": "Ходов: {{moves}} · собрано баз: {{foundations}} из 4",
-  "scoreboard.heroSubEmpty": "Игр пока не было",
-  "scoreboard.bestTime": "Лучшее время",
-  "scoreboard.bestMoves": "Меньше всего ходов",
-  "scoreboard.gamesPlayed": "Сыграно игр",
-  "scoreboard.gamesWon": "Выиграно игр"
+  "error.loadFailed": "Не удалось загрузить сохранение."
 }

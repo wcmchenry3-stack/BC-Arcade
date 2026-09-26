@@ -193,15 +193,15 @@
       ]
     },
     "cascade": {
-      "nl": ["score.display", "score.label", "scoreboard.heroLabel"]
+      "nl": ["score.display", "score.label"]
     },
     "feedback": {
       "nl": ["type_label"],
       "fr-CA": ["label_description", "type_label"]
     },
     "twenty48": {
-      "nl": ["score.label", "scoreboard.heroLabel"],
-      "fr-CA": ["score.label", "scoreboard.heroLabel"]
+      "nl": ["score.label"],
+      "fr-CA": ["score.label"]
     }
   },
   "pending": {}

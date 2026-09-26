@@ -14,12 +14,5 @@
   "win.body": "Du hast 2048 erreicht! Du kannst weiterspielen für einen höheren Punktestand.",
   "controls.keyboardHint": "Oder nutze die Pfeiltasten",
   "stats.highestTile": "Höchste Kachel",
-  "stats.timePlayed": "Spielzeit",
-  "scoreboard.heroLabel": "PUNKTE",
-  "scoreboard.heroSub": "Beste Kachel: {{bestTile}} · {{moves}} Züge",
-  "scoreboard.heroSubEmpty": "Noch keine Spiele gespielt",
-  "scoreboard.bestScore": "Beste Punktzahl",
-  "scoreboard.bestTile": "Beste Kachel",
-  "scoreboard.gamesPlayed": "Partien",
-  "scoreboard.gamesWon": "Gewonnene Spiele"
+  "stats.timePlayed": "Spielzeit"
 }

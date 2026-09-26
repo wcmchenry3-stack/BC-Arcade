@@ -60,7 +60,6 @@ import {
   EMPTY_SUDOKU_STATS,
   type SudokuStats,
 } from "../game/sudoku/storage";
-import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
@@ -136,6 +135,10 @@ export default function SudokuScreen() {
   const stateRef = useRef<SudokuState | null>(null);
   const prevCompleteRef = useRef(false);
 
+  // The device's `sudoku_stats_v1` store. Only each puzzle kind's `bestTimeS`
+  // is read, for the result card's best time and "New best" badge (#2636);
+  // `gamesSolved` is still kept but shown nowhere: the Stats screen reads the
+  // server.
   const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
 
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -172,20 +175,6 @@ export default function SudokuScreen() {
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
   }, [syncSetProgressSnapshot, progressResult, playedMs]);
-
-  const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
-
-  useEffect(() => {
-    if (!state) return;
-    setScoreboardSnapshot({
-      elapsed,
-      difficulty: state.difficulty,
-      variant: state.variant,
-      errorCount: state.errorCount,
-      hasGame: true,
-      stats: statsRef.current,
-    });
-  }, [state, elapsed, setScoreboardSnapshot]);
 
   // Mount load — restores a saved game silently; on a clean slot the
   // pre-game picker shows.
@@ -331,17 +320,9 @@ export default function SudokuScreen() {
         // Only a beaten previous time is a "new best" — not a first solve.
         isNewBest: prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
       });
-      setScoreboardSnapshot({
-        elapsed: finalElapsed,
-        difficulty: state.difficulty,
-        variant: state.variant,
-        errorCount: state.errorCount,
-        hasGame: true,
-        stats: updatedStats,
-      });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, setScoreboardSnapshot, submitScore]);
+  }, [state, syncComplete, submitScore]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
@@ -517,7 +498,6 @@ export default function SudokuScreen() {
       loading={loading}
       onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "sudoku" })}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
       style={{

@@ -38,7 +38,7 @@
   "deck.select": "{{name}} कार्ड डेक चुनें",
   "deck.selected": "{{name}} चुना गया",
   "overflow.menu.label": "और विकल्प",
-  "overflow.menu.scoreboard": "स्कोरबोर्ड",
+  "overflow.menu.scorecard": "स्कोर कार्ड",
   "overflow.menu.stats": "आंकड़े",
   "overflow.menu.leaderboard": "लीडरबोर्ड",
   "overflow.menu.newGame": "नया गेम",

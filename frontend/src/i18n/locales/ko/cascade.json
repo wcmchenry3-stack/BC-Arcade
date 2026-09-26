@@ -11,12 +11,5 @@
   "preview.comingUp": "다음: {{name}}",
   "theme.groupLabel": "과일 테마",
   "theme.optionLabel": "{{label}} 테마",
-  "event.merged": "합쳐졌어요! {{fruit}} 생성.",
-  "scoreboard.heroLabel": "점수",
-  "scoreboard.heroSub": "최고 과일: {{bestFruit}} · 합체 {{merges}}회",
-  "scoreboard.heroSubEmpty": "아직 플레이 없음",
-  "scoreboard.bestScore": "역대 최고",
-  "scoreboard.bestFruit": "최고 과일",
-  "scoreboard.gamesPlayed": "플레이 횟수",
-  "scoreboard.totalMerges": "합체 횟수"
+  "event.merged": "합쳐졌어요! {{fruit}} 생성."
 }

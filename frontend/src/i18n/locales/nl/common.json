@@ -38,7 +38,7 @@
   "deck.select": "{{name}}-kaartenspel selecteren",
   "deck.selected": "{{name}} geselecteerd",
   "overflow.menu.label": "Meer opties",
-  "overflow.menu.scoreboard": "Scorebord",
+  "overflow.menu.scorecard": "Scorekaart",
   "overflow.menu.stats": "Statistieken",
   "overflow.menu.leaderboard": "Ranglijst",
   "overflow.menu.newGame": "Nieuw spel",

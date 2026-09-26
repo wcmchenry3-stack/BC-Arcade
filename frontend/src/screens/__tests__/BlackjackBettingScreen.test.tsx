@@ -90,7 +90,7 @@ describe("BlackjackBettingScreen — header / navigation", () => {
     await waitFor(() => expect(screen.getByText("Blackjack")).toBeTruthy());
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with blackjack gameKey", async () => {
+  it("⋯ menu Scorecard item (#2636) opens the blackjack live view", async () => {
     const nav = mockNav();
     await renderScreen(nav);
     await screen.findByText("Deal");
@@ -98,7 +98,7 @@ describe("BlackjackBettingScreen — header / navigation", () => {
       await fireEvent.press(screen.getByLabelText("More options"));
     });
     await act(async () => {
-      await fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByText("Scorecard"));
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
   });

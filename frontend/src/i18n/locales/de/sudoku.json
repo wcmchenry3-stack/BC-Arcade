@@ -26,12 +26,5 @@
   "preGame.body": "Wähle einen Schwierigkeitsgrad!",
   "hud.errors": "{{count}} Fehler",
   "hud.errorsOne": "1 Fehler",
-  "hud.elapsed": "Vergangene Zeit: {{time}}",
-  "scoreboard.heroLabel": "ZEIT",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} Fehler",
-  "scoreboard.heroSubEmpty": "Noch keine Spiele gespielt",
-  "scoreboard.easyBestTime": "Bestzeit Leicht",
-  "scoreboard.mediumBestTime": "Bestzeit Mittel",
-  "scoreboard.hardBestTime": "Bestzeit Schwer",
-  "scoreboard.gamesSolved": "Gelöste Rätsel"
+  "hud.elapsed": "Vergangene Zeit: {{time}}"
 }

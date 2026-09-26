@@ -38,7 +38,7 @@
   "deck.select": "בחר חפיסת קלפים {{name}}",
   "deck.selected": "{{name}} נבחר",
   "overflow.menu.label": "עוד אפשרויות",
-  "overflow.menu.scoreboard": "לוח תוצאות",
+  "overflow.menu.scorecard": "כרטיס הניקוד",
   "overflow.menu.stats": "סטטיסטיקה",
   "overflow.menu.leaderboard": "טבלת מובילים",
   "overflow.menu.newGame": "משחק חדש",

@@ -13,7 +13,6 @@ import { AccessibilityInfo } from "react-native";
 
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { SolitaireScoreboardProvider } from "../../game/solitaire/SolitaireScoreboardContext";
 import * as solitaireEngine from "../../game/solitaire/engine";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
@@ -107,9 +106,7 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 async function renderScreen() {
   return await render(
     <ThemeProvider>
-      <SolitaireScoreboardProvider>
-        <SolitaireScreen />
-      </SolitaireScoreboardProvider>
+      <SolitaireScreen />
     </ThemeProvider>
   );
 }
@@ -318,6 +315,16 @@ describe("SolitaireScreen — new game confirmation", () => {
       await fireEvent.press(api.getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "solitaire" });
+  });
+
+  it("the ⋯ menu has no Scorecard: Stats replaced the old Scoreboard (#2636)", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    expect(api.getByText("Stats")).toBeTruthy();
+    expect(api.queryByText(/Scoreboard|Scorecard/)).toBeNull();
   });
 });
 

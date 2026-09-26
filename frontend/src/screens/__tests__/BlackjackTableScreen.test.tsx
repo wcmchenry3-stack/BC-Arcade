@@ -129,7 +129,7 @@ describe("BlackjackTableScreen — player phase", () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with blackjack gameKey", async () => {
+  it("⋯ menu Scorecard item (#2636) opens the blackjack live view", async () => {
     const nav = mockNav();
     await renderScreen(nav);
     await screen.findByText("Hit");
@@ -137,7 +137,7 @@ describe("BlackjackTableScreen — player phase", () => {
       await fireEvent.press(screen.getByLabelText("More options"));
     });
     await act(async () => {
-      await fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByText("Scorecard"));
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
   });

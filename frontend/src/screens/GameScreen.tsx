@@ -682,7 +682,7 @@ export default function GameScreen({ navigation, route }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={startNewGame}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "yacht" })}
+      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "yacht" })}
       onOpenLeaderboard={openLeaderboard}
       error={error}
       style={{

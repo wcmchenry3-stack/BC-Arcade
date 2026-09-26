@@ -38,7 +38,7 @@
   "deck.select": "Sélectionner le jeu {{name}}",
   "deck.selected": "{{name}} sélectionné",
   "overflow.menu.label": "Plus d'options",
-  "overflow.menu.scoreboard": "Tableau des scores",
+  "overflow.menu.scorecard": "Fiche de scores",
   "overflow.menu.stats": "Statistiques",
   "overflow.menu.leaderboard": "Classement",
   "overflow.menu.newGame": "Nouvelle partie",

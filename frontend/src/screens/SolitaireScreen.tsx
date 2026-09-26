@@ -72,7 +72,6 @@ import {
   saveStats,
   type SolitaireStats,
 } from "../game/solitaire/storage";
-import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -119,6 +118,9 @@ export default function SolitaireScreen() {
   const [moves, setMoves] = useState(0);
   const [autoCompleting, setAutoCompleting] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The device's `solitaire_stats_v1` store. Only `bestTimeMs` is read, for the
+  // result card's best time and "New best" badge (#2636); the counters are
+  // still kept but shown nowhere: the Stats screen reads the server.
   const [stats, setStats] = useState<SolitaireStats>({
     bestTimeMs: 0,
     bestMoves: 0,
@@ -182,31 +184,11 @@ export default function SolitaireScreen() {
     });
   }, [syncSetProgressSnapshot, progressResult]);
 
-  const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();
-
   useEffect(() => {
     return () => {
       if (autoStepTimeoutRef.current !== null) clearTimeout(autoStepTimeoutRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (!state) return;
-    const foundationsComplete = Object.values(state.foundations).filter(
-      (cards) => cards.length === 13
-    ).length;
-    const elapsedMs = activeMs(state);
-    setScoreboardSnapshot({
-      moves,
-      elapsedMs,
-      foundationsComplete,
-      hasGame: true,
-      bestTimeMs: stats.bestTimeMs,
-      bestMoves: stats.bestMoves,
-      gamesPlayed: stats.gamesPlayed,
-      gamesWon: stats.gamesWon,
-    });
-  }, [state, moves, stats, setScoreboardSnapshot]);
 
   const deal = useCallback(
     (drawMode: DrawMode) => {
@@ -808,7 +790,6 @@ export default function SolitaireScreen() {
           paddingRight: Math.max(insets.right, 12),
         }}
         onNewGame={resetToPreGame}
-        onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
           <View style={styles.headerBtnRow}>

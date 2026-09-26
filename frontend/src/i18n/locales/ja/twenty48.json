@@ -14,12 +14,5 @@
   "win.body": "2048に到達しました！さらに高いスコアを目指して続けられます。",
   "controls.keyboardHint": "または矢印キーを使用",
   "stats.highestTile": "最高タイル",
-  "stats.timePlayed": "プレイ時間",
-  "scoreboard.heroLabel": "スコア",
-  "scoreboard.heroSub": "最高タイル: {{bestTile}} · {{moves}}手",
-  "scoreboard.heroSubEmpty": "まだプレイしていません",
-  "scoreboard.bestScore": "最高スコア",
-  "scoreboard.bestTile": "最高タイル",
-  "scoreboard.gamesPlayed": "プレイ回数",
-  "scoreboard.gamesWon": "勝利数"
+  "stats.timePlayed": "プレイ時間"
 }

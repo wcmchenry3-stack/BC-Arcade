@@ -1,14 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import {
-  saveGame,
-  loadGame,
-  clearGame,
-  saveBestScore,
-  loadBestScore,
-  loadStats,
-  saveStats,
-} from "../storage";
+import { saveGame, loadGame, clearGame, saveBestScore, loadBestScore } from "../storage";
 import { _resetTileIds, move, setRng, createSeededRng } from "../engine";
 import { Twenty48State } from "../types";
 
@@ -126,26 +118,6 @@ describe("twenty48 storage", () => {
 
   it("loadBestScore returns 0 when nothing is saved", async () => {
     expect(await loadBestScore()).toBe(0);
-  });
-
-  it("saves and loads stats", async () => {
-    await saveStats({ bestTile: 2048, gamesPlayed: 7, gamesWon: 2 });
-    expect(await loadStats()).toEqual({ bestTile: 2048, gamesPlayed: 7, gamesWon: 2 });
-  });
-
-  it("loadStats returns zeros when nothing is saved", async () => {
-    expect(await loadStats()).toEqual({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 });
-  });
-
-  it("loadStats tolerates partial payloads by defaulting missing fields to 0", async () => {
-    await AsyncStorage.setItem("twenty48_stats_v1", JSON.stringify({ bestTile: 512 }));
-    expect(await loadStats()).toEqual({ bestTile: 512, gamesPlayed: 0, gamesWon: 0 });
-  });
-
-  it("loadStats returns zeros for corrupt stats payload", async () => {
-    await AsyncStorage.setItem("twenty48_stats_v1", "not json");
-    expect(await loadStats()).toEqual({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 });
-    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
   });
 
   // #698: on app reload, the engine's module-level tile-ID counter restarts

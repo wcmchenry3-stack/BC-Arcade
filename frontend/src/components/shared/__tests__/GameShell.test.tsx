@@ -150,7 +150,7 @@ describe("GameShell", () => {
 
   it("gives a screen with no game (gameType null) no Stats item (#2635)", async () => {
     await render(
-      <GameShell gameType={null} title="Scoreboard" onBack={noop} onNewGame={noop}>
+      <GameShell gameType={null} title="Scorecard" onBack={noop} onNewGame={noop}>
         <Text>game content</Text>
       </GameShell>
     );

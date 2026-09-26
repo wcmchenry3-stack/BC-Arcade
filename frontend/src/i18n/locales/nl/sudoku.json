@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} fouten",
   "hud.errorsOne": "1 fout",
   "hud.elapsed": "Verstreken tijd {{time}}",
-  "scoreboard.heroLabel": "VERSTREKEN",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} fouten",
-  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
-  "scoreboard.easyBestTime": "Beste tijd: Makkelijk",
-  "scoreboard.mediumBestTime": "Beste tijd: Gemiddeld",
-  "scoreboard.hardBestTime": "Beste tijd: Moeilijk",
-  "scoreboard.gamesSolved": "Opgeloste puzzels",
   "action.quickRestart": "Snel herstarten",
   "newGame.title": "Nieuw spel"
 }

@@ -25,13 +25,6 @@
   "hud.errors": "ミス {{count}} 回",
   "hud.errorsOne": "ミス 1 回",
   "hud.elapsed": "経過時間 {{time}}",
-  "scoreboard.heroLabel": "経過時間",
-  "scoreboard.heroSub": "{{difficulty}} · ミス{{errors}}回",
-  "scoreboard.heroSubEmpty": "まだプレイしていません",
-  "scoreboard.easyBestTime": "かんたんベスト",
-  "scoreboard.mediumBestTime": "ふつうベスト",
-  "scoreboard.hardBestTime": "むずかしいベスト",
-  "scoreboard.gamesSolved": "解いた回数",
   "action.quickRestart": "クイック再スタート",
   "newGame.title": "新しいゲーム"
 }

@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} erros",
   "hud.errorsOne": "1 erro",
   "hud.elapsed": "Tempo decorrido {{time}}",
-  "scoreboard.heroLabel": "DECORRIDO",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} erros",
-  "scoreboard.heroSubEmpty": "Nenhum jogo jogado ainda",
-  "scoreboard.easyBestTime": "Melhor Fácil",
-  "scoreboard.mediumBestTime": "Melhor Médio",
-  "scoreboard.hardBestTime": "Melhor Difícil",
-  "scoreboard.gamesSolved": "Jogos Resolvidos",
   "action.quickRestart": "Reiniciar rápido",
   "newGame.title": "Novo jogo"
 }

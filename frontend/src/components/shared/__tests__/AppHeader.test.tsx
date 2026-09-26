@@ -13,7 +13,7 @@ jest.mock("react-i18next", () => ({
         "common:nav.backLabel": "Go back to home screen",
         fab_label: "Send feedback",
         "common:overflow.menu.label": "More options",
-        "common:overflow.menu.scoreboard": "Scoreboard",
+        "common:overflow.menu.scorecard": "Scorecard",
         "common:overflow.menu.leaderboard": "Leaderboard",
         "common:overflow.menu.stats": "Stats",
         "common:overflow.menu.newGame": "New Game",
@@ -184,8 +184,8 @@ describe("AppHeader", () => {
       expect(screen.queryByRole("button", { name: "Send feedback" })).toBeNull();
     });
 
-    it("shows the ⋯ button when onOpenScoreboard is provided", async () => {
-      await render(<AppHeader title="Hearts" onOpenScoreboard={jest.fn()} />);
+    it("shows the ⋯ button when onOpenScorecard is provided", async () => {
+      await render(<AppHeader title="Hearts" onOpenScorecard={jest.fn()} />);
       expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
     });
 
@@ -204,8 +204,8 @@ describe("AppHeader", () => {
       expect(screen.getByText("Send Feedback")).toBeTruthy();
     });
 
-    it("offers Send Feedback even on a screen with only a scoreboard", async () => {
-      await render(<AppHeader title="Hearts" onOpenScoreboard={jest.fn()} />);
+    it("offers Send Feedback even on a screen with only a scorecard", async () => {
+      await render(<AppHeader title="Hearts" onOpenScorecard={jest.fn()} />);
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));
       expect(screen.getByText("Send Feedback")).toBeTruthy();
     });
@@ -221,29 +221,29 @@ describe("AppHeader", () => {
       expect(screen.getByText("FeedbackWidgetMock")).toBeTruthy();
     });
 
-    it("shows Scoreboard item only when onOpenScoreboard is provided", async () => {
-      await render(<AppHeader title="Hearts" onNewGame={jest.fn()} onOpenScoreboard={jest.fn()} />);
+    it("shows Scorecard item only when onOpenScorecard is provided", async () => {
+      await render(<AppHeader title="Hearts" onNewGame={jest.fn()} onOpenScorecard={jest.fn()} />);
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      expect(screen.getByText("Scoreboard")).toBeTruthy();
+      expect(screen.getByText("Scorecard")).toBeTruthy();
       expect(screen.getByText("New Game")).toBeTruthy();
     });
 
-    it("does not show Scoreboard item when onOpenScoreboard is absent", async () => {
+    it("does not show Scorecard item when onOpenScorecard is absent", async () => {
       await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      expect(screen.queryByText("Scoreboard")).toBeNull();
+      expect(screen.queryByText("Scorecard")).toBeNull();
     });
 
-    it("calls onOpenScoreboard and closes the menu when Scoreboard is tapped", async () => {
-      const onOpenScoreboard = jest.fn();
+    it("calls onOpenScorecard and closes the menu when Scorecard is tapped", async () => {
+      const onOpenScorecard = jest.fn();
       await render(
-        <AppHeader title="Hearts" onOpenScoreboard={onOpenScoreboard} onNewGame={jest.fn()} />
+        <AppHeader title="Hearts" onOpenScorecard={onOpenScorecard} onNewGame={jest.fn()} />
       );
       await fireEvent.press(screen.getByRole("button", { name: "More options" }));
-      await fireEvent.press(screen.getByText("Scoreboard"));
-      expect(onOpenScoreboard).toHaveBeenCalledTimes(1);
+      await fireEvent.press(screen.getByText("Scorecard"));
+      expect(onOpenScorecard).toHaveBeenCalledTimes(1);
       // Menu should be closed after tap
-      expect(screen.queryByText("Scoreboard")).toBeNull();
+      expect(screen.queryByText("Scorecard")).toBeNull();
     });
 
     it("a game with only a leaderboard still gets the ⋯ menu (#2633)", async () => {

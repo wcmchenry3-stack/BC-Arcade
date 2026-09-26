@@ -38,7 +38,7 @@
   "deck.select": "Selecionar baralho {{name}}",
   "deck.selected": "{{name}} selecionado",
   "overflow.menu.label": "Mais opções",
-  "overflow.menu.scoreboard": "Placar",
+  "overflow.menu.scorecard": "Ficha de pontuação",
   "overflow.menu.stats": "Estatísticas",
   "overflow.menu.leaderboard": "Ranking",
   "overflow.menu.newGame": "Novo Jogo",

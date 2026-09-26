@@ -34,13 +34,5 @@
 
   "hud.errors": "{{count}} errors",
   "hud.errorsOne": "1 error",
-  "hud.elapsed": "Elapsed time {{time}}",
-
-  "scoreboard.heroLabel": "ELAPSED",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} errors",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.easyBestTime": "Easy Best",
-  "scoreboard.mediumBestTime": "Medium Best",
-  "scoreboard.hardBestTime": "Hard Best",
-  "scoreboard.gamesSolved": "Games Solved"
+  "hud.elapsed": "Elapsed time {{time}}"
 }

@@ -38,7 +38,7 @@
   "deck.select": "{{name}}カードデッキを選択",
   "deck.selected": "{{name}}が選択されました",
   "overflow.menu.label": "その他のオプション",
-  "overflow.menu.scoreboard": "スコアボード",
+  "overflow.menu.scorecard": "スコアカード",
   "overflow.menu.stats": "統計",
   "overflow.menu.leaderboard": "ランキング",
   "overflow.menu.newGame": "新しいゲーム",

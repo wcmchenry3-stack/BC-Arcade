@@ -1,6 +1,6 @@
 import React from "react";
 import { render, act } from "@testing-library/react-native";
-import ScoreboardScreen from "../ScoreboardScreen";
+import ScoreboardScreen, { SCORECARD_VIEWS } from "../ScoreboardScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider, useHeartsRounds } from "../../game/hearts/RoundsContext";
 import { YachtScorecardProvider, useYachtScorecard } from "../../game/yacht/ScorecardContext";
@@ -160,9 +160,21 @@ describe("ScoreboardScreen", () => {
     expect(getByText("8")).toBeTruthy();
   });
 
-  it("renders a fallback for an entirely unknown gameKey", async () => {
-    useRoute.mockReturnValue({ params: { gameKey: "no-such-game" } });
-    const { getByText } = await renderScreen();
-    expect(getByText(/No scoreboard available for/)).toBeTruthy();
+  it.each(["hearts", "yacht", "blackjack"])(
+    "titles the %s live view Scorecard (#2636)",
+    async (k) => {
+      useRoute.mockReturnValue({ params: { gameKey: k } });
+      useBlackjackSessionStats.mockReturnValue(initialSessionStats(1000));
+      const { getByText, queryByText } = await renderScreen();
+      expect(getByText("Scorecard")).toBeTruthy();
+      expect(queryByText(/Scoreboard/)).toBeNull();
+    }
+  );
+
+  // #2636: Cascade, Solitaire, Sudoku and Twenty48 lost their device-local
+  // Hero stat cards (the Stats screen replaced them), and with them the
+  // untranslated "No scoreboard available" fallback. Only live views remain.
+  it("has a live view for Hearts, Yacht and Blackjack only", () => {
+    expect(Object.keys(SCORECARD_VIEWS).sort()).toEqual(["blackjack", "hearts", "yacht"]);
   });
 });

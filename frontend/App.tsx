@@ -38,11 +38,6 @@ import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
 import { HeartsRoundsProvider } from "./src/game/hearts/RoundsContext";
 import { YachtScorecardProvider } from "./src/game/yacht/ScorecardContext";
-import { Twenty48ScoreboardProvider } from "./src/game/twenty48/Twenty48ScoreboardContext";
-import { SolitaireScoreboardProvider } from "./src/game/solitaire/SolitaireScoreboardContext";
-import { SudokuScoreboardProvider } from "./src/game/sudoku/SudokuScoreboardContext";
-import { CascadeScoreboardProvider } from "./src/game/cascade/CascadeScoreboardContext";
-import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import {
@@ -311,21 +306,11 @@ function AppInner() {
               <BlackjackGameProvider>
                 <HeartsRoundsProvider>
                   <YachtScorecardProvider>
-                    <Twenty48ScoreboardProvider>
-                      <SolitaireScoreboardProvider>
-                        <SudokuScoreboardProvider>
-                          <CascadeScoreboardProvider>
-                            <MahjongScoreboardProvider>
-                              <NavigationContainer>
-                                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                                  <Stack.Screen name="MainTabs" component={MainTabs} />
-                                </Stack.Navigator>
-                              </NavigationContainer>
-                            </MahjongScoreboardProvider>
-                          </CascadeScoreboardProvider>
-                        </SudokuScoreboardProvider>
-                      </SolitaireScoreboardProvider>
-                    </Twenty48ScoreboardProvider>
+                    <NavigationContainer>
+                      <Stack.Navigator screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="MainTabs" component={MainTabs} />
+                      </Stack.Navigator>
+                    </NavigationContainer>
                   </YachtScorecardProvider>
                 </HeartsRoundsProvider>
               </BlackjackGameProvider>

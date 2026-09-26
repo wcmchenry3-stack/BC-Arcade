@@ -1,29 +1,20 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { GameShell } from "../components/shared/GameShell";
-import { useTheme } from "../theme/ThemeContext";
 import HeartsScoreboard from "../components/scoreboard/HeartsScoreboard";
 import YachtScoreboard from "../components/scoreboard/YachtScoreboard";
 import BlackjackScoreboard from "../components/scoreboard/BlackjackScoreboard";
-import Twenty48Scoreboard from "../components/scoreboard/Twenty48Scoreboard";
-import SolitaireScoreboard from "../components/scoreboard/SolitaireScoreboard";
-import SudokuScoreboard from "../components/scoreboard/SudokuScoreboard";
-import CascadeScoreboard from "../components/scoreboard/CascadeScoreboard";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useBlackjackSessionStats } from "../game/blackjack/BlackjackGameContext";
-import { useTwenty48Scoreboard } from "../game/twenty48/Twenty48ScoreboardContext";
-import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
-import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
-import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
 import type { HomeStackParamList } from "../types/navigation";
 
 type GameKey = HomeStackParamList["Scoreboard"]["gameKey"];
 
-function HeartsScoreboardSection() {
+function HeartsScorecard() {
   const { cumulativeScores, scoreHistory, playerLabels } = useHeartsRounds();
   return (
     <HeartsScoreboard
@@ -34,89 +25,45 @@ function HeartsScoreboardSection() {
   );
 }
 
-function YachtScoreboardSection() {
+function YachtScorecard() {
   const { scores, upperSubtotal, upperBonus, yachtBonusCount, totalScore } = useYachtScorecard();
   return (
     <YachtScoreboard you={{ scores, upperSubtotal, upperBonus, yachtBonusCount, totalScore }} />
   );
 }
 
-function BlackjackScoreboardSection() {
+function BlackjackScorecard() {
   const stats = useBlackjackSessionStats();
   return <BlackjackScoreboard stats={stats} />;
 }
 
-function Twenty48ScoreboardSection() {
-  const { snapshot } = useTwenty48Scoreboard();
-  return <Twenty48Scoreboard snapshot={snapshot} />;
-}
-
-function SolitaireScoreboardSection() {
-  const { snapshot } = useSolitaireScoreboard();
-  return <SolitaireScoreboard snapshot={snapshot} />;
-}
-
-function SudokuScoreboardSection() {
-  const { snapshot } = useSudokuScoreboard();
-  return <SudokuScoreboard snapshot={snapshot} />;
-}
-
-function CascadeScoreboardSection() {
-  const { snapshot } = useCascadeScoreboard();
-  return <CascadeScoreboard snapshot={snapshot} />;
-}
-
-function UnknownScoreboardFallback({ gameKey }: { gameKey: string }) {
-  const { colors } = useTheme();
-  return (
-    <View style={styles.fallback}>
-      <Text style={[styles.fallbackText, { color: colors.textMuted }]}>
-        No scoreboard available for &quot;{gameKey}&quot; yet.
-      </Text>
-    </View>
-  );
-}
+/**
+ * The live view of the match in progress, per game (#2636): the ⋯ menu's
+ * "Scorecard" item. A player's history for a game is the Stats screen
+ * (`GameStats`, #2635), not this one. Typed over the route's `gameKey`, so a
+ * key without a live view can't be navigated to.
+ */
+export const SCORECARD_VIEWS: Readonly<Record<GameKey, React.ComponentType>> = {
+  hearts: HeartsScorecard,
+  yacht: YachtScorecard,
+  blackjack: BlackjackScorecard,
+};
 
 export default function ScoreboardScreen() {
   const { t } = useTranslation("common");
   const navigation = useNavigation();
   const route = useRoute<RouteProp<HomeStackParamList, "Scoreboard">>();
-  const gameKey: GameKey = route.params.gameKey;
-
-  let body: React.ReactNode;
-  switch (gameKey) {
-    case "hearts":
-      body = <HeartsScoreboardSection />;
-      break;
-    case "yacht":
-      body = <YachtScoreboardSection />;
-      break;
-    case "blackjack":
-      body = <BlackjackScoreboardSection />;
-      break;
-    case "twenty48":
-      body = <Twenty48ScoreboardSection />;
-      break;
-    case "solitaire":
-      body = <SolitaireScoreboardSection />;
-      break;
-    case "sudoku":
-      body = <SudokuScoreboardSection />;
-      break;
-    case "cascade":
-      body = <CascadeScoreboardSection />;
-      break;
-    default:
-      body = <UnknownScoreboardFallback gameKey={gameKey} />;
-  }
+  const LiveView = SCORECARD_VIEWS[route.params.gameKey];
 
   return (
     <GameShell
       gameType={null}
-      title={t("overflow.menu.scoreboard")}
+      title={t("overflow.menu.scorecard")}
       onBack={() => navigation.goBack()}
     >
-      <View style={styles.body}>{body}</View>
+      <View style={styles.body}>
+        <LiveView />
+      </View>
     </GameShell>
   );
 }
@@ -126,13 +73,5 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 16,
-  },
-  fallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fallbackText: {
-    fontSize: 14,
   },
 });

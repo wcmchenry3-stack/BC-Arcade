@@ -26,12 +26,5 @@
   "preGame.body": "난이도를 선택하고 시작하세요!",
   "hud.errors": "오류 {{count}}개",
   "hud.errorsOne": "오류 1개",
-  "hud.elapsed": "경과 시간 {{time}}",
-  "scoreboard.heroLabel": "경과 시간",
-  "scoreboard.heroSub": "{{difficulty}} · 오류 {{errors}}개",
-  "scoreboard.heroSubEmpty": "아직 플레이 없음",
-  "scoreboard.easyBestTime": "쉬움 최고",
-  "scoreboard.mediumBestTime": "보통 최고",
-  "scoreboard.hardBestTime": "어려움 최고",
-  "scoreboard.gamesSolved": "해결 횟수"
+  "hud.elapsed": "경과 시간 {{time}}"
 }

@@ -11,12 +11,5 @@
   "preview.comingUp": "À venir : {{name}}",
   "theme.groupLabel": "Thème de fruits",
   "theme.optionLabel": "Thème {{label}}",
-  "event.merged": "Fusionné ! {{fruit}} créé.",
-  "scoreboard.heroLabel": "POINTS",
-  "scoreboard.heroSub": "Meilleur fruit : {{bestFruit}} · {{merges}} combos",
-  "scoreboard.heroSubEmpty": "Aucune partie jouée",
-  "scoreboard.bestScore": "Meilleur score",
-  "scoreboard.bestFruit": "Fruit record",
-  "scoreboard.gamesPlayed": "Parties jouées",
-  "scoreboard.totalMerges": "Combos totaux"
+  "event.merged": "Fusionné ! {{fruit}} créé."
 }

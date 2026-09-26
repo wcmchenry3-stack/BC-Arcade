@@ -280,12 +280,12 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     await waitFor(() => expect(getAllByText("Hearts").length).toBeGreaterThan(0));
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with hearts gameKey", async () => {
+  it("⋯ menu Scorecard item (#2636) opens the hearts live view", async () => {
     mockNavigate.mockClear();
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("More options"));
     await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
-    await fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
+    await fireEvent.press(getByText("Scorecard")); // tap Scorecard item
     expect(mockNavigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "hearts" });
   });
 

@@ -11,12 +11,5 @@
   "preview.comingUp": "即将出现：{{name}}",
   "theme.groupLabel": "水果主题",
   "theme.optionLabel": "{{label}} 主题",
-  "event.merged": "合并成功！生成{{fruit}}。",
-  "scoreboard.heroLabel": "得分",
-  "scoreboard.heroSub": "最佳水果：{{bestFruit}} · 合并{{merges}}次",
-  "scoreboard.heroSubEmpty": "暂无游戏记录",
-  "scoreboard.bestScore": "历史最佳",
-  "scoreboard.bestFruit": "最佳水果",
-  "scoreboard.gamesPlayed": "游戏局数",
-  "scoreboard.totalMerges": "合并总数"
+  "event.merged": "合并成功！生成{{fruit}}。"
 }

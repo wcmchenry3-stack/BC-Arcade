@@ -208,7 +208,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handleNewGame}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
+      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >

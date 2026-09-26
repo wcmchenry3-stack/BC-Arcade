@@ -6,7 +6,6 @@ import React from "react";
 import { render, act, waitFor, fireEvent, within } from "@testing-library/react-native";
 import Twenty48Screen from "../Twenty48Screen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { Twenty48ScoreboardProvider } from "../../game/twenty48/Twenty48ScoreboardContext";
 import { saveGame, clearGame, loadGame, loadBestScore } from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
 
@@ -33,6 +32,8 @@ jest.mock("../../game/twenty48/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveBestScore: jest.fn(),
   loadBestScore: jest.fn().mockResolvedValue(0),
+  // The old `twenty48_stats_v1` accessors, gone since #2636. Still mocked so
+  // a test can prove the screen calls neither.
   loadStats: jest.fn().mockResolvedValue({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 }),
   saveStats: jest.fn(),
 }));
@@ -121,9 +122,7 @@ function mockNav() {
 async function renderScreen(nav = mockNav()) {
   return await render(
     <ThemeProvider>
-      <Twenty48ScoreboardProvider>
-        <Twenty48Screen navigation={nav} />
-      </Twenty48ScoreboardProvider>
+      <Twenty48Screen navigation={nav} />
     </ThemeProvider>
   );
 }
@@ -339,6 +338,30 @@ describe("Twenty48Screen — initial load", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     await mountAndSettle();
     expect(saveGame).not.toHaveBeenCalled();
+  });
+
+  // #2636: the device-local counters fed only the old Scoreboard. The Stats
+  // screen reads the server; the best score (its own key) is all that's kept.
+  it("neither reads nor writes the old local stats store", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const storage = require("../../game/twenty48/storage");
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const { getByLabelText } = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowLeft");
+      dispatchKey("ArrowRight");
+      dispatchKey("ArrowUp");
+      dispatchKey("ArrowDown");
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start a new 2048 game"));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(loadBestScore).toHaveBeenCalled();
+    expect(storage.loadStats).not.toHaveBeenCalled();
+    expect(storage.saveStats).not.toHaveBeenCalled();
   });
 });
 
@@ -927,6 +950,19 @@ describe("Twenty48Screen — result card (#2513)", () => {
       await fireEvent.press(r.getByText("Stats"));
     });
     expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "twenty48" });
+  });
+
+  it("the ⋯ menu has no Scorecard: Stats replaced the old Scoreboard (#2636)", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(r.getByLabelText("More options")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    expect(r.getByText("Stats")).toBeTruthy();
+    expect(r.queryByText(/Scoreboard|Scorecard/)).toBeNull();
   });
 
   it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {

@@ -38,7 +38,7 @@
   "deck.select": "Seleccionar baraja {{name}}",
   "deck.selected": "{{name}} seleccionado",
   "overflow.menu.label": "Más opciones",
-  "overflow.menu.scoreboard": "Marcador",
+  "overflow.menu.scorecard": "Hoja de puntos",
   "overflow.menu.stats": "Estadísticas",
   "overflow.menu.leaderboard": "Clasificación",
   "overflow.menu.newGame": "Nueva partida",

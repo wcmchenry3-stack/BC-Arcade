@@ -17,7 +17,7 @@ export interface GameShellProps extends Pick<
   | "requireBack"
   | "backAccessibilityLabel"
   | "rightSlot"
-  | "onOpenScoreboard"
+  | "onOpenScorecard"
   | "onOpenLeaderboard"
   | "onNewGame"
   | "onLevelSelect"
@@ -26,7 +26,7 @@ export interface GameShellProps extends Pick<
   /**
    * The game this screen plays (#2635). Its ⋯ menu gets a "Stats" item that
    * opens the shared `GameStats` screen for it. `null` for a screen that is
-   * not one game's play screen (a scoreboard, a run history, a dev tool): no
+   * not one game's play screen (a scorecard, a run history, a dev tool): no
    * Stats item. Required, so a new game screen can't leave it out.
    */
   gameType: GameType | null;
@@ -59,7 +59,7 @@ export function GameShell({
   requireBack,
   backAccessibilityLabel,
   rightSlot,
-  onOpenScoreboard,
+  onOpenScorecard,
   onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
@@ -105,7 +105,7 @@ export function GameShell({
           requireBack={requireBack}
           backAccessibilityLabel={backAccessibilityLabel}
           rightSlot={rightSlot}
-          onOpenScoreboard={onOpenScoreboard}
+          onOpenScorecard={onOpenScorecard}
           onOpenStats={gameType ? openStats : undefined}
           onOpenLeaderboard={onOpenLeaderboard}
           onNewGame={onNewGame}

@@ -684,7 +684,7 @@ export default function HeartsScreen() {
         title={t("game.title")}
         onBack={() => navigation.goBack()}
         onNewGame={() => handleStartGame(selectedDifficulty)}
-        onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
+        onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
         onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
       >
@@ -715,7 +715,7 @@ export default function HeartsScreen() {
       title={t("game.title")}
       onBack={() => navigation.goBack()}
       onNewGame={handleChangeDifficulty}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
+      onOpenScorecard={() => navigation.navigate("Scoreboard", { gameKey: "hearts" })}
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >

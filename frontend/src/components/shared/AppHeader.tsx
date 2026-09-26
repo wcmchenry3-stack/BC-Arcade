@@ -29,8 +29,11 @@ export interface AppHeaderProps {
    * "Back to levels". Defaults to common:nav.backLabel.
    */
   backAccessibilityLabel?: string;
-  /** When provided, shows the ⋯ menu with a Scoreboard item. See GH #711. */
-  onOpenScoreboard?: () => void;
+  /**
+   * When provided, shows the ⋯ menu with a Scorecard item: the live view of
+   * the match in progress (Hearts, Yacht, Blackjack). See GH #711, #2636.
+   */
+  onOpenScorecard?: () => void;
   /**
    * When provided, shows the ⋯ menu with a Stats item (#2635): the game's
    * shared stats screen. GameShell sets it from its `gameType` prop.
@@ -55,7 +58,7 @@ export function AppHeader({
   onBack,
   requireBack = false,
   backAccessibilityLabel,
-  onOpenScoreboard,
+  onOpenScorecard,
   onOpenStats,
   onOpenLeaderboard,
   onNewGame,
@@ -71,7 +74,7 @@ export function AppHeader({
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
   const showMenu =
-    !!onOpenScoreboard ||
+    !!onOpenScorecard ||
     !!onOpenStats ||
     !!onOpenLeaderboard ||
     !!onNewGame ||
@@ -114,9 +117,9 @@ export function AppHeader({
       }
     : undefined;
 
-  const handleMenuScoreboard = () => {
+  const handleMenuScorecard = () => {
     setMenuOpen(false);
-    onOpenScoreboard?.();
+    onOpenScorecard?.();
   };
 
   const handleMenuStats = () => {
@@ -291,10 +294,11 @@ export function AppHeader({
             },
           ]}
         >
-          {!!onOpenScoreboard && (
+          {!!onOpenScorecard && (
             <Pressable
-              onPress={handleMenuScoreboard}
+              onPress={handleMenuScorecard}
               accessibilityRole="menuitem"
+              testID="nav-menu-scorecard"
               style={(state) => [
                 styles.dropdownItem,
                 state.pressed && { backgroundColor: colors.surfaceAlt },
@@ -307,7 +311,7 @@ export function AppHeader({
                 style={styles.itemIcon}
               />
               <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.scoreboard")}
+                {t("common:overflow.menu.scorecard")}
               </Text>
             </Pressable>
           )}

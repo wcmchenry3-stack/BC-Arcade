@@ -60,8 +60,12 @@ export type HomeStackParamList = {
   DailyWord: undefined;
   Leaderboard: LeaderboardParams;
   GameStats: GameStatsParams;
+  /**
+   * The live scorecard of the match in progress (#2636): only games with a
+   * live view. A game's history is `GameStats`.
+   */
   Scoreboard: {
-    gameKey: "hearts" | "yacht" | "blackjack" | "twenty48" | "solitaire" | "sudoku" | "cascade";
+    gameKey: "hearts" | "yacht" | "blackjack";
   };
 };
 

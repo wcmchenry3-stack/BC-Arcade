@@ -11,12 +11,5 @@
   "preview.comingUp": "Coming up: {{name}}",
   "theme.groupLabel": "Fruit set theme",
   "theme.optionLabel": "{{label}} theme",
-  "event.merged": "Merged! {{fruit}} created.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Best fruit: {{bestFruit}} · {{merges}} merges",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestScore": "All-Time Best",
-  "scoreboard.bestFruit": "Best Fruit",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.totalMerges": "Total Merges"
+  "event.merged": "Merged! {{fruit}} created."
 }
