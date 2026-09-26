@@ -206,8 +206,11 @@ async def test_equal_scores_rank_earlier_completion_first(client: TestClient) ->
     assert _pairs(_board(client, "solitaire")) == [("Earlier", 700), ("Later", 700)]
 
 
-async def test_metadata_metric_with_tiebreak_then_completed_at(client: TestClient) -> None:
-    # Sort: level_reached desc, then total_moves asc, then completed_at asc.
+async def test_metadata_metric_with_tiebreak_then_completed_at(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Sort + tie-break: level_reached desc, then total_moves asc, then completed_at asc.
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed("sort", _sid(), name="ManyMoves", meta={"level_reached": 10, "total_moves": 90})
     await _seed(
         "sort",
@@ -458,7 +461,9 @@ async def test_exact_rank_outside_the_top_ten(client: TestClient) -> None:
     assert (full[-1]["player_name"], full[-1]["rank"]) == ("Me", 13)
 
 
-async def test_rank_honours_asc_direction_and_tiebreak(client: TestClient) -> None:
+async def test_rank_honours_asc_direction_and_tiebreak(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # FreeCell: fewer moves is better.
     await _seed("freecell", _sid(), score=80, name="Better")
     await _seed("freecell", _sid(), score=120, name="Worse")
@@ -466,7 +471,8 @@ async def test_rank_honours_asc_direction_and_tiebreak(client: TestClient) -> No
     game_id = await _seed("freecell", sid, score=100, name=None, minutes=1)
     assert _name_and_rank(client, sid, game_id, "Me") == {"rank": 2, "is_best": True}
 
-    # Sort: same level, fewer total moves ahead; missing total_moves behind.
+    # Sort + tie-break: same level, fewer total moves ahead; missing total_moves behind.
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed("sort", _sid(), name="Fewer", meta={"level_reached": 5, "total_moves": 10})
     await _seed("sort", _sid(), name="NoMoves", meta={"level_reached": 5})
     sid = _sid()
@@ -518,7 +524,9 @@ async def test_me_outside_the_listed_top_n_has_its_exact_rank(client: TestClient
     }
 
 
-async def test_me_honours_asc_direction_and_tiebreak(client: TestClient) -> None:
+async def test_me_honours_asc_direction_and_tiebreak(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     await _seed("freecell", _sid(), score=80, name="Fast")
     me = _sid()
     await _seed("freecell", me, score=100, name="Me")
@@ -526,6 +534,7 @@ async def test_me_honours_asc_direction_and_tiebreak(client: TestClient) -> None
     body = _board(client, "freecell?limit=1", sid=me)
     assert (body["me"]["rank"], body["me"]["value"]) == (2, 100)
 
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed("sort", _sid(), name="Fewer", meta={"level_reached": 5, "total_moves": 10})
     me = _sid()
     await _seed("sort", me, name="Me", minutes=1, meta={"level_reached": 5, "total_moves": 20})
@@ -706,12 +715,22 @@ async def test_complete_rejects_bad_metadata_metric(client: TestClient, level: A
     assert r.status_code == 400, r.text
 
 
-async def test_complete_rejects_bad_tiebreak_value(client: TestClient) -> None:
+async def test_complete_rejects_bad_tiebreak_value(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sid = _sid()
     await _grant_all(sid)
     game_id = _create(client, sid, "sort")
     r = _complete(client, sid, game_id, result={"level_reached": 3, "total_moves": "many"})
     assert r.status_code == 400, r.text
+
+    # A tie-break key the result model leaves unbounded: the board's own check
+    # rejects a value above 2**31 - 1, and the row can still complete.
+    _patched_board(monkeypatch, "sort", tiebreak=("moves", "asc"))
+    r = _complete(client, sid, game_id, result={"level_reached": 3, "moves": 2**31})
+    assert r.status_code == 400, r.text
+    r = _complete(client, sid, game_id, result={"level_reached": 3, "moves": 2**31 - 1})
+    assert r.status_code == 200, r.text
 
 
 async def test_complete_allows_uncapped_board(client: TestClient) -> None:
@@ -854,9 +873,10 @@ async def test_complete_rejects_final_score_above_int32_on_uncapped_board(
 
 
 async def test_stored_huge_metric_or_tiebreak_does_not_break_the_board(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Rows written before the write-side bound: the board must still load.
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed("sort", _sid(), name="HugeLevel", meta={"level_reached": HUGE})
     await _seed(
         "sort", _sid(), name="HugeMoves", minutes=1, meta={"level_reached": 5, "total_moves": HUGE}
@@ -874,7 +894,10 @@ async def test_stored_non_integer_metric_never_ranks(client: TestClient) -> None
     assert _pairs(_board(client, "sort")) == [("Good", 2)]
 
 
-async def test_stored_non_integer_tiebreak_counts_as_missing(client: TestClient) -> None:
+async def test_stored_non_integer_tiebreak_counts_as_missing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sort_with_moves_tiebreak(monkeypatch)
     await _seed(
         "sort", _sid(), name="StrMoves", minutes=1, meta={"level_reached": 5, "total_moves": "1"}
     )
@@ -887,10 +910,11 @@ async def test_stored_non_integer_tiebreak_counts_as_missing(client: TestClient)
     assert [n for n, _ in _pairs(_board(client, "sort"))] == ["RealMoves", "StrMoves", "NegMoves"]
 
 
-def test_board_sql_never_casts_json_to_float() -> None:
+def test_board_sql_never_casts_json_to_float(monkeypatch: pytest.MonkeyPatch) -> None:
     """Postgres ``CAST(... AS FLOAT)`` overflows on a huge JSON number (500)."""
     from sqlalchemy.dialects import postgresql
 
+    _sort_with_moves_tiebreak(monkeypatch)  # the tie-break is read from JSON too
     board = leaderboard.enabled_board("sort")
     stmt = leaderboard.top_statement(board, 1, {})
     sql = str(stmt.compile(dialect=postgresql.dialect())).upper()
@@ -973,6 +997,15 @@ async def test_complete_uses_the_rows_partition_cap(client: TestClient) -> None:
 def _patched_board(monkeypatch: pytest.MonkeyPatch, game_type: str, **changes: Any) -> None:
     mod = get_module(game_type)
     monkeypatch.setattr(mod, "board", mod.board.model_copy(update=changes))
+
+
+def _sort_with_moves_tiebreak(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sort's board with the ``total_moves asc`` tie-break it had before #2746.
+
+    No shipped board declares a tie-break now, so the tie-break tests put one
+    back on Sort, whose rows already carry ``total_moves``.
+    """
+    _patched_board(monkeypatch, "sort", tiebreak=("total_moves", "asc"))
 
 
 async def test_partition_default_comes_from_the_board(

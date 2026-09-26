@@ -2,9 +2,10 @@
 
 Every solved level is a session row (``useGameSync("sort")``, #2512), scored
 with the player's standing after it: ``final_score`` and ``level_reached`` are
-the highest level solved, and ``total_moves`` (the sum of the player's best
-moves up to it) breaks a tie. ``level``/``moves``/``undos`` are the level
-actually played. The payloads below mirror ``SortScreen.tsx``; a rejection
+the highest level solved, and ``total_moves`` is the sum of the player's best
+moves up to it, recorded but not ranked (#2746): a tie on level goes to the
+earliest completion. ``level``/``moves``/``undos`` are the level actually
+played. The payloads below mirror ``SortScreen.tsx``; a rejection
 would dead-letter the solve, so every current one must pass.
 """
 
@@ -22,6 +23,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement, Player
 from games.registry import get_module
 from main import app
+from sort.generate_levels import LEVEL_SPECS
 from sort.models import SortMetadata, SortResult
 from sort.module import module as sort_module
 
@@ -145,12 +147,15 @@ def test_result_model_is_registered() -> None:
     assert sort_module.metadata_model is SortMetadata
 
 
-def test_board_ranks_level_reached_then_fewest_total_moves() -> None:
+def test_board_ranks_level_reached_then_earliest_completion() -> None:
     board = sort_module.board
     assert (board.metric, board.direction) == ("level_reached", "desc")
-    assert board.tiebreak == ("total_moves", "asc")
-    # Real levels are 1-23 (levels.json): the cap must let the last one rank.
-    assert board.max_value == 23
+    # No moves tie-break (#2746): levels are random per request, so moves on
+    # the same level number are moves on different puzzles.
+    assert board.tiebreak is None
+    # Levels are 1-23 (LEVEL_SPECS, built per request by build_levels): the
+    # cap must let the last one rank.
+    assert board.max_value == len(LEVEL_SPECS) == 23
 
 
 def test_metadata_is_unchanged() -> None:
@@ -240,14 +245,15 @@ async def test_level_above_the_cap_is_rejected() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_same_level_ranks_fewer_total_moves_first() -> None:
+async def test_same_level_ranks_earliest_completion_not_fewer_total_moves() -> None:
     more = await _player("SortMore")
     fewer = await _player("SortFewer")
-    # The one with more moves finishes first: total_moves decides, not the time.
+    # The one with more moves finishes first: the time decides, not total_moves
+    # (#2746: their level 23s were different puzzles).
     _play(more, _scored(23, 900))
     _play(fewer, _scored(23, 400))
     top = [p for p in _board(fewer) if p[0] in {"SortMore", "SortFewer"}]
-    assert top == [("SortFewer", 23), ("SortMore", 23)]
+    assert top == [("SortMore", 23), ("SortFewer", 23)]
 
     game_rank: dict[str, int] = {}
     for sid in (more, fewer):
@@ -255,7 +261,7 @@ async def test_same_level_ranks_fewer_total_moves_first() -> None:
         r = client.get(f"/games/{games[0]['id']}/rank", headers=_headers(sid))
         assert r.status_code == 200, r.text
         game_rank[sid] = r.json()["rank"]
-    assert game_rank[fewer] < game_rank[more]
+    assert game_rank[more] < game_rank[fewer]
 
 
 async def test_one_player_appears_once_at_their_highest_level() -> None:
@@ -263,8 +269,8 @@ async def test_one_player_appears_once_at_their_highest_level() -> None:
     first = _play(sid, _scored(21, 300))
     _play(sid, _scored(22, 330))
     best = _play(sid, _scored(23, 360))
-    # A replay that doesn't lower the total, an abandon and an unscored
-    # (#2512 build) solve: none of them displaces the best row.
+    # A replay at the same frontier, an abandon and an unscored (#2512 build)
+    # solve: none of them displaces the best row, the first solve of 23.
     _play(sid, _scored(23, 360, played=4))
     _play(sid, _CURRENT_COMPLETIONS["abandon"])
     _play(sid, _CURRENT_COMPLETIONS["installed-2512-solve"])
@@ -279,7 +285,7 @@ async def test_one_player_appears_once_at_their_highest_level() -> None:
     assert older["rank"] == r["rank"]
 
 
-async def test_a_replay_that_lowers_the_total_improves_the_rank() -> None:
+async def test_a_replay_that_lowers_the_total_does_not_change_the_rank() -> None:
     steady = await _player("SortSteady")
     replayer = await _player("SortReplayer")
     _play(steady, _scored(23, 450))
@@ -291,15 +297,16 @@ async def test_a_replay_that_lowers_the_total_improves_the_rank() -> None:
     ]
 
     # Level 5 replayed in far fewer moves: same frontier, total down to 400.
-    better = _play(replayer, _scored(23, 400, played=5, moves=8))
+    # Moves don't rank (#2746), so the first solve of 23 stays the best row.
+    replay = _play(replayer, _scored(23, 400, played=5, moves=8))
     assert [p for p in _board(steady) if p[0] in names] == [
-        ("SortReplayer", 23),
         ("SortSteady", 23),
+        ("SortReplayer", 23),
     ]
-    r = client.get(f"/games/{better}/rank", headers=_headers(replayer)).json()
+    r = client.get(f"/games/{first}/rank", headers=_headers(replayer)).json()
     assert r["ranked"] is True and r["is_best"] is True
-    old = client.get(f"/games/{first}/rank", headers=_headers(replayer)).json()
-    assert old["is_best"] is False and old["rank"] == r["rank"]
+    later = client.get(f"/games/{replay}/rank", headers=_headers(replayer)).json()
+    assert later["is_best"] is False and later["rank"] == r["rank"]
 
 
 async def test_an_unscored_solve_is_not_on_the_board() -> None:

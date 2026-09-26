@@ -84,8 +84,8 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
     expect(BOARDS.daily_word?.qualifyingOutcomes).toEqual(["win"]);
   });
 
-  it("exports Sort's tie-break", () => {
-    expect(BOARDS.sort?.tiebreak).toEqual(["total_moves", "asc"]);
+  it("gives Sort no moves tie-break: levels are random per request (#2746)", () => {
+    expect(BOARDS.sort?.tiebreak).toBeNull();
   });
 
   it("has a Star Swarm board for exactly the engine's tiers, LieutenantJG by default", () => {

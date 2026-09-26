@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""BFS script asserting every level in levels.json is solvable.
+"""BFS script asserting every level ``build_levels()`` generates is solvable.
 
-Run: python verify_levels.py
-Exits with code 1 if any level is proven unsolvable or BFS exceeds state cap.
+``GET /sort/levels`` builds a new random set on every request (#2746), so this
+checks freshly built sets, not a saved file. The BFS below is independent of
+the generator's own checks.
+
+Run from ``backend/``:
+    python -m sort.verify_levels                 # one random set
+    python -m sort.verify_levels --runs 5        # five random sets
+    python -m sort.verify_levels --seed 42       # a reproducible set
+
+Exits with code 1 if any level is proven unsolvable. A level whose state space
+exceeds the cap is reported and assumed solvable.
 """
 
-import json
-import pathlib
+import argparse
+import random
 import sys
 from collections import deque
 from itertools import takewhile
 
+from sort.generate_levels import build_levels
+
 DEPTH = 4
 MAX_STATES = 300_000
-
-_HERE = pathlib.Path(__file__).parent
 
 
 def _compact(state: list[list[str]]) -> tuple:
@@ -90,24 +99,30 @@ def bfs_solvable(state: list[list[str]]) -> tuple[bool, int]:
 
 
 def main() -> None:
-    levels_path = _HERE / "levels.json"
-    levels = json.loads(levels_path.read_text())
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--seed", type=int, default=None, help="seed of the first set")
+    parser.add_argument("--runs", type=int, default=1, help="number of sets to build")
+    args = parser.parse_args()
+    # Every run gets its own seed, printed so a failing set can be rebuilt.
+    first = args.seed if args.seed is not None else random.randrange(2**32)
     failures: list[str] = []
 
-    for level in levels:
-        lid = level["id"]
-        state = _from_json(level["bottles"])
-        solvable, n_states = bfs_solvable(state)
-        if solvable is True:
-            print(f"Level {lid:>2}: SOLVABLE  (explored {n_states} states)")
-        elif solvable is None:
-            print(
-                f"Level {lid:>2}: HIT CAP   (explored {n_states} states) — "
-                "assumed solvable (state space too large to fully verify)"
-            )
-        else:
-            print(f"Level {lid:>2}: UNSOLVABLE (explored {n_states} states)")
-            failures.append(str(lid))
+    for seed in range(first, first + args.runs):
+        print(f"Set seed={seed}")
+        for level in build_levels(seed):
+            lid = level["id"]
+            state = _from_json(level["bottles"])
+            solvable, n_states = bfs_solvable(state)
+            if solvable is True:
+                print(f"Level {lid:>2}: SOLVABLE  (explored {n_states} states)")
+            elif solvable is None:
+                print(
+                    f"Level {lid:>2}: HIT CAP   (explored {n_states} states) — "
+                    "assumed solvable (state space too large to fully verify)"
+                )
+            else:
+                print(f"Level {lid:>2}: UNSOLVABLE (explored {n_states} states)")
+                failures.append(f"{lid} (seed {seed})")
 
     if failures:
         print(f"\nFAIL: unsolvable levels: {', '.join(failures)}", file=sys.stderr)

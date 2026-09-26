@@ -1,17 +1,18 @@
-#!/usr/bin/env python3
 """Generate 23 solvable Sort Puzzle levels.
 
-Usage: python generate_levels.py > levels.json
+``build_levels`` is what ``GET /sort/levels`` serves: it runs on every request
+with no seed, so each fetch gets new random mixtures of the same
+``LEVEL_SPECS`` (#2746). Nothing is saved to disk; ``verify_levels.py`` checks
+a freshly built set for solvability.
 
 Levels are produced by randomly distributing colors across bottles and
-BFS-verifying solvability. RNG is seeded (42) for reproducibility.
-For 5–9 colors the state space is too large for full BFS; those levels
-are generated with a lightweight deadlock check (_FAST_BFS_CAP). For
-10–14 colors even the lightweight check is too slow to filter reliably,
-so only 2-empty levels are generated for those tiers (assumed solvable).
+BFS-verifying solvability. For 5–9 colors the state space is too large for
+full BFS; those levels are generated with a lightweight deadlock check
+(_FAST_BFS_CAP). For 10–14 colors even the lightweight check is too slow to
+filter reliably, so only 2-empty levels are generated for those tiers
+(assumed solvable).
 """
 
-import json
 import random
 from collections import deque
 from itertools import takewhile
@@ -240,16 +241,3 @@ def build_levels(seed: int | None = None) -> list[dict]:
             state = _build_level_fast(colors, n_empty, rng)
         levels.append({"id": level_id, "bottles": to_json_bottles(state)})
     return levels
-
-
-def main() -> None:
-    rng = random.Random(42)
-    levels = []
-    for level_id, colors, n_empty in LEVEL_SPECS:
-        state = generate_level(colors, n_empty, rng)
-        levels.append({"id": level_id, "bottles": to_json_bottles(state)})
-    print(json.dumps(levels, indent=2))
-
-
-if __name__ == "__main__":
-    main()

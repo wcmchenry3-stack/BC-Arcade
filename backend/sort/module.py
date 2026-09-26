@@ -11,19 +11,20 @@ class SortModule:
     metadata_model = SortMetadata
     result_model = SortResult
     has_winner = False
-    # Highest level cleared; fewest total moves breaks a tie. The levels are
-    # not seeded: GET /sort/levels generates new random mixtures of the same
-    # 23 level specs on every request (``build_levels(seed=None)``), so two
-    # players' ``total_moves`` cover the same level numbers, not identical
-    # puzzles (#2746). qualifying_outcomes stays None: a solved level is
-    # recorded ``completed``, the only non-abandoned outcome.
-    # The app sends both keys on every solve, replays included (#2625,
-    # ``SortResult``): the player's standing after it. The board keeps each
-    # player's best row, so a replay that lowers a best improves their rank.
+    # Highest level cleared; ties go to the earliest completion, the generic
+    # FINAL_TIEBREAK (``completed_at asc``). There is no moves tie-break
+    # (#2746): the levels are not seeded. GET /sort/levels generates new random
+    # mixtures of the same 23 level specs on every request
+    # (``build_levels(seed=None)``), so two players' moves on "level 19" are
+    # moves on different puzzles. qualifying_outcomes stays None: a solved
+    # level is recorded ``completed``, the only non-abandoned outcome.
+    # The app sends ``level_reached`` (and ``total_moves``, kept as metadata)
+    # on every solve, replays included (#2625, ``SortResult``): the player's
+    # standing after it. The board keeps each player's best row, which is
+    # their first solve of their highest level; a replay never displaces it.
     board = BoardDefinition(
         metric="level_reached",
         direction="desc",
-        tiebreak=("total_moves", "asc"),
         label_key="level",
         max_value=23,
     )

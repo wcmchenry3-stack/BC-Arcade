@@ -23,7 +23,8 @@ Ordering a board
 ----------------
 1. ``metric`` in ``direction`` (``desc``: higher is better; ``asc``: lower is
    better).
-2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")`` for Sort.
+2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")``. No board sets one
+   today: Sort's was dropped because its levels are random per request (#2746).
 3. ``FINAL_TIEBREAK``: ``completed_at asc`` (the earlier entry wins). It is
    always applied last and is never declared on a board.
 

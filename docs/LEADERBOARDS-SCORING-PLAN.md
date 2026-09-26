@@ -147,12 +147,12 @@ Initial definitions, as decided by the owner (§8):
 | Hearts | `final_score` (`100 − penalty`) | desc | — | — | `ai_difficulty` | 100 | yes |
 | Sudoku | `final_score` | desc | — | `difficulty`, `variant` | — | 300 | yes |
 | Cascade | `final_score` | desc | — | — | — | none | yes |
-| Sort | `level_reached` | desc | `total_moves` asc | — | — | 23 | yes |
+| Sort | `level_reached` | desc | ~~`total_moves` asc~~ — (dropped in #2746) | — | — | 23 | yes |
 | Star Swarm | `final_score` | desc | — | `difficulty_tier` | — | none | yes |
 | Blackjack | — | — | — | — | — | — | **no** (chips are a balance, not a score) |
 | Daily Word | — | — | — | — | — | — | **no** |
 
-"Recorded, not partitioned" fields go into `games.metadata` so a board can be split later without a backfill. Sort's levels are generated with a fixed seed (`backend/sort/generate_levels.py`), so every player gets the same 23 levels and `total_moves` across cleared levels is a fair tie-break; Sort must start sending it.
+"Recorded, not partitioned" fields go into `games.metadata` so a board can be split later without a backfill. Sort's levels were believed to be generated with a fixed seed, making `total_moves` across cleared levels a fair tie-break. They are not (see the correction under §8), so #2746 dropped the tie-break; Sort still sends `total_moves` as recorded metadata.
 
 ### 4.3 One result envelope
 
@@ -294,7 +294,7 @@ Phase 4 — docs, tests, cleanup
 | 2 | Yacht partition | **One board, solo and vs mixed**; record `mode` and `difficulty` | Difficulty only changes the opponent; the player's own score is ranked |
 | 3 | Mahjong partition by layout | **One board; record `layout`** | All 25 layouts are 144 tiles, so the max score is identical. Split later if boards diverge |
 | 4 | Hearts partition by AI difficulty | **Record `ai_difficulty`, don't partition** | Split only if scores clearly differ |
-| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** | Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve |
+| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** (tie-break dropped in #2746: levels are not seeded; ties go to the earliest completion) | Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve |
 | 6 | Existing `*-anon` rows | **Delete in a data migration** | Cannot be attributed to a player; the store build is unreleased, so they are test plays |
 | 7 | Ranks tab | **Retire** | Boards open from the result card and game menu; app keeps three tabs |
 | 8 | Blackjack win | **Reached the run goal = win; busted out = loss; leaving mid-run = abandoned** | Uses the game's own victory condition |
@@ -310,7 +310,7 @@ Phase 4 — docs, tests, cleanup
 
 **`dev` moved while this plan was being decided (Sep 24–25).** PRs #2569 (Mahjong), #2576 (Sort), #2578 (Blackjack), #2580 (Star Swarm) and #2592 (win/loss/push) merged, closing #2507, #2510, #2512, #2516, #2517 and epic #2500. Sort and Star Swarm now record session rows (without a score) and auto-submit under the display name through the shared queue; Star Swarm's hard-coded `"player"` and Mahjong's typed-name modal are gone. The §2–§3 tables describe `dev` at `ca087331` and are kept as the baseline; the filed stories are written against current `dev`.
 
-**Corrections found while deciding:** the original draft said Sort's levels were randomised and Mahjong layouts had different tile counts. Both were wrong (`backend/sort/generate_levels.py` seeds its RNG; every entry in `frontend/src/game/mahjong/layouts/registry.ts` is 144 tiles). The recommendations above reflect the corrected facts.
+**Corrections found while deciding:** the original draft said Sort's levels were randomised and Mahjong layouts had different tile counts. Both were wrong (`backend/sort/generate_levels.py` seeds its RNG; every entry in `frontend/src/game/mahjong/layouts/registry.ts` is 144 tiles). The recommendations above reflect the corrected facts. **Later correction (#2746):** the Sort part of that correction was itself wrong. `GET /sort/levels` calls `build_levels()` with no seed, so levels are random per request; only the unused `main()` that wrote `levels.json` was seeded. The owner chose to drop the `total_moves` tie-break (Sep 26); fixed, seeded levels are filed for after launch.
 
 ---
 
