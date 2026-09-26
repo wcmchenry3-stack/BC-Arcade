@@ -18,11 +18,10 @@ from __future__ import annotations
 import logging
 import random
 
-from sort.fast_solver import solve
+from sort.fast_solver import DEPTH, solve
 
 logger = logging.getLogger(__name__)
 
-DEPTH = 4
 
 # Distinct states the solver may visit per deal before giving up (verdict
 # "unknown", which is rejected like a dead deal). Across 5,000 raw shuffles of
@@ -65,8 +64,7 @@ def deal_level(
         state += [[] for _ in range(n_empty)]
         if _solved(state):
             continue
-        verdict, _ = solve(state, SOLVER_BUDGET)
-        if verdict is True:
+        if solve(state, SOLVER_BUDGET).solvable is True:
             return state
     logger.error(
         "sort: no provably solvable deal in %d attempts (%d colors, %d empty)",

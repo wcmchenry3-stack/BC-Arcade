@@ -1,4 +1,9 @@
-"""The fast Sort solver agrees with the plain BFS and decides big levels (#2764)."""
+"""The fast Sort solver agrees with the plain BFS and decides big levels (#2764).
+
+Every "solvable" verdict here is also certified: its pours are replayed with the
+reference simulator in ``verify_levels`` (``is_solution``), which shares none of
+the solver's pruning.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +12,8 @@ import random
 import pytest
 
 from sort.fast_solver import encode, heuristic, solve, successors
-from sort.generate_levels import build_levels
-from sort.verify_levels import bfs_solvable
+from sort.generate_levels import SOLVER_BUDGET
+from sort.verify_levels import bfs_solvable, is_solution
 
 _COLORS = [chr(97 + i) for i in range(8)]
 
@@ -33,6 +38,27 @@ _DEAD_14C = [
     ["", "", "", ""],
 ]
 
+# A solvable 14-colour, 2-empty level (level 23 of build_levels(2764)), kept as
+# data so the test doesn't depend on the generator.
+_LIVE_14C = [
+    ["green", "indigo", "purple", "purple"],
+    ["blue", "maroon", "teal", "orange"],
+    ["yellow", "red", "lime", "navy"],
+    ["navy", "gold", "indigo", "blue"],
+    ["navy", "green", "pink", "purple"],
+    ["orange", "orange", "red", "maroon"],
+    ["indigo", "red", "blue", "gold"],
+    ["brown", "navy", "orange", "yellow"],
+    ["blue", "green", "pink", "pink"],
+    ["lime", "maroon", "maroon", "teal"],
+    ["teal", "gold", "purple", "gold"],
+    ["brown", "red", "brown", "brown"],
+    ["teal", "yellow", "indigo", "pink"],
+    ["yellow", "lime", "lime", "green"],
+    ["", "", "", ""],
+    ["", "", "", ""],
+]
+
 
 def _deal(rng: random.Random, n_colors: int, n_empty: int) -> list[list[str]]:
     units = [c for c in _COLORS[:n_colors] for _ in range(4)]
@@ -51,26 +77,39 @@ def test_agrees_with_reference_bfs_on_small_deals(sizes: list[int], n_empty: int
         bottles = _deal(rng, rng.choice(sizes), n_empty)
         expected, _ = bfs_solvable([list(b) for b in bottles])
         assert expected is not None
-        got, _ = solve(bottles)
-        assert got == expected, bottles
-        verdicts.add(got)
+        got = solve(bottles)
+        assert got.solvable == expected, bottles
+        if got.solvable:
+            assert got.pours is not None and is_solution(bottles, got.pours), bottles
+        verdicts.add(got.solvable)
     assert verdicts == ({True, False} if n_empty == 1 else {True})
 
 
 def test_proves_the_known_dead_level_unsolvable() -> None:
-    verdict, seen = solve(_DEAD_14C)
-    assert verdict is False
-    assert seen == 13_960  # the whole reachable space, bottle order ignored
+    result = solve(_DEAD_14C, SOLVER_BUDGET)
+    assert result.solvable is False
+    assert result.seen < SOLVER_BUDGET
+    assert result.pours is None
 
 
 def test_solves_a_fourteen_colour_level() -> None:
-    level = build_levels(42)[22]
-    assert level["id"] == 23
-    assert solve(level["bottles"])[0] is True
+    result = solve(_LIVE_14C, SOLVER_BUDGET)
+    assert result.solvable is True
+    assert result.pours is not None
+    assert is_solution(_LIVE_14C, result.pours)
+
+
+def test_a_wrong_path_does_not_replay() -> None:
+    # The certificate check itself can fail: a truncated solution, or an
+    # illegal pour (onto a different colour), is rejected.
+    pours = solve(_LIVE_14C, SOLVER_BUDGET).pours
+    assert pours
+    assert not is_solution(_LIVE_14C, pours[:-1])
+    assert not is_solution(_LIVE_14C, [(0, 1), *pours])
 
 
 def test_budget_exhausted_is_unknown() -> None:
-    assert solve(_DEAD_14C, budget=10) == (None, 10)
+    assert solve(_DEAD_14C, budget=10) == (None, 10, None)
 
 
 @pytest.mark.parametrize(
@@ -81,7 +120,7 @@ def test_budget_exhausted_is_unknown() -> None:
     ],
 )
 def test_already_solved(bottles: list[list[str]]) -> None:
-    assert solve(bottles)[0] is True
+    assert solve(bottles) == (True, 1, [])
 
 
 def test_state_is_permutation_free_and_drops_full_bottles() -> None:
@@ -93,10 +132,11 @@ def test_state_is_permutation_free_and_drops_full_bottles() -> None:
 def test_successors_skip_symmetric_pours() -> None:
     # A single-colour bottle into an empty one only permutes bottles, and the
     # second empty bottle is never a separate target.
-    state = encode([["red", "red"], [], [], ["blue", "red"]])
+    state = encode([["red", "red"], [], [], ["blue", "red"], ["blue"] * 3, ["red"]])
     moves = successors(state)
     assert all(nxt != state for _, _, nxt in moves)
     targets = {(state[i], state[j]) for i, j, _ in moves}
     assert ("AA", "") not in targets  # the uniform red pair stays put
     assert len([t for t in targets if t[1] == ""]) == 1
-    assert heuristic(state) == 1
+    # Runs: AA, BA (2), BBB, A = 5; colours left: 2.
+    assert heuristic(state) == 3

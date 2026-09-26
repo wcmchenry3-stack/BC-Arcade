@@ -14,17 +14,17 @@ from collections import Counter
 import pytest
 
 from sort import generate_levels
-from sort.fast_solver import solve
+from sort.fast_solver import DEPTH, Result, solve
 from sort.generate_levels import (
     COLORS_3,
     COLORS_9,
     COLORS_14,
-    DEPTH,
     LEVEL_SPECS,
     LevelGenerationError,
     _solved,
     deal_level,
 )
+from sort.verify_levels import is_solution
 
 _CONFIGS = sorted({(len(colors), n_empty) for _, colors, n_empty in LEVEL_SPECS})
 _COLORS_BY_SIZE = {len(colors): colors for _, colors, _ in LEVEL_SPECS}
@@ -42,7 +42,9 @@ def test_deals_are_well_formed_non_trivial_and_proven(n_colors: int, n_empty: in
         assert state[n_colors:] == [[] for _ in range(n_empty)]
         assert Counter(c for b in state for c in b) == {c: DEPTH for c in colors}
         assert not _solved(state)
-        assert solve(state)[0] is True
+        # Certified by replaying the solution with the reference simulator.
+        pours = solve(state).pours
+        assert pours is not None and is_solution(state, pours)
 
 
 @pytest.mark.parametrize("rejected", [False, None], ids=["unsolvable", "undecided"])
@@ -53,10 +55,10 @@ def test_only_a_proven_deal_is_returned(
     verdicts = [rejected, rejected, True]
     seen_deals: list[list[list[str]]] = []
 
-    def fake_solve(state: list[list[str]], budget: int) -> tuple[bool | None, int]:
+    def fake_solve(state: list[list[str]], budget: int) -> Result:
         assert budget == generate_levels.SOLVER_BUDGET
         seen_deals.append([list(b) for b in state])
-        return verdicts[len(seen_deals) - 1], 1
+        return Result(verdicts[len(seen_deals) - 1], 1)
 
     monkeypatch.setattr(generate_levels, "solve", fake_solve)
     state = deal_level(COLORS_9, 1, random.Random(0))
@@ -70,10 +72,10 @@ def test_no_proof_within_max_attempts_raises_and_logs(
     """Never an unverified level: out of attempts is a logged error."""
     calls = 0
 
-    def undecided(state: list[list[str]], budget: int) -> tuple[None, int]:
+    def undecided(state: list[list[str]], budget: int) -> Result:
         nonlocal calls
         calls += 1
-        return None, budget
+        return Result(None, budget)
 
     monkeypatch.setattr(generate_levels, "solve", undecided)
     with (
@@ -88,7 +90,7 @@ def test_no_proof_within_max_attempts_raises_and_logs(
 def test_build_levels_raises_rather_than_serve_an_unproven_level(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(generate_levels, "solve", lambda state, budget: (False, 1))
+    monkeypatch.setattr(generate_levels, "solve", lambda state, budget: Result(False, 1))
     with pytest.raises(LevelGenerationError, match="3 colors, 2 empty"):
         generate_levels.build_levels(0)
 

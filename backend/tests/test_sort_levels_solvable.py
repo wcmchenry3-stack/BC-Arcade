@@ -4,11 +4,12 @@
 so this is the automated check: build fixed-seed sets and prove every level of
 every set solvable.
 
-* ``sort.fast_solver`` decides every level, whatever its size, and must find a
-  solution: an unsolvable or undecided level fails.
-* The small levels are also proven with the reference BFS in
-  ``sort/verify_levels.py``, written independently of ``fast_solver`` (which
-  the generator itself uses).
+* ``sort.fast_solver`` finds a solution to every level, whatever its size, and
+  the solution is replayed pour by pour with the reference simulator in
+  ``sort/verify_levels.py`` (``is_solution``), which is independent of the
+  solver the generator uses. A replayed solution is a certificate: it can't be
+  wrong because of a bug in the solver's pruning.
+* The small levels are also proven with the reference BFS in the same module.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import pytest
 
 from sort.fast_solver import solve
 from sort.generate_levels import LEVEL_SPECS, SOLVER_BUDGET, build_levels
-from sort.verify_levels import _from_json, bfs_solvable
+from sort.verify_levels import _from_json, bfs_solvable, is_solution
 
 # Fixed seeds, so a failure names a set that can be rebuilt exactly.
 _SEEDS = list(range(20))
@@ -34,13 +35,16 @@ def test_cheap_levels_cover_every_one_empty_level() -> None:
 
 
 @pytest.mark.parametrize("seed", _SEEDS)
-def test_every_level_is_proven_solvable(seed: int) -> None:
+def test_every_level_has_a_solution_that_replays(seed: int) -> None:
     levels = build_levels(seed)
     assert [level["id"] for level in levels] == [spec[0] for spec in LEVEL_SPECS]
     for level in levels:
-        verdict, seen = solve(level["bottles"], SOLVER_BUDGET)
+        where = f"seed {seed}, level {level['id']}"
+        result = solve(level["bottles"], SOLVER_BUDGET)
         # False is a proof of no solution; None means the budget ran out.
-        assert verdict is True, f"seed {seed}, level {level['id']}: {verdict} after {seen} states"
+        assert result.solvable is True, f"{where}: {result.solvable} after {result.seen} states"
+        assert result.pours is not None
+        assert is_solution(level["bottles"], result.pours), f"{where}: the pours don't replay"
 
 
 @pytest.mark.parametrize("seed", _BFS_SEEDS)

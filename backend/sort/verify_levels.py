@@ -3,21 +3,29 @@
 ``GET /sort/levels`` builds a new random set on every request (#2746), so this
 checks freshly built sets, not a saved file. Each level is decided by
 ``sort.fast_solver`` (#2764), which reaches a verdict on every level in well
-under a second. The generator already requires that proof, so this is a manual
-end-to-end check of what the endpoint serves.
+under a second, and its solution is replayed here with ``is_solution``. The
+generator already requires the solver's proof, so this is a manual end-to-end
+check of what the endpoint serves.
 
-``bfs_solvable`` below is the plain reference BFS, written independently of
-``fast_solver``. The tests check that the two agree (``test_sort_fast_solver.py``)
-and prove the small levels solvable with it (``test_sort_levels_solvable.py``).
-It can't decide the big levels within ``MAX_STATES``.
+The reference pour simulator below (``_moves``, ``_apply``, ``_solved``) and
+``bfs_solvable`` are written independently of ``fast_solver``, and mirror
+``isValidPour``/``applyPour`` in ``frontend/src/game/sort/engine.ts``:
+
+* ``is_solution`` replays the solver's pours one by one, checking each is a
+  legal move, and that the level ends solved: a certificate that doesn't rely
+  on the solver's pruning.
+* The tests check ``fast_solver`` agrees with ``bfs_solvable``
+  (``test_sort_fast_solver.py``) and prove the small levels solvable with it
+  (``test_sort_levels_solvable.py``). It can't decide the big levels within
+  ``MAX_STATES``.
 
 Run from ``backend/``:
     python -m sort.verify_levels                 # one random set
     python -m sort.verify_levels --runs 5        # five random sets
     python -m sort.verify_levels --seed 42       # a reproducible set
 
-Exits with code 1 if any level is proven unsolvable, or can't be decided within
-the solver's budget.
+Exits with code 1 if any level is proven unsolvable, can't be decided within
+the solver's budget, or its solution doesn't replay.
 """
 
 import argparse
@@ -26,10 +34,9 @@ import sys
 from collections import deque
 from itertools import takewhile
 
-from sort.fast_solver import solve
+from sort.fast_solver import DEPTH, solve
 from sort.generate_levels import SOLVER_BUDGET, build_levels
 
-DEPTH = 4
 MAX_STATES = 300_000
 
 
@@ -83,6 +90,19 @@ def _from_json(bottles: list[list[str]]) -> list[list[str]]:
     return [[s for s in b if s != ""] for b in bottles]
 
 
+def is_solution(bottles: list[list[str]], pours: list[tuple[int, int]]) -> bool:
+    """True when ``pours`` are legal moves, in order, that leave the level solved.
+
+    ``bottles`` is the level as served (padded with '' or not).
+    """
+    state = _from_json(bottles)
+    for frm, to in pours:
+        if (frm, to) not in _moves(state):
+            return False
+        state = _apply(state, frm, to)
+    return _solved(state)
+
+
 def bfs_solvable(state: list[list[str]]) -> tuple[bool, int]:
     """Return (solvable, states_explored). solvable=None means hit state cap."""
     if _solved(state):
@@ -120,9 +140,12 @@ def main() -> None:
         print(f"Set seed={seed}")
         for level in build_levels(seed):
             lid = level["id"]
-            solvable, n_states = solve(level["bottles"], SOLVER_BUDGET)
-            if solvable is True:
-                print(f"Level {lid:>2}: SOLVABLE   ({n_states} states)")
+            solvable, n_states, pours = solve(level["bottles"], SOLVER_BUDGET)
+            if solvable is True and pours is not None and is_solution(level["bottles"], pours):
+                print(f"Level {lid:>2}: SOLVABLE   ({n_states} states, {len(pours)} pours)")
+            elif solvable is True:
+                print(f"Level {lid:>2}: BAD PATH   (the solver's pours don't replay)")
+                failures.append(f"{lid} (seed {seed}, bad path)")
             elif solvable is None:
                 print(f"Level {lid:>2}: UNDECIDED  (budget of {n_states} states spent)")
                 failures.append(f"{lid} (seed {seed}, undecided)")

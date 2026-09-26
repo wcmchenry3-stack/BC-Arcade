@@ -26,8 +26,8 @@ from multiprocessing import Pool
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sort.fast_solver import DEFAULT_BUDGET, solve
-from sort.generate_levels import DEPTH, LEVEL_SPECS, build_levels
+from sort.fast_solver import DEFAULT_BUDGET, DEPTH, solve
+from sort.generate_levels import LEVEL_SPECS, build_levels
 
 _BUDGET = DEFAULT_BUDGET
 
@@ -40,7 +40,7 @@ def _init(budget: int) -> None:
 def _survey_seed(seed: int) -> tuple[int, list[tuple[int, bool | None, int]]]:
     out = []
     for level in build_levels(seed):
-        verdict, seen = solve(level["bottles"], _BUDGET)
+        verdict, seen, _ = solve(level["bottles"], _BUDGET)
         out.append((level["id"], verdict, seen))
     return seed, out
 
@@ -52,7 +52,8 @@ def _raw_deal(args: tuple[int, int, int]) -> tuple[bool | None, int]:
     rng.shuffle(units)
     bottles = [units[i * DEPTH : (i + 1) * DEPTH] for i in range(n_colors)]
     bottles += [[] for _ in range(n_empty)]
-    return solve(bottles, _BUDGET)
+    verdict, seen, _ = solve(bottles, _BUDGET)
+    return verdict, seen
 
 
 def _pct(n: int, d: int) -> str:
