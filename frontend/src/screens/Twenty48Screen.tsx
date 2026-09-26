@@ -8,6 +8,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { Twenty48State } from "../game/twenty48/types";
 import {
   newGame,
@@ -112,32 +113,31 @@ export default function Twenty48Screen({ navigation }: Props) {
   }, [state]);
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) stops its clock, so the reported duration counts only play. Only
-  // a clock this pauses is restarted on return: a board with no move yet
-  // keeps waiting for its first. `screenFocusedRef` also gates the queued
-  // move below: applying it while blurred would run move()'s timer logic
-  // on a paused (`startedAt: null`) state, restarting the clock mid-blur.
-  const pausedOnBlurRef = useRef(false);
-  const screenFocusedRef = useRef(true);
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      screenFocusedRef.current = false;
+  // #2735) or the app going to the background (#2750) stops its clock, so
+  // the reported duration counts only play. The paused board is saved (2048
+  // otherwise saves only on a move), so a kill while backgrounded keeps the
+  // time played since the last move. Only a clock this pauses is restarted
+  // on return: a board with no move yet keeps waiting for its first.
+  // `awayRef` also gates the queued move below: applying it while away would
+  // run move()'s timer logic on a paused (`startedAt: null`) state,
+  // restarting the clock.
+  const pausedWhileAwayRef = useRef(false);
+  const awayRef = usePauseWhileAway(
+    navigation,
+    () => {
       const s = stateRef.current;
       if (!s || s.startedAt === null) return;
-      pausedOnBlurRef.current = true;
-      setState(pauseGame(s));
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      screenFocusedRef.current = true;
-      if (!pausedOnBlurRef.current) return;
-      pausedOnBlurRef.current = false;
+      pausedWhileAwayRef.current = true;
+      const paused = pauseGame(s);
+      setState(paused);
+      saveGame({ ...paused, events: undefined });
+    },
+    () => {
+      if (!pausedWhileAwayRef.current) return;
+      pausedWhileAwayRef.current = false;
       setState((s) => (s ? resumeGame(s) : s));
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
+    }
+  );
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
   // and the New Game abandon both build it here. final_score goes in the result
@@ -197,11 +197,9 @@ export default function Twenty48Screen({ navigation }: Props) {
     let active = true;
     Promise.all([loadGame(), loadBestScore()]).then(([saved, best]) => {
       if (!active) return;
-      let next = saved ?? newGame();
-      // Resume timer when reloading a mid-game state.
-      if (!next.game_over && next.startedAt !== null) {
-        next = { ...next, startedAt: Date.now() };
-      }
+      // loadGame restarts a saved mid-game's clock from now (#2750): the time
+      // played before the app was closed is kept, the time it was closed isn't.
+      const next = saved ?? newGame();
       setState(next);
       if (!saved) saveGame(next);
       setBestScore(best);
@@ -303,10 +301,11 @@ export default function Twenty48Screen({ navigation }: Props) {
         movingRef.current = false;
         // A move queued during the winning move would play behind the win
         // card (handleMove's guard only sees moves made after it shows): drop
-        // it. One queued during a blur is dropped too (#2735): another screen
-        // is covering the board by the time this fires, and applying it would
-        // restart the paused clock mid-blur.
-        const queued = justWon || !screenFocusedRef.current ? null : pendingMove.current;
+        // it. One queued before the player left is dropped too (#2735,
+        // #2750): another screen covers the board or the app is in the
+        // background by the time this fires, and applying it would restart
+        // the paused clock.
+        const queued = justWon || awayRef.current ? null : pendingMove.current;
         pendingMove.current = null;
         if (queued) {
           setState((s) => {
@@ -316,7 +315,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
       }, MOVE_LOCK_MS);
     },
-    [finishSession, syncEnqueue, syncMarkStarted]
+    [finishSession, syncEnqueue, syncMarkStarted, awayRef]
   );
 
   const handleMove = useCallback(

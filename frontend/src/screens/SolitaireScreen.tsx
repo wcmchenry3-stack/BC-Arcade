@@ -29,6 +29,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -253,33 +254,29 @@ export default function SolitaireScreen() {
   }, [state]);
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) stops its clock, so the finish time counts only play. Only a
-  // clock this pauses is restarted on return: a deal with no move yet keeps
-  // waiting for its first. `screenFocusedRef` also gates Auto Complete's
+  // #2735) or the app going to the background (#2750) stops its clock, so
+  // the finish time counts only play. The pause is saved like any state
+  // change, so a kill while backgrounded keeps the play banked. Only a clock
+  // this pauses is restarted on return: a deal with no move yet keeps
+  // waiting for its first. `awayRef` also gates Auto Complete's
   // self-scheduled steps below: applyMove's timer would otherwise treat a
   // paused (`startedAt: null`) state as "not yet started" and restart the
-  // clock from a step that lands mid-blur, defeating the pause.
-  const pausedOnBlurRef = useRef(false);
-  const screenFocusedRef = useRef(true);
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      screenFocusedRef.current = false;
+  // clock from a step that lands while away, defeating the pause.
+  const pausedWhileAwayRef = useRef(false);
+  const awayRef = usePauseWhileAway(
+    navigation,
+    () => {
       const s = stateRef.current;
       if (!s || s.startedAt === null) return;
-      pausedOnBlurRef.current = true;
+      pausedWhileAwayRef.current = true;
       setState(pauseGame(s));
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      screenFocusedRef.current = true;
-      if (!pausedOnBlurRef.current) return;
-      pausedOnBlurRef.current = false;
+    },
+    () => {
+      if (!pausedWhileAwayRef.current) return;
+      pausedWhileAwayRef.current = false;
       setState((s) => (s ? resumeGame(s) : s));
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
+    }
+  );
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
   // unmount) and the completion effect read the latest value.
@@ -628,13 +625,26 @@ export default function SolitaireScreen() {
     setAutoCompleting(true);
     setSelection(null);
     let current = state;
+    let waited = false;
     const step = () => {
-      // Another screen is covering the game (#2735): hold off applying the
-      // next step until focus returns, instead of letting a step scheduled
-      // before the blur land while the clock is paused.
-      if (!screenFocusedRef.current) {
+      // Another screen is covering the game (#2735) or the app is in the
+      // background (#2750): hold off applying the next step until the player
+      // is back, instead of letting a step scheduled before they left land
+      // while the clock is paused.
+      if (awayRef.current) {
+        waited = true;
         autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
         return;
+      }
+      if (waited) {
+        // The pause and resume changed only the clock. Carry it over, or this
+        // step would put back the clock from before the player left and
+        // count the time away as play.
+        waited = false;
+        const live = stateRef.current;
+        if (live) {
+          current = { ...current, startedAt: live.startedAt, accumulatedMs: live.accumulatedMs };
+        }
       }
       const next = autoComplete(current);
       if (next === current) {
@@ -652,7 +662,7 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
     };
     step();
-  }, [state, autoCompleting, ensureSyncStarted]);
+  }, [state, autoCompleting, ensureSyncStarted, awayRef]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {

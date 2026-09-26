@@ -534,6 +534,20 @@ describe("undoMove", () => {
     state = undoMove(state);
     expect(state.pairsRemoved).toBe(0);
   });
+
+  // #2750: the snapshot's startedAt predates any pause since; restoring it
+  // would count the time away (or, after a relaunch, the days the app was
+  // closed) as play.
+  it("keeps the live clock, not the snapshot's", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), startedAt: 1_000, accumulatedMs: 0 };
+    const [a, b] = firstFreePair(state);
+    const matched = selectTile(selectTile(state, a.id), b.id);
+    const pausedAndResumed = resumeGame(pauseGame(matched, 61_000), 7_261_000);
+    const reverted = undoMove(pausedAndResumed, 7_300_000);
+    expect(reverted.pairsRemoved).toBe(0);
+    expect(reverted.startedAt).toBe(7_261_000);
+    expect(reverted.accumulatedMs).toBe(60_000);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -825,8 +839,11 @@ describe("shuffleBoard", () => {
       expect(dead.startedAt).toBeNull();
       expect(dead.accumulatedMs).toBe(60_500);
       expect(elapsedMs(dead, 999_999)).toBe(60_500);
-      // Backing out of the deadlock puts the running clock back.
-      expect(undoMove(dead).startedAt).toBe(1_000);
+      // Backing out of the deadlock starts the clock again from the undo,
+      // keeping the banked time (#2750: never the snapshot's own startedAt).
+      const undone = undoMove(dead, 70_000);
+      expect(undone.startedAt).toBe(70_000);
+      expect(undone.accumulatedMs).toBe(60_500);
     } finally {
       jest.restoreAllMocks();
     }

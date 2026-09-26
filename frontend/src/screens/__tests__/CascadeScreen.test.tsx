@@ -12,6 +12,8 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 jest.mock("expo-blur", () => ({
@@ -119,6 +121,7 @@ let mockEngineScore = 0;
 
 const mockEngineDrop = jest.fn();
 const mockEngineDestroy = jest.fn();
+const mockEngineRestore = jest.fn();
 const mockEngineStep = jest.fn().mockImplementation(() => {
   const events = [...pendingEngineEvents];
   pendingEngineEvents = [];
@@ -140,6 +143,7 @@ jest.mock("../../game/cascade/engine2", () => ({
       drop: mockEngineDrop,
       getState: mockEngineGetState,
       destroy: mockEngineDestroy,
+      restore: mockEngineRestore,
     };
   }),
 }));
@@ -197,6 +201,7 @@ beforeEach(() => {
   mockEngineInstanceCount = 0;
   mockEngineDrop.mockClear();
   mockEngineDestroy.mockClear();
+  mockEngineRestore.mockClear();
   mockEngineStep.mockClear();
   mockEngineGetState.mockClear();
   mockStartGame.mockReset();
@@ -786,5 +791,160 @@ describe("CascadeScreen — ⋯ menu (#2635)", () => {
     });
     expect(renderer.root.findAllByProps({ testID: "nav-menu-stats" }).length).toBeGreaterThan(0);
     expect(JSON.stringify(renderer.toJSON())).not.toMatch(/Scoreboard|Scorecard/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 — the clock stops in the background, and a relaunch keeps the play
+// before the kill without counting the time the app was closed
+// ---------------------------------------------------------------------------
+
+describe("CascadeScreen — app background and relaunch (#2750)", () => {
+  const ONE_PIECE = [
+    {
+      id: 1,
+      tier: 0,
+      x: 200,
+      y: 500,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      shapeKind: "circle" as const,
+      isSleeping: true,
+    },
+  ];
+  let appStateSpy: jest.SpyInstance;
+  // AppState.addEventListener may already be a shared mock whose calls
+  // outlive a test: only listeners added from this test on are emitted to.
+  let appStateBase: number;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    // Restored by the file's afterEach (jest.restoreAllMocks).
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: ONE_PIECE,
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+  });
+  afterEach(() => {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  /** A restored board settles for a second (60 frames) before it takes a drop. */
+  async function settleRestoredBoard() {
+    await act(() => {
+      for (let i = 0; i < 61; i++) advanceOneFrame();
+    });
+  }
+
+  function lastDuration(): unknown {
+    const [, summary] = mockCompleteGame.mock.calls.at(-1)!;
+    return summary.result.duration_ms;
+  }
+
+  it("stops the loop and the play clock while the app is in the background", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(20_000);
+    });
+    mockEngineStep.mockClear();
+
+    await setAppState("background");
+    await act(() => {
+      jest.advanceTimersByTime(10 * 60_000); // ten minutes away
+    });
+    await act(() => {
+      advanceOneFrame(); // a frame queued before the pause no-ops
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+
+    await setAppState("active");
+    expect(rafCallbacks).toHaveLength(1); // the loop runs again
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    expect(lastDuration()).toBe(25_000);
+  });
+
+  it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
+    const first = await renderScreen();
+    await triggerTap(first, 100);
+    await act(() => {
+      jest.advanceTimersByTime(20_000);
+    });
+    await setAppState("background"); // the pause saves the board
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v3"))!);
+    expect(saved.playedMs).toBe(20_000);
+    await act(() => {
+      first.unmount(); // the OS kills the app from here
+    });
+    mockCompleteGame.mockClear();
+
+    jest.setSystemTime(Date.now() + 2 * 24 * 60 * 60_000); // two days later
+    const second = await renderScreen();
+    await act(async () => {
+      await Promise.resolve(); // the saved game's load
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await settleRestoredBoard();
+    await triggerTap(second, 100);
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    await act(() => {
+      second.unmount();
+    });
+    expect(lastDuration()).toBe(25_000);
+  });
+
+  // An older build's save has no playedMs: its earlier play is unknown, so
+  // the clock counts from the load. It must still restore the board.
+  it("restores an older build's save without playedMs, counting from the load", async () => {
+    await AsyncStorage.setItem(
+      "cascade_game_v3",
+      JSON.stringify({
+        version: 3,
+        pieces: [{ tier: 0, x: 200, y: 500 }],
+        score: 10,
+        savedAt: Date.now() - 2 * 24 * 60 * 60_000,
+        queue: { current: 0, next: 1 },
+      })
+    );
+    const renderer = await renderScreen();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await settleRestoredBoard();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(4_000);
+    });
+    await act(() => {
+      renderer.unmount();
+    });
+    expect(lastDuration()).toBe(4_000);
   });
 });

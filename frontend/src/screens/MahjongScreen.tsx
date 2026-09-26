@@ -56,6 +56,7 @@ import {
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -811,27 +812,27 @@ export default function MahjongScreen() {
     return unsub;
   }, [navigation, recordDeadlockLoss]);
 
-  // Another screen covering the game (⋯ → Leaderboard, #2633) stops its clock,
-  // so the finish and best times count only play. Only a clock this pauses is
-  // restarted on return: a board with no move yet keeps waiting for its first.
-  const pausedOnBlurRef = useRef(false);
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
+  // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
+  // going to the background (#2750) stops its clock, so the finish and best
+  // times count only play. The pause is saved like any state change, so a
+  // kill while backgrounded keeps the play banked. Only a clock this pauses
+  // is restarted on return: a board with no move yet keeps waiting for its
+  // first.
+  const pausedWhileAwayRef = useRef(false);
+  usePauseWhileAway(
+    navigation,
+    () => {
       const s = stateRef.current;
       if (!s || s.startedAt === null) return;
-      pausedOnBlurRef.current = true;
+      pausedWhileAwayRef.current = true;
       setState(pauseGame(s));
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      if (!pausedOnBlurRef.current) return;
-      pausedOnBlurRef.current = false;
+    },
+    () => {
+      if (!pausedWhileAwayRef.current) return;
+      pausedWhileAwayRef.current = false;
       setState((s) => (s ? resumeGame(s) : s));
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation]);
+    }
+  );
 
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {

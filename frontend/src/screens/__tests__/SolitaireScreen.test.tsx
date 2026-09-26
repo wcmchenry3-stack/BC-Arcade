@@ -9,7 +9,8 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -792,6 +793,12 @@ describe("SolitaireScreen — result card (#2509)", () => {
   }
 
   /** Wins in-session and waits for the card (the cascade is skipped under reduce motion). */
+  /** The saved 61 s plus the moments the test spends before the winning move. */
+  function expectAbout61s(ms: number) {
+    expect(ms).toBeGreaterThanOrEqual(61000);
+    expect(ms).toBeLessThan(62000);
+  }
+
   async function winNow() {
     const api = await mountOneMoveFromWin();
     await playWinningMove(api);
@@ -898,11 +905,12 @@ describe("SolitaireScreen — result card (#2509)", () => {
       await api.findByTestId("solitaire-result", undefined, { timeout: WIN_CASCADE_MS + 2000 })
     );
 
-    // 61 s beats the 90 s best.
+    // 61 s beats the 90 s best. The loaded game's clock runs from the load
+    // (#2750), so the win adds the few ms the test itself takes.
     expect(card.getByText("New best")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledTimes(1));
-    expect(await loadStats()).toEqual({ bestTimeMs: 61000 });
+    expectAbout61s((await loadStats()).bestTimeMs);
   });
 
   // #2636: as in Sudoku, Cascade and 2048, a first win has no best to beat.
@@ -911,7 +919,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
     const card = within(api.getByTestId("solitaire-result"));
     expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
-    await waitFor(async () => expect(await loadStats()).toEqual({ bestTimeMs: 61000 }));
+    await waitFor(async () => expectAbout61s((await loadStats()).bestTimeMs));
   });
 
   it("shows no New best and writes nothing when the win is slower than the best", async () => {
@@ -1284,5 +1292,172 @@ describe("SolitaireScreen — local best cache", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBe(stored);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 — the clock stops in the background, and a relaunch counts neither
+// the time the app was closed nor loses the play before it
+// ---------------------------------------------------------------------------
+
+describe("SolitaireScreen — app background and relaunch (#2750)", () => {
+  const suits = ["spades", "hearts", "diamonds", "clubs"] as const;
+  const rankSeq = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+  const full = suits.flatMap((suit) => rankSeq.map((rank) => ({ suit, rank, faceUp: true })));
+  const foundation = (suit: (typeof suits)[number]) => full.filter((c) => c.suit === suit);
+
+  /** Two moves from winning: the Queen of Clubs on the waste, the King under it. */
+  function twoFromWin(): SolitaireState {
+    return {
+      ...dealGame(1),
+      tableau: [[], [], [], [], [], [], []],
+      foundations: {
+        spades: foundation("spades"),
+        hearts: foundation("hearts"),
+        diamonds: foundation("diamonds"),
+        clubs: foundation("clubs").slice(0, 11),
+      },
+      stock: [],
+      waste: [
+        { suit: "clubs", rank: 13, faceUp: true },
+        { suit: "clubs", rank: 12, faceUp: true },
+      ],
+      score: 790,
+      undoStack: [],
+      isComplete: false,
+    } as SolitaireState;
+  }
+
+  /** Select, then double-tap, a waste card: it goes to its foundation. */
+  async function playToFoundation(api: Awaited<ReturnType<typeof mount>>, label: string) {
+    const card = api.getByLabelText(label);
+    await act(async () => {
+      await fireEvent.press(card);
+    });
+    await act(async () => {
+      await fireEvent.press(card);
+    });
+  }
+
+  let appStateSpy: jest.SpyInstance;
+  // AppState.addEventListener may already be a shared mock whose calls
+  // outlive a test: only listeners added from this test on are emitted to.
+  let appStateBase: number;
+  let reduceMotion: jest.SpyInstance;
+  let now: number;
+  let nowSpy: jest.SpyInstance;
+  beforeEach(() => {
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 1, is_best: true, reason: null });
+    now = 1_700_000_000_000;
+    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+  });
+  afterEach(() => {
+    nowSpy.mockRestore();
+    reduceMotion.mockRestore();
+    appStateSpy.mockRestore();
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  it("doesn't count the time the app spends in the background", async () => {
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+    const api = await mount();
+    await playToFoundation(api, "Q of Clubs"); // the clock starts
+    now += 20_000;
+    await setAppState("background");
+    now += 2 * 60 * 60_000; // two hours away
+    await setAppState("active");
+    now += 5_000;
+    await playToFoundation(api, "K of Clubs"); // the win
+    await api.findByTestId("solitaire-result");
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ outcome: "completed", durationMs: 25_000 })
+    );
+  });
+
+  // An Auto-Complete step held while the app was away must pick up the
+  // resumed clock, not put back the one from before the player left.
+  it("an Auto-Complete held in the background doesn't count the time away", async () => {
+    nowSpy.mockRestore(); // fake timers drive both the steps and the clock here
+    jest.useFakeTimers({ now: 1_700_000_000_000 });
+    try {
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+      const api = await mount();
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Auto-Complete")); // the Queen; the clock starts
+      });
+      await setAppState("background");
+      await act(() => {
+        jest.advanceTimersByTime(60 * 60_000); // an hour away: the King's step waits
+      });
+      expect(api.queryByTestId("solitaire-result")).toBeNull();
+      await setAppState("active");
+      await act(() => {
+        jest.advanceTimersByTime(200); // the held step lands
+      });
+      expect(api.getByTestId("solitaire-result")).toBeTruthy();
+      const summary = mockCompleteGame.mock.calls.at(-1)![1] as Record<string, unknown>;
+      expect(summary["outcome"]).toBe("completed");
+      expect(summary["durationMs"]).toBeLessThan(1_000);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The issue's example: one move, a two-day break, then the win.
+  it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+    const first = await mount();
+    await playToFoundation(first, "Q of Clubs"); // the clock starts
+    now += 30_000;
+    await setAppState("background"); // the OS kills the app from here
+    await act(async () => {
+      first.unmount();
+    });
+    mockCompleteGame.mockClear();
+
+    now += 2 * 24 * 60 * 60_000; // two days later, a fresh launch
+    mockResumeGame.mockReturnValue("orphan-draw-1");
+    const second = await mount();
+    now += 5_000;
+    await playToFoundation(second, "K of Clubs"); // the win
+    await second.findByTestId("solitaire-result");
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [gameId, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(gameId).toBe("orphan-draw-1");
+    expect(summary).toEqual(expect.objectContaining({ outcome: "completed", durationMs: 35_000 }));
+  });
+
+  // A save from an older build carries the raw running segment: when the app
+  // was closed is unknown, so that segment is dropped and the clock counts
+  // from the load. It must load, not crash or discard the game.
+  it("loads an older build's save with a running startedAt, counting from the load", async () => {
+    const old = { ...twoFromWin(), startedAt: now - 2 * 24 * 60 * 60_000 } as Record<
+      string,
+      unknown
+    >;
+    delete old["accumulatedMs"];
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(old));
+    const api = await mount();
+    now += 4_000;
+    await playToFoundation(api, "Q of Clubs");
+    await playToFoundation(api, "K of Clubs");
+    await api.findByTestId("solitaire-result");
+    expect(mockCompleteGame.mock.calls.at(-1)![1]).toEqual(
+      expect.objectContaining({ outcome: "completed", durationMs: 4_000 })
+    );
   });
 });

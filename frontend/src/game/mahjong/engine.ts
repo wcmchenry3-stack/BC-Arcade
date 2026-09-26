@@ -707,15 +707,28 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 }
 
 /** Undo the last pair removal or shuffle. */
-export function undoMove(state: MahjongState): MahjongState {
+export function undoMove(state: MahjongState, now: number = Date.now()): MahjongState {
   if (state.undoStack.length === 0) return state;
   const prev = state.undoStack[state.undoStack.length - 1]!;
   // Restore the snapshot but give it the remaining undo history so that
   // further undos can continue to chain without exponential nesting.
-  return { ...prev, undoStack: state.undoStack.slice(0, -1) };
+  // The live clock stays (#2750): the snapshot's own startedAt predates any
+  // pause or relaunch since, and restoring it would count that gap as play.
+  // Backing out of a deadlock, which stopped the clock, starts it again.
+  return {
+    ...prev,
+    undoStack: state.undoStack.slice(0, -1),
+    startedAt: state.startedAt ?? (state.isDeadlocked ? now : null),
+    accumulatedMs: state.accumulatedMs,
+  };
 }
 
-/** Accumulate elapsed time when the session is paused (app goes to background). */
+/**
+ * Freeze the timer while the player is away: another screen covers the game
+ * (Leaderboard, #2633) or the app is in the background (#2750). The screen
+ * drives both through `usePauseWhileAway`. A no-op once the game has no
+ * running timer to freeze (not yet started, or already finished).
+ */
 export function pauseGame(state: MahjongState, now: number = Date.now()): MahjongState {
   if (state.startedAt === null) return state;
   return {
@@ -725,7 +738,7 @@ export function pauseGame(state: MahjongState, now: number = Date.now()): Mahjon
   };
 }
 
-/** Resume the timer when the app returns to the foreground. */
+/** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
 export function resumeGame(state: MahjongState, now: number = Date.now()): MahjongState {
   if (state.startedAt !== null || state.isComplete) return state;
   return { ...state, startedAt: now };

@@ -165,3 +165,39 @@ describe("twenty48 storage", () => {
     expect(survivor?.id).toBe(100);
   });
 });
+
+// #2750: the save banks the running clock and the load restarts it, so the
+// play before an app kill is kept and the time the app was closed never counts.
+describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("keeps the play before the save and drops the time until the load", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    await saveGame({ ...sample, startedAt: 10_000, accumulatedMs: 5_000 });
+    nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(35_000);
+    expect(loaded!.startedAt).toBe(40_000 + 2 * 86_400_000);
+  });
+
+  it("loads an older build's running startedAt without counting the gap", async () => {
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...sample, startedAt: 1_000 }));
+    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+    expect(loaded!.startedAt).toBe(172_800_000);
+  });
+
+  it("keeps a finished game's clock frozen", async () => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...sample, game_over: true, startedAt: null, accumulatedMs: 9_000 })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.startedAt).toBeNull();
+    expect(loaded!.accumulatedMs).toBe(9_000);
+  });
+});

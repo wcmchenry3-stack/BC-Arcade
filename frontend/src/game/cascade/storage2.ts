@@ -9,6 +9,11 @@ export interface SavedState {
   score: number;
   savedAt: number;
   queue: { current: number; next: number };
+  /**
+   * Play time so far, pauses excluded (#2750), so a relaunched game keeps it.
+   * Absent in saves from older builds.
+   */
+  playedMs?: number;
 }
 
 export function looksValid(data: unknown): data is SavedState {
@@ -26,7 +31,8 @@ export function looksValid(data: unknown): data is SavedState {
         typeof (p as Record<string, unknown>).y === "number"
     ) ||
     typeof d.score !== "number" ||
-    typeof d.savedAt !== "number"
+    typeof d.savedAt !== "number" ||
+    (d.playedMs !== undefined && typeof d.playedMs !== "number")
   ) {
     return false;
   }

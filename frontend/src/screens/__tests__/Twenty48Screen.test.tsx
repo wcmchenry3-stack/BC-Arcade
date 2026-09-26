@@ -7,10 +7,12 @@ import { render, act, waitFor, fireEvent, within } from "@testing-library/react-
 import Twenty48Screen from "../Twenty48Screen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { saveGame, clearGame, loadGame, loadBestScore } from "../../game/twenty48/storage";
+import type * as StorageModule from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
 
 // Force web platform so the keyboard-listener useEffect runs.
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
+import type { AppStateStatus } from "react-native";
 (Platform as { OS: string }).OS = "web";
 
 // GameShell's Stats item (#2635) navigates through useNavigation; these
@@ -1395,5 +1397,101 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
     const card = within(await r.findByTestId("twenty48-result"));
     expect(card.queryByText(/Saved as/)).toBeNull();
     expect(mockGetRank).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 — the clock stops in the background, and a relaunch keeps the play
+// before the kill without counting the time the app was closed
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — app background and relaunch (#2750)", () => {
+  let appStateSpy: jest.SpyInstance;
+  // AppState.addEventListener may already be a shared mock whose calls
+  // outlive a test: only listeners added from this test on are emitted to.
+  let appStateBase: number;
+  let now: number;
+  let nowSpy: jest.SpyInstance;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+    now = 1_700_000_000_000;
+    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+  });
+  afterEach(async () => {
+    nowSpy.mockRestore();
+    appStateSpy.mockRestore();
+    // Let the move lock's 120 ms timeout run out before the next test.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  function abandonDuration(): unknown {
+    const summary = mockCompleteGame.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    return summary["durationMs"];
+  }
+
+  it("doesn't count the time the app spends in the background, and saves the paused board", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight"); // starts the board's timer
+    });
+    now += 20_000;
+    await setAppState("background");
+    // 2048 otherwise saves only on a move: the pause is saved so a kill in
+    // the background keeps these 20 s.
+    expect(saveGame).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 })
+    );
+    now += 2 * 60 * 60_000; // two hours away
+    await setAppState("active");
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await unmount();
+    expect(abandonDuration()).toBe(25_000);
+  });
+
+  it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
+    // Real persistence for this one: the save and the load are what's tested.
+    const actual = jest.requireActual<typeof StorageModule>("../../game/twenty48/storage");
+    (saveGame as jest.Mock).mockImplementation(actual.saveGame);
+    (loadGame as jest.Mock).mockImplementation(actual.loadGame);
+    try {
+      await actual.saveGame(NOOP_LEFT_STATE);
+      const first = await mountAndSettle();
+      await act(() => {
+        dispatchKey("ArrowRight"); // starts the board's timer
+      });
+      now += 30_000;
+      await setAppState("background"); // the OS kills the app from here
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      await first.unmount();
+      mockCompleteGame.mockClear();
+
+      now += 2 * 24 * 60 * 60_000; // two days later, a fresh launch
+      const second = await mountAndSettle();
+      await waitFor(() => expect(second.getByLabelText("Game board")).toBeTruthy());
+      now += 5_000;
+      await second.unmount();
+      expect(abandonDuration()).toBe(35_000);
+    } finally {
+      (saveGame as jest.Mock).mockReset();
+      (loadGame as jest.Mock).mockReset();
+      (loadGame as jest.Mock).mockResolvedValue(null);
+    }
   });
 });
