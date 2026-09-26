@@ -8,18 +8,9 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "stats.totalGames": {
-    "component": "ProfileScreen",
-    "description": "Label on the bento tile showing the total number of games played (across visible games).",
-    "tone": "neutral",
-    "characterLimit": 19,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "stats.favorite": {
     "component": "ProfileScreen",
-    "description": "Label on the bento tile showing the player's most-played game.",
+    "description": "Label on the bento tile showing the player's favourite game: the visible game they have completed most.",
     "tone": "neutral",
     "characterLimit": 16,
     "placeholders": [],
@@ -35,30 +26,138 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "stats.topScore": {
-    "component": "ProfileScreen",
-    "description": "Label on the bento tile showing the player's best single score across all games.",
-    "tone": "neutral",
-    "characterLimit": 19,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "stats.topScoreEmpty": {
-    "component": "ProfileScreen",
-    "description": "Value shown on the top-score bento tile when no score has been recorded yet.",
-    "tone": "neutral",
-    "characterLimit": 5,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "An em dash placeholder — keep it short."
-  },
   "stats.gamesTried": {
     "component": "ProfileScreen",
     "description": "Label on the bento tile showing how many distinct games the player has tried.",
     "tone": "neutral",
     "characterLimit": 25,
     "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.sessions": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing how many games the player finished or left (abandons included), across visible games.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.completed": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing how many games the player completed (abandons excluded), across visible games.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.completionRate": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing the share of sessions the player completed.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.timePlayed": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing the player's total reported play time.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.percent": {
+    "component": "ProfileScreen",
+    "description": "A whole-number percentage, e.g. \"87%\". Use the locale's percent convention.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "time.hoursMinutes": {
+    "component": "ProfileScreen",
+    "description": "Total play time of an hour or more, abbreviated, e.g. \"3h 12m\".",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{hours}}", "{{minutes}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "time.minutes": {
+    "component": "ProfileScreen",
+    "description": "Total play time under an hour, abbreviated, e.g. \"45m\".",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": ["{{minutes}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.title": {
+    "component": "ProfileScreen",
+    "description": "Section heading above the per-game list (each game's best and win rate).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.game": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the game's name.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.best": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the player's best result in that game, in the game's own terms.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.winRate": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the share of decided games the player won. Narrow column: one short word.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.noBest": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader text for a game with no best result yet.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.rowA11y": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for one row of the per-game list.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{best}}", "{{winRate}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.rowA11yNoWins": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for a per-game row whose game has no win concept (no win rate).",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{best}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -124,6 +223,42 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "The Recent Games row currently shows this as a glyph (▸); this is the full text form of that status."
+  },
+  "recentGames.outcome.win": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a recent game: the player won.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.outcome.loss": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a recent game: the player lost.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.outcome.push": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a recent game: a tie (a push in Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.rowA11y": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for a recent-game row: game, its result with label, outcome and date.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{metric}}", "{{outcome}}", "{{date}}"],
+    "doNotTranslate": [],
+    "notes": null
   },
   "detail.title": {
     "component": "GameDetailScreen",
@@ -310,6 +445,150 @@
     "description": "Error text shown under the field when saving the display name fails.",
     "tone": "apologetic, clear",
     "characterLimit": 63,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.score_one": {
+    "component": "ProfileScreen",
+    "description": "A points value, singular. Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.score_other": {
+    "component": "ProfileScreen",
+    "description": "A points value, plural, e.g. \"412 pts\". Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_one": {
+    "component": "ProfileScreen",
+    "description": "A move count, singular (FreeCell's best is the fewest moves).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_other": {
+    "component": "ProfileScreen",
+    "description": "A move count, plural, e.g. \"87 moves\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.level": {
+    "component": "ProfileScreen",
+    "description": "A level reached (Bottle Sort), e.g. \"Level 19\".",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_one": {
+    "component": "ProfileScreen",
+    "description": "A guess count, singular (Daily Word).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_other": {
+    "component": "ProfileScreen",
+    "description": "A guess count, plural (Daily Word), e.g. \"3 guesses\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_one": {
+    "component": "ProfileScreen",
+    "description": "A chip count, singular (Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_other": {
+    "component": "ProfileScreen",
+    "description": "A chip count, plural (Blackjack), e.g. \"1,450 chips\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.removeName": {
+    "component": "ProfileScreen",
+    "description": "Button under the display-name field: removes the player's name from every leaderboard (after a confirmation).",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.notOnBoards": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field when the player has no name, so appears on no leaderboard.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.removeError": {
+    "component": "ProfileScreen",
+    "description": "Error shown when the name couldn't be removed on this device.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.title": {
+    "component": "ProfileScreen",
+    "description": "Title of the dialog confirming removal of the player's name from leaderboards.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.body": {
+    "component": "ProfileScreen",
+    "description": "Body of the dialog confirming removal of the player's name from leaderboards.",
+    "tone": "neutral",
+    "characterLimit": 140,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.confirm": {
+    "component": "ProfileScreen",
+    "description": "Confirm button of the name-removal dialog.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.cancel": {
+    "component": "ProfileScreen",
+    "description": "Cancel button of the name-removal dialog.",
+    "tone": "neutral",
+    "characterLimit": 14,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

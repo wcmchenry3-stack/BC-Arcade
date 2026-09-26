@@ -77,9 +77,33 @@ describe("GameDetailScreen", () => {
       expect(screen.getByText("Yacht")).toBeTruthy();
     });
     expect(screen.getByText("280")).toBeTruthy();
-    expect(screen.getByText("completed")).toBeTruthy();
+    // The outcome's label, and the "Completed" (completed at) row's.
+    expect(screen.getAllByText("Completed")).toHaveLength(2);
+    expect(screen.queryByText("completed")).toBeNull();
     // 600000 ms → 10m 0s
     expect(screen.getByText("10m 0s")).toBeTruthy();
+  });
+
+  it.each([
+    ["win", "Win"],
+    ["loss", "Loss"],
+    ["push", "Tie"],
+  ] as const)("shows the localised outcome for %s (#2637)", async (outcome, label) => {
+    mockGetGameDetail.mockResolvedValue({ ...SAMPLE_DETAIL, outcome });
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText(label)).toBeTruthy();
+    });
+    expect(screen.queryByText(outcome)).toBeNull();
+  });
+
+  it("shows a dash for a game with no outcome yet", async () => {
+    mockGetGameDetail.mockResolvedValue({ ...SAMPLE_DETAIL, outcome: null });
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText("Outcome")).toBeTruthy();
+    });
+    expect(screen.getByText("—")).toBeTruthy();
   });
 
   it("renders an error state when the fetch fails", async () => {

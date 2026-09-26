@@ -10,6 +10,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { statsApi } from "../api/stats";
 import type { GameDetailResponse } from "../api/types";
+import { outcomeLabel } from "../api/outcomeDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatTimestamp } from "../utils/formatTimestamp";
 
@@ -77,7 +78,11 @@ export default function GameDetailScreen({ navigation, route }: Props) {
             value={detail.final_score != null ? detail.final_score.toLocaleString() : "—"}
             colors={colors}
           />
-          <DetailRow label={t("detail.outcome")} value={detail.outcome ?? "—"} colors={colors} />
+          <DetailRow
+            label={t("detail.outcome")}
+            value={outcomeLabel(t, detail.outcome)}
+            colors={colors}
+          />
           <DetailRow
             label={t("detail.duration")}
             value={formatDuration(detail.duration_ms)}

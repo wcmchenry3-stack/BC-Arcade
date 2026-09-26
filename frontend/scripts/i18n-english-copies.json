@@ -95,9 +95,9 @@
     },
     "profile": {
       "ar": ["level.xpTotal"],
-      "de": ["level.value", "level.xpTotal"],
+      "de": ["level.value", "level.xpTotal", "metric.level"],
       "es": ["level.xpTotal"],
-      "fr-CA": ["level.xpTotal"],
+      "fr-CA": ["level.xpTotal", "metric.score_one", "metric.score_other", "stats.sessions"],
       "hi": ["level.xpTotal"],
       "nl": ["level.xpTotal"],
       "pt": ["level.xpTotal"],
