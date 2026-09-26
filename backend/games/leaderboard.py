@@ -145,6 +145,7 @@ class _BestRow:
     value: Any
     tiebreak: Any
     completed_at: datetime
+    player_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -477,19 +478,18 @@ async def viewer_entry(
     filters = board_filters(board, game_type_id, partition)
     metric = metric_expr(board, metric_cap(board, partition))
     try:
-        best = await _session_best(db, board, filters, metric, session_id)
-        if best is None:
-            return None
-        name = (await db.execute(select(display_name_of(literal(session_id))))).scalar()
+        # Name and best row in one query; the board's filters only admit
+        # named players, so a row always has a name.
+        best = await _session_best(db, board, filters, metric, session_id, with_name=True)
     except SQLAlchemyError as exc:
         _log_db_error("viewer entry query", game_type, exc)
         raise LeaderboardError(500, "Failed to load leaderboard.") from exc
-    if name is None:  # pragma: no cover - the best-row query requires a name
+    if best is None:
         return None
     rank = await _best_row_rank(db, board, filters, metric, best, game_type)
     return BoardEntry(
         rank=rank,
-        player_name=display_name(name),
+        player_name=display_name(best.player_name),
         value=int(best.value),
         completed_at=best.completed_at,
         is_me=True,
@@ -508,9 +508,16 @@ async def _session_best(
     filters: Sequence[ColumnElement],
     metric: ColumnElement,
     session_id: str,
+    *,
+    with_name: bool = False,
 ) -> _BestRow | None:
+    """The session's best row on the board; ``with_name`` also reads the
+    player's display name in the same query (as ``top_statement`` does)."""
     sub = _best_rows(board, [*filters, Game.session_id == session_id], metric)
-    row = (await db.execute(select(sub).where(sub.c.rn == 1))).first()
+    columns: list[Any] = [sub]
+    if with_name:
+        columns.append(display_name_of(sub.c.session_id).label("player_name"))
+    row = (await db.execute(select(*columns).where(sub.c.rn == 1))).first()
     if row is None:
         return None
     return _BestRow(
@@ -518,6 +525,7 @@ async def _session_best(
         value=row.value,
         tiebreak=row.tiebreak,
         completed_at=row.completed_at,
+        player_name=row.player_name if with_name else None,
     )
 
 

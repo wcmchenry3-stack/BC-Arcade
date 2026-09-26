@@ -217,8 +217,10 @@ async def get_leaderboard(
             limit=limit,
             viewer_session_id=viewer,
         )
-        me = None
-        if viewer is not None:
+        # The caller's row in the list is their best entry with its rank:
+        # only a caller outside the top ``limit`` costs the extra queries.
+        me = next((e for e in entries if e.is_me), None)
+        if viewer is not None and me is None:
             me = await leaderboard.viewer_entry(
                 db,
                 game_type=game_type,

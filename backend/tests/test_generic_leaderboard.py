@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType, Player
@@ -559,6 +559,40 @@ async def test_me_is_null_without_an_eligible_game(client: TestClient) -> None:
     me = _sid()
     await _seed("solitaire", me, score=500, name="Me", outcome="abandoned")
     assert _board(client, "solitaire", sid=me)["me"] is None
+
+
+async def _count_statements(client: TestClient, path: str, sid: str | None) -> int:
+    """How many SQL statements one board request runs."""
+    factory = get_session_factory()
+    async with factory() as db:
+        engine = db.sync_session.get_bind()
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, *_rest) -> None:
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        _board(client, path, sid=sid)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    return len(statements)
+
+
+async def test_a_caller_in_the_list_costs_no_extra_query(client: TestClient) -> None:
+    await _seed("solitaire", _sid(), score=900, name="Other")
+    inside, outside = _sid(), _sid()
+    await _seed("solitaire", inside, score=800, name="Inside")
+    await _seed("solitaire", outside, score=10, name="Outside")
+
+    anonymous = await _count_statements(client, "solitaire?limit=2", None)
+    assert await _count_statements(client, "solitaire?limit=2", inside) == anonymous
+    # Only a caller outside the list is looked up (best row + rank).
+    assert await _count_statements(client, "solitaire?limit=2", outside) == anonymous + 2
+
+    body = _board(client, "solitaire?limit=2", sid=inside)
+    assert body["me"] == body["entries"][1]
+    assert body["me"]["is_me"] is True
 
 
 async def test_invalid_session_header_is_ignored_on_a_free_board(client: TestClient) -> None:
