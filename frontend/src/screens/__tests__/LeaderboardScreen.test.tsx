@@ -225,7 +225,7 @@ describe("LeaderboardScreen — columns and labels", () => {
     expect(within(columns).getByText("Player", HIDDEN)).toBeTruthy();
     expect(within(columns).getByText("Score", HIDDEN)).toBeTruthy();
     expect(within(columns).getByText("Date", HIDDEN)).toBeTruthy();
-    expect(screen.getByText((1200).toLocaleString())).toBeTruthy();
+    expect(screen.getByText("1,200")).toBeTruthy();
     // A desc board says nothing about direction.
     expect(screen.queryByTestId("leaderboard-direction")).toBeNull();
   });
@@ -251,8 +251,24 @@ describe("LeaderboardScreen — columns and labels", () => {
     await renderBoard("solitaire");
     await screen.findByText("Alice");
     expect(screen.getByTestId("leaderboard-list").props.accessibilityRole).toBe("list");
-    expect(screen.getByLabelText(/^Rank 1, Alice, Score 1,?200, /)).toBeTruthy();
+    expect(screen.getByLabelText(/^Rank 1, Alice, Score 1,200, /)).toBeTruthy();
     expect(screen.getByLabelText(/^Rank 2, Bob, Score 900, /)).toBeTruthy();
+  });
+
+  it("writes the score in the app's language, not the device's (#2754)", async () => {
+    // The device is on German; the app is in English.
+    jest.spyOn(Number.prototype, "toLocaleString").mockImplementation(function (this: number) {
+      return new Intl.NumberFormat("de").format(this);
+    });
+    try {
+      mockGetLeaderboard.mockResolvedValue(board(ROWS));
+      await renderBoard("solitaire");
+      await screen.findByText("Alice");
+      expect(screen.getByText("1,200")).toBeTruthy();
+      expect(screen.getByLabelText(/^Rank 1, Alice, Score 1,200, /)).toBeTruthy();
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it("uses the server's ranks, so tied players share one", async () => {

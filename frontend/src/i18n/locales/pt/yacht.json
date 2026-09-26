@@ -43,6 +43,7 @@
   "dice.unholdHint": "Toque duas vezes para liberar",
   "roll.button": "Rolar ({{count}} restam)",
   "roll.label_one": "Rolar dados, {{count}} rolagem restante",
+  "roll.label_many": "Rolar dados, {{count}} rolagens restantes",
   "roll.label_other": "Rolar dados, {{count}} rolagens restantes",
   "roll.rolling": "Rolando...",
   "roll.rollingLabel": "Rolando",

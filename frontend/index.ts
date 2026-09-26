@@ -1,3 +1,6 @@
+// First: Intl.PluralRules for Hermes, before anything initialises i18next (#2754).
+import "./src/i18n/pluralRulesPolyfill";
+
 import { registerRootComponent } from "expo";
 
 import App from "./App";

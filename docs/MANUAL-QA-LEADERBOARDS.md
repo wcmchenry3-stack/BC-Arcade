@@ -84,4 +84,4 @@ Open each game's ⋯ menu and check its items.
 
 ## Known issues (not blockers for v1.0)
 
-- **Sort levels** differ per player, so the moves tie-break compares different puzzles (#2746).
+- **Sort levels** differ per player, so players on the same level rank by who got there first, not by moves (#2746).

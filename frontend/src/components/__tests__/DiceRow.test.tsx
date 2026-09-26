@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { render, fireEvent, act, cleanup } from "@testing-library/react-native";
+import i18n from "i18next";
 import DiceRow from "../DiceRow";
 import { ThemeProvider } from "../../theme/ThemeContext";
 
@@ -81,5 +82,40 @@ describe("DiceRow", () => {
     const diceAfter = getAllByRole("button", { name: /^die \d/i });
     // held=true re-render does not crash — die still rendered
     expect(diceAfter[0]).toBeTruthy();
+  });
+});
+
+describe("DiceRow roll label plural forms (#2754)", () => {
+  beforeAll(() => {
+    for (const code of ["ru", "ar"]) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      i18n.addResourceBundle(code, "yacht", require(`../../i18n/locales/${code}/yacht.json`));
+    }
+  });
+
+  afterEach(async () => {
+    // Unmount first: switching language under a mounted DiceRow re-renders it outside act().
+    await cleanup();
+    await i18n.changeLanguage("en");
+  });
+
+  afterAll(() => {
+    i18n.removeResourceBundle("ru", "yacht");
+    i18n.removeResourceBundle("ar", "yacht");
+  });
+
+  it.each([
+    ["en", 2, "Roll dice, 1 roll left"],
+    ["en", 1, "Roll dice, 2 rolls left"],
+    // Russian "many" (0, 5…) and "few" (2–4), not only one/other.
+    ["ru", 3, "Бросить кубики, 0 бросков осталось"],
+    ["ru", 1, "Бросить кубики, 2 броска осталось"],
+    ["ru", 2, "Бросить кубики, 1 бросок остался"],
+    // Arabic dual.
+    ["ar", 1, "ارمِ النرد، تبقى رميتان"],
+  ])("in %s with %d rolls used, labels the button %s", async (code, rollsUsed, label) => {
+    await i18n.changeLanguage(code);
+    const { getByRole } = await renderDiceRow({ rollsUsed });
+    expect(getByRole("button", { name: label })).toBeTruthy();
   });
 });

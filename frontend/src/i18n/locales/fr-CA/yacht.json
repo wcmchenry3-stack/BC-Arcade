@@ -43,6 +43,7 @@
   "dice.unholdHint": "Double-tapez pour relâcher",
   "roll.button": "Lancer (reste {{count}})",
   "roll.label_one": "Lancer les dés, {{count}} lancer restant",
+  "roll.label_many": "Lancer les dés, {{count}} lancers restants",
   "roll.label_other": "Lancer les dés, {{count}} lancers restants",
   "roll.rolling": "En cours...",
   "roll.rollingLabel": "En cours",

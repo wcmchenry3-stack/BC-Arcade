@@ -43,6 +43,8 @@
   "dice.unholdHint": "Дважды нажмите, чтобы отпустить",
   "roll.button": "Бросить (ещё {{count}})",
   "roll.label_one": "Бросить кубики, {{count}} бросок остался",
+  "roll.label_few": "Бросить кубики, {{count}} броска осталось",
+  "roll.label_many": "Бросить кубики, {{count}} бросков осталось",
   "roll.label_other": "Бросить кубики, {{count}} броска осталось",
   "roll.rolling": "Бросаем...",
   "roll.rollingLabel": "Бросаем",
