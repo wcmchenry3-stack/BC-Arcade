@@ -68,10 +68,10 @@ async function emitNav(event: "focus" | "blur") {
   });
 }
 
-async function renderScreen(params?: LeaderboardParams) {
+async function renderScreen(params: LeaderboardParams) {
   const result = await render(
     <ThemeProvider>
-      <LeaderboardScreen route={params ? { params } : undefined} navigation={navigation} />
+      <LeaderboardScreen route={{ params }} navigation={navigation} />
     </ThemeProvider>
   );
   await act(async () => {});
@@ -104,6 +104,24 @@ describe("LeaderboardScreen — header and states", () => {
   it("goes back from a game's board", async () => {
     await renderBoard("freecell");
     await fireEvent.press(screen.getByRole("button", { name: "Back to FreeCell" }));
+    expect(goBack).toHaveBeenCalledTimes(1);
+  });
+
+  // The Ranks tab is gone (#2634): Star Swarm's board opens from the game like
+  // any other, on its default tier, and always has a way back.
+  it("opens Star Swarm's board on the default tier, with a back button", async () => {
+    mockGetLeaderboard.mockResolvedValue(board([entry(1, "Ace", 15000)]));
+    await renderBoard("starswarm");
+    expect(await screen.findByText("Ace")).toBeTruthy();
+    expect(mockGetLeaderboard).toHaveBeenCalledWith(
+      "starswarm",
+      { difficulty_tier: "LieutenantJG" },
+      { limit: 50 }
+    );
+    expect(
+      screen.getAllByRole("header").some((h) => h.props.children === "Star Swarm Leaderboard")
+    ).toBe(true);
+    await fireEvent.press(screen.getByRole("button", { name: "Back to Star Swarm" }));
     expect(goBack).toHaveBeenCalledTimes(1);
   });
 
@@ -349,23 +367,6 @@ describe("LeaderboardScreen — your best", () => {
     await renderBoard("solitaire");
     await screen.findByTestId("leaderboard-your-best");
     expect(screen.queryByTestId("leaderboard-row-me")).toBeNull();
-  });
-});
-
-describe("LeaderboardScreen — Ranks tab (until #2634)", () => {
-  it("shows Star Swarm's default tier board with no back button", async () => {
-    mockGetLeaderboard.mockResolvedValue(board([entry(1, "Ace", 15000)]));
-    await renderScreen();
-    expect(await screen.findByText("Ace")).toBeTruthy();
-    expect(mockGetLeaderboard).toHaveBeenCalledWith(
-      "starswarm",
-      { difficulty_tier: "LieutenantJG" },
-      { limit: 50 }
-    );
-    expect(screen.queryByTestId("nav-back")).toBeNull();
-    expect(
-      screen.getAllByRole("header").some((h) => h.props.children === "Star Swarm Leaderboard")
-    ).toBe(true);
   });
 });
 

@@ -342,15 +342,20 @@ swapped tiers on 2026-09-24; Sudoku moved to free on 2026-09-25 with no
 compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 
 - the Home grid and chunk prefetch (`HomeScreen.tsx`);
-- route and tab registration — `App.tsx` registers premium screens from the
-  `premiumRoutes.ts` registry (a game may own several routes — Blackjack has four),
-  which also owns the Star Swarm-only **Ranks** tab;
+- route registration — `App.tsx` registers premium screens from the
+  `premiumRoutes.ts` registry (a game may own several routes — Blackjack has four);
 - Profile — bento tiles are re-derived from visible games and hidden-game rows
   are dropped from Recent Games, so earlier plays by a tester cannot resurface.
 
 `SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1" || isPreLaunchApiBuild()`,
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
-build shows 7 tiles and 3 tabs.
+build shows 7 tiles.
+
+Tabs do not depend on visibility: every build has the same three — Lobby,
+Profile, Settings — registered by `MainTabs()` from `navigation/mainTabs.ts`
+(`mainTabs.test.tsx` fails on a fourth). The Star Swarm-only **Ranks** tab was
+retired in #2634; a game's leaderboard opens from its result card and ⋯ menu
+(the Home-stack `Leaderboard` route, #2633).
 
 **Pre-launch builds (owner decision, 2026-09-19).** Until launch, internal
 TestFlight / Play test builds keep every game visible and free. A build is

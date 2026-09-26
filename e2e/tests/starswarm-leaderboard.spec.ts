@@ -1,9 +1,9 @@
 /**
  * starswarm-leaderboard.spec.ts — GH #1147
  *
- * Legacy leaderboard read: intercept GET /starswarm/leaderboard (the Ranks
- * tab, until #2634) and check the result card is absent in initial play
- * state. The app no longer posts runs to POST /starswarm/score (#2626): the
+ * Legacy leaderboard read: intercept GET /starswarm/leaderboard (the retired
+ * Ranks tab read it until #2634) and check the result card is absent in
+ * initial play state. The app no longer posts runs to POST /starswarm/score (#2626): the
  * game-over flow, including the run's rank, is covered by
  * starswarm-game-over.spec.ts.
  *

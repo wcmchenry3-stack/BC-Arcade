@@ -6,22 +6,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { MAIN_TABS, type MainTab } from "../../navigation/mainTabs";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
-type MaterialIconName = React.ComponentProps<typeof MaterialIcons>["name"];
+type MaterialIconName = MainTab["icon"];
 
-interface TabConfig {
-  icon: MaterialIconName;
-  labelKey: string;
-}
-
-const TAB_CONFIG: Record<string, TabConfig> = {
-  Lobby: { icon: "sports-esports", labelKey: "nav.lobby" },
-  Ranks: { icon: "leaderboard", labelKey: "nav.ranks" },
-  Profile: { icon: "person", labelKey: "nav.profile" },
-  Settings: { icon: "settings", labelKey: "nav.settings" },
-};
+const TAB_CONFIG: Readonly<Record<string, MainTab>> = Object.fromEntries(
+  MAIN_TABS.map((tab) => [tab.name, tab])
+);
 
 export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();

@@ -143,15 +143,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "nav.ranks": {
-    "component": "BottomTabBar",
-    "description": "Bottom tab bar label for the ranks/leaderboard tab.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "nav.profile": {
     "component": "BottomTabBar",
     "description": "Bottom tab bar label for the profile tab.",
