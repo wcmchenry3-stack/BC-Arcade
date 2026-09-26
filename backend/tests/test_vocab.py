@@ -101,6 +101,34 @@ def test_board_json_turns_pair_tuples_into_records() -> None:
     assert gen.board_json(None) is None
 
 
+def test_has_winner_ts_matches_modules() -> None:
+    """``HAS_WINNER`` in vocab.ts is every module's ``has_winner`` (#2642)."""
+    from games.registry import get_module
+
+    content = _VOCAB_TS.read_text(encoding="utf-8")
+    block = content[content.index("export const HAS_WINNER") :]
+    block = block[: block.index("\n};")]
+    exported = dict(re.findall(r"^\s+(\w+): (true|false),$", block, re.MULTILINE))
+    expected = {}
+    for gt in GameType:
+        mod = get_module(gt.value)
+        assert mod is not None, f"{gt.value} has no GameModule"
+        expected[gt.value] = "true" if mod.has_winner else "false"
+    assert exported == expected, f"HAS_WINNER in vocab.ts is stale. {_REGEN}"
+
+
+def test_outcome_sets_split_the_vocabulary() -> None:
+    """``RESULT_OUTCOMES`` and ``LIFECYCLE_OUTCOMES`` partition ``GameOutcome``,
+    and vocab.ts exports both (#2642)."""
+    from vocab import LIFECYCLE_OUTCOMES, RESULT_OUTCOMES
+
+    assert {o.value for o in RESULT_OUTCOMES} == {"win", "loss", "push"}
+    assert set(RESULT_OUTCOMES).isdisjoint(LIFECYCLE_OUTCOMES)
+    assert set(RESULT_OUTCOMES) | set(LIFECYCLE_OUTCOMES) == set(GameOutcome)
+    assert _parse_ts_array("RESULT_OUTCOMES") == {o.value for o in RESULT_OUTCOMES}
+    assert _parse_ts_array("LIFECYCLE_OUTCOMES") == {o.value for o in LIFECYCLE_OUTCOMES}
+
+
 def test_long_arrays_wrap_like_prettier() -> None:
     """An array past the 100-column print width goes one item per line."""
     gen = _load_generator()

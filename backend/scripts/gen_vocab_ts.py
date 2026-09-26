@@ -7,6 +7,11 @@ Usage (run from repo root):
 ``BOARDS`` comes from each registered ``GameModule``'s ``board`` (#2617). Every
 ``BoardDefinition`` field is exported, camelCased; tuple-of-pairs fields become
 records. A game type with no registered module yet is exported as ``null``.
+
+``HAS_WINNER`` is each module's ``has_winner`` (#2619), and ``RESULT_OUTCOMES`` /
+``LIFECYCLE_OUTCOMES`` split ``GameOutcome`` (``vocab.py``), so the app can check
+that a game with no winner never records a result outcome (#2642). A game type
+with no registered module yet is exported as ``false``: it declares no winner.
 """
 
 from __future__ import annotations
@@ -22,13 +27,19 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from games.board import BoardDefinition
 from games.registry import get_module
-from vocab import GameOutcome, GameType
+from vocab import LIFECYCLE_OUTCOMES, RESULT_OUTCOMES, GameOutcome, GameType
 
 
 def board_for(game_type: GameType) -> BoardDefinition | None:
     """The board a game type declares, or ``None`` if it has no module yet."""
     mod = get_module(game_type.value)
     return mod.board if mod is not None else None
+
+
+def has_winner_for(game_type: GameType) -> bool:
+    """The module's ``has_winner``; ``False`` for a game type with no module yet."""
+    mod = get_module(game_type.value)
+    return bool(mod.has_winner) if mod is not None else False
 
 
 def _camel(name: str) -> str:
@@ -131,6 +142,16 @@ def _fill(numbers: list[Any], indent: str) -> str:
     return "\n".join(lines)
 
 
+def outcome_list_ts(name: str, outcomes: tuple[GameOutcome, ...]) -> str:
+    """``export const <name> = [...] as const satisfies ...;`` as Prettier prints it."""
+    items = [json.dumps(o.value) for o in outcomes]
+    head, tail = f"export const {name} = [", "] as const satisfies readonly GameOutcome[];"
+    one_line = head + ", ".join(items) + tail
+    if len(one_line) <= _PRINT_WIDTH:
+        return one_line
+    return head + "\n" + "".join(f"  {item},\n" for item in items) + tail
+
+
 def board_ts(board: BoardDefinition | None) -> str:
     """One ``BOARDS`` value as it appears in vocab.ts."""
     return _ts(board_json(board), "  ")
@@ -141,17 +162,23 @@ def render() -> str:
     types = "\n".join(f'  "{v.value}",' for v in GameType)
     outcomes = "\n".join(f'  "{v.value}",' for v in GameOutcome)
     boards = "\n".join(f"  {v.value}: {board_ts(board_for(v))}," for v in GameType)
+    has_winner = "\n".join(
+        f"  {v.value}: {'true' if has_winner_for(v) else 'false'}," for v in GameType
+    )
+    result_outcomes = outcome_list_ts("RESULT_OUTCOMES", RESULT_OUTCOMES)
+    lifecycle_outcomes = outcome_list_ts("LIFECYCLE_OUTCOMES", LIFECYCLE_OUTCOMES)
     return f"""\
 /**
  * Shared vocabulary constants — DO NOT edit by hand.
  *
- * Source of truth: backend/vocab.py (GameType, GameOutcome enums) and each
- * backend GameModule's `board` (backend/games/board.py).
+ * Source of truth: backend/vocab.py (GameType, GameOutcome enums and the
+ * outcome sets) and each backend GameModule's `board` (backend/games/board.py)
+ * and `has_winner`.
  * To update: edit those, then run:
  *   python backend/scripts/gen_vocab_ts.py > frontend/src/api/vocab.ts
  *
  * The backend CI test (tests/test_vocab.py) will fail if this file
- * drifts from the Python enums (GameType, GameOutcome) or the boards.
+ * drifts from the Python enums (GameType, GameOutcome), the boards or has_winner.
  */
 
 export const GAME_TYPES = [
@@ -165,6 +192,17 @@ export const GAME_OUTCOMES = [
 ] as const;
 
 export type GameOutcome = (typeof GAME_OUTCOMES)[number];
+
+/** Outcomes that say who won. Only a game with a winner (`HAS_WINNER`) records them. */
+{result_outcomes}
+
+/** Every other outcome: all a game with no winner ever records. */
+{lifecycle_outcomes}
+
+/** Whether each game can record a result outcome (its backend module's `has_winner`). */
+export const HAS_WINNER: Readonly<Record<GameType, boolean>> = {{
+{has_winner}
+}};
 
 /** How one game is ranked on its leaderboard (backend/games/board.py). */
 export interface BoardDefinition {{
