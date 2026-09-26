@@ -66,6 +66,7 @@ const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 if (!shouldInitSentry()) {
   // Test-hooks build (CI smoke / Maestro) — never reports (#2429).
+  // Also Expo Web, which is an unmaintained secondary target (#2716).
 } else if (!dsn) {
   console.error("[Sentry] EXPO_PUBLIC_SENTRY_DSN is not set — error reporting disabled.");
 } else {
