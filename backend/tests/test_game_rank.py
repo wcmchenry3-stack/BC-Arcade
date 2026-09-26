@@ -3,7 +3,7 @@
 It reports the caller's standing on the game's board without setting
 anything: the rank of their best entry in that game's partition and whether
 this game is that entry, or ``ranked: false`` with a reason. The standing
-is the one ``PATCH /games/{id}/name`` and the board itself report.
+is the one the board itself reports.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ async def test_rank_is_the_named_players_best_entry(client: TestClient) -> None:
     assert _rank(client, worse, sid) == _ranked(2, False)
 
 
-async def test_rank_agrees_with_the_name_route_and_the_board(client: TestClient) -> None:
+async def test_rank_agrees_with_the_board(client: TestClient) -> None:
     for i, score in enumerate((950, 700, 400, 150)):
         await _seed("freecell", _sid(), score=score, name=f"P{i}", minutes=i)
     sid = _sid()
@@ -95,14 +95,7 @@ async def test_rank_agrees_with_the_name_route_and_the_board(client: TestClient)
     board_rank = next(e["rank"] for e in board if e["player_name"] == "Me")
 
     for game_id in ids:
-        got = _rank(client, game_id, sid)
-        r = client.patch(
-            f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"}
-        )
-        assert r.status_code == 200, r.text
-        named = r.json()
-        assert got == _ranked(named["rank"], named["is_best"])
-        assert got["rank"] == board_rank == 2  # FreeCell: fewer moves; only 150 beats 300
+        assert _rank(client, game_id, sid)["rank"] == board_rank == 2  # only 150 beats 300
     assert [_rank(client, g, sid)["is_best"] for g in ids] == [False, True, False]
 
 

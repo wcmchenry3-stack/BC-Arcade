@@ -35,8 +35,6 @@ from .schemas import (
     LeaderboardEntryOut,
     LeaderboardResponse,
     PatchGameTypeRequest,
-    SetPlayerNameRequest,
-    SetPlayerNameResponse,
 )
 
 router = APIRouter()
@@ -49,7 +47,6 @@ CATALOG_RATE_LIMIT = "60/minute"
 # so rotating the X-Session-ID header doesn't lift the limit (#2217).
 LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
 LEADERBOARD_IP_RATE_LIMIT = "300/minute"
-SET_NAME_RATE_LIMIT = "10/minute"
 # GET /games/{id}/rank (#2677): a read, limited like the leaderboard.
 RANK_SESSION_RATE_LIMIT = "60/minute"
 RANK_IP_RATE_LIMIT = "300/minute"
@@ -255,8 +252,8 @@ async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankRespons
     """Where one of the caller's games puts them on its board (#2677). Read-only.
 
     The result card's call: the rank of the caller's best entry in the game's
-    partition and whether this game is that entry, computed exactly as
-    ``PATCH /games/{id}/name`` and the board compute it. ``ranked: false``
+    partition and whether this game is that entry, computed exactly as the
+    board computes it. ``ranked: false``
     with ``reason`` ``board_disabled`` / ``not_finished`` / ``not_rankable`` /
     ``no_name`` (rank and is_best null) when there is no standing to report.
     403 if another session owns the game (or a premium game isn't entitled),
@@ -408,26 +405,3 @@ async def complete_game(
             )
         ).scalar_one()
         return _to_state(loaded)
-
-
-@router.patch("/{game_id}/name", response_model=SetPlayerNameResponse)
-@limiter.limit(SET_NAME_RATE_LIMIT, key_func=session_key)
-async def set_player_name(
-    request: Request, game_id: uuid.UUID, body: SetPlayerNameRequest
-) -> SetPlayerNameResponse:
-    """Set the caller's display name from one of their finished games (#2618).
-
-    Kept for installed builds: the name is the player's (#2624), so this
-    upserts it exactly like ``PUT /players/me`` and applies it to every board.
-    Returns the rank of the caller's best entry in that game's partition and
-    whether this game is that entry. 400 if the game could never rank, 403 if
-    another session owns it, 404 if the game or its board doesn't exist.
-    """
-    sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        game = await _load_owned_game(db, game_id, sid)
-        result = await leaderboard.set_player_name(
-            db, game=game, session_id=sid, player_name=body.player_name
-        )
-    return SetPlayerNameResponse(rank=result.rank, is_best=result.is_best)

@@ -1,7 +1,7 @@
 """Rank helpers for leaderboards.
 
-``compute_rank`` is the generic, direction-aware rank used by the
-``/games/leaderboard`` and ``/games/{id}/name`` routes (#2618). It counts
+``compute_rank`` is the generic, direction-aware rank used by
+``GET /games/leaderboard`` and ``GET /games/{id}/rank`` (#2618, #2677). It counts
 players (distinct sessions), not rows, and always returns the exact rank.
 """
 

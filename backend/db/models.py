@@ -184,7 +184,7 @@ class GameEntitlement(Base):
 
 
 PLAYER_DISPLAY_NAME_MAX_LENGTH = 32
-"""Longest display name (the ``PATCH /games/{id}/name`` ``player_name`` limit)."""
+"""Longest display name (``PUT /players/me``'s limit, ``DisplayName``)."""
 
 
 class Player(Base):

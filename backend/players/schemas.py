@@ -44,8 +44,6 @@ DisplayName = Annotated[str, AfterValidator(_display_name)]
 """A display name: 1-32 characters once surrounding whitespace is dropped,
 with no control characters (``clean_display_name``). The app applies the same
 rule (``normalizeDisplayName``), so a name it accepts is never refused here.
-
-Shared with ``PATCH /games/{id}/name``'s ``player_name`` so the two can't drift.
 """
 
 

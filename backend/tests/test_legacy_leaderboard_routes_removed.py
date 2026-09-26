@@ -3,10 +3,13 @@
 Every game ranks on the generic board (``GET /games/leaderboard/{game_type}``,
 #2618) and its result card reads ``GET /games/{id}/rank`` (#2677). The
 per-game submit, read and name routes, their routers (all but Sort's, which
-keeps ``GET /sort/levels``) and their request/response models were deleted.
+keeps ``GET /sort/levels``) and their request/response models were deleted,
+and so was the generic ``PATCH /games/{id}/name``: a name is set with
+``PUT /players/me``.
 
-A removed path with a live sibling under the same prefix (only Sort has one)
-still answers 404, not 405: no route matches the path at all.
+Every removed path answers 404, not 405, even with live siblings under the
+same prefix (``GET /sort/levels``, ``GET /games/{id}/rank``, ...): no route
+matches the path with any method.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ REMOVED_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("get", "/sudoku/scores/easy", None),
     ("post", "/yacht/score", {"player_name": "Old", "score": 200}),
     ("get", "/yacht/scores", None),
+    ("patch", f"/games/{_GAME_ID}/name", {"player_name": "Old"}),
 ]
 
 
@@ -66,6 +70,14 @@ def test_no_removed_route_is_registered() -> None:
     removed = {path.replace(_GAME_ID, "{game_id}") for _, path, _ in REMOVED_ROUTES}
     removed |= {"/sudoku/scores/{difficulty}"}
     assert paths.isdisjoint(removed), sorted(paths & removed)
+
+
+def test_the_name_route_models_and_service_are_gone() -> None:
+    from games import leaderboard, schemas
+
+    for name in ("SetPlayerNameRequest", "SetPlayerNameResponse"):
+        assert not hasattr(schemas, name), f"games.schemas.{name}"
+    assert not hasattr(leaderboard, "set_player_name")
 
 
 def test_sort_levels_is_unaffected() -> None:

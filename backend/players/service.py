@@ -57,9 +57,9 @@ async def remember_legacy_name(db: AsyncSession, session_id: str | None, raw: ob
 
     Builds from before #2624 never call ``PUT /players/me``; some send a
     ``player_name`` in the creation metadata instead. Without this, a player
-    who never updates would never appear on the generic boards. (The per-game
-    name routes that also fed it were removed in #2644.) Silently skipped
-    without a valid player id or name.
+    who never updates would never appear on the generic boards. (The name
+    routes that also fed it, ``PATCH /games/{id}/name`` and the per-game ones,
+    were removed in #2644.) Silently skipped without a valid player id or name.
     """
     if not session_id:
         return

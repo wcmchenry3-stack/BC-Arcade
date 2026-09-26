@@ -152,7 +152,7 @@ def test_cors_post_blocked_origin(client_default):
 @pytest.mark.security
 def test_cors_preflight_allowed_origin(client_default):
     res = client_default.options(
-        f"/games/{_sid()}/name",
+        f"/games/{_sid()}/complete",
         headers={
             "Origin": "http://localhost:8081",
             "Access-Control-Request-Method": "PATCH",
@@ -166,7 +166,7 @@ def test_cors_preflight_allowed_origin(client_default):
 @pytest.mark.security
 def test_cors_preflight_blocked_origin(client_default):
     res = client_default.options(
-        f"/games/{_sid()}/name",
+        f"/games/{_sid()}/complete",
         headers={
             "Origin": "https://attacker.example.com",
             "Access-Control-Request-Method": "PATCH",

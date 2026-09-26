@@ -2,8 +2,8 @@
 
 ``PUT/GET/DELETE /players/me`` keep the caller's one display name. Every board
 ranks only players who have one, counts all of their finished games, and shows
-the current name, so a rename applies to all history. ``PATCH /games/{id}/name``
-stays for installed builds and sets the same name.
+the current name, so a rename applies to all history. (``PATCH /games/{id}/name``,
+which set the same name, was removed in #2644.)
 """
 
 from __future__ import annotations
@@ -302,98 +302,14 @@ async def test_a_rename_does_not_touch_other_players(client: TestClient) -> None
 
 
 # ---------------------------------------------------------------------------
-# PATCH /games/{id}/name — the compat route for installed builds
-# ---------------------------------------------------------------------------
-
-
-async def test_compat_name_route_sets_the_display_name_and_ranks(client: TestClient) -> None:
-    better, worse, me = _sid(), _sid(), _sid()
-    _play(client, better, "solitaire", 900)
-    _put(client, better, "Better")
-    _play(client, worse, "solitaire", 100)
-    _put(client, worse, "Worse")
-    game_id = _play(client, me, "solitaire", 500)
-
-    r = client.patch(
-        f"/games/{game_id}/name", headers=_headers(me), json={"player_name": "  Ada  "}
-    )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"rank": 2, "is_best": True}
-    assert _get(client, me) == {"display_name": "Ada"}
-    assert _entries(client, "solitaire", me) == [("Better", 900), ("Ada", 500), ("Worse", 100)]
-
-
-async def test_compat_name_route_ranks_the_players_best_entry(client: TestClient) -> None:
-    me = _sid()
-    _play(client, me, "solitaire", 800)
-    worse = _play(client, me, "solitaire", 200)
-    r = client.patch(f"/games/{worse}/name", headers=_headers(me), json={"player_name": "Me"})
-    assert r.json() == {"rank": 1, "is_best": False}
-    assert _entries(client, "solitaire", me) == [("Me", 800)]
-
-
-async def test_compat_name_route_renames_everywhere(client: TestClient) -> None:
-    me = _sid()
-    await _grant_all(me)
-    solitaire = _play(client, me, "solitaire", 300)
-    _play(client, me, "sort", 4)
-    client.patch(f"/games/{solitaire}/name", headers=_headers(me), json={"player_name": "Old"})
-    sort_game = _play(client, me, "sort", 9)
-    r = client.patch(f"/games/{sort_game}/name", headers=_headers(me), json={"player_name": "New"})
-    assert r.status_code == 200, r.text
-    assert _entries(client, "solitaire", me) == [("New", 300)]
-    assert _entries(client, "sort", me) == [("New", 9)]
-
-
-async def test_compat_name_route_still_writes_the_row(client: TestClient) -> None:
-    """The route still records the name on the game row, as it always did."""
-    me = _sid()
-    await _grant_all(me)
-    game_id = _play(client, me, "cascade", 1234)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(me), json={"player_name": "Ada"})
-    assert r.status_code == 200, r.text
-    detail = client.get(f"/games/{game_id}", headers=_headers(me)).json()
-    assert detail["metadata"]["player_name"] == "Ada"
-
-
-async def test_compat_name_route_400s_write_no_name(client: TestClient) -> None:
-    me = _sid()
-    await _grant_all(me)
-    # A tier the board doesn't allow (#2665).
-    r = client.post(
-        "/games",
-        headers=_headers(me),
-        json={"game_type": "starswarm", "metadata": {"difficulty_tier": "Cadet"}},
-    )
-    gid = r.json()["id"]
-    r = client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(me),
-        json={"final_score": 900, "outcome": "completed", "result": {"wave_reached": 2}},
-    )
-    assert r.status_code == 200, r.text
-    r = client.patch(f"/games/{gid}/name", headers=_headers(me), json={"player_name": "Ace"})
-    assert r.status_code == 400
-    assert r.json()["detail"] == "This game's board does not exist."
-
-    # An unfinished game.
-    r = client.post("/games", headers=_headers(me), json={"game_type": "solitaire"})
-    open_id = r.json()["id"]
-    r = client.patch(f"/games/{open_id}/name", headers=_headers(me), json={"player_name": "Ace"})
-    assert r.status_code == 400
-
-    assert _get(client, me) == {"display_name": None}
-
-
-# ---------------------------------------------------------------------------
 # Safe replays
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
 # A name in POST /games metadata still names the player (#2624 review): builds
-# from before #2624 never call PUT /players/me. (The per-game name routes that
-# did the same were removed in #2644.)
+# from before #2624 never call PUT /players/me. (The name routes that did the
+# same, PATCH /games/{id}/name and the per-game ones, were removed in #2644.)
 # ---------------------------------------------------------------------------
 
 

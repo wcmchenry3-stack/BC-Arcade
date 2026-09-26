@@ -308,7 +308,7 @@ def test_every_client_tier_is_accepted_at_creation_and_completion(tier: str) -> 
 def test_a_run_on_an_unknown_tier_is_kept_but_never_ranks() -> None:
     """A tier the backend doesn't know (a forged value, or one a newer app
     added first) is stored, so the run isn't dead-lettered, but it has no
-    board: naming it is refused and its board can't be requested."""
+    board: it never ranks and its board can't be requested."""
     r = client.post(
         "/games",
         headers=_headers(_SID),
@@ -331,9 +331,9 @@ def test_a_run_on_an_unknown_tier_is_kept_but_never_ranks() -> None:
         == "Cadet"
     )
 
-    r = client.patch(f"/games/{gid}/name", headers=_headers(_SID), json={"player_name": "Ace"})
-    assert r.status_code == 400
-    assert r.json()["detail"] == "This game's board does not exist."
+    r = client.get(f"/games/{gid}/rank", headers=_headers(_SID))
+    assert r.status_code == 200, r.text
+    assert r.json()["reason"] == "not_rankable"
     r = client.get("/games/leaderboard/starswarm?difficulty_tier=Cadet", headers=_headers(_SID))
     assert r.status_code == 400
 
@@ -380,7 +380,7 @@ def test_a_null_creation_tier_takes_the_tier_from_the_result() -> None:
     metadata = client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]
     assert metadata["difficulty_tier"] == "Captain"
 
-    r = client.patch(f"/games/{gid}/name", headers=_headers(_SID), json={"player_name": "Ace"})
+    r = client.put("/players/me", headers=_headers(_SID), json={"display_name": "Ace"})
     assert r.status_code == 200, r.text
     assert _names(_board("?difficulty_tier=Captain")) == [("Ace", 5000)]
     assert _board("?difficulty_tier=LieutenantJG")["entries"] == []
