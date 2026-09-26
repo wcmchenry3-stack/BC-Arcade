@@ -3,11 +3,16 @@ import * as Sentry from "@sentry/react-native";
 import { waitFor } from "@testing-library/react-native";
 
 const mockPutMe = jest.fn();
+const mockDeleteMe = jest.fn();
 jest.mock("../../../api/players", () => ({
-  playersApi: { putMe: (...args: unknown[]) => mockPutMe(...args) },
+  playersApi: {
+    putMe: (...args: unknown[]) => mockPutMe(...args),
+    deleteMe: (...args: unknown[]) => mockDeleteMe(...args),
+  },
 }));
 
 import {
+  loadDisplayName,
   normalizeDisplayName,
   resetDisplayNameCacheForTests,
   saveDisplayName,
@@ -17,6 +22,7 @@ import {
   clearDisplayNameSync,
   flushDisplayNameSync,
   registerDisplayNameSync,
+  removeDisplayName,
   resetDisplayNameSyncForTests,
   syncDisplayNameOnLaunch,
 } from "../displayNameSync";
@@ -40,6 +46,8 @@ beforeEach(async () => {
   setDisplayNameSaveHook(null);
   mockPutMe.mockReset();
   mockPutMe.mockImplementation(ok);
+  mockDeleteMe.mockReset();
+  mockDeleteMe.mockResolvedValue(undefined);
   (Sentry.captureMessage as jest.Mock).mockClear();
   registerDisplayNameSync();
 });
@@ -247,5 +255,114 @@ describe("clearDisplayNameSync (Delete my data)", () => {
 
   it("never rejects", async () => {
     await expect(clearDisplayNameSync()).resolves.toBeUndefined();
+  });
+});
+
+describe("removeDisplayName → DELETE /players/me (#2637)", () => {
+  it("forgets the local name and sends one DELETE", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+
+    await expect(removeDisplayName()).resolves.toBe(true);
+    await expect(loadDisplayName()).resolves.toBeNull();
+    await expect(AsyncStorage.getItem("player_display_name")).resolves.toBeNull();
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+  });
+
+  it("keeps an offline removal pending and sends it on reconnect", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    mockDeleteMe.mockImplementation(offline);
+
+    await expect(removeDisplayName()).resolves.toBe(true);
+    await expect(flushDisplayNameSync()).resolves.toBe(false);
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.not.toBeNull();
+
+    // Reconnect (NetworkContext flushes): the removal goes out once.
+    mockDeleteMe.mockReset();
+    mockDeleteMe.mockResolvedValue(undefined);
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+  });
+
+  it("sends a removal left pending at the next launch, without resending the name", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    mockDeleteMe.mockImplementation(offline);
+    await removeDisplayName();
+    await flushDisplayNameSync();
+
+    mockDeleteMe.mockReset();
+    mockDeleteMe.mockResolvedValue(undefined);
+    resetDisplayNameCacheForTests(); // a later launch
+    resetDisplayNameSyncForTests();
+    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    expect(sentNames()).toEqual(["Riley"]);
+  });
+
+  it("replaces an unsent name: only the DELETE goes out", async () => {
+    mockPutMe.mockImplementation(offline);
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    mockPutMe.mockReset();
+    mockPutMe.mockImplementation(ok);
+
+    await removeDisplayName();
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockPutMe).not.toHaveBeenCalled();
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+  });
+
+  it("is replaced by a later save: only the new name goes out", async () => {
+    mockDeleteMe.mockImplementation(offline);
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    await removeDisplayName();
+    await flushDisplayNameSync();
+    mockPutMe.mockClear();
+    mockDeleteMe.mockClear();
+
+    await saveDisplayName("Sam");
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(sentNames()).toEqual(["Sam"]);
+    expect(mockDeleteMe).not.toHaveBeenCalled();
+  });
+
+  it("sends the DELETE after a PUT already in flight, not before it", async () => {
+    const order: string[] = [];
+    let release: () => void = () => {};
+    mockPutMe.mockImplementationOnce((name: string) =>
+      new Promise<void>((resolve) => (release = resolve)).then(() => {
+        order.push("PUT");
+        return { display_name: name };
+      })
+    );
+    mockDeleteMe.mockImplementation(() => {
+      order.push("DELETE");
+      return Promise.resolve();
+    });
+    await saveDisplayName("Riley");
+    await waitFor(() => expect(mockPutMe).toHaveBeenCalledTimes(1));
+
+    await removeDisplayName(); // Riley's PUT is still in flight
+    release();
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(order).toEqual(["PUT", "DELETE"]);
+  });
+
+  it("changes nothing and sends nothing when the local name can't be cleared", async () => {
+    await saveDisplayName("Riley");
+    await flushDisplayNameSync();
+    const spy = jest.spyOn(AsyncStorage, "removeItem").mockRejectedValueOnce(new Error("disk"));
+
+    await expect(removeDisplayName()).resolves.toBe(false);
+    spy.mockRestore();
+    await flushDisplayNameSync();
+    expect(mockDeleteMe).not.toHaveBeenCalled();
+    await expect(loadDisplayName()).resolves.toBe("Riley");
   });
 });

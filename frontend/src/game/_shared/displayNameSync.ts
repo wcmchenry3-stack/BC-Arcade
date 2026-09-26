@@ -1,5 +1,6 @@
 /**
- * Sends the player's display name to the server: `PUT /players/me` (#2624).
+ * Sends the player's display name to the server: `PUT /players/me` (#2624),
+ * or `DELETE /players/me` when the player removes it (#2637).
  *
  * The server keeps one name per player (this install's `X-Session-ID`) and
  * every leaderboard reads it, so the app only has to get the latest local name
@@ -11,6 +12,10 @@
  *   next flush sends one PUT. The slot is cleared only once the server has
  *   exactly that name, so a failure or an app kill mid-request keeps it for the
  *   next trigger.
+ * - **Removal.** "Remove my name from leaderboards" (`removeDisplayName`)
+ *   puts `CLEAR` in the same slot, so the latest intent still wins: a removal
+ *   after an unsent save sends only the DELETE, and a save after an unsent
+ *   removal sends only the PUT. It retries on the same triggers as a name.
  * - **Triggers.** Every save (the hook `registerDisplayNameSync` installs in
  *   `displayName.ts`), app launch, and — alongside `scoreQueue` and
  *   `SyncWorker` — reconnect and return to the foreground (`NetworkContext`).
@@ -20,7 +25,7 @@
  *   `{session_id, name}` the server last confirmed, so later launches send
  *   nothing.
  * - **Replays are harmless.** The PUT is idempotent: sending the name the
- *   player already has writes nothing on the server.
+ *   player already has writes nothing on the server. So is the DELETE.
  *
  * A 400/422 means the server will never accept that name, so it is dropped
  * and recorded as settled for this player id, so launch doesn't send it again
@@ -36,12 +41,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { playersApi } from "../../api/players";
-import { loadDisplayName, setDisplayNameSaveHook } from "./displayName";
+import { clearDisplayName, loadDisplayName, setDisplayNameSaveHook } from "./displayName";
 import { ApiError } from "./httpClient";
 import { getOrCreateSessionId } from "./session";
 
 const PENDING_KEY = "player_display_name_pending_sync";
 const SYNCED_KEY = "player_display_name_synced";
+
+/**
+ * The slot value meaning "remove the name from the server". Longer than
+ * `DISPLAY_NAME_MAX_LENGTH`, so no name the app accepts can equal it.
+ */
+const CLEAR = "__remove_display_name_from_every_leaderboard__";
 
 /** Statuses that mean the server will never accept this name. */
 const REJECTED_STATUSES = new Set([400, 422]);
@@ -104,12 +115,17 @@ function writeSlot(name: string): Promise<unknown> {
 /** One attempt. Resolves true when nothing is left pending; never rejects. */
 async function flushOnce(): Promise<boolean> {
   await slotWrites;
+  // A name, or CLEAR. The settled marker records either one.
   const name = await getItem(PENDING_KEY);
   if (name == null) return true;
   let sessionId: string | null = null;
   try {
     sessionId = await getOrCreateSessionId();
-    await playersApi.putMe(name);
+    if (name === CLEAR) {
+      await playersApi.deleteMe();
+    } else {
+      await playersApi.putMe(name);
+    }
   } catch (e) {
     if (e instanceof ApiError && REJECTED_STATUSES.has(e.status)) {
       // Settled: the same name would be refused again, so launch mustn't resend it.
@@ -188,6 +204,22 @@ export async function syncDisplayNameOnLaunch(): Promise<boolean> {
     return queueDisplayNameSync(name);
   }
   return flushDisplayNameSync();
+}
+
+/**
+ * "Remove my name from leaderboards" (#2637): forgets the local name, then
+ * queues `DELETE /players/me` in the pending slot, which replaces any unsent
+ * name. Offline, the removal stays pending and goes out on the next trigger
+ * (reconnect, foreground, launch). Resolves false, having changed nothing,
+ * when the local name couldn't be cleared; it doesn't wait for the server.
+ */
+export async function removeDisplayName(): Promise<boolean> {
+  if (!(await clearDisplayName())) return false;
+  void writeSlot(CLEAR);
+  flushDisplayNameSync().catch((e) => {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "remove" } });
+  });
+  return true;
 }
 
 /** Sends every saved name to the server. Called once, at module load, by NetworkContext. */
