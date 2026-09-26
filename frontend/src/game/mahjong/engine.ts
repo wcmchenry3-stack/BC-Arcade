@@ -472,7 +472,8 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   const tile = state.tiles.find((t) => t.id === tileId);
   if (!tile || !isFreeTile(tile, state.tiles)) return state;
 
-  const startedAt = state.startedAt ?? Date.now();
+  const now = Date.now();
+  const startedAt = state.startedAt ?? now;
 
   if (!state.selected) {
     return { ...state, selected: tile, startedAt };
@@ -506,7 +507,10 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
     undoStack,
     isComplete,
     isDeadlocked,
-    startedAt,
+    // Clearing the board stops the clock: bank the running segment so the
+    // elapsed time is frozen and doesn't keep growing on a restored won board.
+    startedAt: isComplete ? null : startedAt,
+    accumulatedMs: isComplete ? state.accumulatedMs + (now - startedAt) : state.accumulatedMs,
   };
 }
 
