@@ -483,6 +483,92 @@ async def test_rank_honours_asc_direction_and_tiebreak(client: TestClient) -> No
 
 
 # ---------------------------------------------------------------------------
+# The caller's own entry: is_me and me (#2633)
+# ---------------------------------------------------------------------------
+
+
+async def test_callers_row_is_flagged_is_me(client: TestClient) -> None:
+    me = _sid()
+    await _seed("solitaire", _sid(), score=900, name="Other")
+    await _seed("solitaire", me, score=500, name="Me")
+    body = _board(client, "solitaire", sid=me)
+    assert [(e["player_name"], e["is_me"]) for e in body["entries"]] == [
+        ("Other", False),
+        ("Me", True),
+    ]
+    assert body["me"] == body["entries"][1]
+
+
+async def test_no_session_header_flags_nothing(client: TestClient) -> None:
+    await _seed("solitaire", _sid(), score=900, name="Someone")
+    body = _board(client, "solitaire")
+    assert [e["is_me"] for e in body["entries"]] == [False]
+    assert body["me"] is None
+
+
+async def test_me_outside_the_listed_top_n_has_its_exact_rank(client: TestClient) -> None:
+    for i in range(3):
+        await _seed("solitaire", _sid(), score=900 - i, name=f"P{i}", minutes=i)
+    me = _sid()
+    await _seed("solitaire", me, score=100, name="Me", minutes=9)
+    # A worse replay never replaces the player's best.
+    await _seed("solitaire", me, score=50, name="Me", minutes=10)
+    body = _board(client, "solitaire?limit=2", sid=me)
+    assert [e["is_me"] for e in body["entries"]] == [False, False]
+    assert body["me"] == {
+        "rank": 4,
+        "player_name": "Me",
+        "value": 100,
+        "completed_at": body["me"]["completed_at"],
+        "is_me": True,
+    }
+
+
+async def test_me_honours_asc_direction_and_tiebreak(client: TestClient) -> None:
+    await _seed("freecell", _sid(), score=80, name="Fast")
+    me = _sid()
+    await _seed("freecell", me, score=100, name="Me")
+    await _seed("freecell", me, score=140, name="Me", minutes=1)
+    body = _board(client, "freecell?limit=1", sid=me)
+    assert (body["me"]["rank"], body["me"]["value"]) == (2, 100)
+
+    await _seed("sort", _sid(), name="Fewer", meta={"level_reached": 5, "total_moves": 10})
+    me = _sid()
+    await _seed("sort", me, name="Me", minutes=1, meta={"level_reached": 5, "total_moves": 20})
+    body = _board(client, "sort?limit=1", sid=me)
+    assert (body["me"]["rank"], body["me"]["value"]) == (2, 5)
+
+
+async def test_me_is_per_partition(client: TestClient) -> None:
+    me = _sid()
+    await _seed("sudoku", me, score=250, name="Me", meta={"difficulty": "hard"})
+    assert _board(client, "sudoku?difficulty=easy", sid=me)["me"] is None
+    hard = _board(client, "sudoku?difficulty=hard", sid=me)
+    assert (hard["me"]["rank"], hard["me"]["value"]) == (1, 250)
+
+
+async def test_me_is_null_for_an_unnamed_player(client: TestClient) -> None:
+    me = _sid()
+    await _seed("solitaire", me, score=500, name=None)
+    body = _board(client, "solitaire", sid=me)
+    assert body["me"] is None
+    assert body["entries"] == []
+
+
+async def test_me_is_null_without_an_eligible_game(client: TestClient) -> None:
+    me = _sid()
+    await _seed("solitaire", me, score=500, name="Me", outcome="abandoned")
+    assert _board(client, "solitaire", sid=me)["me"] is None
+
+
+async def test_invalid_session_header_is_ignored_on_a_free_board(client: TestClient) -> None:
+    await _seed("solitaire", _sid(), score=500, name="Someone")
+    r = client.get("/games/leaderboard/solitaire", headers={"X-Session-ID": "not-a-uuid"})
+    assert r.status_code == 200, r.text
+    assert r.json()["me"] is None
+
+
+# ---------------------------------------------------------------------------
 # PATCH /games/{id}/name
 # ---------------------------------------------------------------------------
 
@@ -1083,6 +1169,26 @@ async def test_top_entries_db_error_is_logged_and_chained(
             board=board,
             game_type_id=1,
             partition={},
+        )
+    assert info.value.status_code == 500
+    assert isinstance(info.value.__cause__, OperationalError)
+    _assert_logged_safely(caplog, "solitaire")
+
+
+async def test_viewer_entry_db_error_is_logged_and_chained(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    board = leaderboard.enabled_board("solitaire")
+    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
+        await leaderboard.viewer_entry(
+            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            game_type="solitaire",
+            board=board,
+            game_type_id=1,
+            partition={},
+            session_id=SECRET_SID,
         )
     assert info.value.status_code == 500
     assert isinstance(info.value.__cause__, OperationalError)
