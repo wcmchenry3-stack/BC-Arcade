@@ -147,6 +147,14 @@ export function elapsedMs(state: MahjongState, now: number = Date.now()): number
   return state.accumulatedMs + (now - state.startedAt);
 }
 
+/** Bank the running segment and stop the clock (a no-op if it isn't running). */
+function stopClock(
+  state: MahjongState,
+  now: number
+): Pick<MahjongState, "startedAt" | "accumulatedMs"> {
+  return { startedAt: null, accumulatedMs: elapsedMs(state, now) };
+}
+
 // ---------------------------------------------------------------------------
 // Tile-set construction — 144 tiles = 72 pairs
 // ---------------------------------------------------------------------------
@@ -472,7 +480,8 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   const tile = state.tiles.find((t) => t.id === tileId);
   if (!tile || !isFreeTile(tile, state.tiles)) return state;
 
-  const startedAt = state.startedAt ?? Date.now();
+  const now = Date.now();
+  const startedAt = state.startedAt ?? now;
 
   if (!state.selected) {
     return { ...state, selected: tile, startedAt };
@@ -493,6 +502,7 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   const isComplete = newTiles.length === 0;
   const score = state.score + SCORE_PER_PAIR + (isComplete ? SCORE_COMPLETE_BONUS : 0);
   const isDeadlocked = !isComplete && !hasFreePairs(newTiles) && state.shufflesLeft === 0;
+  const ended = isComplete || isDeadlocked;
 
   const snapshot: MahjongState = { ...state, selected: null, undoStack: [] };
   const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
@@ -506,7 +516,9 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
     undoStack,
     isComplete,
     isDeadlocked,
-    startedAt,
+    // Clearing or deadlocking the board stops the clock: bank the running
+    // segment so the elapsed time is frozen and the result card can't tick.
+    ...(ended ? stopClock({ ...state, startedAt }, now) : { startedAt }),
   };
 }
 
@@ -677,6 +689,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
       shufflesLeft,
       isDeadlocked: true,
       undoStack,
+      ...stopClock(state, Date.now()),
     };
   }
 

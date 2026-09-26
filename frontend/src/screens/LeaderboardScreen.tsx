@@ -32,19 +32,13 @@ import { typography } from "../theme/typography";
 import type { LeaderboardParams } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 
-/**
- * Until #2634 retires the Ranks tab, the tab renders this screen with no
- * params: it shows Star Swarm's board, as the tab always has.
- */
-const DEFAULT_GAME: GameType = "starswarm";
-
 /** Metric labels the boards declare (`BoardDefinition.labelKey`). */
 const METRIC_LABEL_KEYS = new Set(["score", "moves", "level"]);
 
 export interface LeaderboardScreenProps {
-  /** `Leaderboard` in the Home stack; absent on the Ranks tab. */
-  route?: { params?: LeaderboardParams };
-  navigation?: {
+  /** `Leaderboard` in the Home stack, the screen's only route (#2634). */
+  route: { params: LeaderboardParams };
+  navigation: {
     goBack: () => void;
     addListener?: (event: "focus" | "blur", callback: () => void) => () => void;
   };
@@ -62,7 +56,46 @@ export interface LeaderboardScreenProps {
  * menu (`useLeaderboardLink`), only for games with an openable board.
  */
 export default function LeaderboardScreen({ route, navigation }: LeaderboardScreenProps) {
-  const gameType = route?.params?.gameType ?? DEFAULT_GAME;
+  // The route's params are required by type, but a restored or hand-built
+  // navigation state can still arrive without them: show "no leaderboard"
+  // rather than crash.
+  const params = route.params as LeaderboardParams | undefined;
+  if (!params?.gameType) return <NoBoard navigation={navigation} />;
+  return <GameLeaderboard params={params} navigation={navigation} />;
+}
+
+function NoBoard({ navigation }: Pick<LeaderboardScreenProps, "navigation">) {
+  const { t } = useTranslation(["leaderboard", "common"]);
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: APP_HEADER_HEIGHT + insets.top,
+          paddingBottom: Math.max(insets.bottom, 16),
+        },
+      ]}
+    >
+      <AppHeader
+        title={t("common:overflow.menu.leaderboard")}
+        onBack={() => navigation.goBack()}
+        requireBack
+      />
+      <EmptyState kind="empty" message={t("leaderboard:unavailable")} />
+    </View>
+  );
+}
+
+function GameLeaderboard({
+  params: { gameType, partition, refreshAfterSync },
+  navigation,
+}: {
+  params: LeaderboardParams;
+  navigation: LeaderboardScreenProps["navigation"];
+}) {
   const board = openableBoard(gameType);
   // The screen's strings and the game's own (its title; Sudoku's partition
   // labels are in it), not every game's bundle.
@@ -70,7 +103,6 @@ export default function LeaderboardScreen({ route, navigation }: LeaderboardScre
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const onBack = route?.params ? () => navigation?.goBack() : undefined;
   const game = gameTitle(t, gameType);
   const title = t("leaderboard:title", { game });
 
@@ -87,18 +119,18 @@ export default function LeaderboardScreen({ route, navigation }: LeaderboardScre
     >
       <AppHeader
         title={title}
-        onBack={onBack}
-        requireBack={!!route?.params}
+        onBack={() => navigation.goBack()}
+        requireBack
         backAccessibilityLabel={t("leaderboard:a11y.back", { game })}
       />
       {board ? (
         <Board
           // New params (the same route opened for another board) start afresh.
-          key={`${gameType}:${partitionKey(route?.params?.partition)}`}
+          key={`${gameType}:${partitionKey(partition)}`}
           gameType={gameType}
           board={board}
-          requested={route?.params?.partition}
-          refreshAfterSync={!!route?.params?.refreshAfterSync}
+          requested={partition}
+          refreshAfterSync={!!refreshAfterSync}
           navigation={navigation}
           t={t}
           colors={colors}
@@ -123,7 +155,7 @@ function Board({
   board: BoardDefinition;
   requested?: Partition;
   refreshAfterSync: boolean;
-  navigation?: LeaderboardScreenProps["navigation"];
+  navigation: LeaderboardScreenProps["navigation"];
   t: TFunction;
   colors: Colors;
 }) {
@@ -138,10 +170,10 @@ function Board({
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
-  // Coming back to the board (from a game, or to the Ranks tab) shows it as
-  // it is now. Only a return counts: the mount's own focus is its first load.
+  // Coming back to the board (from another tab or screen) shows it as it is
+  // now. Only a return counts: the mount's own focus is its first load.
   useEffect(() => {
-    const addListener = navigation?.addListener;
+    const addListener = navigation.addListener;
     if (!addListener) return;
     let left = false;
     const offBlur = addListener("blur", () => {

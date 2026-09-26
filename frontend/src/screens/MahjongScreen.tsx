@@ -1256,7 +1256,7 @@ export default function MahjongScreen() {
             ) : undefined
           }
           stats={[
-            { label: tResult("stat.time"), value: formatMs(state.accumulatedMs) },
+            { label: tResult("stat.time"), value: formatMs(elapsedMs(state)) },
             ...(state.isComplete && winSummary && winSummary.bestScore > 0
               ? [{ label: tResult("stat.best"), value: winSummary.bestScore }]
               : []),

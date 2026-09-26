@@ -13,6 +13,7 @@ import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { GameShell } from "../components/shared/GameShell";
 
 type Props = {
@@ -25,6 +26,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
     useBlackjackGame();
+  const layout = useBlackjackLayout();
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
               playerHands={state.player_hands}
               activeHandIndex={state.active_hand_index}
               handBets={state.hand_bets}
+              layout={layout}
             />
           </View>
         </View>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -13,8 +13,6 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { useTheme } from "../theme/ThemeContext";
-import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import {
   hit as engineHit,
   stand as engineStand,
@@ -25,6 +23,7 @@ import {
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
@@ -39,21 +38,6 @@ import { GameShell } from "../components/shared/GameShell";
 import { PillButton } from "../components/shared/PillButton";
 import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
-// Below this *available content* height, card sizes, action-button sizes,
-// and table padding collapse to compact variants so the dealer hand, player
-// hand, and action cluster all fit without overlapping.
-//
-// This is measured against available height (window height minus the
-// header, safe-area insets, and the bottom tab bar) rather than raw window
-// height. Raw window height alone under-counts iOS chrome — notch/Dynamic
-// Island top insets, the home indicator, and the tab bar all eat into the
-// usable area — so standard-size iPhones (e.g. iPhone 13 mini/14 at
-// 812-844pt raw height) were passing the old raw-height check yet still
-// didn't have enough room, overlapping the action-button cluster with the
-// player's cards. This also still catches Galaxy Fold unfolded in landscape
-// and portrait, and smaller phones in landscape.
-const COMPACT_HEIGHT_BREAKPOINT = 660;
-
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackTable">;
 };
@@ -64,12 +48,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
-  const tabBarHeight = useSafeBottomTabBarHeight();
-  // tabBarHeight (useSafeBottomTabBarHeight/useBottomTabBarHeight) already
-  // includes insets.bottom, so it must not be subtracted again here.
-  const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
-  const isCompact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
+  const layout = useBlackjackLayout();
   const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats, runResult } =
     useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
@@ -269,7 +248,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             playerHands={state.player_hands}
             activeHandIndex={state.active_hand_index}
             handBets={state.hand_bets}
-            compact={isCompact}
+            layout={layout}
           />
           <Animated.View style={bustFlashStyle} />
           <Animated.View style={winFlashStyle} />
@@ -306,7 +285,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       )}
 
       {/* Phase-specific controls */}
-      <View style={[styles.controls, isCompact && styles.controlsCompact]}>
+      <View
+        style={[
+          styles.controls,
+          { paddingBottom: layout.controlsPaddingBottom, gap: layout.controlsGap },
+        ]}
+      >
         {state?.phase === "result" && (
           <>
             {!isSplit && <ResultBanner outcome={state.outcome!} payout={state.payout} />}
@@ -359,7 +343,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             doubleDownAvailable={state.double_down_available}
             splitAvailable={state.split_available}
             loading={false}
-            compact={isCompact}
+            layout={layout}
           />
         )}
 
@@ -428,16 +412,10 @@ const styles = StyleSheet.create({
   controls: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 16,
     // flexShrink: 0 keeps the action cluster fully rendered even when the
     // tableRow above is competing for space — without this, on compact
     // viewports the controls could be squeezed to zero height.
     flexShrink: 0,
-  },
-  controlsCompact: {
-    paddingBottom: 12,
-    gap: 8,
   },
   resultActions: {
     width: "100%",

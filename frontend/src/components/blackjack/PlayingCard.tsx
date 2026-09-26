@@ -8,8 +8,8 @@ import type { CardResponse } from "../../game/blackjack/types";
 interface Props {
   card: CardResponse;
   rotation?: number;
-  variant?: "player" | "dealer";
-  compact?: boolean;
+  width: number;
+  height: number;
 }
 
 const EMOJI_TO_SUIT: Record<string, CanonicalSuit> = {
@@ -21,19 +21,8 @@ const EMOJI_TO_SUIT: Record<string, CanonicalSuit> = {
 
 const RANK_STR_TO_NUM: Record<string, number> = { A: 1, J: 11, Q: 12, K: 13 };
 
-function cardSize(variant: "player" | "dealer", compact: boolean) {
-  if (variant === "player") return compact ? { w: 48, h: 68 } : { w: 68, h: 96 };
-  return compact ? { w: 40, h: 56 } : { w: 52, h: 72 };
-}
-
-export default function PlayingCard({
-  card,
-  rotation = 0,
-  variant = "dealer",
-  compact = false,
-}: Props) {
+export default function PlayingCard({ card, rotation = 0, width, height }: Props) {
   const { t } = useTranslation("blackjack");
-  const { w, h } = cardSize(variant, compact);
 
   const suit = EMOJI_TO_SUIT[card.suit] ?? "spades";
   const rank = RANK_STR_TO_NUM[card.rank] ?? parseInt(card.rank, 10);
@@ -47,8 +36,8 @@ export default function PlayingCard({
       suit={suit}
       rank={rank}
       faceDown={card.face_down}
-      width={w}
-      height={h}
+      width={width}
+      height={height}
       rotation={rotation}
       accessibilityLabel={label}
     />

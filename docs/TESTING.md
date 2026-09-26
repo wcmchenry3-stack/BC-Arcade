@@ -698,7 +698,7 @@ Verifies that `scoreHistory` and full game state survive a top-tab switch
 
 1. Start a Hearts game; play through at least 2 hands so `cumulativeScores`
    are non-zero and the round table has 2+ rows.
-2. Mid-game, tap the **Ranks**, **Profile**, or **Settings** bottom-tab.
+2. Mid-game, tap the **Profile** or **Settings** bottom-tab.
 3. Tap **Lobby** to return; resume Hearts.
 4. Open the ⋯ menu → **Scoreboard**. Expected:
    - Round table shows the same number of rows as before the switch.

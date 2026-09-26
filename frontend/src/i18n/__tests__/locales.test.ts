@@ -1,4 +1,4 @@
-import { LOCALES, RTL_LOCALES } from "../locales";
+import { LOCALES, NATIVE_LOCALES, RTL_LOCALES } from "../locales";
 
 describe("LOCALES", () => {
   it("exports at least 2 locales", () => {
@@ -35,5 +35,13 @@ describe("LOCALES", () => {
       expect(RTL_LOCALES.has(code)).toBe(true);
     }
     expect(RTL_LOCALES.size).toBe(rtlFromArray.length);
+  });
+
+  it("NATIVE_LOCALES excludes every RTL locale but keeps all LTR ones", () => {
+    for (const locale of NATIVE_LOCALES) {
+      expect(RTL_LOCALES.has(locale.code)).toBe(false);
+    }
+    expect(NATIVE_LOCALES.length).toBe(LOCALES.length - RTL_LOCALES.size);
+    expect(NATIVE_LOCALES[0]?.code).toBe("en");
   });
 });

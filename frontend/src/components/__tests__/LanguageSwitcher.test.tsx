@@ -24,12 +24,14 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
-jest.mock("../../i18n/locales", () => ({
-  LOCALES: [
-    { code: "en", label: "English", nativeLabel: "English", flag: "🇺🇸" },
-    { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸" },
-  ],
-}));
+jest.mock("../../i18n/locales", () => {
+  const LOCALES = [
+    { code: "en", label: "English", nativeLabel: "English", flag: "🇺🇸", dir: "ltr" },
+    { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸", dir: "ltr" },
+    { code: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦", dir: "rtl" },
+  ];
+  return { LOCALES, NATIVE_LOCALES: LOCALES.filter((l) => l.dir !== "rtl") };
+});
 
 describe("LanguageSwitcher", () => {
   it("uses button accessibilityRole on language options (not option)", async () => {
@@ -55,5 +57,13 @@ describe("LanguageSwitcher", () => {
 
     expect(englishOption.props.accessibilityRole).not.toBe("option");
     expect(spanishOption.props.accessibilityRole).not.toBe("option");
+  });
+
+  it("does not offer RTL locales on native (no layout mirroring)", async () => {
+    const { getByLabelText, queryByLabelText } = await render(<LanguageSwitcher />);
+    await fireEvent.press(getByLabelText("lang.switcherLabel"));
+
+    expect(getByLabelText("English — English")).toBeTruthy();
+    expect(queryByLabelText("العربية — Arabic")).toBeNull();
   });
 });
